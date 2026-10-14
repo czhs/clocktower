@@ -1,6 +1,6 @@
 # Progress
 
-_Last updated: 2026-10-14 (lead)_
+_Last updated: 2026-10-15 (lead)_
 
 ## Environment facts (verified 2026-10-14)
 
@@ -25,20 +25,20 @@ M0 contracts+skeleton ─┬─▶ R1 rules engine core ─▶ R2 22 roles ─�
 | Id | Task | Owner | Status |
 |---|---|---|---|
 | M0 | Monorepo, protocol, module interfaces, docs, remote exec | lead | ✅ done |
-| A1 | SQLite/Drizzle schema, passphrase accounts, sessions, rate limit | lobby-auth | ⏳ |
-| A2 | Lobby directory, create/list/SSE, tickets | lobby-auth | ⏳ |
-| A3 | GameRoom lifecycle, seats, reconnect, duplicate devices, fan-out | lobby-auth | ⏳ |
-| A4 | Auth/home/finder/create/waiting-room/admin UI | lobby-auth | ⏳ |
-| R1-R4 | Rules engine, 22 roles, GameController, HUD + ST UI | rules-storyteller | ⏳ |
-| W1-W4 | Handcrafted layout, PNG generator, WorldModule, Phaser town/cosmetics/ghosts | world-art | ⏳ |
-| V1-V4 | Acoustic graph, LiveKit grants/revocation/quota, client voice + controls | voice | ⏳ |
-| Q1-Q5 | Test harness, synthetic players, security/load, dev+prod services, Funnel | qa-deploy | ⏳ |
+| A1-A4 | SQLite/Drizzle, passphrase accounts, sessions, directory+SSE+tickets, GameRoom lifecycle, lobby/auth/admin/chat UI | lobby-auth | ✅ done (86 tests) |
+| R1-R4 | Rules engine (22 roles, setup 5–15, night orders, interactions), GameModule, HUD + Storyteller panel | rules-storyteller | ✅ done (89 tests incl. secrecy) |
+| V1-V4 | Acoustic zones + hysteresis, LiveKit grants/revocation/re-join sweep/quota, client voice panel | voice | ✅ code done (55 tests); ⛔ untested against real LiveKit (no credentials) |
+| Q1-Q4 | Harness, integration/security/e2e/load tests, dev+prod systemd user services, deploy+rollback | qa-deploy | ✅ done (64 tests + 5 e2e); load numbers pending real world module |
+| Q5 | Tailscale Funnel on hshi-u1:3000 | qa-deploy | ⛔ blocked on tailnet policy approval |
+| W1-W4 | Handcrafted town, PNG generator, WorldModule, Phaser town/cosmetics/ghosts | world-art | 🔄 art + layout done; module/client being finished |
+| M3 | Playable ST-guided round end-to-end in browser | lead | ⏳ after world-art |
+| M5 | Prod release with Funnel; external + mobile test; load test with real movement + voice | lead/qa | ⏳ |
 
 ## Blocked / needs user
 
 1. `sudo loginctl enable-linger hshi` (user services survive logout/reboot) — requested.
 2. `sudo tailscale set --operator=hshi` (manage Funnel without sudo) — requested.
-3. Funnel may need enabling in the Tailscale admin console (nodeAttr `funnel`) — TBD when tried.
+3. Funnel: `tailscale funnel --bg 3000` reports hshi-u1 is not in the tailnet policy's funnel nodeAttr — a tailnet admin must approve (link printed by the CLI) or add the node to the policy.
 4. LiveKit Cloud free project + API key/secret (to be placed in `~/clocktower/env/*.env` on hshi-u1).
 
 ## Next
