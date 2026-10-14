@@ -9,6 +9,10 @@ import { HomeScreen } from './ui/lobby/HomeScreen';
 import { WaitingRoom } from './ui/lobby/WaitingRoom';
 import { GameScreen } from './game/GameScreen';
 import { AdminScreen } from './ui/admin/AdminScreen';
+import { Hud } from './ui/hud';
+import { StorytellerPanel } from './ui/storyteller';
+import { VoicePanel } from './ui/voice';
+import { ChatPanel } from './ui/chat';
 import './ui/common/theme.css';
 
 // LEAD-OWNED shell: session bootstrap + tiny path router.
@@ -70,7 +74,12 @@ function InLobby({ conn, account }: { conn: RoomConnection; account: AccountView
   const waiting = !game && (!lobby || lobby.lobby.phase === 'waiting');
   return (
     <div class="screen">
-      <GameScreen conn={conn} account={account} />
+      <GameScreen conn={conn} account={account}>
+        <Hud conn={conn} account={account} />
+        <StorytellerPanel conn={conn} account={account} />
+        <VoicePanel conn={conn} account={account} />
+        <ChatPanel conn={conn} account={account} />
+      </GameScreen>
       {waiting && <WaitingRoom conn={conn} account={account} onLeave={() => navigate({ name: 'home' })} />}
     </div>
   );
