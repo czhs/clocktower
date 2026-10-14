@@ -1,0 +1,33 @@
+/* OWNED BY world-art: town canvas + its own small overlays (door prompt, phase caption). */
+.ct-game { position: absolute; inset: 0; overflow: hidden; background: #09070d; }
+.ct-game-canvas { position: absolute; inset: 0; }
+.ct-game-canvas canvas { display: block; image-rendering: pixelated; image-rendering: crisp-edges; }
+.ct-game-loading {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  color: var(--muted, #9b91a8); font-style: italic; pointer-events: none;
+}
+/* Door prompt: bottom-centre, clear of the voice panel (bottom-right) and chat (bottom-left). */
+.ct-game-prompt {
+  position: absolute; left: 50%; bottom: 96px; transform: translateX(-50%); z-index: 20;
+  display: flex; align-items: center; gap: 8px; padding: 6px 12px; pointer-events: none;
+  background: var(--panel, #1b1724e6); border: 1px solid var(--border, #3d3350); border-radius: 6px;
+  color: var(--text, #e9e2d0); font-size: 14px; white-space: nowrap; max-width: calc(100vw - 32px);
+  box-shadow: 0 4px 18px #0008;
+}
+.ct-game-prompt.locked { color: var(--muted, #9b91a8); font-style: italic; }
+.ct-game-prompt kbd {
+  font-family: var(--mono, monospace); font-size: 12px; padding: 1px 6px; border-radius: 3px;
+  border: 1px solid var(--accent, #c9a24a); color: var(--accent, #c9a24a); background: #0f0c14;
+}
+/* Phase caption: top-centre, fades in. */
+.ct-game-caption {
+  position: absolute; left: 50%; top: 18%; transform: translateX(-50%); z-index: 15;
+  padding: 8px 18px; pointer-events: none; text-align: center; max-width: min(560px, calc(100vw - 32px));
+  color: #f1e6c8; font-size: 18px; font-style: italic; letter-spacing: 0.02em;
+  text-shadow: 0 2px 8px #000, 0 0 2px #000; animation: ct-caption 4.2s ease-in-out both;
+}
+@keyframes ct-caption { 0% { opacity: 0; } 15% { opacity: 1; } 80% { opacity: 1; } 100% { opacity: 0; } }
+@media (max-width: 600px) {
+  .ct-game-prompt { bottom: 140px; font-size: 13px; }
+  .ct-game-caption { font-size: 15px; top: 14%; }
+}

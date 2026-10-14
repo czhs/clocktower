@@ -677,7 +677,8 @@ function furnishHouse(sp: Spec): { bed: TilePoint; visitPoint: TilePoint } {
   f('window', 8, 1);
   f(i % 3 === 0 ? 'wallshelf' : 'window', 3, 1);
   // bed in the corner with a nightstand + candle
-  f(i % 4 === 2 ? 'bedwide' : 'bed', 1, 3);
+  if (i % 4 === 2) f('bedwide', 1, 3);
+  else f('bed', 1, 3, { frame: `bed_${i % 5}` }); // blanket colour varies per cottage
   f('nightstand', i % 4 === 2 ? 3 : 2, 2);
   f(['rug_red', 'rug_blue', 'rug_green'][i % 3]!, 4, 6);
   f(i % 2 === 0 ? 'table' : 'roundtable', 5, 4);
@@ -1022,7 +1023,7 @@ export const townLayout: TownLayout = {
   buildings,
   collision,
   playerSpawn: { x: 48, y: 54 },
-  storytellerSpawn: { x: 52, y: 51 },
+  storytellerSpawn: { x: 52, y: 50 },
   streetlights,
 };
 

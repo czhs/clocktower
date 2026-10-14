@@ -2,7 +2,7 @@
 // rows (down, up, left, right) of 24x32 frames, feet at y = 30. Layers are composited in order
 // body -> outfit -> hair -> accessory. Ghost sheets and the Storyteller are complete sprites.
 import { ACCESSORIES, GHOST_STYLES, HAIR_COLORS, HAIR_STYLES, OUTFIT_PALETTES, OUTFITS, SKIN_TONES } from '@ct/protocol';
-import { dpick, hash, Img, mix, ramp, type Color, type Ramp } from './lib/img.js';
+import { dpick, hash, Img, mix, ramp, type Ramp } from './lib/img.js';
 
 export const FW = 24;
 export const FH = 32;
@@ -773,4 +773,3 @@ export function drawCharacters(): CharacterSheets {
   return { sheets, meta: {} };
 }
 
-export const _col: Color = '#000';

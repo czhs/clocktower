@@ -4,7 +4,7 @@
 import type { BuildingDef } from '@ct/protocol';
 import { townLayout, townMap, TS, type BuildingStyle } from '../src/layout.js';
 import { box, planks, stonework } from './lib/draw.js';
-import { bayer, dpick, hash, Img, mix, vnoise, type Color } from './lib/img.js';
+import { bayer, dpick, hash, Img, mix, vnoise } from './lib/img.js';
 
 export interface BuildingSprite {
   img: Img;
@@ -531,4 +531,3 @@ export function drawBuildings(): Map<string, BuildingSprite> {
   return out;
 }
 
-export const _c: Color = '#000';

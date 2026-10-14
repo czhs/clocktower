@@ -62,3 +62,12 @@ no Tailscale operator set; memory cgroup delegated to the user manager; `google-
 |---|---|
 | `scripts/remote.sh pnpm build` | ✅ after fixing root build script (unquoted glob → `pnpm -r --if-present run build`) |
 | `scripts/remote.sh pnpm vitest run` (all suites) | ✅ 27 files, 294 tests passed |
+
+## 2026-10-15 — world-art integrated (lead)
+
+| Command | Result |
+|---|---|
+| `scripts/remote.sh pnpm -r run typecheck` | ✅ all packages |
+| `scripts/remote.sh pnpm vitest run` | ✅ 27 files, 294 tests (night-visit secrecy test now active with real WorldModule) |
+| `scripts/remote.sh pnpm build` | ✅ client + server |
+| world-art: Playwright 2-browser check vs test server :3320 (reported by teammate) | ✅ town renders, remote movement visible |

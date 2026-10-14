@@ -2,7 +2,7 @@
 // Frame sizes must match PROP_DEFS in src/layout.ts (asserted by the generator).
 import { PROP_DEFS } from '../src/layout.js';
 import { box, canopy, flame, planks, shadow, sphere, stonework } from './lib/draw.js';
-import { bayer, dpick, hash, Img, mix, ramp, vnoise, type Color } from './lib/img.js';
+import { bayer, dpick, hash, Img, mix, ramp, vnoise } from './lib/img.js';
 
 type Draw = (img: Img) => void;
 
@@ -1271,5 +1271,3 @@ export function drawProps(): Map<string, Img> {
   return out;
 }
 
-export const _unused: Color = '#000';
-export { ramp };
