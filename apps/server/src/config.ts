@@ -25,7 +25,7 @@ const Env = z.object({
   LIVEKIT_URL: z.string().default(''),
   LIVEKIT_API_KEY: z.string().default(''),
   LIVEKIT_API_SECRET: z.string().default(''),
-  LIVEKIT_ROOM_PREFIX: z.string().regex(/^[a-z0-9-]{1,16}$/).default('dev'),
+  LIVEKIT_ROOM_PREFIX: z.string().regex(/^[a-z0-9]{1,16}$/).default('dev'),
   VOICE_MONTHLY_MINUTES: z.coerce.number().int().min(0).default(5000),
   LOG_DIR: z.string().default('./logs/dev'),
   CLIENT_DIST: z.string().default(''),

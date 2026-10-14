@@ -1,0 +1,76 @@
+/* OWNED BY voice. Compact gothic voice panel, bottom-right, collapsible. */
+.ctv {
+  position: fixed;
+  right: 12px;
+  bottom: 12px;
+  width: 248px;
+  max-height: min(60vh, 460px);
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 6px 18px #0009, inset 0 0 0 1px #c9a24a14;
+  font-size: 13px;
+  z-index: 30;
+  pointer-events: auto;
+}
+.ctv.ctv-collapsed { width: auto; background: none; border: none; box-shadow: none; }
+.ctv-pill { display: flex; align-items: center; gap: 6px; background: var(--panel); border-radius: 14px; padding: 4px 12px; }
+.ctv-live { color: var(--danger); font-size: 11px; letter-spacing: 0.04em; }
+.ctv-head {
+  display: flex; align-items: center; gap: 6px; padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(#2a223888, #1b172400);
+}
+.ctv-title { font-variant: small-caps; letter-spacing: 0.08em; color: var(--accent); }
+.ctv-spacer { flex: 1; }
+.ctv-zone { font-size: 11px; padding: 1px 6px; border-radius: 8px; border: 1px solid var(--border); color: var(--muted); }
+.ctv-zone-broadcast { color: var(--accent); border-color: #c9a24a66; }
+.ctv-zone-private { color: #b49ad8; border-color: #8a6fb066; }
+.ctv-icon { padding: 0 6px; line-height: 20px; background: none; border-color: transparent; color: var(--muted); }
+.ctv-body { padding: 8px; display: flex; flex-direction: column; gap: 6px; overflow-y: auto; }
+.ctv-note { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.35; }
+.ctv-warn { color: #e0b080; }
+.ctv-announce { color: var(--accent); font-style: italic; }
+.ctv-announce.speaking { text-shadow: 0 0 6px #c9a24a88; }
+.ctv-enable { width: 100%; padding: 8px; }
+.ctv-row { display: flex; gap: 4px; flex-wrap: wrap; }
+.ctv-row > button { flex: 1; padding: 4px 6px; font-size: 12px; }
+.ctv button.on { background: #4a3520; border-color: var(--accent); }
+.ctv-seg { display: flex; flex: 1; }
+.ctv-seg button { flex: 1; padding: 4px 6px; font-size: 12px; border-radius: 0; }
+.ctv-seg button:first-child { border-radius: 4px 0 0 4px; }
+.ctv-seg button:last-child { border-radius: 0 4px 4px 0; border-left: none; }
+.ctv-key { font-family: var(--mono); }
+.ctv-key.binding { border-color: var(--accent); animation: ctv-pulse 1s infinite; }
+.ctv-small { padding: 1px 6px; font-size: 11px; }
+.ctv-wide { width: 100%; padding: 5px; font-size: 12px; }
+.ctv-device { width: 100%; font-size: 12px; padding: 3px 4px; }
+.ctv-tx {
+  text-align: center; font-size: 12px; padding: 3px; border-radius: 4px;
+  border: 1px dashed var(--border); color: var(--muted);
+}
+.ctv-tx.live { border-style: solid; border-color: var(--danger); color: var(--text); background: #d0543f22; }
+.ctv-tx.live.speaking { box-shadow: 0 0 8px #d0543f88; }
+.ctv-people { list-style: none; margin: 2px 0 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.ctv-people li { display: flex; align-items: center; gap: 6px; }
+.ctv-people li.faint { opacity: 0.45; }
+.ctv-ring { width: 9px; height: 9px; border-radius: 50%; border: 1px solid var(--border); flex: none; transition: background 120ms, box-shadow 120ms; }
+.ctv-people li.speaking .ctv-ring { background: var(--ok); border-color: var(--ok); box-shadow: 0 0 6px var(--ok); }
+.ctv-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ctv-tag { margin-left: 4px; font-size: 10px; color: var(--muted); border: 1px solid var(--border); border-radius: 6px; padding: 0 4px; }
+.ctv-people input[type='range'] { width: 70px; padding: 0; accent-color: var(--accent); }
+.ctv-dot { width: 8px; height: 8px; border-radius: 50%; background: #555; flex: none; display: inline-block; }
+.ctv-dot-ok { background: var(--ok); }
+.ctv-dot-live { background: var(--danger); box-shadow: 0 0 6px var(--danger); }
+.ctv-dot-wait { background: var(--accent); animation: ctv-pulse 1s infinite; }
+.ctv-dot-bad { background: var(--danger); }
+.ctv-debug {
+  border-top: 1px solid var(--border); padding: 6px 8px; font-family: var(--mono); font-size: 10.5px;
+  color: #b7c9a8; background: #0b0a0fcc; max-height: 160px; overflow-y: auto; word-break: break-all;
+}
+@keyframes ctv-pulse { 50% { opacity: 0.45; } }
+@media (max-width: 640px) {
+  .ctv { width: 200px; right: 6px; bottom: 6px; }
+}

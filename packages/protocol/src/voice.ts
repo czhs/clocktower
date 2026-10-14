@@ -30,7 +30,8 @@ export interface VoiceGrant {
 export interface VoiceRevoke {
   purpose: 'zone' | 'announce';
   room: string;
-  reason: 'zone_change' | 'left' | 'phase' | 'quota' | 'kicked';
+  /** 'announce_end' (voice, 2026-10-14): the Storyteller's announcement overlay ended. */
+  reason: 'zone_change' | 'left' | 'phase' | 'quota' | 'kicked' | 'announce_end';
 }
 
 export interface VoiceUnavailable {
