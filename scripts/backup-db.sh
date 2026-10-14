@@ -46,5 +46,8 @@ SIZE=$(stat -c %s "$OUT.gz")
 echo "[backup] $OUT.gz ($SIZE bytes, integrity ok)" >&2
 
 # Retention.
-ls -1t "$DEST_DIR"/clocktower-"$ENVNAME"-*Z.db.gz 2>/dev/null | tail -n +15 | xargs -r rm -f
-ls -1t "$DEST_DIR"/clocktower-"$ENVNAME"-*Z-*.db.gz 2>/dev/null | tail -n +11 | xargs -r rm -f
+prune() { # prune <glob> <keep>
+  find "$DEST_DIR" -maxdepth 1 -type f -name "$1" -printf '%T@ %p\n' | sort -rn | tail -n +"$(($2 + 1))" | cut -d' ' -f2- | xargs -r rm -f
+}
+prune "clocktower-$ENVNAME-*Z.db.gz" 14
+prune "clocktower-$ENVNAME-*Z-*.db.gz" 10

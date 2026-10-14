@@ -270,6 +270,7 @@ async function main() {
       rttMsP99: pct(rtts, 99),
       rttMsMax: max(rtts),
       snapshotSamples: delays.length,
+      entitiesPerSnapshotAvg: delays.length ? Math.round((everyone.reduce((a, b) => a + b.snapshotEntities, 0) / delays.length) * 10) / 10 : null,
       snapshotDelayMsP50: pct(delays, 50),
       snapshotDelayMsP95: pct(delays, 95),
       snapshotDelayMsMax: max(delays),
@@ -313,9 +314,11 @@ function markdown(s: any): string {
 | Ping RTT ms (p50 / p95 / p99 / max) | ${v(s.latency.rttMsP50)} / ${v(s.latency.rttMsP95)} / ${v(s.latency.rttMsP99)} / ${v(s.latency.rttMsMax)} |
 | Pongs / pings | ${s.latency.pongReceived} / ${s.latency.pingSent} |
 | Snapshot delay ms (p50 / p95 / max; ${s.latency.snapshotSamples} samples) | ${v(s.latency.snapshotDelayMsP50)} / ${v(s.latency.snapshotDelayMsP95)} / ${v(s.latency.snapshotDelayMsMax)} |
+| Entities per snapshot (avg) | ${v(s.latency.entitiesPerSnapshotAvg)} |
 | Load generator CPU % avg | ${v(s.loadGenerator.cpuPctAvg)} |
 | Errors / disconnected clients | ${s.errors.count} / ${s.errors.disconnected.length} |
 
+${s.latency.entitiesPerSnapshotAvg === 0 ? '\n> **Caveat:** world snapshots contained no entities (WorldModule stub at this commit), so movement fan-out is NOT represented in these numbers.\n' : ''}
 S2C messages by type: ${Object.entries(s.traffic.s2cByType).map(([k, n]) => `${k}=${n}`).join(', ') || 'none'}
 ${s.errors.count ? `\nErrors (first 20):\n${s.errors.sample.map((e: string) => `- ${e}`).join('\n')}\n` : ''}${s.errors.disconnected.length ? `\nDisconnected: ${s.errors.disconnected.join(', ')}\n` : ''}`;
 }

@@ -745,7 +745,7 @@ function furnishChapel(r: TileRect) {
 function furnishClocktower(r: TileRect) {
   const f = furnisher(r, false);
   f('gears', 1, 3);
-  f('bellrope', 6, 1);
+  f('bellrope', 6, 2);
   f('ladder', 7, 1);
   f('window', 4, 1);
   f('chest', 7, 5);

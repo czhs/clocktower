@@ -48,7 +48,11 @@ const PALETTE: Record<string, string> = {
   slate: '#4c566a',
 };
 
-const shade = (r: Ramp, v: number, x: number, y: number) => dpick([r.d2, r.d1, r.b, r.l1, r.l2], v, x, y);
+/** Flat (non-dithered) ramp pick: tiny sprites read cleaner without dithering. */
+const shade = (r: Ramp, v: number, _x: number, _y: number) => {
+  const pal = [r.d2, r.d1, r.b, r.l1, r.l2];
+  return pal[Math.max(0, Math.min(4, Math.round(v * 4)))]!;
+};
 
 // ---------------------------------------------------------------------------------------
 // Body (skin): shadow, head with face, neck, hands.
@@ -277,7 +281,7 @@ const OUTFIT_SPECS: Record<string, OutfitSpec> = {
     main: (c) => ramp(c),
     pants: '#000000',
     shoes: '#1a1418',
-    detail(img, dir, p) {
+    detail(img, dir, p, m) {
       const top = 16 + p.bob;
       if (dir === 'down') {
         img.vline(10, top, 27 + p.bob, '#e8e2d4');
@@ -289,7 +293,7 @@ const OUTFIT_SPECS: Record<string, OutfitSpec> = {
         img.hline(9, 14, top + 6, '#8a6a3a');
       } else {
         img.hline(8, 15, top + 6, '#8a6a3a');
-        img.vline(12, top + 1, 26 + p.bob, '#00000040');
+        img.vline(12, top + 1, 26 + p.bob, m.d2);
       }
     },
   },
@@ -672,7 +676,7 @@ function ghostFrame(img: Img, dir: Dir, f: number, style: string) {
     for (let x = 0; x < FW; x++) {
       const a = img.alpha(x, y);
       if (!a) continue;
-      const fade = y < 20 ? 0.72 : Math.max(0, 0.72 - (y - 20) * 0.08);
+      const fade = y < 20 ? 0.86 : Math.max(0, 0.86 - (y - 20) * 0.09);
       img.data[(y * FW + x) * 4 + 3] = a * fade;
     }
 }

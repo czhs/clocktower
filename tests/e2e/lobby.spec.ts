@@ -97,13 +97,16 @@ test.describe.serial('two players, one lobby', () => {
       .then(() => true)
       .catch(() => false);
     test.skip(!hasWaitingRoom, 'PENDING: WaitingRoom UI (member list / Leave) not implemented yet');
-    await expect(waiting(alice.page).getByText(BOB)).toBeVisible();
-    await expect(waiting(bob.page).getByText(ALICE)).toBeVisible();
+    const member = (p: Page, name: string) => waiting(p).locator('.ct-member-name', { hasText: name });
+    await expect(member(alice.page, BOB)).toBeVisible();
+    await expect(member(alice.page, ALICE)).toBeVisible();
+    await expect(member(bob.page, ALICE)).toBeVisible();
+    await expect(member(bob.page, BOB)).toBeVisible();
     await expect(waiting(bob.page).getByRole('heading', { name: LOBBY })).toBeVisible(); // literal text
     await waiting(bob.page).getByRole('button', { name: 'Leave', exact: true }).click();
     await expect(bob.page.getByRole('heading', { name: 'Lobby finder' })).toBeVisible();
     await expect.poll(() => lobbyCount(alice.page, lobbyId), { timeout: 10_000 }).toBe(0);
-    await expect(waiting(alice.page).getByText(BOB)).toHaveCount(0);
+    await expect(member(alice.page, BOB)).toHaveCount(0);
     await waiting(alice.page).getByRole('button', { name: 'Leave', exact: true }).click();
     await expect(alice.page.getByRole('heading', { name: 'Lobby finder' })).toBeVisible();
     for (const p of [alice.page, bob.page])

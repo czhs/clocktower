@@ -13,6 +13,7 @@ const pm = (v: number) => ((v % P) + P) % P;
 const code = (tx: number, ty: number): string => (tx < 0 || ty < 0 || tx >= W || ty >= H ? ' ' : townMap.ground[ty]![tx]!);
 
 const SOFT = new Set<string>([G.grass, G.forest, G.dense, G.dirt, G.sand, G.soil, G.gravel, G.cobble, G.plaza, G.ring, G.water]);
+const PAVED = new Set<string>([G.cobble, G.plaza, G.ring, G.gravel]);
 const LOW = new Set<string>([G.dirt, G.sand, G.soil, G.gravel, G.cobble, G.plaza, G.ring, G.water, G.bridge]);
 const SQ = townLayout.square;
 
@@ -30,9 +31,11 @@ function matAt(px: number, py: number): string {
   const ty = Math.floor(py / TS);
   let c = code(tx, ty);
   if (SOFT.has(c)) {
-    const wx = px + (vnoise(px, py, 7, 101) - 0.5) * 9;
-    const wy = py + (vnoise(px, py, 7, 202) - 0.5) * 9;
-    const c2 = code(Math.floor(wx / TS), Math.floor(wy / TS));
+    const nx = vnoise(px, py, 7, 101) - 0.5;
+    const ny = vnoise(px, py, 7, 202) - 0.5;
+    let c2 = code(Math.floor((px + nx * 9) / TS), Math.floor((py + ny * 9) / TS));
+    // paved edges stay tidier than natural ones
+    if (PAVED.has(c) || PAVED.has(c2)) c2 = code(Math.floor((px + nx * 3) / TS), Math.floor((py + ny * 3) / TS));
     if (SOFT.has(c2)) c = c2;
   }
   if (tx < 96) {
@@ -99,13 +102,13 @@ function grass(px: number, py: number): RGBA {
   return dpick(GRASS, n * 1.05 - 0.02, px, py);
 }
 function forest(px: number, py: number): RGBA {
-  const n = fbm(px, py, 12, 5, P);
+  const n = fbm(px, py, 16, 5, P);
   const h = hash(pm(px), pm(py), 6);
   if (h < 0.05) return mix('#4a3626', '#2a1f18', hash(pm(px), pm(py), 7));
   return dpick(FOREST, n, px, py);
 }
 function dirt(px: number, py: number): RGBA {
-  const n = fbm(px, py, 10, 8, P);
+  const n = fbm(px, py, 8, 8, P);
   const h = hash(pm(px), pm(py), 9);
   if (h < 0.03) return col4(DIRT[4]!);
   if (hash(pm(px), pm(py - 1), 9) < 0.03) return col4(DIRT[0]!);
@@ -149,7 +152,7 @@ function stones(px: number, py: number, rh: number, sw: number, pal: string[], m
 function water(px: number, py: number, shore: number): RGBA {
   const n = fbm(px, py, 16, 21, P);
   let v = 0.25 + n * 0.55;
-  const wave = Math.sin(px * 0.3 + py * 1.3 + vnoise(px, py, 16, 22, P) * 9);
+  const wave = Math.sin((pm(px) / P) * Math.PI * 2 * 3 + (pm(py) / P) * Math.PI * 2 * 13 + vnoise(px, py, 16, 22, P) * 9);
   if (wave > 0.93) v = 0.98;
   else if (wave > 0.85) v += 0.2;
   let c = dpick(WATER, v, px, py);
@@ -173,7 +176,7 @@ function bridge(px: number, py: number, tx: number, ty: number): RGBA {
   const v = horizontalTravel ? py : px;
   const plank = Math.floor(pm(u) / 4);
   const pl = pm(u) % 4;
-  let c = dpick(WOOD_BRIDGE, 0.35 + hash(plank, 0, 31) * 0.4 + vnoise(v, plank * 7, 6, 32) * 0.3, px, py);
+  let c = dpick(WOOD_BRIDGE, 0.35 + hash(plank, 0, 31) * 0.4 + vnoise(v, plank * 8, 8, 32, P) * 0.3, px, py);
   if (pl === 3) c = col4('#1c130e');
   if (pl === 0) c = mix(c, '#7a5a3e', 0.25);
   if ((pm(v) % 16 === 4 || pm(v) % 16 === 11) && pl === 1) c = col4('#7a7480'); // nails
@@ -192,7 +195,7 @@ function hedge(px: number, py: number, tx: number, ty: number): RGBA {
   const lx = px - tx * TS;
   const ly = py - ty * TS;
   const faceBelow = code(tx, ty + 1) !== G.hedge;
-  const n = vnoise(px, py, 3, 41) * 0.6 + vnoise(px, py, 7, 42) * 0.4;
+  const n = vnoise(px, py, 4, 41, P) * 0.6 + vnoise(px, py, 8, 42, P) * 0.4;
   if (faceBelow && ly >= 10) {
     if (ly === 15) return col4('#070d09');
     return dpick(HEDGE_FACE, n * 0.9 + (ly < 12 ? 0.2 : 0), px, py);
@@ -220,7 +223,7 @@ function stoneWall(px: number, py: number, tx: number, ty: number): RGBA {
   }
   let c = stones(px, py, 4, 7, WALL_FACE, '#1f1b26', 52);
   if (ly === 15) c = col4('#120f16');
-  if (ly < 9 && vnoise(px, py, 5, 53) > 0.68) c = mix(c, '#3b5a32', 0.55); // moss
+  if (ly < 9 && vnoise(px, py, 4, 53, P) > 0.68) c = mix(c, '#3b5a32', 0.55); // moss
   if (code(tx - 1, ty) !== G.wall && lx === 0) c = col4('#1a1620');
   if (code(tx + 1, ty) !== G.wall && lx === 15) c = col4('#1a1620');
   return c;
@@ -246,8 +249,15 @@ function cliff(px: number, py: number, tx: number, ty: number): RGBA {
   }
   if (!aboveIsCliff && ly < 12 && hash(pm(px), 1, 65) < 0.08 && ly < 4 + hash(pm(px), 2, 66) * 10) c = col4('#2a4430'); // vines
   if (below === 0) {
-    const t = Math.max(0, (ly - 9) / 7);
-    c = mix(c, '#07050a', t * 0.75);
+    // jagged foot: rubble line, then the ground below shows through
+    const jag = 11 + Math.floor(vnoise(px, 0, 5, 67) * 6);
+    if (ly > jag) {
+      const under = code(tx, ty + 1);
+      return mix(under === G.forest ? forest(px, py) : grass(px, py), '#06040c', 0.55 - (ly - jag) * 0.06);
+    }
+    if (ly === jag) return col4('#0d0a12');
+    const t = Math.max(0, (ly - 7) / 7);
+    c = mix(c, '#07050a', t * 0.6);
   }
   return c;
 }
@@ -263,7 +273,7 @@ function floorWood(px: number, py: number, tx: number, ty: number): RGBA {
   const segX = (pm(px) + off) % 32;
   if (ly === 3) return col4('#160e0a');
   if (segX === 0) return col4('#1c120d');
-  const grain = vnoise(px * 0.25, py * 2, 3, 72 + row);
+  const grain = vnoise(px, 0, 16, 72 + row, P);
   let v = 0.3 + hash(seg, row, 73) * 0.35 + (grain - 0.5) * 0.35;
   if (ly === 0) v += 0.25;
   return dpick(pal, v, px, py);
@@ -309,7 +319,7 @@ function iwall(px: number, py: number, tx: number, ty: number): RGBA {
       const mx = pm(px) % 8;
       const my = (fy + 1) % 8;
       const motif = (mx === 3 && my === 3) || (mx === 4 && my === 4) || (mx === 3 && my === 5) || (mx === 2 && my === 4);
-      let c = motif ? col4(wp.pat) : dpick([wp.base, wp.pat], 0.15 + vnoise(px, py, 6, 82) * 0.25, px, py);
+      let c = motif ? col4(wp.pat) : dpick([wp.base, wp.pat], 0.15 + vnoise(px, py, 8, 82, P) * 0.25, px, py);
       if (fy > 16) c = mix(c, '#0c0810', (fy - 16) * 0.08);
       return c;
     }
@@ -319,10 +329,10 @@ function iwall(px: number, py: number, tx: number, ty: number): RGBA {
     const panel = pm(px) % 12;
     if (panel === 0) return col4('#140d0a');
     if (panel === 1) return col4(wp.wains[2]!);
-    return dpick(wp.wains, 0.35 + vnoise(px * 0.3, py * 2, 3, 83) * 0.3 + (fy === 22 ? 0.3 : 0), px, py);
+    return dpick(wp.wains, 0.35 + vnoise(px, py, 4, 83, P) * 0.3 + (fy === 22 ? 0.3 : 0), px, py);
   }
   // cap (wall seen from above)
-  let c = dpick(['#16121b', '#1d1824', '#241e2c'], vnoise(px, py, 4, 84), px, py);
+  let c = dpick(['#16121b', '#1d1824', '#241e2c'], vnoise(px, py, 4, 84, P), px, py);
   const nb = (dx: number, dy: number) => fl(code(tx + dx, ty + dy)) || code(tx + dx, ty + dy) === G.doorway;
   if ((nb(1, 0) && lx >= 13) || (nb(-1, 0) && lx <= 2) || (nb(0, -1) && ly <= 2)) c = col4(stoneRoom ? '#4a4456' : '#3d2c22');
   if ((nb(1, 0) && lx === 15) || (nb(-1, 0) && lx === 0) || (nb(0, -1) && ly === 0)) c = col4('#0c090f');
@@ -359,7 +369,7 @@ function baseColor(px: number, py: number): RGBA {
     case G.forest:
       return forest(px, py);
     case G.dense:
-      return dpick(DENSE, fbm(px, py, 10, 91, P), px, py);
+      return dpick(DENSE, fbm(px, py, 8, 91, P), px, py);
     case G.dirt:
       return dirt(px, py);
     case G.sand:
@@ -442,7 +452,7 @@ export function renderGround(): Img {
 }
 
 /** Slice into unique 16x16 tiles. Returns tileset image + per-cell tile index (0-based). */
-export function sliceTiles(img: Img, columns = 32): { tileset: Img; indices: number[]; count: number } {
+export function sliceTiles(img: Img, columns = 64): { tileset: Img; indices: number[]; count: number } {
   const w = img.w / TS;
   const h = img.h / TS;
   const map = new Map<string, number>();

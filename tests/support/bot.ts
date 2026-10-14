@@ -50,6 +50,8 @@ export class Bot {
   readonly ping: PingStats = { sent: 0, received: 0, rtts: [] };
   /** one-way snapshot delay samples (server t -> client receipt; same-host clocks only) */
   readonly snapshotDelays: number[] = [];
+  /** Sum of entities over all received snapshots (avg = snapshotEntities / snapshotDelays.length). */
+  snapshotEntities = 0;
   pos: { x: number; y: number } | null = null;
   /** Latest payload per S2C type on the current connection (kept even when not recording). */
   readonly latest: Record<string, unknown> = {};
@@ -154,6 +156,7 @@ export class Bot {
     } else if (type === 'world:snapshot') {
       const s = payload as WorldSnapshot;
       if (typeof s.t === 'number') this.snapshotDelays.push(Date.now() - s.t);
+      this.snapshotEntities += s.entities?.length ?? 0;
       const me = this.pid ? s.entities?.find((e) => e.id === this.pid) : undefined;
       if (me && !this.pos) this.pos = { x: me.x, y: me.y };
     } else if (type === 'world:teleport') {

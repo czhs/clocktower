@@ -50,6 +50,7 @@ migrate() { # $1 = dir. Runs migrations for THIS env only, if the db package pro
     ( cd "$dir" && set -a && . "$CT/env/$ENVNAME.env" && set +a &&
       export APP_ENV DATABASE_URL="file:$CT/data/$ENVNAME/clocktower.db" &&
       pnpm db:migrate >&2 )
+    chmod 600 "$CT/data/$ENVNAME"/clocktower.db* 2>/dev/null || true
   else
     log "no packages/db/src/migrate-cli.ts in this release; migrations (if any) run at server start"
   fi
