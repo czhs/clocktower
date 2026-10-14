@@ -1,0 +1,177 @@
+import type { Alignment } from '@ct/protocol';
+import { insertDynamicStep } from './night.js';
+import type { GameState, PlayerState } from './types.js';
+import {
+  addReminder,
+  aliveCount,
+  alert,
+  announce,
+  giveInfo,
+  impaired,
+  actingRole,
+  isNightPhase,
+  log,
+  pick,
+  sound,
+  typeOf,
+  who,
+  type Op,
+} from './util.js';
+
+export type DeathCause = 'demon' | 'execution' | 'slayer' | 'virgin' | 'storyteller' | 'starpass';
+
+export interface KillOptions {
+  /** Force the death to be public now (day deaths always are). */
+  announce?: boolean;
+  /** Skip Scarlet Woman / victory processing (raw ST correction). */
+  raw?: boolean;
+}
+
+/** Whether a death right now becomes public immediately (day) or at the next dawn (night). */
+function publicNow(s: GameState, opts: KillOptions): boolean {
+  return opts.announce === true || !isNightPhase(s);
+}
+
+/**
+ * Kill a player (no protection checks here — callers decide whether the kill lands).
+ * Returns true if the player was alive and died.
+ */
+export function killPlayer(s: GameState, op: Op, p: PlayerState, cause: DeathCause, opts: KillOptions = {}): boolean {
+  if (!p.alive) return false;
+  const aliveBefore = aliveCount(s);
+  p.alive = false;
+  p.died = true;
+  log(s, op, `${who(p)} (${p.character}) died: ${cause}`);
+  if (publicNow(s, opts)) publish(s, op, p, cause);
+  // Abilities end on death.
+  if (p.character === 'poisoner') {
+    for (const q of s.players) if (q.poisonedBy === 'poisoner') q.poisonedBy = null;
+  }
+  if (p.character === 'monk') {
+    for (const q of s.players) q.protectedTonight = false;
+  }
+  // Later night steps of a dead player no longer happen.
+  for (const st of s.nightQueue) {
+    if (st.seat === p.seat && (st.status === 'pending' || st.status === 'visiting') && st.kind !== 'ravenkeeper')
+      st.status = 'skipped';
+  }
+  if (cause === 'demon' && isNightPhase(s) && actingRole(p) === 'ravenkeeper') {
+    insertDynamicStep(s, p.seat, 'ravenkeeper');
+    alert(s, op, `Ravenkeeper ${who(p)} was killed by the Demon: wake them to choose a player.`);
+  }
+  // Star-pass: the caller picks the successor and then checks victory itself.
+  if (opts.raw || cause === 'starpass') return true;
+  if (typeOf(p.character) === 'demon') demonDied(s, op, aliveBefore);
+  checkVictory(s, op);
+  return true;
+}
+
+/** Make a dead player's death public (announcement + toll). */
+export function publish(s: GameState, op: Op, p: PlayerState, cause: DeathCause | 'night'): void {
+  if (p.publicAlive === p.alive) return;
+  p.publicAlive = p.alive;
+  if (p.alive) {
+    announce(s, op, 'storyteller', `${p.name} has returned to life.`);
+    return;
+  }
+  const text =
+    cause === 'execution'
+      ? `${p.name} has been executed and is dead.`
+      : cause === 'virgin'
+        ? `${p.name} has been executed on the spot and is dead.`
+        : cause === 'slayer'
+          ? `${p.name} has been slain and is dead.`
+          : `${p.name} is dead.`;
+  announce(s, op, cause === 'execution' || cause === 'virgin' ? 'execution' : 'death', text);
+  sound(op, 'toll');
+}
+
+/** Turn a player into the Imp and tell them privately. */
+export function becomeImp(s: GameState, op: Op, p: PlayerState, why: string): void {
+  p.character = 'imp';
+  p.believedCharacter = 'imp';
+  p.alignment = 'evil';
+  p.believedAlignment = 'evil';
+  addReminder(p, 'Became the Imp');
+  giveInfo(s, p, { text: `You are now the Imp (${why}).`, characters: ['imp'] });
+  log(s, op, `${who(p)} became the Imp: ${why}`);
+}
+
+/** The Demon died (not by star-pass). Scarlet Woman catches it if 5+ were alive and she is healthy. */
+export function demonDied(s: GameState, op: Op, aliveBefore: number): void {
+  if (s.players.some((p) => p.alive && typeOf(p.character) === 'demon')) return;
+  const sw = s.players.find((p) => p.alive && p.character === 'scarlet_woman');
+  if (sw && aliveBefore >= 5 && !impaired(sw)) {
+    becomeImp(s, op, sw, 'the Demon died and the Scarlet Woman took its place');
+    alert(s, op, `Scarlet Woman ${who(sw)} became the Imp (${aliveBefore} players were alive).`);
+  } else if (sw && aliveBefore >= 5) {
+    alert(s, op, `Scarlet Woman ${who(sw)} is drunk/poisoned and does not become the Demon.`);
+  }
+}
+
+/**
+ * Imp picked themself. The Imp dies; the Scarlet Woman (healthy, 5+ alive) has priority,
+ * otherwise the ST's chosen Minion, otherwise a random living Minion.
+ */
+export function starPass(s: GameState, op: Op, imp: PlayerState, chosenSeat: number | undefined): string {
+  const aliveBefore = aliveCount(s);
+  killPlayer(s, op, imp, 'starpass');
+  const minions = s.players.filter((p) => p.alive && typeOf(p.character) === 'minion');
+  const sw = minions.find((p) => p.character === 'scarlet_woman' && !impaired(p));
+  let successor: PlayerState | undefined;
+  if (sw && aliveBefore >= 5) successor = sw;
+  else if (chosenSeat !== undefined) successor = minions.find((p) => p.seat === chosenSeat);
+  if (!successor && minions.length) successor = pick(s.rng, minions);
+  if (!successor) {
+    checkVictory(s, op);
+    return `Imp ${who(imp)} killed themself with no living Minion: the Demon is gone.`;
+  }
+  becomeImp(s, op, successor, 'the previous Imp passed the role to you');
+  alert(
+    s,
+    op,
+    `Imp self-kill: ${who(successor)} is now the Imp` +
+      (successor === sw ? ' (Scarlet Woman priority).' : '. Use change_character if you prefer another Minion.'),
+  );
+  checkVictory(s, op);
+  return `Imp ${who(imp)} killed themself; ${who(successor)} became the Imp.`;
+}
+
+/** Automatic victory conditions (Saint and Mayor are checked where they trigger). */
+export function checkVictory(s: GameState, op: Op): void {
+  if (s.phase === 'finished' || !s.assigned) return;
+  const demonAlive = s.players.some((p) => p.alive && typeOf(p.character) === 'demon');
+  if (!demonAlive) {
+    finish(s, op, 'good', 'The Demon is dead.');
+    return;
+  }
+  if (aliveCount(s) <= 2) finish(s, op, 'evil', 'Only two players remain alive.');
+}
+
+export function finish(s: GameState, op: Op, winner: Alignment, reason: string): void {
+  const prev = s.phase;
+  s.phase = 'finished';
+  s.phaseEndsAt = null;
+  s.bedtimePausedRemainingMs = null;
+  s.visitingSeat = null;
+  if (s.day) s.day.vote = null;
+  for (const p of s.players) {
+    p.publicAlive = p.alive;
+    p.prompts = [];
+  }
+  s.endedAt = op.now;
+  s.result = {
+    winner,
+    reason,
+    reveal: s.players.map((p) => ({
+      seat: p.seat,
+      pid: p.pid,
+      name: p.name,
+      character: p.character,
+      alignment: p.alignment,
+      alive: p.alive,
+    })),
+  };
+  log(s, op, `Game over (${prev}): ${winner} wins — ${reason}`);
+  announce(s, op, 'game_over', `${winner === 'good' ? 'Good' : 'Evil'} wins! ${reason}`);
+}

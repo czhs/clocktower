@@ -9,6 +9,7 @@ import type {
   S2CType,
   StorytellerGameView,
 } from '@ct/protocol';
+import { TERMINAL_CLOSE_CODES } from '@ct/protocol';
 import { api } from './api';
 import { createStore, Emitter } from './store';
 
@@ -70,7 +71,11 @@ export class RoomConnection {
     ];
     for (const type of types) {
       room.onMessage(type, (payload: never) => {
-        if (type === 'lobby:view') this.lobbyView.set(payload);
+        if (type === 'lobby:view') {
+          this.lobbyView.set(payload);
+          // Rematch: the lobby returned to waiting, so drop the finished game's view.
+          if ((payload as LobbyRoomView).lobby.phase === 'waiting' && this.gameView.get()?.phase === 'finished') this.gameView.set(null);
+        }
         else if (type === 'game:view') this.gameView.set(payload);
         else if (type === 'chat:message') this.chat.set((c) => [...c.slice(-199), payload]);
         this.events.emit(type, payload);
@@ -78,7 +83,7 @@ export class RoomConnection {
     }
     room.onLeave((code) => {
       this.room = null;
-      if (this.closedByUser || code === 4001 || code === 4002 || code === 4003 || code === 4004) {
+      if (this.closedByUser || TERMINAL_CLOSE_CODES.includes(code)) {
         sessionStorage.removeItem(RECONNECT_KEY(this.lobbyId));
         this.status.set('closed');
         this.events.emit('closed', { code });

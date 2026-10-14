@@ -1,6 +1,6 @@
 import { render } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
-import type { AccountView } from '@ct/protocol';
+import { CLOSE_CODES, type AccountView } from '@ct/protocol';
 import { api, ApiFailure } from './net/api';
 import { RoomConnection } from './net/room';
 import { useStore } from './net/store';
@@ -45,9 +45,9 @@ function LobbyRoute({ id, intent, account }: { id: string; intent: 'player' | 's
       .then(() => alive && setConn(c))
       .catch((e: unknown) => alive && setError(e instanceof ApiFailure ? e.body.message : String((e as Error)?.message ?? e)));
     const offClosed = c.events.on('closed', ({ code }) => {
-      if (code === 4001) setError('You were removed from this lobby.');
-      else if (code === 4002) setError('This account joined the lobby from another tab or device.');
-      else if (code === 4003) setError('This lobby was closed.');
+      if (code === CLOSE_CODES.kicked) setError('You were removed from this lobby.');
+      else if (code === CLOSE_CODES.replaced) setError('This account joined the lobby from another tab or device.');
+      else if (code === CLOSE_CODES.lobbyClosed) setError('This lobby was closed.');
     });
     return () => {
       alive = false;

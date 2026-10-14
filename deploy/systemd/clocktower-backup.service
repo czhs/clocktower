@@ -1,0 +1,11 @@
+# Daily online backup of the PRODUCTION SQLite DB (triggered by clocktower-backup.timer).
+[Unit]
+Description=Clocktower Town production DB backup
+
+[Service]
+Type=oneshot
+Nice=10
+IOSchedulingClass=idle
+NoNewPrivileges=yes
+UMask=0077
+ExecStart=%h/clocktower/bin/backup-db.sh prod

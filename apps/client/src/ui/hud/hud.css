@@ -1,0 +1,147 @@
+/* OWNED BY rules-storyteller. Player HUD: gothic, compact, never covers the whole screen.
+   Layout: phase bar + toasts top-centre, status card top-left (collapsible), prompt / vote cards
+   top-centre below the bar, endgame reveal centred (closable). Voice owns bottom-right. */
+.cth { position: fixed; inset: 0; pointer-events: none; z-index: 20; font-size: 13px; }
+.cth > * { pointer-events: auto; }
+.cth button { padding: 4px 10px; }
+.cth .muted { color: var(--muted); }
+
+.ct-countdown { font-family: var(--mono); color: var(--accent); margin-left: 8px; }
+.ct-countdown-low { color: var(--danger); animation: cth-pulse 1s infinite; }
+@keyframes cth-pulse { 50% { opacity: 0.45; } }
+
+/* phase bar */
+.cth-phase {
+  position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 8px; padding: 5px 16px;
+  background: linear-gradient(#241d31f0, #16121ef0); border: 1px solid var(--border);
+  border-radius: 16px; box-shadow: 0 4px 14px #0008, inset 0 0 0 1px #c9a24a1f;
+  font-variant: small-caps; letter-spacing: 0.06em; white-space: nowrap;
+}
+.cth-phase-icon { color: var(--accent); }
+.cth-phase-night .cth-phase-icon, .cth-phase-first_night .cth-phase-icon { color: #9fb4e8; }
+.cth-phase-name { color: var(--text); }
+.cth-visit {
+  margin-left: 8px; padding: 1px 8px; border-radius: 10px; color: #e8d9ff;
+  background: #4b3a6a; border: 1px solid #8a6fb0; font-variant: normal; letter-spacing: 0;
+  animation: cth-pulse 2.4s infinite;
+}
+
+/* toasts */
+.cth-toasts {
+  position: absolute; top: 48px; left: 50%; transform: translateX(-50%);
+  display: flex; flex-direction: column; gap: 4px; align-items: center; width: min(520px, 90vw);
+  pointer-events: none;
+}
+.cth-toast {
+  background: #1b1724ee; border: 1px solid var(--border); border-left: 3px solid var(--accent);
+  padding: 5px 12px; border-radius: 4px; box-shadow: 0 3px 10px #0007; max-width: 100%;
+  animation: cth-in 200ms ease-out;
+}
+.cth-toast-death, .cth-toast-execution { border-left-color: var(--danger); }
+.cth-toast-game_over { border-left-color: #fff; font-weight: bold; }
+@keyframes cth-in { from { opacity: 0; transform: translateY(-6px); } }
+
+/* status card */
+.cth-card {
+  position: absolute; top: 10px; left: 12px; width: 300px; max-width: calc(100vw - 24px);
+  max-height: calc(100vh - 230px); display: flex; flex-direction: column;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 6px;
+  box-shadow: 0 6px 18px #0009, inset 0 0 0 1px #c9a24a14;
+}
+.cth-card-closed { width: auto; max-width: 300px; }
+.cth-card-head { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+.cth-card-closed .cth-card-head { border-bottom: none; }
+.cth-toggle { padding: 0 6px !important; background: none; border: none; color: var(--accent); }
+.cth-role-name { flex: 1; font-variant: small-caps; letter-spacing: 0.05em; font-size: 15px; }
+.cth-role-name small { color: var(--muted); font-size: 11px; font-variant: normal; }
+.cth-good { color: var(--good); }
+.cth-evil { color: var(--evil); }
+div.cth-evil { margin-top: 6px; padding: 6px; border: 1px dashed #c0413b66; border-radius: 4px; color: var(--text); background: #c0413b14; }
+.cth-rolecard { padding: 6px 10px 0; }
+.cth-ability { margin: 0 0 4px; font-style: italic; line-height: 1.35; }
+p.cth-ability { padding: 0; }
+.cth-card > p.cth-ability { padding: 6px 10px; }
+.cth-align { margin: 0; font-size: 12px; }
+.cth-note { margin: 4px 0 0; font-size: 12px; }
+.cth-status { display: flex; flex-wrap: wrap; gap: 4px; padding: 6px 10px; }
+.cth-chip {
+  display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 9px;
+  border: 1px solid var(--border); color: var(--muted); margin: 1px 2px 1px 0; white-space: nowrap;
+}
+.cth-chip.ok { color: var(--ok); border-color: #6fae6a66; }
+.cth-chip.dead { color: var(--danger); border-color: #d0543f66; }
+.cth-tabs { display: flex; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.cth-tabs button { flex: 1; border: none; border-radius: 0; background: none; padding: 5px 4px; color: var(--muted); }
+.cth-tabs button.on { color: var(--accent); box-shadow: inset 0 -2px 0 var(--accent); }
+.cth-badge { margin-left: 4px; background: var(--danger); color: #fff; border-radius: 8px; padding: 0 5px; font-size: 10px; }
+.cth-tabbody { overflow: auto; padding: 6px 10px 10px; min-height: 0; }
+
+.cth-players { list-style: none; margin: 0; padding: 0; }
+.cth-players li { display: flex; align-items: center; gap: 6px; padding: 3px 2px; border-bottom: 1px solid #3d335044; }
+.cth-players li.me .cth-pname { color: var(--accent); }
+.cth-players li.dead .cth-pname { color: var(--muted); text-decoration: line-through; text-decoration-color: #d0543f88; }
+.cth-seat { width: 18px; text-align: right; color: var(--muted); font-family: var(--mono); font-size: 11px; }
+.cth-pname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cth-mini { font-size: 10px; color: var(--muted); border: 1px solid var(--border); border-radius: 3px; padding: 0 3px; }
+.cth-spacer { flex: 1; }
+.cth-small { padding: 1px 8px !important; font-size: 11px; }
+.cth-slayer { display: flex; gap: 4px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+.cth-slayer select { font-size: 12px; padding: 2px 4px; }
+
+.cth-log { list-style: none; margin: 0; padding: 0; }
+.cth-log li { padding: 5px 0; border-bottom: 1px solid #3d335044; line-height: 1.35; }
+.cth-ann-death, .cth-ann-execution { color: #e9a99b; }
+.cth-infodata { margin-top: 3px; }
+.cth-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.cth-table td { padding: 3px 4px; border-bottom: 1px solid #3d335044; vertical-align: top; }
+.cth-table tr.dead td { opacity: 0.6; }
+
+/* prompt */
+.cth-prompt {
+  position: absolute; top: 56px; left: 50%; transform: translateX(-50%); width: min(420px, 92vw);
+  background: linear-gradient(#2a2238f5, #1b1724f5); border: 1px solid var(--accent); border-radius: 8px;
+  padding: 12px 16px; box-shadow: 0 10px 30px #000b; max-height: 60vh; overflow: auto;
+}
+.cth-prompt h3 { margin: 0 0 6px; font-variant: small-caps; letter-spacing: 0.06em; color: var(--accent); }
+.cth-prompt p { margin: 4px 0 8px; }
+.cth-choices { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 10px; }
+.cth-choices button.on { background: #5b4320; border-color: var(--accent); }
+.cth-row { display: flex; gap: 8px; margin-top: 8px; }
+
+/* voting */
+.cth-vote {
+  position: absolute; top: 56px; right: 12px; width: 220px; display: flex; flex-direction: column; align-items: center; gap: 6px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 8px; box-shadow: 0 6px 18px #0009;
+}
+.cth-vote-sum { text-align: center; }
+.cth-vote-actions { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.cth-block {
+  position: absolute; top: 48px; right: 12px; padding: 5px 12px; background: #3a1714ee;
+  border: 1px solid #c0413b99; border-radius: 4px;
+}
+.ct-voteclock { display: block; }
+.ct-vc-ring { fill: #120f18; stroke: var(--border); stroke-width: 2; }
+.ct-vc-hand { stroke: var(--accent); stroke-width: 3; stroke-linecap: round; transition: all 200ms; }
+.ct-vc-hub { fill: var(--accent); }
+.ct-vc-seat { fill: #2a2238; stroke: var(--border); stroke-width: 1.5; }
+.ct-vc-seat.yes { fill: #c9a24a; stroke: #f0d58a; }
+.ct-vc-seat.no { fill: #1b1724; }
+.ct-vc-seat.raised { fill: #6b5326; animation: cth-pulse 1s infinite; }
+.ct-vc-seat.nominee { stroke: var(--evil); stroke-width: 3; }
+.ct-vc-seat.dead { stroke-dasharray: 3 2; }
+.ct-vc-label { fill: var(--text); font-size: 10px; text-anchor: middle; pointer-events: none; font-family: var(--mono); }
+
+/* endgame */
+.cth-endgame {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(520px, 94vw);
+  max-height: 80vh; overflow: auto; background: linear-gradient(#2a2238fa, #120f18fa);
+  border: 1px solid var(--accent); border-radius: 10px; padding: 16px 20px; box-shadow: 0 20px 60px #000d; z-index: 40;
+}
+.cth-endgame h2 { margin: 0 0 4px; font-variant: small-caps; letter-spacing: 0.08em; }
+.cth-endgame-reopen { position: absolute; top: 10px; right: 12px; }
+
+@media (max-width: 720px) {
+  .cth-card { max-height: 45vh; width: 260px; }
+  .cth-vote { top: auto; bottom: 70px; }
+}

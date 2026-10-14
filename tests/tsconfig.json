@@ -1,0 +1,9 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM"],
+    "types": ["node"],
+    "allowImportingTsExtensions": false
+  },
+  "include": ["support/**/*.ts", "integration/**/*.ts", "security/**/*.ts", "unit/**/*.ts", "load/**/*.ts", "e2e/**/*.ts"]
+}

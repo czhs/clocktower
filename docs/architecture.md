@@ -104,7 +104,20 @@ visits player B (modulo timestamps).
 - Quota: client heartbeats (`voice:status`) accumulate participant-minutes per env in SQLite;
   admin page shows usage vs `VOICE_MONTHLY_MINUTES`; at `exhausted`, new grants are refused with
   `voice:unavailable` (text chat continues).
+- Room names: prefix is `[a-z0-9]+` (no `-`), lobby ids are escaped (`_`→`__`, `-`→`_d`) so
+  `<prefix>-<lobby>-<zone>` is unambiguous across lobbies/envs. Tokens: identity = pid, TTL 10 min,
+  publish source microphone only, no data channel, no admin.
+- LiveKit token expiry only gates the initial join and a removed participant may rejoin while its
+  token is valid, so after revoking a private/announce room the coordinator sweeps that room
+  (`listParticipants` every 15 s for 20 min) and removes anyone not currently authorised.
+- Dawn behaves like night for voice (players remain in their home zone until `day`).
+- `@ct/voice` has two entries: `.` (server: LiveKit server SDK, tokens) and `./shared`
+  (browser-safe: zone math, attenuation curve, quota levels). The client imports only `./shared`.
+- Quota budget: participant-minutes = connected participants × minutes. 16 connected → 5,000/16 ≈
+  312 min (≈5.2 h) per month; an 8-player 2-hour game ≈ 960 min. Usage is estimated from 30 s
+  heartbeats (not reconciled with LiveKit analytics); dev and prod track separately.
 
 ## Contract change log
 
 - 2026-10-14 M0: initial protocol (lead).
+- 2026-10-14 M2 (voice): `VoiceRevoke.reason` gains `'announce_end'` (additive) — sent with `purpose:'announce'` when the Storyteller's announcement overlay ends (explicit stop, idle timeout, ST disconnect/role change).

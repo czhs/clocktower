@@ -29,6 +29,14 @@ export interface GrimoireEntry {
   drunk: boolean;
   protectedTonight: boolean;
   reminders: string[];
+  /** (additive) Alive status as currently known to players (night deaths publish at day). */
+  publicAlive?: boolean;
+  /** (additive) Fortune Teller's red herring. */
+  isRedHerring?: boolean;
+  /** (additive) The Butler's current master. */
+  isButlerMaster?: boolean;
+  /** (additive) Once-per-game ability spent (Slayer shot, Virgin triggered). */
+  abilityUsed?: boolean;
 }
 
 export type NightStepStatus = 'pending' | 'visiting' | 'prompted' | 'answered' | 'resolved' | 'skipped';
@@ -42,6 +50,16 @@ export interface NightStepView {
   suggestion?: string;
   /** Player's answer to the ST prompt, if any. */
   response?: { seats?: number[]; character?: CharacterId; yes?: boolean };
+  /** (additive) Character the player wakes as (the Drunk wakes as their believed Townsfolk). */
+  actingAs?: CharacterId;
+  /** (additive) Player is drunk/poisoned: ability has no effect; ST may give false info. */
+  impaired?: boolean;
+  /** (additive) Ready-to-send prompt for this step (ST may edit before sending). */
+  prompt?: PromptSpecInput;
+  /** (additive) Engine-computed truthful info for this step (ST may edit before sending). */
+  suggestedInfo?: InfoSpecInput;
+  /** (additive) Registration ambiguity / adjudication notes (Spy, Recluse, Mayor bounce...). */
+  notes?: string[];
 }
 
 export interface StorytellerGameView {
@@ -62,6 +80,18 @@ export interface StorytellerGameView {
   alerts: string[];
   log: { at: number; text: string }[];
   result: GameResult | null;
+  /** (additive) Configured bedtime countdown in seconds. */
+  bedtimeSeconds?: number;
+  /** (additive) Seats that died tonight but are not yet published (published when day starts). */
+  pendingDeaths?: number[];
+  /** (additive) Whether undo_last has a snapshot to restore. */
+  canUndo?: boolean;
+  /** (additive) Setup distribution for this player count (Baron already applied when assigned). */
+  setupCounts?: { townsfolk: number; outsiders: number; minions: number; demons: number };
+  /** (additive) True once characters are assigned (setup phase). */
+  charactersAssigned?: boolean;
+  /** (additive) Whether the Storyteller is connected (bedtime countdown pauses while not). */
+  timerPaused?: boolean;
 }
 
 const Seat = z.number().int().min(0).max(14);
@@ -77,6 +107,7 @@ export const PromptSpec = z.object({
   characterOptions: z.array(CharacterIdSchema).max(22).optional(),
   stepId: z.string().max(64).optional(),
 });
+export type PromptSpecInput = z.input<typeof PromptSpec>;
 
 export const InfoSpec = z.object({
   text: z.string().min(1).max(500),
@@ -86,6 +117,7 @@ export const InfoSpec = z.object({
   yes: z.boolean().optional(),
   stepId: z.string().max(64).optional(),
 });
+export type InfoSpecInput = z.input<typeof InfoSpec>;
 
 /** All ST actions, sent as C2S 'st:command'. Server rejects unless sender is the lobby's ST. */
 export const StCommand = z.discriminatedUnion('type', [
@@ -96,6 +128,8 @@ export const StCommand = z.discriminatedUnion('type', [
     drunkBelievesSeatCharacter: CharacterIdSchema.optional(),
     redHerringSeat: Seat.optional(),
     demonBluffs: z.array(CharacterIdSchema).max(3),
+    /** (additive) Accept a distribution that differs from the standard setup table. */
+    allowNonstandard: z.boolean().optional(),
   }),
   z.object({ type: z.literal('begin_first_night') }),
   z.object({ type: z.literal('advance_phase'), to: z.enum(['day', 'bedtime', 'night', 'dawn']) }),
@@ -125,7 +159,16 @@ export const StCommand = z.discriminatedUnion('type', [
   z.object({ type: z.literal('remove_reminder'), seat: Seat, token: z.string().min(1).max(40) }),
   z.object({ type: z.literal('prompt_player'), seat: Seat, prompt: PromptSpec }),
   z.object({ type: z.literal('send_info'), seat: Seat, info: InfoSpec }),
-  z.object({ type: z.literal('resolve_step'), stepId: z.string().max(64) }),
+  z.object({
+    type: z.literal('resolve_step'),
+    stepId: z.string().max(64),
+    /** (additive) ST-chosen targets overriding/replacing the player's answer. */
+    seats: z.array(Seat).max(3).optional(),
+    /** (additive) Imp self-kill: which Minion becomes the Imp (Scarlet Woman still has priority). */
+    starpassSeat: Seat.optional(),
+    /** (additive) Mayor bounce: the player who dies instead of the Mayor. */
+    redirectSeat: Seat.optional(),
+  }),
   z.object({ type: z.literal('skip_step'), stepId: z.string().max(64) }),
   z.object({ type: z.literal('visit_home'), seat: Seat }),
   z.object({ type: z.literal('leave_home') }),

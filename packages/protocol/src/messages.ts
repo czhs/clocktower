@@ -88,10 +88,14 @@ export interface S2CMessages {
 }
 export type S2CType = keyof S2CMessages;
 
-/** Close codes used by the GameRoom when it forcibly disconnects a client. */
+/**
+ * Close codes used by the GameRoom when it forcibly disconnects a client. 41xx avoids Colyseus'
+ * own 4000-range codes (e.g. 4002 = WS_CLOSE_WITH_ERROR).
+ */
 export const CLOSE_CODES = {
-  kicked: 4001,
-  replaced: 4002, // same account joined from another device (newest connection wins)
-  lobbyClosed: 4003,
-  unauthorized: 4004,
+  kicked: 4101,
+  replaced: 4102, // same account joined from another device (newest connection wins)
+  lobbyClosed: 4103,
+  unauthorized: 4104,
 } as const;
+export const TERMINAL_CLOSE_CODES: readonly number[] = Object.values(CLOSE_CODES);

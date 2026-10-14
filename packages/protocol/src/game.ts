@@ -81,6 +81,8 @@ export interface NominationView {
   voteCount: number;
   /** Votes needed to put the nominee on the block: ceil(alive/2), or > current block count. */
   threshold: number;
+  /** (additive) Seats with a raised hand the clock hand has not reached yet (public, like real hands). */
+  handsRaised?: number[];
 }
 
 export interface DayView {
@@ -143,6 +145,12 @@ export interface PlayerGameView {
     ghostVoteAvailable: boolean;
     canNominate: boolean;
     role: MyRoleView | null;
+    /** (additive) Evil-team info, only for evil players who were woken for Minion/Demon info. */
+    evilTeam?: EvilTeamView | null;
+    /** (additive) Seat of the Butler's chosen master (only in the Butler's own view). */
+    butlerMasterSeat?: number | null;
+    /** (additive) Whether this player may still attempt the public Slayer shot. */
+    canSlayerShot?: boolean;
   };
   day: DayView | null;
   prompts: PromptView[];
@@ -151,6 +159,8 @@ export interface PlayerGameView {
   /** True only while the Storyteller is visiting THIS player's home. */
   storytellerVisitingYou: boolean;
   result: GameResult | null;
+  /** (additive) Only in the Spy's own view. */
+  spyGrimoire?: SpyGrimoireView | null;
 }
 
 // Player C2S payloads
@@ -164,3 +174,63 @@ export const PromptResponseMsg = z.object({
 });
 /** Public "I am the Slayer" shot; anyone may attempt, only a real healthy Slayer's shot can kill. */
 export const SlayerShotMsg = z.object({ targetSeat: z.number().int().min(0).max(14) });
+
+// ---------------------------------------------------------------------------------------
+// Additions by rules-storyteller (2026-10-14, additive). Character metadata shared by the
+// engine and the HUD/ST UI. Ability texts are original short paraphrases (no rulebook text).
+
+export interface CharacterInfo {
+  name: string;
+  type: CharacterType;
+  alignment: Alignment;
+  ability: string;
+}
+
+export const CHARACTER_INFO: Record<CharacterId, CharacterInfo> = {
+  washerwoman: { name: 'Washerwoman', type: 'townsfolk', alignment: 'good', ability: 'First night: you learn that one of two players is a particular Townsfolk.' },
+  librarian: { name: 'Librarian', type: 'townsfolk', alignment: 'good', ability: 'First night: you learn that one of two players is a particular Outsider (or that there are none).' },
+  investigator: { name: 'Investigator', type: 'townsfolk', alignment: 'good', ability: 'First night: you learn that one of two players is a particular Minion.' },
+  chef: { name: 'Chef', type: 'townsfolk', alignment: 'good', ability: 'First night: you learn how many pairs of evil players are sitting side by side.' },
+  empath: { name: 'Empath', type: 'townsfolk', alignment: 'good', ability: 'Every night: you learn how many of your two closest living neighbours are evil.' },
+  fortune_teller: { name: 'Fortune Teller', type: 'townsfolk', alignment: 'good', ability: 'Every night: pick two players and learn whether either is the Demon. One good player wrongly reads as a Demon to you.' },
+  undertaker: { name: 'Undertaker', type: 'townsfolk', alignment: 'good', ability: 'Each night after the first: you learn which character was executed that day.' },
+  monk: { name: 'Monk', type: 'townsfolk', alignment: 'good', ability: 'Each night after the first: pick another player. The Demon cannot kill them tonight.' },
+  ravenkeeper: { name: 'Ravenkeeper', type: 'townsfolk', alignment: 'good', ability: 'If the Demon kills you at night, you wake up and learn the character of one player you pick.' },
+  virgin: { name: 'Virgin', type: 'townsfolk', alignment: 'good', ability: 'The first time someone nominates you, if they are a Townsfolk they are executed on the spot.' },
+  slayer: { name: 'Slayer', type: 'townsfolk', alignment: 'good', ability: 'Once per game, in daylight, publicly pick a player. If they are the Demon, they die.' },
+  soldier: { name: 'Soldier', type: 'townsfolk', alignment: 'good', ability: 'The Demon cannot kill you.' },
+  mayor: { name: 'Mayor', type: 'townsfolk', alignment: 'good', ability: 'If three players are alive and nobody is executed today, your team wins. If you would die at night, another player might die in your place.' },
+  butler: { name: 'Butler', type: 'outsider', alignment: 'good', ability: 'Each night pick another player as your master. Tomorrow you may only vote if your master votes too.' },
+  drunk: { name: 'Drunk', type: 'outsider', alignment: 'good', ability: 'You believe you are a Townsfolk, but your ability never works. You are not told you are the Drunk.' },
+  recluse: { name: 'Recluse', type: 'outsider', alignment: 'good', ability: 'You may register as evil, or as a Minion or Demon, even after death.' },
+  saint: { name: 'Saint', type: 'outsider', alignment: 'good', ability: 'If you are executed, your team loses.' },
+  poisoner: { name: 'Poisoner', type: 'minion', alignment: 'evil', ability: 'Every night pick a player. Their ability fails tonight and through tomorrow.' },
+  spy: { name: 'Spy', type: 'minion', alignment: 'evil', ability: 'Every night you look at the Grimoire. You may register as good, or as a Townsfolk or Outsider, even after death.' },
+  scarlet_woman: { name: 'Scarlet Woman', type: 'minion', alignment: 'evil', ability: 'If five or more players are alive when the Demon dies, you become the Demon.' },
+  baron: { name: 'Baron', type: 'minion', alignment: 'evil', ability: 'Setup gains two extra Outsiders.' },
+  imp: { name: 'Imp', type: 'demon', alignment: 'evil', ability: 'Each night after the first pick a player: they die. If you pick yourself, a Minion becomes the Imp.' },
+};
+
+/** Evil-team knowledge shown to Minions/Demon after the first-night Minion/Demon info steps (7+ players). */
+export interface EvilTeamView {
+  demonSeats: number[];
+  minionSeats: number[];
+  /** Only the Demon receives bluffs. */
+  bluffs: CharacterId[];
+}
+
+/** The Spy's look at the Grimoire (snapshot taken when the ST resolves the Spy's night step). */
+export interface SpyGrimoireEntry {
+  seat: number;
+  name: string;
+  character: CharacterId;
+  alignment: Alignment;
+  alive: boolean;
+  poisoned: boolean;
+  drunk: boolean;
+  reminders: string[];
+}
+export interface SpyGrimoireView {
+  night: number;
+  entries: SpyGrimoireEntry[];
+}

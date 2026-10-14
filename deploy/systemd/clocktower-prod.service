@@ -1,0 +1,39 @@
+# systemd --user unit for the Clocktower Town prod service on hshi-u1 (installed by
+# scripts/setup-hshi-u1.sh into ~/.config/systemd/user/). Binds 127.0.0.1:3000 only.
+# Isolation-critical variables (APP_ENV, HOST, PORT, DATABASE_URL, LIVEKIT_ROOM_PREFIX, LOG_DIR)
+# are pinned on the command line so a mistake in the env file can never make this unit use the
+# other environment's port, database or voice namespace.
+[Unit]
+Description=Clocktower Town (prod, 127.0.0.1:3000)
+StartLimitIntervalSec=300
+StartLimitBurst=10
+
+[Service]
+Type=simple
+WorkingDirectory=%h/clocktower/prod
+EnvironmentFile=%h/clocktower/env/prod.env
+# Written by the deploy script: CT_VERSION=<git sha> of the release in WorkingDirectory.
+EnvironmentFile=-%h/clocktower/prod/.release.env
+Environment=PATH=%h/.local/share/node/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/bin/env NODE_ENV=production APP_ENV=production HOST=127.0.0.1 PORT=3000 \
+  DATABASE_URL=file:%h/clocktower/data/prod/clocktower.db LIVEKIT_ROOM_PREFIX=prod \
+  LOG_DIR=%h/clocktower/logs/prod \
+  %h/.local/share/node/bin/node --enable-source-maps apps/server/dist/server.js
+Restart=on-failure
+RestartSec=3
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=20
+# stdout/stderr (JSON lines) -> journald: journalctl --user -u clocktower-prod
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=clocktower-prod
+MemoryHigh=1536M
+MemoryMax=2G
+TasksMax=512
+LimitNOFILE=65536
+NoNewPrivileges=yes
+UMask=0077
+
+[Install]
+WantedBy=default.target

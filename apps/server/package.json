@@ -17,11 +17,15 @@
     "@ct/protocol": "workspace:*",
     "@ct/rules": "workspace:*",
     "@ct/voice": "workspace:*",
+    "better-sqlite3": "^13.0.0",
+    "drizzle-orm": "^0.45.0",
     "express": "^5.1.0",
+    "livekit-server-sdk": "^2.19.0",
     "zod": "^4.6.0"
   },
   "devDependencies": {
     "@types/express": "^5.0.0",
+    "colyseus.js": "~0.16.22",
     "esbuild": "^0.25.0"
   }
 }

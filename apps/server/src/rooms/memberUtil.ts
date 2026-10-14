@@ -1,0 +1,53 @@
+import { randomInt } from 'node:crypto';
+import { MIN_PLAYERS, type MemberView } from '@ct/protocol';
+import type { RoomMember } from './modules.js';
+
+/** Fisher–Yates with a CSPRNG (seat order must not be predictable or join-order-derived). */
+export function shuffle<T>(items: readonly T[]): T[] {
+  const a = items.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = randomInt(i + 1);
+    [a[i], a[j]] = [a[j]!, a[i]!];
+  }
+  return a;
+}
+
+export interface StartCheckInput {
+  waiting: boolean;
+  maxPlayers: number;
+  storyteller: { connected: boolean } | null;
+  players: { connected: boolean; ready: boolean }[];
+}
+
+/**
+ * Start rule (documented decision): the seated Storyteller starts the game when there are
+ * MIN_PLAYERS..maxPlayers players, everyone is connected, and every player has pressed Ready.
+ */
+export function startBlockers(s: StartCheckInput): string[] {
+  const out: string[] = [];
+  if (!s.waiting) return ['The game is already in progress'];
+  if (!s.storyteller) out.push('No Storyteller is seated');
+  else if (!s.storyteller.connected) out.push('The Storyteller is disconnected');
+  const n = s.players.length;
+  if (n < MIN_PLAYERS) out.push(`Need at least ${MIN_PLAYERS} players (have ${n})`);
+  if (n > s.maxPlayers) out.push(`Too many players (max ${s.maxPlayers})`);
+  const away = s.players.filter((p) => !p.connected).length;
+  if (away) out.push(`${away} player${away === 1 ? ' is' : 's are'} disconnected`);
+  const notReady = s.players.filter((p) => p.connected && !p.ready).length;
+  if (notReady) out.push(`${notReady} player${notReady === 1 ? ' is' : 's are'} not ready`);
+  return out;
+}
+
+export function memberView(m: RoomMember, ready: boolean): MemberView {
+  // Whitelist: never include accountId.
+  return {
+    pid: m.pid,
+    displayName: m.displayName,
+    role: m.role,
+    seat: m.seat,
+    ready,
+    connected: m.connected,
+    isHost: m.isHost,
+    cosmetics: m.cosmetics,
+  };
+}

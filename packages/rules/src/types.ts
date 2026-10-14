@@ -1,0 +1,184 @@
+// Server-only game state for @ct/rules. NEVER send any of these objects to a client: clients
+// receive only the whitelisted projections built in project.ts.
+import type {
+  Alignment,
+  AnnouncementView,
+  CharacterId,
+  EvilTeamView,
+  GamePhase,
+  GameResult,
+  InfoView,
+  NightStepStatus,
+  PromptKind,
+  SpyGrimoireView,
+} from '@ct/protocol';
+
+/** Deterministic random source in [0, 1). Injected so the engine stays pure and testable. */
+export type Rng = () => number;
+
+export interface PromptState {
+  id: string;
+  kind: PromptKind;
+  title: string;
+  body?: string;
+  minTargets?: number;
+  maxTargets?: number;
+  allowSelf?: boolean;
+  allowDead?: boolean;
+  characterOptions?: CharacterId[];
+  stepId: string | null;
+}
+
+export interface PlayerState {
+  seat: number;
+  pid: string;
+  name: string;
+  /** True character (the Drunk's is 'drunk'). */
+  character: CharacterId;
+  /** What the player has been told. */
+  believedCharacter: CharacterId;
+  alignment: Alignment;
+  believedAlignment: Alignment;
+  startingCharacter: CharacterId;
+  /** True status (night deaths flip this immediately). */
+  alive: boolean;
+  /** Status as known to players (night deaths are published when day starts). */
+  publicAlive: boolean;
+  ghostVoteAvailable: boolean;
+  ghostVoteUsed: boolean;
+  poisonedBy: 'poisoner' | 'storyteller' | null;
+  /** ST marked a non-Drunk player as drunk (the real Drunk is always drunk). */
+  drunkOverride: boolean;
+  protectedTonight: boolean;
+  reminders: string[];
+  executed: boolean;
+  died: boolean;
+  nominationsMade: number;
+  nominatedToday: boolean;
+  wasNominatedToday: boolean;
+  /** Once-per-game ability spent: Slayer shot (real Slayer), Virgin triggered. */
+  abilityUsed: boolean;
+  /** Player has made a public Slayer claim/shot (anyone may bluff once). */
+  slayerShotTaken: boolean;
+  butlerMasterSeat: number | null;
+  connected: boolean;
+  info: InfoView[];
+  prompts: PromptState[];
+  promptSeq: number;
+  infoSeq: number;
+  evilTeam: EvilTeamView | null;
+  spyGrimoire: SpyGrimoireView | null;
+}
+
+export type StepKind = CharacterId | 'minion_info' | 'demon_info' | 'dusk' | 'dawn';
+
+export interface NightStep {
+  id: string;
+  seat: number | null;
+  kind: StepKind;
+  /** Order position used for sorting / dynamic insertion. */
+  order: number;
+  status: NightStepStatus;
+  response?: { seats?: number[]; character?: CharacterId; yes?: boolean };
+  /** Stable engine picks made when the night was built (Washerwoman pair etc.). */
+  fixed?: { seats?: number[]; character?: CharacterId | null; number?: number };
+  /** Status before the ST walked in (restored when they leave without acting). */
+  preVisitStatus?: NightStepStatus;
+  infoSent?: boolean;
+  /** Outcome text after resolution (ST-only). */
+  outcome?: string;
+}
+
+export interface NominationState {
+  id: string;
+  nominatorSeat: number;
+  nomineeSeat: number;
+  status: 'pending' | 'voting' | 'tallied' | 'cancelled';
+  votes: Record<number, boolean>;
+  threshold: number;
+  voteCount: number;
+}
+
+export interface VoteState {
+  nominationId: string;
+  /** Clockwise seat order starting after the nominee and ending with the nominee. */
+  order: number[];
+  index: number;
+  nextAt: number;
+  hands: number[];
+}
+
+export interface DayState {
+  nominationsOpen: boolean;
+  nominations: NominationState[];
+  block: { seat: number; votes: number } | null;
+  /** Highest vote count reached today that put someone on (or tied for) the block. */
+  highWater: number;
+  executedSeat: number | null;
+  executionOccurred: boolean;
+  vote: VoteState | null;
+  nomSeq: number;
+}
+
+export interface GameState {
+  version: 1;
+  players: PlayerState[];
+  phase: GamePhase;
+  dayNumber: number;
+  nightNumber: number;
+  phaseEndsAt: number | null;
+  bedtimeSeconds: number;
+  bedtimePausedRemainingMs: number | null;
+  storytellerConnected: boolean;
+  assigned: boolean;
+  rolesRevealed: boolean;
+  demonBluffs: CharacterId[];
+  redHerringSeat: number | null;
+  nightQueue: NightStep[];
+  stepSeq: number;
+  day: DayState | null;
+  /** Seat that died by execution on the most recent day (Undertaker). */
+  lastExecutedDiedSeat: number | null;
+  visitingSeat: number | null;
+  travelSpeedMult: number;
+  announcements: AnnouncementView[];
+  annSeq: number;
+  alerts: string[];
+  log: { at: number; text: string }[];
+  result: GameResult | null;
+  startedAt: number;
+  endedAt: number | null;
+  voteStepMs: number;
+  /** Injected RNG (not part of snapshots). */
+  rng: Rng;
+  /** Undo snapshots (serialized cores, newest last; not part of snapshots). */
+  history: string[];
+}
+
+export interface Ctx {
+  now: number;
+}
+
+export type SoundCue = 'bell' | 'dawn' | 'toll' | 'door' | 'visit';
+
+/** Side effects for the hosting module to perform (the engine itself does no I/O). */
+export type Effect =
+  | { type: 'announcement'; announcement: AnnouncementView }
+  | { type: 'sound'; cue: SoundCue; seats: number[] | 'all' }
+  | { type: 'visit_home'; seat: number }
+  | { type: 'leave_home' }
+  | { type: 'travel_speed'; mult: number }
+  | { type: 'send_home'; reason: 'bedtime' | 'night' };
+
+export type ErrorCode = 'invalid' | 'forbidden' | 'phase' | 'not_found';
+
+export type CommandResult = { ok: true; effects: Effect[] } | { ok: false; code: ErrorCode; error: string };
+
+export class RuleError extends Error {
+  constructor(
+    readonly code: ErrorCode,
+    message: string,
+  ) {
+    super(message);
+  }
+}
