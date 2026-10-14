@@ -128,6 +128,8 @@ export interface WorldModule {
   /** Storyteller fast-travel / forced relocation (e.g. 'visit_home'). */
   sendHome(pid: string, reason: 'bedtime' | 'night'): void;
   teleportToBuilding(pid: string, buildingId: string, reason: 'storyteller' | 'door'): void;
+  /** Move a member out of the building they are in to just outside its door (ST 'leave_home'). No-op outdoors. */
+  exitBuilding(pid: string, reason: 'storyteller' | 'door'): void;
   tick(dtMs: number): void;
 }
 

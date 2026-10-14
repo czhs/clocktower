@@ -35,6 +35,10 @@ function rig(n = 8, opts: { withWorld?: boolean } = {}): Rig {
       calls.push(`tp:${pid}:${b}:${reason}`);
       host.emit({ type: 'location_changed', pid, location: `bld:${b}`, prev: 'outdoors' });
     },
+    exitBuilding: (pid, reason) => {
+      calls.push(`exit:${pid}:${reason}`);
+      host.emit({ type: 'location_changed', pid, location: 'outdoors', prev: null });
+    },
     tick: () => undefined,
   };
   host.setModules(opts.withWorld === false ? { game } : { game, world });

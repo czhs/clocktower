@@ -163,6 +163,25 @@ describe('first night', () => {
     expect(v.notes!.join()).toMatch(/poisoned/);
   });
 
+  it('Spy/Recluse registration: suggestions stay truthful and list what they may register as', () => {
+    const s = mkGame(['imp', 'spy', 'investigator', 'washerwoman', 'fortune_teller', 'recluse', 'chef'], { redHerringSeat: 2 });
+    begin(s);
+    // Investigator's truthful pick is the real Minion (the Spy); the Recluse is a registration option.
+    const inv = sv(s, step(s, 'investigator').id);
+    expect(inv.suggestedInfo!.characters).toEqual(['spy']);
+    expect(inv.notes!.join('\n')).toMatch(/Recluse P6 \(seat 6\) may register as evil, or as a Minion or the Demon/);
+    expect(inv.notes!.join('\n')).toMatch(/Spy P2 \(seat 2\) may register as good, or as a Townsfolk or Outsider/);
+    // Fortune Teller choosing the Recluse: truthful NO, with the Recluse note for the ST to decide.
+    act_night(s, 'fortune_teller', [5, 6]);
+    const ft = sv(s, step(s, 'fortune_teller').id);
+    expect(ft.suggestedInfo!.yes).toBe(false);
+    expect(ft.notes!.join()).toMatch(/Recluse/);
+    expect(ft.notes!.join()).not.toMatch(/Spy/);
+    // A poisoned Spy/Recluse loses the ability to misregister: no note.
+    st(s, { type: 'set_status', seat: 5, poisoned: true });
+    expect(sv(s, step(s, 'investigator').id).notes!.join()).not.toMatch(/Recluse/);
+  });
+
   it('spy sees a grimoire snapshot', () => {
     const s = mkGame(['imp', 'spy', 'chef', 'empath', 'monk', 'recluse', 'virgin']);
     begin(s);

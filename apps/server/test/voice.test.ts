@@ -41,6 +41,7 @@ function fakeWorld() {
     snapshotFor: () => ({ t: 0, ackSeq: 0, entities: [] }),
     sendHome() {},
     teleportToBuilding() {},
+    exitBuilding() {},
     tick() {},
   };
   return { w, pos };

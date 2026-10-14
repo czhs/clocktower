@@ -91,7 +91,9 @@ export function createGameModule(host: RoomHost, opts: GameModuleOptions = {}): 
           if (stPid) world()?.teleportToBuilding(stPid, `house-${e.seat}`, 'storyteller');
           break;
         case 'leave_home':
-          break; // visit_changed is emitted by the diff; the ST walks out on their own
+          // Fast travel back outside the visited home; visit_changed follows from location_changed.
+          if (stPid) world()?.exitBuilding(stPid, 'storyteller');
+          break;
         case 'travel_speed':
           if (stPid) host.emit({ type: 'travel_speed', pid: stPid, mult: e.mult });
           break;

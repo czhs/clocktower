@@ -325,6 +325,7 @@ export function fakeModules(): { registry: FakeRegistry; factories: NonNullable<
         snapshotFor: () => ({ t: Date.now(), ackSeq: 0, entities: [] }),
         sendHome: () => undefined,
         teleportToBuilding: () => undefined,
+        exitBuilding: () => undefined,
         tick: () => undefined,
       }),
       voice: (host): VoiceModule => ({

@@ -145,3 +145,4 @@ p.cth-ability { padding: 0; }
   .cth-card { max-height: 45vh; width: 260px; }
   .cth-vote { top: auto; bottom: 70px; }
 }
+.cth-toast-error { border-left-color: var(--danger); background: #3a1714ee; color: #f6c9c0; }

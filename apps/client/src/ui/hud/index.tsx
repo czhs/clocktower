@@ -51,17 +51,24 @@ function PhaseBar({ view }: { view: PlayerGameView | StorytellerGameView }) {
   );
 }
 
-/** Short-lived announcement toasts (public cues). */
+/** Short-lived announcement toasts (public cues) + rejected player actions. */
 function Toasts({ conn }: { conn: RoomConnection }) {
-  const [items, setItems] = useState<AnnouncementView[]>([]);
-  useEffect(
-    () =>
-      conn.events.on('announcement', (a) => {
-        setItems((x) => [...x.slice(-2), a]);
-        setTimeout(() => setItems((x) => x.filter((y) => y.id !== a.id)), 7000);
-      }),
-    [conn],
-  );
+  const [items, setItems] = useState<{ id: string; kind: string; text: string }[]>([]);
+  useEffect(() => {
+    let seq = 0;
+    const push = (item: { id: string; kind: string; text: string }) => {
+      setItems((x) => [...x.slice(-2), item]);
+      setTimeout(() => setItems((x) => x.filter((y) => y.id !== item.id)), 7000);
+    };
+    const offA = conn.events.on('announcement', (a: AnnouncementView) => push({ id: a.id, kind: a.kind, text: a.text }));
+    const offE = conn.events.on('error', (e) => {
+      if (e.for?.startsWith('game:')) push({ id: `err${++seq}`, kind: 'error', text: e.message });
+    });
+    return () => {
+      offA();
+      offE();
+    };
+  }, [conn]);
   if (!items.length) return null;
   return (
     <div class="cth-toasts" aria-live="polite">
@@ -116,8 +123,11 @@ function PlayerHud({ view, conn }: { view: PlayerGameView; conn: RoomConnection 
             <RoleCard view={view} />
             <div class="cth-status">
               <span class={`cth-chip ${you.canNominate ? 'ok' : ''}`}>May nominate? {you.canNominate ? 'Yes' : 'No'}</span>
-              <span class={`cth-chip ${you.ghostVoteAvailable ? 'ok' : 'dead'}`}>
-                {you.alive ? 'Vote: yes' : `Ghost vote ${you.ghostVoteAvailable ? 'available' : 'spent'}`}
+              <span
+                class={`cth-chip ${you.ghostVoteAvailable ? 'ok' : 'dead'}`}
+                title={you.alive ? 'Living players vote freely; once dead you get one ghost vote.' : undefined}
+              >
+                Ghost vote {you.ghostVoteAvailable ? 'available' : 'spent'}
               </span>
             </div>
             <nav class="cth-tabs">
