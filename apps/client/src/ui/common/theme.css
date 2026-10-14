@@ -1,0 +1,34 @@
+/* LEAD-OWNED base theme: gothic night palette. Feature UIs add their own CSS files. */
+:root {
+  --bg: #0f0d14;
+  --panel: #1b1724e6;
+  --panel-solid: #1b1724;
+  --border: #3d3350;
+  --text: #e9e2d0;
+  --muted: #9b91a8;
+  --accent: #c9a24a;
+  --good: #5d8fd6;
+  --evil: #c0413b;
+  --danger: #d0543f;
+  --ok: #6fae6a;
+  --font: 'Georgia', 'Iowan Old Style', serif;
+  --mono: ui-monospace, 'SF Mono', Menlo, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body, #app { margin: 0; height: 100%; background: var(--bg); color: var(--text); font-family: var(--font); }
+button {
+  font: inherit; color: var(--text); background: #2a2238; border: 1px solid var(--border);
+  padding: 6px 12px; border-radius: 4px; cursor: pointer;
+}
+button:hover:not(:disabled) { border-color: var(--accent); }
+button:disabled { opacity: 0.5; cursor: default; }
+button.primary { background: #5b4320; border-color: var(--accent); }
+input, select, textarea {
+  font: inherit; color: var(--text); background: #120f18; border: 1px solid var(--border);
+  padding: 6px 8px; border-radius: 4px;
+}
+.screen { position: relative; width: 100%; height: 100%; overflow: hidden; }
+.center { display: flex; align-items: center; justify-content: center; }
+.panel { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 16px; }
+.muted { color: var(--muted); }

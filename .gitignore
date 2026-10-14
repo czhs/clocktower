@@ -1,0 +1,16 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+data/
+*.db
+*.db-shm
+*.db-wal
+logs/
+test-results/
+playwright-report/
+.DS_Store
+.install-stamp
+pnpm-lock.yaml.remote

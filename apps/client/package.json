@@ -1,0 +1,23 @@
+{
+  "name": "@ct/client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@ct/assets": "workspace:*",
+    "@ct/protocol": "workspace:*",
+    "@ct/voice": "workspace:*",
+    "colyseus.js": "~0.16.22",
+    "livekit-client": "^2.22.0",
+    "phaser": "3.90.0",
+    "preact": "^10.26.0"
+  },
+  "devDependencies": {
+    "vite": "^7.1.0"
+  }
+}

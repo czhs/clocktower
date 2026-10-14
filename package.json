@@ -1,0 +1,28 @@
+{
+  "name": "clocktower-town",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.34.7",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "dev": "pnpm --filter @ct/server dev",
+    "build": "pnpm -r --filter ./packages/* --filter ./apps/* run --if-present build",
+    "typecheck": "pnpm -r run --if-present typecheck",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test -c tests/e2e/playwright.config.ts",
+    "test:load": "tsx tests/load/run.ts",
+    "serve": "node apps/server/dist/server.js",
+    "assets:generate": "pnpm --filter @ct/assets generate",
+    "db:migrate": "pnpm --filter @ct/db migrate"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.23.0",
+    "typescript": "5.9.3",
+    "vitest": "^5.0.4"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["better-sqlite3", "esbuild", "msgpackr-extract"]
+  }
+}

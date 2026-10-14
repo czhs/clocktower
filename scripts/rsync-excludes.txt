@@ -1,0 +1,13 @@
+.git/
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+data/
+logs/
+test-results/
+playwright-report/
+.DS_Store
+.env.development
+.env.production
+.install-stamp

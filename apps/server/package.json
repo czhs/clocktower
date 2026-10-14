@@ -1,0 +1,27 @@
+{
+  "name": "@ct/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --env-file-if-exists=../../.env.development src/index.ts",
+    "start:dev": "tsx src/index.ts",
+    "build": "node build.mjs",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@colyseus/core": "~0.16.26",
+    "@colyseus/ws-transport": "~0.16.5",
+    "@ct/assets": "workspace:*",
+    "@ct/db": "workspace:*",
+    "@ct/protocol": "workspace:*",
+    "@ct/rules": "workspace:*",
+    "@ct/voice": "workspace:*",
+    "express": "^5.1.0",
+    "zod": "^4.6.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "esbuild": "^0.25.0"
+  }
+}

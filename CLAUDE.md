@@ -1,0 +1,56 @@
+# Clocktower Town — agent guide
+
+Browser-based gothic pixel-art social-deduction town (Trouble Brewing rules, human Storyteller,
+multiple passwordless lobbies, LiveKit proximity/private voice). Authoritative spec:
+`docs/spec/CLOCKTOWER_TOWN_SPEC.md`. Architecture and contracts: `docs/architecture.md`.
+Status: `docs/progress.md`. Executed tests: `docs/test-results.md`.
+
+## Where things run (non-negotiable)
+
+- **Everything executes on `hshi-u1`** (Ubuntu 22.04, RTX 3060, user `hshi`, Node 24 in
+  `~/.local/share/node`, sourced via `~/clocktower/env.sh`). Do **not** run node/pnpm/tests on the
+  editing machine. Do not use `hshi` (4090). The Mac only edits files and syncs.
+- Run commands through `scripts/remote.sh` — it rsyncs this tree to
+  `hshi-u1:~/clocktower/work/$CT_AGENT/`, installs deps if manifests changed, and runs the command:
+  ```
+  CT_AGENT=rules scripts/remote.sh pnpm vitest run packages/rules
+  CT_AGENT=rules scripts/remote.sh --no-sync pnpm -r run typecheck
+  CT_AGENT=world-art scripts/pull.sh packages/assets/generated   # copy generated files back
+  ```
+- Ports on hshi-u1: **3000 = production (Funnel), 3001 = dev service** — never bind these in tests.
+  Ad-hoc test servers: lead 3300-3309, rules 3310-3319, world-art 3320-3329, lobby-auth 3330-3339,
+  voice 3340-3349, qa-deploy 3350-3399. Always bind 127.0.0.1.
+- Never touch unrelated services on hshi-u1 (ollama, cups, etc.). No sudo — ask the user.
+
+## Commands (run via scripts/remote.sh)
+
+`pnpm -r run typecheck` · `pnpm test` (vitest, all unit/integration/security) ·
+`pnpm build` · `pnpm serve` · `pnpm dev` · `pnpm assets:generate` · `pnpm test:e2e` · `pnpm test:load`
+
+## File ownership
+
+| Owner | Exclusive paths |
+|---|---|
+| lead | `packages/protocol/**` (shared contract), root configs, `CLAUDE.md`, `docs/architecture.md`, `docs/progress.md`, `apps/server/src/{index,config,log}.ts`, `apps/server/src/rooms/modules.ts`, `apps/client/src/main.tsx`, `apps/client/src/net/**`, `apps/client/src/ui/common/**` |
+| rules-storyteller | `packages/rules/**`, `apps/server/src/game/**`, `apps/client/src/ui/hud/**`, `apps/client/src/ui/storyteller/**`; may extend `packages/protocol/src/{game,storyteller}.ts` additively |
+| world-art | `packages/assets/**`, `apps/server/src/world/**`, `apps/client/src/game/**` |
+| lobby-auth | `packages/db/**`, `apps/server/src/{services.ts,auth,directory,rooms/GameRoom.ts,rooms/*.ts except modules.ts,admin}/**`, `apps/client/src/ui/{auth,lobby,admin}/**`, `apps/client/src/ui/chat/**` |
+| voice | `packages/voice/**`, `apps/server/src/voice/**`, `apps/client/src/voice/**`, `apps/client/src/ui/voice/**`; may extend `packages/protocol/src/voice.ts` additively |
+| qa-deploy | `tests/**`, `scripts/**` (except remote.sh/remote-prepare.sh/pull.sh: lead), `docs/deployment.md`, `docs/test-results.md`, `deploy/**` |
+
+Package-local unit tests live in `<package>/test/*.test.ts` and are owned by the package owner.
+Need a change in someone else's file? Describe it in your final report (or a `// CONTRACT-REQUEST:`
+note in your own code) — the lead integrates. Adding a dependency to a package you own is fine.
+
+## Conventions
+
+- TypeScript strict, ESM, pnpm workspace; workspace packages are consumed as TS source.
+- All C2S messages validated with the Zod schemas in `@ct/protocol` (`C2S` map). Authorisation
+  (host / storyteller / seat / phase) is checked server-side, never trusted from payloads.
+- **Secrecy:** the server never broadcasts game state. Every client receives only its own
+  projection (`viewFor(pid)`, `snapshotFor(pid)`, per-pid voice grants, zone-scoped chat).
+  Account ids, passphrases, tokens and Grimoire data never reach other clients or logs.
+- Escape user text: render via Preact (auto-escaped) or `textContent`; never `innerHTML` with user data.
+- Client URLs derive from `window.location` (https → wss). Never hardcode localhost in client code.
+- Record every test command you actually ran (and failures) in your report; the lead/qa-deploy
+  copy them into `docs/test-results.md`. Never claim a test passed that you did not run.
