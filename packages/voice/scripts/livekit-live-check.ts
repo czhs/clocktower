@@ -28,7 +28,9 @@ function check(ok: boolean, what: string, detail = '') {
 
 async function validate(token: string): Promise<number> {
   const base = livekitHttpUrl(url);
-  for (const path of ['/rtc/v1/validate', '/rtc/validate']) {
+  // '/rtc/validate' first: on current LiveKit Cloud '/rtc/v1/validate' authenticates the token
+  // but then answers a valid one with 400 "join_request is required" (verified 2026-10-15).
+  for (const path of ['/rtc/validate', '/rtc/v1/validate']) {
     const res = await fetch(`${base}${path}?access_token=${encodeURIComponent(token)}`);
     if (res.status !== 404) return res.status;
   }
