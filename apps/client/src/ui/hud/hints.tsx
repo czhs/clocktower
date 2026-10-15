@@ -66,7 +66,8 @@ export function MoveHint({ view, conn }: { view: PlayerGameView; conn: RoomConne
   );
 
   const p = view.phase;
-  const nom = p === 'day' ? view.day?.nominations.find((n) => n.status === 'voting') : undefined;
+  // A running vote, or a pending nomination (hands may go up before the clock starts).
+  const nom = p === 'day' ? (view.day?.nominations.find((n) => n.status === 'voting') ?? view.day?.nominations.find((n) => n.status === 'pending')) : undefined;
   let text: string | null = null;
   let short = '';
   let sticky = false;
@@ -93,7 +94,14 @@ export function MoveHint({ view, conn }: { view: PlayerGameView; conn: RoomConne
       sticky = true;
       tone = 'ok';
     } else {
-      text = view.you.alive ? 'Vote now: raise your hand before the clock reaches you.' : 'Vote now: raising your hand uses your one ghost vote.';
+      text =
+        nom.status === 'pending'
+          ? view.you.alive
+            ? 'A vote is coming: raise your hand now if you want to vote.'
+            : 'A vote is coming: raising your hand uses your one ghost vote.'
+          : view.you.alive
+            ? 'Vote now: raise your hand before the clock reaches you.'
+            : 'Vote now: raising your hand uses your one ghost vote.';
       short = 'Vote now';
       sticky = true;
       tone = 'vote';
@@ -122,6 +130,11 @@ export function MoveHint({ view, conn }: { view: PlayerGameView; conn: RoomConne
   } else if (ctl?.mode === 'auto') {
     text = ctl.goal === 'seat' ? 'The Storyteller is walking you to your seat…' : ctl.goal === 'home' ? 'The Storyteller is walking you home…' : 'The Storyteller is guiding you…';
     tone = 'auto';
+  } else if (!view.you.alive && p === 'day') {
+    text = view.you.ghostVoteAvailable
+      ? "You're dead: you can still talk, and you have 1 ghost vote."
+      : "You're dead: you can still talk; your ghost vote is used.";
+    tone = 'dead';
   } else if (view.gathering && p === 'day') {
     if (where === 'seated') {
       text = `Seated (seat ${seat + 1}).`;
@@ -131,11 +144,6 @@ export function MoveHint({ view, conn }: { view: PlayerGameView; conn: RoomConne
       short = `◯ Seat ${seat + 1}`;
       sticky = true;
     }
-  } else if (!view.you.alive && p === 'day') {
-    text = view.you.ghostVoteAvailable
-      ? "You're dead: you can still talk, and you have 1 ghost vote."
-      : "You're dead: you can still talk; your ghost vote is used.";
-    tone = 'dead';
   } else if (p === 'setup') {
     text = 'Explore and chat: the Storyteller is preparing the game.';
   }

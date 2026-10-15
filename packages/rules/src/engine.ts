@@ -7,6 +7,7 @@ import {
   execute,
   forceExecute,
   forceVote,
+  pauseVoteClock,
   setBlock,
   setVote,
   executeOnBlock,
@@ -57,7 +58,7 @@ import {
   type Op,
 } from './util.js';
 
-export const DEFAULT_VOTE_STEP_MS = 1500;
+export const DEFAULT_VOTE_STEP_MS = 3000;
 /** SR-13: bounded reminder tokens per player (view size / memory). */
 export const MAX_REMINDERS_PER_PLAYER = 20;
 const HISTORY_LIMIT = 30;
@@ -128,7 +129,7 @@ export function createGame(opts: CreateGameOptions): GameState {
     bedtimeOvertime: false,
     bedtimeFirst: false,
     gathering: false,
-    settings: { ...DEFAULT_ST_SETTINGS },
+    settings: { ...DEFAULT_ST_SETTINGS, voteSeconds: (opts.voteStepMs ?? DEFAULT_VOTE_STEP_MS) / 1000 },
     storytellerConnected: true,
     assigned: false,
     rolesRevealed: false,
@@ -748,10 +749,15 @@ function stCommand(s: GameState, op: Op, cmd: StCommand): void {
     // ---- (gameplay) props
     case 'set_setting': {
       const changed: string[] = [];
-      for (const [k, v] of Object.entries(cmd.settings) as [keyof typeof s.settings, boolean | undefined][]) {
-        if (v === undefined || s.settings[k] === v) continue;
-        s.settings[k] = v;
-        changed.push(`${k}=${v}`);
+      const patch = cmd.settings;
+      if (patch.doorTags !== undefined && patch.doorTags !== s.settings.doorTags) {
+        s.settings.doorTags = patch.doorTags;
+        changed.push(`doorTags=${patch.doorTags}`);
+      }
+      if (patch.voteSeconds !== undefined && patch.voteSeconds !== s.settings.voteSeconds) {
+        s.settings.voteSeconds = patch.voteSeconds;
+        s.voteStepMs = Math.round(patch.voteSeconds * 1000);
+        changed.push(`voteSeconds=${patch.voteSeconds}`);
       }
       if (changed.length) log(s, op, `Settings: ${changed.join(', ')}`);
       return;
@@ -764,6 +770,9 @@ function stCommand(s: GameState, op: Op, cmd: StCommand): void {
       return;
     case 'force_vote':
       forceVote(s, op, cmd.nominationId);
+      return;
+    case 'vote_clock':
+      pauseVoteClock(s, op, cmd.action === 'pause');
       return;
     case 'create_nomination':
       createNomination(s, op, cmd.nominatorSeat, cmd.nomineeSeat, cmd.startVote ?? false);

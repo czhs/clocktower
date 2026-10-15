@@ -113,6 +113,8 @@ interface Seat {
   pending?: { client: GameClient; type: string; raw: unknown }[];
 }
 
+/** A connected seat whose client cannot receive (JOINING / socket not open) for this long is closed. */
+const FEED_STUCK_MS = 5000;
 /** Max messages held for a client that is not bound to its seat yet. */
 const PENDING_MAX = 32;
 /** Stale-connection warnings: at most one per pid per this many ms. */
@@ -937,6 +939,59 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
     if (this.idleCheckAcc >= 1000) {
       this.idleCheckAcc = 0;
       this.checkIdle(now);
+      this.checkFeeds(now);
+    }
+  }
+
+  /** pid -> since when its seat's client looks unable to receive (for checkFeeds). */
+  private feedStuckSince = new Map<string, number>();
+
+  /**
+   * Watchdog (B1: a player who refreshed mid-vote stopped receiving anything while still shown as
+   * connected). A seat marked connected whose client is still JOINING, or whose socket is not OPEN,
+   * gets nothing: every send is queued or lost. After FEED_STUCK_MS we log it (with the state, to
+   * find the root cause) and close that client so the browser reconnects instead of hanging.
+   */
+  private checkFeeds(now: number) {
+    for (const s of this.seats.values()) {
+      const c = s.client;
+      const pid = s.member.pid;
+      if (!s.member.connected || !c) {
+        this.feedStuckSince.delete(pid);
+        continue;
+      }
+      const ws = (c as unknown as { ref?: { readyState?: number } }).ref;
+      const stuck = c.state === ClientState.JOINING || (ws?.readyState !== undefined && ws.readyState !== 1);
+      if (!stuck) {
+        this.feedStuckSince.delete(pid);
+        continue;
+      }
+      const since = this.feedStuckSince.get(pid) ?? now;
+      this.feedStuckSince.set(pid, since);
+      if (now - since < FEED_STUCK_MS) continue;
+      this.feedStuckSince.delete(pid);
+      this.log.warn('connected seat cannot receive: closing it so the client reconnects', {
+        lobbyId: this.lobbyId,
+        pid,
+        clientState: c.state,
+        readyState: ws?.readyState ?? null,
+        reconnectionPending: !!s.reconnection,
+      });
+      if (ws?.readyState !== undefined && ws.readyState >= 2) {
+        // The socket is already closing/closed but we never got onLeave: show the truth (a fresh
+        // ticket or token restores the seat as usual).
+        s.member.connected = false;
+        this.host.emit({ type: 'member_connection', pid, connected: false });
+        this.lobbyDirty = true;
+        this.gameDirty = true;
+        this.afterHandler();
+        continue;
+      }
+      try {
+        c.leave(1001); // not "consented": the seat is kept and the client reconnects by token
+      } catch {
+        // already gone
+      }
     }
   }
 
@@ -945,8 +1000,8 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
       try {
         this.sendTo(s, 'world:snapshot', this.world.snapshotFor(s.member.pid));
       } catch (e) {
-        this.log.error('snapshotFor failed', { err: errMsg(e) });
-        return;
+        // One viewer's failure must never starve everyone after it in the loop.
+        this.log.error('snapshotFor failed', { pid: s.member.pid, err: errMsg(e) });
       }
     }
   }

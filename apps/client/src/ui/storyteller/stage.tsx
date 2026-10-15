@@ -30,6 +30,8 @@ export type OpenComposer = (p: { seat: number; mode: 'info' | 'prompt' }) => voi
 
 // ------------------------------------------------------------------------------ helpers
 
+const CONFIRM_S = 10;
+
 /**
  * Two-click inline confirm (never window.confirm): first click arms, second click acts. The armed
  * step can say who will see the effect (`audience`), what the rules say will follow (`effects`,
@@ -46,16 +48,21 @@ export function ConfirmButton(props: {
   effects?: string[];
   undo?: 'yes' | 'final';
 }) {
-  const [armed, setArmed] = useState(false);
+  // Armed for CONFIRM_S seconds (visible countdown), then it quietly disarms.
+  const [left, setLeft] = useState(0);
+  const armed = left > 0;
+  const setArmed = (on: boolean) => setLeft(on ? CONFIRM_S : 0);
   useEffect(() => {
     if (!armed) return;
-    const t = setTimeout(() => setArmed(false), 6000);
+    const t = setTimeout(() => setLeft((n) => Math.max(0, n - 1)), 1000);
     return () => clearTimeout(t);
-  }, [armed]);
+  }, [left]);
   if (armed)
     return (
       <span class="cts-confirm" role="group">
-        <span class="cts-confirm-ask">{props.ask ?? 'Are you sure?'}</span>
+        <span class="cts-confirm-ask">
+          {props.ask ?? 'Are you sure?'} <span class="cts-confirm-left">({left})</span>
+        </span>
         {(props.audience || props.effects?.length || props.undo) && (
           <span class="cts-confirm-more">
             {props.effects?.map((e) => (
@@ -314,9 +321,18 @@ export function StageBar({ view, send }: { view: StorytellerGameView; send: Send
               Force seats
             </ConfirmButton>
             {night && (
-              <ConfirmButton class="cts-big primary" ask="End the night now (→ day)?" audience="Everyone will see this; tonight's deaths are announced." effects={nightLeft(view)} undo="yes" onConfirm={() => send({ type: 'force_phase', to: 'day' })}>
-                End night
+              <ConfirmButton class="cts-big" ask="End the night now (→ day, skipping dawn review)?" audience="Everyone will see this; tonight's deaths are announced." effects={nightLeft(view)} undo="yes" onConfirm={() => send({ type: 'force_phase', to: 'day' })} title="Prop: skip straight to day">
+                End night now
               </ConfirmButton>
+            )}
+            {p === 'day' && view.day && (
+              <button
+                class={`cts-big ${view.day.nominationsOpen ? 'on' : ''}`}
+                onClick={() => send({ type: 'set_nominations_open', open: !view.day!.nominationsOpen })}
+                aria-pressed={view.day.nominationsOpen}
+              >
+                {view.day.nominationsOpen ? 'Close nominations' : 'Open nominations'}
+              </button>
             )}
             {p === 'day' && (
               <button class="cts-big primary" onClick={() => send({ type: 'advance_phase', to: 'bedtime' })} title="Ends the day (the player on the block is executed)">
@@ -337,6 +353,7 @@ export function StageBar({ view, send }: { view: StorytellerGameView; send: Send
                 <button class="cts-big primary" onClick={() => send({ type: 'close_vote', mode: 'tally' })} title="Lock every remaining hand and count">
                   Close vote (tally)
                 </button>
+                <ClockButton nom={voting} send={send} big />
                 <ConfirmButton class="cts-big" ask="Discard this vote?" audience={EVERYONE} undo="yes" onConfirm={() => send({ type: 'close_vote', mode: 'cancel' })}>
                   Cancel vote
                 </ConfirmButton>
@@ -370,6 +387,7 @@ export function StageBar({ view, send }: { view: StorytellerGameView; send: Send
               />{' '}
               Door tags
             </label>
+            <VoteSeconds view={view} send={send} />
           </div>
           {teleporting && <TeleportAll view={view} send={send} onDone={() => setTeleporting(false)} />}
           <div class="cts-row cts-wrap">
@@ -386,6 +404,34 @@ export function StageBar({ view, send }: { view: StorytellerGameView; send: Send
         </div>
       )}
     </section>
+  );
+}
+
+/** Pause / resume the vote clock hand (hands stay as they are). */
+function ClockButton({ nom, send, big }: { nom: NominationView; send: Send; big?: boolean }) {
+  const paused = !!nom.clockPaused;
+  return (
+    <button class={`${big ? 'cts-big ' : ''}${paused ? 'on' : ''}`} aria-pressed={paused} onClick={() => send({ type: 'vote_clock', action: paused ? 'resume' : 'pause' })}>
+      {paused ? '▶ Resume clock' : '❚❚ Pause clock'}
+    </button>
+  );
+}
+
+/** Seconds the clock hand spends on each seat (0.5–15). */
+function VoteSeconds({ view, send }: { view: StorytellerGameView; send: Send }) {
+  const cur = view.settings?.voteSeconds ?? 3;
+  const set = (v: number) => send({ type: 'set_setting', settings: { voteSeconds: Math.max(0.5, Math.min(15, Math.round(v * 2) / 2)) } });
+  return (
+    <span class="cts-setting" title="Seconds the vote clock hand spends on each seat">
+      <button class="cts-step" disabled={cur <= 0.5} onClick={() => set(cur - 0.5)} aria-label="Fewer seconds per seat">
+        −
+      </button>
+      <span class="cts-step-val">{cur}s</span>
+      <button class="cts-step" disabled={cur >= 15} onClick={() => set(cur + 0.5)} aria-label="More seconds per seat">
+        +
+      </button>
+      per seat
+    </span>
   );
 }
 
@@ -441,7 +487,7 @@ function BedtimeTimer({ view, send }: { view: StorytellerGameView; send: Send })
         <span class="cts-chip visit">escorting stragglers</span>
       ) : held || view.timerPaused ? (
         <span class="cts-chip">
-          {held ? 'held' : 'paused'}
+          {held ? 'Countdown held' : 'paused (you were away)'}
           {s !== null && ` ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`}
         </span>
       ) : (
@@ -605,6 +651,7 @@ function VoteBox({ view, send }: { view: StorytellerGameView; send: Send }) {
             <button class="primary" onClick={() => send({ type: 'close_vote', mode: 'tally' })}>
               Close vote (tally)
             </button>
+            <ClockButton nom={nom} send={send} />
             <ConfirmButton ask="Discard this vote?" audience={EVERYONE} undo="yes" onConfirm={() => send({ type: 'close_vote', mode: 'cancel' })}>
               Cancel vote
             </ConfirmButton>

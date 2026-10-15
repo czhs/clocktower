@@ -99,6 +99,8 @@
   display: flex; flex-direction: column; padding: 0; overflow: hidden;
   background: var(--panel); border-color: var(--border); box-shadow: 0 10px 40px #000a;
 }
+/* The themed .panel frame has a transparent centre: give the sheet a backing so text never sits on the map. */
+.ct-waiting.panel { background-color: var(--panel); background-clip: padding-box; }
 .ct-waiting[role='status'] { flex-direction: row; align-items: center; padding: 12px 14px; color: var(--muted); font-style: italic; }
 .ct-waiting-head { display: flex; gap: 8px; align-items: center; padding: 8px 10px 6px 6px; }
 .ct-waiting-toggle { background: none; border-color: transparent; color: var(--accent); padding: 2px 8px; font-size: 1rem; min-height: 0; }

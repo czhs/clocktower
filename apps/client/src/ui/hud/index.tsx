@@ -182,6 +182,7 @@ function PlayerHud({ view, conn }: { view: PlayerGameView; conn: RoomConnection 
         <PhaseBar view={view} />
         {view.prompts.length > 0 && <PromptCard key={view.prompts[0]!.id} prompt={view.prompts[0]!} view={view} conn={conn} />}
         {activeNom && <VotePanel key={`${activeNom.id}-${activeNom.status}-${locked}`} nom={activeNom} view={view} conn={conn} />}
+        {!activeNom && <RecentVote view={view} />}
         {!activeNom && view.day?.onTheBlock && view.phase === 'day' && (
           <div class="cth-block">
             ⚖ <b>{nameOf(view.players, view.day.onTheBlock.seat)}</b> is on the block ({view.day.onTheBlock.votes})
@@ -441,7 +442,7 @@ function VoteSummary({ nom, players, me }: { nom: NominationView; players: Publi
         <b>{nameOf(players, nom.nominatorSeat)}</b> nominated <b class="cth-nominee">{nameOf(players, nom.nomineeSeat)}</b>
       </div>
       {nom.status === 'pending' ? (
-        <div class="muted">Waiting for the Storyteller to start the vote</div>
+        <div class="muted">Vote soon: raise your hand now if you want to vote</div>
       ) : (
         <>
           <div class={`cth-tally${reached ? ' reached' : ''}`}>
@@ -464,14 +465,15 @@ function VotePanel({ nom, view, conn }: { nom: NominationView; view: PlayerGameV
   const raised = (nom.handsRaised ?? []).includes(me);
   const canVote = view.you.alive || view.you.ghostVoteAvailable;
   const isButler = view.you.role?.character === 'butler';
-  // Seats until the clock hand reaches you (clockwise by seat number), ~1.5 s per seat.
+  // Seats until the clock hand reaches you (clockwise by seat number), `stepMs` per seat.
   const order = [...view.players].map((p) => p.seat).sort((a, b) => a - b);
   const cur = nom.currentVoterSeat === null ? -1 : order.indexOf(nom.currentVoterSeat);
   const mine = order.indexOf(me);
   const away = cur >= 0 && mine >= 0 ? (mine - cur + order.length) % order.length : null;
-  // Expanded only while the vote needs you (running, your seat not locked yet); otherwise a pill.
+  const stepS = (nom.stepMs ?? 3000) / 1000;
+  // Expanded while the vote needs you (pending or running, your seat not locked yet); otherwise a pill.
   const [manual, setManual] = useState<boolean | null>(null);
-  const expanded = manual ?? (nom.status === 'voting' && !locked && canVote);
+  const expanded = manual ?? (!locked && canVote);
   if (!expanded)
     return (
       <button class="cth-vote-pill" onClick={() => setManual(true)} title="Show the vote">
@@ -489,7 +491,8 @@ function VotePanel({ nom, view, conn }: { nom: NominationView; view: PlayerGameV
       )}
       <VoteSummary nom={nom} players={view.players} me={me} />
       {nom.status === 'voting' && <VoteClock nom={nom} players={view.players} />}
-      {nom.status === 'voting' && (
+      {nom.status === 'voting' && nom.clockPaused && <span class="cth-chip">❚❚ clock paused</span>}
+      {(nom.status === 'voting' || nom.status === 'pending') && (
         <div class="cth-vote-actions">
           {locked ? (
             <span class={`cth-chip ${nom.votes[me] ? 'ok' : ''}`}>{nom.votes[me] ? '✓ Your vote counted' : 'Not counted (hand down)'}</span>
@@ -504,15 +507,43 @@ function VotePanel({ nom, view, conn }: { nom: NominationView; view: PlayerGameV
           ) : (
             <span class="muted">Your ghost vote is spent.</span>
           )}
-          {!locked && away !== null && (
-            <small class={away === 0 ? 'cth-yourturn' : 'muted'}>
-              {away === 0 ? 'Locking your vote now…' : `Clock reaches you in ~${Math.ceil(away * 1.5)}s (${away} seat${away > 1 ? 's' : ''})`}
+          {!locked && nom.status === 'pending' && canVote && <small class="muted">The clock hasn't started: you can raise your hand already.</small>}
+          {!locked && nom.status === 'voting' && away !== null && (
+            <small class={away === 0 && !nom.clockPaused ? 'cth-yourturn' : 'muted'}>
+              {nom.clockPaused
+                ? `Clock paused · ${away} seat${away === 1 ? '' : 's'} before you`
+                : away === 0
+                  ? 'Locking your vote now…'
+                  : `Clock reaches you in ~${Math.ceil(away * stepS)}s (${away} seat${away > 1 ? 's' : ''})`}
             </small>
           )}
           {!locked && raised && <small class="cth-ok">✋ Hand raised: it counts when the clock reaches you.</small>}
           {isButler && !locked && <small class="muted">Butler: only vote if your master votes.</small>}
         </div>
       )}
+    </div>
+  );
+}
+
+/** After a tally: "✓ your vote counted" stays visible for 10 s (or until the next nomination). */
+function RecentVote({ view }: { view: PlayerGameView }) {
+  const noms = view.day?.nominations ?? [];
+  const last = noms[noms.length - 1];
+  const nom = last && last.status === 'tallied' ? last : undefined;
+  const [shownFor, setShownFor] = useState<string | null>(null);
+  useEffect(() => {
+    if (!nom) return;
+    setShownFor(nom.id);
+    const t = setTimeout(() => setShownFor(null), 10000);
+    return () => clearTimeout(t);
+  }, [nom?.id]);
+  if (!nom || shownFor !== nom.id) return null;
+  const me = view.you.seat;
+  const mine = nom.votes[me];
+  return (
+    <div class="cth-vote-pill" role="status">
+      ⚖ {nameOf(view.players, nom.nomineeSeat)}: {nom.voteCount} vote{nom.voteCount === 1 ? '' : 's'} (needed {nom.threshold})
+      {mine === true ? ' · ✓ your vote counted' : mine === false ? ' · your hand was down: not counted' : ''}
     </div>
   );
 }

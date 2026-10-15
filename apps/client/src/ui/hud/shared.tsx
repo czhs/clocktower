@@ -20,6 +20,8 @@ export const PHASE_LABEL: Record<GamePhase, string> = {
 };
 
 export function phaseTitle(phase: GamePhase, day: number): string {
+  // Bedtime rung from setup (day 0) leads into the first night.
+  if (phase === 'bedtime' && day === 0) return 'Bedtime — first night';
   if (phase === 'day' || phase === 'bedtime') return `${PHASE_LABEL[phase]} ${day}`;
   return PHASE_LABEL[phase];
 }

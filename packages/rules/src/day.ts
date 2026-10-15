@@ -101,8 +101,10 @@ export function startVote(s: GameState, op: Op, nominationId: string): void {
     order: seatsClockwiseFrom(s, n.nomineeSeat),
     index: 0,
     nextAt: op.now + s.voteStepMs,
-    hands: [],
+    // Hands raised while the nomination was pending carry over (gameplay B2).
+    hands: (n.hands ?? []).filter((seat) => canVote(s, seat)),
   };
+  delete n.hands;
   log(s, op, `Vote started on nomination ${n.id}`);
 }
 
@@ -129,8 +131,15 @@ function canVote(s: GameState, seat: number): boolean {
 export function setHand(s: GameState, _op: Op, seat: number, nominationId: string, vote: boolean): void {
   const d = day(s);
   const v = d.vote;
-  if (!v || v.nominationId !== nominationId) throw new RuleError('phase', 'No vote in progress for that nomination');
   const n = findNomination(d, nominationId);
+  // (gameplay B2) Before the clock starts, hands may be raised/lowered as soon as the nomination exists.
+  if (n.status === 'pending' && (!v || v.nominationId !== nominationId)) {
+    if (vote && !canVote(s, seat)) throw new RuleError('forbidden', 'Your ghost vote is already spent');
+    n.hands = (n.hands ?? []).filter((x) => x !== seat);
+    if (vote) n.hands.push(seat);
+    return;
+  }
+  if (!v || v.nominationId !== nominationId) throw new RuleError('phase', 'No vote in progress for that nomination');
   if (seat in n.votes) throw new RuleError('forbidden', 'Your vote is already locked');
   if (vote && !canVote(s, seat)) throw new RuleError('forbidden', 'Your ghost vote is already spent');
   v.hands = v.hands.filter((x) => x !== seat);
@@ -181,7 +190,7 @@ function tally(s: GameState, op: Op, n: NominationState): void {
 export function tickVote(s: GameState, op: Op): boolean {
   const v = s.day?.vote;
   // The clock hand waits while the ST reviews a detected game end.
-  if (!v || s.phase !== 'day' || s.resultPending) return false;
+  if (!v || s.phase !== 'day' || s.resultPending || v.pausedRemainingMs != null) return false;
   const n = findNomination(s.day!, v.nominationId);
   let changed = false;
   while (s.day?.vote === v && op.now >= v.nextAt) {
@@ -195,10 +204,25 @@ export function tickVote(s: GameState, op: Op): boolean {
   return changed;
 }
 
+/** (gameplay) ST pauses / resumes the clock hand. */
+export function pauseVoteClock(s: GameState, op: Op, pause: boolean): void {
+  const v = s.day?.vote;
+  if (!v) throw new RuleError('invalid', 'No vote is running');
+  if (pause && v.pausedRemainingMs == null) {
+    v.pausedRemainingMs = Math.max(0, v.nextAt - op.now);
+    log(s, op, 'Vote clock paused');
+  } else if (!pause && v.pausedRemainingMs != null) {
+    v.nextAt = op.now + v.pausedRemainingMs;
+    v.pausedRemainingMs = null;
+    log(s, op, 'Vote clock resumed');
+  }
+}
+
 /** Lock every remaining vote immediately (ST "close vote", and tests). */
 export function finishVoteNow(s: GameState, op: Op): void {
   const v = s.day?.vote;
   if (!v) throw new RuleError('phase', 'No vote running');
+  v.pausedRemainingMs = null;
   v.nextAt = op.now;
   while (s.day?.vote === v) {
     v.nextAt = op.now;
@@ -358,6 +382,7 @@ function abortRunningVote(s: GameState): NominationState | null {
   if (!v) return null;
   const n = findNomination(d, v.nominationId);
   refundGhostVotes(s, n);
+  n.hands = [...v.hands]; // raised hands stay up for the re-run
   n.votes = {};
   n.voteCount = 0;
   n.status = 'pending';

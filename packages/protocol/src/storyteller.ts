@@ -151,8 +151,10 @@ export interface StorytellerGameView {
 export interface StSettings {
   /** Door tags: players' icons hang on the door of the building they are in (daytime only). */
   doorTags: boolean;
+  /** Seconds the vote clock hand spends on each seat. */
+  voteSeconds: number;
 }
-export const DEFAULT_ST_SETTINGS: StSettings = { doorTags: true };
+export const DEFAULT_ST_SETTINGS: StSettings = { doorTags: true, voteSeconds: 3 };
 
 const Seat = z.number().int().min(0).max(14);
 
@@ -180,7 +182,7 @@ export const InfoSpec = z.object({
 export type InfoSpecInput = z.input<typeof InfoSpec>;
 
 /** (additive, gameplay) A partial StSettings update (every key optional). */
-export const StSettingsPatch = z.object({ doorTags: z.boolean().optional() }).strict();
+export const StSettingsPatch = z.object({ doorTags: z.boolean().optional(), voteSeconds: z.number().min(0.5).max(15).optional() }).strict();
 export type StSettingsPatch = z.infer<typeof StSettingsPatch>;
 
 /** (additive, gameplay) Phases the Storyteller can force (`gather` = day + circle). */
@@ -306,6 +308,8 @@ export const StCommand = z.discriminatedUnion('type', [
   z.object({ type: z.literal('walk_to'), who: StageWho, to: StageTarget.nullable() }),
   /** Freeze / unfreeze player movement (server rejects their moves and door use). */
   z.object({ type: z.literal('freeze'), who: StageWho, frozen: z.boolean() }),
+  /** Pause / resume the vote clock hand. */
+  z.object({ type: z.literal('vote_clock'), action: z.enum(['pause', 'resume']) }),
   /** Change Storyteller settings (only the given keys); applies immediately, server-authoritative. */
   z.object({ type: z.literal('set_setting'), settings: StSettingsPatch }),
   /** Lock / force-open any door for players, or return it to the phase default. */

@@ -6,6 +6,7 @@ import { townLayout as L } from '@ct/assets';
 import {
   circleCentre,
   circleSpots,
+  DEFAULT_ST_SETTINGS,
   homeBuilding,
   CIRCLE_SEATED_PX,
   isBlockedPx,
@@ -468,9 +469,29 @@ describe('door tags (public daytime occupancy; never the Storyteller, never at n
     const { host, world } = setup(5);
     phase(host, 'day');
     world.teleportToBuilding('p0', PUB1, 'door');
-    world.applySettings({ doorTags: false });
+    world.applySettings({ ...DEFAULT_ST_SETTINGS, doorTags: false });
     expect(world.snapshotFor('p1').doorTags).toBeUndefined();
-    world.applySettings({ doorTags: true });
+    world.applySettings({ ...DEFAULT_ST_SETTINGS, doorTags: true });
     expect(world.snapshotFor('p1').doorTags).toEqual({ [PUB1]: [{ pid: 'p0', ghost: false }] });
+  });
+});
+
+describe('every move is acked or corrected (B6)', () => {
+  it('an in-flight move dropped silently after a teleport gets a late correction once the grace window ends', () => {
+    const { host, world } = setup(5);
+    phase(host, 'day');
+    const p = world.positionOf('p0')!;
+    world.teleportTo('p0', { kind: 'square' }); // the server moves p0 (sync)
+    host.clock.now += 100;
+    world.handleMove('p0', { seq: 7, x: p.x + 2, y: p.y, facing: 'right', moving: true }); // sent before the client knew
+    expect(teleports(host, 'p0').filter((t) => t.reason === 'correction')).toEqual([]); // dropped quietly...
+    for (let i = 0; i < 40; i++) {
+      host.clock.now += 50;
+      world.tick(50);
+    }
+    const c = teleports(host, 'p0').filter((t) => t.reason === 'correction');
+    expect(c).toHaveLength(1); // ...but answered once the window is over
+    expect(c[0]).toMatchObject({ seq: 7, ...world.positionOf('p0')! });
+    expect(world.snapshotFor('p0').ackSeq).toBe(7);
   });
 });

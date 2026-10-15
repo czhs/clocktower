@@ -83,6 +83,10 @@ export interface NominationView {
   threshold: number;
   /** (additive) Seats with a raised hand the clock hand has not reached yet (public, like real hands). */
   handsRaised?: number[];
+  /** (additive, gameplay) Clock-hand time per seat (ms) for this vote. */
+  stepMs?: number;
+  /** (additive, gameplay) The Storyteller paused the clock hand. */
+  clockPaused?: boolean;
 }
 
 export interface DayView {

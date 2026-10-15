@@ -15,6 +15,7 @@ import type * as Phaser from 'phaser';
 import { townLayout } from '@ct/assets';
 import { tileCenterPx, type DoorTag, type LobbyRoomView } from '@ct/protocol';
 import { createStore } from '../../net/store';
+import { UPRIGHT_Y } from '../render/projection';
 
 /** Icons per door before "+N". */
 export const MAX_ICONS = 4;
@@ -163,7 +164,14 @@ export function createDoorTags(scene: Phaser.Scene): DoorTagLayer {
           .setOrigin(0.5, 0.55)
           .setDepth(depth + 0.02),
       );
-    for (const o of board.objs) (o as unknown as Phaser.GameObjects.Components.Visible).setVisible(visible);
+    // Portraits, lettering and the wooden plaque are upright objects, not ground decals.
+    // Compensate around the doorstep so the fixed shallow camera does not squash faces.
+    for (const o of board.objs) {
+      const upright = o as unknown as Phaser.GameObjects.Components.Transform & Phaser.GameObjects.Components.Visible;
+      upright.y = door.y + (upright.y - door.y) * UPRIGHT_Y;
+      upright.scaleY *= UPRIGHT_Y;
+      upright.setVisible(visible);
+    }
     return board;
   }
 

@@ -96,6 +96,8 @@ interface Entity {
   syncedAt: number;
   /** Where the client believed it was when that sync was sent (in-flight moves continue from here). */
   preSync: { x: number; y: number; location: LocationId } | null;
+  /** Highest seq dropped silently inside the grace window: corrected later unless a newer move is accepted (B6). */
+  droppedSeq: number;
   /** Storyteller froze this player's own movement. */
   frozen: boolean;
   /** Server-driven walk in progress. */
@@ -211,7 +213,10 @@ export function createWorldModule(host: RoomHost, opts: WorldOptions = {}): Worl
   function correct(e: Entity, seq: number, why = 'invalid', at?: { x: number; y: number }) {
     // A position sync is already on its way and this move merely continues the old trajectory:
     // drop it silently (never applied). Anything else (teleport hacks, walls, other places) is answered.
-    if (at && inFlight(e, at.x, at.y)) return;
+    if (at && inFlight(e, at.x, at.y)) {
+      e.droppedSeq = Math.max(e.droppedSeq, seq);
+      return;
+    }
     host.log.debug('move corrected', { lobbyId: host.lobbyId, why });
     e.syncedAt = host.now();
     e.preSync = at ? { x: at.x, y: at.y, location: locationAt(layout, at.x, at.y) } : null;
@@ -225,7 +230,7 @@ export function createWorldModule(host: RoomHost, opts: WorldOptions = {}): Worl
     let e = entities.get(pid);
     if (!e) {
       const p = spawnPoint(pid);
-      e = { id: pid, x: p.x, y: p.y, facing: 'down', moving: false, location: locationAt(layout, p.x, p.y), lastSeq: 0, budget: 0, budgetAt: host.now(), syncedAt: -Infinity, preSync: null, frozen: false, walk: null };
+      e = { id: pid, x: p.x, y: p.y, facing: 'down', moving: false, location: locationAt(layout, p.x, p.y), lastSeq: 0, budget: 0, budgetAt: host.now(), syncedAt: -Infinity, preSync: null, droppedSeq: 0, frozen: false, walk: null };
       entities.set(pid, e);
       host.send(pid, 'world:teleport', { x: e.x, y: e.y, location: e.location, reason: 'spawn', seq: 0 });
       host.emit({ type: 'location_changed', pid, location: e.location, prev: null });
@@ -618,6 +623,7 @@ export function createWorldModule(host: RoomHost, opts: WorldOptions = {}): Worl
       e.facing = msg.facing;
       e.moving = msg.moving;
       e.lastSeq = msg.seq;
+      if (e.droppedSeq <= msg.seq) e.droppedSeq = 0;
     },
 
     handleUseDoor(pid, msg: C2SParsed<'world:useDoor'>) {
@@ -706,6 +712,19 @@ export function createWorldModule(host: RoomHost, opts: WorldOptions = {}): Worl
       // Player movement is event-driven; only server-driven walks advance here.
       const dt = Math.min(0.25, Math.max(0, dtMs) / 1000);
       if (escort && phase === 'bedtime') escortStragglers();
+      // B6: every move is eventually either applied (acked) or corrected. Moves dropped silently
+      // inside a sync grace window get one late correction once the window is over, unless a newer
+      // move was accepted meanwhile (then the client is consistent again).
+      const nowMs = host.now();
+      for (const e of entities.values())
+        if (e.droppedSeq > e.lastSeq && nowMs - e.syncedAt >= SYNC_GRACE_MS) {
+          const seq = e.droppedSeq;
+          e.droppedSeq = 0;
+          e.lastSeq = seq;
+          e.syncedAt = nowMs;
+          e.preSync = null;
+          host.send(e.id, 'world:teleport', { x: e.x, y: e.y, location: e.location, reason: 'correction', seq });
+        } else if (e.droppedSeq && e.droppedSeq <= e.lastSeq) e.droppedSeq = 0;
       for (const e of entities.values()) if (e.walk) stepWalk(e, dt);
       // Presence changes refresh the Storyteller's stage view.
       if (seatOverride.size) {

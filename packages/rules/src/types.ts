@@ -101,6 +101,8 @@ export interface NominationState {
   voteCount: number;
   /** ceil(alive/2) when the vote was tallied (to recompute the block after a struck vote). */
   minVotes?: number;
+  /** (gameplay) Hands raised before the clock starts (players may vote as soon as the nomination exists). */
+  hands?: number[];
 }
 
 export interface VoteState {
@@ -110,6 +112,8 @@ export interface VoteState {
   index: number;
   nextAt: number;
   hands: number[];
+  /** (gameplay) ST paused the clock hand: ms that were left until the next seat locks. */
+  pausedRemainingMs?: number | null;
 }
 
 export interface DayState {

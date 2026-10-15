@@ -233,3 +233,6 @@
 .cts button.cts-now-btn.slim, .cts-slim button.cts-now-btn { font-size: 12.5px; padding: 3px 10px; min-height: 26px; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cts-slim button.danger { border-color: #c0413b99; color: #f0b3a8; }
 .cts-setting { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; cursor: pointer; }
+.cts-confirm-left { color: var(--muted); font-family: var(--mono); font-size: 11px; }
+.cts button.cts-step { padding: 0 7px; min-width: 22px; font-family: var(--mono); }
+.cts-step-val { font-family: var(--mono); min-width: 30px; text-align: center; color: var(--text); }

@@ -237,7 +237,7 @@ export function circleSpots(layout: TownLayout, seats: readonly number[]): Circl
   sorted.forEach((seat, i) => {
     // Open north arc leaves the tower and Storyteller behind the gathering. Vote order
     // still runs clockwise, but nobody is placed behind the landmark.
-    const th = Math.PI / 3 + (4 * Math.PI / 3 * i) / Math.max(1, n - 1);
+    const th = Math.PI / 4 + (3 * Math.PI / 2 * i) / Math.max(1, n - 1);
     const ix = Math.round(c.x + Math.sin(th) * rx);
     const iy = Math.round(c.y - Math.cos(th) * ry);
     let best = { x: ix, y: iy };

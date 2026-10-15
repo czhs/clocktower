@@ -72,7 +72,8 @@ export function VoicePanel({ conn }: { conn: RoomConnection; account: AccountVie
   const lobby = useStore(conn.lobbyView);
   const game = useStore(conn.gameView);
   const night = game?.phase === 'first_night' || game?.phase === 'night' || game?.phase === 'dawn';
-  const [open, setOpen] = useState(true);
+  // Collapsed by default on narrow / touch screens so the panel never covers vote cards or the endgame.
+  const [open, setOpen] = useState(() => !compactScreen());
   const [debug, setDebug] = useState(false);
   const [binding, setBinding] = useState(false);
   const [announcing, setAnnouncing] = useState(false);
@@ -110,6 +111,11 @@ export function VoicePanel({ conn }: { conn: RoomConnection; account: AccountVie
     if (!isStoryteller) setAnnouncing(false);
   }, [isStoryteller]);
 
+  // Voice not configured on this server: just a tiny "Voice off" pill unless opened on purpose.
+  useEffect(() => {
+    if (s.availability === 'not_configured') setOpen(false);
+  }, [s.availability]);
+
   const z = zoneLabel(s, night);
   const unavailable = s.availability === 'not_configured' || s.availability === 'quota_exhausted' || s.availability === 'provider_error';
   const announceHeard = s.participants.some((p) => p.announce && p.speaking);
@@ -139,8 +145,14 @@ export function VoicePanel({ conn }: { conn: RoomConnection; account: AccountVie
       <div class="ctv ctv-collapsed">
         {notice}
         {privateLine && <div class="ctv-private ctv-private-small">🕯 {privateLine}</div>}
-        <button class="ctv-pill" onClick={() => setOpen(true)} title={heard || 'Open voice panel'}>
-          <span class={`ctv-dot ctv-dot-${linkDot(s)}`} /> Voice
+        <button class="ctv-pill" onClick={() => setOpen(true)} title={s.availability === 'not_configured' ? 'Voice is not set up on this server; text chat works.' : heard || 'Open voice panel'}>
+          {s.availability === 'not_configured' ? (
+            '🔇 Voice off'
+          ) : (
+            <>
+              <span class={`ctv-dot ctv-dot-${linkDot(s)}`} /> Voice
+            </>
+          )}
           {s.enabled && (
             <span class={`ctv-mic ctv-mic-${badge.cls}`}>
               <MicIcon off={badge.off} /> {badge.text}
@@ -326,4 +338,13 @@ function VoiceDebug({ client, names }: { client: VoiceClient; names: Map<string,
       ))}
     </div>
   );
+}
+
+/** Narrow (≤ 720 px) or touch-first screens start with the voice panel collapsed. */
+function compactScreen(): boolean {
+  try {
+    return window.matchMedia('(max-width: 720px), (pointer: coarse)').matches;
+  } catch {
+    return false;
+  }
 }

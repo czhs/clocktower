@@ -268,7 +268,7 @@ describe('gameplay playtest: walking home, the nomination circle, the vote clock
     await cmd(g, { type: 'freeze', who: 'all', frozen: false }, (v) => !v.stage?.players.some((x) => x.frozen));
 
     // ---- door tags setting (generic ST settings)
-    expect(g.stView().settings).toEqual({ doorTags: true });
+    expect(g.stView().settings).toMatchObject({ doorTags: true });
     await cmd(g, { type: 'set_setting', settings: { doorTags: false } }, (v) => v.settings?.doorTags === false);
     await sleep(300);
     for (const p of g.players) await waitFor(() => snap(p) && snap(p)!.doorTags === undefined, 3000, 'tags off');

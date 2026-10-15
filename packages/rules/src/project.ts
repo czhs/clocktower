@@ -48,7 +48,15 @@ function nominationView(s: GameState, n: NominationState): NominationView {
     voteCount: n.voteCount,
     threshold: n.status === 'pending' && s.day ? Math.max(minVotes(s), s.day.highWater + 1) : n.threshold,
   };
-  if (v) view.handsRaised = [...v.hands].sort((a, b) => a - b);
+  if (v) {
+    view.handsRaised = [...v.hands].sort((a, b) => a - b);
+    view.stepMs = s.voteStepMs;
+    if (v.pausedRemainingMs != null) view.clockPaused = true;
+  } else if (n.status === 'pending') {
+    // Hands may go up as soon as the nomination exists (public, like real hands).
+    view.handsRaised = [...(n.hands ?? [])].sort((a, b) => a - b);
+    view.stepMs = s.voteStepMs;
+  }
   return view;
 }
 

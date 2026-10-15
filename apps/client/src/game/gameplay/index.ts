@@ -42,6 +42,7 @@ import {
   type WorldSnapshot,
 } from '@ct/protocol';
 import { remoteEntities } from '../../net/localPlayer';
+import { reducedMotion } from '../fx/motion';
 import type { RoomConnection } from '../../net/room';
 import { createDoorTags, doorTagsStore, publishDoorTags } from './doorTags';
 import { SelfDriver } from './drive';
@@ -75,6 +76,8 @@ export interface GameplayLayer {
   wantsLocalInput(): boolean;
   /** Storyteller door override for a building (from snapshot.doors): true locked, false forced open, null = phase default. */
   doorOverride(buildingId: string): boolean | null;
+  /** Bumps whenever the door overrides change (TownScene refreshes its door prompt on change). */
+  doorOverrideVersion(): number;
   destroy(): void;
 }
 
@@ -107,6 +110,8 @@ export function createGameplayLayer(scene: Phaser.Scene, ctx: GameplayCtx): Game
   const { conn } = ctx;
   const driver = new SelfDriver();
   let doors: Record<string, boolean> = {};
+  let doorsKey = '';
+  let doorsVersion = 0;
   const offs: (() => void)[] = [];
 
   offs.push(
@@ -114,6 +119,11 @@ export function createGameplayLayer(scene: Phaser.Scene, ctx: GameplayCtx): Game
       driver.onSnapshot(s, ctx.myPid());
       // The snapshot carries the full override set; absent = no overrides.
       doors = s.doors ?? {};
+      const k = JSON.stringify(doors);
+      if (k !== doorsKey) {
+        doorsKey = k;
+        doorsVersion++;
+      }
       publishDoorTags(s.doorTags, conn.lobbyView.get());
     }),
   );
@@ -146,7 +156,9 @@ export function createGameplayLayer(scene: Phaser.Scene, ctx: GameplayCtx): Game
     if (!pick || !ctx.amStoryteller() || p.button !== 0) return;
     holdPointer = true;
     stagePick.set(null);
-    pick.onPick(r(p.worldX), r(p.worldY));
+    // Resolve through the world camera explicitly: the overlay camera also receives input.
+    const world = scene.cameras.main.getWorldPoint(p.x, p.y);
+    pick.onPick(r(world.x), r(world.y));
   };
   const onPointerUp = () => (holdPointer = false);
   scene.input.on('pointerdown', onPointerDown);
@@ -267,7 +279,8 @@ export function createGameplayLayer(scene: Phaser.Scene, ctx: GameplayCtx): Game
   let clockLen = 0;
 
   const update = (dt: number) => {
-    const t = performance.now() / 1000;
+    // Keep directions and vote state readable without pulsing/bobbing for reduced motion.
+    const t = reducedMotion() ? 0 : performance.now() / 1000;
     const view = conn.gameView.get();
     const me = ctx.me();
     const myPid = ctx.myPid();
@@ -450,6 +463,9 @@ export function createGameplayLayer(scene: Phaser.Scene, ctx: GameplayCtx): Game
     },
     wantsLocalInput() {
       return !driver.isActive() && !isPicking() && !holdPointer;
+    },
+    doorOverrideVersion() {
+      return doorsVersion;
     },
     doorOverride(buildingId) {
       const v = doors[buildingId];

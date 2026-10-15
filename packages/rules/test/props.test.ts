@@ -232,3 +232,40 @@ describe('gather and undo', () => {
     expect(stErr(s, { type: 'gather', on: true })).toMatch(/gather/);
   });
 });
+
+describe('vote clock (B2): early hands, per-seat time setting, pause', () => {
+  it('hands go up as soon as the nomination exists; the clock locks them as it passes', () => {
+    const s = toDay();
+    st(s, { type: 'set_nominations_open', open: true });
+    act(s, 2, { type: 'nominate', nomineeSeat: 3 });
+    const id = s.day!.nominations[0]!.id;
+    act(s, 4, { type: 'vote', nominationId: id, vote: true }); // seat 4 is the FIRST voter after the nominee
+    act(s, 5, { type: 'vote', nominationId: id, vote: true });
+    act(s, 5, { type: 'vote', nominationId: id, vote: false }); // and can lower it again
+    expect(projectForPlayer(s, 0).day!.nominations[0]!.handsRaised).toEqual([4]);
+    st(s, { type: 'start_vote', nominationId: id });
+    const step = projectForPlayer(s, 0).day!.nominations[0]!.stepMs!;
+    expect(step).toBe(3000); // default 3 s per seat
+    tick(s, clock.now + step); // the hand reaches seat 4 first
+    expect(s.day!.nominations[0]!.votes[4]).toBe(true);
+  });
+
+  it('voteSeconds is a Storyteller setting; pause holds the hand, resume continues', () => {
+    const s = toDay();
+    st(s, { type: 'set_setting', settings: { voteSeconds: 5 } });
+    expect(projectForStoryteller(s).settings).toMatchObject({ voteSeconds: 5 });
+    st(s, { type: 'set_nominations_open', open: true });
+    act(s, 2, { type: 'nominate', nomineeSeat: 3 });
+    const id = s.day!.nominations[0]!.id;
+    st(s, { type: 'start_vote', nominationId: id });
+    st(s, { type: 'vote_clock', action: 'pause' });
+    expect(projectForPlayer(s, 0).day!.nominations[0]!.clockPaused).toBe(true);
+    tick(s, clock.now + 60_000);
+    expect(Object.keys(s.day!.nominations[0]!.votes)).toEqual([]);
+    st(s, { type: 'vote_clock', action: 'resume' });
+    tick(s, clock.now + 4800); // 4.9 s were left when paused
+    expect(Object.keys(s.day!.nominations[0]!.votes)).toEqual([]);
+    tick(s, clock.now + 4900);
+    expect(Object.keys(s.day!.nominations[0]!.votes)).toEqual(['4']);
+  });
+});

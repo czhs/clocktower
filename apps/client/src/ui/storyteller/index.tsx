@@ -101,6 +101,7 @@ function StPanel({ view, conn }: { view: StorytellerGameView; conn: RoomConnecti
     if (view.phase === 'setup') setTab('setup');
     else if (view.phase === 'first_night' || view.phase === 'night') setTab('night');
     else if (view.phase === 'day') setTab('day');
+    else if (view.phase === 'bedtime') setTab('stage'); // who is home yet (incl. the first bedtime)
   }, [view.phase]);
   // Gathering the circle: the stage diagram is the useful view.
   useEffect(() => {
@@ -189,14 +190,14 @@ function StPanel({ view, conn }: { view: StorytellerGameView; conn: RoomConnecti
         {(['setup', 'stage', 'grimoire', 'night', 'day', 'tools', 'log'] as Tab[])
           .filter((t) => t !== 'setup' || view.phase === 'setup')
           .map((t) => (
-            <button key={t} class={tab === t ? 'on' : ''} onClick={() => setTab(t)}>
+            <button key={t} class={tab === t || (t === 'stage' && tab === 'setup' && view.phase !== 'setup') ? 'on' : ''} onClick={() => setTab(t)}>
               {t === 'night' ? 'Night order' : t[0]!.toUpperCase() + t.slice(1)}
             </button>
           ))}
       </nav>
       <div class="cts-body">
-        {tab === 'setup' && <SetupTab view={view} send={send} />}
-        {tab === 'stage' && <StageTab view={view} send={send} openComposer={openComposer} />}
+        {tab === 'setup' && view.phase === 'setup' && <SetupTab view={view} send={send} />}
+        {(tab === 'stage' || (tab === 'setup' && view.phase !== 'setup')) && <StageTab view={view} send={send} openComposer={openComposer} />}
         {tab === 'grimoire' && <GrimoireTab view={view} send={send} openComposer={openComposer} />}
         {tab === 'night' && <NightTab view={view} send={send} openComposer={openComposer} />}
         {tab === 'day' && <DayTab view={view} send={send} />}
@@ -248,7 +249,7 @@ function nextAction(view: StorytellerGameView, send: Send, goTab: (t: Tab) => vo
   }
   if (p === 'first_night' || p === 'night') {
     const step = view.nightQueue.find((x) => UNFINISHED.includes(x.status));
-    if (!step) return { label: 'End night → Dawn', run: () => send({ type: 'advance_phase', to: 'dawn' }), hint: 'review before deaths are announced' };
+    if (!step) return { label: 'Dawn: review deaths', run: () => send({ type: 'advance_phase', to: 'dawn' }), hint: 'nothing is announced until you start the day' };
     const title = stepTitle(step);
     if (step.seat === null) return { label: `Resolve ${title}`, run: () => send({ type: 'resolve_step', stepId: step.id }) };
     const seat = step.seat;
@@ -276,7 +277,7 @@ function nextAction(view: StorytellerGameView, send: Send, goTab: (t: Tab) => vo
   if (p === 'dawn') {
     const n = view.pendingDeaths?.length ?? 0;
     return {
-      label: n ? `Start day (${n} death${n > 1 ? 's' : ''} announced)` : 'Start day (nobody died)',
+      label: n ? `Start the day (${n} death${n > 1 ? 's' : ''} announced)` : 'Start the day (nobody died)',
       run: () => send({ type: 'advance_phase', to: 'day' }),
       confirm: n ? { ask: 'Announce the night and start the day?', audience: EVERYONE, effects: view.pendingDeaths!.map((s) => `${name(s)} dies.`), undo: 'yes' } : undefined,
     };
@@ -288,8 +289,10 @@ function nextAction(view: StorytellerGameView, send: Send, goTab: (t: Tab) => vo
     const pending = d?.nominations.filter((n) => n.status === 'pending') ?? [];
     const nom = pending[pending.length - 1];
     if (nom) return { label: `Start vote on ${name(nom.nomineeSeat)}`, run: () => send({ type: 'force_vote', nominationId: nom.id }), hint: `nominated by ${name(nom.nominatorSeat)}` };
-    if (!view.gathering && !d?.nominations.length && d?.executedSeat === null)
+    if (!view.gathering && !d?.nominations.length && !d?.nominationsOpen && d?.executedSeat === null)
       return { label: 'Gather the circle', run: () => send({ type: 'gather', on: true }), hint: 'when discussion winds down; players walk to their seats' };
+    if (d && !d.nominationsOpen && d.executedSeat === null && !d.nominations.length)
+      return { label: 'Open nominations', run: () => send({ type: 'set_nominations_open', open: true }), hint: view.gathering ? 'the circle is gathered' : 'or gather the circle first (Stage)' };
     const block = d && d.executedSeat === null ? d.onTheBlock : null;
     return {
       label: 'Ring bedtime bell',
@@ -352,7 +355,11 @@ function NowStrip({ view, send, goTab }: { view: StorytellerGameView; send: Send
       <div class="cts-now-top">
         <span class="cts-now-phase">{phaseTitle(p, view.dayNumber)}</span>
         {view.phaseEndsAt !== null && <Countdown endsAt={view.phaseEndsAt} />}
-        {view.timerPaused && <span class="cts-chip">timer paused (you were away)</span>}
+        {view.timerHeld ? (
+          <span class="cts-chip">Countdown held</span>
+        ) : (
+          view.timerPaused && <span class="cts-chip">paused (you were away)</span>
+        )}
       </div>
       {items.length > 0 && (
         <div class="cts-now-items">
@@ -455,11 +462,13 @@ function PhaseControls({ view, send }: { view: StorytellerGameView; send: Send }
         </ConfirmButton>
       )}
       {(p === 'first_night' || p === 'night') && (
-        <button onClick={() => send({ type: 'advance_phase', to: 'dawn' })}>Dawn (review)</button>
+        <button class="primary" onClick={() => send({ type: 'advance_phase', to: 'dawn' })} title="Review the night; nothing is announced yet">
+          Dawn: review deaths
+        </button>
       )}
-      {(p === 'first_night' || p === 'night' || p === 'dawn') && (
+      {p === 'dawn' && (
         <button class="primary" onClick={() => send({ type: 'advance_phase', to: 'day' })}>
-          Day{pending.length ? ` (${pending.length} death${pending.length > 1 ? 's' : ''} announced)` : ''}
+          Start the day{pending.length ? ` (${pending.length} death${pending.length > 1 ? 's' : ''} announced)` : ''}
         </button>
       )}
       {p === 'day' && (
