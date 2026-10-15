@@ -14,6 +14,7 @@ import { StorytellerPanel } from './ui/storyteller';
 import { VoicePanel } from './ui/voice';
 import { ChatPanel } from './ui/chat';
 import './ui/common/theme.css';
+import { installUiSounds } from './game/audio';
 
 // LEAD-OWNED shell: session bootstrap + tiny path router.
 //   /               account home + lobby finder (or auth when signed out)
@@ -121,4 +122,5 @@ function App() {
   );
 }
 
+installUiSounds();
 render(<App />, document.getElementById('app')!);

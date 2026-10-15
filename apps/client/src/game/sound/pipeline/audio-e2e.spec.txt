@@ -1,0 +1,62 @@
+// Proposed tests/e2e/audio.spec.ts (qa-deploy owns tests/**). Ran from a remote-only copy; see docs/audio.md.
+// Audio check (audio teammate): the town loads its sounds from our own origin with zero CSP
+// violations, one-shots preload after the first gesture, and loops load lazily by area/phase.
+import { expect, test } from '@playwright/test';
+import { createAccount } from './helpers';
+
+test('audio: same-origin, no CSP violations, lazy loops', async ({ browser }) => {
+  const st = await createAccount(browser, `Audio ${Math.random().toString(36).slice(2, 6)}`);
+  const page = st.page;
+  const csp: string[] = [];
+  const audio: { url: string; status: number; type: string; size: number }[] = [];
+  page.on('console', (m) => {
+    if (/Content Security Policy|Refused to/i.test(m.text())) csp.push(m.text());
+  });
+  page.on('response', async (r) => {
+    if (r.url().includes('/audio/')) audio.push({ url: new URL(r.url()).pathname, status: r.status(), type: r.headers()['content-type'] ?? '', size: Number(r.headers()['content-length'] ?? 0) });
+  });
+  await page.addInitScript(() => {
+    (window as unknown as { __csp: string[] }).__csp = [];
+    document.addEventListener('securitypolicyviolation', (e) => (window as unknown as { __csp: string[] }).__csp.push(`${e.violatedDirective} ${e.blockedURI} ${e.sourceFile}:${e.lineNumber}:${e.columnNumber} ${e.sample}`));
+  });
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Lobby finder' })).toBeVisible();
+  const head = await page.request.get('/');
+  expect(head.headers()['content-security-policy']).toContain("connect-src 'self'");
+
+  await page.getByRole('button', { name: /create lobby/i }).first().click();
+  const dialog = page.getByRole('dialog', { name: 'Create lobby' });
+  await dialog.getByLabel('Lobby name').fill('Audio check');
+  await dialog.getByLabel(/storyteller seat/i).check();
+  await dialog.getByRole('button', { name: 'Create', exact: true }).click();
+  await page.waitForURL(/\/lobby\/[A-Za-z0-9_-]{4,32}$/);
+  await page.locator('.ct-game-canvas canvas').first().waitFor({ timeout: 30_000 });
+  await page.waitForTimeout(1500);
+  // A gesture in the town unlocks audio (GameScreen listens for pointerdown/keydown).
+  await page.keyboard.press('Shift');
+  await page.mouse.click(640, 400);
+  await page.waitForTimeout(4000);
+
+  const paths = audio.map((a) => a.url);
+  console.log('AUDIO', JSON.stringify(audio));
+  expect(audio.length).toBeGreaterThan(10);
+  expect(audio.every((a) => a.status === 200 || a.status === 304)).toBe(true);
+  expect(audio.every((a) => /^audio\/(ogg|mp4)/.test(a.type))).toBe(true);
+  expect(paths.every((p) => p.endsWith('.ogg'))).toBe(true); // Chromium picks Opus
+  expect(paths).toContain('/audio/step/cobble-1.ogg');
+  expect(paths).toContain('/audio/cue/bell.ogg');
+  expect(paths).toContain('/audio/amb/wind.ogg'); // outdoors: the wind bed
+  // lazy: no night creatures before night, no far-away areas
+  for (const p of ['crickets', 'fountain', 'owl-1', 'owl-2', 'owl-3']) expect(paths).not.toContain(`/audio/amb/${p}.ogg`);
+  const total = audio.reduce((s, a) => s + a.size, 0);
+  console.log('AUDIO_BYTES', total, 'FILES', audio.length);
+  const cspEvents = await page.evaluate(() => (window as unknown as { __csp: string[] }).__csp);
+  console.log('CSP', JSON.stringify(cspEvents), JSON.stringify(csp));
+  // Audio-related directives (media/connect/default) and anything blocked from /audio/: none allowed.
+  const audioViolations = cspEvents.filter((v) => /^(media-src|connect-src|default-src)/.test(v) || v.includes('/audio/'));
+  expect(audioViolations).toEqual([]);
+  expect(csp.filter((m) => /audio|media|connect/i.test(m))).toEqual([]);
+  // Report (do not fail on) unrelated pre-existing violations, e.g. a library probing eval.
+  if (cspEvents.length) console.log('UNRELATED_CSP', JSON.stringify(cspEvents));
+  await st.ctx.close();
+});
