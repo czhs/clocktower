@@ -14,3 +14,5 @@ playwright-report/
 packages/assets/ai/staging/
 packages/assets/eggs/staging/
 **/staging/
+apps/client/landing-staging/
+**/_staging/

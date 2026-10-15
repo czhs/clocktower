@@ -1,19 +1,5 @@
-/* lobby-auth: auth screen + shared form primitives (ct-field / ct-row / ct-error / ct-check). */
-.screen.center.ct-auth {
-  /* Tall forms (villager picker) must scroll on phones: centre with auto margins, not flex alignment
-     (selector outranks theme.css .screen/.center, which load later). */
-  overflow-y: auto; align-items: flex-start; justify-content: flex-start;
-  background:
-    radial-gradient(ellipse at 50% 20%, #2b2140 0%, transparent 60%),
-    radial-gradient(ellipse at 50% 120%, #3a1d1d 0%, transparent 55%),
-    var(--bg);
-  padding: 16px;
-}
-.ct-auth-panel { margin: auto; width: min(460px, 100%); padding: 28px; box-shadow: 0 10px 40px #0008; }
-.ct-auth-title { margin: 0; font-size: 2.4rem; letter-spacing: 0.02em; color: var(--accent); text-align: center; }
-.ct-auth-sub { text-align: center; margin: 6px 0 22px !important; }
-.ct-auth-choose { display: flex; flex-direction: column; gap: 10px; }
-.ct-auth-choose > button { padding: 10px 14px; min-height: 44px; font-size: 1.0625rem; }
+/* Auth forms + shared form primitives (ct-field / ct-row / ct-error / ct-check; also used by lobby/admin).
+   The landing layout, hero and card art live in landing.css. */
 .ct-auth-form { display: flex; flex-direction: column; gap: 16px; }
 .ct-auth-form .ct-row > button { min-height: 40px; padding: 8px 16px; }
 .ct-auth-form p { margin: 0; line-height: 1.45; }
@@ -32,7 +18,4 @@
 .ct-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
 .ct-error { color: var(--danger); margin: 0; }
 .ct-ok { color: var(--ok); }
-.ct-auth-invite { margin: -8px 0 16px; padding: 8px 12px; border-radius: 4px; border: 1px solid #7a6324; background: #2d2410; color: #f1e2b8; text-align: center; font-size: 0.92rem; }
-.ct-auth-note { text-align: center; margin: 4px 0 0; line-height: 1.5; }
-.ct-auth-note .ct-link { font-size: inherit; padding: 0; white-space: nowrap; }
-@media (max-width: 480px) { .ct-auth-panel { padding: 20px 16px; } .ct-auth-title { font-size: 1.7rem; } .ct-passphrase { font-size: 1.05rem; } }
+@media (max-width: 480px) { .ct-passphrase { font-size: 1.05rem; } }

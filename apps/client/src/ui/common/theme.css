@@ -107,8 +107,6 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offs
   text-align: center; box-shadow: 0 10px 40px #0008;
 }
 .screen.center > .panel p { line-height: 1.45; margin: 0 0 16px; }
-.screen.center > .panel.ct-auth-panel { text-align: left; width: min(500px, 100%); padding: 28px; }
-.screen.center > .panel.ct-auth-panel p { margin: 0; }
 .screen.center > .panel button { padding: 8px 16px; }
 .panel { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
 .muted { color: var(--muted); }

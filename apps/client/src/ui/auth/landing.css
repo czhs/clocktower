@@ -1,0 +1,348 @@
+/* Landing (signed-out first screen): hero town scene + framed sign-in card.
+   Art: apps/client/public/landing/* (gpt-6-sol via Codex, see docs/landing-prompts.md). Everything is self-hosted
+   (CSP: img 'self' data:), no inline <style>; runtime motion only via CSSOM transforms. */
+
+.ct-landing {
+  --ld-ink: #0e0b18;
+  --ld-gold: #e9cf8a;
+  --ld-gold-deep: #c9a45a;
+  --ld-cream: #f3e6c4;
+  --ld-mist: #c9c0dc;
+  /* Art geometry: the cover box keeps the scene's aspect so overlays line up in % of the art. */
+  --art-w: 1672;
+  --art-h: 941;
+  position: relative; width: 100%; height: 100%; overflow: hidden;
+  background: #171332; color: var(--ld-cream);
+  isolation: isolate;
+}
+@media (max-aspect-ratio: 4/5) {
+  .ct-landing { --art-w: 941; --art-h: 1671; }
+}
+
+/* ---------- hero ---------- */
+.ct-hero { position: absolute; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; background: #1b1638; }
+.ct-hero-placeholder {
+  position: absolute; inset: -48px;
+  background: #1b1638 center / cover no-repeat url('data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAoHBwgHBgoICAgLCgoLDhgQDg0NDh0VFhEYIx8lJCIfIiEmKzcvJik0KSEiMEExNDk7Pj4+JS5ESUM8SDc9Pjv/2wBDAQoLCw4NDhwQEBw7KCIoOzs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozv/wAARCAASACADASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwDz+zjtfJZ2LRycBl28HnrVqK0jYIQokLqW27iCOvt7dqoJeQtIJZvnK/NjH32zk59Ov6VaNz5xDiBzGq/K4PRe/wBetbQqyhZPY15YyJTpU2MhDUT2DoMtxUyXWC8LNImz7wU/d9M9qrEzNKEhVWZgTuZzjgZPJNdirRtzN6GUqavZIzYv+PZj33dfwpgmlEHliRwmT8oY4/KiiuCfQ0gODFXLKSGBBBHXpQ0sj2/zOzYOOTntRRVz2/ruQtj/2Q==');
+  filter: blur(14px) saturate(1.1);
+}
+@media (max-aspect-ratio: 4/5) {
+  .ct-hero-placeholder {
+    background-image: url('data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAoHBwgHBgoICAgLCgoLDhgQDg0NDh0VFhEYIx8lJCIfIiEmKzcvJik0KSEiMEExNDk7Pj4+JS5ESUM8SDc9Pjv/2wBDAQoLCw4NDhwQEBw7KCIoOzs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozv/wAARCAAZAA4DASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwDh2igK4kDDnA4+apDaW7BTHEOBg5PU56/linWrxXK4YYx1DDg8dRRPJbWuNxZgemB0r0E/tdBeRUtJLe6bCAQSEg9wCO+PTtTLi8dpS4hjZBwA4ziq9v8A8e0P+/J/JaY33f8AgRrjbUY26Gurdz//2Q==');
+  }
+}
+/* The cover box: the art's aspect ratio, covering the viewport with 8% spare for parallax. */
+.ct-hero-box {
+  position: absolute; left: 50%; top: 50%;
+  width: max(108vw, calc(108vh * var(--art-w) / var(--art-h)));
+  aspect-ratio: var(--art-w) / var(--art-h);
+  translate: -50% -50%;
+  animation: ct-hero-drift 48s ease-in-out infinite alternate;
+}
+@keyframes ct-hero-drift {
+  from { translate: -50% -50%; scale: 1; }
+  to { translate: calc(-50% - 1.2vw) calc(-50% + 0.6vh); scale: 1.025; }
+}
+.ct-hero-group { position: absolute; inset: 0; will-change: transform; }
+.ct-hero-group picture, .ct-hero-group img { display: block; width: 100%; height: 100%; }
+.ct-hero-group img { object-fit: cover; user-select: none; }
+.ct-hero-base { opacity: 0; transition: opacity 900ms ease-out; }
+.ct-hero.base-ready .ct-hero-base { opacity: 1; }
+.ct-hero-plane { opacity: 0; transition: opacity 700ms ease-out; }
+.ct-hero.planes-ready .ct-hero-plane { opacity: 1; }
+.ct-hero.planes-ready .ct-hero-base { opacity: 0; transition-delay: 700ms; }
+/* Near plane sits above fog/flies (DOM order puts it before them, so lift it). */
+.ct-plane-near { z-index: 3; }
+.ct-hero-life { z-index: 1; }
+.ct-hero-fog { z-index: 2; }
+.ct-hero-flies { z-index: 4; }
+
+/* Light life: soft glows at fixed lamp/window/clock positions of the art (in % of the art). */
+.ct-glow, .ct-clockglow {
+  position: absolute; left: var(--x); top: var(--y); width: var(--s, 7%); aspect-ratio: 1; translate: -50% -50%;
+  border-radius: 50%; mix-blend-mode: screen; opacity: 0.55;
+  background: radial-gradient(circle, #ffc46b99 0%, #ff9e4033 35%, transparent 68%);
+  animation: ct-flicker var(--t, 3.1s) ease-in-out infinite alternate;
+}
+.ct-glow-1 { --x: 15%; --y: 22%; --s: 9%; --t: 2.3s; }
+.ct-glow-2 { --x: 43.3%; --y: 82.7%; --s: 6%; --t: 3.7s; }
+.ct-glow-3 { --x: 95.8%; --y: 81%; --s: 7%; --t: 2.9s; }
+.ct-glow-4 { --x: 1.5%; --y: 47%; --s: 6%; --t: 4.3s; }
+.ct-clockglow { --x: 32.3%; --y: 29.9%; --s: 8%; background: radial-gradient(circle, #fff1c455 0%, #ffd27a22 40%, transparent 70%); animation-duration: 6s; }
+@media (max-aspect-ratio: 4/5) {
+  .ct-glow-1 { --x: 31%; --y: 73.3%; --s: 13%; }
+  .ct-glow-2 { --x: 7%; --y: 71%; --s: 13%; }
+  .ct-glow-3 { --x: 95.6%; --y: 71%; --s: 12%; }
+  .ct-glow-4 { --x: 84.4%; --y: 89.8%; --s: 12%; }
+  .ct-clockglow { --x: 57.2%; --y: 16.7%; --s: 16%; }
+}
+@keyframes ct-flicker {
+  0% { opacity: 0.42; } 40% { opacity: 0.62; } 55% { opacity: 0.5; } 100% { opacity: 0.7; }
+}
+
+/* Fog banks drifting slowly across the lower town. */
+.ct-fog {
+  position: absolute; left: -20%; width: 90%; aspect-ratio: 1200 / 219;
+  background: url('/landing/fog.png') center / 100% 100% no-repeat; opacity: 0.38;
+  animation: ct-fog 70s linear infinite alternate;
+}
+.ct-fog-1 { top: 56%; }
+.ct-fog-2 { top: 70%; left: 30%; width: 80%; opacity: 0.3; animation-duration: 95s; animation-direction: alternate-reverse; }
+@media (max-aspect-ratio: 4/5) {
+  .ct-fog { width: 190%; left: -60%; }
+  .ct-fog-1 { top: 36%; }
+  .ct-fog-2 { top: 52%; left: -20%; }
+}
+@keyframes ct-fog { from { transform: translateX(0); } to { transform: translateX(18%); } }
+
+/* Fireflies: tiny warm pixels that wander and blink. */
+.ct-fly {
+  position: absolute; width: 3px; height: 3px; background: #fff0a8;
+  box-shadow: 0 0 4px 2px #ffd36a99, 0 0 10px 4px #ffb84c33;
+  left: var(--x); top: var(--y); opacity: 0;
+  animation: ct-fly-move var(--d, 14s) ease-in-out infinite alternate, ct-fly-blink var(--b, 3.4s) ease-in-out infinite;
+  animation-delay: var(--dl, 0s);
+}
+.ct-fly-1 { --x: 12%; --y: 62%; --d: 13s; --b: 3.1s; }
+.ct-fly-2 { --x: 22%; --y: 74%; --d: 17s; --b: 4.2s; --dl: -3s; }
+.ct-fly-3 { --x: 31%; --y: 58%; --d: 15s; --b: 2.7s; --dl: -6s; }
+.ct-fly-4 { --x: 40%; --y: 69%; --d: 19s; --b: 3.8s; --dl: -1s; }
+.ct-fly-5 { --x: 49%; --y: 77%; --d: 12s; --b: 2.9s; --dl: -8s; }
+.ct-fly-6 { --x: 57%; --y: 63%; --d: 16s; --b: 4.6s; --dl: -4s; }
+.ct-fly-7 { --x: 64%; --y: 82%; --d: 14s; --b: 3.3s; --dl: -9s; }
+.ct-fly-8 { --x: 72%; --y: 66%; --d: 18s; --b: 2.6s; --dl: -2s; }
+.ct-fly-9 { --x: 80%; --y: 76%; --d: 13s; --b: 3.9s; --dl: -7s; }
+.ct-fly-10 { --x: 88%; --y: 60%; --d: 20s; --b: 4.4s; --dl: -5s; }
+.ct-fly-11 { --x: 6%; --y: 84%; --d: 15s; --b: 3.6s; --dl: -10s; }
+.ct-fly-12 { --x: 93%; --y: 88%; --d: 17s; --b: 2.8s; --dl: -3.5s; }
+.ct-fly-13 { --x: 27%; --y: 90%; --d: 12s; --b: 4.1s; --dl: -6.5s; }
+.ct-fly-14 { --x: 68%; --y: 92%; --d: 16s; --b: 3.2s; --dl: -1.5s; }
+@keyframes ct-fly-move {
+  0% { transform: translate(0, 0); }
+  33% { transform: translate(14px, -18px); }
+  66% { transform: translate(-10px, -30px); }
+  100% { transform: translate(8px, -44px); }
+}
+@keyframes ct-fly-blink { 0%, 100% { opacity: 0; } 30%, 60% { opacity: 0.95; } }
+
+/* Readability: deepen the edges and the side of the screen the card sits on. */
+.ct-hero-vignette {
+  position: absolute; inset: 0;
+  background:
+    radial-gradient(ellipse 120% 90% at 40% 45%, transparent 55%, #07050ccc 100%),
+    linear-gradient(90deg, transparent 42%, #0d0a1a55 62%, #0d0a1a99 100%);
+}
+@media (max-aspect-ratio: 4/5), (max-width: 979px) {
+  .ct-hero-vignette {
+    background:
+      radial-gradient(ellipse 130% 90% at 50% 30%, transparent 50%, #07050cbb 100%),
+      linear-gradient(180deg, transparent 22%, #0d0a1a66 48%, #0d0a1acc 100%);
+  }
+}
+
+/* ---------- foreground: logo, card, links ---------- */
+.ct-landing-scroll {
+  position: absolute; inset: 0; z-index: 1; overflow-y: auto; overflow-x: hidden;
+  overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+}
+.ct-landing-main {
+  min-height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 14px;
+  padding: calc(20px + var(--safe-top)) calc(16px + var(--safe-right)) calc(24px + var(--safe-bottom)) calc(16px + var(--safe-left));
+}
+/* Wide screens: the town (and its tower) on the left, the card column on the right. */
+@media (min-width: 980px) and (min-aspect-ratio: 4/5) {
+  .ct-landing-main { padding-left: 48vw; padding-right: 5vw; }
+}
+/* Phones: let the clock tower show at the top, then the logo and card. */
+@media (max-aspect-ratio: 4/5) {
+  .ct-landing-main { justify-content: flex-start; padding-top: calc(max(16px, 19vh) + var(--safe-top)); padding-bottom: calc(48px + var(--safe-bottom)); }
+  .ct-card .ct-field small, .ct-card-note { font-size: 0.95rem; line-height: 1.5; }
+  .ct-landing-head { position: relative; }
+  .ct-landing-head::before {
+    content: ''; position: absolute; z-index: -1; left: 50%; top: 50%; width: 130%; height: 140%; translate: -50% -50%;
+    background: radial-gradient(ellipse at center, #0b0816b3 0%, #0b081666 45%, transparent 72%); pointer-events: none;
+  }
+}
+
+.ct-landing-head { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px; }
+.ct-logo { margin: 0; line-height: 0; }
+.ct-logo img {
+  display: block; height: clamp(120px, 24vh, 214px); width: auto; max-width: min(92vw, 380px); object-fit: contain;
+  filter: drop-shadow(0 6px 18px #000c) drop-shadow(0 0 22px #ffcf7a22);
+}
+.ct-landing:not(.ct-landing-choose) .ct-logo img { height: clamp(72px, 12vh, 120px); }
+/* Invited visitors get the short path: no tagline, straight to "Join the game". */
+.ct-landing.is-invited .ct-tagline { display: none; }
+.ct-tagline {
+  margin: 0; max-width: 32ch; font-family: var(--font-display); font-style: italic; font-size: 1.22rem; line-height: 1.35;
+  color: var(--ld-cream); text-shadow: 0 1px 0 #000, 0 2px 6px #000, 0 0 18px #000c;
+}
+
+/* The framed card: carved stone with iron corner brackets (9-slice). */
+.ct-card-wrap { position: relative; width: min(440px, 100%); margin-top: 40px; }
+.ct-card {
+  position: relative; z-index: 1;
+  border: 46px solid transparent;
+  border-image: url('/landing/frame-px.png') 100 fill / 72px / 0 round;
+  margin: 0;
+  /* The frame's own field is dark; padding is inside the border-image area. */
+  padding: 8px 6px 4px;
+  filter: drop-shadow(0 18px 30px #000b);
+  text-align: center;
+}
+.ct-card-body { display: flex; flex-direction: column; gap: 14px; }
+.ct-card-title {
+  margin: 4px 0 0; font-family: var(--font-display); font-weight: normal; font-size: 1.6rem; line-height: 1.15;
+  color: var(--ld-gold); text-shadow: 0 2px 0 #0008;
+}
+.ct-card-title::after {
+  content: ''; display: block; height: 22px; margin: 6px auto 0; width: min(260px, 90%);
+  background: url('/landing/divider.png') center / contain no-repeat;
+}
+.ct-card-lede { margin: 0; color: var(--ld-cream); line-height: 1.45; }
+.ct-card-note { margin: 2px 0 0; font-size: 0.92rem; line-height: 1.45; color: #e8ded0; }
+.ct-actions { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.ct-actions > button { width: 100%; }
+.ct-card .ct-actions > button.ct-btn-secondary { width: 84%; min-height: 44px; font-size: 1.02rem; filter: brightness(0.86) saturate(0.85); }
+.ct-card .ct-actions > button.ct-btn-secondary:hover:not(:disabled) { filter: brightness(1.08); }
+
+/* Clock medallion on the card's top edge: shows the real time, the minute hand ticks. */
+.ct-card-clock { position: absolute; z-index: 2; left: 50%; top: -84px; width: 68px; height: 68px; translate: -50% 0; filter: drop-shadow(0 3px 6px #000c); }
+.ct-card-clock img { position: absolute; display: block; user-select: none; }
+.ct-card-clock .ct-clock-face { inset: 0; width: 100%; height: 100%; }
+.ct-card-clock .ct-clock-hour { left: calc(50% - 3.5px); bottom: calc(50% - 3px); width: 7px; height: 25px; transform-origin: 50% calc(100% - 3px); }
+.ct-card-clock .ct-clock-min { left: calc(50% - 2.25px); bottom: calc(50% - 2.25px); width: 4.5px; height: 35px; transform-origin: 50% calc(100% - 2.25px); }
+
+/* Villagers peeking over the card (behind it in stacking order). */
+.ct-peek { position: absolute; z-index: 0; top: -46px; height: 84px; width: auto; animation: ct-peek 7s ease-in-out infinite; }
+.ct-peek-a { left: 13%; }
+.ct-peek-b { right: 13%; animation-delay: -3.5s; }
+@keyframes ct-peek { 0%, 70%, 100% { translate: 0 0; } 80% { translate: 0 -5px; } 90% { translate: 0 1px; } }
+
+/* A lantern hanging off the card's right edge (6-frame flicker strip, 64x128 per frame). */
+.ct-card-lantern {
+  position: absolute; z-index: 2; right: -50px; top: 34px; width: 48px; height: 96px;
+  background: url('/landing/lantern-flicker.png') 0 0 / 288px 96px no-repeat;
+  animation: ct-lantern 0.9s steps(6) infinite;
+  filter: drop-shadow(0 6px 8px #000a);
+}
+.ct-card-lantern::after {
+  content: ''; position: absolute; left: 12px; top: 34px; width: 70px; height: 70px; translate: -25% -10%;
+  border-radius: 50%; background: radial-gradient(circle, #ffc46b55, transparent 65%); mix-blend-mode: screen;
+  animation: ct-flicker 1.7s ease-in-out infinite alternate;
+}
+@keyframes ct-lantern { to { background-position: -288px 0; } }
+@media (max-width: 560px) { .ct-card-lantern { display: none; } }
+
+/* Buttons: brass (primary) and iron (secondary) plates, 9-sliced. */
+.ct-card button:not(.ct-preset, .ct-link, [role='radio'], [role='tab']) {
+  min-height: 48px; padding: 0 6px; color: var(--ld-cream); background: transparent;
+  border: 14px solid transparent; border-width: 14px 29px; border-radius: 0;
+  border-image: url('/landing/btn-iron.png') 20 42 fill / 14px 29px / 0 stretch;
+  font-family: var(--font-display); font-size: 1.12rem; letter-spacing: 0.01em; line-height: 1.1;
+  text-shadow: 0 1px 0 #000, 0 0 8px #0008;
+  transition: filter 120ms, transform 60ms;
+}
+.ct-card button.primary, .ct-card button.ct-btn-primary {
+  border-image-source: url('/landing/btn-gold.png'); color: #fff4d6;
+}
+.ct-card button:not(.ct-preset, .ct-link, [role='radio'], [role='tab']):hover:not(:disabled) { filter: brightness(1.18); }
+.ct-card button.primary:hover:not(:disabled), .ct-card button.ct-btn-primary:hover:not(:disabled) {
+  filter: none; border-image-source: url('/landing/btn-gold-hover.png');
+}
+.ct-card button:not(.ct-preset, .ct-link, [role='radio'], [role='tab']):active:not(:disabled) { transform: translateY(1px); filter: brightness(0.92); }
+.ct-card button:not(.ct-preset, .ct-link, [role='radio'], [role='tab']):disabled { filter: grayscale(0.7) brightness(0.65); cursor: not-allowed; }
+/* theme.css hover/active/primary fills would show through the plate's transparent corners. */
+.ct-card button:not(.ct-preset, .ct-link, [role='radio'], [role='tab']),
+.ct-card button:not(.ct-preset, .ct-link, [role='radio'], [role='tab']):is(:hover, :active, :disabled) { background-color: transparent !important; }
+.ct-card button.ct-btn-big { min-height: 56px; font-size: 1.3rem; }
+.ct-card button:focus-visible { outline: 2px solid var(--ld-gold); outline-offset: 2px; }
+
+/* Forms inside the card. */
+.ct-card .ct-auth-form { text-align: left; gap: 14px; }
+.ct-card .ct-field > span { color: var(--ld-mist); }
+.ct-card input:not([type='checkbox']) { background: #0f0c19e6; border-color: #5b4d70; color: var(--ld-cream); min-height: 42px; }
+.ct-card input:not([type='checkbox']):focus-visible { border-color: var(--ld-gold); }
+.ct-card .ct-row { gap: 8px; }
+.ct-card .ct-row > button { flex: 1 1 auto; }
+.ct-card .ct-passphrase { background: #0f0c19; border-color: var(--ld-gold-deep); }
+.ct-card small.muted, .ct-card .muted { color: #ddd3c4; }
+.ct-card .ct-field small { font-size: 0.9rem; }
+
+.ct-card .ct-check { min-height: 44px; gap: 10px; }
+.ct-card .ct-check input { width: 20px; height: 20px; flex: none; }
+.ct-card button.primary:disabled { filter: grayscale(0.55) brightness(0.8); color: #f3e6c4; }
+
+/* Create step: a shorter villager stage so the submit button stays near the fold. */
+.ct-card .ct-cosmetic-stage { padding: 6px 0 2px; gap: 12px; }
+.ct-card .ct-cosmetic-stage canvas:first-child { height: 112px !important; width: auto !important; }
+.ct-card .ct-cosmetic-stage canvas + canvas { height: 72px !important; width: auto !important; }
+.ct-card .ct-cosmetics { margin-bottom: 0; }
+.ct-card .ct-auth-form { gap: 12px; }
+
+/* Create step: the Back / Create account row stays in view while the villager grid scrolls. */
+.ct-landing-create .ct-card .ct-auth-form > .ct-row {
+  position: sticky; bottom: 10px; z-index: 3; margin: 0 -12px; padding: 10px 12px;
+  background: linear-gradient(#1b1429f0, #140f20f8); border: 1px solid #c9a45a66; box-shadow: 0 -10px 22px #000a;
+}
+.ct-card .ct-passphrase { line-height: 1.85; padding: 14px 16px; }
+.ct-reveal-lede { font-size: 0.97rem; }
+
+/* Invited: a lit window with a friend waiting. */
+.ct-invite .ct-card-title { margin-top: -2px; }
+.ct-invite { gap: 12px; }
+.ct-invite-art { display: block; margin: -6px auto -6px; width: 54px; height: auto; filter: drop-shadow(0 4px 10px #000a) drop-shadow(0 0 16px #ffb44c33); }
+
+/* Under the card: tour + how to play. */
+.ct-landing-links { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; justify-content: center; margin-top: 2px; }
+.ct-landing-links button { font: inherit; min-height: 40px; }
+.ct-tour-link {
+  display: inline-flex; align-items: center; gap: 10px; padding: 6px 16px 6px 8px;
+  color: var(--ld-cream); background: #120e20cc; border: 1px solid #c9a45a99; border-radius: 999px;
+  box-shadow: 0 4px 16px #0009; backdrop-filter: blur(3px);
+  font-family: var(--font-display); font-size: 1.06rem;
+}
+.ct-tour-link:hover:not(:disabled) { background: #1e1832e6; border-color: var(--ld-gold); }
+.ct-tour-play {
+  display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, #f6dc95, #b8893f); color: #2a1c0c; font-size: 0.72rem; padding-left: 2px;
+  box-shadow: 0 0 12px #ffc46b66;
+}
+.ct-landing-link {
+  background: none; border: none; padding: 6px 4px; color: var(--ld-gold); text-decoration: underline; text-underline-offset: 3px;
+  text-shadow: 0 1px 4px #000; font-size: 1rem;
+}
+.ct-landing-link:hover:not(:disabled) { background: none; color: #fbe4a8; }
+
+/* Narrow phones: slimmer frame + tighter type. */
+@media (max-width: 480px) {
+  .ct-card { border-width: 34px; border-image-width: 54px; padding: 6px 2px 2px; }
+  .ct-card-title { font-size: 1.4rem; }
+  .ct-tagline { font-size: 1.08rem; }
+  .ct-card-clock { width: 56px; height: 56px; top: -64px; }
+  .ct-card-clock .ct-clock-hour { height: 20px; }
+  .ct-card-clock .ct-clock-min { height: 28px; }
+  .ct-peek { height: 64px; top: -34px; }
+  .ct-card-wrap { margin-top: 18px; }
+}
+@media (max-height: 760px) and (min-aspect-ratio: 4/5) {
+  .ct-landing-main { gap: 8px; }
+  .ct-tagline { font-size: 1.1rem; }
+}
+
+/* Phones: one stable logo size/position across every step. */
+@media (max-aspect-ratio: 4/5) {
+  .ct-logo img, .ct-landing:not(.ct-landing-choose) .ct-logo img { height: clamp(100px, 17vh, 150px); }
+}
+
+/* Reduced motion (OS or the ct.reducedMotion pref -> .is-still): steady light, nothing drifts. */
+.ct-landing.is-still .ct-hero-box, .ct-landing.is-still .ct-glow, .ct-landing.is-still .ct-clockglow, .ct-landing.is-still .ct-fog,
+.ct-landing.is-still .ct-fly, .ct-landing.is-still .ct-peek, .ct-landing.is-still .ct-card-lantern, .ct-landing.is-still .ct-card-lantern::after {
+  animation: none;
+}
+.ct-landing.is-still .ct-fly { opacity: 0.7; }
+@media (prefers-reduced-motion: reduce) {
+  .ct-hero-box, .ct-glow, .ct-clockglow, .ct-fog, .ct-fly, .ct-peek, .ct-card-lantern, .ct-card-lantern::after { animation: none !important; }
+  .ct-fly { opacity: 0.7; }
+}
