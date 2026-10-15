@@ -144,3 +144,17 @@ Everything below ran on hshi-u1 (test instances on 3350-3399 unless stated other
 ## 2026-10-15 — voice2 live LiveKit results (SIMULATED microphones; summary by lead)
 
 All against a private test server (prefix `voicetest`), never dev/prod. Fake mic = speech-like WAV (Chromium) / built-in tone (Firefox). ✅ square, street falloff, square-boundary hysteresis (0 switches parked/jittering), building isolation, adjacent houses at night, ST visit privacy (third player never sees ST), 0 ms residual audio on room exit, revoked-token replay swept, cross-lobby token 401, quota counter, 10 simultaneous talkers (LiveKit "excellent"), device switch/refresh/permission-denied/no-mic recovery, Firefox. ❌/not run: WebKit (missing system libs), 15 talkers (budget), real network drop (Playwright offline only cuts signalling), any REAL microphone. Quota: 328 participant-minutes used (budget was 250).
+
+## 2026-10-15 — core gameplay finalized (lead)
+
+Commit **16042fe** (prod + dev). Verified on hshi-u1 against that exact commit (clean `git archive` tree):
+
+| Check | Result |
+|---|---|
+| `pnpm -r run typecheck`, `pnpm -r --if-present run build` | ✅ |
+| `pnpm vitest run` (all suites) | ✅ 533 passed, 4 skipped (art-dependent ambient/egg tests skip until the art overhaul lands) |
+| e2e `game-full.spec.ts` (1 ST + 5 players, real UI: join → setup → walk home → night visits → walk out → gather/circle → early hands + vote clock → execution → ghost vote → overrides → pending result → Confirm → reveal → Play again) | ✅ all 30 steps, runs g2 + g3 (g1 failed on the test's keyboard walker; fixed) |
+| e2e `game-chaos.spec.ts` (Ready mashing, duplicate tab, refreshes at bedtime/mid-prompt/mid-vote, tab closed during escort, ST refresh mid-visit, simultaneous nominations, out-of-order ST, wrong house, walking out at night) | ✅ all cases, runs h1 + h2 (h3: one test timeout on a CPU-starved page; check aligned to 60 s) |
+| Night secrecy in decoded frames (no ST entity / visit cue / visiting flag for unvisited players) | ✅ |
+| B1 (refresh mid-vote) | Root cause on this host: a CPU-starved software-rendered page stops reading its socket ~45 s; server watchdog never fired (0 warns/errors in all logs); client watchdog recovers. Single-browser: no freeze. |
+| prod deploy 16042fe (active-game guard), public `/healthz`, SPA, `/internal/active-games` 404 via tunnel, `smoke-test.sh` public | ✅ |

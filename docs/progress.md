@@ -61,3 +61,11 @@ browsers and the public endpoint, distinguishing simulated voice (fake devices) 
 | qa-deploy | 6-browser M3 round, load, soak/leaks, crash/restart, network adversity, adversarial WS, finder accuracy, logs, isolation, public endpoint | tests/**, scripts/**, deploy/** (not tunnel/set-livekit), docs/deployment.md, docs/test-results.md |
 
 Public ingress is the Cloudflare Tunnel (https://clocktower.chrisshi.com), not Funnel.
+
+## 2026-10-15 — core gameplay finalized (commit 16042fe, live on prod)
+
+Complete games run end to end through the real browser UI (1 ST + 5 players, twice) and survive the
+chaos suite. Art/town overhaul is proceeding in a separate session (see docs/art-integration-notes.md
+for the hooks it must carry over). Open (low): slow first load / no loading indicator on weak
+machines; rematch waiting room list below the fold at 720×450; dead-Imp HUD chip noise in reveal;
+real-microphone, real-Safari/iOS and 10–15-person tests need humans.
