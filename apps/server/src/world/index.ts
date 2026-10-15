@@ -11,6 +11,11 @@
 //   waiting / setup / day / bedtime / finished -> may enter and exit any building
 //   night / first_night / dawn                 -> locked inside their own home (cannot exit);
 //                                                 if somehow outdoors, may only enter their own home
+//
+// Storyteller placement around the night (night-visit secrecy, docs/world-audit.md):
+//   night starts  -> an ST standing inside a cottage is moved to its doorstep (outdoors, unseen)
+//   dawn / day    -> the ST is returned to the storyteller spawn, so nobody can infer the last visit
+//                    from where the ST stands when the doors unlock
 import { townLayout } from '@ct/assets';
 import {
   isBlockedPx,
@@ -177,10 +182,37 @@ export function createWorldModule(host: RoomHost, opts: WorldOptions = {}): Worl
     return true;
   }
 
+  function storyteller(): Entity | undefined {
+    const st = host.storytellerPid();
+    return st ? entities.get(st) : undefined;
+  }
+
   function onPhase(next: GamePhase) {
+    const prev = phase;
     phase = next;
     if (NIGHT_PHASES.has(next)) {
       for (const m of host.members()) if (m.role === 'player' && seatOf(m.pid) !== null) api.sendHome(m.pid, 'night');
+      // world-audit: the night starts with the Storyteller OUTSIDE every home. Otherwise an ST who
+      // lingered in a cottage at bedtime is physically "in" that home (visible to / audible by its
+      // occupant) without the rules engine registering a visit.
+      const st = storyteller();
+      if (st && !(prev && NIGHT_PHASES.has(prev)) && st.location !== 'outdoors' && buildingById.get(st.location.slice(4))?.kind === 'house') {
+        api.exitBuilding(st.id, 'storyteller');
+      }
+    }
+    // world-audit (night-visit secrecy): when the night ends the Storyteller is returned to their
+    // spawn in the square. Left where they were, players walking out at daybreak would find the ST
+    // inside, or standing at the door of, the LAST home visited (exitBuilding / leave_home puts the
+    // ST on that home's doorstep) — revealing whom the ST saw last.
+    if ((next === 'dawn' || next === 'day') && prev && LOCKED_PHASES.has(prev)) {
+      const st = storyteller();
+      if (st) {
+        const p = spawnPoint(st.id);
+        if (st.location !== 'outdoors' || Math.hypot(st.x - p.x, st.y - p.y) >= 1 || st.facing !== 'down') {
+          st.facing = 'down'; // also forget the night's last heading
+          teleport(st, p.x, p.y, 'dawn');
+        }
+      }
     }
   }
 
@@ -198,7 +230,12 @@ export function createWorldModule(host: RoomHost, opts: WorldOptions = {}): Worl
           seatOverride.delete(e.pid);
           break;
         case 'member_connection': {
-          // Reconnect: tell the client where it is (restores the right house mid-night).
+          // Reconnect: tell the client where it is (restores the right house mid-night). A seated
+          // player who is somehow not in their own home during a locked phase is put to bed first.
+          if (e.connected && phase && LOCKED_PHASES.has(phase) && !isST(e.pid)) {
+            const home = homeOf(e.pid);
+            if (home && entities.get(e.pid)?.location !== `bld:${home.id}`) api.sendHome(e.pid, 'night');
+          }
           const ent = e.connected ? (entities.get(e.pid) ?? ensureEntity(e.pid)) : undefined;
           if (ent) host.send(e.pid, 'world:teleport', { x: ent.x, y: ent.y, location: ent.location, reason: 'spawn', seq: ent.lastSeq });
           break;

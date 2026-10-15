@@ -373,3 +373,140 @@ describe('WorldModule visibility', () => {
     expect(world.snapshotFor('p1').ackSeq).toBe(0);
   });
 });
+
+// ------------------------------------------------------------------------------------------
+// world-audit: night edge cases + Storyteller placement around the night (docs/world-audit.md)
+describe('WorldModule night edge cases (world-audit)', () => {
+  const b = (id: string) => townLayout.buildings.find((x) => x.id === id)!;
+  // the ST's spawn spot (storytellerSpawn, spread on a ring by member order) = where it joined
+  let stHome = { x: 0, y: 0 };
+  const stSpawnPx = () => stHome;
+
+  it('a player inside SOMEONE ELSE\'s cottage at nightfall is put to bed in their own', () => {
+    const { host, world, pids } = setup();
+    start(host, pids);
+    phase(host, 'day');
+    world.teleportToBuilding('p0', 'house-2', 'door');
+    phase(host, 'bedtime');
+    expect(world.locationOf('p0')).toBe('bld:house-2'); // bedtime itself does not move anyone
+    phase(host, 'night');
+    expect(world.locationOf('p0')).toBe('bld:house-0');
+    expect(world.positionOf('p0')).toEqual(tileCenterPx(townLayout, b('house-0').bed!));
+    expect(teleports(host, 'p0').at(-1)!.reason).toBe('night');
+  });
+
+  it('night: moves that leave the cottage (or teleport-hack outdoors) are rejected with a correction', () => {
+    const { host, world, pids } = setup();
+    start(host, pids);
+    phase(host, 'night');
+    const bed = world.positionOf('p1')!;
+    const out = tileCenterPx(townLayout, b('house-1').door);
+    host.clock.now += 5000;
+    world.handleMove('p1', { seq: 1, x: out.x, y: out.y, facing: 'down', moving: true });
+    expect(world.locationOf('p1')).toBe('bld:house-1');
+    expect(world.positionOf('p1')).toEqual(bed);
+    expect(last<WorldTeleport>(host, 'p1', 'world:teleport')).toMatchObject({ reason: 'correction', seq: 1 });
+    // walking onto the barred doorway tile itself (blocked) is rejected too
+    const door = tileCenterPx(townLayout, b('house-1').interiorDoor);
+    host.clock.now += 5000;
+    world.handleMove('p1', { seq: 2, x: door.x, y: door.y + 16, facing: 'down', moving: true });
+    expect(world.positionOf('p1')).toEqual(bed);
+    // useDoor on someone else's cottage from inside your own: too far / wrong building
+    world.handleUseDoor('p1', { buildingId: 'house-2' });
+    expect(world.locationOf('p1')).toBe('bld:house-1');
+  });
+
+  it('a player who disconnected outdoors and reconnects at night appears in their own home', () => {
+    const { host, world, pids } = setup();
+    start(host, pids);
+    phase(host, 'day');
+    host.member('p2')!.connected = false;
+    host.emit({ type: 'member_connection', pid: 'p2', connected: false });
+    phase(host, 'night'); // sendHome runs for disconnected players too (no message reaches them)
+    expect(world.locationOf('p2')).toBe('bld:house-2');
+    host.member('p2')!.connected = true;
+    host.emit({ type: 'member_connection', pid: 'p2', connected: true });
+    const tp = last<WorldTeleport>(host, 'p2', 'world:teleport')!;
+    expect(tp).toMatchObject({ reason: 'spawn', location: 'bld:house-2' });
+    expect(ids(world.snapshotFor('p2'))).toEqual(['p2']);
+  });
+
+  it('the storyteller visits several homes in sequence; each visit is seen only in that home', () => {
+    const { host, world, pids } = setup({ players: 4 });
+    start(host, pids);
+    phase(host, 'night');
+    for (const seat of [2, 0, 3, 1]) {
+      world.teleportToBuilding('st', `house-${seat}`, 'storyteller');
+      for (const [i, pid] of pids.entries()) expect(ids(world.snapshotFor(pid))).toEqual(i === seat ? [pid, 'st'].sort() : [pid]);
+    }
+    const locs = host.events.filter((e) => e.type === 'location_changed' && e.pid === 'st').map((e) => (e as { location: string }).location);
+    expect(locs.slice(-4)).toEqual(['bld:house-2', 'bld:house-0', 'bld:house-3', 'bld:house-1']);
+  });
+
+  it('night start moves a storyteller who lingered in a cottage to its doorstep (no unregistered visit)', () => {
+    const { host, world, pids } = setup();
+    start(host, pids);
+    phase(host, 'day');
+    world.teleportToBuilding('st', 'house-1', 'door');
+    phase(host, 'bedtime');
+    expect(world.locationOf('st')).toBe('bld:house-1');
+    phase(host, 'night');
+    expect(world.locationOf('st')).toBe('outdoors');
+    expect(ids(world.snapshotFor('p1'))).toEqual(['p1']);
+    // a storyteller in the tavern is left alone (nobody else can be there at night)
+    phase(host, 'day');
+    world.teleportToBuilding('st', 'tavern', 'door');
+    phase(host, 'night');
+    expect(world.locationOf('st')).toBe('bld:tavern');
+  });
+
+  it('dawn returns the storyteller to the square: the last visited home is not revealed at daybreak', () => {
+    for (const how of ['inside', 'doorstep', 'leave_home_then_dawn_walk'] as const) {
+      const { host, world, pids } = setup();
+      stHome = world.positionOf('st')!;
+      start(host, pids);
+      phase(host, 'night');
+      world.teleportToBuilding('st', 'house-2', 'storyteller');
+      if (how === 'doorstep') world.exitBuilding('st', 'storyteller'); // ST 'leave_home' fast travel
+      phase(host, 'dawn');
+      expect(world.locationOf('st')).toBe('outdoors');
+      expect(world.positionOf('st')).toEqual(stSpawnPx());
+      expect(teleports(host, 'st').at(-1)!.reason).toBe('dawn');
+      if (how === 'leave_home_then_dawn_walk') world.teleportToBuilding('st', 'house-1', 'storyteller'); // dawn wander
+      phase(host, 'day');
+      expect(world.positionOf('st')).toEqual(stSpawnPx());
+      // every player walking out sees the ST at the same neutral spot whatever the night was
+      world.handleUseDoor('p0', { buildingId: 'house-0' });
+      world.teleportToBuilding('p0', 'house-0', 'door');
+      world.handleUseDoor('p0', { buildingId: 'house-0' });
+      expect(world.locationOf('p0')).toBe('outdoors');
+      expect(world.snapshotFor('p0').entities.find((e) => e.id === 'st')).toMatchObject({ x: stSpawnPx().x, y: stSpawnPx().y, location: 'outdoors' });
+    }
+  });
+
+  it('night -> day directly (no dawn) also resets the storyteller; day -> bedtime does not', () => {
+    const { host, world, pids } = setup();
+    stHome = world.positionOf('st')!;
+    start(host, pids);
+    phase(host, 'night');
+    world.teleportToBuilding('st', 'house-1', 'storyteller');
+    phase(host, 'day');
+    expect(world.positionOf('st')).toEqual(stSpawnPx());
+    world.teleportToBuilding('st', 'tavern', 'door');
+    phase(host, 'bedtime');
+    expect(world.locationOf('st')).toBe('bld:tavern');
+  });
+
+  it('players never collide with each other (two players may share a doorstep)', () => {
+    const { host, world } = setup();
+    world.teleportToBuilding('p0', 'house-0', 'door');
+    world.exitBuilding('p0', 'door');
+    world.teleportToBuilding('p1', 'house-0', 'door');
+    world.exitBuilding('p1', 'door');
+    expect(world.positionOf('p0')).toEqual(world.positionOf('p1'));
+    host.clock.now += 200;
+    const p = world.positionOf('p0')!;
+    world.handleMove('p0', { seq: 1, x: p.x, y: p.y + 4, facing: 'down', moving: true });
+    expect(world.positionOf('p0')).toEqual({ x: p.x, y: p.y + 4 });
+  });
+});
