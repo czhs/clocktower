@@ -31,3 +31,15 @@ export const BulkDeleteBody = z
   .object({ ids: z.array(AccountId).min(1).max(200), confirm: z.literal('delete') })
   .strict();
 export const EmptyBody = z.object({}).strict();
+
+// (records) saved games
+/** Match ids are `m_` + randomId(16); accept a little slack, never wildcards. */
+export const MatchId = z.string().regex(/^[A-Za-z0-9_-]{4,80}$/, 'invalid match id');
+export const GamesQuery = z.object({
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+  /** Paging: games that ended strictly before this epoch-ms. */
+  before: z.coerce.number().int().min(1).optional(),
+  /** Only games this account played in or told. */
+  accountId: AccountId.optional(),
+});
+export const GameQuery = z.object({ download: z.enum(['0', '1']).optional() });

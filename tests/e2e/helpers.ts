@@ -267,7 +267,8 @@ export async function signUp(
   const ctx = await browser.newContext({
     viewport: opts.viewport ?? { width: 1280, height: 800 },
     extraHTTPHeaders: { 'X-Forwarded-For': fakeIp() },
-    ...(opts.phone ? { isMobile: true, hasTouch: true, deviceScaleFactor: 2 } : {}),
+    // (DPR 1: the shared host renders every canvas in software; CSS layout is the same as on a DPR-3 phone)
+    ...(opts.phone ? { isMobile: true, hasTouch: true, deviceScaleFactor: 1 } : {}),
   });
   await installSocketTap(ctx);
   const page = await ctx.newPage();
@@ -532,10 +533,34 @@ export async function walkToTile(p: Player, pid: string, to: { x: number; y: num
       const side = keys[0]!.includes('Left') || keys[0]!.includes('Right') ? (still % 2 ? 'ArrowUp' : 'ArrowDown') : still % 2 ? 'ArrowLeft' : 'ArrowRight';
       keys.push(side);
     }
+    if (d <= 48) {
+      // Fine positioning (v2: 150 px/s): a Playwright key press on a CPU-starved page lasts several
+      // rendered frames (75 px swings were measured), so near the target hold for an exact number of
+      // the page's own frames instead (window key events — the same input path the on-screen
+      // joystick uses). One frame moves at most PLAYER_SPEED x 0.1 s = 15 px.
+      await holdFrames(p.page, keys, d < 16 ? 1 : Math.min(3, Math.floor(d / 15)));
+      await p.page.waitForTimeout(250);
+      continue;
+    }
     for (const k of keys) await p.page.keyboard.down(k);
     if (d > 24 && gain > 0.1) await p.page.waitForTimeout(Math.min(3000, (d / g.speed) * 1000 * gain));
     for (const k of keys) await p.page.keyboard.up(k);
   }
+}
+
+/**
+ * Hold `codes` (KeyboardEvent.code) for exactly `frames` game steps of this page: keydown on window,
+ * wait frames+1 animation frames (so Phaser's step runs at least `frames` times while held), keyup.
+ */
+export async function holdFrames(page: Page, codes: string[], frames: number): Promise<void> {
+  await page.evaluate(
+    async ({ codes: cs, frames: n }) => {
+      for (const c of cs) window.dispatchEvent(new KeyboardEvent('keydown', { code: c, key: c, bubbles: true }));
+      for (let i = 0; i <= n; i++) await new Promise((r) => requestAnimationFrame(() => r(null)));
+      for (const c of cs) window.dispatchEvent(new KeyboardEvent('keyup', { code: c, key: c, bubbles: true }));
+    },
+    { codes, frames },
+  );
 }
 
 

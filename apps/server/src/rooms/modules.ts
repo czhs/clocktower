@@ -14,6 +14,7 @@ import type {
   GamePhase,
   LocationId,
   MemberRole,
+  PinView,
   PlayerGameView,
   S2CMessages,
   S2CType,
@@ -175,6 +176,22 @@ export interface VoiceModule {
   audienceOf(pid: string): string[];
   tick(now: number): void;
   dispose(): Promise<void>;
+}
+
+/**
+ * (v2, social-server) Emotes + pins (apps/server/src/social). Server-authoritative, per lobby, in
+ * memory. Visibility mirrors WorldModule.snapshotFor (see the header of social/index.ts).
+ * Not exposed on RoomHost: only the GameRoom talks to it (message dispatch, events, snapshot pins).
+ */
+export interface SocialModule {
+  onEvent(e: RoomEvent): void;
+  handle(
+    pid: string,
+    type: 'social:emote' | 'social:pin' | 'social:unpin' | 'social:clearPins',
+    msg: C2SParsed<'social:emote'> | C2SParsed<'social:pin'> | C2SParsed<'social:unpin'> | C2SParsed<'social:clearPins'>,
+  ): void;
+  /** Pins this viewer may see right now (WorldSnapshot.pins). */
+  pinsFor(pid: string): PinView[];
 }
 
 export type ModuleFactory<M> = (host: RoomHost) => M;

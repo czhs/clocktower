@@ -145,6 +145,20 @@ write('characters.json', JSON.stringify(charManifest, null, 0));
   if (review) writeFileSync(join(REVIEW, 'cast-x4.png'), cast.review.toPNG());
 }
 
+// --- social (social-art agent) ---
+// Pins, character head icons and the POINT emote (scripts/social/), built from the cast just written.
+{
+  const { buildSocial } = await import('./social/index.js');
+  const { readFileSync } = await import('node:fs');
+  const castImg = Img.fromPNG(readFileSync(join(OUT, 'cast.png')));
+  const castManifest: unknown = JSON.parse(readFileSync(join(OUT, 'cast.json'), 'utf8'));
+  const social = buildSocial(castImg, castManifest, { review });
+  write('social.png', social.img.toPNG());
+  write('social.json', JSON.stringify(social.manifest, null, 0));
+  if (review && social.review) writeFileSync(join(REVIEW, 'social-x4.png'), social.review.toPNG());
+}
+// --- end social (social-art agent) ---
+
 // 4c. Square props + ambient FX (scripts/fx/index.ts), when present.
 try {
   const fx = (await import('./fx/index.js')) as { buildFx(): { img: Img; manifest: unknown; review?: Img } };

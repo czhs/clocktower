@@ -86,3 +86,45 @@ test.describe.serial('two players, one lobby', () => {
       expect(await p.evaluate(() => (window as unknown as { __xss?: number }).__xss)).toBeUndefined();
   });
 });
+
+// v2 roster rules in the waiting room (own lobby, so a failure here does not skip the serial flow above).
+test('v2 roster: a player changes character in the waiting room; the Storyteller’s pick blocks nobody', async ({ browser }) => {
+  const sfx = Math.random().toString(36).slice(2, 7);
+  const carol = await createAccount(browser, `Carol ${sfx}`);
+  const dan = await createAccount(browser, `Dan ${sfx}`);
+  try {
+    const r = await carol.page.request.post('/api/lobbies', { data: { name: `Roster ${sfx}`, maxPlayers: 10, takeStoryteller: true } });
+    expect(r.status(), await r.text()).toBeLessThan(300);
+    const id = ((await r.json()) as { lobby: { id: string } }).lobby.id;
+    await carol.page.goto(`/lobby/${id}`);
+    await dan.page.goto(`/lobby/${id}`);
+    const sheet = dan.page.getByRole('dialog', { name: 'Waiting room' });
+    await expect(sheet).toBeVisible({ timeout: 30_000 });
+    const lv = (p: Player) => p.tap.last('lobby:view');
+    await carol.tap.until(() => lv(carol)?.members.length === 2, 15_000, 'two members');
+    const carolM = lv(carol).members.find((m: any) => m.displayName === carol.name);
+    expect(carolM.role, 'Carol took the Storyteller seat').toBe('storyteller');
+    const carolChar: string = carolM.cosmetics.preset;
+    const show = sheet.getByRole('button', { name: 'Show lobby details' });
+    if (await show.count()) await show.click();
+    await sheet.getByRole('button', { name: /Change character/ }).click();
+    const picker = dan.page.getByRole('radiogroup', { name: 'Choose your character for this lobby' });
+    await expect(picker).toBeVisible();
+    expect(await picker.getByRole('radio').count(), 'full roster').toBeGreaterThanOrEqual(26);
+    // the old custom-character editor is gone
+    await expect(dan.page.getByText('Advanced customization')).toHaveCount(0);
+    // Server rule (GameRoom characterHolder): only PLAYERS block a character; the Storyteller is drawn
+    // as the Storyteller, so their pick must not show as taken and must be pickable.
+    const tile = picker.locator(`[role="radio"][data-cast="${carolChar}"]`);
+    const label = await tile.getAttribute('aria-label');
+    await expect(picker.locator('[aria-disabled="true"]'), `nothing is taken (the ST blocks nobody); ST tile label "${label}"`).toHaveCount(0);
+    await tile.click();
+    await dan.tap.until(() => lv(dan)?.members.find((m: any) => m.pid === lv(dan).youPid)?.cosmetics?.preset === carolChar, 15_000, 'Dan is now the ST’s character');
+    await expect(tile).toHaveAttribute('aria-checked', 'true');
+    await expect(sheet.getByText(/You are .+ now\./)).toBeVisible();
+    await sheet.getByRole('button', { name: 'Done' }).click();
+  } finally {
+    await carol.ctx.close();
+    await dan.ctx.close();
+  }
+});

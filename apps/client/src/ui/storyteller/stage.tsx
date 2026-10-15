@@ -387,6 +387,15 @@ export function StageBar({ view, send }: { view: StorytellerGameView; send: Send
               />{' '}
               Door tags
             </label>
+            {/* (records) mid-game pamphlets: off by default; the story itself is in the 📜 Story button */}
+            <label class="cts-setting" title="Let yourself release a public-only pamphlet each day (what everyone saw and heard). The end-of-game story is always available.">
+              <input
+                type="checkbox"
+                checked={view.settings?.pamphlets === true}
+                onChange={(e) => send({ type: 'set_setting', settings: { pamphlets: (e.currentTarget as HTMLInputElement).checked } })}
+              />{' '}
+              Daily pamphlets
+            </label>
             <VoteSeconds view={view} send={send} />
           </div>
           {teleporting && <TeleportAll view={view} send={send} onDone={() => setTeleporting(false)} />}
@@ -408,7 +417,7 @@ export function StageBar({ view, send }: { view: StorytellerGameView; send: Send
 }
 
 /** Pause / resume the vote clock hand (hands stay as they are). */
-function ClockButton({ nom, send, big }: { nom: NominationView; send: Send; big?: boolean }) {
+export function ClockButton({ nom, send, big }: { nom: NominationView; send: Send; big?: boolean }) {
   const paused = !!nom.clockPaused;
   return (
     <button class={`${big ? 'cts-big ' : ''}${paused ? 'on' : ''}`} aria-pressed={paused} onClick={() => send({ type: 'vote_clock', action: paused ? 'resume' : 'pause' })}>
@@ -474,7 +483,7 @@ function StartVote({ view, noms, send }: { view: StorytellerGameView; noms: Nomi
   );
 }
 
-function BedtimeTimer({ view, send }: { view: StorytellerGameView; send: Send }) {
+export function BedtimeTimer({ view, send }: { view: StorytellerGameView; send: Send }) {
   const held = !!view.timerHeld;
   const rem = view.bedtimeRemainingMs;
   const s = rem !== null && rem !== undefined ? Math.max(0, Math.ceil(rem / 1000)) : null;
@@ -513,8 +522,8 @@ function BedtimeTimer({ view, send }: { view: StorytellerGameView; send: Send })
 
 // ---------------------------------------------------------------------------- stage tab
 
-export function StageTab({ view, send, openComposer }: { view: StorytellerGameView; send: Send; openComposer: OpenComposer }) {
-  const [selected, setSelected] = useState<number | null>(null);
+export function StageTab({ view, send, openComposer, initialSelected = null }: { view: StorytellerGameView; send: Send; openComposer: OpenComposer; initialSelected?: number | null }) {
+  const [selected, setSelected] = useState<number | null>(initialSelected);
   const sel = selected !== null && view.players.some((p) => p.seat === selected) ? selected : null;
   return (
     <div>

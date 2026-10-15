@@ -5,6 +5,8 @@ import type {
   AdminAccountView,
   AdminAuditView,
   AdminBulkDeleteResponse,
+  AdminGameRecord,
+  AdminGamesPage,
   AdminOverview,
   AdminRotateResponse,
 } from './types';
@@ -56,6 +58,10 @@ export const adminApi = {
   deleteAccount: (id: string) => call<{ ok: true }>('POST', acct(id, 'delete'), { confirm: 'delete' }),
   bulkDelete: (ids: string[]) => call<AdminBulkDeleteResponse>('POST', '/api/admin/accounts/bulk-delete', { ids, confirm: 'delete' }),
   closeLobby: (id: string) => call<{ ok: true }>('POST', `/api/admin/lobbies/${encodeURIComponent(id)}/close`, {}),
+  // (records) saved games (read-only)
+  games: (before?: number) => call<AdminGamesPage>('GET', `/api/admin/games?limit=50${before ? `&before=${before}` : ''}`),
+  game: (matchId: string) => call<AdminGameRecord>('GET', `/api/admin/games/${encodeURIComponent(matchId)}`),
+  gameDownloadUrl: (matchId: string) => `/api/admin/games/${encodeURIComponent(matchId)}?download=1`,
   audit: (before?: number) =>
     call<{ entries: AdminAuditView[] }>('GET', `/api/admin/audit?limit=50${before ? `&before=${before}` : ''}`),
 };

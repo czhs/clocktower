@@ -5,7 +5,11 @@
 // (gameplay) The Stage bar + Stage tab (stage.tsx): the game as malleable props — circle, votes,
 // force phase, walk / teleport / freeze, doors, bedtime timer. The engine only advises.
 // Rendered only for the seated Storyteller (the server sends a StorytellerGameView only to them).
+// (st-ui) Default = the simple "script" panel (script.tsx): phase stage cues + only what this moment
+// needs (tonight's visits / the day's few buttons). Everything above stays reachable, unchanged,
+// behind the "Grimoire & tools" toggle (remembered per viewer: localStorage ct.st.tools = '1').
 import { useEffect, useMemo, useState } from 'preact/hooks';
+import { PLAYABLE_IDS } from '@ct/assets';
 import {
   CHARACTER_INFO,
   PROMPT_KINDS,
@@ -23,6 +27,8 @@ import type { RoomConnection } from '../../net/room';
 import { useStore } from '../../net/store';
 import { charName, CharacterSelect, Countdown, friendlyError, phaseTitle, seatLabel, VoteClock } from '../hud/shared';
 import { ConfirmButton, deathEffects, EVERYONE, noExecutionEffects, only, PickBanner, StageBar, StageTab, StatusBadges, Toggle } from './stage';
+import { PhaseStageBar, ScriptView, type CastOf, type OpenTools } from './script';
+import { reducedMotion } from '../../game/fx/motion';
 import './storyteller.css';
 
 type Cmd = C2SPayload<'st:command'>;
@@ -54,6 +60,7 @@ export function StorytellerPanel({ conn }: { conn: RoomConnection; account: Acco
 type Dock = 'left' | 'right';
 const LS_COLLAPSED = 'ct.st.collapsed';
 const LS_DOCK = 'ct.st.dock';
+const LS_TOOLS = 'ct.st.tools';
 function lsGet(key: string): string | null {
   try {
     return localStorage.getItem(key);
@@ -82,6 +89,28 @@ function StPanel({ view, conn }: { view: StorytellerGameView; conn: RoomConnecti
     lsSet(LS_DOCK, next);
   };
   const [tab, setTab] = useState<Tab>(view.phase === 'setup' ? 'setup' : 'grimoire');
+  // Simple script (default) or the full Grimoire & tools.
+  const [tools, setToolsState] = useState(() => lsGet(LS_TOOLS) === '1');
+  const setTools = (v: boolean) => {
+    setToolsState(v);
+    lsSet(LS_TOOLS, v ? '1' : '0');
+  };
+  // Player whose card the Stage tab opens with (a seat clicked in the script's seat list).
+  const [stageSeat, setStageSeat] = useState<{ seat: number | null; n: number }>({ seat: null, n: 0 });
+  const lobby = useStore(conn.lobbyView);
+  const castOf: CastOf = useMemo(() => {
+    const byPid = new Map((lobby?.members ?? []).map((m) => [m.pid, m.cosmetics?.preset ?? null]));
+    const pidBySeat = new Map(view.players.map((p) => [p.seat, p.pid]));
+    return (seat: number) => {
+      const id = byPid.get(pidBySeat.get(seat) ?? '') ?? null;
+      return id && PLAYABLE_IDS.has(id) ? id : null;
+    };
+  }, [lobby?.members, view.players]);
+  const openTools: OpenTools = (t, seat) => {
+    setTab(t);
+    if (t === 'stage') setStageSeat((x) => ({ seat: seat ?? null, n: x.n + 1 }));
+    setTools(true);
+  };
   const [error, setError] = useState<string | null>(null);
   const [dismissedAlerts, setDismissedAlerts] = useState<string[]>([]);
   const [composer, setComposer] = useState<ComposerState>({ seat: null, mode: 'info', prompt: EMPTY_PROMPT, info: EMPTY_INFO });
@@ -112,6 +141,7 @@ function StPanel({ view, conn }: { view: StorytellerGameView; conn: RoomConnecti
     // A night-step link belongs to one seat; the server rejects send_info/prompt for another seat.
     setComposer((c) => ({ ...c, ...patch, info: patch.info ?? (patch.seat !== undefined && patch.seat !== c.seat ? withoutStep(c.info) : c.info) }));
     setTab('tools');
+    setTools(true);
   };
   const alerts = unseenAlerts(view.alerts, dismissedAlerts);
 
@@ -141,37 +171,42 @@ function StPanel({ view, conn }: { view: StorytellerGameView; conn: RoomConnecti
       </div>
     );
 
+  const offline = view.players.filter((x) => !x.connected);
   return (
-    <aside class={`cts dock-${dock}`}>
+    <aside class={`cts dock-${dock} ${tools ? 'cts-mode-tools' : 'cts-mode-script'}${reducedMotion() ? ' cts-still' : ''}`} aria-label="Storyteller">
       <header class="cts-head">
         <span class="cts-title">Storyteller</span>
-        {view.visitingSeat !== null && (
-          <span class="cts-chip visit">
-            In home of {seatLabel(view.players, view.visitingSeat)}{' '}
-            <button class="cts-link" onClick={() => send({ type: 'leave_home' })} title="Fast-travel back outside">
-              leave
-            </button>
-          </span>
-        )}
+        <span class="cts-head-phase">{phaseTitle(view.phase, view.dayNumber)}</span>
+        {view.phaseEndsAt !== null && <Countdown endsAt={view.phaseEndsAt} />}
+        {view.timerHeld ? <span class="cts-chip">held</span> : view.timerPaused && <span class="cts-chip">paused (you were away)</span>}
         <span class="cts-spacer" />
         <button class="cts-undo" disabled={!view.canUndo} onClick={() => send({ type: 'undo_last' })} title={view.canUndo ? 'Undo the last game action' : 'Nothing to undo'}>
           ↶ Undo
         </button>
-        <button class="cts-icon" onClick={toggleDock} title={`Dock on the ${dock === 'left' ? 'right' : 'left'}`}>
+        <button class="cts-icon" onClick={toggleDock} title={`Dock on the ${dock === 'left' ? 'right' : 'left'}`} aria-label="Move the panel to the other side">
           ⇆
         </button>
-        <button class="cts-icon" onClick={() => setOpen(false)} title="Collapse to a slim bar">
+        <button class="cts-icon" onClick={() => setOpen(false)} title="Collapse to a slim bar" aria-label="Collapse the panel">
           ▁
         </button>
       </header>
-      <NowStrip view={view} send={send} goTab={setTab} />
-      <PhaseControls view={view} send={send} />
-      <StageBar view={view} send={send} />
+      <PhaseStageBar view={view} send={send} />
+      {tools && view.visitingSeat !== null && (
+        <div class="cts-visitbar">
+          <span class="cts-chip visit">
+            🕯 In the home of {seatLabel(view.players, view.visitingSeat)}{' '}
+            <button class="cts-link" onClick={() => send({ type: 'leave_home' })} title="Step back outside">
+              leave
+            </button>
+          </span>
+        </div>
+      )}
+      {offline.length > 0 && <div class="cts-offline">offline: {offline.map((x) => x.name).join(', ')}</div>}
       <PickBanner />
       {error && (
         <div class="cts-error" role="alert">
           {error}
-          <button class="cts-icon" onClick={() => setError(null)}>
+          <button class="cts-icon" onClick={() => setError(null)} aria-label="Dismiss">
             ✕
           </button>
         </div>
@@ -186,24 +221,40 @@ function StPanel({ view, conn }: { view: StorytellerGameView; conn: RoomConnecti
           </button>
         </div>
       )}
-      <nav class="cts-tabs">
-        {(['setup', 'stage', 'grimoire', 'night', 'day', 'tools', 'log'] as Tab[])
-          .filter((t) => t !== 'setup' || view.phase === 'setup')
-          .map((t) => (
-            <button key={t} class={tab === t || (t === 'stage' && tab === 'setup' && view.phase !== 'setup') ? 'on' : ''} onClick={() => setTab(t)}>
-              {t === 'night' ? 'Night order' : t[0]!.toUpperCase() + t.slice(1)}
-            </button>
-          ))}
-      </nav>
-      <div class="cts-body">
-        {tab === 'setup' && view.phase === 'setup' && <SetupTab view={view} send={send} />}
-        {(tab === 'stage' || (tab === 'setup' && view.phase !== 'setup')) && <StageTab view={view} send={send} openComposer={openComposer} />}
-        {tab === 'grimoire' && <GrimoireTab view={view} send={send} openComposer={openComposer} />}
-        {tab === 'night' && <NightTab view={view} send={send} openComposer={openComposer} />}
-        {tab === 'day' && <DayTab view={view} send={send} />}
-        {tab === 'tools' && <ToolsTab view={view} send={send} composer={composer} setComposer={setComposer} />}
-        {tab === 'log' && <LogTab view={view} />}
-      </div>
+      {tools ? (
+        <div class="cts-tools">
+          <NowStrip view={view} send={send} goTab={setTab} />
+          <PhaseControls view={view} send={send} />
+          <StageBar view={view} send={send} />
+          <nav class="cts-tabs">
+            {(['setup', 'stage', 'grimoire', 'night', 'day', 'tools', 'log'] as Tab[])
+              .filter((t) => t !== 'setup' || view.phase === 'setup')
+              .map((t) => (
+                <button key={t} class={tab === t || (t === 'stage' && tab === 'setup' && view.phase !== 'setup') ? 'on' : ''} onClick={() => setTab(t)}>
+                  {t === 'night' ? 'Night order' : t[0]!.toUpperCase() + t.slice(1)}
+                </button>
+              ))}
+          </nav>
+          <div class="cts-body">
+            {tab === 'setup' && view.phase === 'setup' && <SetupTab view={view} send={send} />}
+            {(tab === 'stage' || (tab === 'setup' && view.phase !== 'setup')) && (
+              <StageTab key={stageSeat.n} initialSelected={stageSeat.seat} view={view} send={send} openComposer={openComposer} />
+            )}
+            {tab === 'grimoire' && <GrimoireTab view={view} send={send} openComposer={openComposer} />}
+            {tab === 'night' && <NightTab view={view} send={send} openComposer={openComposer} />}
+            {tab === 'day' && <DayTab view={view} send={send} />}
+            {tab === 'tools' && <ToolsTab view={view} send={send} composer={composer} setComposer={setComposer} />}
+            {tab === 'log' && <LogTab view={view} />}
+          </div>
+        </div>
+      ) : (
+        <div class="cts-body">
+          <ScriptView view={view} send={send} castOf={castOf} openTools={openTools} />
+        </div>
+      )}
+      <button class={`cts-toolsbtn ${tools ? 'on' : ''}`} aria-expanded={tools} onClick={() => setTools(!tools)} title={tools ? 'Back to the simple script' : 'The full Grimoire, statuses, tools, log, stage map, doors…'}>
+        {tools ? '◂ Back to the script' : '☰ Grimoire & tools'}
+      </button>
     </aside>
   );
 }

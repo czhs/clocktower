@@ -1,0 +1,122 @@
+/* OWNED BY notebook. Private notebook: a book button at the left end of the top-right toolbar and a
+   compact drawer over the right edge of the town (bottom sheet on phones). Matches the HUD:
+   near-opaque Panel ink, 1px Frame iron keyline, gold for the few accents. */
+
+/* ---- book button (positioned next to .ct-toolbar by Notebook.tsx; CSS position = fallback) ---- */
+.ctn-book {
+  position: fixed; z-index: 32; top: calc(10px + var(--safe-top)); right: calc(160px + var(--safe-right));
+  width: 32px; min-height: 30px; height: 30px; padding: 0; display: flex; align-items: center; justify-content: center;
+  background: #2a2736f0; color: var(--accent); box-shadow: 0 3px 12px #0008;
+}
+.ctn-book.on { border-color: var(--accent); background: #3a3222f0; }
+.ctn-book svg { display: block; }
+
+/* ---- drawer ---------------------------------------------------------------------------------- */
+.ctn {
+  position: fixed; z-index: 29; /* below the voice panel (30) and chat (35): both stay usable */
+  top: calc(48px + var(--safe-top)); right: calc(12px + var(--safe-right)); bottom: calc(12px + var(--safe-bottom));
+  width: min(380px, calc(100vw - 24px)); display: flex; flex-direction: column; overflow: hidden;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 6px;
+  box-shadow: 0 10px 30px #000b, inset 0 0 0 1px #c9a24a14; font-size: 14px; color: var(--text);
+  outline: none; touch-action: pan-y; -webkit-user-select: text; user-select: text;
+  animation: ctn-in 160ms ease-out both;
+}
+@keyframes ctn-in { from { opacity: 0; transform: translateX(16px); } }
+
+.ctn-head { display: flex; align-items: center; gap: 8px; padding: 6px 6px 4px 12px; border-bottom: 1px solid var(--border); }
+.ctn-title { font-family: var(--font-display); font-size: 19px; color: var(--accent); letter-spacing: 0.02em; }
+.ctn-status { flex: 1; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ctn-status-saved { color: var(--ok); }
+.ctn-status-offline { color: #e9b08f; }
+.ctn .ctn-close { background: none; border-color: transparent; color: var(--muted); padding: 2px 8px; min-height: 30px; font-size: 15px; }
+.ctn .ctn-close:hover:not(:disabled) { color: var(--text); background: #343042; }
+.ctn-private { margin: 0; padding: 4px 12px 6px; font-size: 12px; color: var(--muted); border-bottom: 1px solid #45425066; }
+
+.ctn-notice {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 8px 12px; font-size: 13px;
+  background: #3a2d12; color: #f1dca2; border-bottom: 1px solid #c9a24a55;
+}
+.ctn-notice-actions { display: flex; gap: 6px; margin-left: auto; }
+.ctn-notice button { padding: 3px 10px; font-size: 13px; }
+.ctn-loading { padding: 24px 12px; color: var(--muted); font-style: italic; display: flex; align-items: center; gap: 6px; }
+
+.ctn-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 4px 10px 12px; }
+
+/* one row per seat: portrait | name + seat | ★ ? ✗ | role guess, then the note across the row */
+.ctn-seats { list-style: none; margin: 0; padding: 0; }
+.ctn-seat {
+  display: grid; grid-template-columns: 40px minmax(0, 1fr) auto auto; grid-template-rows: auto auto;
+  column-gap: 6px; row-gap: 3px; align-items: center; padding: 6px 2px; border-bottom: 1px solid #3d335055;
+}
+.ctn-portrait {
+  grid-row: 1 / span 2; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;
+  border-radius: 50%; background: #17151f; border: 1px solid var(--border); overflow: hidden;
+}
+.ctn-portrait-empty { width: 18px; height: 18px; border-radius: 50%; background: #3a3646; }
+.ctn-seat.mark-trust .ctn-portrait { border-color: var(--accent); }
+.ctn-seat.mark-distrust .ctn-portrait { border-color: var(--evil); }
+.ctn-seat.mark-unsure .ctn-portrait { border-color: var(--good); }
+.ctn-who { display: flex; flex-direction: column; min-width: 0; line-height: 1.15; }
+.ctn-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.ctn-name small { color: var(--accent); font-weight: normal; }
+.ctn-seatno { font-size: 11px; color: var(--muted); }
+.ctn-seat.dead .ctn-name { color: var(--muted); text-decoration: line-through; text-decoration-color: #d0543f88; }
+
+.ctn-marks { display: flex; gap: 2px; }
+.ctn .ctn-mark {
+  width: 26px; height: 26px; min-height: 0; padding: 0; font-size: 14px; line-height: 1; color: #8d8697;
+  background: #17151f; border-color: #3a3646;
+}
+.ctn .ctn-mark[aria-pressed='true'] { color: #17151f; }
+.ctn .ctn-mark-trust[aria-pressed='true'] { background: var(--accent); border-color: #f1dc9a; }
+.ctn .ctn-mark-unsure[aria-pressed='true'] { background: var(--good); border-color: #b9d2ee; }
+.ctn .ctn-mark-distrust[aria-pressed='true'] { background: var(--evil); border-color: #f0a29b; }
+
+.ctn-guess { display: flex; align-items: center; gap: 3px; }
+.ctn-guess .ct-role-icon { flex: none; }
+.ctn .ctn-guess select {
+  width: 96px; font-size: 12px; padding: 3px 18px 3px 6px; min-height: 26px; color: var(--muted);
+  background-color: #17151f; background-position: right 5px center;
+}
+.ctn .ctn-guess select.set { color: var(--text); width: 104px; }
+.ctn-note {
+  grid-column: 2 / -1; width: 100%; font-size: 13px; padding: 4px 8px; min-height: 28px;
+  background: #17151fcc; border-color: #3a3646;
+}
+.ctn-note:focus, .ctn-text:focus { border-color: var(--accent); outline: none; }
+
+.ctn-page { display: flex; flex-direction: column; gap: 4px; margin-top: 12px; }
+.ctn-page-label { font-family: var(--font-display); color: var(--accent); font-size: 16px; }
+.ctn-text { width: 100%; min-height: 160px; resize: vertical; font-size: 14px; line-height: 1.4; background: #17151fcc; }
+.ctn-full { margin: 6px 0 0; font-size: 12px; color: #e9b08f; }
+
+/* ---- phones: a bottom sheet over the joystick (the ✕ and N/Esc close it) ----------------------- */
+@media (max-width: 640px) {
+  .ctn {
+    z-index: 46; /* above the chat sheet (45) */ top: auto; left: 0; right: 0; bottom: 0 !important; width: auto;
+    height: min(72dvh, 600px); border-radius: 12px 12px 0 0; border-bottom: none;
+    padding-bottom: var(--safe-bottom); box-shadow: 0 -8px 30px #000c; animation-name: ctn-up;
+  }
+  .ctn-head { padding-top: 8px; }
+  .ctn-head::before {
+    content: ''; position: absolute; top: 4px; left: 50%; width: 36px; height: 4px; margin-left: -18px;
+    border-radius: 2px; background: #45425099;
+  }
+  .ctn .ctn-close { min-height: 36px; min-width: 40px; }
+  /* row 1: portrait | name | ★ ? ✗ ; row 2: role guess | one-line note */
+  .ctn-seat { grid-template-columns: 40px 112px minmax(0, 1fr) auto; }
+  .ctn-who { grid-column: 2 / 4; }
+  .ctn-guess { grid-column: 2; grid-row: 2; min-width: 0; }
+  .ctn .ctn-guess select, .ctn .ctn-guess select.set { width: auto; flex: 1; min-width: 0; min-height: 36px; font-size: 14px; }
+  .ctn-note { grid-column: 3 / -1; grid-row: 2; min-height: 36px; font-size: 16px; /* 16px: no iOS zoom on focus */ }
+  .ctn .ctn-mark { width: 32px; height: 32px; font-size: 16px; }
+  .ctn-text { font-size: 16px; }
+  .ctn-portrait { align-self: start; margin-top: 2px; }
+}
+@keyframes ctn-up { from { opacity: 0; transform: translateY(24px); } }
+
+/* OS setting or the in-game comfort toggle (game/fx/motion). */
+.ctn.ctn-still { animation: none; }
+@media (prefers-reduced-motion: reduce) {
+  .ctn { animation: none; }
+}

@@ -15,6 +15,15 @@ export { createSessionsRepo, type SessionRecord, type SessionsRepo } from './rep
 export { createStatsRepo, type MatchResult, type MatchStart, type StatsRepo } from './repos/stats.js';
 export { createVoiceUsageRepo, usageMonth, type VoiceUsageStore } from './repos/voiceUsage.js';
 export {
+  createRecordsRepo,
+  type ListRecordsQuery,
+  type MatchRecordInput,
+  type MatchRecordSummary,
+  type RecordsRepo,
+} from './repos/records.js'; // (records) full game records (match_records)
+// (v2, notebook) private per-game notebooks (owner-only).
+export { createNotebooksRepo, type NotebookPutResult, type NotebookRow, type NotebooksRepo } from './repos/notebooks.js';
+export {
   createAdminRepo,
   type AdminAccountQuery,
   type AdminAccountRow,

@@ -120,3 +120,12 @@ button.ct-danger-btn.ct-adm-danger-solid:hover:not(:disabled) { background: #6e2
 .ct-admin.ct-home.ct-home button:not(.ct-link, [role='tab'], .primary, .ct-danger-btn):hover:not(:disabled) { background-color: #343042; border-color: var(--border-strong); }
 .ct-admin.ct-home.ct-home button.ct-adm-chip[aria-pressed='true'] { border-color: var(--accent); color: var(--accent); filter: none; }
 .ct-adm-panel > .ct-admin-grid { width: 100%; }
+
+/* (records) Games tab */
+.ct-adm-game { grid-template-columns: minmax(0, 1fr) auto; }
+.ct-adm-game-actions { display: flex; gap: 10px; align-items: center; }
+.ct-adm-game-detail { grid-column: 1 / -1; border-top: 1px solid var(--border); padding-top: 8px; display: flex; flex-direction: column; gap: 8px; }
+.ct-adm-seats { border-collapse: collapse; font-size: 0.85rem; width: 100%; }
+.ct-adm-seats th, .ct-adm-seats td { text-align: left; padding: 2px 8px; border-bottom: 1px solid var(--border); }
+.ct-adm-seats tr.good td:nth-child(3) { color: var(--good); }
+.ct-adm-seats tr.evil td:nth-child(3) { color: var(--evil); }

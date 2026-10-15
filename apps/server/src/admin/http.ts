@@ -9,6 +9,7 @@ import { RateLimiter } from '../auth/rateLimit.js';
 import { randomId } from '../auth/crypto.js';
 import type { LobbyDirectory, LobbyRoomHandle } from '../directory/service.js';
 import { voiceUsageView } from '../voice/index.js';
+import { recordsRepo } from '../records/index.js'; // (records)
 import {
   AccountId,
   AccountListQuery,
@@ -17,7 +18,10 @@ import {
   ConfirmSelfBody,
   DeleteBody,
   EmptyBody,
+  GameQuery,
+  GamesQuery,
   LobbyId,
+  MatchId,
   RenameBody,
 } from './schemas.js';
 import type {
@@ -25,6 +29,7 @@ import type {
   AdminAccountView,
   AdminAuditView,
   AdminBulkDeleteResponse,
+  AdminGamesPage,
   AdminLobbyView,
   AdminOverview,
   AdminRotateResponse,
@@ -44,6 +49,8 @@ import type {
 //   POST /api/admin/accounts/bulk-delete           { ids: [...], confirm: 'delete' }
 //   POST /api/admin/lobbies/:id/close              {}
 //   GET  /api/admin/audit?limit&before
+//   GET  /api/admin/games?limit&before&accountId       (records) saved games, newest first
+//   GET  /api/admin/games/:id[?download=1]             (records) one full game record (JSON)
 //
 // Every successful mutation is appended to the admin_audit table (append-only; DB triggers
 // refuse UPDATE/DELETE) and logged as `admin action` with ids only — never passphrases/tokens.
@@ -239,6 +246,47 @@ export function adminRouter(services: Services): express.Router {
         detail: e.detail,
       }));
       res.json({ entries });
+    }),
+  );
+
+  // ---- (records) saved games: read-only -------------------------------------------------
+
+  r.get(
+    '/admin/games',
+    handler((req, res) => {
+      const q = parseBody(GamesQuery, req.query);
+      const repo = recordsRepo(services.database);
+      const body: AdminGamesPage = {
+        games: repo.listRecords(q).map((g) => ({
+          matchId: g.matchId,
+          lobbyId: g.lobbyId,
+          lobbyName: g.lobbyName,
+          script: g.script,
+          status: g.status,
+          startedAt: iso(g.startedAt),
+          endedAt: iso(g.endedAt),
+          durationSec: Math.max(0, Math.round((g.endedAt - g.startedAt) / 1000)),
+          playerCount: g.playerCount,
+          winner: g.winner,
+          reason: g.reason,
+          storytellerName: g.storytellerName,
+          storytellerAccountId: g.storytellerAccountId,
+        })),
+        total: repo.count(),
+      };
+      res.json(body);
+    }),
+  );
+
+  r.get(
+    '/admin/games/:id',
+    handler((req, res) => {
+      const p = MatchId.safeParse(req.params.id);
+      const q = parseBody(GameQuery, req.query);
+      const json = p.success ? recordsRepo(services.database).getRecordJson(p.data) : null;
+      if (!p.success || !json) throw new HttpError(404, 'not_found', 'Game not found');
+      if (q.download === '1') res.setHeader('Content-Disposition', `attachment; filename="clocktower-game-${p.data}.json"`);
+      res.type('application/json').send(json);
     }),
   );
 

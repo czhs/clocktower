@@ -153,8 +153,13 @@ export interface StSettings {
   doorTags: boolean;
   /** Seconds the vote clock hand spends on each seat. */
   voteSeconds: number;
+  /**
+   * (additive, records) Mid-game pamphlets: the Storyteller may release a PUBLIC-ONLY "Pamphlet: Day N"
+   * (story:release crier_day / crier_game). Off by default; the end-of-game story is always available.
+   */
+  pamphlets?: boolean;
 }
-export const DEFAULT_ST_SETTINGS: StSettings = { doorTags: true, voteSeconds: 3 };
+export const DEFAULT_ST_SETTINGS: StSettings = { doorTags: true, voteSeconds: 3, pamphlets: false };
 
 const Seat = z.number().int().min(0).max(14);
 
@@ -182,7 +187,9 @@ export const InfoSpec = z.object({
 export type InfoSpecInput = z.input<typeof InfoSpec>;
 
 /** (additive, gameplay) A partial StSettings update (every key optional). */
-export const StSettingsPatch = z.object({ doorTags: z.boolean().optional(), voteSeconds: z.number().min(0.5).max(15).optional() }).strict();
+export const StSettingsPatch = z
+  .object({ doorTags: z.boolean().optional(), voteSeconds: z.number().min(0.5).max(15).optional(), pamphlets: z.boolean().optional() })
+  .strict();
 export type StSettingsPatch = z.infer<typeof StSettingsPatch>;
 
 /** (additive, gameplay) Phases the Storyteller can force (`gather` = day + circle). */

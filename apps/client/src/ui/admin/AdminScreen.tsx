@@ -3,6 +3,7 @@ import type { AccountView } from '@ct/protocol';
 import { goTo } from '../lobby/finder';
 import { AccountsTab } from './AccountsTab';
 import { AuditTab, LobbiesTab, SystemTab } from './OverviewTabs';
+import { GamesTab } from './GamesTab'; // (records)
 import '../auth/auth.css';
 import '../lobby/lobby.css';
 import './admin.css';
@@ -10,10 +11,11 @@ import './admin.css';
 // Admin console at /admin. The server enforces ADMIN_ACCOUNT_IDS on every /api/admin/* route;
 // this page only hides itself from non-admins (friendly message, no API calls).
 
-type Tab = 'accounts' | 'lobbies' | 'system' | 'audit';
+type Tab = 'accounts' | 'lobbies' | 'games' | 'system' | 'audit';
 const TABS: { id: Tab; label: string }[] = [
   { id: 'accounts', label: 'Accounts' },
   { id: 'lobbies', label: 'Lobbies' },
+  { id: 'games', label: 'Games' },
   { id: 'system', label: 'System' },
   { id: 'audit', label: 'Audit log' },
 ];
@@ -105,6 +107,7 @@ export function AdminScreen({ account }: { account: AccountView }) {
       <div id="ct-adm-panel" role="tabpanel" aria-labelledby={`ct-adm-tab-${tab}`} class="ct-adm-panel">
         {tab === 'accounts' && <AccountsTab notify={notify} onForbidden={onForbidden} />}
         {tab === 'lobbies' && <LobbiesTab notify={notify} onForbidden={onForbidden} />}
+        {tab === 'games' && <GamesTab onForbidden={onForbidden} />}
         {tab === 'system' && <SystemTab onForbidden={onForbidden} />}
         {tab === 'audit' && <AuditTab onForbidden={onForbidden} />}
       </div>

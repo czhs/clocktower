@@ -79,3 +79,25 @@ export interface AdminBulkDeleteResponse {
   deleted: { id: string; displayName: string }[];
   skipped: { id: string; displayName: string | null; reason: string }[];
 }
+
+/** (records) GET /api/admin/games — one saved game (the full record: GET /api/admin/games/:id). */
+export interface AdminGameView {
+  matchId: string;
+  lobbyId: string;
+  lobbyName: string | null;
+  script: string | null;
+  status: 'finished' | 'abandoned';
+  startedAt: string;
+  endedAt: string;
+  durationSec: number;
+  playerCount: number;
+  winner: 'good' | 'evil' | null;
+  reason: string | null;
+  storytellerName: string | null;
+  storytellerAccountId: string | null;
+}
+
+export interface AdminGamesPage {
+  games: AdminGameView[];
+  total: number;
+}

@@ -54,7 +54,9 @@ describe.skipIf(!features.rooms)(`hostile room messages${pending(features.rooms,
     const L = await host!.createLobby(uniq('Invalid '), 5);
     for (const b of [host!, attacker!, witness!]) await b.join(L);
     await eventually(() => witness!.lobbyView?.members.length === 3);
-    const before = JSON.stringify(witness!.lobbyView!.members.map((m) => [m.pid, m.role, m.isHost]));
+    // The attacker itself may be disconnected/removed for abuse; everyone else must be unaffected.
+    const others = () => JSON.stringify(witness!.lobbyView!.members.filter((m) => m.pid !== attacker!.pid).map((m) => [m.pid, m.role, m.isHost]));
+    const before = others();
 
     for (const type of [...Object.keys(C2S), 'unknown:type', '__proto__', 'constructor']) {
       for (const p of INVALID_PAYLOADS) {
@@ -69,7 +71,7 @@ describe.skipIf(!features.rooms)(`hostile room messages${pending(features.rooms,
     await sleep(1500);
     expect(await healthy()).toBe(true);
     // Other members unaffected: roles/host unchanged; witness still receives updates.
-    expect(JSON.stringify(witness!.lobbyView!.members.map((m) => [m.pid, m.role, m.isHost]))).toBe(before);
+    expect(others()).toBe(before);
     witness!.send('lobby:ready', { ready: true });
     await eventually(() => host!.lobbyView?.members.find((m) => m.pid === witness!.pid)?.ready === true, 5000);
     // Rejections are reported (contract: 'error' {code:'invalid'|'rate_limited'}) or the socket is closed.

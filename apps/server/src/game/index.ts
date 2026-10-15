@@ -35,6 +35,8 @@ import {
   type SoundCue,
 } from '@ct/rules';
 import type { GameModule, GameOutcome, RoomHost } from '../rooms/modules.js';
+// (records) Full game record + play-by-play: the recorder observes every committed change.
+import { attachRecorder, GameRecorder, type RecordTrigger } from '../records/index.js';
 
 export interface GameModuleOptions {
   /** Deterministic RNG seed (tests). Default: crypto-random. */
@@ -91,6 +93,18 @@ export function createGameModule(host: RoomHost, opts: GameModuleOptions = {}): 
   let allHomeSince: number | null = null;
   let state: GameState | null = null;
   let stPid: string | null = null;
+  /** (records) Observes every committed change (apps/server/src/records). Never throws into the game. */
+  let recorder: GameRecorder | null = null;
+  function record(trigger: RecordTrigger) {
+    if (!recorder || !state) return;
+    try {
+      recorder.observe(state, host.now(), trigger);
+    } catch (e) {
+      const err = e instanceof Error ? e.message : String(e);
+      if (recorder.warnings.length < 50) recorder.warnings.push(`observe(${trigger.kind}) failed: ${err}`);
+      host.log.error('game recorder failed', { lobbyId: host.lobbyId, trigger: trigger.kind, err });
+    }
+  }
   const seatByPid = new Map<string, number>();
   const pidBySeat = new Map<number, string>();
 
@@ -196,8 +210,9 @@ export function createGameModule(host: RoomHost, opts: GameModuleOptions = {}): 
   }
 
   /** Emit cross-module events for public changes, run side effects, re-send views. */
-  function commit(before: PublicSnapshot, effects: Effect[]) {
+  function commit(before: PublicSnapshot, effects: Effect[], trigger: RecordTrigger = { kind: 'other' }) {
     const s = state!;
+    record(trigger); // (records)
     if (s.phase !== before.phase)
       host.emit({ type: 'phase_changed', phase: s.phase, prev: before.phase, phaseEndsAt: s.phaseEndsAt });
     for (const p of s.players) {
@@ -230,6 +245,7 @@ export function createGameModule(host: RoomHost, opts: GameModuleOptions = {}): 
       const e = w.setDoorLock(cmd.buildingId, cmd.lock === 'default' ? null : cmd.lock === 'locked');
       if (e) return err(e);
       noteStoryteller(s, host.now(), `Door of ${cmd.buildingId}: ${cmd.lock}`);
+      record({ kind: 'st', cmd }); // (records)
       host.markGameDirty();
       return;
     }
@@ -249,6 +265,7 @@ export function createGameModule(host: RoomHost, opts: GameModuleOptions = {}): 
     const what =
       cmd.type === 'teleport' ? `Teleported ${whoText} to ${cmd.to.kind}` : cmd.type === 'walk_to' ? (cmd.to ? `Walking ${whoText} to ${cmd.to.kind}` : `Stopped walking ${whoText}`) : `${cmd.frozen ? 'Froze' : 'Unfroze'} ${whoText}`;
     noteStoryteller(s, host.now(), what);
+    record({ kind: 'st', cmd }); // (records)
     host.markGameDirty();
     if (errors.length) err(errors.join('; '));
   }
@@ -303,7 +320,7 @@ export function createGameModule(host: RoomHost, opts: GameModuleOptions = {}): 
       const home = location.startsWith('bld:') ? seatOfBuilding(layout, location.slice(4)) : null;
       if (home !== null && pidBySeat.has(home)) seat = home;
     }
-    if (setVisiting(s, seat)) commit(before, []);
+    if (setVisiting(s, seat)) commit(before, [], { kind: 'visit' });
   }
 
   const mod: GameModule = {
@@ -318,7 +335,7 @@ export function createGameModule(host: RoomHost, opts: GameModuleOptions = {}): 
             : seatByPid.has(e.pid)
               ? setPlayerConnected(s, seatByPid.get(e.pid)!, e.connected)
               : false;
-        if (changed) commit(before, []);
+        if (changed) commit(before, [], { kind: 'connection' });
       } else if (e.type === 'location_changed') {
         if (e.pid === stPid) handleStLocation(e.location);
       }
@@ -343,6 +360,8 @@ export function createGameModule(host: RoomHost, opts: GameModuleOptions = {}): 
       });
       for (const x of seats) setPlayerConnected(state, x.seat, host.member(x.pid)?.connected ?? true);
       setStorytellerConnected(state, host.member(storytellerPid)?.connected ?? true, host.now());
+      recorder = new GameRecorder(state, host.now(), storytellerPid); // (records)
+      attachRecorder(mod, recorder);
       host.emit({ type: 'phase_changed', phase: 'setup', prev: null, phaseEndsAt: null });
       host.markGameDirty();
       host.markLobbyDirty();
@@ -355,13 +374,14 @@ export function createGameModule(host: RoomHost, opts: GameModuleOptions = {}): 
       const seat = seatByPid.get(pid);
       if (seat === undefined) return host.send(pid, 'error', { code: 'forbidden', message: 'You are not seated in this game', for: type });
       const before = snap(s);
-      const r = applyPlayerAction(s, seat, toAction(type, payload), { now: host.now() });
+      const action = toAction(type, payload);
+      const r = applyPlayerAction(s, seat, action, { now: host.now() });
       if (!r.ok) {
         const secret = SECRET_PHASES.includes(s.phase);
         host.log.info('player action rejected', { lobbyId: host.lobbyId, phase: s.phase, day: s.dayNumber, action: type, code: r.code, ...(secret ? {} : { seat }) });
         return reportError(pid, r, type);
       }
-      commit(before, r.effects);
+      commit(before, r.effects, { kind: 'player', seat, action });
     },
 
     handleStoryteller(pid, cmd) {
@@ -390,7 +410,14 @@ export function createGameModule(host: RoomHost, opts: GameModuleOptions = {}): 
       const r = applyStCommand(s, cmd, { now: host.now() });
       logStCommand(cmd, r.ok, r.ok ? undefined : r.code);
       if (!r.ok) return reportError(pid, r, 'st:command');
-      commit(before, r.effects);
+      // (records) StSettings.pamphlets (mid-game pamphlets, default off) is a server-side setting the
+      // engine stores but does not interpret; applied after the engine snapshot, so undo restores it.
+      // CONTRACT-REQUEST (rules-storyteller): handle `pamphlets` in set_setting like doorTags.
+      if (cmd.type === 'set_setting' && cmd.settings.pamphlets !== undefined && (s.settings.pamphlets === true) !== cmd.settings.pamphlets) {
+        s.settings.pamphlets = cmd.settings.pamphlets;
+        noteStoryteller(s, host.now(), `Settings: pamphlets=${cmd.settings.pamphlets}`);
+      }
+      commit(before, r.effects, { kind: 'st', cmd });
     },
 
     viewFor(pid): PlayerGameView | StorytellerGameView | null {
@@ -450,7 +477,7 @@ export function createGameModule(host: RoomHost, opts: GameModuleOptions = {}): 
         opts = { everyoneHome: home && now - allHomeSince! >= (opts0.nightfallGraceMs ?? 3000) };
       } else allHomeSince = null;
       const r = rulesTick(s, now, opts);
-      if (r.changed) commit(before, r.effects);
+      if (r.changed) commit(before, r.effects, { kind: 'tick' });
     },
 
     outcome(): GameOutcome | null {

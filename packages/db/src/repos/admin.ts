@@ -93,6 +93,8 @@ export function createAdminRepo({ sqlite }: Database) {
     sqlite.prepare('UPDATE match_players SET account_id = ? WHERE account_id = ?').run(tombstone, id);
     sqlite.prepare('UPDATE matches SET storyteller_account_id = ? WHERE storyteller_account_id = ?').run(tombstone, id);
     sqlite.prepare('DELETE FROM sessions WHERE account_id = ?').run(id);
+    // (v2) private notebooks go with the account (they are owner-only and never anonymised)
+    sqlite.prepare('DELETE FROM notebooks WHERE account_id = ?').run(id);
     return sqlite.prepare('DELETE FROM accounts WHERE id = ?').run(id).changes > 0;
   });
 

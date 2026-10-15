@@ -482,8 +482,9 @@ test('full game: 1 Storyteller + 5 players, every phase through the real UI', as
       expect(zonesGranted(outsider, t0), `${outsider.name} never granted ${zone}`).not.toContain(zone);
       const seen = new Set(outsider.tap.received('world:snapshot', Date.now() - 1000).flatMap((sn: any) => sn.entities.map((e: any) => e.id)));
       expect(seen.has(pidOf(guest)) || seen.has(pidOf(host)), `${outsider.name} sees nobody inside the cottage`).toBe(false);
-      const tags = outsider.tap.last('world:snapshot')?.doorTags?.[homeOf(host).id] ?? [];
-      note(`${outsider.name} door board for ${homeOf(host).id}: ${JSON.stringify(tags.map?.((t: any) => t.name) ?? tags)}`);
+      // the daytime bulletin board by the door (public door tags) tells the outsider who is in there
+      const tagged = () => (outsider.tap.last('world:snapshot')?.doorTags?.[homeOf(host).id] ?? []).map((t: any) => t.pid);
+      await outsider.tap.until(() => tagged().includes(pidOf(guest)) && tagged().includes(pidOf(host)), 10_000, 'board lists both inside');
       await shot(guest.page, '09b-day1-private-talk-inside');
       await shot(outsider.page, '09c-day1-outside-boards');
       await leaveByButton(guest, pidOf(guest));

@@ -48,7 +48,10 @@ import { getServices, type Services } from '../services.js';
 import { createGameModule } from '../game/index.js';
 import { createWorldModule } from '../world/index.js';
 import { createVoiceModule } from '../voice/index.js';
-import type { GameModule, Logger, RoomEvent, RoomHost, RoomMember, VoiceModule, WorldModule } from './modules.js';
+import { createSocialModule } from '../social/index.js'; // (v2, social-server)
+import { buildRecordSafely, handleStoryMessage, writeAbandoned, writeFinished, type AbandonReason, type MatchMeta } from '../records/index.js'; // (records)
+import { createNotebookService, notebookStoreFor, type NotebookService } from '../notebook/index.js'; // (v2, notebook)
+import type { GameModule, Logger, RoomEvent, RoomHost, RoomMember, SocialModule, VoiceModule, WorldModule } from './modules.js';
 import { randomId } from '../auth/crypto.js';
 import { RateLimiter } from '../auth/rateLimit.js';
 import { characterName, firstFreeCharacter, isAllowedPreset } from '../auth/presets.js';
@@ -156,11 +159,19 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
   private matchRoster = new Map<string, string>(); // pid -> accountId (frozen at start)
   private matchStorytellerAccountId: string | null = null;
   private matchRecorded = false;
+  /** (records) Frozen at start for the full game record; why the room is going away (abandoned record). */
+  private matchMeta: MatchMeta | null = null;
+  private abandonReason: AbandonReason = 'room_disposed';
+  private recordRetryAt = 0;
 
   private host!: RoomHost;
   private game!: GameModule;
   private world!: WorldModule;
   private voice!: VoiceModule;
+  /** (v2, social-server) emotes + pins; own rate limits inside (friendlier messages). */
+  private social!: SocialModule;
+  /** (v2, notebook) private per-game notebooks: owner-only, keyed by (matchId, accountId); limits inside. */
+  private notebook!: NotebookService;
 
   private queue: RoomEvent[] = [];
   private draining = false;
@@ -205,6 +216,12 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
 
     this.host = this.createHost();
     this.createModules();
+    // (v2, notebook) per room (not per match): it is told the current matchId on every call.
+    this.notebook = createNotebookService({
+      store: notebookStoreFor(this.services.database),
+      log: this.log,
+      send: (pid, type, payload) => this.host.send(pid, type, payload as never),
+    });
 
     for (const [type, spec] of Object.entries(MESSAGE_LIMITS)) this.limiters.set(type, new RateLimiter(spec));
     this.onMessage('*', (client, type, message) => this.handleMessage(client as GameClient, String(type), message));
@@ -224,6 +241,7 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
         if (this.disposing) return;
         this.disposing = true;
         this.log.info('lobby closed by admin');
+        this.abandonReason = 'closed_by_admin'; // (records)
         for (const s of this.seats.values()) {
           try {
             s.client?.send('kicked', { reason: 'This lobby was closed by an administrator' });
@@ -305,6 +323,7 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
 
   override async onDispose() {
     this.disposing = true;
+    this.recordOnDispose(); // (records) abandoned games are recorded too
     this.services.directory.remove(this.lobbyId);
     try {
       await this.voice.dispose();
@@ -409,6 +428,7 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
     this.gameDirty = true;
     this.forceGameView.add(seat.member.pid);
     this.lastGameView.delete(seat.member.pid);
+    this.notebook?.deliver(seat.member, this.matchId); // (v2, notebook) your own notebook back after refresh / reconnect / new device
     // Replay what the reconnecting client sent before it was bound (same session only).
     if (pending?.length) {
       queueMicrotask(() => {
@@ -648,6 +668,21 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
         this.game.handleStoryteller(m.pid, msg as C2SParsed<'st:command'>);
         return;
       }
+      // (v2, social-server) emotes + pins: authorisation / visibility / limits inside the module.
+      case 'social:emote':
+      case 'social:pin':
+      case 'social:unpin':
+      case 'social:clearPins':
+        return this.social.handle(m.pid, type, msg as C2SParsed<'social:pin'>);
+      // (records) the Storyteller's story + released pamphlets; authorisation inside records/story.ts.
+      case 'story:get':
+      case 'story:release':
+      case 'story:pamphlets':
+        return handleStoryMessage(this.host, m.pid, type, msg as C2SParsed<'story:get'>, { database: this.services.database, matchId: this.matchId });
+      // (v2, notebook) owner = this seat's own account (never from the payload); see notebook/index.ts.
+      case 'notebook:load':
+      case 'notebook:save':
+        return this.notebook.handle(m, this.matchId, type, msg as C2SParsed<'notebook:save'>);
       case 'voice:status':
         return this.voice.handleStatus(m.pid, msg as C2SParsed<'voice:status'>);
       case 'voice:announce':
@@ -709,7 +744,10 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
     }
     this.lobbyDirty = true;
     this.gameDirty = true;
+    // (v2, notebook) everyone (players + Storyteller) gets a fresh, empty notebook for this match.
+    for (const s of this.seats.values()) this.notebook.deliver(s.member, this.matchId, true);
     this.log.info('game started', { matchId: this.matchId, players: seats.length });
+    this.matchMeta = this.captureMatchMeta(st, players); // (records)
   }
 
   private resetForRematch() {
@@ -718,6 +756,7 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
     this.matchRoster.clear();
     this.matchStorytellerAccountId = null;
     this.matchRecorded = false;
+    this.matchMeta = null; // (records)
     this.lastGameView.clear();
     const oldVoice = this.voice;
     void oldVoice.dispose().catch((e) => this.log.warn('voice dispose failed', { err: errMsg(e) }));
@@ -783,6 +822,7 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
     this.game = (f.game ?? createGameModule)(this.host);
     this.world = (f.world ?? createWorldModule)(this.host);
     this.voice = (f.voice ?? createVoiceModule)(this.host);
+    this.social = createSocialModule(this.host); // (v2, social-server) fresh per match: rematch clears pins
   }
 
   private createHost(): RoomHost {
@@ -840,6 +880,7 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
           ['game', this.game],
           ['world', this.world],
           ['voice', this.voice],
+          ['social', this.social], // (v2, social-server)
         ] as const) {
           try {
             mod.onEvent(e);
@@ -905,8 +946,8 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
       ];
     });
     try {
-      const fresh = this.services.stats.recordMatchFinished({
-        matchId: this.matchId,
+      const summary = () => this.services.stats.recordMatchFinished({
+        matchId: this.matchId!, // (records: inside a closure now)
         lobbyId: this.lobbyId,
         script: this.settings.script,
         startedAt: this.matchStartedAt || outcome.startedAt,
@@ -916,10 +957,45 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
         storytellerAccountId: this.matchStorytellerAccountId,
         players,
       });
+      // (records) the full game record is written in the SAME transaction as the summary.
+      const fresh = this.matchMeta
+        ? writeFinished(this.services.database, buildRecordSafely(this.matchMeta, this.game, { status: 'finished', endedAt: outcome.endedAt, outcome }, this.log), summary)
+        : summary();
       this.matchRecorded = true;
       this.log.info('match recorded', { matchId: this.matchId, fresh, winner: outcome.winner });
     } catch (e) {
       this.log.error('recording match result failed', { err: errMsg(e) });
+    }
+  }
+
+  /** (records) Who played, as they were at the start (names, accounts, avatar ids). */
+  private captureMatchMeta(st: Seat, players: Seat[]): MatchMeta {
+    const labels = this.labels();
+    const person = (x: Seat) => ({ pid: x.member.pid, accountId: x.member.accountId, displayName: x.member.displayName, label: labels.get(x.member.pid) ?? x.member.displayName });
+    return {
+      matchId: this.matchId!,
+      lobbyId: this.lobbyId,
+      script: this.settings.script,
+      lobbyName: this.settings.name,
+      maxPlayers: this.settings.maxPlayers,
+      startedAt: this.matchStartedAt,
+      storyteller: person(st),
+      players: players.map((x) => ({ ...person(x), seat: x.member.seat!, avatarId: x.member.cosmetics.preset ?? null })),
+    };
+  }
+
+  /** (records) A game that never finished is still recorded ('abandoned'); a finished one gets a last write attempt. */
+  private recordOnDispose() {
+    if (!this.matchId || this.matchRecorded || !this.matchMeta) return;
+    if (this.status === 'finished') return this.recordOutcome();
+    if (this.status !== 'in_game') return;
+    try {
+      const record = buildRecordSafely(this.matchMeta, this.game, { status: 'abandoned', endedAt: Date.now(), abandonReason: this.abandonReason }, this.log);
+      writeAbandoned(this.services.database, record);
+      this.matchRecorded = true;
+      this.log.info('match record saved', { matchId: this.matchId, status: 'abandoned', reason: this.abandonReason });
+    } catch (e) {
+      this.log.error('saving the abandoned game record failed', { err: errMsg(e) });
     }
   }
 
@@ -946,6 +1022,11 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
         done = false;
       }
       if (done) this.finishGame();
+    }
+    // (records) a failed end-of-game write (summary + record, one transaction) is retried.
+    if (this.status === 'finished' && this.matchId && !this.matchRecorded && now >= this.recordRetryAt) {
+      this.recordRetryAt = now + 5000;
+      this.recordOutcome();
     }
 
     this.snapshotAcc += dtMs;
@@ -1030,7 +1111,12 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
   private sendSnapshots() {
     for (const s of this.connectedSeats()) {
       try {
-        this.sendTo(s, 'world:snapshot', this.world.snapshotFor(s.member.pid));
+        const snap = this.world.snapshotFor(s.member.pid);
+        // (v2, social-server) pins of the viewer's location; omitted only when there are none
+        // (every snapshot is complete, never a delta: absent = no pins).
+        const pins = this.social.pinsFor(s.member.pid);
+        if (pins.length) snap.pins = pins;
+        this.sendTo(s, 'world:snapshot', snap);
       } catch (e) {
         // One viewer's failure must never starve everyone after it in the loop.
         this.log.error('snapshotFor failed', { pid: s.member.pid, err: errMsg(e) });
@@ -1094,6 +1180,7 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
     if (now - this.idleSince >= limitSec * 1000) {
       this.disposing = true;
       this.log.info('idle timeout: disposing lobby');
+      this.abandonReason = 'idle_timeout'; // (records)
       void this.disconnect(CLOSE_CODES.lobbyClosed);
     }
   }

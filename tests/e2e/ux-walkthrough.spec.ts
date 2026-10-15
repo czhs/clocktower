@@ -107,6 +107,7 @@ const OVERLAYS = [
   '.ct-waiting',
   '.ct-touch-stick',
   '.ct-touch-use',
+  '.ct-inside',
 ];
 const overlapLog: string[] = [];
 const consoleLog: string[] = [];
@@ -183,6 +184,8 @@ test('ux walkthrough', async ({ browser }) => {
       expect(r.ok(), `create decoy lobby: ${r.status()} ${await r.text()}`).toBeTruthy();
     }
     await decoy2.ctx.close();
+    // (shared host: keep <= 6 browser contexts open at once)
+    await decoy.ctx.close();
     await expect(st.page.locator('.ct-lobby').first()).toBeVisible({ timeout: 15_000 });
     await snapSizes(st.page, '04-home');
     await snap(ph.page, '04-home-m390', 800);
@@ -191,17 +194,20 @@ test('ux walkthrough', async ({ browser }) => {
     await snap(ph.page, '04-home-m390-bottom');
     await ph.page.locator('.ct-home').evaluate((el) => (el.scrollTop = 0));
 
-    // Character picker: pick a villager, peek at advanced customization.
-    const pick = st.page.getByRole('radio', { name: 'Blacksmith' });
-    if (await pick.count()) {
+    // v2 character picker on the home screen: a fixed roster, a pick is saved at once (no custom
+    // characters / "Advanced customization" any more).
+    const roster = st.page.getByRole('radiogroup', { name: 'Choose your character' });
+    await expect(roster).toBeVisible();
+    await expect(st.page.getByText('Advanced customization')).toHaveCount(0);
+    const pick = roster.getByRole('radio', { name: /^Old Delve/ });
+    if ((await pick.getAttribute('aria-checked')) !== 'true') {
       await pick.click();
-      await snap(st.page, '04b-picker-selected-d1440', 600);
-      await st.page.getByText('Advanced customization').click();
-      await snap(st.page, '04c-picker-advanced-d1440', 400);
-      await st.page.getByText('Advanced customization').click();
-      await st.page.getByRole('button', { name: 'Save character' }).click();
-      await expect(st.page.getByText('Saved')).toBeVisible();
+      await expect(st.page.getByText(/^Saved\./)).toBeVisible();
     }
+    await expect(pick).toHaveAttribute('aria-checked', 'true');
+    await snap(st.page, '04b-picker-selected-d1440', 600);
+    await roster.getByRole('radio', { name: /^Polly/ }).hover();
+    await snap(st.page, '04c-picker-hover-mascot-d1440', 400);
     await st.page.getByRole('button', { name: /create lobby/i }).first().click();
     const dialog = st.page.getByRole('dialog', { name: 'Create lobby' });
     await dialog.getByLabel('Lobby name').fill(`Hollowmere ${suffix}`);
@@ -322,19 +328,27 @@ test('ux walkthrough', async ({ browser }) => {
       await snap(ph.page, '11-day-m390-chat-open', 300);
       await ph.page.getByRole('button', { name: 'Minimise chat' }).click();
     }
-    // Walk the desktop player outside so the home compass shows.
+    // v2: players wake up inside their cottage (fixed room view + "Inside …" panel); Leave walks out
+    // and the home compass shows.
+    const inside = deep.page.locator('.ct-inside');
+    if (await inside.count()) {
+      await snapSizes(deep.page, '11-day-player-inside', 400);
+      await inside.getByRole('button', { name: 'Leave' }).click();
+      await expect(inside).toHaveCount(0, { timeout: 15_000 });
+    } else notes.push('desktop player was not inside a cottage at day start');
     await deep.page.keyboard.down('ArrowDown');
-    await deep.page.waitForTimeout(1500);
-    await deep.page.keyboard.up('ArrowDown');
-    await snap(deep.page, '11-day-player-near-door-d1440', 200);
-    await deep.page.keyboard.press('KeyE');
-    await deep.page.waitForTimeout(800);
-    await deep.page.keyboard.down('ArrowDown');
-    await deep.page.waitForTimeout(700);
+    await deep.page.waitForTimeout(500);
     await deep.page.keyboard.up('ArrowDown');
     await snapSizes(deep.page, '11-day-player-outdoors', 600);
 
-    // Phone: walk with the on-screen stick if present; record the movement.
+    // Phone: leave the cottage with the Leave button (no joystick inside), then walk with the stick.
+    const phInside = ph.page.locator('.ct-inside');
+    if (await phInside.count()) {
+      await snap(ph.page, '11-day-m390-inside', 300);
+      await phInside.getByRole('button', { name: 'Leave' }).tap();
+      await expect(phInside).toHaveCount(0, { timeout: 15_000 });
+      await ph.page.waitForTimeout(800);
+    }
     const stick = ph.page.locator('.ct-touch-stick');
     if (await stick.count()) {
       const t0 = Date.now();
@@ -380,6 +394,9 @@ test('ux walkthrough', async ({ browser }) => {
     await snapSizes(st.page, '14-endgame-st', 1000);
     await snapSizes(deep.page, '14-endgame-player', 1000);
     await snap(ph.page, '14-endgame-m390', 1000);
+    // the Storyteller and the phone are done: free their contexts (<= 6 open at once)
+    await st.ctx.close();
+    await ph.ctx.close();
 
     // ------------------------------------------------------------- error states
     const late = await newClient(browser, `Late ${suffix}`);
@@ -407,6 +424,11 @@ test('ux walkthrough', async ({ browser }) => {
     await late.page.goto(`/lobby/${tiny}`);
     await late.page.waitForTimeout(1500);
     await snap(late.page, '16-err-full-d1440');
+    // Admin, denied (non-admin account) — taken now so `late` can be closed before the phone joins.
+    await late.page.goto('/admin');
+    await late.page.waitForTimeout(1200);
+    await snap(late.page, '19-admin-denied-d1440');
+    await late.ctx.close();
     const phLate = await newClient(browser, `PhLate ${suffix}`, true);
     all.push(phLate);
     await phLate.page.goto(`/lobby/${tiny}`);
@@ -429,11 +451,6 @@ test('ux walkthrough', async ({ browser }) => {
     await players[2]!.page.waitForTimeout(1500);
     await snap(players[2]!.page, '18-err-kicked-d1440');
 
-    // Admin, denied (non-admin account).
-    await late.page.goto('/admin');
-    await late.page.waitForTimeout(1200);
-    await snap(late.page, '19-admin-denied-d1440');
-    await snap(late.page, '19-admin-denied-d1440');
     const admin = process.env.UX_ADMIN_FILE;
     if (admin && existsSync(admin)) {
       const { passphrase } = JSON.parse(readFileSync(admin, 'utf8')) as { passphrase: string };

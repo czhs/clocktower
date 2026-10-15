@@ -1,4 +1,4 @@
-import type { DirectoryPhase, VoiceUsageView } from '@ct/protocol';
+import type { Alignment, CharacterId, DirectoryPhase, StoryEntry, VoiceUsageView } from '@ct/protocol';
 
 // MIRROR of apps/server/src/admin/types.ts (response shapes of /api/admin/*). Keep in sync.
 // CONTRACT-REQUEST (lead): move these into packages/protocol/src/admin.ts and import from there.
@@ -78,4 +78,51 @@ export interface AdminRotateResponse {
 export interface AdminBulkDeleteResponse {
   deleted: { id: string; displayName: string }[];
   skipped: { id: string; displayName: string | null; reason: string }[];
+}
+
+/** (records) GET /api/admin/games — one saved game. */
+export interface AdminGameView {
+  matchId: string;
+  lobbyId: string;
+  lobbyName: string | null;
+  script: string | null;
+  status: 'finished' | 'abandoned';
+  startedAt: string;
+  endedAt: string;
+  durationSec: number;
+  playerCount: number;
+  winner: 'good' | 'evil' | null;
+  reason: string | null;
+  storytellerName: string | null;
+  storytellerAccountId: string | null;
+}
+
+export interface AdminGamesPage {
+  games: AdminGameView[];
+  total: number;
+}
+
+/**
+ * (records) The parts of the full game record (GET /api/admin/games/:id, GameRecordV1 in
+ * apps/server/src/records/types.ts, spec docs/game-records.md) the Games tab renders.
+ */
+export interface AdminGameRecord {
+  version: number;
+  matchId: string;
+  status: 'finished' | 'abandoned';
+  storyteller: { displayName: string; label: string; accountId: string | null } | null;
+  seats: {
+    seat: number;
+    label: string;
+    accountId: string | null;
+    startingCharacter: CharacterId | null;
+    finalCharacter: CharacterId | null;
+    finalAlignment: Alignment | null;
+    aliveAtEnd: boolean;
+    won: boolean | null;
+    death: { cause: string; day: number; night: number } | null;
+  }[];
+  result: { winner: Alignment; reason: string } | null;
+  abandon: { reason: string } | null;
+  timeline: StoryEntry[];
 }

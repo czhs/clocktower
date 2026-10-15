@@ -20,6 +20,8 @@ import { StCommand, type StorytellerGameView } from './storyteller.js';
 import { VoiceAnnounceMsg, VoiceStatusMsg, type VoiceGrant, type VoiceRevoke, type VoiceUnavailable } from './voice.js';
 import { MoveMsg, UseDoorMsg, type WorldSnapshot, type WorldTeleport } from './world.js';
 import { EmoteMsg, PinClearMsg, PinDropMsg, PinRemoveMsg, type EmoteEvent } from './social.js';
+import { StoryGetMsg, StoryPamphletsMsg, StoryReleaseMsg, type Pamphlet, type StoryStView } from './story.js';
+import { NotebookLoadMsg, NotebookSaveMsg, type NotebookDataMsg, type NotebookUnavailableMsg } from './notebook.js';
 
 /**
  * Every client -> server Colyseus message type and its Zod schema. The GameRoom validates
@@ -47,6 +49,9 @@ export const C2S = {
   'social:pin': PinDropMsg,
   'social:unpin': PinRemoveMsg,
   'social:clearPins': PinClearMsg,
+  // (v2, notebook) private per-game notebook (owner-only; see notebook.ts)
+  'notebook:save': NotebookSaveMsg,
+  'notebook:load': NotebookLoadMsg,
   // chat
   'chat:send': ChatSendMsg,
   // game (players)
@@ -56,6 +61,10 @@ export const C2S = {
   'game:slayerShot': SlayerShotMsg,
   // storyteller
   'st:command': StCommand,
+  // story (v2, records): 'story:get' / 'story:release' Storyteller only; 'story:pamphlets' anyone
+  'story:get': StoryGetMsg,
+  'story:release': StoryReleaseMsg,
+  'story:pamphlets': StoryPamphletsMsg,
   // voice
   'voice:status': VoiceStatusMsg,
   'voice:announce': VoiceAnnounceMsg,
@@ -83,7 +92,17 @@ export interface S2CMessages {
   'world:teleport': WorldTeleport;
   /** (v2) Someone you can see made a gesture (only sent to viewers who can see them). */
   'social:emote': EmoteEvent;
+  /** (v2, notebook) Your own private notebook (owner-only: never sent to anyone else). */
+  'notebook:data': NotebookDataMsg;
+  /** (v2, notebook) A notebook load/save could not be served (no game / retry later). */
+  'notebook:unavailable': NotebookUnavailableMsg;
   'chat:message': ChatMessage;
+  /** (v2, records) The Storyteller's story (play-by-play + pamphlet previews). Seated Storyteller ONLY. */
+  'story:st': StoryStView;
+  /** (v2, records) A pamphlet the Storyteller just released (to everyone in the lobby). */
+  'story:pamphlet': Pamphlet;
+  /** (v2, records) Every pamphlet released in this game so far (reply to story:pamphlets). */
+  'story:pamphlets': { pamphlets: Pamphlet[] };
   announcement: AnnouncementView;
   /** Sound cue (bell at bedtime, dawn chime, death toll). */
   sound: { cue: 'bell' | 'dawn' | 'toll' | 'door' | 'visit' };

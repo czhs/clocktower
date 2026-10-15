@@ -87,6 +87,8 @@ async function panelFits(page: Page, label: string) {
   return { panel: panel!, btn: btn! };
 }
 
+test.use({ actionTimeout: 60_000 });
+
 test('v2 phones: join, pick a character, tap into a cottage, Leave (portrait + landscape)', async ({ browser }) => {
   test.setTimeout(1_500_000);
   const all: Player[] = [];
@@ -149,7 +151,7 @@ test('v2 phones: join, pick a character, tap into a cottage, Leave (portrait + l
     await expect(pTile).toHaveAttribute('aria-disabled', 'true');
     await expect(pTile).toHaveAttribute('aria-label', new RegExp(`taken by ${P.name}`));
     await pTile.scrollIntoViewIfNeeded();
-    await pTile.tap(); // only explains itself
+    await pTile.tap({ force: true }); // aria-disabled: it only explains itself
     await Q.page.waitForTimeout(1500);
     expect(myPreset(Q), 'tapping a taken character does not take it').not.toBe(pChar);
     await shot(Q.page, 'phone-landscape-taken-character');
@@ -206,6 +208,16 @@ test('v2 phones: join, pick a character, tap into a cottage, Leave (portrait + l
     await shot(P.page, 'phone-portrait-inside');
     await leaveByButton(P, pPid, { touch: true });
     await expect(P.page.locator('.ct-touch-stick')).toBeVisible({ timeout: 10_000 });
+
+    // portrait: the cottage farthest to the side (portrait shows the square's width only, so it is
+    // usually off screen): tap the ground toward it, then the cottage itself
+    const homes = [P, Q, ...fillers].map(homeOf).filter((b) => b.id !== hp.id);
+    const side = homes.sort((a, b) => Math.abs(b.door.x * 16 - 360) - Math.abs(a.door.x * 16 - 360))[0]!;
+    const sideLog = await tapCottage(P, pPid, side.id, { touch: true });
+    notes.push(`P portrait taps side cottage ${side.id} (door x ${side.door.x * 16}): ${sideLog.join(' | ')}`);
+    await expect(insidePanel(P.page)).toBeVisible({ timeout: 15_000 });
+    await shot(P.page, 'phone-portrait-side-cottage-inside');
+    await leaveByButton(P, pPid, { touch: true });
 
     // landscape: tap P's cottage (a neighbour's, by day = a private room) -> in
     notes.push(`Q landscape taps ${hp.id}: ${(await tapCottage(Q, qPid, hp.id, { touch: true })).join(' | ')}`);

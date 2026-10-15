@@ -165,7 +165,10 @@ export async function startAppServer(config: AppConfig, log: Logger, options: Ap
       server,
       pingInterval: 5000,
       pingMaxRetries: 3,
-      maxPayload: 4096,
+      // (v2, notebook — CONTRACT-REQUEST for lead review) was 4096: one 'notebook:save' frame carries a
+      // whole private notebook (NOTEBOOK_MAX_BYTES = 20 KiB of JSON + msgpack framing). Every message
+      // is still Zod-capped per field and token-bucket rate-limited per pid.
+      maxPayload: 24 * 1024,
       // (No verifyClient pre-check: rejecting at the HTTP upgrade breaks colyseus.js's reconnect
       // retry after a network drop. Seat reservations are still enforced by the transport, and the
       // rate-limited logger below absorbs the log noise from junk upgrades — SR-4.)
