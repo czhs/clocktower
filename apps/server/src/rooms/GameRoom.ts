@@ -115,6 +115,11 @@ interface Seat {
 
 /** A connected seat whose client cannot receive (JOINING / socket not open) for this long is closed. */
 const FEED_STUCK_MS = 5000;
+/** A JOINING client has its messages queued by Colyseus (not lost): only treat a very slow join as stuck. */
+const FEED_JOINING_MS = 30_000;
+/** Never kick the same seat more than this often (a slow device must not end up in a reconnect loop). */
+const FEED_KICK_LIMIT = 2;
+const FEED_KICK_WINDOW_MS = 120_000;
 /** Max messages held for a client that is not bound to its seat yet. */
 const PENDING_MAX = 32;
 /** Stale-connection warnings: at most one per pid per this many ms. */
@@ -952,7 +957,11 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
    * gets nothing: every send is queued or lost. After FEED_STUCK_MS we log it (with the state, to
    * find the root cause) and close that client so the browser reconnects instead of hanging.
    */
+  private feedKicks = new Map<string, number[]>();
+
   private checkFeeds(now: number) {
+    for (const pid of this.feedStuckSince.keys()) if (!this.seats.has(pid)) this.feedStuckSince.delete(pid);
+    for (const pid of this.feedKicks.keys()) if (!this.seats.has(pid)) this.feedKicks.delete(pid);
     for (const s of this.seats.values()) {
       const c = s.client;
       const pid = s.member.pid;
@@ -961,21 +970,26 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
         continue;
       }
       const ws = (c as unknown as { ref?: { readyState?: number } }).ref;
-      const stuck = c.state === ClientState.JOINING || (ws?.readyState !== undefined && ws.readyState !== 1);
+      const socketDown = ws?.readyState !== undefined && ws.readyState !== 1;
+      const joining = c.state === ClientState.JOINING;
+      const stuck = socketDown || joining;
       if (!stuck) {
         this.feedStuckSince.delete(pid);
         continue;
       }
       const since = this.feedStuckSince.get(pid) ?? now;
       this.feedStuckSince.set(pid, since);
-      if (now - since < FEED_STUCK_MS) continue;
+      if (now - since < (socketDown ? FEED_STUCK_MS : FEED_JOINING_MS)) continue;
       this.feedStuckSince.delete(pid);
+      const recent = (this.feedKicks.get(pid) ?? []).filter((t) => now - t < FEED_KICK_WINDOW_MS);
+      const mayKick = recent.length < FEED_KICK_LIMIT;
       this.log.warn('connected seat cannot receive: closing it so the client reconnects', {
         lobbyId: this.lobbyId,
         pid,
         clientState: c.state,
         readyState: ws?.readyState ?? null,
         reconnectionPending: !!s.reconnection,
+        action: socketDown && ws!.readyState! >= 2 ? 'mark_disconnected' : mayKick ? 'close' : 'log_only (kick limit)',
       });
       if (ws?.readyState !== undefined && ws.readyState >= 2) {
         // The socket is already closing/closed but we never got onLeave: show the truth (a fresh
@@ -987,6 +1001,8 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
         this.afterHandler();
         continue;
       }
+      if (!mayKick) continue; // a slow device: keep it rather than looping it through reconnects
+      this.feedKicks.set(pid, [...recent, now]);
       try {
         c.leave(1001); // not "consented": the seat is kept and the client reconnects by token
       } catch {

@@ -43,6 +43,13 @@ export class RoomConnection {
   /** Last time anything from the world feed arrived (dead-feed watchdog). */
   private lastFeedAt = 0;
   private feedTimer: ReturnType<typeof setInterval> | null = null;
+  /** Dead-feed threshold; backs off when the watchdog had to reconnect recently (no reconnect storms). */
+  private feedLimitMs = 5000;
+  private lastWatchdogAt = 0;
+  private onVisible = () => {
+    // A backgrounded tab (esp. iOS Safari) may be suspended; don't mistake that for a dead feed.
+    if (document.visibilityState === 'visible') this.lastFeedAt = Date.now();
+  };
 
   constructor(readonly lobbyId: string) {}
 
@@ -94,14 +101,20 @@ export class RoomConnection {
     this.lastFeedAt = Date.now();
     // Dead feed: the server streams world:snapshot at 12 Hz to every connected seat in every phase.
     // Nothing for 5 s while "open" means this socket is silently dead: drop it and reconnect.
+    if (!this.feedTimer) document.addEventListener('visibilitychange', this.onVisible);
     this.feedTimer ??= setInterval(() => {
       if (this.closedByUser) {
         clearInterval(this.feedTimer!);
         this.feedTimer = null;
+        document.removeEventListener('visibilitychange', this.onVisible);
         return;
       }
-      if (this.status.get() !== 'open' || !this.room || Date.now() - this.lastFeedAt < 5000) return;
-      this.lastFeedAt = Date.now();
+      if (document.visibilityState !== 'visible') return;
+      if (this.status.get() !== 'open' || !this.room || Date.now() - this.lastFeedAt < this.feedLimitMs) return;
+      const now = Date.now();
+      this.feedLimitMs = now - this.lastWatchdogAt < 60_000 ? Math.min(this.feedLimitMs * 2, 40_000) : 5000;
+      this.lastWatchdogAt = now;
+      this.lastFeedAt = now;
       this.status.set('reconnecting');
       try {
         (this.room.connection as unknown as { close(): void }).close(); // -> onLeave (non-terminal) -> retry()
@@ -191,6 +204,7 @@ export class RoomConnection {
     this.closedByUser = true;
     if (this.feedTimer) clearInterval(this.feedTimer);
     this.feedTimer = null;
+    document.removeEventListener('visibilitychange', this.onVisible);
     sessionStorage.removeItem(RECONNECT_KEY(this.lobbyId));
     this.room?.send('lobby:leave', {});
     await this.room?.leave(true).catch(() => undefined);
