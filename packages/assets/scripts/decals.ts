@@ -6,27 +6,38 @@ import { dpick, hash, Img, mix } from './lib/img.js';
 const LEAF = ['#16301f', '#1f4026', '#2c522e', '#3e6838', '#55804a'];
 
 function tuft(img: Img, seed: number) {
-  for (let k = 0; k < 3; k++) {
+  // two or three clumps of blades, lit tips, a dark root
+  const n = 2 + (seed % 2);
+  for (let k = 0; k < n; k++) {
     const x = 3 + Math.floor(hash(k, 0, seed) * 10);
-    const y = 6 + Math.floor(hash(k, 1, seed) * 7);
+    const y = 7 + Math.floor(hash(k, 1, seed) * 6);
+    img.hline(x - 1, x + 1, y + 1, '#1a2c20');
     for (let b = -2; b <= 2; b++) {
-      const h = 2 + Math.floor(hash(k, b, seed + 1) * 3);
-      for (let j = 0; j < h; j++) img.set(x + b + (j > 1 ? Math.sign(b) : 0), y - j, dpick(['#28402e', '#3f5d3b', '#5a7a48', '#7a9458'], 0.3 + j * 0.25, x + b, y - j));
+      const h = 2 + Math.floor(hash(k, b, seed + 1) * 3) + (b === 0 ? 1 : 0);
+      for (let j = 0; j < h; j++) {
+        const lean = j >= 2 ? Math.sign(b) * (j >= 3 ? 2 : 1) : 0;
+        img.set(x + b + lean, y - j, dpick(['#243a2a', '#355236', '#4e6e42', '#6e8c52'], 0.2 + (j / h) * 0.8 - (b > 0 ? 0.15 : 0), x + b, y - j));
+      }
     }
   }
 }
 
 function flowers(img: Img, petal: string, seed: number) {
+  const dark = mix(petal, '#1a0e24', 0.4);
+  const light = mix(petal, '#fff6e0', 0.3);
   for (let k = 0; k < 4; k++) {
-    const x = 2 + Math.floor(hash(k, 0, seed) * 12);
-    const y = 3 + Math.floor(hash(k, 1, seed) * 11);
-    img.set(x, y + 1, '#2c4a2a');
+    const x = 3 + Math.floor(hash(k, 0, seed) * 10);
+    const y = 4 + Math.floor(hash(k, 1, seed) * 9);
+    // stem and a leaf
     img.set(x, y + 2, '#2c4a2a');
+    img.set(x, y + 3, '#24402a');
+    img.set(x + (k % 2 ? 1 : -1), y + 3, '#3e6438');
+    // five-petal head
     img.set(x - 1, y, petal);
-    img.set(x + 1, y, mix(petal, '#000000', 0.25));
-    img.set(x, y - 1, mix(petal, '#ffffff', 0.25));
-    img.set(x, y + 0, '#f0d060');
-    img.set(x, y + 1 - 0, mix(petal, '#000000', 0.35));
+    img.set(x + 1, y, dark);
+    img.set(x, y - 1, light);
+    img.set(x, y + 1, dark);
+    img.set(x, y, '#f0d060');
   }
 }
 
@@ -43,16 +54,18 @@ function mushrooms(img: Img) {
   }
 }
 
+/** Weeds pushing up between setts (reads as a tuft + pebble on the verges too). */
 function crack(img: Img) {
-  let x = 3;
-  let y = 4;
-  for (let i = 0; i < 12; i++) {
-    img.set(x, y, '#1a1820');
-    x += hash(i, 0, 3) < 0.6 ? 1 : 0;
-    y += hash(i, 1, 4) < 0.7 ? 1 : 0;
-  }
-  img.set(8, 6, '#1a1820');
-  img.set(9, 5, '#1a1820');
+  for (const [x, y, h] of [
+    [6, 10, 3],
+    [8, 10, 4],
+    [10, 11, 2],
+  ] as const)
+    for (let j = 0; j < h; j++) img.set(x + (j === h - 1 ? (x < 8 ? -1 : x > 8 ? 1 : 0) : 0), y - j, j === h - 1 ? '#5e7e46' : '#36522f');
+  img.set(11, 12, '#7a7480');
+  img.set(12, 12, '#4a4552');
+  img.set(11, 13, '#2a2630');
+  img.set(4, 12, '#5a5462');
 }
 
 function leaves(img: Img) {

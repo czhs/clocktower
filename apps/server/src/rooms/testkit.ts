@@ -335,6 +335,7 @@ export function fakeModules(): { registry: FakeRegistry; factories: NonNullable<
         setDoorLock: () => null,
         stageView: () => ({ players: [], doors: {}, storytellerLocation: null }),
         applySettings: () => undefined,
+        teleportSelf: () => null,
         tick: () => undefined,
       }),
       voice: (host): VoiceModule => ({

@@ -25,8 +25,8 @@
 
 /* right dock: phase pill, then prompt / vote cards only while actionable (never centred) */
 .cth > .cth-dock {
-  position: absolute; top: 10px; right: 12px; width: min(300px, calc(100vw - 24px));
-  max-height: calc(100vh - 220px); overflow-y: auto; overflow-x: hidden;
+  position: absolute; top: 48px; right: 12px; width: min(300px, calc(100vw - 24px));
+  max-height: calc(100vh - 260px); overflow-y: auto; overflow-x: hidden;
   display: flex; flex-direction: column; align-items: flex-end; gap: 6px; pointer-events: none;
 }
 .cth-dock > * { pointer-events: auto; }

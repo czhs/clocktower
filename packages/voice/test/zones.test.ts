@@ -15,17 +15,24 @@ const out = (pid: string, x: number, y: number, extra: Partial<ZoneMemberInput> 
 const at = (pid: string, id: string, extra: Partial<ZoneMemberInput> = {}): ZoneMemberInput => ({ pid, role: 'player', ...inside(id), ...extra });
 
 describe('computeZones — day rules', () => {
-  it('square circle -> broadcast, elsewhere outdoors -> street proximity, interior -> private bld room', () => {
+  it('v2: outdoors ANYWHERE -> the square broadcast (no street proximity); interior -> private bld room', () => {
+    const tb = layout.townBounds;
     const z = computeZones({
       phase: 'day',
       layout,
-      members: [out('a', sq.cx, sq.cy), out('b', sq.cx + sq.r - 1, sq.cy), out('c', sq.cx + sq.r + 2, sq.cy), at('d', 'tavern'), at('e', 'house-1')],
+      members: [
+        out('a', sq.cx, sq.cy),
+        out('b', sq.cx + sq.r - 1, sq.cy),
+        out('c', sq.cx + sq.r + 2, sq.cy),
+        out('far', (tb.x + 1) * TS, (tb.y + tb.h - 1) * TS), // the far corner of town
+        at('d', 'house-3'),
+        at('e', 'house-1'),
+      ],
     });
-    expect(z.get('a')).toEqual({ zone: 'square', mode: 'broadcast' });
-    expect(z.get('b')).toEqual({ zone: 'square', mode: 'broadcast' });
-    expect(z.get('c')).toEqual({ zone: 'street', mode: 'proximity' });
-    expect(z.get('d')).toEqual({ zone: 'bld:tavern', mode: 'private' });
+    for (const pid of ['a', 'b', 'c', 'far']) expect(z.get(pid)).toEqual({ zone: 'square', mode: 'broadcast' });
+    expect(z.get('d')).toEqual({ zone: 'bld:house-3', mode: 'private' });
     expect(z.get('e')).toEqual({ zone: 'bld:house-1', mode: 'private' });
+    expect([...z.values()].some((v) => v.zone === 'street')).toBe(false);
   });
 
   it('members without a position / unknown building get no room', () => {
@@ -42,9 +49,9 @@ describe('computeZones — day rules', () => {
   });
 
   it.each<GamePhase | null>([null, 'setup', 'day', 'bedtime', 'finished'])('phase %s uses the normal rules', (phase) => {
-    const z = computeZones({ phase, layout, members: [out('a', sq.cx, sq.cy, { seat: 0 }), at('b', 'tavern', { seat: 1 })] });
+    const z = computeZones({ phase, layout, members: [out('a', sq.cx, sq.cy, { seat: 0 }), at('b', 'house-3', { seat: 1 })] });
     expect(z.get('a')!.zone).toBe('square');
-    expect(z.get('b')!.zone).toBe('bld:tavern');
+    expect(z.get('b')!.zone).toBe('bld:house-3');
   });
 });
 
@@ -53,7 +60,7 @@ describe('computeZones — night isolation and visits', () => {
     const z = computeZones({
       phase,
       layout,
-      members: [out('p0', sq.cx, sq.cy, { seat: 0 }), at('p1', 'tavern', { seat: 1 }), at('p2', 'house-0', { seat: 2 })],
+      members: [out('p0', sq.cx, sq.cy, { seat: 0 }), at('p1', 'house-3', { seat: 1 }), at('p2', 'house-0', { seat: 2 })],
     });
     expect(z.get('p0')!.zone).toBe('bld:house-0');
     expect(z.get('p1')!.zone).toBe('bld:house-1');
@@ -77,51 +84,29 @@ describe('computeZones — night isolation and visits', () => {
   });
 });
 
-describe('ZoneTracker — hysteresis and debounce', () => {
-  const input = (x: number, phase: GamePhase | null = 'day') => ({ phase, layout, members: [out('a', x, sq.cy)] });
+describe('ZoneTracker (v2: outdoors is one zone, so nothing to debounce outdoors)', () => {
+  const input = (x: number, y: number = sq.cy, phase: GamePhase | null = 'day') => ({ phase, layout, members: [out('a', x, y)] });
 
-  it('enters the square at r, leaves only beyond r + margin', () => {
-    const t = new ZoneTracker({ squareMarginPx: 24, debounceMs: 0 });
-    expect(t.update(input(sq.cx + sq.r + 10), 0)).toEqual([{ pid: 'a', from: null, to: 'street', mode: 'proximity' }]);
-    expect(t.update(input(sq.cx + sq.r - 1), 10)[0]!.to).toBe('square');
-    // Inside the margin band: stays in the square.
-    expect(t.update(input(sq.cx + sq.r + 20), 20)).toEqual([]);
-    expect(t.zoneOf('a')).toBe('square');
-    // Beyond the margin: street.
-    expect(t.update(input(sq.cx + sq.r + 30), 30)[0]!.to).toBe('street');
-    // Back into the band from outside: still street (must reach r to enter).
-    expect(t.update(input(sq.cx + sq.r + 20), 40)).toEqual([]);
-  });
-
-  it('does not flap when jittering around the boundary', () => {
+  it('walking anywhere outdoors never changes the zone (no square/street boundary, no flapping)', () => {
     const t = new ZoneTracker({ squareMarginPx: 24, debounceMs: 600 });
-    t.update(input(sq.cx), 0);
+    expect(t.update(input(sq.cx), 0)).toEqual([{ pid: 'a', from: null, to: 'square', mode: 'broadcast' }]);
     let changes = 0;
     for (let i = 0; i < 200; i++) {
-      const jitter = i % 2 === 0 ? -8 : 8;
-      changes += t.update(input(sq.cx + sq.r + jitter), 100 + i * 50).length;
+      const x = (i * 37) % (layout.townBounds.w * TS);
+      const y = (i * 53) % (layout.townBounds.h * TS);
+      changes += t.update(input(x, y), 100 + i * 50).length;
     }
     expect(changes).toBe(0);
     expect(t.zoneOf('a')).toBe('square');
   });
 
-  it('debounces square<->street but commits once stable', () => {
-    const t = new ZoneTracker({ squareMarginPx: 24, debounceMs: 600 });
-    t.update(input(sq.cx), 0);
-    const far = sq.cx + sq.r + 5 * TS;
-    expect(t.update(input(far), 1000)).toEqual([]);
-    // Brief excursion back resets the pending change.
-    expect(t.update(input(sq.cx), 1300)).toEqual([]);
-    expect(t.update(input(far), 1400)).toEqual([]);
-    expect(t.update(input(far), 1900)).toEqual([]);
-    expect(t.update(input(far), 2000)).toEqual([{ pid: 'a', from: 'square', to: 'street', mode: 'proximity' }]);
-  });
-
   it('private-zone transitions are immediate (no lingering in a building room)', () => {
     const t = new ZoneTracker({ debounceMs: 10_000 });
-    t.update({ phase: 'day', layout, members: [at('a', 'tavern')] }, 0);
-    expect(t.update(input(sq.cx + sq.r + 5 * TS), 1)).toEqual([{ pid: 'a', from: 'bld:tavern', to: 'street', mode: 'proximity' }]);
-    expect(t.update({ phase: 'night', layout, members: [out('a', sq.cx, sq.cy, { seat: 2 })] }, 2)[0]!.to).toBe('bld:house-2');
+    t.update({ phase: 'day', layout, members: [at('a', 'house-3')] }, 0);
+    expect(t.update(input(sq.cx + sq.r + 5 * TS), 1)).toEqual([{ pid: 'a', from: 'bld:house-3', to: 'square', mode: 'broadcast' }]);
+    expect(t.update(input(sq.cx), 2)).toEqual([]);
+    expect(t.update({ phase: 'day', layout, members: [at('a', 'house-1')] }, 3)).toEqual([{ pid: 'a', from: 'square', to: 'bld:house-1', mode: 'private' }]);
+    expect(t.update({ phase: 'night', layout, members: [out('a', sq.cx, sq.cy, { seat: 2 })] }, 4)[0]!.to).toBe('bld:house-2');
   });
 
   it('reports removed members', () => {

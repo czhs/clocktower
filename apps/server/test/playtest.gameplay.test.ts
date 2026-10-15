@@ -17,9 +17,9 @@ import { sleep, startTestServer, waitFor } from '../src/rooms/testkit.js';
 import { findPath, type Pt } from '../src/world/path.js';
 import { env, LIVEKIT_TEST_ENV, newGame, nominate, runNight, startGame, toDay, VOTE_STEP_MS, waitAfter, type Game, type Player } from './playtestHarness.js';
 
-/** Layout-driven ids (no id conventions): seat N's home, and two public (non-house) buildings. */
+/** Layout-driven ids (no id conventions): seat N's home, and a cottage nobody lives in (v2: no public buildings). */
 const H = (seat: number) => homeBuilding(L, seat)!.id;
-const [PUB1] = L.buildings.filter((b) => b.kind !== "house").map((b) => b.id) as [string];
+const PUB1 = H(14);
 const PORT = 3381; // gameplay range 3380-3389
 
 beforeAll(async () => {
@@ -288,6 +288,11 @@ describe('gameplay playtest: walking home, the nomination circle, the vote clock
     await waitFor(() => Math.hypot(me(P(6))!.x - sq.x, me(P(6))!.y - sq.y) < 40, 3000, 'map point');
     await cmd(g, { type: 'teleport', who: [6], to: { kind: 'home' } });
     await waitFor(() => presence(g, 6) === 'home', 3000, 'home');
+    for (const [s, n] of others) expect(tps(P(s), n)).toEqual([]);
+
+    // ---- (v2) Storyteller click-to-teleport of themselves: into a cottage and back to a map point
+    await cmd(g, { type: 'teleport_self', to: { kind: 'building', buildingId: PUB1 } }, (v) => v.stage?.storytellerLocation === `bld:${PUB1}`);
+    await cmd(g, { type: 'teleport_self', to: { kind: 'point', x: sq.x, y: sq.y } }, (v) => v.stage?.storytellerLocation === 'outdoors');
     for (const [s, n] of others) expect(tps(P(s), n)).toEqual([]);
 
     // ---- doors

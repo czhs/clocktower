@@ -52,45 +52,73 @@
 .ct-modal h2 { margin: 0; color: var(--accent); font-weight: normal; }
 .ct-modal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
-/* cosmetics */
-.ct-cosmetics { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; margin-bottom: 10px; }
-.ct-cosmetics-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 6px 10px; width: 100%; }
-.ct-field-inline { display: flex; flex-direction: column; gap: 2px; font-size: 0.8rem; }
-.ct-field-inline span { color: var(--muted); }
-.ct-field-inline select { width: 100%; font-size: 0.9rem; }
-.ct-cosmetic-preview { width: 100%; text-align: center; }
-.ct-cosmetic-stage {
-  display: flex; justify-content: center; align-items: flex-end; gap: 18px; padding: 10px 0 6px; border-radius: var(--radius);
-  background: radial-gradient(ellipse at 50% 85%, #3a304c 0%, #1d1b26 70%); border: 1px solid var(--border);
+/* character picker (v2 roster): stage + two portrait grids. Tiles are role=radio buttons, so the
+   themed button / landing-plate styles skip them. */
+.ct-picker { display: flex; flex-direction: column; gap: 10px; width: 100%; min-width: 0; text-align: left; }
+.ct-pick-stage {
+  display: flex; align-items: center; gap: 12px; padding: 8px 12px 8px 8px; border-radius: var(--radius);
+  background: radial-gradient(ellipse at 22% 92%, #4a3d5e 0%, #262233 46%, #1a1823 100%); border: 1px solid var(--border);
+  min-height: 112px;
 }
-.ct-cosmetic-canvas { display: block; }
-.ct-cosmetic-name { margin-top: 6px; color: var(--accent); font-size: 1.05rem; }
-.ct-cosmetic-blurb { font-size: 0.82rem; font-style: italic; min-height: 1.2em; }
-.ct-presets { display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 6px; width: 100%; }
-.ct-preset {
-  display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 4px 2px; min-height: 0;
-  background: var(--panel-raised); border: 1px solid var(--border); border-radius: var(--radius);
+.ct-pick-figure { position: relative; flex: none; display: flex; align-items: flex-end; width: 124px; height: 96px; }
+.ct-pick-figure::before { /* the little pool of lamplight they stand in */
+  content: ''; position: absolute; left: 6px; bottom: -2px; width: 84px; height: 14px; border-radius: 50%;
+  background: radial-gradient(ellipse, #ffd38a33, transparent 70%);
 }
-.ct-preset img, .ct-preset canvas { width: 48px; height: 48px; image-rendering: pixelated; object-fit: contain; }
-.ct-preset-name { font-size: 0.8125rem; color: var(--muted); line-height: 1.15; text-align: center; overflow-wrap: break-word; hyphens: auto; }
-.ct-preset.on { border-color: var(--accent); background: #2d2410; box-shadow: 0 0 0 1px var(--accent) inset; }
-.ct-preset.on .ct-preset-name { color: #f1e2b8; }
-.ct-cosmetics-compact .ct-presets { grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); }
-.ct-cosmetics-compact .ct-preset img, .ct-cosmetics-compact .ct-preset canvas { width: 40px; height: 40px; }
-.ct-advanced { width: 100%; border-top: 1px solid var(--border); padding-top: 6px; }
-.ct-advanced summary { cursor: pointer; color: var(--muted); font-size: 0.85rem; padding: 4px 0; }
-.ct-advanced summary:hover { color: var(--accent); }
-.ct-advanced[open] summary { margin-bottom: 6px; }
-.ct-advanced-note { margin: 6px 0 0; }
-.ct-swatch { width: 84px; text-align: center; }
-.ct-swatch-figure { position: relative; width: 48px; height: 72px; margin: 0 auto; image-rendering: pixelated; }
-.ct-swatch-head { position: absolute; left: 12px; top: 10px; width: 24px; height: 22px; border-radius: 4px; }
-.ct-swatch-hair { position: absolute; left: 10px; top: 6px; width: 28px; height: 12px; border-radius: var(--radius) 6px 2px 2px; z-index: 1; }
-.ct-hair-long, .ct-hair-braid { height: 30px; }
-.ct-hair-hood { height: 32px; left: 8px; width: 32px; border-radius: 12px 12px 4px 4px; z-index: 0; }
-.ct-hair-bun { border-radius: 10px 10px 2px 2px; height: 14px; }
-.ct-swatch-body { position: absolute; left: 8px; top: 34px; width: 32px; height: 36px; border-radius: var(--radius) 6px 2px 2px; }
-.ct-swatch-caption { font-size: 0.75rem; margin-top: 4px; text-transform: capitalize; }
+.ct-pick-figure > canvas { position: relative; }
+.ct-pick-figure > .ct-pick-ghost { margin-left: -12px; margin-bottom: 18px; opacity: 0.9; }
+.ct-pick-none {
+  width: 72px; height: 72px; margin: 0 0 8px 12px; display: grid; place-items: center; border-radius: 50%;
+  border: 1px dashed var(--border-strong); color: var(--muted); font-family: var(--font-display); font-size: 2rem;
+}
+.ct-pick-info { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.ct-pick-name { font-family: var(--font-display); font-size: 1.2rem; line-height: 1.15; color: var(--accent); display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
+.ct-pick-chip { font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.02em; color: #c9bfd6; padding: 0 5px; border: 1px solid #5d5470; border-radius: 3px; }
+.ct-pick-blurb { font-size: 0.9rem; font-style: italic; line-height: 1.3; color: var(--text); min-height: 2.6em; }
+.ct-pick-state { min-height: 1.3em; }
+.ct-pick-grid { display: flex; flex-direction: column; gap: 8px; }
+.ct-pick-head { font-size: 0.8rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin: 0 0 4px 2px; }
+.ct-pick-head .muted { text-transform: none; letter-spacing: 0; }
+.ct-pick-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(54px, 1fr)); gap: 6px; }
+.ct-pick {
+  position: relative; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 1px;
+  min-height: 60px; min-width: 0; padding: 4px 1px 3px; color: var(--muted); font: inherit;
+  background: var(--panel-raised); border: 1px solid var(--border); border-radius: var(--radius); cursor: pointer;
+  transition: border-color 80ms, background-color 80ms, transform 120ms;
+}
+/* theme.css gives framed-screen buttons 14px side padding (specificity 0,3,1, loaded after this file); tiles need the room. */
+.ct-picker .ct-pick-tiles button.ct-pick.ct-pick { padding: 4px 1px 3px; }
+.ct-pick:hover:not([aria-disabled='true']) { border-color: var(--border-strong); background: #343042; }
+.ct-pick:active:not([aria-disabled='true']) { transform: translateY(1px); }
+.ct-pick:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.ct-pick.on { border-color: var(--accent); background: #2d2410; box-shadow: 0 0 0 1px var(--accent) inset, 0 0 12px #d5b56a33; }
+.ct-pick.on::after { /* a small gold check in the corner */
+  content: '✓'; position: absolute; top: 1px; right: 3px; font-size: 0.7rem; line-height: 1; color: var(--accent);
+}
+.ct-pick.is-pending { border-style: dashed; border-color: var(--accent); }
+.ct-pick-course, .ct-pick-who { font-size: 0.75rem; line-height: 1.1; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ct-pick-course { font-variant-numeric: tabular-nums; letter-spacing: 0.01em; color: #a59cb3; }
+.ct-pick.on .ct-pick-course { color: #f1e2b8; }
+.ct-pick.is-taken { cursor: not-allowed; background: #1d1b26; border-style: dashed; }
+.ct-pick.is-taken canvas { filter: grayscale(1) brightness(0.6); opacity: 0.7; }
+.ct-pick-who { color: #e7a197; }
+.ct-pick canvas.is-fallback { opacity: 0.55; }
+.ct-picker-compact .ct-pick-stage { min-height: 96px; padding: 6px 10px 6px 6px; }
+.ct-picker-compact .ct-pick-figure { width: 104px; height: 80px; }
+.ct-picker-compact .ct-pick-tiles { gap: 5px; }
+.ct-picker-compact .ct-pick { min-height: 54px; }
+@media (max-width: 380px) { .ct-pick-figure { width: 104px; } }
+@media (prefers-reduced-motion: no-preference) {
+  .ct-pick.on canvas { animation: ct-pick-hop 360ms ease-out; }
+  .ct-pick canvas.is-fallback { animation: ct-pick-wait 1.2s ease-in-out infinite alternate; }
+}
+@keyframes ct-pick-hop { 40% { transform: translateY(-4px); } 70% { transform: translateY(1px); } }
+@keyframes ct-pick-wait { to { opacity: 0.3; } }
+.ct-side-panel .ct-picker { margin-bottom: 8px; }
+/* waiting room: who is who */
+.ct-member-face { flex: none; border-radius: 3px; background: #1a1823; }
+.ct-change-char { display: inline-flex; align-items: center; gap: 6px; }
+.ct-change-char canvas { border-radius: 3px; background: #1a1823; }
 
 /* waiting room: compact sheet top-left (the HUD's spot once the game starts); stops above the chat dock */
 .ct-waiting {

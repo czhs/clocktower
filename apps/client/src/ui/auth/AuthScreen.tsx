@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'preact/hooks';
-import { DEFAULT_COSMETICS, DISPLAY_NAME_MAX, type AccountView, type Cosmetics } from '@ct/protocol';
+import { DISPLAY_NAME_MAX, type AccountView, type Cosmetics } from '@ct/protocol';
 import { api } from '../../net/api';
 import { copyText, errorText } from '../lobby/finder';
 import { HowToPlayHost, openHelp } from '../common/HowToPlay';
-import { CosmeticEditor, randomPreset } from '../lobby/CosmeticEditor';
+import { CharacterPicker, randomCharacter } from '../lobby/CharacterPicker';
 import { Hero } from './Hero';
 import { TourHost, useIntro, type IntroReason } from './Tour';
 import './auth.css';
@@ -56,7 +56,7 @@ export function AuthScreen({ onSignedIn }: { onSignedIn: (a: AccountView) => voi
               <div class="ct-card-body ct-invite">
                 <img class="ct-invite-art" src="/landing/window-2.png" alt="" width={160} height={186} aria-hidden="true" draggable={false} />
                 <h2 id="ct-card-title" class="ct-card-title">You've been invited</h2>
-                <p class="ct-card-lede">Your friends are gathering in the town square. Pick a villager and you'll walk straight in.</p>
+                <p class="ct-card-lede">Your friends are gathering in the town square. Pick a character and you'll walk straight in.</p>
                 <div class="ct-actions">
                   <button class="ct-btn ct-btn-primary ct-btn-big" onClick={() => setMode({ m: 'create' })}>
                     Join the game
@@ -140,10 +140,10 @@ function CardClock() {
   );
 }
 
-/** Apply the villager picked during sign-up (a random premade one unless they chose). Failure is
- * harmless: they keep the default look and can change it on the home screen. */
+/** Apply the character picked during sign-up (a random one unless they chose). Failure is
+ * harmless: they keep the server's default and can change it on the home screen. */
 async function enterAsNew(account: AccountView, cosmetics: Cosmetics, onSignedIn: (a: AccountView) => void) {
-  if (account.cosmetics.preset === cosmetics.preset && !cosmetics.preset) return onSignedIn(account);
+  if (!cosmetics.preset || account.cosmetics.preset === cosmetics.preset) return onSignedIn(account);
   try {
     onSignedIn(await api.updateMe({ cosmetics }));
   } catch {
@@ -153,7 +153,7 @@ async function enterAsNew(account: AccountView, cosmetics: Cosmetics, onSignedIn
 
 function CreateForm({ onBack, onCreated }: { onBack: () => void; onCreated: (a: AccountView, passphrase: string, cosmetics: Cosmetics) => void }) {
   const [name, setName] = useState('');
-  const [look, setLook] = useState<Cosmetics>(() => ({ ...DEFAULT_COSMETICS, preset: randomPreset() }));
+  const [character, setCharacter] = useState<string>(() => randomCharacter());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const submit = async (e: Event) => {
@@ -163,7 +163,7 @@ function CreateForm({ onBack, onCreated }: { onBack: () => void; onCreated: (a: 
     setError(null);
     try {
       const r = await api.createAccount(name.trim());
-      onCreated(r.account, r.passphrase, { ...r.account.cosmetics, preset: look.preset ?? null });
+      onCreated(r.account, r.passphrase, { ...r.account.cosmetics, preset: character });
     } catch (err) {
       setError(errorText(err));
       setBusy(false);
@@ -184,8 +184,9 @@ function CreateForm({ onBack, onCreated }: { onBack: () => void; onCreated: (a: 
         <small class="muted">Shown to other players; it does not need to be unique and you can change it later.</small>
       </label>
       <div class="ct-field">
-        <span>Pick your villager</span>
-        <CosmeticEditor value={look} onChange={setLook} compact simple />
+        <span>Pick your character</span>
+        <CharacterPicker value={character} onPick={setCharacter} />
+        <small class="muted">Change it any time. In a game, everyone is someone different.</small>
       </div>
       {error && <p class="ct-error" role="alert">{error}</p>}
       <div class="ct-row">

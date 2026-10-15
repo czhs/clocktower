@@ -145,7 +145,13 @@ import { pack } from '@colyseus/msgpackr';
 /** Town layout + collision helpers, loaded lazily (only the walking specs depend on the art package). */
 type Geo = {
   L: typeof import('../../packages/assets/src/index.js').townLayout;
+  /** v2 roster (packages/assets/src/cast.ts). */
+  cast: typeof import('../../packages/assets/src/index.js').CAST;
+  playable: typeof import('../../packages/assets/src/index.js').PLAYABLE;
+  PLAZA: typeof import('../../packages/assets/src/index.js').PLAZA;
+  /** Legacy v1 presets (capture-tutorial.spec.ts still reads them). */
   presets: typeof import('../../packages/assets/src/index.js').CHARACTER_PRESETS;
+  speed: number;
   isBlockedPx: typeof import('../../packages/protocol/src/index.js').isBlockedPx;
   locationAt: typeof import('../../packages/protocol/src/index.js').locationAt;
   tileCenterPx: typeof import('../../packages/protocol/src/index.js').tileCenterPx;
@@ -157,7 +163,18 @@ export async function geo(): Promise<Geo> {
     const a = await import('../../packages/assets/src/index.js');
     const pr = await import('../../packages/protocol/src/index.js');
     const path = await import('../../apps/server/src/world/path.js');
-    geoCache = { L: a.townLayout, presets: a.CHARACTER_PRESETS, isBlockedPx: pr.isBlockedPx, locationAt: pr.locationAt, tileCenterPx: pr.tileCenterPx, findPath: path.findPath };
+    geoCache = {
+      L: a.townLayout,
+      cast: a.CAST,
+      playable: a.PLAYABLE,
+      PLAZA: a.PLAZA,
+      presets: a.CHARACTER_PRESETS,
+      speed: pr.PLAYER_SPEED,
+      isBlockedPx: pr.isBlockedPx,
+      locationAt: pr.locationAt,
+      tileCenterPx: pr.tileCenterPx,
+      findPath: path.findPath,
+    };
   }
   return geoCache;
 }
@@ -226,23 +243,32 @@ export function watchConsole(page: Page, label: string, sink: string[]): void {
 }
 
 export interface GamePlayer extends Player {
-  /** Name of the villager picked at sign-up. */
-  villager: string | null;
+  /** Roster character id picked at sign-up (data-cast of the chosen tile), null if no picker. */
+  character: string | null;
   /** Preset id saved on the account (from /api/me). */
   presetId: string | null;
   console: string[];
 }
 
+/** Phone contexts (v2 phone checks): portrait 390x844 and landscape 844x390, touch + mobile. */
+export const PHONE_PORTRAIT = { width: 390, height: 844 };
+export const PHONE_LANDSCAPE = { width: 844, height: 390 };
+
 /**
- * Sign up through the UI like a first-time player: Create account -> display name -> pick a villager
- * from the gallery -> passphrase reveal -> "saved" -> Enter the town. Installs the socket tap.
+ * Sign up through the UI like a first-time player: Create account -> display name -> pick a character
+ * from the v2 roster ("Choose your character" radiogroup) -> passphrase reveal -> "saved" -> Enter the
+ * town. Installs the socket tap. `characterIndex` picks the n-th playable tile (wraps).
  */
 export async function signUp(
   browser: Browser,
   name: string,
-  opts: { viewport?: { width: number; height: number }; villagerIndex?: number; consoleSink?: string[] } = {},
+  opts: { viewport?: { width: number; height: number }; characterIndex?: number; /** @deprecated v1 name */ villagerIndex?: number; consoleSink?: string[]; phone?: boolean } = {},
 ): Promise<GamePlayer> {
-  const ctx = await browser.newContext({ viewport: opts.viewport ?? { width: 1280, height: 800 }, extraHTTPHeaders: { 'X-Forwarded-For': fakeIp() } });
+  const ctx = await browser.newContext({
+    viewport: opts.viewport ?? { width: 1280, height: 800 },
+    extraHTTPHeaders: { 'X-Forwarded-For': fakeIp() },
+    ...(opts.phone ? { isMobile: true, hasTouch: true, deviceScaleFactor: 2 } : {}),
+  });
   await installSocketTap(ctx);
   const page = await ctx.newPage();
   const sink = opts.consoleSink ?? [];
@@ -252,18 +278,22 @@ export async function signUp(
   await page.goto('/');
   await page.getByRole('button', { name: 'Create account' }).click();
   await page.getByLabel('Display name').fill(name);
-  let villager: string | null = null;
-  const gallery = page.getByRole('radiogroup', { name: 'Choose a villager' });
-  if (await gallery.count()) {
-    const radios = gallery.getByRole('radio');
-    const n = await radios.count();
-    if (n > 0) {
-      const pick = radios.nth((opts.villagerIndex ?? 0) % n);
-      await pick.click();
-      await expect(pick).toHaveAttribute('aria-checked', 'true');
-      villager = await pick.getAttribute('aria-label');
-    }
+  let character: string | null = null;
+  const picker = page.getByRole('radiogroup', { name: 'Choose your character' });
+  await expect(picker, 'v2 character picker on the sign-up form').toBeVisible();
+  const radios = picker.getByRole('radio');
+  const n = await radios.count();
+  expect(n, 'roster size').toBeGreaterThanOrEqual(13);
+  // the old custom-character UI is gone
+  await expect(page.getByText('Advanced customization')).toHaveCount(0);
+  await expect(page.getByRole('radiogroup', { name: 'Choose a villager' })).toHaveCount(0);
+  const pick = radios.nth((opts.characterIndex ?? opts.villagerIndex ?? 0) % n);
+  if ((await pick.getAttribute('aria-checked')) !== 'true') {
+    if (opts.phone) await pick.tap();
+    else await pick.click();
   }
+  await expect(pick).toHaveAttribute('aria-checked', 'true');
+  character = await pick.getAttribute('data-cast');
   await page.getByRole('button', { name: 'Create account' }).click();
   const pass = page.getByLabel('Your passphrase');
   await expect(pass).toBeVisible();
@@ -272,13 +302,7 @@ export async function signUp(
   await expect(page.getByRole('heading', { name: 'Lobby finder' })).toBeVisible();
   const meRes = await page.request.get('/api/me');
   const presetId = ((await meRes.json()) as { cosmetics?: { preset?: string | null } }).cosmetics?.preset ?? null;
-  return { name, ctx, page, tap, villager, presetId, console: sink };
-}
-
-/** Preset id for a villager display name (sign-up gallery label). */
-export async function presetIdByName(name: string | null): Promise<string | null> {
-  const { presets } = await geo();
-  return (name && presets.find((p) => p.name === name)?.id) || null;
+  return { name, ctx, page, tap, character, presetId, console: sink };
 }
 
 /** Second click of a two-click ConfirmButton (the armed group shows Yes / No). */
@@ -362,6 +386,7 @@ export async function tilePath(from: { x: number; y: number }, to: { x: number; 
  * `cross` = where we want to be on the other axis: when a hold makes no progress (pixel-level
  * obstacle next to an off-centre path) we nudge back toward it and retry. */
 export async function walkAxis(p: Player, pid: string, axis: 'x' | 'y', target: number, budgetMs = 90_000, cross?: number): Promise<void> {
+  const { speed } = await geo();
   await p.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
   const until = Date.now() + budgetMs;
   const trail: number[] = [];
@@ -372,7 +397,7 @@ export async function walkAxis(p: Player, pid: string, axis: 'x' | 'y', target: 
     await p.page.keyboard.down(key);
     // Far: hold for most of the distance. Near: a bare tap (one or two rendered frames), since any
     // hold overshoots when Phaser renders only a few frames per second.
-    if (Math.abs(d) > 28) await p.page.waitForTimeout(Math.min(2500, (Math.abs(d) / 72) * 1000 * 0.75));
+    if (Math.abs(d) > 28) await p.page.waitForTimeout(Math.min(2500, (Math.abs(d) / speed) * 1000 * 0.75));
     await p.page.keyboard.up(key);
   };
   for (let i = 0; Date.now() < until; i++) {
@@ -508,25 +533,319 @@ export async function walkToTile(p: Player, pid: string, to: { x: number; y: num
       keys.push(side);
     }
     for (const k of keys) await p.page.keyboard.down(k);
-    if (d > 24 && gain > 0.1) await p.page.waitForTimeout(Math.min(3000, (d / 72) * 1000 * gain));
+    if (d > 24 && gain > 0.1) await p.page.waitForTimeout(Math.min(3000, (d / g.speed) * 1000 * gain));
     for (const k of keys) await p.page.keyboard.up(k);
   }
 }
 
-/** Press E at a door (the door prompt must be showing) and wait until the server moved us through it. */
-export async function useDoorKey(p: Player, pid: string, expectLocation: string, timeoutMs = 20_000): Promise<void> {
-  await expect(p.page.locator('.ct-game-prompt')).toBeVisible({ timeout: 10_000 });
+
+// ---------------------------------------------------------------------------- v2: doors, taps, camera
+//
+// v2 one-screen town: doors are automatic (walk INTO a doorway), a tap/click on a cottage walks
+// there and goes in (client-side path), inside there is no walking (fixed room view + "Inside …"
+// panel with a Leave button; any arrow/WASD key also leaves). The Storyteller's click teleports
+// (st:command teleport_self).
+//
+// Tapping needs canvas coordinates. The production build exposes no camera hook (window.__town is
+// DEV only), so the camera is recomputed here exactly as TownScene.fitCamera/updateCamera do it:
+//   zoom   = max(0.2, min(w, h) / (2 * max(PLAZA.rx, PLAZA.ry) + 2 * VIEW_MARGIN))
+//   centre = the square's centre while you stand in it, else leaning 0.85 toward you, clamped to
+//            the town, rounded to whole screen px
+// (TownScene.ts lines ~1145-1225; VIEW_MARGIN = 40). Every tap is then verified by its effect (the
+// right building entered / the right frame sent), so a drift in that math fails loudly, not silently.
+
+const VIEW_MARGIN = 40;
+
+export type Loc = { x: number; y: number; location: string };
+
+/** The canvas host (.ct-game-canvas) box in page CSS px; Phaser's camera size = its client size. */
+export async function canvasBox(page: Page): Promise<{ x: number; y: number; w: number; h: number }> {
+  const b = await page.locator('.ct-game-canvas').evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    return { x: r.left, y: r.top, w: Math.max(64, Math.floor((el as HTMLElement).clientWidth)), h: Math.max(64, Math.floor((el as HTMLElement).clientHeight)) };
+  });
+  return b;
+}
+
+/** Outdoor camera (zoom + centre in world px) for a canvas of w x h with the local player at `me`. */
+export async function outdoorCamera(size: { w: number; h: number }, me: { x: number; y: number }): Promise<{ zoom: number; cx: number; cy: number }> {
+  const { L, PLAZA } = await geo();
+  const TS = L.tileSize;
+  const TOWN = { x: L.townBounds.x * TS, y: L.townBounds.y * TS, w: L.townBounds.w * TS, h: L.townBounds.h * TS };
+  const need = Math.max(PLAZA.rx, PLAZA.ry) * 2 + VIEW_MARGIN * 2;
+  const zoom = Math.max(0.2, Math.min(size.w, size.h) / need);
+  const vw = size.w / zoom;
+  const vh = size.h / zoom;
+  let tx = PLAZA.cx;
+  let ty = PLAZA.cy;
+  const inSquare = Math.hypot((me.x - PLAZA.cx) / PLAZA.rx, (me.y - 8 - PLAZA.cy) / PLAZA.ry) <= 1.08;
+  if (!inSquare) {
+    tx = PLAZA.cx + (me.x - PLAZA.cx) * 0.85;
+    ty = PLAZA.cy + (me.y - 10 - PLAZA.cy) * 0.85;
+  }
+  const clamp = (c: number, lo: number, sz: number, view: number) => (sz <= view ? lo + sz / 2 : Math.min(Math.max(c, lo + view / 2), lo + sz - view / 2));
+  tx = clamp(tx, TOWN.x, TOWN.w, vw);
+  ty = clamp(ty, TOWN.y, TOWN.h, vh);
+  return { zoom, cx: Math.round(tx * zoom) / zoom, cy: Math.round(ty * zoom) / zoom };
+}
+
+/** What a tap at world (x, y) means to TownScene.tapTarget: a cottage id (sprite or doorstep) or null. */
+export async function tapTargetAt(x: number, y: number): Promise<string | null> {
+  const { L, tileCenterPx } = await geo();
+  const TS = L.tileSize;
+  for (const b of L.buildings) {
+    const f = b.footprint;
+    const at = tileCenterPx(L, b.door);
+    const inSprite = x >= f.x * TS && x < (f.x + f.w) * TS && y >= (f.y - 1) * TS && y < (f.y + f.h) * TS;
+    if (inSprite || Math.hypot(x - at.x, y - at.y) < 14) return b.id;
+  }
+  return null;
+}
+
+/** Screen points (page CSS px) of world points, for the current camera; keeps only points on the canvas that the canvas itself receives (not covered by HUD panels). */
+async function hittable(page: Page, box: { x: number; y: number; w: number; h: number }, cam: { zoom: number; cx: number; cy: number }, world: { x: number; y: number }[]): Promise<{ sx: number; sy: number; wx: number; wy: number }[]> {
+  const pts = world
+    .map((w) => ({ wx: w.x, wy: w.y, sx: box.x + (w.x - cam.cx) * cam.zoom + box.w / 2, sy: box.y + (w.y - cam.cy) * cam.zoom + box.h / 2 }))
+    .filter((p) => p.sx >= box.x + 4 && p.sy >= box.y + 4 && p.sx <= box.x + box.w - 4 && p.sy <= box.y + box.h - 4);
+  if (!pts.length) return [];
+  const ok = await page.evaluate(
+    (ps) =>
+      ps.map((p) => {
+        const el = document.elementFromPoint(p.sx, p.sy);
+        return !!el && el.tagName === 'CANVAS' && !!el.closest('.ct-game-canvas');
+      }),
+    pts,
+  );
+  return pts.filter((_, i) => ok[i]);
+}
+
+/** Wait until our server position has been still for `ms` (camera smoothing settles ~1 s after). */
+export async function settle(p: Player, pid: string, ms = 1200, timeoutMs = 60_000): Promise<Loc> {
   const t0 = Date.now();
-  for (;;) {
-    await p.page.keyboard.press('KeyE');
+  let last = selfEntity(p, pid);
+  let since = Date.now();
+  while (Date.now() - t0 < timeoutMs) {
+    await p.page.waitForTimeout(250);
+    const cur = selfEntity(p, pid);
+    if (!cur) continue;
+    if (!last || Math.hypot(cur.x - last.x, cur.y - last.y) > 0.5 || cur.location !== last.location) {
+      last = cur;
+      since = Date.now();
+    } else if (Date.now() - since >= ms) {
+      await p.page.waitForTimeout(900); // camera lerp
+      return cur;
+    }
+  }
+  return selfEntity(p, pid)!;
+}
+
+/** Tap (touch) or click (mouse) at page coordinates. */
+async function press(p: Player, x: number, y: number, touch: boolean) {
+  if (touch) await p.page.touchscreen.tap(x, y);
+  else await p.page.mouse.click(x, y);
+}
+
+/**
+ * Find where to tap a cottage on screen right now. Returns the screen point (on the canvas, not
+ * under a panel) whose tap TownScene resolves to `buildingId`, or a ground spot toward the cottage
+ * when it is off screen / covered (tapping it walks there — the Storyteller teleports there).
+ */
+export async function planCottageTap(p: Player, me: Loc, buildingId: string): Promise<{ kind: 'building' | 'ground'; sx: number; sy: number; wx: number; wy: number } | null> {
+  const g = await geo();
+  const { L } = g;
+  const TS = L.tileSize;
+  const b = L.buildings.find((x) => x.id === buildingId);
+  if (!b) throw new Error(`no building ${buildingId}`);
+  const box = await canvasBox(p.page);
+  const cam = await outdoorCamera(box, me);
+  const f = b.footprint;
+  const door = g.tileCenterPx(L, b.door);
+  // candidates: a grid over the sprite rect + the doorstep, nearest the doorstep first
+  const cand: { x: number; y: number }[] = [door];
+  for (let j = 0; j <= 6; j++) for (let i = 0; i <= 6; i++) cand.push({ x: f.x * TS + 2 + ((f.w * TS - 4) * i) / 6, y: (f.y - 1) * TS + 2 + (((f.h + 1) * TS - 4) * j) / 6 });
+  const mine: { x: number; y: number }[] = [];
+  for (const c of cand) if ((await tapTargetAt(c.x, c.y)) === buildingId) mine.push(c);
+  mine.sort((a, c) => Math.hypot(a.x - door.x, a.y - door.y) - Math.hypot(c.x - door.x, c.y - door.y));
+  const hit = await hittable(p.page, box, cam, mine);
+  if (hit.length) return { kind: 'building', ...hit[0]! };
+  // off screen or covered: the reachable, visible ground spot closest to the door
+  const ground: { x: number; y: number }[] = [];
+  const vw = box.w / cam.zoom;
+  const vh = box.h / cam.zoom;
+  for (let sy = 0.06; sy < 0.95; sy += 0.06)
+    for (let sx = 0.06; sx < 0.95; sx += 0.06) {
+      const x = cam.cx - vw / 2 + vw * sx;
+      const y = cam.cy - vh / 2 + vh * sy;
+      if (x < 4 || y < 4 || x > L.townBounds.w * TS - 4 || y > L.townBounds.h * TS - 4) continue;
+      if (g.isBlockedPx(L, x, y + 6) || g.locationAt(L, x, y) !== 'outdoors' || (await tapTargetAt(x, y)) !== null) continue;
+      ground.push({ x, y });
+    }
+  ground.sort((a, c) => Math.hypot(a.x - door.x, a.y - door.y) - Math.hypot(c.x - door.x, c.y - door.y));
+  const visible = await hittable(p.page, box, cam, ground.slice(0, 40));
+  for (const v of visible) {
+    // must actually bring us closer and be reachable outdoors
+    if (Math.hypot(v.wx - door.x, v.wy - door.y) >= Math.hypot(me.x - door.x, me.y - door.y) - 8) break;
+    if (g.findPath(L, { x: me.x, y: me.y }, { x: v.wx, y: v.wy + 6 }, 'outdoors' as never)) return { kind: 'ground', ...v };
+  }
+  return null;
+}
+
+export interface TapLog {
+  taps: string[];
+}
+
+/**
+ * v2 "tap a cottage": tap/click the cottage on the canvas (walking toward it first by tapping the
+ * ground if it is off screen), then wait until the server has us inside. Players walk there on the
+ * client-side path and go in through the door (world:useDoor + a 'door' teleport); the Storyteller's
+ * tap teleports them in (st:command teleport_self). Returns a short log of what was tapped.
+ */
+export async function tapCottage(p: Player, pid: string, buildingId: string, opts: { touch?: boolean; storyteller?: boolean; timeoutMs?: number } = {}): Promise<string[]> {
+  const log: string[] = [];
+  const want = `bld:${buildingId}`;
+  const t0 = Date.now();
+  const timeout = opts.timeoutMs ?? 180_000;
+  for (let attempt = 1; Date.now() - t0 < timeout; attempt++) {
+    const me = await settle(p, pid, 900, 60_000);
+    if (me.location === want) return log;
+    if (me.location !== 'outdoors') throw new Error(`${p.name}: tapCottage(${buildingId}) while inside ${me.location}`);
+    const plan = await planCottageTap(p, me, buildingId);
+    if (!plan) throw new Error(`${p.name}: no visible spot to tap toward ${buildingId} from ${Math.round(me.x)},${Math.round(me.y)} (log ${log.join(' | ')})`);
+    const since = Date.now();
+    await press(p, plan.sx, plan.sy, !!opts.touch);
+    log.push(`#${attempt} ${plan.kind}@screen ${Math.round(plan.sx)},${Math.round(plan.sy)} world ${Math.round(plan.wx)},${Math.round(plan.wy)} from ${Math.round(me.x)},${Math.round(me.y)}`);
+    if (plan.kind === 'ground') {
+      // a walk (or the ST's teleport) toward it; then look again
+      await expect
+        .poll(() => (opts.storyteller ? p.tap.sent('st:command', since).length : p.tap.sent('move', since).length), { timeout: 15_000, message: `${p.name}: ground tap produced no movement` })
+        .toBeGreaterThan(0)
+        .catch(() => log.push('  (no movement after the ground tap)'));
+      continue;
+    }
+    // the cottage: wait until we are in (or an error / refusal arrives)
+    const deadline = Date.now() + Math.max(20_000, timeout - (Date.now() - t0));
+    while (Date.now() < deadline) {
+      await p.page.waitForTimeout(300);
+      const loc = selfEntity(p, pid)?.location;
+      if (loc === want) {
+        const sent = opts.storyteller ? p.tap.sent('st:command', since).filter((c: any) => c.type === 'teleport_self') : p.tap.sent('world:useDoor', since);
+        const ok = opts.storyteller ? sent.some((c: any) => c.to?.kind === 'building' && c.to.buildingId === buildingId) : sent.some((c: any) => c.buildingId === buildingId);
+        if (!ok) throw new Error(`${p.name}: inside ${want}, but not through our tap (sent ${JSON.stringify(sent)})`);
+        log.push(`  in ${want} after ${Date.now() - since} ms`);
+        return log;
+      }
+      if (loc && loc !== 'outdoors') throw new Error(`${p.name}: tap meant for ${buildingId} took us into ${loc} (log ${log.join(' | ')})`);
+      const err = p.tap.received('error', since).find((e: any) => e.for === 'world:useDoor' || e.for === 'st:command');
+      if (err) throw new Error(`${p.name}: entering ${buildingId} refused: ${err.message}`);
+      // stopped walking without going in (route blocked / tap missed): try again
+      const moves = p.tap.sent('move', since);
+      if (!opts.storyteller && Date.now() - since > 6000 && (!moves.length || Date.now() - (p.tap.frames.filter((f) => f.dir === 'out' && f.type === 'move').at(-1)?.at ?? 0) > 3000)) {
+        log.push(`  stopped outside (moves ${moves.length})`);
+        break;
+      }
+      if (opts.storyteller && Date.now() - since > 10_000) break;
+    }
+  }
+  throw new Error(`${p.name}: could not get into ${buildingId} by tapping within ${timeout} ms (log ${log.join(' | ')}; at ${JSON.stringify(selfEntity(p, pid))})`);
+}
+
+/** The "Inside … with …" panel (GameScreen InsidePanel). */
+export const insidePanel = (page: Page) => page.locator('.ct-inside');
+export const leaveButton = (page: Page) => page.locator('.ct-inside').getByRole('button');
+
+/** Leave a cottage with the panel's Leave button (tap on touch devices); wait until outdoors. */
+export async function leaveByButton(p: Player, pid: string, opts: { touch?: boolean } = {}): Promise<void> {
+  const btn = leaveButton(p.page);
+  await expect(btn).toHaveText('Leave', { timeout: 15_000 });
+  await expect(btn).toBeEnabled();
+  const since = Date.now();
+  for (let k = 0; k < 3; k++) {
+    if (opts.touch) await btn.tap();
+    else await btn.click();
     const ok = await expect
-      .poll(() => selfEntity(p, pid)?.location, { timeout: 4000 })
-      .toBe(expectLocation)
+      .poll(() => selfEntity(p, pid)?.location, { timeout: 8000 })
+      .toBe('outdoors')
+      .then(
+        () => true,
+        () => false,
+      );
+    if (ok) break;
+  }
+  expect(selfEntity(p, pid)?.location, `${p.name}: outdoors after Leave`).toBe('outdoors');
+  const t = p.tap.received('world:teleport', since).find((x: any) => x.location === 'outdoors');
+  expect(t?.reason, `${p.name}: left through the door`).toBe('door');
+  await expect(insidePanel(p.page)).toHaveCount(0, { timeout: 10_000 });
+}
+
+/** Leave a cottage by pressing a movement key (v2: any arrow/WASD key inside walks you out). */
+export async function leaveByKey(p: Player, pid: string, key = 'ArrowDown'): Promise<void> {
+  await p.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  for (let k = 0; k < 3; k++) {
+    await p.page.keyboard.press(key);
+    const ok = await expect
+      .poll(() => selfEntity(p, pid)?.location, { timeout: 8000 })
+      .toBe('outdoors')
       .then(
         () => true,
         () => false,
       );
     if (ok) return;
-    if (Date.now() - t0 > timeoutMs) throw new Error(`${p.name}: door did not take us to ${expectLocation} (at ${selfEntity(p, pid)?.location})`);
   }
+  throw new Error(`${p.name}: ${key} inside did not walk us out (at ${selfEntity(p, pid)?.location})`);
+}
+
+/**
+ * Keyboard + automatic door: walk (real arrow keys) onto the cottage's door tile, then keep pushing
+ * toward the door until the server has us inside. No E key in v2.
+ */
+export async function walkIntoDoor(p: Player, pid: string, buildingId: string, budgetMs = 600_000): Promise<void> {
+  const g = await geo();
+  const b = g.L.buildings.find((x) => x.id === buildingId)!;
+  await walkToTile(p, pid, b.door, budgetMs);
+  const f = b.footprint;
+  // TownScene.setupDoors: inward = up for a door below the footprint, left/right for side doors
+  const key = b.door.y >= f.y + f.h ? 'ArrowUp' : b.door.x >= f.x + f.w ? 'ArrowLeft' : b.door.x < f.x ? 'ArrowRight' : 'ArrowUp';
+  const want = `bld:${buildingId}`;
+  const t0 = Date.now();
+  for (let k = 0; k < 8; k++) {
+    await p.page.keyboard.down(key);
+    await p.page.waitForTimeout(500);
+    await p.page.keyboard.up(key);
+    const ok = await expect
+      .poll(() => selfEntity(p, pid)?.location, { timeout: 4000 })
+      .toBe(want)
+      .then(
+        () => true,
+        () => false,
+      );
+    if (ok) return;
+    // drifted off the doorstep: step back onto it
+    const me = selfEntity(p, pid);
+    const door = g.tileCenterPx(g.L, b.door);
+    if (me && Math.hypot(me.x - door.x, me.y - door.y) > 9) await walkToTile(p, pid, b.door, 120_000);
+  }
+  const errs = p.tap.received('error', t0).filter((e: any) => e.for === 'world:useDoor');
+  throw new Error(`${p.name}: pushing ${key} into the doorway of ${buildingId} did not enter (at ${JSON.stringify(selfEntity(p, pid))}; useDoor sent ${p.tap.sent('world:useDoor', t0).length}; errors ${JSON.stringify(errs)})`);
+}
+
+// ---------------------------------------------------------------------------- v2: voice zones
+
+/**
+ * The acoustic zone the SERVER currently grants this client ('square', 'bld:<id>', …) from the
+ * decoded voice:grant / voice:revoke frames (purpose 'zone'); null after a revoke / before any grant.
+ * Needs a voice-configured server (playwright.config.ts sets fake LiveKit creds: tokens are minted
+ * locally, nobody connects).
+ */
+export function voiceZone(p: Player): string | null {
+  for (let i = p.tap.frames.length - 1; i >= 0; i--) {
+    const f = p.tap.frames[i]!;
+    if (f.dir !== 'in') continue;
+    if (f.type === 'voice:grant' && f.payload?.purpose === 'zone') return f.payload.zone;
+    if (f.type === 'voice:revoke' && f.payload?.purpose === 'zone') return null;
+  }
+  return null;
+}
+/** Every zone ever granted to this client since `since`. */
+export function zonesGranted(p: Player, since = 0): string[] {
+  return p.tap.received('voice:grant', since).filter((g: any) => g.purpose === 'zone').map((g: any) => g.zone);
 }

@@ -204,6 +204,17 @@ export const StageTarget = z.discriminatedUnion('kind', [
 ]);
 export type StageTarget = z.infer<typeof StageTarget>;
 
+/**
+ * (additive, v2) Where the Storyteller teleports THEMSELVES (click-to-teleport): a map point (px; the
+ * server picks the nearest free OUTDOOR spot) or the inside of a building (houses: the visit point,
+ * so at night this IS a home visit).
+ */
+export const StSelfTarget = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('point'), x: z.number().finite().min(0).max(4096), y: z.number().finite().min(0).max(4096) }),
+  z.object({ kind: z.literal('building'), buildingId: z.string().min(1).max(32) }),
+]);
+export type StSelfTarget = z.infer<typeof StSelfTarget>;
+
 /** All ST actions, sent as C2S 'st:command'. Server rejects unless sender is the lobby's ST. */
 export const StCommand = z.discriminatedUnion('type', [
   z.object({ type: z.literal('random_setup') }),
@@ -314,5 +325,7 @@ export const StCommand = z.discriminatedUnion('type', [
   z.object({ type: z.literal('set_setting'), settings: StSettingsPatch }),
   /** Lock / force-open any door for players, or return it to the phase default. */
   z.object({ type: z.literal('door_lock'), buildingId: z.string().min(1).max(32), lock: z.enum(['locked', 'unlocked', 'default']) }),
+  /** (additive, v2) Storyteller click-to-teleport of themselves (seated Storyteller only; also allowed while waiting). */
+  z.object({ type: z.literal('teleport_self'), to: StSelfTarget }),
 ]);
 export type StCommand = z.infer<typeof StCommand>;

@@ -17,6 +17,12 @@
 //   architecture's "fresh `reconnect` ticket restores your seat" path for a member who lost
 //   their reconnection token (new tab / device / expired grace).
 // * Duplicate device: newest connection wins; the older one is closed with CLOSE_CODES.replaced.
+// * Characters (v2 roster rules): every member's `cosmetics.preset` is a playable roster id
+//   (@ct/assets PLAYABLE_IDS) and no two PLAYERS of one lobby share one. A member who joins (or
+//   becomes a player again) with a missing / legacy / taken character is assigned the first free one
+//   (firstFreeCharacter, deterministic per lobby + pid) for this lobby only: the account's saved
+//   choice is not rewritten. The Storyteller always renders as the 'storyteller' sprite, so their
+//   own pick blocks nobody while they hold the seat (it is re-checked when they become a player).
 import { ClientState, Room, ServerError, type Client } from '@colyseus/core';
 import { z } from 'zod';
 import {
@@ -45,7 +51,7 @@ import { createVoiceModule } from '../voice/index.js';
 import type { GameModule, Logger, RoomEvent, RoomHost, RoomMember, VoiceModule, WorldModule } from './modules.js';
 import { randomId } from '../auth/crypto.js';
 import { RateLimiter } from '../auth/rateLimit.js';
-import { isAllowedPreset } from '../auth/presets.js';
+import { characterName, firstFreeCharacter, isAllowedPreset } from '../auth/presets.js';
 import type { JoinIntent } from '../directory/tickets.js';
 import { displayLabels, memberView, shuffle, startBlockers } from './memberUtil.js';
 
@@ -352,6 +358,7 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
     };
     if (isCreator) this.creatorJoined = true;
     this.seats.set(pid, seat);
+    this.ensureCharacter(seat);
     this.byAccount.set(auth.accountId, pid);
     client.userData = { pid };
     this.host.emit({ type: 'member_joined', pid });
@@ -515,7 +522,11 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
       case 'lobby:cosmetics': {
         if (!this.requireWaiting(seat, type)) return;
         const { cosmetics } = msg as C2SParsed<'lobby:cosmetics'>;
-        if (!isAllowedPreset(cosmetics.preset)) return this.sendError(seat, { code: 'invalid', message: 'Unknown character preset', for: type });
+        if (!isAllowedPreset(cosmetics.preset)) return this.sendError(seat, { code: 'invalid', message: 'Pick one of the characters', for: type });
+        if (m.role === 'player') {
+          const holder = this.characterHolder(cosmetics.preset, seat);
+          if (holder) return this.sendError(seat, { code: 'invalid', message: `${this.label(holder.member.pid)} already took ${characterName(cosmetics.preset)} — pick another`, for: type });
+        }
         m.cosmetics = cosmetics;
         this.services.accounts.updateProfile(m.accountId, { cosmetics });
         this.lobbyDirty = true;
@@ -535,6 +546,7 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
           return this.sendError(seat, { code: 'forbidden', message: 'No free player seat to move to', for: type });
         }
         this.setRole(seat, 'player');
+        this.ensureCharacter(seat);
         return;
       }
       case 'lobby:transferStoryteller': {
@@ -547,6 +559,9 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
         if (target === st) return;
         if (st) this.setRole(st, 'player'); // swap: player count unchanged
         this.setRole(target, 'storyteller');
+        // After the swap (the new ST's pick no longer blocks): the ex-Storyteller keeps their
+        // character unless a player already has it.
+        if (st) this.ensureCharacter(st);
         return;
       }
       case 'lobby:transferHost': {
@@ -628,7 +643,8 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
         if (!isSt) return this.sendError(seat, { code: 'forbidden', message: 'Storyteller only', for: type });
         // After the game ends the ST may still announce / move around; the rules module rejects
         // everything that would change the (final, already recorded) result.
-        if (this.status === 'waiting') return this.sendError(seat, { code: 'phase', message: 'No game in progress', for: type });
+        // (v2) Exception: the Storyteller may click-to-teleport themselves around town while waiting.
+        if (this.status === 'waiting' && (msg as C2SParsed<'st:command'>).type !== 'teleport_self') return this.sendError(seat, { code: 'phase', message: 'No game in progress', for: type });
         this.game.handleStoryteller(m.pid, msg as C2SParsed<'st:command'>);
         return;
       }
@@ -1104,6 +1120,29 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
 
   private label(pid: string): string {
     return this.labels().get(pid) ?? this.seats.get(pid)?.member.displayName ?? '';
+  }
+
+  /** The other PLAYER holding this character (the Storyteller's pick blocks nobody). */
+  private characterHolder(id: string, except: Seat): Seat | undefined {
+    for (const s of this.seats.values()) if (s !== except && s.member.role === 'player' && s.member.cosmetics.preset === id) return s;
+    return undefined;
+  }
+
+  /**
+   * v2 roster rule: give this member a valid, (for players) unique character for this lobby. Keeps a
+   * valid free pick; otherwise assigns the first free playable character (deterministic per lobby +
+   * pid). Lobby-only: the account's saved choice is left alone.
+   */
+  private ensureCharacter(seat: Seat) {
+    const m = seat.member;
+    const preset = m.cosmetics.preset;
+    if (isAllowedPreset(preset) && (m.role === 'storyteller' || !this.characterHolder(preset, seat))) return;
+    const taken = new Set<string>();
+    for (const s of this.seats.values()) if (s !== seat && s.member.role === 'player' && s.member.cosmetics.preset) taken.add(s.member.cosmetics.preset);
+    const id = firstFreeCharacter(taken, `${this.lobbyId}:${m.pid}`);
+    if (!id) return;
+    m.cosmetics = { ...m.cosmetics, preset: id };
+    this.lobbyDirty = true;
   }
 
   private storytellerSeat(): Seat | null {

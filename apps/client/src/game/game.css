@@ -112,3 +112,23 @@
 @media (max-width: 640px) {
   .ct-hint { bottom: calc(262px + var(--safe-bottom, 0px)); font-size: 14px; }
 }
+
+/* v2: inside a cottage — where you are, who hears you, and the way out */
+.ct-inside {
+  position: absolute; left: 50%; bottom: calc(18px + var(--safe-bottom, 0px)); transform: translateX(-50%);
+  z-index: 30; display: flex; flex-direction: column; align-items: center; gap: 6px;
+  max-width: min(520px, calc(100vw - 32px)); padding: 10px 16px 12px; border-radius: 10px;
+  background: #1c1724e6; border: 1px solid var(--border, #454250); box-shadow: 0 6px 24px #0008;
+  color: var(--text, #efe6cf); text-align: center; pointer-events: auto;
+}
+.ct-inside-title { font-family: 'IM Fell English', Georgia, serif; font-size: 18px; color: #f1dc9a; }
+.ct-inside-who { font-size: 14px; line-height: 1.35; }
+.ct-inside-who b { color: #f6ead0; }
+.ct-inside-note { font-size: 13px; color: var(--muted, #9b91a8); font-style: italic; }
+.ct-inside-leave { min-width: 140px; min-height: 40px; font-size: 15px; }
+.ct-inside-leave:disabled { opacity: 0.7; font-style: italic; }
+@media (max-width: 640px) {
+  .ct-inside { bottom: calc(10px + var(--safe-bottom, 0px)); padding: 8px 12px 10px; }
+  .ct-inside-title { font-size: 16px; }
+  .ct-inside-who { font-size: 13px; }
+}

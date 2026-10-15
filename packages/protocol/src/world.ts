@@ -59,7 +59,7 @@ export interface TownLayout {
    * (additive, gameplay) Optional nomination-circle ring in PIXELS (feet positions). When absent
    * the ring is derived from `square` (circleCentre / circleRadii).
    */
-  circle?: { cx: number; cy: number; rx: number; ry: number };
+  circle?: { cx: number; cy: number; rx: number; ry: number; startDeg?: number; sweepDeg?: number };
 }
 
 /** 'outdoors' or the id of the building whose interior contains the point. */
@@ -230,14 +230,18 @@ export function circleSpots(layout: TownLayout, seats: readonly number[]): Circl
   const c = circleCentre(layout);
   const { rx, ry } = circleRadii(layout);
   const n = sorted.length;
+  const deg = Math.PI / 180;
+  const start = layout.circle?.startDeg !== undefined ? layout.circle.startDeg * deg : Math.PI / 4;
+  const sweep = layout.circle?.sweepDeg !== undefined ? layout.circle.sweepDeg * deg : (3 * Math.PI) / 2;
+  const arc = { start, sweep, full: sweep >= 2 * Math.PI - 1e-6 };
   const out: CircleSpot[] = [];
   const taken: { x: number; y: number }[] = [];
   const free = (x: number, y: number) =>
     !isBlockedPx(layout, x, y) && locationAt(layout, x, y) === 'outdoors' && taken.every((t) => Math.hypot(t.x - x, t.y - y) >= 12);
   sorted.forEach((seat, i) => {
-    // Open north arc leaves the tower and Storyteller behind the gathering. Vote order
-    // still runs clockwise, but nobody is placed behind the landmark.
-    const th = Math.PI / 4 + (3 * Math.PI / 2 * i) / Math.max(1, n - 1);
+    // Default: an open north arc leaves a landmark behind the gathering. A layout may instead give
+    // the arc (v2 square: a full ring around the fountain). Vote order always runs clockwise.
+    const th = arc.full ? arc.start + (arc.sweep * i) / Math.max(1, n) : arc.start + (arc.sweep * i) / Math.max(1, n - 1);
     const ix = Math.round(c.x + Math.sin(th) * rx);
     const iy = Math.round(c.y - Math.cos(th) * ry);
     let best = { x: ix, y: iy };
@@ -254,7 +258,10 @@ export function circleSpots(layout: TownLayout, seats: readonly number[]): Circl
       }
     }
     taken.push(best);
-    const facing: Facing = 'down';
+    // Face the middle of the ring (where the Storyteller stands).
+    const fx = c.x - best.x;
+    const fy = c.y - best.y;
+    const facing: Facing = layout.circle?.startDeg === undefined ? 'down' : Math.abs(fx) > Math.abs(fy) * 1.5 ? (fx < 0 ? 'left' : 'right') : fy < 0 ? 'up' : 'down';
     out.push({ seat, x: best.x, y: best.y, facing });
   });
   return out;

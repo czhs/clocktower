@@ -137,8 +137,8 @@ describe('sound formats', () => {
 describe('sound areas', () => {
   it('maps ground codes to footstep surfaces', () => {
     expect(surfaceAt(square.x, square.y)).toBe('cobble');
-    const tavern = townLayout.buildings.find((b) => b.kind === 'tavern')!;
-    const inside = { x: (tavern.interiorDoor.x + 0.5) * 16, y: (tavern.interiorDoor.y + 0.5) * 16 - 16 };
+    const cottage = townLayout.buildings.find((b) => b.kind === 'house')!;
+    const inside = { x: (cottage.interiorDoor.x + 0.5) * 16, y: (cottage.interiorDoor.y + 0.5) * 16 - 16 };
     expect(surfaceAt(inside.x, inside.y)).toBe('wood');
   });
 
@@ -154,8 +154,8 @@ describe('sound areas', () => {
     expect(home.loops.tavern.level).toBe(0);
   });
 
-  it('the tavern interior has its murmur by day', () => {
-    expect(ambientMix('bld:tavern', 0, 0, 'day').loops.tavern.level).toBeGreaterThan(0.5);
+  it('v2 has no tavern: no tavern murmur anywhere', () => {
+    expect(ambientMix('outdoors', square.x, square.y, 'day').loops.tavern.level).toBe(0);
   });
 });
 

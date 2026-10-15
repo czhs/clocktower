@@ -44,7 +44,7 @@ import {
 import { remoteEntities } from '../../net/localPlayer';
 import { reducedMotion } from '../fx/motion';
 import type { RoomConnection } from '../../net/room';
-import { createDoorTags, doorTagsStore, publishDoorTags } from './doorTags';
+import { doorTagsStore, publishDoorTags } from './doorTags';
 import { SelfDriver } from './drive';
 import { stagePick } from './pick';
 import { gameplayState, INITIAL_GAMEPLAY_STATE, type GameplayState } from './state';
@@ -128,13 +128,8 @@ export function createGameplayLayer(scene: Phaser.Scene, ctx: GameplayCtx): Game
     }),
   );
 
-  // Door tags: placeholder rendering of doorTagsStore (the art replaces it).
-  const tagLayer = createDoorTags(scene);
-  offs.push(doorTagsStore.subscribe((v) => tagLayer.set(v)));
-  offs.push(() => {
-    tagLayer.destroy();
-    doorTagsStore.set({});
-  });
+  // Door tags are rendered by TownScene as bulletin boards (from doorTagsStore).
+  offs.push(() => doorTagsStore.set({}));
 
   const ground = scene.add.graphics().setDepth(DEPTH_GROUND);
   const hands = scene.add.graphics().setDepth(DEPTH_HANDS);
@@ -295,7 +290,6 @@ export function createGameplayLayer(scene: Phaser.Scene, ctx: GameplayCtx): Game
     const ownSpot = view && seat !== null ? (spotsFor(view).find((s) => s.seat === seat) ?? null) : null;
     const homeDoor = seat !== null ? homeDoorOf(seat) : null;
     const outdoors = me.location === 'outdoors';
-    tagLayer.setVisible(outdoors);
     const gathering = !!view?.gathering && !NIGHT.has(view.phase);
     const seated = gathering && outdoors && !!ownSpot && Math.hypot(me.x - ownSpot.x, me.y - ownSpot.y) <= CIRCLE_SEATED_PX;
     const home = homeBuilding(L, seat);

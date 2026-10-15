@@ -499,3 +499,62 @@ describe('no silent message drops (gameplay, 2026-10-15: "the first Ready click 
     expect(L.st.last('lobby:view')!.members.find((m) => m.pid === pid)!.ready).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------------------------
+// v2 roster rules (server-v2): characters are ONLY the playable roster, unique per lobby among
+// players; legacy accounts are auto-assigned for the lobby without rewriting their saved choice; the
+// Storyteller's own pick blocks nobody (they render as the 'storyteller' sprite).
+describe('GameRoom v2 roster rules', () => {
+  it('auto-assigns missing / legacy / taken characters, rejects taken picks with a friendly message, ST pick blocks nobody', async () => {
+    const { castById, PLAYABLE, PLAYABLE_IDS } = await import('@ct/assets');
+    const { DEFAULT_COSMETICS } = await import('@ct/protocol');
+    const X = PLAYABLE[0]!.id;
+    const prefix = `R${Math.random().toString(36).slice(2, 6)}`;
+    const setPreset = (id: string, preset: string | null) => srv.services.accounts.updateProfile(id, { cosmetics: { ...DEFAULT_COSMETICS, preset } });
+    const host = await makeAccount(srv, `${prefix}-ST`);
+    setPreset(host.account.id, X);
+    const lobby = await createLobby(srv, host.cookie, { name: `${prefix} lobby`, takeStoryteller: true });
+    const st = await join(host.cookie, lobby.id, 'storyteller', `${prefix}-ST`);
+    const accts = { A: await makeAccount(srv, `${prefix}-A`), B: await makeAccount(srv, `${prefix}-B`), C: await makeAccount(srv, `${prefix}-C`) };
+    setPreset(accts.A.account.id, X); // same as the Storyteller: allowed
+    setPreset(accts.B.account.id, null); // pre-v2 account (custom character)
+    setPreset(accts.C.account.id, 'lamplighter'); // retired v1 preset
+    const A = await join(accts.A.cookie, lobby.id, 'player', 'A');
+    const B = await join(accts.B.cookie, lobby.id, 'player', 'B');
+    const C = await join(accts.C.cookie, lobby.id, 'player', 'C');
+    const v = await st.view((x) => x.members.length === 4);
+    const pre = (pid: string, view = st.last('lobby:view')!) => view.members.find((m) => m.pid === pid)!.cosmetics.preset;
+    expect(pre(st.pid!, v)).toBe(X);
+    expect(pre(A.pid!, v)).toBe(X);
+    const players = () => st.last('lobby:view')!.members.filter((m) => m.role === 'player');
+    for (const m of players()) expect(PLAYABLE_IDS.has(m.cosmetics.preset!), m.displayName).toBe(true);
+    expect(new Set(players().map((m) => m.cosmetics.preset)).size).toBe(3);
+    // the saved account choice is not rewritten by the lobby assignment
+    expect((await api(srv, 'GET', '/api/me', { cookie: accts.B.cookie })).body.cosmetics.preset).toBeNull();
+    // deterministic per lobby + member: the same pick every time the view is sent
+    const bChar = pre(B.pid!)!;
+    // a taken character is refused, by name
+    B.send('lobby:cosmetics', { cosmetics: { ...DEFAULT_COSMETICS, preset: X } });
+    await B.waitMsg('error', (e) => e.for === 'lobby:cosmetics' && e.message === `${prefix}-A already took ${castById(X)!.name} — pick another`);
+    B.send('lobby:cosmetics', { cosmetics: { ...DEFAULT_COSMETICS, preset: null } });
+    await B.waitMsg('error', (e) => e.for === 'lobby:cosmetics' && /Pick one of the characters/.test(e.message));
+    B.send('lobby:cosmetics', { cosmetics: { ...DEFAULT_COSMETICS, preset: 'storyteller' } });
+    await B.waitMsg('error', (e) => e.for === 'lobby:cosmetics' && /Pick one of the characters/.test(e.message));
+    expect(pre(B.pid!)).toBe(bChar);
+    // the Storyteller may pick a character a player has (they render as the storyteller sprite)
+    st.send('lobby:cosmetics', { cosmetics: { ...DEFAULT_COSMETICS, preset: bChar } });
+    await st.view((x) => pre(st.pid!, x) === bChar);
+    // ...but on becoming a player they keep it only if it is free: the ex-Storyteller is reassigned
+    st.send('lobby:transferStoryteller', { pid: A.pid! });
+    await st.view((x) => x.members.find((m) => m.pid === A.pid)!.role === 'storyteller' && x.members.find((m) => m.pid === st.pid)!.role === 'player');
+    expect(pre(B.pid!)).toBe(bChar);
+    expect(pre(st.pid!)).not.toBe(bChar);
+    expect(PLAYABLE_IDS.has(pre(st.pid!)!)).toBe(true);
+    expect(new Set(players().map((m) => m.cosmetics.preset)).size).toBe(players().length);
+    // a free character is accepted and saved to the account
+    const free = PLAYABLE.map((c) => c.id).find((id) => !players().some((m) => m.cosmetics.preset === id))!;
+    C.send('lobby:cosmetics', { cosmetics: { ...DEFAULT_COSMETICS, preset: free } });
+    await st.view((x) => pre(C.pid!, x) === free);
+    expect((await api(srv, 'GET', '/api/me', { cookie: accts.C.cookie })).body.cosmetics.preset).toBe(free);
+  });
+});

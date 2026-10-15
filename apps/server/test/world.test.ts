@@ -121,17 +121,18 @@ describe('WorldModule movement', () => {
   it('lets the storyteller travel faster only after travel_speed is raised', () => {
     const { host, world } = setup({ layout: testLayout() });
     const p = world.positionOf('st')!;
-    host.clock.now += 200;
+    // 70 px: more than 0.1 s (or, for the player below, 0.3 s) of walking at 150 px/s x tolerance
+    host.clock.now += 100;
     world.handleMove('st', { seq: 1, x: p.x, y: p.y - 70, facing: 'up', moving: true });
     expect(world.positionOf('st')).toEqual(p);
     host.emit({ type: 'travel_speed', pid: 'st', mult: 4 });
-    host.clock.now += 200;
+    host.clock.now += 100;
     world.handleMove('st', { seq: 2, x: p.x, y: p.y - 70, facing: 'up', moving: true });
     expect(world.positionOf('st')).toEqual({ x: p.x, y: p.y - 70 });
     // players never get the multiplier
     host.emit({ type: 'travel_speed', pid: 'p0', mult: 4 });
     const q = world.positionOf('p0')!;
-    host.clock.now += 200;
+    host.clock.now += 100;
     world.handleMove('p0', { seq: 1, x: q.x, y: q.y - 70, facing: 'up', moving: true });
     expect(world.positionOf('p0')).toEqual(q);
   });
@@ -205,15 +206,63 @@ describe('WorldModule doors and phases', () => {
     expect(world.locationOf('p0')).toBe('outdoors');
   });
 
+  it('v2: leaving works from anywhere inside (fixed interior view + Leave button); entering still needs the doorway', () => {
+    const { host, world, pids } = setup();
+    start(host, pids);
+    phase(host, 'day');
+    // inside at the bed, far from the interior door: Leave puts them on the outdoor doorstep
+    world.teleportToBuilding('p0', 'house-0', 'door');
+    world.walkTo('p0', { kind: 'home' });
+    for (let i = 0; i < 40 && world.snapshotFor('p0').you; i++) world.tick(50);
+    expect(world.positionOf('p0')).toEqual(tileCenterPx(townLayout, doorOf('house-0').bed!));
+    world.handleUseDoor('p0', { buildingId: 'house-0' });
+    expect(world.locationOf('p0')).toBe('outdoors');
+    expect(world.positionOf('p0')).toEqual(tileCenterPx(townLayout, doorOf('house-0').door));
+    expect(teleports(host, 'p0').at(-1)!.reason).toBe('door');
+    // useDoor for ANOTHER building while inside one never moves you
+    world.handleUseDoor('p0', { buildingId: 'house-0' });
+    expect(world.locationOf('p0')).toBe('bld:house-0');
+    world.handleUseDoor('p0', { buildingId: 'house-1' });
+    expect(world.locationOf('p0')).toBe('bld:house-0');
+    expect(last<{ code: string }>(host, 'p0', 'error')!.code).toBe('forbidden');
+    // still locked in at night, wherever they stand inside
+    phase(host, 'night');
+    for (let i = 0; i < 40 && world.snapshotFor('p0').you; i++) world.tick(50); // the walk to bed
+    world.handleUseDoor('p0', { buildingId: 'house-0' });
+    expect(world.locationOf('p0')).toBe('bld:house-0');
+    expect(last<{ code: string }>(host, 'p0', 'error')!.code).toBe('phase');
+  });
+
+  it('v2: every door (south, east and west facing) can be used from its doorway tile and from one step off it', () => {
+    const { host, world, pids } = setup();
+    start(host, pids);
+    phase(host, 'day');
+    for (const b of townLayout.buildings) {
+      standAtDoor(world, 'p0', b.id);
+      const d = world.positionOf('p0')!;
+      // nudge to the nearest walkable point a few px off the tile centre, as a walking client would stand
+      for (const [dx, dy] of [[0, 0], [6, 0], [-6, 0], [0, -4], [0, 4]] as const) {
+        if (isBlockedPx(townLayout, d.x + dx, d.y + dy)) continue;
+        world.teleportTo('p0', { kind: 'point', x: d.x + dx, y: d.y + dy });
+        if (world.locationOf('p0') !== 'outdoors') continue;
+        world.handleUseDoor('p0', { buildingId: b.id });
+        expect(world.locationOf('p0'), `${b.id} from ${dx},${dy}`).toBe(`bld:${b.id}`);
+        world.handleUseDoor('p0', { buildingId: b.id });
+        expect(world.locationOf('p0')).toBe('outdoors');
+      }
+    }
+    expect(host.sent.get('p0')!.filter((m) => m.type === 'error')).toEqual([]);
+  });
+
   it('day / setup / waiting / bedtime: any building can be entered and exited', () => {
     const { host, world, pids } = setup();
     for (const ph of [null, 'setup', 'day', 'bedtime'] as const) {
       if (ph === 'setup') start(host, pids);
       if (ph) phase(host, ph);
-      standAtDoor(world, 'p0', 'tavern');
-      world.handleUseDoor('p0', { buildingId: 'tavern' });
-      expect(world.locationOf('p0')).toBe('bld:tavern');
-      world.handleUseDoor('p0', { buildingId: 'tavern' });
+      standAtDoor(world, 'p0', 'house-7'); // an empty cottage (nobody's home in a 3-player game)
+      world.handleUseDoor('p0', { buildingId: 'house-7' });
+      expect(world.locationOf('p0')).toBe('bld:house-7');
+      world.handleUseDoor('p0', { buildingId: 'house-7' });
       expect(world.locationOf('p0')).toBe('outdoors');
       standAtDoor(world, 'p0', 'house-2'); // someone else's cottage
       world.handleUseDoor('p0', { buildingId: 'house-2' });
@@ -227,8 +276,9 @@ describe('WorldModule doors and phases', () => {
     const { host, world, pids } = setup();
     start(host, pids);
     phase(host, 'day');
-    standAtDoor(world, 'p1', 'tavern');
-    world.handleUseDoor('p1', { buildingId: 'tavern' });
+    standAtDoor(world, 'p1', 'house-7');
+    world.handleUseDoor('p1', { buildingId: 'house-7' });
+    expect(world.locationOf('p1')).toBe('bld:house-7');
     phase(host, 'night');
     pids.forEach((pid, seat) => {
       expect(world.locationOf(pid)).toBe(`bld:house-${seat}`);
@@ -316,10 +366,10 @@ describe('WorldModule visibility', () => {
     const { host, world, pids } = setup();
     start(host, pids);
     phase(host, 'day');
-    world.teleportToBuilding('p2', 'tavern', 'door');
+    world.teleportToBuilding('p2', 'house-7', 'door');
     expect(ids(world.snapshotFor('p0'))).toEqual(['p0', 'p1', 'st']);
     expect(ids(world.snapshotFor('p2'))).toEqual(['p2']);
-    world.teleportToBuilding('p1', 'tavern', 'door');
+    world.teleportToBuilding('p1', 'house-7', 'door');
     expect(ids(world.snapshotFor('p2'))).toEqual(['p1', 'p2']);
     expect(ids(world.snapshotFor('st'))).toEqual(['p0', 'p1', 'p2', 'st']);
   });
@@ -453,11 +503,11 @@ describe('WorldModule night edge cases (world-audit)', () => {
     phase(host, 'night');
     expect(world.locationOf('st')).toBe('outdoors');
     expect(ids(world.snapshotFor('p1'))).toEqual(['p1']);
-    // a storyteller in the tavern is left alone (nobody else can be there at night)
+    // v2: every building is a cottage, so even an EMPTY one (no seat lives there) is left at nightfall
     phase(host, 'day');
-    world.teleportToBuilding('st', 'tavern', 'door');
+    world.teleportToBuilding('st', 'house-7', 'door');
     phase(host, 'night');
-    expect(world.locationOf('st')).toBe('bld:tavern');
+    expect(world.locationOf('st')).toBe('outdoors');
   });
 
   it('dawn returns the storyteller to the square: the last visited home is not revealed at daybreak', () => {
@@ -492,9 +542,9 @@ describe('WorldModule night edge cases (world-audit)', () => {
     world.teleportToBuilding('st', 'house-1', 'storyteller');
     phase(host, 'day');
     expect(world.positionOf('st')).toEqual(stSpawnPx());
-    world.teleportToBuilding('st', 'tavern', 'door');
+    world.teleportToBuilding('st', 'house-7', 'door');
     phase(host, 'bedtime');
-    expect(world.locationOf('st')).toBe('bld:tavern');
+    expect(world.locationOf('st')).toBe('bld:house-7');
   });
 
   it('players never collide with each other (two players may share a doorstep)', () => {

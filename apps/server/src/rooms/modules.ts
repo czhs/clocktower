@@ -19,6 +19,7 @@ import type {
   S2CType,
   StageTarget,
   StageView,
+  StSelfTarget,
   StSettings,
   StorytellerGameView,
   WorldSnapshot,
@@ -156,6 +157,13 @@ export interface WorldModule {
   stageView(): StageView;
   /** (gameplay) Storyteller settings that affect the world (door tags on/off). Synced by the game module after every change. */
   applySettings(settings: StSettings): void;
+  /**
+   * (v2, server-v2) Storyteller click-to-teleport of THEMSELVES: a map point -> the nearest free
+   * OUTDOOR spot; a building -> inside it at its visit point (houses) / interior door, exactly like
+   * teleportToBuilding(pid, id, 'storyteller'), so night-visit tracking (location_changed) applies.
+   * Teleport reason 'storyteller'. Returns an error message or null.
+   */
+  teleportSelf(pid: string, to: StSelfTarget): string | null;
   tick(dtMs: number): void;
 }
 

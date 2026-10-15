@@ -4,8 +4,8 @@ import { VOICE_DEFAULTS } from './constants.js';
 // ---------------------------------------------------------------------------------------
 // Acoustic zone graph (pure). The server decides every member's zone; the client never does.
 //
-//   outdoors inside the square circle  -> 'square'      broadcast, full volume
-//   outdoors elsewhere                 -> 'street'      proximity (client-side attenuation)
+//   outdoors (anywhere: v2 single-screen town) -> 'square'  broadcast, full volume
+//   ('street' proximity is retired: the town is one screen, private talk = go into a house together)
 //   inside a building interior         -> 'bld:<id>'    private (separate LiveKit room)
 //   first_night / night / dawn         -> players are in their own home 'bld:house-<seat>';
 //                                         the Storyteller is wherever they physically are
@@ -79,11 +79,8 @@ function knownBuilding(layout: TownLayout, loc: LocationId): boolean {
   return layout.buildings.some((b) => b.id === id);
 }
 
-function outdoorZone(layout: TownLayout, x: number, y: number, prev: AcousticZoneId | undefined, marginPx: number) {
-  const r = layout.square.r + (prev === ZONE_SQUARE ? marginPx : 0);
-  const dx = x - layout.square.cx;
-  const dy = y - layout.square.cy;
-  return dx * dx + dy * dy <= r * r ? ZONE_SQUARE : ZONE_STREET;
+function outdoorZone(_layout: TownLayout, _x: number, _y: number, _prev: AcousticZoneId | undefined, _marginPx: number): AcousticZoneId {
+  return ZONE_SQUARE;
 }
 
 /** Zone of a single member (pure). */

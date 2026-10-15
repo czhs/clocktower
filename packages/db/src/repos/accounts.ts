@@ -108,6 +108,25 @@ export function createAccountsRepo({ db }: Database) {
       db.update(accounts).set({ lastSeenAt: now }).where(eq(accounts.id, id)).run();
     },
 
+    /**
+     * Admin console: replace the passphrase credentials (rotation). Throws DuplicateLookupError
+     * on the (astronomically unlikely) lookup collision. Returns false if the account is gone.
+     */
+    setCredentials(id: string, c: { passphraseLookup: string; passphraseVerifier: string; salt: string }): boolean {
+      try {
+        return (
+          db
+            .update(accounts)
+            .set({ passphraseLookup: c.passphraseLookup, passphraseVerifier: c.passphraseVerifier, salt: c.salt })
+            .where(eq(accounts.id, id))
+            .run().changes > 0
+        );
+      } catch (e) {
+        if (e instanceof Error && /UNIQUE constraint failed: accounts\.passphrase_lookup/.test(e.message)) throw new DuplicateLookupError();
+        throw e;
+      }
+    },
+
     count(): number {
       return db.select({ n: sql<number>`count(*)` }).from(accounts).get()?.n ?? 0;
     },

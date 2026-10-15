@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
-import { DISPLAY_NAME_MAX, type AccountView, type Cosmetics, type StatsView } from '@ct/protocol';
+import { DISPLAY_NAME_MAX, type AccountView, type StatsView } from '@ct/protocol';
 import { api } from '../../net/api';
-import { CosmeticEditor } from './CosmeticEditor';
+import { CharacterPicker, characterOf } from './CharacterPicker';
 import { LobbyFinder } from './LobbyFinder';
 import { HowToPlayHost, openHelp } from '../common/HowToPlay';
 import { signOutAll } from '../common/http';
@@ -135,28 +135,38 @@ function AccountHeader({
 }
 
 function AppearancePanel({ account, onAccountChange }: { account: AccountView; onAccountChange: (a: AccountView) => void }) {
-  const [draft, setDraft] = useState<Cosmetics>(account.cosmetics);
-  const [status, setStatus] = useState<string | null>(null);
-  const dirty = JSON.stringify(draft) !== JSON.stringify(account.cosmetics);
-  const save = async () => {
-    setStatus('Saving…');
+  const [pending, setPending] = useState<string | null>(null);
+  const [status, setStatus] = useState<{ text: string; tone: 'ok' | 'error' } | null>(null);
+  // Picking in a lobby also updates the account, so refresh it when the home screen opens.
+  useEffect(() => {
+    api
+      .me()
+      .then(onAccountChange)
+      .catch(() => undefined);
+  }, []);
+  const pick = async (id: string) => {
+    setPending(id);
+    setStatus(null);
     try {
-      onAccountChange(await api.updateMe({ cosmetics: draft }));
-      setStatus('Saved');
+      onAccountChange(await api.updateMe({ cosmetics: { ...account.cosmetics, preset: id } }));
+      setStatus({ text: 'Saved. You will be this character in your next game.', tone: 'ok' });
     } catch (err) {
-      setStatus(errorText(err));
+      setStatus({ text: errorText(err), tone: 'error' });
+    } finally {
+      setPending(null);
     }
   };
   return (
     <section class="panel ct-side-panel">
-      <h3>Your villager</h3>
-      <CosmeticEditor value={draft} onChange={(c) => (setDraft(c), setStatus(null))} />
-      <div class="ct-row">
-        {status && <span class="muted ct-small">{status}</span>}
-        <button class="primary" disabled={!dirty} onClick={save}>
-          Save character
-        </button>
-      </div>
+      <h3>Your character</h3>
+      <CharacterPicker
+        value={characterOf(account.cosmetics)?.id ?? null}
+        pending={pending}
+        onPick={(id) => void pick(id)}
+        status={status}
+        compact
+      />
+      <p class="muted ct-small">If someone in a lobby already has your character, you get a free one there; change it in the lobby.</p>
       <p class="muted ct-small ct-account-id">
         Account id: <code>{account.id}</code>
       </p>

@@ -72,4 +72,26 @@ CREATE TABLE voice_usage (
 );
 `,
   },
+  {
+    id: 2,
+    name: 'admin_audit',
+    // Append-only audit trail of admin mutations (owned by the admin console). No foreign keys:
+    // entries must outlive deleted admins/targets. UPDATE/DELETE are refused by triggers.
+    sql: `
+CREATE TABLE admin_audit (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  at INTEGER NOT NULL,
+  admin_account_id TEXT NOT NULL,
+  admin_name TEXT NOT NULL,
+  action TEXT NOT NULL,
+  target_type TEXT,
+  target_id TEXT,
+  target_name TEXT,
+  detail_json TEXT
+);
+CREATE INDEX admin_audit_at_idx ON admin_audit (at);
+CREATE TRIGGER admin_audit_no_update BEFORE UPDATE ON admin_audit BEGIN SELECT RAISE(ABORT, 'admin_audit is append-only'); END;
+CREATE TRIGGER admin_audit_no_delete BEFORE DELETE ON admin_audit BEGIN SELECT RAISE(ABORT, 'admin_audit is append-only'); END;
+`,
+  },
 ];

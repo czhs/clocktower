@@ -17,12 +17,15 @@ import {
   type WorldSnapshot,
   type WorldTeleport,
 } from '@ct/protocol';
-import { createWorldModule } from '../src/world/index.js';
+import { BURST_SECONDS, createWorldModule } from '../src/world/index.js';
 import { findPath, segmentClear } from '../src/world/path.js';
 import { createFakeHost, type FakeHost } from './helpers/fakeHost.js';
-/** Layout-driven ids (no id conventions): seat N's home, and two public (non-house) buildings. */
+/**
+ * Layout-driven ids (no id conventions): seat N's home, and two cottages nobody lives in during these
+ * <= 7-player tests (v2: every building is a cottage; there are no public buildings any more).
+ */
 const H = (seat: number) => homeBuilding(L, seat)!.id;
-const [PUB1, PUB2] = L.buildings.filter((b) => b.kind !== 'house').map((b) => b.id) as [string, string];
+const [PUB1, PUB2] = [H(13), H(14)];
 
 type Ph = 'setup' | 'first_night' | 'day' | 'bedtime' | 'night' | 'dawn' | 'finished';
 
@@ -350,7 +353,8 @@ describe('movement validation under bursty networks', () => {
     const p = world.positionOf('p0')!;
     world.handleMove('p0', { seq: ++seq, x: p.x + dx * 400, y: p.y + dy * 400, facing: 'right', moving: true });
     expect(world.positionOf('p0')).toEqual(p);
-    expect(PLAYER_SPEED * MOVE_TOLERANCE * 2).toBeLessThan(400);
+    // the longest single jump the burst budget ever accepts stays well under the town's width
+    expect(PLAYER_SPEED * MOVE_TOLERANCE * BURST_SECONDS).toBeLessThan(400);
   });
 });
 

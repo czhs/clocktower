@@ -16,11 +16,14 @@ import './game.css';
 // banner and (on touch devices) an on-screen joystick + "use door" button.
 
 type Prompt = { key: string; text: string; locked?: boolean };
+type Inside = { buildingId: string; name: string; others: string[]; canLeave: boolean; lockedReason?: string };
 
 export function GameScreen(props: { conn: RoomConnection; account: AccountView; children?: ComponentChildren }) {
   const host = useRef<HTMLDivElement>(null);
   const [prompt, setPrompt] = useState<Prompt | null>(null);
   const [caption, setCaption] = useState<string | null>(null);
+  const [inside, setInside] = useState<Inside | null>(null);
+  const leaveRef = useRef<(() => void) | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const touch = useTouchDevice();
 
@@ -32,7 +35,7 @@ export function GameScreen(props: { conn: RoomConnection; account: AccountView; 
     import('./TownGame')
       .then(({ createTownGame }) => {
         if (cancelled) return;
-        game = createTownGame(el, { conn: props.conn, setPrompt, setCaption });
+        game = createTownGame(el, { conn: props.conn, setPrompt, setCaption, setInside, registerLeave: (fn) => (leaveRef.current = fn) });
         setStatus('ready');
       })
       .catch(() => !cancelled && setStatus('error'));
@@ -72,13 +75,14 @@ export function GameScreen(props: { conn: RoomConnection; account: AccountView; 
           {caption}
         </div>
       )}
-      {prompt?.text && !touch && (
+      {prompt?.text && !inside && (
         <div class={`ct-game-prompt${prompt.locked ? ' locked' : ''}`} aria-live="polite">
-          {!prompt.locked && <kbd>{prompt.key}</kbd>}
+          {!prompt.locked && prompt.key && <kbd>{prompt.key}</kbd>}
           <span>{prompt.text}</span>
         </div>
       )}
-      {touch && status === 'ready' && <TouchControls prompt={prompt?.text ? prompt : null} />}
+      {inside && <InsidePanel inside={inside} prompt={prompt} onLeave={() => leaveRef.current?.()} />}
+      {touch && status === 'ready' && !inside && <TouchControls />}
       {status === 'ready' && <FirstSteps touch={touch} />}
       <HomeCompass conn={props.conn} />
       <Toolbar conn={props.conn} />
@@ -149,14 +153,14 @@ function FirstSteps({ touch }: { touch: boolean }) {
       <div class="ct-hint" role="status">
         {touch ? (
           <>
-            <b>Drag the joystick</b> to walk · at a door, <b>tap the door button</b>
+            <b>Tap a cottage</b> to walk there and go in · or drag the joystick
           </>
         ) : (
           <>
-            Walk with <kbd>W</kbd>
+            <b>Click a cottage</b> to go in, or walk with <kbd>W</kbd>
             <kbd>A</kbd>
             <kbd>S</kbd>
-            <kbd>D</kbd> or the arrow keys · at a door press <kbd>E</kbd> · <kbd>Enter</kbd> to chat
+            <kbd>D</kbd> — walk into a door to enter · <kbd>Enter</kbd> to chat
           </>
         )}
         <button class="ct-hint-close" aria-label="Dismiss hint" onClick={() => (markHint(MOVE_HINT_KEY), setDone(true))}>
@@ -342,7 +346,7 @@ function key(type: 'keydown' | 'keyup', code: string) {
   window.dispatchEvent(new KeyboardEvent(type, { code, key: code, bubbles: true }));
 }
 
-function TouchControls({ prompt }: { prompt: Prompt | null }) {
+function TouchControls() {
   const held = useRef(new Set<Dir>());
   const active = useRef<number | null>(null);
   const [knob, setKnob] = useState<{ x: number; y: number } | null>(null);
@@ -391,7 +395,6 @@ function TouchControls({ prompt }: { prompt: Prompt | null }) {
     apply(next);
   };
 
-  const canUse = !!prompt && !prompt.locked;
   return (
     <>
       <div
@@ -412,31 +415,31 @@ function TouchControls({ prompt }: { prompt: Prompt | null }) {
       >
         <div class="ct-touch-knob" style={knob ? { transform: `translate(${knob.x}px, ${knob.y}px)` } : undefined} />
       </div>
-      {prompt && (
-        <button
-          class={`ct-touch-use${canUse ? '' : ' locked'}`}
-          disabled={!canUse}
-          aria-label={prompt.text}
-          onPointerDown={(e) => {
-            e.preventDefault();
-            if (!canUse) return;
-            key('keydown', 'KeyE');
-            key('keyup', 'KeyE');
-          }}
-          onClick={(e) => {
-            // Keyboard / screen-reader activation (pointer taps are handled on pointerdown).
-            if ((e as MouseEvent).detail === 0 && canUse) {
-              key('keydown', 'KeyE');
-              key('keyup', 'KeyE');
-            }
-          }}
-        >
-          <span class="ct-touch-use-icon" aria-hidden="true">
-            {canUse ? '⌂' : '✕'}
-          </span>
-          <span class="ct-touch-use-text">{prompt.text}</span>
-        </button>
-      )}
     </>
+  );
+}
+
+// ------------------------------------------------------------------------------------ inside a cottage
+
+/** Inside a cottage: where you are, who is in here with you (they hear you, nobody else does) and Leave. */
+function InsidePanel({ inside, prompt, onLeave }: { inside: Inside; prompt: Prompt | null; onLeave: () => void }) {
+  const others = inside.others;
+  return (
+    <div class="ct-inside" role="status" aria-live="polite">
+      <div class="ct-inside-title">{inside.name}</div>
+      <div class="ct-inside-who">
+        {others.length ? (
+          <>
+            In here with <b>{others.join(', ')}</b> — only you {others.length === 1 ? 'two' : 'here'} can hear each other
+          </>
+        ) : (
+          <>Nobody else is here — only people inside can hear you</>
+        )}
+      </div>
+      {prompt?.locked && prompt.text && <div class="ct-inside-note">{prompt.text}</div>}
+      <button class="primary ct-inside-leave" disabled={!inside.canLeave} title={inside.canLeave ? 'Walk back out (or press any arrow key)' : inside.lockedReason} onClick={onLeave}>
+        {inside.canLeave ? 'Leave' : inside.lockedReason ?? 'Locked'}
+      </button>
+    </div>
   );
 }

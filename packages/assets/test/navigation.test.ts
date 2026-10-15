@@ -24,12 +24,8 @@ const free = (p: Pt) => !lat.blocked[lat.node(p)];
 const reached = (prev: Int32Array, p: Pt) => prev[lat.node(p)] !== -1;
 const tileOf = (p: Pt) => `tile(${Math.floor(p.x / TS)},${Math.floor((p.y - 1) / TS)})`;
 
-/**
- * Walkable outdoor tiles the spawn cannot reach. Known and harmless: a 5-tile strip between the
- * allotment fence (y = 88) and the town wall (y = 90) east of the old oak at (75,89). Nothing can
- * be placed there (spawns / doors / props are elsewhere); listed so a NEW pocket fails the test.
- */
-const KNOWN_POCKETS = ['77,89', '78,89', '79,89', '80,89', '81,89'];
+/** Walkable outdoor tiles the spawn cannot reach (v2 one-screen town: none). A NEW pocket fails the test. */
+const KNOWN_POCKETS: string[] = [];
 
 describe('town walkability (pixel BFS with the body box)', () => {
   it('reaches every door tile centre and the storyteller spawn from the player spawn', () => {
@@ -71,13 +67,21 @@ describe('town walkability (pixel BFS with the body box)', () => {
   });
 
   it('doorsteps: door tile and the tile in front are free and the reachable doorstep is wider than a body', () => {
+    // v2: 'south' cottages have the door below the footprint; 'east' / 'west' ones beside it
+    // (gable end to the camera), so "in front" and the doorstep width depend on the facing.
     const bad: string[] = [];
     for (const b of L.buildings) {
-      for (const p of [b.door, { x: b.door.x, y: b.door.y + 1 }] as TilePoint[]) if (isBlockedTile(L, p.x, p.y)) bad.push(`${b.id} ${p.x},${p.y}`);
+      const facing = townMap.styles[b.id]!.facing;
+      const front: TilePoint = facing === 'south' ? { x: b.door.x, y: b.door.y + 1 } : { x: b.door.x + (facing === 'east' ? 1 : -1), y: b.door.y };
+      for (const p of [b.door, front]) if (isBlockedTile(L, p.x, p.y)) bad.push(`${b.id} ${p.x},${p.y}`);
       const c = tileCenterPx(L, b.door);
       let width = 0;
-      for (let x = c.x - CLIENT_DOOR_RANGE; x <= c.x + CLIENT_DOOR_RANGE; x += STEP) if (free({ x, y: c.y }) && reached(outdoor, { x, y: c.y })) width += STEP;
-      if (width < 2 * BODY_HALF_W + 8) bad.push(`${b.id}: doorstep only ${width}px wide`);
+      if (facing === 'south') {
+        for (let x = c.x - CLIENT_DOOR_RANGE; x <= c.x + CLIENT_DOOR_RANGE; x += STEP) if (free({ x, y: c.y }) && reached(outdoor, { x, y: c.y })) width += STEP;
+      } else {
+        for (let y = c.y - CLIENT_DOOR_RANGE; y <= c.y + CLIENT_DOOR_RANGE; y += STEP) if (free({ x: c.x, y }) && reached(outdoor, { x: c.x, y })) width += STEP;
+      }
+      if (width < (facing === 'south' ? 2 * BODY_HALF_W : BODY_H) + 8) bad.push(`${b.id} (${facing}): doorstep only ${width}px wide`);
     }
     expect(bad).toEqual([]);
   });
@@ -119,7 +123,9 @@ const houses = L.buildings.filter((b) => b.kind === 'house');
 for (let i = 0; i < houses.length; i++) {
   const a = houses[i]!;
   routes.push({ name: `${a.id} door -> ${houses[(i + 1) % houses.length]!.id} door`, from: tileCenterPx(L, a.door), to: tileCenterPx(L, houses[(i + 1) % houses.length]!.door) });
-  routes.push({ name: `${a.id} door -> tavern door`, from: tileCenterPx(L, a.door), to: tileCenterPx(L, byId('tavern').door) });
+  // v2: no tavern; the long walk is across the square to the cottage opposite
+  const opp = houses[(i + Math.floor(houses.length / 2)) % houses.length]!;
+  routes.push({ name: `${a.id} door -> ${opp.id} door (across the square)`, from: tileCenterPx(L, a.door), to: tileCenterPx(L, opp.door) });
 }
 
 const bfsCache = new Map<string, Int32Array>();

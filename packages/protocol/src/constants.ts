@@ -7,8 +7,11 @@ export const TILE_SIZE = 16;
 export const MAP_WIDTH_TILES = 96;
 export const MAP_HEIGHT_TILES = 96;
 
-/** Walking speed in px/s. Server allows MOVE_TOLERANCE slack for jitter. */
-export const PLAYER_SPEED = 72;
+/**
+ * Walking speed in px/s. Server allows MOVE_TOLERANCE slack for jitter. (v2, 2026-10-15: 72 -> 150;
+ * the whole town is one 45x37-tile screen, crossing it takes ~4 s.)
+ */
+export const PLAYER_SPEED = 150;
 export const MOVE_TOLERANCE = 1.35;
 /** Storyteller may accelerate travel up to this multiple of PLAYER_SPEED. */
 export const STORYTELLER_MAX_SPEED_MULT = 4;

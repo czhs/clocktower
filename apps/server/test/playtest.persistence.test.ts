@@ -6,7 +6,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { matchMaker } from '@colyseus/core';
-import { PRESET_IDS } from '@ct/assets';
+import { castById, CHARACTER_PRESETS, PLAYABLE, PLAYABLE_IDS } from '@ct/assets';
 import { DEFAULT_COSMETICS, type LobbyRoomView, type StatsView } from '@ct/protocol';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { api, createLobby, makeAccount, sleep, TestClient, waitFor } from '../src/rooms/testkit.js';
@@ -26,8 +26,9 @@ import {
   vote,
 } from './playtestHarness.js';
 
-/** Any preset id of the generated manifest (ids are renamed by the art pipeline from time to time). */
-const [PRESET, PRESET2, PRESET3] = [...PRESET_IDS] as [string, string, string];
+/** v2: characters are the playable roster (@ct/assets cast.ts PLAYABLE_IDS); PRESET2 is picked at runtime (must be free). */
+const [PRESET, , PRESET3] = PLAYABLE.map((c) => c.id) as [string, string, string];
+const LEGACY = CHARACTER_PRESETS.map((p) => p.id).find((id) => !PLAYABLE_IDS.has(id));
 const PORT = 3314; // playtest range 3310-3319
 const DB = `file:${path.join(mkdtempSync(path.join(tmpdir(), 'ct-playtest-persist-')), 'persist.db')}`;
 
@@ -42,7 +43,7 @@ describe('playtest: persistence', () => {
   it('presets are validated; twins play without confusion; duplicate finish does not double count; stats, cosmetics and sessions survive a restart', async () => {
     const twinA = await makeAccount(env.srv, 'Twin');
     const twinB = await makeAccount(env.srv, 'Twin');
-    // Preset ids are checked against the generated manifest; stored cosmetics without a preset load fine.
+    // v2 roster: only playable characters can be chosen; null (custom) / unknown ids are refused.
     expect((await api(env.srv, 'GET', '/api/me', { cookie: twinA.cookie })).status).toBe(200);
     const bad = await api(env.srv, 'PATCH', '/api/me', { cookie: twinA.cookie, body: { cosmetics: { ...DEFAULT_COSMETICS, preset: 'not-a-preset' } } });
     expect(bad.status).toBe(400);
@@ -50,7 +51,10 @@ describe('playtest: persistence', () => {
     expect(good.status).toBe(200);
     expect(JSON.stringify(good.body)).toContain(`"preset":"${PRESET}"`);
     const cleared = await api(env.srv, 'PATCH', '/api/me', { cookie: twinB.cookie, body: { cosmetics: { ...DEFAULT_COSMETICS, preset: null } } });
-    expect(cleared.status).toBe(200);
+    expect(cleared.status).toBe(400);
+    // An account stored before v2 (no character, or a retired v1 preset) still signs in and plays.
+    env.srv.services.accounts.updateProfile(twinB.account.id, { cosmetics: { ...DEFAULT_COSMETICS, preset: LEGACY ?? null } });
+    expect((await api(env.srv, 'GET', '/api/me', { cookie: twinB.cookie })).status).toBe(200);
 
     const accounts = [
       { name: 'Twin', cookie: twinA.cookie, accountId: twinA.account.id },
@@ -64,8 +68,20 @@ describe('playtest: persistence', () => {
     expect(lv.members.find((m) => m.pid === jA!.c.pid)!.displayName).toBe('Twin');
     expect(lv.members.find((m) => m.pid === jB!.c.pid)!.displayName).toBe('Twin (2)');
     expect(memberCosmetics(lv, jA!.c.pid!)?.preset).toBe(PRESET);
+    // The legacy account got a free playable character for this lobby; its saved choice is untouched.
+    const players = () => g.st.last('lobby:view')!.members.filter((m) => m.role === 'player');
+    const assigned = memberCosmetics(lv, jB!.c.pid!)?.preset;
+    expect(PLAYABLE_IDS.has(assigned!)).toBe(true);
+    expect(new Set(players().map((m) => m.cosmetics.preset)).size).toBe(players().length); // nobody shares one
+    for (const m of players()) expect(PLAYABLE_IDS.has(m.cosmetics.preset!)).toBe(true);
+    expect((await api(env.srv, 'GET', '/api/me', { cookie: twinB.cookie })).body.cosmetics.preset).toBe(LEGACY ?? null);
     jB!.c.send('lobby:cosmetics', { cosmetics: { ...DEFAULT_COSMETICS, preset: 'bogus-preset' } });
-    await jB!.c.waitMsg('error', (e) => e.for === 'lobby:cosmetics' && /preset/i.test(e.message));
+    await jB!.c.waitMsg('error', (e) => e.for === 'lobby:cosmetics' && /character/i.test(e.message));
+    // Twin A has PRESET: nobody else in this lobby may take it (friendly message, by display label).
+    jB!.c.send('lobby:cosmetics', { cosmetics: { ...DEFAULT_COSMETICS, preset: PRESET } });
+    await jB!.c.waitMsg('error', (e) => e.for === 'lobby:cosmetics' && e.message === `Twin already took ${castById(PRESET)!.name} — pick another`);
+    expect(memberCosmetics(g.st.last('lobby:view'), jB!.c.pid!)?.preset).toBe(assigned);
+    const PRESET2 = PLAYABLE.map((c) => c.id).find((id) => !players().some((m) => m.cosmetics.preset === id))!;
     jB!.c.send('lobby:cosmetics', { cosmetics: { ...DEFAULT_COSMETICS, preset: PRESET2 } });
     await g.st.view((v) => memberCosmetics(v, jB!.c.pid!)?.preset === PRESET2);
 

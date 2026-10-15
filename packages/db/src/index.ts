@@ -14,6 +14,15 @@ export {
 export { createSessionsRepo, type SessionRecord, type SessionsRepo } from './repos/sessions.js';
 export { createStatsRepo, type MatchResult, type MatchStart, type StatsRepo } from './repos/stats.js';
 export { createVoiceUsageRepo, usageMonth, type VoiceUsageStore } from './repos/voiceUsage.js';
+export {
+  createAdminRepo,
+  type AdminAccountQuery,
+  type AdminAccountRow,
+  type AdminAccountSort,
+  type AdminRepo,
+  type AuditEntry,
+  type AuditEntryInput,
+} from './repos/admin.js';
 
 import { openDatabase, type Database } from './database.js';
 import { createAccountsRepo, type AccountsRepo } from './repos/accounts.js';

@@ -3,6 +3,7 @@ import { DuplicateLookupError, type AccountRecord, type AccountsRepo, type Sessi
 import type { Logger } from '../rooms/modules.js';
 import { checkVerifier, DEFAULT_SCRYPT_N, hashToken, makeVerifier, newSessionToken, passphraseLookup, randomId } from './crypto.js';
 import { generatePassphrase, normalizePassphrase } from './passphrase.js';
+import { randomPlayable } from './presets.js';
 
 export interface AuthDeps {
   accounts: AccountsRepo;
@@ -45,7 +46,8 @@ export function createAuthService(deps: AuthDeps) {
   }
 
   return {
-    async createAccount(displayName: string, cosmetics: Cosmetics = DEFAULT_COSMETICS) {
+    /** v2: a new account starts as a random playable roster character (changeable any time). */
+    async createAccount(displayName: string, cosmetics: Cosmetics = { ...DEFAULT_COSMETICS, preset: randomPlayable() }) {
       for (let attempt = 0; attempt < 3; attempt++) {
         const passphrase = generatePassphrase();
         const normalized = normalizePassphrase(passphrase);
@@ -131,6 +133,43 @@ export function createAuthService(deps: AuthDeps) {
     purgeExpired(): number {
       return deps.sessions.deleteExpired(now());
     },
+
+    // -------------------------------------------------------------------------------------
+    // ADMIN-ONLY (owned by the admin agent; called only from apps/server/src/admin/**, which
+    // enforces ADMIN_ACCOUNT_IDS). Never log the passphrase.
+
+    /**
+     * Replaces the account's passphrase with a freshly generated one (same generator as sign-up)
+     * and deletes every session of the account. Returns the new passphrase exactly once, or null
+     * if the account does not exist.
+     */
+    async adminRotatePassphrase(accountId: string): Promise<string | null> {
+      if (!deps.accounts.findById(accountId)) return null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const passphrase = generatePassphrase();
+        const normalized = normalizePassphrase(passphrase);
+        const { salt, verifier } = await makeVerifier(normalized, n);
+        try {
+          const ok = deps.accounts.setCredentials(accountId, {
+            passphraseLookup: passphraseLookup(deps.pepper, normalized),
+            passphraseVerifier: verifier,
+            salt,
+          });
+          if (!ok) return null;
+          deps.sessions.deleteForAccount(accountId);
+          return passphrase;
+        } catch (e) {
+          if (!(e instanceof DuplicateLookupError)) throw e;
+        }
+      }
+      throw new Error('could not allocate a unique passphrase');
+    },
+
+    /** Deletes every session of the account (all devices are signed out on their next request). */
+    adminSignOutEverywhere(accountId: string): void {
+      deps.sessions.deleteForAccount(accountId);
+    },
+    // ------------------------------------------------------------------- end ADMIN-ONLY
   };
 }
 

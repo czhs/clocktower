@@ -5,14 +5,14 @@ import {
   MAX_PLAYERS,
   MIN_PLAYERS,
   type AccountView,
-  type Cosmetics,
   type LobbyRoomView,
   type MemberView,
 } from '@ct/protocol';
 import { useStore } from '../../net/store';
 import type { RoomConnection } from '../../net/room';
 import { helpSeen, openHelp } from '../common/HowToPlay';
-import { CosmeticEditor } from './CosmeticEditor';
+import { CastPortrait } from '../common/castPortrait';
+import { CharacterPicker, characterOf, takenBy } from './CharacterPicker';
 import { copyText, SCRIPT_LABEL, shareUrl } from './finder';
 import '../auth/auth.css';
 import './lobby.css';
@@ -28,10 +28,19 @@ export function WaitingRoom({ conn, onLeave }: { conn: RoomConnection; account: 
   const status = useStore(conn.status);
   const [notice, setNotice] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(narrow);
+  const [pickOpen, setPickOpen] = useState(false);
+  const [pickError, setPickError] = useState<string | null>(null);
 
   useEffect(
     () =>
       conn.events.on('error', (e) => {
+        if (e.for === 'lobby:cosmetics') {
+          // Lost a race for a character (or similar): explain it inside the picker.
+          setPickError(/taken|already|in use/i.test(e.message) ? 'Someone just picked that character. Choose another one.' : e.message);
+          setPickOpen(true);
+          setCollapsed(false);
+          return;
+        }
         if (!e.for || e.for.startsWith('lobby:')) setNotice(e.message);
       }),
     [conn],
@@ -162,7 +171,7 @@ export function WaitingRoom({ conn, onLeave }: { conn: RoomConnection; account: 
               </button>
             )}
             {isHost && <HostSettings view={view} conn={conn} />}
-            {me && <LobbyAppearance conn={conn} current={me.cosmetics} />}
+            {me && <LobbyCharacter conn={conn} view={view} me={me} open={pickOpen} setOpen={setPickOpen} error={pickError} setError={setPickError} />}
             <button class="ct-link" onClick={openHelp}>
               How to play
             </button>
@@ -264,9 +273,11 @@ function MemberRow({ m, view, me, conn }: { m: MemberView; view: LobbyRoomView; 
   const you = m.pid === view.youPid;
   const canTransferSt = !!me && (me.isHost || me.role === 'storyteller') && m.role === 'player';
   const hostTools = !!me?.isHost && !you;
+  const face = m.role === 'storyteller' ? 'storyteller' : characterOf(m.cosmetics)?.id;
   return (
     <div class={`ct-member ${m.connected ? '' : 'ct-member-away'}`}>
       <span class="ct-member-name">
+        {face && <CastPortrait id={face} size={28} crop="bust" class="ct-member-face" />}
         {m.displayName}
         {you && <span class="ct-badge">you</span>}
         {m.role === 'storyteller' && (
@@ -361,35 +372,81 @@ function HostSettings({ view, conn }: { view: LobbyRoomView; conn: RoomConnectio
   );
 }
 
-function LobbyAppearance({ conn, current }: { conn: RoomConnection; current: Cosmetics }) {
-  const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState(current);
+/**
+ * "Change character" in the waiting room: the roster with everyone else's picks greyed out. A pick
+ * is sent straight away; the tile shows it as pending until the lobby view confirms it. Losing a
+ * race (someone else got it first) comes back as an error and is explained in the picker.
+ */
+function LobbyCharacter({
+  conn,
+  view,
+  me,
+  open,
+  setOpen,
+  error,
+  setError,
+}: {
+  conn: RoomConnection;
+  view: LobbyRoomView;
+  me: MemberView;
+  open: boolean;
+  setOpen: (o: boolean) => void;
+  error: string | null;
+  setError: (e: string | null) => void;
+}) {
+  const [pending, setPending] = useState<string | null>(null);
+  const [ok, setOk] = useState<string | null>(null);
+  const taken = takenBy(view.members, view.youPid);
+  const mine = characterOf(me.cosmetics);
+  const holder = pending ? taken.get(pending) : undefined;
+
+  useEffect(() => {
+    if (!pending) return;
+    if (me.cosmetics.preset === pending) {
+      setPending(null);
+      setOk(`You are ${mine?.name ?? 'them'} now.`);
+    } else if (holder) {
+      setPending(null);
+      setError(`${holder} just picked that one. Choose another.`);
+    }
+  }, [pending, me.cosmetics.preset, holder]);
+  useEffect(() => {
+    if (error) setPending(null);
+  }, [error]);
+  useEffect(() => {
+    if (!pending) return;
+    const t = setTimeout(() => {
+      setPending(null);
+      setError('The server did not confirm. Check your connection and try again.');
+    }, 6000);
+    return () => clearTimeout(t);
+  }, [pending]);
+
   if (!open)
     return (
-      <button
-        class="ct-link"
-        onClick={() => {
-          setDraft(current);
-          setOpen(true);
-        }}
-      >
+      <button class="ct-link ct-change-char" onClick={() => (setError(null), setOk(null), setOpen(true))}>
+        {mine && <CastPortrait id={mine.id} size={22} crop="bust" />}
         Change character…
       </button>
     );
   return (
     <div class="ct-lobby-appearance">
-      <CosmeticEditor value={draft} onChange={setDraft} compact />
+      <CharacterPicker
+        value={me.cosmetics.preset}
+        pending={pending}
+        taken={taken}
+        compact
+        label="Choose your character for this lobby"
+        status={error ? { text: error, tone: 'error' } : ok ? { text: ok, tone: 'ok' } : null}
+        onPick={(id) => {
+          setError(null);
+          setOk(null);
+          setPending(id);
+          conn.send('lobby:cosmetics', { cosmetics: { ...me.cosmetics, preset: id } });
+        }}
+      />
       <div class="ct-row">
-        <button onClick={() => setOpen(false)}>Cancel</button>
-        <button
-          class="primary"
-          onClick={() => {
-            conn.send('lobby:cosmetics', { cosmetics: draft });
-            setOpen(false);
-          }}
-        >
-          Apply
-        </button>
+        <button onClick={() => setOpen(false)}>Done</button>
       </div>
     </div>
   );

@@ -1,9 +1,13 @@
-/* Admin status page. */
+/* Admin console (/admin). Builds on the shared panel/table/stat primitives (theme.css, lobby.css). */
 .ct-admin-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; max-width: 1100px; margin: 0 auto; }
 .ct-admin-wide { grid-column: 1 / -1; }
 @media (max-width: 760px) { .ct-admin-grid { grid-template-columns: 1fr; } }
 .ct-admin h3 { margin: 0 0 10px; color: var(--accent); font-weight: normal; }
 .ct-admin-denied { max-width: 480px; }
+.ct-admin-denied h2 { color: var(--accent); font-weight: normal; margin-top: 0; }
+.ct-adm-hint { margin-top: 16px; }
+.ct-adm-hint summary { cursor: pointer; }
+.ct-adm-hint p { margin: 8px 0 0 !important; overflow-wrap: anywhere; }
 .ct-quota { height: 14px; background: var(--panel-sunk); border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
 .ct-quota-fill { height: 100%; background: var(--ok); transition: width 0.4s; }
 .ct-quota-warn .ct-quota-fill { background: #d1a33a; }
@@ -13,14 +17,106 @@
 .ct-level-warn { color: #d1a33a; }
 .ct-level-critical { color: #d9722f; }
 .ct-level-exhausted { color: var(--danger); }
-.ct-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
-.ct-table-wrap { overflow-x: auto; }
-.ct-table th, .ct-table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
-.ct-table td:first-child { white-space: normal; overflow-wrap: anywhere; min-width: 8em; }
-.ct-table td.num, .ct-table th.num { text-align: right; }
-.ct-table th { color: var(--muted); font-weight: normal; }
-.ct-errors { list-style: none; padding: 0; margin: 0; font-family: var(--mono); font-size: 0.8rem; display: flex; flex-direction: column; gap: 4px; max-height: 300px; overflow-y: auto; }
-.ct-admin-denied h2 { color: var(--accent); font-weight: normal; margin-top: 0; }
+.ct-errors { list-style: none; padding: 0; margin: 0; font-family: var(--mono); font-size: 0.8rem; display: flex; flex-direction: column; gap: 4px; max-height: 300px; overflow-y: auto; overflow-wrap: anywhere; }
 .ct-admin-msg { max-width: 1100px; margin: 0 auto 12px; }
 button.ct-danger-btn { border-color: #7a3a30; color: #f0b4a8; padding: 3px 10px; font-size: 0.85rem; }
 button.ct-danger-btn:hover:not(:disabled) { border-color: var(--danger); background: #3a1714; }
+button.ct-danger-btn.ct-adm-danger-solid { background: #5a2018; border-color: var(--danger); color: #ffe4dc; padding: 6px 14px; font-size: 1rem; }
+button.ct-danger-btn.ct-adm-danger-solid:hover:not(:disabled) { background: #6e271d; }
+
+/* Shell */
+.ct-adm-tabs { display: flex; gap: 4px; max-width: 1100px; margin: 0 auto 14px; border-bottom: 1px solid var(--border); overflow-x: auto; }
+.ct-adm-tabs [role='tab'] { background: none; border: 1px solid transparent; border-bottom: none; border-radius: var(--radius) var(--radius) 0 0; padding: 8px 14px; color: var(--muted); white-space: nowrap; margin-bottom: -1px; }
+.ct-adm-tabs [role='tab'][aria-selected='true'] { color: var(--accent); border-color: var(--border); background: var(--panel); }
+.ct-adm-tabs [role='tab']:hover:not([aria-selected='true']) { color: var(--text); background: #ffffff08; }
+.ct-adm-panel { max-width: 1100px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+.ct-adm-notice { position: sticky; top: 8px; z-index: 5; background: var(--panel-solid); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 12px; }
+.ct-adm-section { display: flex; flex-direction: column; gap: 10px; }
+.ct-adm-section h3 { margin: 0; }
+.ct-adm-sectionhead { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.ct-adm-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin: 0; }
+
+/* Filters */
+.ct-adm-filters { display: flex; flex-wrap: wrap; gap: 8px; }
+.ct-adm-search { flex: 1 1 220px; display: flex; }
+.ct-adm-search input { width: 100%; }
+.ct-adm-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.ct-admin button.ct-adm-chip { padding: 2px 10px; font-size: 0.85rem; border-radius: 999px; }
+.ct-adm-listhead { display: flex; justify-content: space-between; align-items: center; gap: 8px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+.ct-adm-selectall { display: flex; align-items: center; gap: 8px; font-size: 0.9rem; cursor: pointer; }
+
+/* Rows (accounts + lobbies): a grid row on wide screens, a stacked card on phones. */
+.ct-adm-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.ct-adm-acct, .ct-adm-lobby { background: var(--panel-raised); border: 1px solid var(--border); border-radius: var(--radius); }
+.ct-adm-acct.open { border-color: var(--border-strong); }
+.ct-adm-acct-row { display: grid; grid-template-columns: auto minmax(0, 1.6fr) auto minmax(0, 1.2fr) auto; align-items: center; gap: 12px; padding: 8px 10px; }
+.ct-adm-lobby { display: grid; grid-template-columns: minmax(0, 1.6fr) auto minmax(0, 1.4fr) auto; align-items: center; gap: 12px; padding: 8px 10px; }
+.ct-adm-who { min-width: 0; }
+.ct-adm-name { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; overflow-wrap: anywhere; }
+.ct-adm-id { font-family: var(--mono); font-size: 0.75rem; color: var(--muted); overflow-wrap: anywhere; }
+.ct-adm-badge { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; padding: 1px 6px; border-radius: 999px; border: 1px solid var(--border-strong); color: var(--muted); }
+.ct-adm-badge.you { border-color: var(--accent); color: var(--accent); }
+.ct-adm-badge.admin { border-color: var(--good); color: var(--good); }
+.ct-adm-badge.live { border-color: var(--ok); color: var(--ok); text-transform: none; letter-spacing: 0; }
+.ct-adm-nums { display: flex; gap: 12px; margin: 0; }
+.ct-adm-nums div { text-align: center; min-width: 2.6em; }
+.ct-adm-nums dt { font-size: 0.72rem; color: var(--muted); }
+.ct-adm-nums dd { margin: 0; font-size: 1.05rem; }
+.ct-adm-dates { display: flex; flex-direction: column; gap: 1px; }
+.ct-admin button.ct-adm-manage { padding: 4px 12px; }
+@media (max-width: 700px) {
+  .ct-adm-acct-row { grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: 'chk who btn' '. nums nums' '. dates dates'; row-gap: 6px; }
+  .ct-adm-acct-row > input { grid-area: chk; align-self: start; margin-top: 4px; }
+  .ct-adm-acct-row > .ct-adm-who { grid-area: who; }
+  .ct-adm-acct-row > .ct-adm-nums { grid-area: nums; justify-content: flex-start; }
+  .ct-adm-acct-row > .ct-adm-dates { grid-area: dates; flex-direction: row; flex-wrap: wrap; gap: 4px 12px; }
+  .ct-adm-acct-row > .ct-adm-manage { grid-area: btn; align-self: start; }
+  .ct-adm-lobby { grid-template-columns: minmax(0, 1fr) auto; }
+  .ct-adm-lobby > .ct-adm-dates { grid-column: 1 / -1; flex-direction: row; flex-wrap: wrap; gap: 4px 12px; }
+  .ct-adm-lobby > button { grid-column: 1 / -1; justify-self: start; }
+}
+
+/* Manage panel */
+.ct-adm-manage-panel { border-top: 1px solid var(--border); padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 8px; background: #0000001a; }
+.ct-adm-manage-panel p { margin: 0; }
+.ct-adm-rename { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
+.ct-adm-rename label { display: flex; flex-direction: column; gap: 2px; flex: 1 1 200px; max-width: 320px; }
+.ct-adm-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.ct-adm-actions button.ct-danger-btn { padding: 6px 14px; font-size: 1rem; }
+.ct-adm-warn { color: #e8b86a; }
+
+/* Pager + bulk bar */
+.ct-adm-pager { display: flex; justify-content: space-between; gap: 8px; }
+.ct-adm-bulkbar {
+  position: sticky; bottom: calc(8px + var(--safe-bottom)); z-index: 4; display: flex; flex-wrap: wrap; align-items: center; gap: 12px;
+  background: var(--panel-solid); border: 1px solid var(--accent); border-radius: var(--radius); padding: 8px 12px; box-shadow: 0 6px 24px #000a;
+}
+.ct-adm-bulkbar .ct-danger-btn { margin-left: auto; padding: 6px 14px; font-size: 1rem; }
+
+/* Dialogs */
+.ct-adm-dialog p { margin: 0 0 8px; line-height: 1.45; }
+.ct-adm-dialog-body > :last-child { margin-bottom: 0; }
+.ct-adm-dialog-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+.ct-adm-ack { display: flex; gap: 8px; align-items: flex-start; cursor: pointer; }
+.ct-adm-ack input { margin-top: 3px; flex: none; }
+.ct-adm-namelist { margin: 0 0 8px; padding-left: 20px; max-height: 220px; overflow-y: auto; overflow-wrap: anywhere; }
+.ct-adm-passphrase {
+  font-family: var(--mono); font-size: 1.15rem; padding: 12px; background: var(--panel-sunk); border: 1px dashed var(--accent);
+  border-radius: var(--radius); user-select: all; overflow-wrap: anywhere; text-align: center; color: #f6ecd2;
+}
+.ct-adm-version { font-family: var(--mono); font-size: 0.9rem; }
+
+/* Audit */
+.ct-adm-audit { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.ct-adm-audit li { display: grid; grid-template-columns: 9.5em minmax(0, 1fr) auto; gap: 10px; align-items: baseline; padding: 6px 0; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+@media (max-width: 700px) { .ct-adm-audit li { grid-template-columns: 1fr; gap: 2px; } }
+
+/* Solid backings under the themed 9-slice art (theme.css makes panels/buttons transparent and
+   relies on /art/ui/*.png for their fill; when that art is absent they would be invisible). With
+   the art present the border-image still paints on top, so this is only a fallback. */
+.ct-admin .panel, .ct-admin-denied.panel { background-color: var(--panel); border-color: var(--border); background-clip: padding-box; }
+.ct-admin .ct-adm-dialog.panel { background-color: var(--panel-solid); }
+.ct-admin.ct-home.ct-home button:not(.ct-link, [role='tab'], .primary, .ct-danger-btn) { background-color: #2c2938; border-color: var(--border); background-clip: padding-box; }
+.ct-admin.ct-home.ct-home button:not(.ct-link, [role='tab'], .primary, .ct-danger-btn):hover:not(:disabled) { background-color: #343042; border-color: var(--border-strong); }
+.ct-admin.ct-home.ct-home button.ct-adm-chip[aria-pressed='true'] { border-color: var(--accent); color: var(--accent); filter: none; }
+.ct-adm-panel > .ct-admin-grid { width: 100%; }

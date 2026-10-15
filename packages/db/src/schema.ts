@@ -65,3 +65,16 @@ export const voiceUsage = sqliteTable(
   },
   (t) => [primaryKey({ columns: [t.env, t.month] })],
 );
+
+/** Migration 2 (admin console): append-only audit log; triggers refuse UPDATE/DELETE. */
+export const adminAudit = sqliteTable('admin_audit', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  at: integer('at').notNull(),
+  adminAccountId: text('admin_account_id').notNull(),
+  adminName: text('admin_name').notNull(),
+  action: text('action').notNull(),
+  targetType: text('target_type'),
+  targetId: text('target_id'),
+  targetName: text('target_name'),
+  detailJson: text('detail_json'),
+});

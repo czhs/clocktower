@@ -75,13 +75,20 @@ function pineTree(img: Img, tiers: number, seed: number) {
     const hw = 4 + ((t + 1) / tiers) * (w / 2 - 3);
     for (let y = Math.floor(ty); y <= by; y++) {
       const f = (y - ty) / (by - ty);
-      const half = hw * Math.pow(f, 0.85);
+      // branch tips: the tier's skirt is jagged, not a smooth cone
+      const tips = f > 0.55 ? 1 - Math.abs(Math.sin((y + t * 3) * 1.3 + seed)) * 0.18 * f : 1;
+      const half = hw * Math.pow(f, 0.85) * tips;
       const droop = f > 0.82 ? 1 : 0;
       for (let x = Math.floor(w / 2 - half); x <= Math.ceil(w / 2 + half - 1); x++) {
         const nx = (x + 0.5 - w / 2) / Math.max(1, half);
+        if (f > 0.86 && hash(x, t, seed + 5) < 0.35 && Math.abs(nx) > 0.2) continue; // ragged hem
         let v = 0.55 - nx * 0.45 + (1 - f) * 0.15 - droop * 0.3;
         v += (hash(x, y, seed) - 0.5) * 0.3;
         if (hash(x, y, seed + 1) < 0.05) v += 0.3;
+        // needle strokes slanting down from the trunk
+        if ((x + Math.floor(y * 0.5) * (nx < 0 ? 1 : -1)) % 4 === 0) v -= 0.12;
+        // lit rim on the upper-left of each tier
+        if (nx < -0.75 && f < 0.8) v += 0.25;
         img.set(x, y, dpick(PINE, v, x, y));
       }
     }
@@ -179,23 +186,37 @@ function bush(img: Img, berries: boolean) {
   canopy(
     img,
     [
-      [5, 10, 5],
-      [11, 10, 5],
+      [4.5, 10.5, 4.5],
+      [11.5, 10.5, 4.5],
       [8, 7, 5.5],
+      [8, 11, 4.5],
     ],
     OAK,
     berries ? 61 : 62,
+    { tex: 0.35 },
   );
-  if (berries)
+  if (berries) {
     for (const [x, y] of [
       [4, 9],
-      [9, 6],
+      [9, 5],
       [12, 10],
       [7, 11],
+      [10, 8],
     ]) {
-      img.set(x!, y!, '#8a3a9a');
+      img.set(x!, y!, '#9a3a8a');
       img.set(x! + 1, y!, '#5a2068');
+      img.set(x!, y! - 1, '#d07ac0');
     }
+  } else {
+    for (const [x, y] of [
+      [5, 8],
+      [11, 9],
+      [8, 5],
+    ]) {
+      img.set(x!, y!, '#e8e2ec');
+      img.set(x!, y! + 1, '#b8b0c0');
+    }
+  }
   img.outline({ darken: 0.75 });
 }
 
@@ -212,8 +233,22 @@ function rock(img: Img, big: boolean) {
 
 function stump(img: Img) {
   shadow(img, 8, 14, 7, 2);
-  for (let y = 7; y < 14; y++) for (let x = 3; x < 13; x++) img.set(x, y, dpick(BARK, 0.7 - (x - 3) / 14 + (hash(x, y, 9) - 0.5) * 0.3, x, y));
-  img.ellipse(8, 7, 5, 2.2, (x, y) => dpick(['#5a4430', '#7a5e40', '#8e7050'], 0.5 + Math.sin(Math.hypot(x - 8, (y - 7) * 2) * 2) * 0.4, x, y));
+  for (let y = 7; y < 14; y++)
+    for (let x = 3; x < 13; x++) {
+      let v = 0.75 - (x - 3) / 12 + (hash(x, y, 9) - 0.5) * 0.25;
+      if ((x + (y >> 1)) % 3 === 0) v -= 0.15;
+      img.set(x, y, dpick(BARK, v, x, y));
+    }
+  // roots
+  img.set(2, 13, BARK[2]!);
+  img.set(13, 13, BARK[1]!);
+  img.set(1, 14, BARK[1]!);
+  img.ellipse(8, 7, 5, 2.2, (x, y) => {
+    const ring = Math.hypot(x + 0.5 - 8, (y + 0.5 - 7) * 2.2);
+    return dpick(['#5a4430', '#7a5e40', '#9a7c58'], 0.55 + Math.sin(ring * 2.2) * 0.35 - (x - 8) * 0.04, x, y);
+  });
+  img.set(4, 9, '#3a5a34');
+  img.set(5, 10, '#2e4a2a');
   img.outline({ darken: 0.7 });
 }
 
@@ -251,26 +286,59 @@ function waterfall(img: Img) {
 // --- town furniture ------------------------------------------------------------------------
 
 function lamp(img: Img) {
-  shadow(img, 8, img.h - 2, 5, 1.5, 0.4);
-  const b = img.h - 3;
-  img.rect(5, b - 2, 6, 3, IRON[1]!); // foot
-  img.rect(6, b - 4, 4, 2, IRON[2]!);
-  for (let y = 12; y < b - 3; y++) {
-    img.set(7, y, IRON[3]!);
+  const b = img.h - 2; // ground line
+  shadow(img, 8, b, 5, 1.6, 0.42);
+  const HI = '#545068';
+  // stepped plinth
+  for (const [y0, y1, x0, x1] of [
+    [b - 1, b, 4, 11],
+    [b - 3, b - 2, 5, 10],
+    [b - 5, b - 4, 6, 9],
+  ] as [number, number, number, number][])
+    for (let y = y0; y <= y1; y++)
+      for (let x = x0; x <= x1; x++) img.set(x, y, x === x0 ? HI : x === x1 ? IRON[0]! : y === y0 ? IRON[3]! : IRON[2]!);
+  // post with two collars
+  for (let y = 17; y < b - 5; y++) {
+    img.set(7, y, HI);
     img.set(8, y, IRON[1]!);
   }
-  img.rect(6, 22, 4, 2, IRON[2]!); // collar
-  // lantern head
-  img.rect(4, 4, 8, 2, IRON[1]!);
-  img.set(7, 3, IRON[2]!);
-  img.set(8, 3, IRON[2]!);
-  img.set(7, 2, IRON[3]!);
-  for (let y = 6; y < 12; y++) for (let x = 4; x < 12; x++) img.set(x, y, dpick(GLOW, 0.95 - Math.abs(x - 7.5) * 0.1 - (y - 6) * 0.05, x, y));
-  img.vline(4, 6, 11, IRON[1]!);
-  img.vline(11, 6, 11, IRON[1]!);
-  img.vline(8, 6, 11, IRON[2]!);
-  img.rect(5, 12, 6, 1, IRON[1]!);
-  img.outline({ darken: 0.5 });
+  for (const y of [b - 15, 20]) {
+    img.hline(6, 9, y, IRON[2]!);
+    img.set(6, y, HI);
+  }
+  // scroll brackets under the lantern
+  for (const s of [-1, 1]) {
+    const x = s < 0 ? 5 : 10;
+    img.set(x, 18, IRON[2]!);
+    img.set(x - s, 17, IRON[2]!);
+    img.set(x, 16, IRON[1]!);
+    img.set(x + s, 17, IRON[1]!);
+  }
+  // lantern: tray, glass, frame, roof, finial
+  img.hline(4, 11, 16, IRON[1]!);
+  img.hline(5, 10, 17, IRON[0]!);
+  for (let y = 7; y <= 15; y++)
+    for (let x = 5; x <= 10; x++) {
+      const d = Math.hypot(x - 7.5, (y - 12) * 0.8);
+      img.set(x, y, dpick(GLOW, 1 - d * 0.16 - (y < 9 ? 0.1 : 0), x, y));
+    }
+  img.vline(4, 7, 15, IRON[2]!);
+  img.vline(11, 7, 15, IRON[0]!);
+  img.vline(7, 8, 15, '#7a5a2e');
+  img.set(7, 12, '#fff6d0');
+  img.set(8, 12, '#ffe08a');
+  img.set(7, 11, '#fff6d0');
+  img.hline(3, 12, 6, IRON[1]!);
+  img.hline(4, 11, 5, IRON[2]!);
+  img.hline(5, 10, 4, IRON[2]!);
+  img.hline(6, 9, 3, IRON[3]!);
+  img.set(5, 5, HI);
+  img.set(6, 4, HI);
+  img.hline(7, 8, 2, IRON[2]!);
+  img.set(7, 1, HI);
+  img.set(8, 1, IRON[1]!);
+  img.set(7, 0, IRON[2]!);
+  img.outline({ darken: 0.55 });
 }
 
 function well(img: Img) {
@@ -321,38 +389,75 @@ function fountain(img: Img) {
   img.outline({ darken: 0.7 });
 }
 
-function stall(img: Img, cloth: string[]) {
+function stall(img: Img, cloth: string[], seed: number) {
   const w = img.w;
   const b = img.h - 2;
   shadow(img, w / 2, b, 23, 3);
-  // counter
-  box(img, 2, b - 14, w - 4, 13, 4, WOOD_LIGHT);
-  planks(img, 3, b - 9, w - 6, 7, WOOD, { vertical: true, size: 5, seed: 3 });
-  // goods
-  const goods = ['#c0302a', '#d08a2a', '#6a8a3a', '#8a5aa0', '#d0c070'];
-  for (let i = 0; i < 9; i++) {
-    const x = 5 + i * 4.4;
-    const c = goods[(i + cloth.length) % goods.length]!;
-    img.ellipse(x, b - 15, 2, 1.6, (xx, yy, nx, ny) => (nx + ny < -0.3 ? mix(c, '#ffffff', 0.35) : c));
-  }
   // posts
-  img.rect(3, b - 34, 2, 22, WOOD[2]!);
-  img.rect(w - 5, b - 34, 2, 22, WOOD[2]!);
-  // striped awning
-  for (let y = b - 42; y < b - 30; y++)
-    for (let x = 0; x < w; x++) {
-      const slope = (y - (b - 42)) / 12;
-      if (x < 2 - slope * 2 || x > w - 3 + slope * 2) continue;
-      const stripe = Math.floor(x / 6) % 2 === 0;
+  for (const x of [3, w - 5]) {
+    img.vline(x, 12, b - 1, WOOD_LIGHT[3]!);
+    img.vline(x + 1, 12, b - 1, WOOD[1]!);
+  }
+  // counter: top + front planks + a shadow line under the lip
+  box(img, 1, b - 15, w - 2, 14, 4, WOOD_LIGHT);
+  planks(img, 2, b - 10, w - 4, 9, WOOD, { vertical: true, size: 5, seed: 3 + seed });
+  img.hline(2, w - 3, b - 10, WOOD[0]!);
+  // goods in baskets on the counter
+  const goods: [string, string][] = [
+    ['#a83a32', '#e0705a'],
+    ['#c8782a', '#f0b050'],
+    ['#4a7a3a', '#8ab060'],
+    ['#7a4a8a', '#b088c0'],
+    ['#c8a048', '#f0d890'],
+  ];
+  for (let k = 0; k < 3; k++) {
+    const cx = 9 + k * 15;
+    const cy = b - 15;
+    const [dk, lt] = goods[(k + seed * 2) % goods.length]!;
+    // fruit heap
+    for (let i = 0; i < 7; i++) {
+      const fx = cx - 4 + (i % 4) * 2.6 + (i >= 4 ? 1.3 : 0);
+      const fy = cy - 2 - (i >= 4 ? 2 : 0);
+      img.ellipse(fx, fy, 1.6, 1.4, (x, y, nx, ny) => (nx + ny < -0.4 ? lt : dk));
+    }
+    // wicker basket
+    for (let x = cx - 6; x <= cx + 6; x++)
+      for (let y = cy - 1; y <= cy + 2; y++) img.set(x, y, dpick(['#4a3418', '#6e5024', '#94743a'], 0.5 + ((x + y) % 2 ? 0.25 : -0.15) - (x - cx) * 0.03, x, y));
+    img.hline(cx - 6, cx + 6, cy - 1, '#a88a4a');
+  }
+  // striped awning (sloping towards the viewer) with a scalloped valance
+  const top = 4;
+  const bot = 16;
+  for (let y = top; y < bot; y++) {
+    const f = (y - top) / (bot - top);
+    const inset = Math.round((1 - f) * 3);
+    for (let x = inset; x < w - inset; x++) {
+      const stripe = Math.floor((x - w / 2 + 300) / 6) % 2 === 0;
       const pal = stripe ? cloth : CLOTH.cream!;
-      let v = 0.75 - slope * 0.5;
+      let v = 0.8 - f * 0.45 - (x / w) * 0.15;
+      if (y === top) v += 0.2;
       img.set(x, y, dpick(pal, v, x, y));
     }
+  }
   for (let x = 0; x < w; x++) {
-    const scallop = (x % 6) < 3 ? 1 : 0;
-    const stripe = Math.floor(x / 6) % 2 === 0;
-    img.set(x, b - 30, (stripe ? cloth : CLOTH.cream!)[1]!);
-    if (scallop) img.set(x, b - 29, (stripe ? cloth : CLOTH.cream!)[0]!);
+    const stripe = Math.floor((x - w / 2 + 300) / 6) % 2 === 0;
+    const pal = stripe ? cloth : CLOTH.cream!;
+    const u = (x + 300 - w / 2) % 6;
+    img.set(x, bot, pal[1]!);
+    if (u >= 1 && u <= 4) img.set(x, bot + 1, pal[1]!);
+    if (u >= 2 && u <= 3) img.set(x, bot + 2, pal[0]!);
+  }
+  // awning shade on the posts and a string of garlic / a lantern hanging from it
+  img.blendRect(3, bot + 1, 2, 4, '#0a0610', 0.35);
+  img.blendRect(w - 5, bot + 1, 2, 4, '#0a0610', 0.35);
+  if (seed % 2 === 0) {
+    img.vline(w - 12, bot + 1, bot + 5, '#3a2a1a');
+    for (let i = 0; i < 3; i++) img.ellipse(w - 12, bot + 7 + i * 3, 1.6, 1.5, (x, y, nx) => (nx < 0 ? '#e8dcc4' : '#b8a888'));
+  } else {
+    img.vline(10, bot + 1, bot + 3, IRON[2]!);
+    img.rect(9, bot + 4, 3, 4, '#ffc04a');
+    img.hline(9, 11, bot + 4, IRON[1]!);
+    img.set(10, bot + 6, '#fff0b0');
   }
   img.outline({ darken: 0.7 });
 }
@@ -360,41 +465,100 @@ function stall(img: Img, cloth: string[]) {
 function bench(img: Img) {
   const b = img.h - 2;
   shadow(img, 16, b, 15, 2);
-  for (const x of [4, 26]) img.rect(x, b - 7, 2, 7, IRON[2]!);
-  box(img, 1, b - 11, 30, 5, 3, WOOD_LIGHT);
-  planks(img, 2, b - 19, 28, 6, WOOD_LIGHT, { size: 3, seed: 9 });
-  for (const x of [4, 26]) img.rect(x, b - 19, 2, 8, IRON[1]!);
+  // back rest: two slats between iron ends
+  for (const [y0, h] of [
+    [3, 3],
+    [7, 3],
+  ] as const)
+    for (let y = y0; y < y0 + h; y++)
+      for (let x = 4; x <= 27; x++) img.set(x, y, dpick(WOOD_LIGHT, (y === y0 ? 0.85 : y === y0 + h - 1 ? 0.25 : 0.55) + (hash(x >> 3, y0, 9) - 0.5) * 0.2, x, y));
+  // seat
+  for (let y = 12; y <= 16; y++)
+    for (let x = 1; x <= 30; x++) {
+      const v = y < 15 ? 0.75 - (y - 12) * 0.12 + ((x + 1) % 10 === 0 ? -0.3 : 0) : 0.3 - (y - 15) * 0.15;
+      img.set(x, y, dpick(WOOD_LIGHT, v + (hash(x >> 2, y, 10) - 0.5) * 0.12, x, y));
+    }
+  // iron ends with a curl
+  for (const x of [2, 28]) {
+    img.vline(x, 2, b - 1, IRON[2]!);
+    img.vline(x + 1, 2, b - 1, IRON[1]!);
+    img.set(x, 1, IRON[3]!);
+    img.set(x + 1, 1, IRON[2]!);
+    img.hline(x - 1, x + 2, b, IRON[1]!);
+  }
+  img.set(1, 11, IRON[2]!);
+  img.set(0, 12, IRON[2]!);
+  img.set(31, 12, IRON[1]!);
+  img.set(30, 11, IRON[2]!);
   img.outline({ darken: 0.7 });
 }
 
 function barrel(img: Img) {
   const b = img.h - 2;
   shadow(img, 8, b, 7, 2);
-  for (let y = b - 16; y < b; y++) {
-    const bulge = Math.sin(((y - (b - 16)) / 16) * Math.PI) * 1.5;
-    for (let x = Math.floor(2 - bulge); x < Math.ceil(14 + bulge); x++) {
-      const t = (x - 2 + bulge) / (12 + 2 * bulge);
-      let v = 0.8 - t * 0.6;
-      if (x % 3 === 0) v -= 0.12;
-      img.set(x, y, dpick(WOOD_LIGHT, v, x, y));
+  const top = b - 16;
+  for (let y = top; y < b; y++) {
+    const f = (y - top) / 16;
+    const bulge = Math.sin(f * Math.PI) * 1.5;
+    const x0 = 2 - bulge;
+    const x1 = 14 + bulge;
+    for (let x = Math.floor(x0); x < Math.ceil(x1); x++) {
+      const t = (x + 0.5 - x0) / (x1 - x0);
+      let v = 0.85 - t * 0.7 + Math.sin(f * Math.PI) * 0.08;
+      const stave = (x - 2) % 3 === 0;
+      if (stave) v -= 0.15;
+      img.set(x, y, dpick(WOOD_LIGHT, v + (hash(x, y, 4) - 0.5) * 0.1, x, y));
     }
   }
-  for (const y of [b - 14, b - 4]) img.hline(1, 14, y, IRON[2]!);
-  img.ellipse(8, b - 16, 6, 2, (x, y) => dpick(WOOD, 0.6 + (x - 8) * -0.05, x, y));
+  for (const y of [top + 2, b - 4]) {
+    const bulge = Math.sin(((y - top) / 16) * Math.PI) * 1.5;
+    for (let x = Math.floor(2 - bulge); x < Math.ceil(14 + bulge); x++) {
+      img.set(x, y, x < 6 ? IRON[3]! : IRON[2]!);
+      img.set(x, y + 1, IRON[1]!);
+    }
+  }
+  img.ellipse(8, top, 6.2, 2.4, (x, y, nx, ny) => {
+    const d = nx * nx + ny * ny;
+    if (d > 0.62) return dpick(WOOD_LIGHT, 0.85 - nx * 0.3, x, y);
+    return dpick(WOOD, 0.55 - nx * 0.2 + ((x + 1) % 4 === 0 ? -0.25 : 0), x, y);
+  });
   img.outline({ darken: 0.7 });
+}
+
+function crateAt(img: Img, x: number, y: number, s: number, top: number, seed: number) {
+  // top face
+  for (let j = 0; j < top; j++)
+    for (let i = 0; i < s; i++) img.set(x + i, y + j, dpick(WOOD_LIGHT, 0.82 - j * 0.04 + ((i + seed) % 5 === 0 ? -0.25 : 0), x + i, y + j));
+  // front: planks + frame + brace
+  for (let j = top; j < s; j++)
+    for (let i = 0; i < s; i++) {
+      const frame = i < 2 || i > s - 3 || j < top + 2 || j > s - 3;
+      let v = frame ? 0.62 : 0.4 + (Math.floor((j - top) / 3) % 2 ? -0.05 : 0.05);
+      if (!frame && (j - top) % 3 === 2) v -= 0.2;
+      if (i === 0) v += 0.15;
+      img.set(x + i, y + j, dpick(WOOD_LIGHT, v + (hash(x + i, y + j, seed) - 0.5) * 0.12, x + i, y + j));
+    }
+  img.line(x + 2, y + s - 3, x + s - 3, y + top + 2, WOOD_LIGHT[3]!);
+  img.line(x + 2, y + s - 2, x + s - 3, y + top + 3, WOOD[1]!);
+  for (const [i, j] of [
+    [1, top + 1],
+    [s - 2, top + 1],
+    [1, s - 2],
+    [s - 2, s - 2],
+  ] as const)
+    img.set(x + i, y + j, IRON[3]!);
+  img.hline(x, x + s - 1, y + top, WOOD[1]!);
 }
 
 function crates(img: Img) {
   const b = img.h - 2;
   shadow(img, 16, b, 15, 2);
-  const crate = (x: number, y: number, s: number) => {
-    box(img, x, y, s, s, 4, WOOD_LIGHT);
-    img.line(x + 1, y + 5, x + s - 2, y + s - 2, WOOD[2]!);
-    img.rect(x + 1, y + 5, s - 2, 1, WOOD[2]!);
-  };
-  crate(1, b - 14, 14);
-  crate(15, b - 13, 13);
-  crate(7, b - 27, 13);
+  crateAt(img, 1, b - 14, 14, 4, 1);
+  crateAt(img, 15, b - 13, 13, 4, 2);
+  crateAt(img, 7, b - 27, 13, 4, 3);
+  // a sack slumped on the right crate
+  sphere(img, 25, b - 15, 4.5, 3.5, ['#4a3a24', '#6a5636', '#8a744c', '#a89064'], { tex: 0.2 });
+  img.rect(24, b - 19, 2, 1, '#3a2a1a');
   img.outline({ darken: 0.7 });
 }
 
@@ -795,62 +959,150 @@ function fencePiece(img: Img, mask: number, iron: boolean) {
 // --- interior furniture ------------------------------------------------------------------------
 
 const BLANKETS = [CLOTH.red!, CLOTH.blue!, CLOTH.green!, CLOTH.purple!, CLOTH.gold!];
+const QUILT_ACCENT = '#d8ccb0';
 
 function bed(img: Img, wide: boolean, seed: number) {
   const w = img.w;
-  const blanket = BLANKETS[seed % BLANKETS.length]!;
-  box(img, 0, 0, w, 9, 3, WOOD); // headboard
-  img.rect(1, 9, w - 2, img.h - 10, WOOD[1]!);
+  const h = img.h;
+  const q = BLANKETS[seed % BLANKETS.length]!;
+  // headboard with turned posts
+  for (let y = 2; y < 9; y++)
+    for (let x = 1; x < w - 1; x++) img.set(x, y, dpick(WOOD, 0.55 - (x / w) * 0.25 + (y === 2 ? 0.3 : 0) + ((x - 1) % 4 === 0 && y > 3 ? -0.2 : 0), x, y));
+  for (const x of [0, w - 2]) {
+    img.vline(x, 1, h - 1, WOOD_LIGHT[2]!);
+    img.vline(x + 1, 1, h - 1, WOOD[1]!);
+    img.set(x, 0, WOOD_LIGHT[4]!);
+    img.set(x + 1, 0, WOOD_LIGHT[2]!);
+  }
+  // mattress edge visible on the right side
+  img.rect(2, 9, w - 4, h - 12, '#c8bca4');
   // pillow(s)
-  const pillows = wide ? [2, w / 2 + 1] : [2];
-  for (const px of pillows) img.ellipse(px + (wide ? 6 : 6), 12, wide ? 6 : 6, 3, (x, y, nx, ny) => dpick(['#8a8478', '#b0a898', '#d4ccbc', '#ece6d8'], 0.7 - ny * 0.3 - nx * 0.2, x, y));
-  // blanket
-  for (let y = 15; y < img.h - 2; y++)
-    for (let x = 1; x < w - 1; x++) {
-      let v = 0.6 - (x / w) * 0.35 + (y === 15 ? 0.35 : 0);
-      if ((x + y) % 6 === 0 && y > 17) v += 0.15;
-      img.set(x, y, dpick(blanket, v, x, y));
+  const pw = wide ? Math.floor((w - 6) / 2) : w - 6;
+  for (let k = 0; k < (wide ? 2 : 1); k++) {
+    const px = 3 + k * (pw + 0);
+    img.ellipse(px + pw / 2, 11.5, pw / 2, 2.6, (x, y, nx, ny) => dpick(['#9a9284', '#bcb4a4', '#d8d0c0', '#eee8da'], 0.75 - ny * 0.35 - nx * 0.15, x, y));
+  }
+  // folded sheet, then the patchwork quilt draping over the side
+  const qy = 15;
+  for (let x = 2; x < w - 2; x++) {
+    img.set(x, qy, '#e6e0d2');
+    img.set(x, qy + 1, '#b8b0a0');
+  }
+  for (let y = qy + 2; y < h - 3; y++)
+    for (let x = 2; x < w - 2; x++) {
+      const cx = Math.floor((x - 2) / 4);
+      const cy = Math.floor((y - qy - 2) / 4);
+      const patch = (cx * 2 + cy + seed) % 3;
+      let k = patch === 0 ? 3 : patch === 1 ? 1 : 2;
+      if (x >= w - 5) k = Math.max(0, k - 1);
+      if (y === qy + 2) k = Math.min(4, k + 1);
+      let c = mix(q[k]!, q[k]!, 0);
+      if (patch === 2 && (x + y) % 2 === 0 && (y - qy - 2) % 4 === 2) c = mix(QUILT_ACCENT, q[2]!, 0.5);
+      if ((x - 2) % 4 === 0 || (y - qy - 2) % 4 === 0) c = mix(c, q[0]!, 0.3); // stitching
+      img.set(x, y, c);
     }
-  img.hline(1, w - 2, 16, mix(blanket[4]!, '#ffffff', 0.2));
-  img.rect(0, img.h - 3, w, 3, WOOD[2]!);
+  // quilt overhang shading on the right edge and the bottom
+  img.vline(w - 3, qy + 2, h - 4, q[0]!);
+  img.hline(2, w - 3, h - 4, q[1]!);
+  // footboard
+  for (let x = 1; x < w - 1; x++) {
+    img.set(x, h - 3, WOOD_LIGHT[3]!);
+    img.set(x, h - 2, WOOD[2]!);
+    img.set(x, h - 1, WOOD[0]!);
+  }
   img.outline({ darken: 0.7 });
 }
 
 function nightstand(img: Img) {
-  box(img, 2, 10, 12, 13, 4, WOOD_LIGHT);
+  // cabinet
+  box(img, 2, 11, 12, 11, 3, WOOD_LIGHT);
+  img.rect(4, 15, 8, 4, WOOD_LIGHT[2]!);
+  img.hline(4, 11, 15, WOOD_LIGHT[3]!);
   img.hline(4, 11, 18, WOOD[1]!);
-  img.set(8, 19, BRASS[3]!);
-  // candle
-  img.rect(7, 6, 2, 5, '#e8e0cc');
-  img.set(8, 6, '#b8b0a0');
-  flame(img, 7, 5);
-  img.rect(5, 10, 6, 1, BRASS[2]!);
+  img.set(8, 17, BRASS[4]!);
+  img.set(7, 17, BRASS[2]!);
+  img.rect(3, 22, 2, 2, WOOD[1]!);
+  img.rect(11, 22, 2, 2, WOOD[1]!);
+  // candle in a brass dish, and a little book
+  img.ellipse(6.5, 11, 3, 1.2, (x, y, nx) => (nx < 0 ? BRASS[4]! : BRASS[2]!));
+  img.rect(6, 6, 2, 5, '#e8e0cc');
+  img.set(7, 6, '#b8b0a0');
+  img.set(6, 5, '#ffcf5a');
+  img.set(6, 4, '#ffe9a0');
+  img.set(7, 5, '#ffb43a');
+  img.set(6, 3, '#ffb43a');
+  img.rect(10, 9, 3, 2, '#5a2a3a');
+  img.hline(10, 12, 9, '#d8ccb0');
   img.outline({ darken: 0.7 });
 }
 
 function table(img: Img, round: boolean) {
   const w = img.w;
   if (round) {
-    img.rect(w / 2 - 2, 10, 4, 12, WOOD[1]!);
-    img.rect(w / 2 - 6, 20, 12, 2, WOOD[1]!);
-    img.ellipse(w / 2, 8, 15, 6, (x, y, nx, ny) => dpick(WOOD_LIGHT, 0.7 - nx * 0.2 - ny * 0.3 + (ny > 0.6 ? -0.4 : 0), x, y));
+    // pedestal + round top
+    img.rect(w / 2 - 2, 12, 4, 9, WOOD[2]!);
+    img.vline(w / 2 - 2, 12, 20, WOOD_LIGHT[3]!);
+    img.ellipse(w / 2, 21.5, 8, 2, (x, y, nx) => dpick(WOOD, 0.6 - nx * 0.3, x, y));
+    img.ellipse(w / 2, 9.5, 15, 3, WOOD[1]!);
+    img.ellipse(w / 2, 8, 15, 6, (x, y, nx, ny) => {
+      const ring = Math.hypot(nx, ny);
+      return dpick(WOOD_LIGHT, 0.72 - nx * 0.18 - ny * 0.22 + (ring > 0.88 ? 0.12 : 0) + (Math.floor(x / 4) % 2 ? -0.04 : 0.04), x, y);
+    });
   } else {
-    for (const x of [2, w - 5]) img.rect(x, 10, 3, 13, WOOD[1]!);
-    box(img, 0, 2, w, 10, 7, WOOD_LIGHT);
+    for (const x of [2, w - 5]) {
+      img.rect(x, 11, 3, 12, WOOD[1]!);
+      img.vline(x, 11, 22, WOOD_LIGHT[2]!);
+    }
+    img.hline(5, w - 6, 18, WOOD[1]!);
+    // top (planks running along) + apron
+    for (let y = 2; y < 10; y++)
+      for (let x = 0; x < w; x++) {
+        let v = 0.75 - (y - 2) * 0.03 - (x / w) * 0.15 + (y === 2 ? 0.15 : 0);
+        if ((y - 2) % 3 === 2) v -= 0.18;
+        img.set(x, y, dpick(WOOD_LIGHT, v + (hash(x >> 3, y, 11) - 0.5) * 0.1, x, y));
+      }
+    for (let x = 0; x < w; x++) {
+      img.set(x, 10, WOOD[3]!);
+      img.set(x, 11, WOOD[1]!);
+    }
   }
-  // mug + bread
-  img.rect(w / 2 - 6, 3, 3, 4, '#8a7a6a');
-  img.set(w / 2 - 6, 3, '#d8d0c0');
-  img.ellipse(w / 2 + 5, 6, 3, 2, '#a0702a');
-  img.set(w / 2 + 4, 5, '#d0a050');
+  // a candle, a loaf and a mug
+  const cx = w / 2;
+  img.rect(cx - 1, 1, 2, 5, '#e8e0cc');
+  img.set(cx, 1, '#b8b0a0');
+  img.set(cx - 1, 0, '#ffcf5a');
+  img.ellipse(cx, 6, 2.5, 1, BRASS[3]!);
+  img.ellipse(cx - 8, 6, 3.5, 2, (x, y, nx, ny) => (nx + ny < -0.3 ? '#d8a058' : '#a0702a'));
+  img.set(cx - 9, 5, '#e8c080');
+  img.rect(cx + 6, 3, 3, 4, '#7a6a5a');
+  img.vline(cx + 6, 3, 6, '#9a8a7a');
+  img.set(cx + 9, 4, '#7a6a5a');
+  img.hline(cx + 6, cx + 8, 3, '#d8d0c0');
   img.outline({ darken: 0.7 });
 }
 
 function chair(img: Img) {
-  box(img, 3, 0, 10, 12, 2, WOOD_LIGHT);
-  for (let y = 3; y < 11; y += 3) img.hline(4, 11, y, WOOD[1]!);
-  box(img, 2, 11, 12, 5, 3, WOOD_LIGHT);
-  for (const x of [3, 11]) img.rect(x, 16, 2, 7, WOOD[1]!);
+  // back: two posts, a top rail and spindles
+  for (const x of [3, 11]) {
+    img.vline(x, 1, 22, WOOD_LIGHT[3]!);
+    img.vline(x + 1, 1, 22, WOOD[1]!);
+  }
+  for (let y = 1; y <= 3; y++) img.hline(3, 12, y, y === 1 ? WOOD_LIGHT[4]! : y === 2 ? WOOD_LIGHT[2]! : WOOD[1]!);
+  for (const x of [6, 8]) {
+    img.vline(x, 4, 11, WOOD_LIGHT[2]!);
+    img.vline(x + 1, 4, 11, WOOD[1]!);
+  }
+  img.hline(3, 12, 7, WOOD[2]!);
+  // seat
+  for (let y = 12; y <= 15; y++)
+    for (let x = 2; x <= 13; x++) img.set(x, y, dpick(WOOD_LIGHT, y < 14 ? 0.78 - (x - 2) * 0.03 : 0.3, x, y));
+  img.hline(2, 13, 12, WOOD_LIGHT[4]!);
+  // legs + stretcher
+  for (const x of [2, 12]) {
+    img.vline(x, 16, 23, WOOD[2]!);
+    img.vline(x + 1, 16, 23, WOOD[1]!);
+  }
+  img.hline(4, 11, 20, WOOD[1]!);
   img.outline({ darken: 0.7 });
 }
 
@@ -861,88 +1113,252 @@ function stool(img: Img) {
 }
 
 function wardrobe(img: Img) {
-  box(img, 1, 2, 30, 37, 4, WOOD);
-  img.vline(16, 7, 37, WOOD[0]!);
-  for (const x of [5, 19]) {
-    img.rect(x, 9, 8, 11, WOOD[2]!);
-    img.rect(x, 23, 8, 11, WOOD[2]!);
+  const w = img.w;
+  // cornice
+  for (let y = 0; y < 4; y++) for (let x = 0; x < w; x++) img.set(x, y, dpick(WOOD, y === 0 ? 0.85 : y === 3 ? 0.15 : 0.55 - (x / w) * 0.2, x, y));
+  // carcass
+  for (let y = 4; y < 36; y++) for (let x = 1; x < w - 1; x++) img.set(x, y, dpick(WOOD, 0.5 - (x / w) * 0.3 + (hash(x >> 2, y >> 3, 12) - 0.5) * 0.1, x, y));
+  img.vline(1, 4, 35, WOOD[3]!);
+  // two doors with raised panels
+  for (const dx of [3, 17]) {
+    for (const [py, ph] of [
+      [7, 12],
+      [21, 12],
+    ] as const) {
+      for (let y = py; y < py + ph; y++)
+        for (let x = dx; x < dx + 12; x++) {
+          let v = 0.55;
+          if (x === dx || y === py) v = 0.2;
+          else if (x === dx + 11 || y === py + ph - 1) v = 0.85;
+          else if (x === dx + 1 || y === py + 1) v = 0.75;
+          img.set(x, y, dpick(WOOD, v - (x / w) * 0.15, x, y));
+        }
+    }
   }
-  img.set(14, 22, BRASS[3]!);
-  img.set(18, 22, BRASS[3]!);
-  img.rect(0, 0, 32, 3, WOOD[3]!);
+  img.vline(15, 5, 35, WOOD[0]!);
+  img.vline(16, 5, 35, WOOD[2]!);
+  for (const x of [13, 18]) {
+    img.set(x, 19, BRASS[4]!);
+    img.set(x, 20, BRASS[2]!);
+  }
+  // plinth + bun feet
+  for (let x = 0; x < w; x++) {
+    img.set(x, 36, WOOD[3]!);
+    img.set(x, 37, WOOD[1]!);
+  }
+  for (const x of [2, w - 5]) img.rect(x, 38, 3, 2, WOOD[1]!);
   img.outline({ darken: 0.7 });
 }
 
 function bookshelf(img: Img) {
-  box(img, 1, 1, 30, 38, 3, WOOD);
-  const bookCols = ['#7a2a2a', '#2a4a6a', '#3a5a2a', '#6a5a2a', '#4a2a5a', '#8a6a4a', '#2a2a3a'];
-  for (const sy of [6, 16, 26]) {
-    img.rect(3, sy + 8, 26, 2, WOOD[3]!);
-    let x = 3;
-    let k = sy;
-    while (x < 28) {
-      const bw = 2 + Math.floor(hash(x, sy, 3) * 2);
-      const bh = 6 + Math.floor(hash(x, sy, 4) * 3);
-      const c = bookCols[k++ % bookCols.length]!;
-      img.rect(x, sy + 8 - bh, bw, bh, c);
-      img.vline(x, sy + 8 - bh, sy + 7, mix(c, '#ffffff', 0.25));
-      img.set(x, sy + 9 - bh + 2, BRASS[3]!);
-      x += bw + (hash(x, sy, 5) < 0.15 ? 2 : 0);
+  const w = img.w;
+  for (let y = 0; y < 3; y++) for (let x = 0; x < w; x++) img.set(x, y, dpick(WOOD, y === 0 ? 0.85 : y === 2 ? 0.15 : 0.55, x, y));
+  for (let y = 3; y < 38; y++) {
+    for (const x of [1, 2]) img.set(x, y, x === 1 ? WOOD[3]! : WOOD[2]!);
+    for (const x of [w - 3, w - 2]) img.set(x, y, x === w - 2 ? WOOD[0]! : WOOD[1]!);
+    for (let x = 3; x < w - 3; x++) img.set(x, y, '#1a110c');
+  }
+  const bookCols = ['#7a2a2a', '#2a4a6a', '#3a5a2a', '#7a5e2a', '#4a2a5a', '#8a6a4a', '#2a2a3a', '#5a3a2a'];
+  const shelves = [12, 23, 34];
+  shelves.forEach((sy, si) => {
+    for (let x = 3; x < w - 3; x++) {
+      img.set(x, sy, WOOD_LIGHT[3]!);
+      img.set(x, sy + 1, WOOD[1]!);
     }
+    let x = 3;
+    let k = si * 3;
+    const ornAt = si === 1 ? 19 : si === 2 ? 6 : -99;
+    while (x < w - 4) {
+      if (x >= ornAt && x < ornAt + 6) {
+        if (si === 1) {
+          // a candle stub
+          img.rect(x + 2, sy - 5, 2, 5, '#e8e0cc');
+          img.set(x + 2, sy - 6, '#ffcf5a');
+          img.hline(x + 1, x + 4, sy - 1, BRASS[3]!);
+        } else {
+          // a little globe
+          sphere(img, x + 3, sy - 4, 2.5, 2.5, ['#1e3a5a', '#2a5a7a', '#4a7a5a', '#8ab0a0']);
+          img.hline(x + 2, x + 4, sy - 1, BRASS[3]!);
+        }
+        x += 6;
+        continue;
+      }
+      const bw = 2 + Math.floor(hash(x, sy, 3) * 2);
+      const bh = 6 + Math.floor(hash(x, sy, 4) * 4);
+      const c = bookCols[k++ % bookCols.length]!;
+      const lean = hash(x, sy, 6) < 0.12 && x < w - 8;
+      for (let j = 0; j < bh; j++) {
+        const lx = lean ? Math.floor(j / 3) : 0;
+        for (let i = 0; i < bw; i++) img.set(x + i + lx - (lean ? 2 : 0) + (lean ? 2 : 0), sy - 1 - j, i === 0 ? mix(c, '#fff1cc', 0.25) : i === bw - 1 ? mix(c, '#000000', 0.3) : c);
+      }
+      img.set(x + 1, sy - bh + 1, BRASS[3]!);
+      if (bh > 7) img.hline(x, x + bw - 1, sy - 3, mix(c, '#d8c890', 0.5));
+      x += bw + (hash(x, sy, 5) < 0.18 ? 1 : 0);
+    }
+  });
+  for (let x = 0; x < w; x++) {
+    img.set(x, 38, WOOD[2]!);
+    img.set(x, 39, WOOD[0]!);
   }
   img.outline({ darken: 0.7 });
 }
 
 function chest(img: Img) {
-  box(img, 1, 4, 14, 11, 4, WOOD_LIGHT);
-  img.hline(1, 14, 8, IRON[2]!);
-  img.vline(4, 4, 14, IRON[2]!);
-  img.vline(11, 4, 14, IRON[2]!);
-  img.rect(7, 8, 2, 3, BRASS[3]!);
+  // domed lid
+  for (let y = 3; y <= 7; y++)
+    for (let x = 1; x <= 14; x++) {
+      const dome = y === 3 && (x < 3 || x > 12);
+      if (dome) continue;
+      img.set(x, y, dpick(WOOD_LIGHT, 0.85 - (y - 3) * 0.1 - (x - 1) * 0.02, x, y));
+    }
+  img.hline(1, 14, 8, WOOD[0]!);
+  for (let y = 9; y <= 14; y++) for (let x = 1; x <= 14; x++) img.set(x, y, dpick(WOOD_LIGHT, 0.45 - (x - 1) * 0.02 + ((y - 9) % 3 === 2 ? -0.15 : 0), x, y));
+  for (const x of [3, 12]) {
+    img.vline(x, 3, 14, IRON[2]!);
+    img.set(x, 4, IRON[3]!);
+  }
+  img.rect(7, 7, 2, 3, BRASS[3]!);
+  img.set(7, 7, BRASS[4]!);
+  img.set(8, 9, '#1a1008');
   img.outline({ darken: 0.7 });
 }
 
 function fireplace(img: Img) {
   const w = img.w;
-  stonework(img, 0, 2, w, 30, STONE, '#16131c', { rh: 5, sw: 8, seed: 21 });
-  box(img, 0, 0, w, 4, 2, WOOD);
-  // hearth opening
-  img.rect(7, 14, 18, 18, '#0a0608');
-  img.ellipse(16, 14, 9, 4, (x, y, nx, ny) => (ny < 0 ? '#0a0608' : null));
-  // logs + fire
-  img.rect(9, 28, 14, 3, BARK[3]!);
-  img.rect(10, 27, 12, 1, BARK[4]!);
-  for (let i = 0; i < 40; i++) {
-    const x = 10 + Math.floor(hash(i, 0, 22) * 12);
-    const h = Math.floor(hash(i, 1, 23) * 10);
-    for (let y = 27 - h; y < 27; y++) img.set(x, y, dpick(GLOW, (27 - y) / 10 < 0.5 ? 0.9 : 0.5, x, y));
+  const h = img.h;
+  // stone surround
+  stonework(img, 0, 7, w, h - 7, STONE, '#16131c', { rh: 5, sw: 8, seed: 21, shade: (i) => (i < 3 ? 0.12 : i > w - 4 ? -0.15 : 0) });
+  // the firebox: arched opening, sooty back, faint firebrick
+  const ox0 = 6;
+  const ox1 = w - 7;
+  const oy0 = 13;
+  for (let y = oy0 - 3; y < h - 2; y++)
+    for (let x = ox0; x <= ox1; x++) {
+      const cx = (ox0 + ox1) / 2;
+      const arch = y < oy0 ? Math.hypot((x + 0.5 - cx) / ((ox1 - ox0 + 1) / 2), (y + 0.5 - oy0) / 4) > 1 : false;
+      if (arch) continue;
+      const glow = Math.max(0, 1 - Math.hypot(x - cx, (y - (h - 6)) * 1.3) / 12);
+      let c = mix('#0b0607', '#4a1e14', glow * 0.8);
+      if (y > oy0 + 2 && (y + (Math.floor(y / 3) % 2) * 2 + x) % 6 === 0 && glow > 0.2) c = mix(c, '#000000', 0.3);
+      img.set(x, y, c);
+    }
+  // keystone + voussoirs
+  img.rect(w / 2 - 2, oy0 - 6, 4, 3, STONE[4]!);
+  img.hline(w / 2 - 2, w / 2 + 1, oy0 - 6, STONE[5]!);
+  // andirons + logs + embers
+  for (const x of [ox0 + 2, ox1 - 2]) {
+    img.vline(x, h - 7, h - 3, IRON[3]!);
+    img.set(x, h - 8, BRASS[4]!);
   }
+  for (let x = ox0 + 2; x <= ox1 - 2; x++) {
+    img.set(x, h - 4, BARK[3]!);
+    img.set(x, h - 3, BARK[1]!);
+  }
+  img.line(ox0 + 3, h - 7, ox1 - 4, h - 4, BARK[4]!);
+  img.line(ox0 + 3, h - 6, ox1 - 4, h - 3, BARK[2]!);
+  for (let x = ox0 + 1; x <= ox1 - 1; x++) if (hash(x, 1, 25) < 0.6) img.set(x, h - 3, hash(x, 2, 26) < 0.5 ? '#ff8a3a' : '#c04a20');
+  // flames: a few tongues, white-hot at the root
+  const cx = (ox0 + ox1) / 2;
+  for (let x = ox0 + 2; x <= ox1 - 2; x++) {
+    const u = (x - cx) / ((ox1 - ox0) / 2);
+    const fh = Math.max(0, (1 - u * u) * 10 + Math.sin(x * 1.9) * 2.4 + Math.sin(x * 0.7 + 1) * 1.5);
+    for (let k = 0; k < fh; k++) {
+      const y = h - 5 - k;
+      const t = k / Math.max(1, fh);
+      const c = t < 0.25 ? '#fff6d0' : t < 0.5 ? '#ffd870' : t < 0.78 ? '#f0902e' : '#b84a24';
+      img.set(x, y, c);
+    }
+  }
+  // hearth lip
+  for (let x = 1; x < w - 1; x++) {
+    img.set(x, h - 2, STONE[4]!);
+    img.set(x, h - 1, STONE[1]!);
+  }
+  // mantel shelf with a few things on it
+  for (let y = 4; y < 8; y++) for (let x = 0; x < w; x++) img.set(x, y, dpick(WOOD, y === 4 ? 0.9 : y === 7 ? 0.1 : 0.55 - (x / w) * 0.2, x, y));
+  for (const x of [3, w - 5]) {
+    img.rect(x, 1, 2, 3, '#e8e0cc');
+    img.set(x, 0, '#ffcf5a');
+    img.hline(x - 1, x + 2, 3, BRASS[3]!);
+  }
+  img.rect(12, 1, 3, 3, '#4a6a7a');
+  img.hline(12, 14, 1, '#7a9aaa');
+  img.ellipse(19, 2, 2, 2, (x, y, nx, ny) => (nx * nx + ny * ny < 0.35 ? '#e8e0cc' : BRASS[3]!));
   img.outline({ darken: 0.6 });
 }
 
 function wallshelf(img: Img) {
-  img.rect(0, 11, 32, 2, WOOD[3]!);
-  img.hline(0, 31, 13, WOOD[0]!);
-  for (const [x, c, h] of [
-    [3, '#6a8aa0', 6],
-    [9, '#a06040', 5],
-    [14, '#d8c8a0', 7],
-    [21, '#5a7a4a', 5],
-    [26, '#8a4a6a', 6],
+  const w = img.w;
+  for (let x = 0; x < w; x++) {
+    img.set(x, 10, WOOD_LIGHT[4]!);
+    img.set(x, 11, WOOD_LIGHT[2]!);
+    img.set(x, 12, WOOD[0]!);
+  }
+  for (const x of [4, w - 6]) {
+    img.vline(x, 13, 15, WOOD[2]!);
+    img.set(x + 1, 13, WOOD[2]!);
+  }
+  // jars, a jug, two books
+  const items: [number, string, number, number][] = [
+    [2, '#5a7a8a', 4, 6],
+    [8, '#a06040', 4, 5],
+    [19, '#5a7a4a', 3, 4],
+    [24, '#8a4a6a', 4, 6],
+  ];
+  for (const [x, c, iw, ih] of items) {
+    for (let y = 10 - ih; y < 10; y++)
+      for (let i = 0; i < iw; i++) img.set(x + i, y, i === 0 ? mix(c, '#fff1cc', 0.35) : i === iw - 1 ? mix(c, '#000000', 0.35) : c);
+    img.hline(x, x + iw - 1, 10 - ih, mix(c, '#000000', 0.45));
+    img.set(x + 1, 10 - ih + 1, mix(c, '#ffffff', 0.5));
+  }
+  for (const [x, c] of [
+    [13, '#6a2a2a'],
+    [15, '#2a4a5a'],
   ] as const) {
-    sphere(img, x + 2, 11 - h / 2, 2.4, h / 2, [mix(c, '#000000', 0.5), mix(c, '#000000', 0.25), c, mix(c, '#ffffff', 0.35)]);
+    img.rect(x, 3, 2, 7, c);
+    img.vline(x, 3, 9, mix(c, '#fff1cc', 0.3));
+    img.set(x + 1, 4, BRASS[3]!);
   }
   img.outline({ darken: 0.6 });
 }
 
 function windowInterior(img: Img) {
-  img.rect(2, 2, 12, 12, WOOD[2]!);
-  for (let y = 3; y < 13; y++) for (let x = 3; x < 13; x++) img.set(x, y, dpick(['#121a34', '#1a2850', '#2a3c6a', '#4a5e8a'], 0.2 + (13 - y) * 0.06 + (x < 6 ? 0.15 : 0), x, y));
-  img.set(10, 5, '#e8e8d0');
-  img.set(10, 4, '#a0a8c0');
-  img.vline(8, 3, 12, WOOD[1]!);
-  img.hline(3, 12, 8, WOOD[1]!);
-  img.rect(1, 13, 14, 2, WOOD[3]!);
+  // frame
+  img.rect(2, 1, 12, 12, WOOD[2]!);
+  img.hline(2, 13, 1, WOOD_LIGHT[3]!);
+  // glass: dusk sky, a crescent moon, a star
+  for (let y = 2; y < 12; y++)
+    for (let x = 3; x < 13; x++) img.set(x, y, dpick(['#141a38', '#1e2a52', '#33406a', '#5a5478', '#8a6a7a'], 0.05 + (y - 2) * 0.09 + (x < 6 ? 0.05 : 0), x, y));
+  img.set(10, 3, '#f0e8c8');
+  img.set(11, 4, '#f0e8c8');
+  img.set(11, 3, '#c8c0a8');
+  img.set(5, 4, '#c8d0e8');
+  // a sill-high hill silhouette and mullions
+  for (let x = 3; x < 13; x++) for (let y = 10 - Math.round(Math.sin(x * 0.7) * 0.8 + 0.8); y < 12; y++) img.set(x, y, '#1a2420');
+  img.vline(7, 2, 11, WOOD[1]!);
+  img.vline(8, 2, 11, WOOD[3]!);
+  img.hline(3, 12, 6, WOOD[1]!);
+  img.set(4, 3, '#8a9ac8');
+  img.set(4, 4, '#6a7aa8');
+  // curtains tied back
+  for (const [x0, s] of [
+    [0, 1],
+    [13, -1],
+  ] as const) {
+    for (let y = 0; y < 13; y++) {
+      const wdt = y < 7 ? 3 : 2 + (y > 9 ? 0 : 1);
+      for (let i = 0; i < wdt; i++) {
+        const x = s > 0 ? x0 + i : x0 + 2 - i;
+        img.set(x, y, dpick(CLOTH.red!, 0.65 - i * 0.18 + ((x + y) % 3 === 0 ? -0.1 : 0), x, y));
+      }
+    }
+    img.set(s > 0 ? 2 : 13, 8, BRASS[3]!);
+  }
+  img.hline(0, 15, 0, WOOD[1]!);
+  // sill
+  img.hline(1, 14, 12, WOOD_LIGHT[4]!);
+  img.hline(1, 14, 13, WOOD_LIGHT[2]!);
+  img.hline(2, 13, 14, WOOD[0]!);
   img.outline({ darken: 0.6 });
 }
 
@@ -963,6 +1379,7 @@ function stainedGlass(img: Img) {
 
 function plant(img: Img) {
   const b = img.h - 1;
+  // terracotta pot with a rim
   img.poly(
     [
       [4, b - 7],
@@ -970,58 +1387,114 @@ function plant(img: Img) {
       [11, b],
       [5, b],
     ],
-    (x, y) => dpick(['#5a2a1a', '#8a4428', '#aa5a36'], 0.7 - (x - 4) / 10, x, y),
+    (x, y) => dpick(['#4a2214', '#7a3a22', '#a0522e', '#c06a40'], 0.8 - (x - 4) / 9 + (y === b ? -0.3 : 0), x, y),
   );
-  img.rect(3, b - 8, 10, 2, '#b06a40');
-  canopy(
-    img,
-    [
-      [5, b - 12, 4],
-      [11, b - 12, 4],
-      [8, b - 16, 5],
-    ],
-    OAK,
-    81,
-  );
+  for (let x = 3; x < 13; x++) {
+    img.set(x, b - 8, x < 6 ? '#d0845a' : '#b06a40');
+    img.set(x, b - 7, '#6a3020');
+  }
+  img.hline(4, 11, b - 9, '#2a1a12');
+  // fronds arching out
+  const LEAF = ['#16301f', '#1f4026', '#2c522e', '#3e6838', '#55804a', '#6e9a5a'];
+  const fronds: [number, number][] = [
+    [-2.2, 9],
+    [-1.4, 11],
+    [-0.5, 12],
+    [0.4, 12],
+    [1.3, 11],
+    [2.1, 9],
+    [-0.1, 8],
+  ];
+  fronds.forEach(([a, len], k) => {
+    for (let s = 0; s <= len; s++) {
+      const t = s / len;
+      const x = 8 + Math.sin(a * 0.75) * s * 0.9;
+      const y = b - 9 - Math.cos(a * 0.6) * s + t * t * Math.abs(a) * 3.2;
+      const v = 0.55 + (a < 0 ? 0.15 : -0.1) + (1 - t) * 0.1;
+      img.set(x, y, dpick(LEAF, v, Math.round(x), Math.round(y)));
+      if (s > 1 && s < len - 1 && s % 2 === k % 2) {
+        img.set(x - 1, y, dpick(LEAF, v - 0.1, Math.round(x), Math.round(y)));
+        img.set(x + 1, y, dpick(LEAF, v + 0.15, Math.round(x), Math.round(y)));
+      }
+    }
+  });
   img.outline({ darken: 0.7 });
 }
 
 function loom(img: Img) {
-  for (const x of [2, 28]) img.rect(x, 4, 2, 28, WOOD[2]!);
-  img.rect(2, 4, 28, 2, WOOD[3]!);
-  img.rect(2, 22, 28, 2, WOOD[3]!);
-  for (let x = 5; x < 27; x++)
-    for (let y = 7; y < 22; y++) img.set(x, y, dpick(CLOTH.red!, 0.5 + (x % 2 === 0 ? 0.2 : -0.1) + (y > 15 ? 0.1 : -0.2), x, y));
-  img.rect(4, 26, 24, 4, WOOD[1]!);
+  const w = img.w;
+  // uprights
+  for (const x of [2, w - 4]) {
+    img.vline(x, 2, 31, WOOD_LIGHT[3]!);
+    img.vline(x + 1, 2, 31, WOOD[1]!);
+  }
+  // top and breast beams
+  for (const y of [3, 22]) {
+    img.hline(1, w - 2, y, WOOD_LIGHT[3]!);
+    img.hline(1, w - 2, y + 1, WOOD[2]!);
+    img.hline(1, w - 2, y + 2, WOOD[0]!);
+  }
+  // warp threads
+  for (let x = 5; x < w - 5; x++) if (x % 2 === 1) img.vline(x, 6, 12, '#c8bca0');
+  // the cloth woven so far, with a band pattern
+  for (let y = 13; y < 22; y++)
+    for (let x = 5; x < w - 5; x++) {
+      const band = y % 6;
+      const pal = band < 2 ? CLOTH.gold! : CLOTH.red!;
+      let v = 0.5 + ((x + y) % 2 === 0 ? 0.12 : -0.08);
+      if (band === 3 && (x % 4 === 0)) v += 0.3;
+      img.set(x, y, dpick(pal, v, x, y));
+    }
+  img.hline(5, w - 6, 12, '#3a2a1a');
+  // shuttle + bench
+  img.rect(12, 11, 8, 2, WOOD_LIGHT[4]!);
+  img.set(15, 11, '#c8bca0');
+  img.rect(5, 27, w - 10, 2, WOOD_LIGHT[3]!);
+  img.hline(5, w - 6, 29, WOOD[1]!);
   img.outline({ darken: 0.7 });
 }
 
 function rug(img: Img, pal: string[], long = false) {
   const w = img.w;
   const h = img.h;
-  for (let y = 1; y < h - 1; y++)
-    for (let x = 1; x < w - 1; x++) {
-      const bx = Math.min(x - 1, w - 2 - x);
-      const by = Math.min(y - 1, h - 2 - y);
-      const border = Math.min(bx, by);
-      let v = 0.45;
-      if (border < 2) v = 0.85;
-      else if (border < 3) v = 0.15;
+  const fr = long ? 0 : 2; // fringe width
+  const x0 = fr;
+  const x1 = w - 1 - fr;
+  const y0 = 1;
+  const y1 = h - 2;
+  for (let y = y0; y <= y1; y++)
+    for (let x = x0; x <= x1; x++) {
+      const bx = Math.min(x - x0, x1 - x);
+      const by = Math.min(y - y0, y1 - y);
+      const e = Math.min(bx, by);
+      let v: number;
+      if (e === 0) v = 0.05;
+      else if (e <= 3) {
+        // border band with a little running motif
+        const along = bx < by ? y : x;
+        v = e === 1 || e === 3 ? 0.62 : (along + (bx < by ? 0 : 1)) % 4 === 0 ? 0.92 : 0.28;
+      } else if (e === 4) v = 0.1;
       else {
-        const cx = x - w / 2;
-        const cy = y - h / 2;
-        const diamond = (Math.abs(cx) / (w / 2) + Math.abs(cy) / (h / 2)) * 6;
-        v = Math.floor(diamond) % 2 === 0 ? 0.55 : 0.35;
+        // field: quiet with a soft abrash, a low-contrast medallion and corner spandrels
+        const cx = (x0 + x1) / 2;
+        const cy = (y0 + y1) / 2;
+        const md = Math.abs(x + 0.5 - cx - 0.5) / ((x1 - x0) * 0.22) + Math.abs(y + 0.5 - cy - 0.5) / ((y1 - y0) * 0.3);
+        v = 0.45 + (vnoise(0, y, 3, 77) - 0.5) * 0.12;
+        if (md < 1) v = md > 0.8 ? 0.2 : md < 0.3 ? 0.78 : 0.6;
+        const sp = Math.min(bx, 99) + Math.min(by, 99);
+        if (bx < 12 && by < 10 && sp < 13) v = sp > 11 ? 0.2 : 0.6;
       }
       img.set(x, y, dpick(pal, v, x, y));
     }
-  // fringe
   if (!long)
-    for (let y = 2; y < h - 2; y += 2) {
-      img.set(0, y, pal[3]!);
-      img.set(w - 1, y, pal[3]!);
+    for (let y = y0 + 1; y < y1; y += 2) {
+      img.set(0, y, '#c8bca0');
+      img.set(1, y, '#a89c80');
+      img.set(w - 2, y, '#a89c80');
+      img.set(w - 1, y, '#c8bca0');
     }
-  img.blendRect(1, h - 2, w - 2, 1, '#000000', 0.3);
+  // its thickness: a dark lip along the bottom
+  img.blendRect(x0, h - 1, x1 - x0 + 1, 1, '#000000', 0.45);
 }
 
 function bar(img: Img) {
@@ -1165,7 +1638,28 @@ function sacks(img: Img) {
 }
 
 function doormat(img: Img) {
-  for (let y = 4; y < 14; y++) for (let x = 2; x < 14; x++) img.set(x, y, dpick(['#3a2a1a', '#5a4428', '#7a6038'], ((x + y) % 3) / 3, x, y));
+  const x0 = 2;
+  const x1 = 13;
+  const y0 = 5;
+  const y1 = 13;
+  for (let y = y0; y <= y1; y++)
+    for (let x = x0; x <= x1; x++) {
+      const corner = (x === x0 || x === x1) && (y === y0 || y === y1);
+      if (corner) continue;
+      const edge = x === x0 || x === x1 || y === y0 || y === y1;
+      const stripe = (y === y0 + 2 || y === y1 - 2) && x > x0 + 1 && x < x1 - 1;
+      let c: string;
+      if (y === y1) c = '#2a1c10';
+      else if (edge) c = '#4a3418';
+      else if (stripe) c = '#7a3a2a';
+      else c = (x + (y >> 1)) % 2 === 0 ? '#8a6a3c' : '#6e5230';
+      img.set(x, y, c);
+    }
+  // bristle tufts at the ends
+  for (const y of [y0 + 1, y0 + 3, y0 + 5, y0 + 7]) {
+    img.set(x0 - 1, y, '#5a4024');
+    img.set(x1 + 1, y, '#5a4024');
+  }
 }
 
 // ---------------------------------------------------------------------------------------
@@ -1188,10 +1682,10 @@ const DRAW: Record<string, Draw> = {
   lamp,
   well,
   fountain,
-  stall_red: (i) => stall(i, CLOTH.red!),
-  stall_green: (i) => stall(i, CLOTH.green!),
-  stall_blue: (i) => stall(i, CLOTH.blue!),
-  stall_gold: (i) => stall(i, CLOTH.gold!),
+  stall_red: (i) => stall(i, CLOTH.red!, 0),
+  stall_green: (i) => stall(i, CLOTH.green!, 1),
+  stall_blue: (i) => stall(i, CLOTH.blue!, 2),
+  stall_gold: (i) => stall(i, CLOTH.gold!, 3),
   bench,
   barrel,
   crates,

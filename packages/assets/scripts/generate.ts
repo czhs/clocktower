@@ -11,6 +11,7 @@ import { DECAL_NAMES, drawDecals, drawFavicon, drawLights } from './decals.js';
 import { renderGround, sliceTiles } from './ground.js';
 import { Img } from './lib/img.js';
 import { drawProps } from './props.js';
+import { buildCast } from './cast/index.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const OUT = join(here, '..', 'generated');
@@ -76,6 +77,13 @@ for (const [kind, def] of Object.entries(PROP_DEFS)) {
 const buildings = drawBuildings();
 const frames = new Map<string, Img>(props);
 for (const [id, b] of buildings) frames.set(`bld_${id}`, b.img);
+// --- doors (buildings agent) ---
+// Swing-open front doors: the closed leaf and the open doorway of every cottage (same size).
+for (const [id, b] of buildings) {
+  if (b.leaf) frames.set(`door_${id}`, b.leaf);
+  if (b.doorway) frames.set(`doorway_${id}`, b.doorway);
+}
+// --- end doors (buildings agent) ---
 const atlas = pack(frames, 1024);
 write('objects.png', atlas.img.toPNG());
 write('objects.json', JSON.stringify({ image: 'objects.png', width: atlas.img.w, height: atlas.img.h, frames: atlas.rects }, null, 0));
@@ -129,6 +137,26 @@ const charManifest = {
 };
 write('characters.json', JSON.stringify(charManifest, null, 0));
 
+// 4b. The v2 cast (8-direction characters, one module per character in scripts/cast/).
+{
+  const cast = await buildCast();
+  write('cast.png', cast.img.toPNG());
+  write('cast.json', JSON.stringify(cast.manifest, null, 0));
+  if (review) writeFileSync(join(REVIEW, 'cast-x4.png'), cast.review.toPNG());
+}
+
+// 4c. Square props + ambient FX (scripts/fx/index.ts), when present.
+try {
+  const fx = (await import('./fx/index.js')) as { buildFx(): { img: Img; manifest: unknown; review?: Img } };
+  const out = fx.buildFx();
+  write('square-props.png', out.img.toPNG());
+  write('square-props.json', JSON.stringify(out.manifest, null, 0));
+  if (review && out.review) writeFileSync(join(REVIEW, 'square-props-x4.png'), out.review.toPNG());
+} catch (e) {
+  if ((e as { code?: string }).code !== 'ERR_MODULE_NOT_FOUND') throw e;
+  log('no scripts/fx yet: square-props skipped');
+}
+
 // 5. Lights + favicon
 write('lights.png', drawLights().toPNG());
 write('favicon.png', drawFavicon().toPNG());
@@ -178,12 +206,55 @@ const lightObj = (l: { x: number; y: number; r: number; color: string; building:
     { name: 'facade', type: 'bool', value: !!l.facade },
   ]);
 for (const l of townMap.lights) objects.push(lightObj(l));
-for (const b of townLayout.buildings) {
+for (const b of [...townLayout.buildings, ...townMap.landmarks]) {
   const s = buildings.get(b.id)!;
   const left = b.footprint.x * TS;
   const top = (b.footprint.y + b.footprint.h) * TS - s.img.h;
   for (const w of s.windows) objects.push(lightObj({ x: left + w.x, y: top + w.y, r: b.kind === 'chapel' ? 40 : 30, color: b.kind === 'chapel' ? 'holy' : 'warm', building: null, facade: true }));
 }
+// --- doors (buildings agent) ---
+// One 'door' object per cottage (rect = the door leaf in WORLD px; leaf/hole = atlas frames of the
+// closed leaf and the open doorway, same size; hinge = edge the leaf swings around). 'frame' and
+// 'depth' come first like every drawable object (frame = the closed leaf; depth just above the
+// building so the door draws over it). Each cottage's 'building' object also gets a 'chimney'
+// property: JSON {x,y} of the chimney's smoke point in WORLD px (absent = no chimney).
+for (const b of townLayout.buildings) {
+  const s = buildings.get(b.id)!;
+  const left = b.footprint.x * TS;
+  const bottom = (b.footprint.y + b.footprint.h) * TS;
+  const top = bottom - s.img.h;
+  const bo = objects.find((o) => o.type === 'building' && o.name === b.id);
+  if (bo && s.chimney) bo.properties.push({ name: 'chimney', type: 'string', value: JSON.stringify({ x: left + s.chimney.x, y: top + s.chimney.y }) });
+  if (!s.door || !s.leaf || !s.doorway) continue;
+  objects.push(
+    tobj(b.id, 'door', left + s.door.x, top + s.door.y, s.door.w, s.door.h, [
+      { name: 'frame', type: 'string', value: `door_${b.id}` },
+      { name: 'depth', type: 'float', value: bottom + 0.5 },
+      { name: 'building', type: 'string', value: b.id },
+      { name: 'leaf', type: 'string', value: `door_${b.id}` },
+      { name: 'hole', type: 'string', value: `doorway_${b.id}` },
+      { name: 'hinge', type: 'string', value: s.door.hinge },
+    ]),
+  );
+}
+if (review) {
+  // every cottage, door closed (top) and open (bottom), x3
+  const ids = townLayout.buildings.map((b) => b.id);
+  const cw = Math.max(...ids.map((id) => buildings.get(id)!.img.w)) + 4;
+  const ch = Math.max(...ids.map((id) => buildings.get(id)!.img.h)) + 4;
+  const sheet = new Img(cw * ids.length, ch * 2);
+  sheet.rect(0, 0, sheet.w, sheet.h, '#2e4a2c');
+  ids.forEach((id, k) => {
+    const s = buildings.get(id)!;
+    const x = k * cw + 2;
+    const y = ch - 2 - s.img.h;
+    sheet.blit(s.img, x, y);
+    sheet.blit(s.img, x, y + ch);
+    if (s.door && s.doorway) sheet.copy(s.doorway, x + s.door.x, y + ch + s.door.y);
+  });
+  writeFileSync(join(REVIEW, 'doors-x3.png'), upscale(sheet, 3).toPNG());
+}
+// --- end doors (buildings agent) ---
 const tsDef = (name: string, image: string, iw: number, ih: number, firstgid: number) => ({
   firstgid,
   name,
@@ -248,11 +319,11 @@ function compose(): Img {
   for (const o of sorted) img.blit(frames.get(o.properties[0]!.value as string)!, o.x, o.y);
   // a few villagers in the square
   const people: [string[], number, number][] = [
-    [['body/fair', 'outfit/peasant/forest', 'hair/short/brown'], 46, 53],
-    [['body/umber', 'outfit/noble/crimson', 'hair/long/black', 'accessory/hat'], 50, 53],
-    [['body/olive', 'outfit/cleric/plum', 'hair/bun/grey', 'accessory/spectacles'], 44, 51],
-    [['ghost/shroud'], 52, 51],
-    [['storyteller'], 48, 56],
+    [['body/fair', 'outfit/peasant/forest', 'hair/short/brown'], 20, 22],
+    [['body/umber', 'outfit/noble/crimson', 'hair/long/black', 'accessory/hat'], 30, 22],
+    [['body/olive', 'outfit/cleric/plum', 'hair/bun/grey', 'accessory/spectacles'], 17, 19],
+    [['ghost/shroud'], 33, 19],
+    [['storyteller'], 25, 21],
   ];
   for (const [layers, tx, ty] of people)
     for (const l of layers) {
@@ -274,13 +345,10 @@ if (review) {
     const out = scale > 1 ? upscale(c, scale) : c;
     writeFileSync(join(REVIEW, name), out.toPNG());
   };
-  crop('square.png', 30 * TS, 34 * TS, 36 * TS, 28 * TS, 2);
-  crop('north.png', 0, 0, 96 * TS, 34 * TS);
-  crop('nw.png', 0, 6 * TS, 40 * TS, 32 * TS, 2);
-  crop('ne.png', 50 * TS, 4 * TS, 46 * TS, 30 * TS, 2);
-  crop('south.png', 0, 56 * TS, 96 * TS, 40 * TS);
-  crop('interiors.png', 97 * TS, 0, 63 * TS, 48 * TS, 2);
-  crop('house0.png', 97 * TS, 1 * TS, 13 * TS, 11 * TS, 4);
+  crop('town.png', 0, 0, townLayout.townBounds.w * TS, townLayout.townBounds.h * TS, 2);
+  crop('interiors.png', (townLayout.townBounds.w + 1) * TS, 0, (W - townLayout.townBounds.w - 1) * TS, H * TS, 2);
+  const r0 = townLayout.buildings[0]!.interior;
+  crop('house0.png', (r0.x - 1) * TS, (r0.y - 1) * TS, (r0.w + 2) * TS, (r0.h + 2) * TS, 4);
   writeFileSync(join(REVIEW, 'characters-x3.png'), upscale(charImg, 3).toPNG());
   writeFileSync(join(REVIEW, 'objects.png'), upscale(atlas.img, 2).toPNG());
   writeFileSync(join(REVIEW, 'preview-half.png'), preview.downscale(2).toPNG());

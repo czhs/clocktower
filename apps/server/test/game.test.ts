@@ -49,6 +49,7 @@ function rig(n = 8, opts: { withWorld?: boolean } = {}): Rig {
     setDoorLock: (b, locked) => (calls.push(`door:${b}:${locked}`), null),
     stageView: () => ({ players: [], doors: {}, storytellerLocation: null }),
     applySettings: (s) => calls.push(`settings:${JSON.stringify(s)}`),
+    teleportSelf: (pid, to) => (calls.push(`teleportSelf:${pid}:${JSON.stringify(to)}`), null),
     tick: () => undefined,
   };
   host.setModules(opts.withWorld === false ? { game } : { game, world });

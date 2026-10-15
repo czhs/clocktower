@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { CHARACTER_PRESETS, PLAYABLE, PLAYABLE_IDS } from '@ct/assets';
 import { DEFAULT_COSMETICS } from '@ct/protocol';
 import { api, startTestServer, type TestServer } from '../src/rooms/testkit.js';
 import { generatePassphrase, normalizePassphrase, PASSPHRASE_ENTROPY_BITS, PASSPHRASE_WORDS } from '../src/auth/passphrase.js';
@@ -78,7 +79,9 @@ describe('auth HTTP', () => {
     expect(cookie.raw).toContain(`Max-Age=${30 * 86400}`);
     const me = await api(srv, 'GET', '/api/me', { cookie: cookie.pair });
     expect(me.status).toBe(200);
-    expect(me.body).toMatchObject({ id: account.id, displayName: 'Alice', cosmetics: DEFAULT_COSMETICS });
+    // v2: a new account starts as a random playable roster character
+    expect(me.body).toMatchObject({ id: account.id, displayName: 'Alice', cosmetics: { ...DEFAULT_COSMETICS, preset: expect.any(String) } });
+    expect(PLAYABLE_IDS.has(me.body.cosmetics.preset)).toBe(true);
   });
 
   it('stores no plaintext passphrase or session token, and never logs them', async () => {
@@ -187,9 +190,26 @@ describe('auth HTTP', () => {
     expect(emptyPatch.status).toBe(400);
   });
 
+  it('v2 roster: only playable characters can be chosen (no custom / legacy / storyteller / NPC ids)', async () => {
+    const { cookie } = await create('Hal');
+    const legacy = CHARACTER_PRESETS.map((p) => p.id).find((id) => !PLAYABLE_IDS.has(id));
+    for (const preset of [null, undefined, 'storyteller', 'npc-sweeper', 'not-a-character', ...(legacy ? [legacy] : [])]) {
+      const r = await api(srv, 'PATCH', '/api/me', { cookie: cookie.pair, body: { cosmetics: { ...DEFAULT_COSMETICS, ...(preset === undefined ? {} : { preset }) } } });
+      expect(r.status, String(preset)).toBe(400);
+    }
+    for (const c of PLAYABLE) {
+      const r = await api(srv, 'PATCH', '/api/me', { cookie: cookie.pair, body: { cosmetics: { ...DEFAULT_COSMETICS, preset: c.id } } });
+      expect(r.status, c.id).toBe(200);
+    }
+    // a name-only update still works without touching the character
+    const named = await api(srv, 'PATCH', '/api/me', { cookie: cookie.pair, body: { displayName: 'Hal 2' } });
+    expect(named.status).toBe(200);
+    expect(named.body.cosmetics.preset).toBe(PLAYABLE.at(-1)!.id);
+  });
+
   it('profile update and stats', async () => {
     const { cookie } = await create('Gus');
-    const cos = { ...DEFAULT_COSMETICS, outfit: 'noble' as const, accessory: 'lantern' as const };
+    const cos = { ...DEFAULT_COSMETICS, preset: PLAYABLE[1]!.id, outfit: 'noble' as const, accessory: 'lantern' as const };
     const upd = await api(srv, 'PATCH', '/api/me', { cookie: cookie.pair, body: { displayName: '<b>Gus</b>', cosmetics: cos } });
     expect(upd.status).toBe(200);
     expect(upd.body.displayName).toBe('<b>Gus</b>'); // stored verbatim; UI escapes on render

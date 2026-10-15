@@ -8,7 +8,7 @@
 //     enters "overtime" and we turn on the world's escort (server-driven walk home).
 //   * the nomination circle and the escort are synced from the rules state into the world after
 //     every change (setCircle / setEscort), so undo and forced phases stay consistent.
-//   * physical ST commands (teleport / walk_to / freeze / door_lock) go to the world module; every
+//   * physical ST commands (teleport / walk_to / freeze / door_lock / teleport_self) go to the world module; every
 //     other command goes through the rules engine, which only advises (alerts), never gates.
 //   * structured info logs: phase changes, nominations, tallies, executions, ST command types and
 //     rejected actions. Never characters, prompt/info contents or (at night) ST targets.
@@ -368,6 +368,18 @@ export function createGameModule(host: RoomHost, opts: GameModuleOptions = {}): 
       const s = state;
       if (pid !== host.storytellerPid() || (stPid !== null && pid !== stPid))
         return host.send(pid, 'error', { code: 'forbidden', message: 'Only the Storyteller can do that', for: 'st:command' });
+      if (cmd.type === 'teleport_self') {
+        // (v2) Click-to-teleport of the Storyteller themselves: works in every phase (and while the
+        // lobby waits). A building teleport into a home at night IS a visit: the world emits
+        // location_changed and handleStLocation registers it exactly like visit_home. Logged by type only.
+        logStCommand(cmd, true);
+        const w = world();
+        if (!w) return host.send(pid, 'error', { code: 'internal', message: 'No world', for: 'st:command' });
+        const e = w.teleportSelf(pid, cmd.to);
+        if (e) return host.send(pid, 'error', { code: 'invalid', message: e, for: 'st:command' });
+        host.markGameDirty();
+        return;
+      }
       if (!s) return host.send(pid, 'error', { code: 'phase', message: 'No game in progress', for: 'st:command' });
       if (STAGE_COMMANDS.has(cmd.type)) {
         if (s.phase === 'finished') return host.send(pid, 'error', { code: 'phase', message: 'The game is over', for: 'st:command' });

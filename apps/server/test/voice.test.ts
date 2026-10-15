@@ -18,14 +18,22 @@ const sq = L.square;
 type P = { x: number; y: number; location: LocationId };
 const SQUARE: P = { x: sq.cx, y: sq.cy, location: 'outdoors' };
 const SQUARE2: P = { x: sq.cx + TS, y: sq.cy + TS, location: 'outdoors' };
-const street = (dx = 0, dy = 0): P => ({ x: sq.cx + sq.r + 4 * TS + dx, y: sq.cy + dy, location: 'outdoors' });
+/**
+ * v2: outdoors far from the middle of the square (the old "street"). The town is one screen and every
+ * outdoor spot is the square broadcast zone; these points are walkable lanes beside the cottages.
+ */
+function farOut(dx = 0, dy = 0): P {
+  const d = L.buildings.find((b) => b.kind === 'house' && b.houseIndex === 0)!.door;
+  return { x: d.x * TS + 8 + dx, y: d.y * TS + 14 + dy, location: 'outdoors' };
+}
 function inside(id: string): P {
   const b = L.buildings.find((bb) => bb.id === id);
   if (!b) throw new Error(`no building ${id}`);
   return { x: (b.interior.x + 2) * TS + 8, y: (b.interior.y + 2) * TS + 14, location: `bld:${id}` };
 }
 const houseOf = (seat: number) => L.buildings.find((b) => b.kind === 'house' && b.houseIndex === seat)!.id;
-const otherBuilding = L.buildings.find((b) => b.kind !== 'house')!.id;
+/** v2: every building is a cottage; seat 14 lives in nobody's game here, so its cottage is "someone else's". */
+const otherBuilding = houseOf(14);
 
 function fakeWorld() {
   const pos = new Map<string, P>();
@@ -51,6 +59,7 @@ function fakeWorld() {
     setDoorLock: () => null,
     stageView: () => ({ players: [], doors: {}, storytellerLocation: null }),
     applySettings: () => undefined,
+    teleportSelf: () => null,
     tick() {},
   };
   return { w, pos };
@@ -188,11 +197,11 @@ describe('voice: zone grants', () => {
     expect((claims.exp as number) - Math.floor(Date.now() / 1000)).toBeLessThanOrEqual(600);
   });
 
-  it('street = proximity, interior = private room', async () => {
-    t.join('a', street());
+  it('v2: outdoors anywhere = the square broadcast (no street proximity); interior = private room', async () => {
+    t.join('a', farOut());
     t.join('b', inside(otherBuilding));
     await t.idle();
-    expect(t.lastGrant('a')).toMatchObject({ zone: 'street', mode: 'proximity', room: 'dev-lobbyA-street' });
+    expect(t.lastGrant('a')).toMatchObject({ zone: 'square', mode: 'broadcast', room: 'dev-lobbyA-square' });
     expect(t.lastGrant('b')).toMatchObject({ zone: `bld:${otherBuilding}`, mode: 'private', room: `dev-lobbyA-bld-${otherBuilding}` });
   });
 
@@ -211,7 +220,7 @@ describe('voice: zone grants', () => {
 
   it('a member never holds two zone rooms (message stream invariant over a random walk)', async () => {
     t.join('a', SQUARE);
-    const spots = [SQUARE, street(), street(3 * TS), inside(otherBuilding), inside(houseOf(0)), SQUARE2, street(-TS, TS)];
+    const spots = [SQUARE, farOut(), farOut(0, -TS), inside(otherBuilding), inside(houseOf(0)), SQUARE2, inside(houseOf(3))];
     let seed = 7;
     for (let i = 0; i < 60; i++) {
       seed = (seed * 1103515245 + 12345) % 2 ** 31;
@@ -233,27 +242,19 @@ describe('voice: zone grants', () => {
     }
   });
 
-  it('square boundary: hysteresis + debounce, no flapping', async () => {
+  it('v2: walking anywhere outdoors keeps ONE square grant (no boundary, no flapping, no revokes)', async () => {
     const d = setup({ debounceMs: 600 });
     d.join('a', SQUARE);
     await d.idle();
     expect(d.grants('a')).toHaveLength(1);
     for (let i = 0; i < 40; i++) {
-      d.world.pos.set('a', { x: sq.cx + sq.r + (i % 2 ? 10 : -10), y: sq.cy, location: 'outdoors' });
+      d.world.pos.set('a', i % 3 === 0 ? farOut() : { x: sq.cx + sq.r + (i % 2 ? 10 : -10), y: sq.cy, location: 'outdoors' });
       d.advance(250);
     }
     await d.idle();
     expect(d.grants('a')).toHaveLength(1);
     expect(d.revokes('a')).toHaveLength(0);
-    d.world.pos.set('a', street());
-    d.advance(250);
-    d.advance(250);
-    expect(d.voice.zoneOf('a')).toBe('square'); // still debouncing
-    d.advance(250);
-    d.advance(250);
-    await d.idle();
-    expect(d.voice.zoneOf('a')).toBe('street');
-    expect(d.lastGrant('a')!.room).toBe('dev-lobbyA-street');
+    expect(d.voice.zoneOf('a')).toBe('square');
   });
 
   it('reconnect re-delivers a fresh grant for the same room without revoking', async () => {
@@ -301,7 +302,7 @@ describe('voice: night isolation and Storyteller visits', () => {
     const t = setup();
     t.join('st', SQUARE, { role: 'storyteller' });
     t.join('p0', SQUARE, { seat: 0 });
-    t.join('p1', street(), { seat: 1 });
+    t.join('p1', farOut(), { seat: 1 });
     t.join('p2', inside(otherBuilding), { seat: 2 });
     t.setPhase('day');
     t.setPhase('night');
@@ -475,20 +476,18 @@ describe('voice: quota', () => {
 });
 
 describe('voice: chat audience (audienceOf)', () => {
-  it('square: everyone in the square; street: within the audible radius; building: same room', async () => {
+  it('v2: outdoors: everyone outdoors (anywhere in town); building: same room only', async () => {
     const t = setup();
     t.join('s1', SQUARE);
     t.join('s2', SQUARE2);
-    t.join('n1', street());
-    t.join('n2', street(5 * TS));
-    t.join('n3', street(0, 15 * TS));
+    t.join('n1', farOut());
+    t.join('n2', farOut(0, -TS));
     t.join('b1', inside(otherBuilding));
     t.join('b2', inside(otherBuilding));
     t.join('h', inside(houseOf(0)));
     await t.idle();
-    expect(t.voice.audienceOf('s1').sort()).toEqual(['s1', 's2']);
-    expect(t.voice.audienceOf('n1').sort()).toEqual(['n1', 'n2']);
-    expect(t.voice.audienceOf('n3')).toEqual(['n3']);
+    expect(t.voice.audienceOf('s1').sort()).toEqual(['n1', 'n2', 's1', 's2']);
+    expect(t.voice.audienceOf('n1').sort()).toEqual(['n1', 'n2', 's1', 's2']);
     expect(t.voice.audienceOf('b1').sort()).toEqual(['b1', 'b2']);
     expect(t.voice.audienceOf('h')).toEqual(['h']);
     expect(t.voice.audienceOf('ghost')).toEqual([]);
@@ -501,7 +500,7 @@ describe('voice: security', () => {
     const b = setup({ lobbyId: 'ab-square', prefix: 'prod' });
     for (const t of [a, b]) {
       t.join('x', SQUARE);
-      t.join('y', street());
+      t.join('y', farOut());
       t.join('z', inside(otherBuilding));
       t.voice.handleAnnounce('x', { active: true }); // not ST: refused
     }

@@ -7,6 +7,13 @@
 //                             (so a visiting Storyteller is visible only to the visited player)
 //   everything else        -> entities in the same location (outdoors <-> outdoors, same interior)
 //
+// Doors (v2 one-screen town): ENTERING needs the player outdoors within DOOR_RANGE_PX of the
+// building's outdoor door tile (the client sends 'world:useDoor' when it walks into the doorway; the
+// tile sits below the footprint for 'south' cottages and beside it for 'east'/'west' ones). EXITING
+// works from anywhere inside (interiors are a fixed view, nobody walks in them: "Leave" button).
+// Server-driven walks likewise leave a building at once (no interior leg) and enter straight to
+// their destination inside.
+//
 // Door access for players (the Storyteller may always use any door):
 //   waiting / setup / day / bedtime / finished -> may enter and exit any building
 //   night / first_night / dawn                 -> locked inside their own home (cannot exit);
@@ -64,9 +71,10 @@ import { findPath, nearestFree, type Pt } from './path.js';
  * on lossy links (a 200-600 ms stall + 300 ms RTT, then a catch-up burst); the budget keeps
  * accumulating at the max speed for up to this long, so physically plausible catch-up is accepted
  * while sustained speed hacks (budget refills at only MOVE_TOLERANCE x walking speed) and long-range
- * teleports stay impossible. The swept collision check stays strict.
+ * teleports stay impossible. The swept collision check stays strict. (v2: 2 -> 1.5 s when walking went
+ * 72 -> 150 px/s, so the longest single accepted jump stays ~300 px and still covers a 0.9 s stall.)
  */
-export const BURST_SECONDS = 2;
+export const BURST_SECONDS = 1.5;
 /**
  * After the server told a client where it is (door / Storyteller teleport, correction), moves that
  * were already in flight still describe the old position. Within this window failing moves are
@@ -365,13 +373,12 @@ export function createWorldModule(host: RoomHost, opts: WorldOptions = {}): Worl
       w.door = null;
       return true;
     }
-    // Leave the current building first, then walk outdoors to the destination's door.
+    // Leave the current building first (at once: nobody walks inside interiors in v2), then walk
+    // outdoors to the destination's door.
     if (here !== 'outdoors') {
       const b = buildingById.get(here.slice(4));
       if (!b) return false;
-      const pts = findPath(layout, { x: e.x, y: e.y }, tileCenterPx(layout, b.interiorDoor), here);
-      if (!pts) return false;
-      w.pts = pts;
+      w.pts = [];
       w.door = { building: b.id, exit: true };
       return true;
     }
@@ -415,7 +422,8 @@ export function createWorldModule(host: RoomHost, opts: WorldOptions = {}): Worl
       if (!next) {
         if (w.door) {
           const b = buildingById.get(w.door.building)!;
-          const p = w.door.exit ? tileCenterPx(layout, b.door) : placeAt(b, 'door');
+          // Entering: straight to the destination inside (interiors are a fixed view, no walking).
+          const p = w.door.exit ? tileCenterPx(layout, b.door) : w.dest.location === `bld:${b.id}` ? { x: w.dest.x, y: w.dest.y } : placeAt(b, 'door');
           w.door = null;
           teleport(e, p.x, p.y, 'door', undefined, true);
           if (!planLeg(e, w)) {
@@ -637,7 +645,7 @@ export function createWorldModule(host: RoomHost, opts: WorldOptions = {}): Worl
       if (e.frozen) return host.send(pid, 'error', { code: 'forbidden', message: 'The Storyteller has paused your movement.', for: 'world:useDoor' });
       const inside = e.location === `bld:${b.id}`;
       if (inside) {
-        if (!nearTile(e, b.interiorDoor)) return host.send(pid, 'error', { code: 'forbidden', message: 'Too far from the door.', for: 'world:useDoor' });
+        // v2: leaving works from anywhere inside (fixed interior view + "Leave" button).
         if (!canExit(pid, b)) return host.send(pid, 'error', { code: 'phase', message: doorLocks.get(b.id) ? 'The door is locked.' : 'You must stay home until morning.', for: 'world:useDoor' });
         const p = tileCenterPx(layout, b.door);
         teleport(e, p.x, p.y, 'door');
@@ -804,6 +812,29 @@ export function createWorldModule(host: RoomHost, opts: WorldOptions = {}): Worl
 
     applySettings(next) {
       settings = { ...DEFAULT_ST_SETTINGS, ...next };
+    },
+
+    teleportSelf(pid, to) {
+      if (!isST(pid)) return 'Storyteller only';
+      const e = entities.get(pid) ?? ensureEntity(pid);
+      if (!e) return 'Not in town';
+      if (to.kind === 'building') {
+        const b = buildingById.get(to.buildingId);
+        if (!b) return 'No such building';
+        // Same placement as visit_home / teleportToBuilding(pid, id, 'storyteller').
+        const p = placeAt(b, b.kind === 'house' ? 'visit' : 'door');
+        teleport(e, p.x, p.y, 'storyteller');
+        return null;
+      }
+      // A map point: the nearest free OUTDOOR spot (never an interior, never inside a wall).
+      const tb = layout.townBounds;
+      const ts = layout.tileSize;
+      const inTown = (x: number, y: number) => x >= tb.x * ts && y >= tb.y * ts && x < (tb.x + tb.w) * ts && y < (tb.y + tb.h) * ts;
+      if (!inTown(to.x, to.y) || locationAt(layout, to.x, to.y) !== 'outdoors') return 'Pick a spot in town';
+      const p = nearestFree(layout, { x: to.x, y: to.y }, 48, (x, y) => inTown(x, y));
+      if (!p) return 'That spot is not walkable';
+      teleport(e, p.x, p.y, 'storyteller');
+      return null;
     },
 
     stageView(): StageView {

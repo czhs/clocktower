@@ -1,7 +1,7 @@
 import type { BuildingDef, TownLayout } from '@ct/protocol';
 
 // Small synthetic layout for zone tests: 40x20 town, square at tile (20,10) r = 5 tiles,
-// three houses + a tavern with interiors in x >= 50.
+// four cottages (v2: every building is a cottage) with interiors in x >= 50.
 export const TS = 16;
 
 function bld(id: string, kind: BuildingDef['kind'], houseIndex: number | null, n: number): BuildingDef {
@@ -26,7 +26,7 @@ export const layout: TownLayout = {
   tileSize: TS,
   townBounds: { x: 0, y: 0, w: 40, h: 20 },
   square: { cx: 20 * TS, cy: 10 * TS, r: 5 * TS },
-  buildings: [bld('house-0', 'house', 0, 0), bld('house-1', 'house', 1, 1), bld('house-2', 'house', 2, 2), bld('tavern', 'tavern', null, 3)],
+  buildings: [bld('house-0', 'house', 0, 0), bld('house-1', 'house', 1, 1), bld('house-2', 'house', 2, 2), bld('house-3', 'house', 3, 3)],
   collision: new Array(100 * 20).fill(0),
   playerSpawn: { x: 20, y: 12 },
   storytellerSpawn: { x: 20, y: 8 },

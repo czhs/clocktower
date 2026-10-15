@@ -69,11 +69,11 @@ describe('@ct/db', () => {
     expect(r.database.sqlite.pragma('journal_mode', { simple: true })).toBe('wal');
     expect(r.database.sqlite.pragma('foreign_keys', { simple: true })).toBe(1);
     const applied = r.database.sqlite.prepare('SELECT id FROM _migrations').all();
-    expect(applied).toEqual([{ id: 1 }]);
+    expect(applied).toEqual([{ id: 1 }, { id: 2 }]);
     r.database.close();
     // Re-opening does not re-apply migrations.
     const again = repos(url);
-    expect(again.database.sqlite.prepare('SELECT COUNT(*) AS n FROM _migrations').get()).toEqual({ n: 1 });
+    expect(again.database.sqlite.prepare('SELECT COUNT(*) AS n FROM _migrations').get()).toEqual({ n: 2 });
   });
 
   it('accounts: insert, find, unique lookup, profile update, credentials lookup', () => {

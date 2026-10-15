@@ -274,11 +274,13 @@
 .ct-card .ct-check input { width: 20px; height: 20px; flex: none; }
 .ct-card button.primary:disabled { filter: grayscale(0.55) brightness(0.8); color: #f3e6c4; }
 
-/* Create step: a shorter villager stage so the submit button stays near the fold. */
-.ct-card .ct-cosmetic-stage { padding: 6px 0 2px; gap: 12px; }
-.ct-card .ct-cosmetic-stage canvas:first-child { height: 112px !important; width: auto !important; }
-.ct-card .ct-cosmetic-stage canvas + canvas { height: 72px !important; width: auto !important; }
-.ct-card .ct-cosmetics { margin-bottom: 0; }
+/* Create step: the character picker on the card's dark field. */
+.ct-card .ct-pick-stage { background: radial-gradient(ellipse at 22% 92%, #4a3a5ecc 0%, #1d1729cc 50%, #120e1ccc 100%); border-color: #5b4d70; }
+.ct-card .ct-pick { background: #1d1729e6; border-color: #5b4d70; }
+.ct-card .ct-pick:hover { background: #2a2238; }
+.ct-card .ct-pick.on { background: #3a2c12; border-color: var(--ld-gold); }
+.ct-card .ct-pick-name { color: var(--ld-gold); }
+.ct-card .ct-pick-blurb { color: var(--ld-cream); }
 .ct-card .ct-auth-form { gap: 12px; }
 
 /* Create step: the Back / Create account row stays in view while the villager grid scrolls. */

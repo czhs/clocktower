@@ -6,8 +6,8 @@
 // Players walk with the client's own prediction algorithm (packages/assets/test/navsim.ts, a
 // replica of TownScene.stepLocal) at the client's 15 Hz send rate, so these tests also check that
 // the server's movement validation accepts realistic client movement (no rubber-band corrections).
-import { townLayout as L } from '@ct/assets';
-import { tileCenterPx, type CharacterId, type PlayerGameView, type StCommand, type StorytellerGameView, type WorldSnapshot, type WorldTeleport } from '@ct/protocol';
+import { PLAYABLE, townLayout as L } from '@ct/assets';
+import { tileCenterPx, type CharacterId, type Cosmetics, type PlayerGameView, type StCommand, type StorytellerGameView, type WorldSnapshot, type WorldTeleport } from '@ct/protocol';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createGameModule } from '../src/game/index.js';
 import { createLobby, makeAccount, sleep, startTestServer, TestClient, waitFor, type TestServer } from '../src/rooms/testkit.js';
@@ -282,9 +282,13 @@ describe('night edge cases through the real GameRoom (world-audit)', () => {
   }, 120_000);
 
   it('cosmetics: every client renders the same appearance inputs for a player, after a reconnect and after death', async () => {
-    const look = { preset: null, skin: 'umber', hair: 'braid', hairColor: 'white', outfit: 'cleric', palette: 'plum', accessory: 'lantern', ghost: 'shroud' } as const;
+    // v2: a roster character (PLAYABLE_IDS) nobody else in the lobby has; layered fields ride along unchanged
+    const look = { preset: '', skin: 'umber', hair: 'braid', hairColor: 'white', outfit: 'cleric', palette: 'plum', accessory: 'lantern', ghost: 'shroud' } as Cosmetics;
     let firstPid = '';
     const g = await newGame('Cos', async (joined) => {
+      const lv = await joined[0]!.c.view((v) => v.members.length === CHARS.length + 1);
+      const taken = new Set(lv.members.map((m) => m.cosmetics.preset));
+      look.preset = PLAYABLE.map((c) => c.id).find((id) => !taken.has(id))!;
       joined[0]!.c.send('lobby:cosmetics', { cosmetics: look });
       firstPid = joined[0]!.c.pid!;
       await joined[0]!.c.view((v) => v.members.some((m) => m.pid === firstPid && m.cosmetics.accessory === 'lantern'));

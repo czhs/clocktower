@@ -265,7 +265,7 @@ export function authRouter(services: Services): express.Router {
     auth,
     handler((req, res) => {
       const body = parseBody(UpdateProfileRequest, req.body);
-      if (body.cosmetics && !isAllowedPreset(body.cosmetics.preset)) throw new HttpError(400, 'bad_request', 'Unknown character preset');
+      if (body.cosmetics && !isAllowedPreset(body.cosmetics.preset)) throw new HttpError(400, 'bad_request', 'Pick one of the characters');
       if (body.displayName !== undefined && isReservedName(body.displayName)) throw new HttpError(400, 'bad_request', 'That name is reserved, please pick another');
       const updated = services.accounts.updateProfile(currentAccount(res).id, body);
       if (!updated) throw new HttpError(404, 'not_found', 'Account not found');

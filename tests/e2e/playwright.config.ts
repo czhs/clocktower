@@ -67,6 +67,14 @@ export default defineConfig({
           LOBBY_MAX_COUNT: '8',
           LOBBY_IDLE_TIMEOUT_SEC: '60',
           LIVEKIT_ROOM_PREFIX: 'test',
+          // (v2 e2e) Fake LiveKit credentials so the server runs its real voice coordinator: zone
+          // grants are minted locally and sent to each client (the specs assert who is in which
+          // acoustic zone from the decoded voice:grant frames). Nobody connects: browsers only join
+          // after "Enable voice", and the .invalid host makes the server's LiveKit API calls fail fast
+          // (logged as warnings). E2E_VOICE=0 runs without voice (voice:unavailable).
+          ...(process.env.E2E_VOICE === '0'
+            ? {}
+            : { LIVEKIT_URL: 'wss://e2e-fake.livekit.invalid', LIVEKIT_API_KEY: 'APIe2efakekey', LIVEKIT_API_SECRET: randomBytes(24).toString('hex') }),
           LOG_DIR: path.join(dataDir, 'logs'),
           CT_VERSION: 'e2e',
         },
