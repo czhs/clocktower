@@ -26,7 +26,7 @@ export function AuthScreen({ onSignedIn }: { onSignedIn: (a: AccountView) => voi
   const intro = useIntro();
   const onTour = (r: IntroReason) => {
     // "Join" from the tour, or skipping it when invited, goes straight to account creation.
-    if (r === 'join' || (invited && r === 'skip')) setMode((m) => (m.m === 'choose' ? { m: 'create' } : m));
+    if (r === 'join' || r === 'finish' || (invited && r === 'skip')) setMode((m) => (m.m === 'choose' ? { m: 'create' } : m));
   };
   return (
     <div class={`screen ct-landing ct-landing-${mode.m}${invited ? ' is-invited' : ''}`}>

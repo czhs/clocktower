@@ -12,6 +12,7 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test -c tests/e2e/playwright.config.ts",
     "test:load": "tsx tests/load/run.ts",
+    "capture:tutorial": "CT_CAPTURE_TUTORIAL=1 playwright test -c tests/e2e/tutorial.config.ts --project capture",
     "serve": "node apps/server/dist/server.js",
     "assets:generate": "pnpm --filter @ct/assets generate",
     "db:migrate": "pnpm --filter @ct/db migrate"

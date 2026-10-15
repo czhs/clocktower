@@ -1,0 +1,120 @@
+/* Pre-sign-in tour (tutorial teammate). Gothic frame on the shared theme tokens (ui/common/theme.css):
+   a framed "painting" of real gameplay, IM Fell caption in gold, parchment body text. */
+.ct-intro {
+  position: fixed; inset: 0; z-index: 90; display: flex; align-items: center; justify-content: center;
+  padding: calc(16px + var(--safe-top)) calc(16px + var(--safe-right)) calc(16px + var(--safe-bottom)) calc(16px + var(--safe-left));
+  background:
+    radial-gradient(ellipse 70% 45% at 50% 0%, #3a2b1a66 0%, transparent 70%),
+    radial-gradient(ellipse 90% 70% at 50% 110%, #2a1420aa 0%, transparent 65%),
+    #07050c;
+  color: var(--text); font-family: var(--font);
+  animation: ct-intro-in 260ms ease-out;
+}
+@keyframes ct-intro-in { from { opacity: 0; } to { opacity: 1; } }
+
+.ct-intro-frame {
+  position: relative; display: flex; flex-direction: column; gap: 14px;
+  width: min(900px, 100%, calc((100dvh - 300px) * 1.7778));
+  min-width: min(560px, 100%);
+  max-height: 100%;
+}
+
+.ct-intro-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.ct-intro-eyebrow {
+  font-family: var(--font-display); font-style: italic; color: var(--accent); font-size: 1.05rem; letter-spacing: 0.04em;
+  opacity: 0.9;
+}
+.ct-intro .ct-intro-skip {
+  background: #17151fcc; border: 1px solid #d5b56a66; color: var(--text); padding: 8px 14px; min-height: 40px;
+  font-size: 0.95rem; border-radius: var(--radius); white-space: nowrap;
+}
+.ct-intro .ct-intro-skip:hover:not(:disabled) { border-color: var(--accent); background: #211f2c; }
+
+/* The clip, framed like a small painting: dark mat, gold keyline, deep shadow. */
+.ct-intro-stage {
+  position: relative; width: 100%; aspect-ratio: 16 / 9; overflow: hidden; flex: none;
+  background: #0b0a10; border-radius: 3px; touch-action: pan-y; user-select: none; -webkit-user-select: none;
+  box-shadow: 0 0 0 1px #000, 0 0 0 4px #1b1824, 0 0 0 5px #d5b56a88, 0 24px 60px #000c;
+}
+.ct-intro-stage::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  box-shadow: inset 0 0 60px #0009, inset 0 0 2px #0008;
+}
+.ct-intro-media {
+  position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; background: #0b0a10;
+  animation: ct-intro-fade 320ms ease-out;
+}
+@keyframes ct-intro-fade { from { opacity: 0; } to { opacity: 1; } }
+.ct-intro-poster { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ct-intro .ct-intro-posterbtn { padding: 0; border: none; border-radius: 0; background: #0b0a10; cursor: pointer; min-height: 0; }
+.ct-intro .ct-intro-posterbtn:hover:not(:disabled), .ct-intro .ct-intro-posterbtn:active:not(:disabled) { background: #0b0a10; transform: none; }
+.ct-intro .ct-intro-posterbtn:focus-visible { outline-offset: -3px; }
+.ct-intro-play {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 64px; height: 64px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center; padding-left: 4px;
+  background: #17151fd9; border: 1px solid var(--accent); color: var(--accent); font-size: 1.4rem;
+  box-shadow: 0 6px 24px #000c; pointer-events: none;
+}
+.ct-intro-posterbtn:hover .ct-intro-play { background: #2a2736; }
+.ct-intro-ph {
+  display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(ellipse at 50% 40%, #2b2140 0%, #120f1a 70%);
+}
+.ct-intro-ph span { font-size: 4rem; color: var(--accent); opacity: 0.55; font-family: var(--font-display); }
+.ct-intro-loading { background: linear-gradient(110deg, #120f1a 30%, #1d1928 50%, #120f1a 70%); background-size: 200% 100%; animation: ct-intro-shimmer 1.4s linear infinite; }
+@keyframes ct-intro-shimmer { to { background-position: -200% 0; } }
+.ct-intro-prefetch { position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none; }
+
+.ct-intro-text { min-height: 5.6em; animation: ct-intro-text 300ms ease-out; }
+@keyframes ct-intro-text { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.ct-intro-text h2 { margin: 2px 0 6px; color: var(--accent); font-size: 1.95rem; line-height: 1.15; }
+.ct-intro-text p { margin: 0; font-size: 1.08rem; line-height: 1.45; color: var(--text); }
+.ct-intro-text p + p { color: var(--muted); }
+
+.ct-intro-foot { display: flex; align-items: center; gap: 12px; }
+.ct-intro .ct-intro-back { background: none; border-color: transparent; color: var(--muted); padding: 8px 6px; min-height: 44px; }
+.ct-intro .ct-intro-back:hover:not(:disabled) { background: none; border-color: transparent; color: var(--text); }
+.ct-intro .ct-intro-back:disabled { background: none; border-color: transparent; color: #5d5868; }
+.ct-intro-dots { flex: 1; display: flex; justify-content: center; align-items: center; gap: 4px; }
+.ct-intro .ct-intro-dot {
+  width: 24px; height: 28px; padding: 0; background: none; border: none; display: inline-flex; align-items: center; justify-content: center;
+  min-height: 0;
+}
+.ct-intro .ct-intro-dot::before {
+  content: ''; width: 8px; height: 8px; transform: rotate(45deg); border: 1px solid #d5b56a88; background: transparent;
+  transition: background-color 150ms, transform 150ms;
+}
+.ct-intro .ct-intro-dot.on::before { background: var(--accent); border-color: var(--accent); transform: rotate(45deg) scale(1.25); }
+.ct-intro .ct-intro-dot:hover:not(:disabled) { background: none; }
+.ct-intro .ct-intro-dot:hover::before { border-color: var(--accent); }
+.ct-intro .ct-intro-next { min-height: 44px; padding: 8px 14px; background: #2c2938; }
+.ct-intro .ct-intro-primary { min-height: 44px; padding: 8px 22px; font-size: 1.05rem; white-space: nowrap; }
+
+/* "What is this? ▶ Watch the tour" (mounted by the auth/landing screen). */
+.ct-intro-link { font-size: 0.92rem; }
+.ct-intro-link .ct-link { font-size: inherit; padding: 0 2px; }
+
+/* Phones: fill the screen; the clip runs edge to edge, the actions sit at the bottom. */
+@media (max-width: 600px) {
+  .ct-intro { padding: calc(10px + var(--safe-top)) calc(12px + var(--safe-right)) calc(12px + var(--safe-bottom)) calc(12px + var(--safe-left)); align-items: stretch; }
+  .ct-intro-frame { width: 100%; min-width: 0; height: 100%; gap: 12px; }
+  .ct-intro-head { flex-wrap: nowrap; }
+  .ct-intro-eyebrow { font-size: 0.92rem; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ct-intro .ct-intro-skip { padding: 6px 10px; font-size: 0.85rem; white-space: normal; text-align: center; line-height: 1.15; max-width: 58%; }
+  /* the camera follows the player at the centre of the frame: a taller crop keeps the action */
+  .ct-intro-stage { margin-top: auto; aspect-ratio: 4 / 3; }
+  .ct-intro-text { min-height: 0; overflow-y: auto; }
+  .ct-intro-foot { margin-top: auto; }
+  .ct-intro-text h2 { font-size: 1.6rem; }
+  .ct-intro-text p { font-size: 1rem; }
+  .ct-intro-foot { flex-wrap: wrap; gap: 8px 6px; }
+  .ct-intro-dots { order: -1; flex-basis: 100%; }
+  .ct-intro .ct-intro-primary { flex: 1; }
+}
+/* Short landscape screens: clip beside the text. */
+@media (max-height: 520px) and (min-width: 640px) {
+  .ct-intro-frame { width: min(900px, 100%); display: grid; grid-template-columns: 1.4fr 1fr; grid-template-rows: auto 1fr auto; gap: 10px 16px; }
+  .ct-intro-head, .ct-intro-foot { grid-column: 1 / -1; }
+  .ct-intro-stage { grid-row: 2; align-self: start; }
+  .ct-intro-text { grid-row: 2; overflow-y: auto; }
+}

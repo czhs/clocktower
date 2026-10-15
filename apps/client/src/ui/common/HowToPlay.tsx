@@ -1,4 +1,6 @@
+import type { ComponentType } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
+import type { IntroTourProps } from '../intro/IntroTour';
 import './help.css';
 
 // "How to play": a short, dismissible guide reachable from the home header, the waiting room and
@@ -29,15 +31,33 @@ function markSeen() {
 /** Mount once per screen. `autoOpen` shows it on the very first visit. */
 export function HowToPlayHost({ autoOpen = false, touch = false }: { autoOpen?: boolean; touch?: boolean }) {
   const [open, setOpen] = useState(() => autoOpen && !helpSeen());
+  // (tutorial) "Watch the tour": the video tour, loaded on demand (its own chunk + CSS).
+  const [Tour, setTour] = useState<ComponentType<IntroTourProps> | null>(null);
   useEffect(() => {
     const on = () => setOpen(true);
     window.addEventListener('ct:help', on);
     return () => window.removeEventListener('ct:help', on);
   }, []);
+  const watchTour = () => {
+    markSeen();
+    setOpen(false);
+    void import('../intro/IntroTour').then((m) => setTour(() => m.IntroTour)).catch(() => setOpen(true));
+  };
+  if (Tour)
+    return (
+      <Tour
+        open
+        onClose={() => {
+          void import('../intro/state').then((m) => m.markIntroSeen());
+          setTour(null);
+        }}
+      />
+    );
   if (!open) return null;
   return (
     <HowToPlay
       touch={touch}
+      onTour={watchTour}
       onClose={() => {
         markSeen();
         setOpen(false);
@@ -49,7 +69,7 @@ export function HowToPlayHost({ autoOpen = false, touch = false }: { autoOpen?: 
 const TABS = ['Basics', 'Day & votes', 'Night', 'Voice'] as const;
 type Tab = (typeof TABS)[number];
 
-export function HowToPlay({ onClose, touch }: { onClose: () => void; touch?: boolean }) {
+export function HowToPlay({ onClose, touch, onTour }: { onClose: () => void; touch?: boolean; onTour?: () => void }) {
   const [tab, setTab] = useState<Tab>('Basics');
   const closeRef = useRef<HTMLButtonElement>(null);
   const prevFocus = useRef<Element | null>(null);
@@ -149,7 +169,17 @@ export function HowToPlay({ onClose, touch }: { onClose: () => void; touch?: boo
           )}
         </div>
         <footer class="ct-help-foot">
-          <span class="muted ct-small">Reopen any time with the ? button.</span>
+          <span class="muted ct-small">
+            Reopen any time with the ? button.
+            {onTour && (
+              <>
+                {' '}
+                <button class="ct-link ct-help-tour" onClick={onTour}>
+                  ▶ Watch the tour
+                </button>
+              </>
+            )}
+          </span>
           <button class="primary" onClick={onClose}>
             Got it
           </button>
