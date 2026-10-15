@@ -172,6 +172,10 @@ export interface PlayerGameView {
    * the server; the night falls once every player is inside their own home (public).
    */
   bedtimeOvertime?: boolean;
+  /** (v2.1) The town clock (public; see clock.ts). */
+  clock?: import('./clock.js').DayClockView | null;
+  /** (v2.1) 'auto' = no Storyteller: the server runs the game. */
+  storytellerMode?: import('./clock.js').StorytellerMode;
 }
 
 // Player C2S payloads

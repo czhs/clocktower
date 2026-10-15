@@ -20,6 +20,7 @@ import { StCommand, type StorytellerGameView } from './storyteller.js';
 import { VoiceAnnounceMsg, VoiceStatusMsg, type VoiceGrant, type VoiceRevoke, type VoiceUnavailable } from './voice.js';
 import { MoveMsg, UseDoorMsg, type WorldSnapshot, type WorldTeleport } from './world.js';
 import { EmoteMsg, PinClearMsg, PinDropMsg, PinRemoveMsg, type EmoteEvent } from './social.js';
+import { ClockProposeMsg, ClockVoteMsg } from './clock.js';
 import { StoryGetMsg, StoryPamphletsMsg, StoryReleaseMsg, type Pamphlet, type StoryStView } from './story.js';
 import { NotebookLoadMsg, NotebookSaveMsg, type NotebookDataMsg, type NotebookUnavailableMsg } from './notebook.js';
 
@@ -44,6 +45,9 @@ export const C2S = {
   // world
   move: MoveMsg,
   'world:useDoor': UseDoorMsg,
+  // clock (v2.1): automatic games — propose / vote on extending the town clock
+  'clock:propose': ClockProposeMsg,
+  'clock:vote': ClockVoteMsg,
   // social (v2): emotes + pins
   'social:emote': EmoteMsg,
   'social:pin': PinDropMsg,

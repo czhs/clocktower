@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { DayClockCommand } from './clock.js';
 import {
   CharacterIdSchema,
   PROMPT_KINDS,
@@ -334,5 +335,7 @@ export const StCommand = z.discriminatedUnion('type', [
   z.object({ type: z.literal('door_lock'), buildingId: z.string().min(1).max(32), lock: z.enum(['locked', 'unlocked', 'default']) }),
   /** (additive, v2) Storyteller click-to-teleport of themselves (seated Storyteller only; also allowed while waiting). */
   z.object({ type: z.literal('teleport_self'), to: StSelfTarget }),
+  // (v2.1) the town clock (clock.ts)
+  DayClockCommand,
 ]);
 export type StCommand = z.infer<typeof StCommand>;

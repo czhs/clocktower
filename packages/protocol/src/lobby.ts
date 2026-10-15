@@ -50,6 +50,8 @@ export const CreateLobbyRequest = z.object({
   maxPlayers: z.number().int().min(MIN_PLAYERS).max(MAX_PLAYERS),
   script: z.enum(SCRIPTS).default('trouble-brewing'),
   takeStoryteller: z.boolean().default(false),
+  /** (v2.1) 'auto' = no Storyteller seat; the server runs the game (clock.ts). */
+  storytellerMode: z.enum(['human', 'auto']).optional(),
 });
 export type CreateLobbyRequest = z.infer<typeof CreateLobbyRequest>;
 
@@ -104,5 +106,11 @@ export const LobbySettingsMsg = z.object({
   name: LobbyName.optional(),
   description: LobbyDescription.optional(),
   maxPlayers: z.number().int().min(MIN_PLAYERS).max(MAX_PLAYERS).optional(),
+  /** (v2.1) host only, waiting phase only. */
+  storytellerMode: z.enum(['human', 'auto']).optional(),
+  autoTimings: z
+    .object({ discussionMin: z.number().min(1).max(30), nominationsMin: z.number().min(1).max(20), bedtimeSec: z.number().int().min(15).max(180), nightSec: z.number().int().min(20).max(300) })
+    .partial()
+    .optional(),
 });
 export const EmptyMsg = z.object({}).strict();
