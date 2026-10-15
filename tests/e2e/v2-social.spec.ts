@@ -10,8 +10,13 @@
 //   Phone 390x844 (Esme): long-press -> radial -> slide to Pin / tap Point; a short tap still walks.
 //   The Storyteller clears all pins from the dock.
 //
-// Run (own server on 127.0.0.1:3355, never 3000/3001/3398):
-//   CT_AGENT=social-client scripts/remote.sh bash scripts/... (see the social-client report)
+// Run on hshi-u1 against a throwaway server (build, then e.g. PORT=3355 HOST=127.0.0.1 NODE_ENV=test
+// APP_ENV=test COOKIE_SECURE=false DATABASE_URL=file:/tmp/x/e2e.db SESSION_SECRET=… PASSPHRASE_PEPPER=…
+// node apps/server/dist/server.js &), then:
+//   E2E_BASE_URL=http://127.0.0.1:3355 pnpm exec playwright test -c tests/e2e/playwright.config.ts v2-social
+// (or plain `pnpm test:e2e v2-social` with the config's own server). `-g quick` = the 30 s phone check.
+// The page opts into the social layer's debug hook (localStorage ct.debug.social = 1) to assert what is
+// DRAWN and to hold a gesture on screen while a (slow, software-rendered) screenshot is taken.
 // Screenshots: docs/screenshots/v2-social-*.png
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
@@ -21,6 +26,7 @@ import { canvasBox, FrameTap, inject, installSocketTap, outdoorCamera } from './
 const OUT = path.resolve('docs/screenshots');
 const errors: string[] = [];
 type Drawn = { seen: string[]; emotes: { pid: string; dir: string | null; hand: boolean; alpha: number; ping: boolean }[]; pins: { id: string; color: string; kind: string; visible: boolean; scale: number }[] };
+const hold = (page: Page, on: boolean) => page.evaluate((v) => (window as any).__ctSocial?.hold(v), on);
 const drawn = (page: Page): Promise<Drawn> =>
   page.evaluate(() => {
     const s = (window as unknown as { __ctSocial?: { emotes(): unknown; pins(): unknown; seen(): string[] } }).__ctSocial;
@@ -53,7 +59,7 @@ async function account(browser: Browser, name: string): Promise<Acc> {
   page.on('dialog', (d) => void d.accept());
   const tap = new FrameTap(name, page);
   page.on('pageerror', (e) => errors.push(`${name}: ${e.message}`));
-  page.on('console', (m) => m.type() === 'error' && !/livekit|voice|ERR_NAME|net::|favicon|Failed to load resource/i.test(m.text()) && errors.push(`${name}: ${m.text().slice(0, 200)}`));
+  page.on('console', (m) => m.type() === 'error' && !/livekit|voice|ERR_NAME|net::|favicon|Failed to load resource|WebSocket is already in CLOSING or CLOSED/i.test(m.text()) && errors.push(`${name}: ${m.text().slice(0, 200)}`));
   await page.goto('/');
   const r = await page.request.post('/api/auth/create', { data: { displayName: name } });
   expect(r.status(), await r.text()).toBeLessThan(300);
@@ -124,8 +130,13 @@ test('v2 social: point + pins, desktop and phone', async ({ browser }) => {
   const t1 = Date.now();
   const b = where(ada, 'Bram')!;
   const bs = await toScreen(ada, { x: b.x, y: b.y - 14 });
+  await hold(ada.page, true);
+  await hold(bram.page, true);
   await ada.page.mouse.click(bs.x, bs.y, { button: 'right' });
-  const handOf = async (page: Page, who: string) => (await drawn(page)).emotes.find((e) => e.pid === who)?.hand ?? false;
+  const handOf = async (page: Page, who: string) => {
+    const e = (await drawn(page)).emotes.find((x) => x.pid === who);
+    return !!e && e.hand && e.alpha >= 0.95;
+  };
   await expect.poll(() => handOf(ada.page, pid.Ada), { timeout: 3000, intervals: [50] }).toBe(true);
   await ada.page.screenshot({ path: path.join(OUT, 'v2-social-point-desktop.png') });
   const sentPoint = await ada.tap.until(() => ada.tap.sent('social:emote', t1)[0], 5000, 'Ada sent a point');
@@ -139,6 +150,8 @@ test('v2 social: point + pins, desktop and phone', async ({ browser }) => {
   await bram.tap.until(() => bram.tap.received('social:emote', t1).filter((e) => e.pid === pid.Ada).length >= 2, 5000, 'second point (Q)');
   await expect.poll(() => handOf(bram.page, pid.Ada), { timeout: 3000, intervals: [50] }).toBe(true);
   await bram.page.screenshot({ path: path.join(OUT, 'v2-social-point-seen-by-target.png') });
+  await hold(ada.page, false);
+  await hold(bram.page, false);
   expect(cleo.tap.received('social:emote', t1).length, 'Cleo (inside) learns nothing').toBe(0);
 
   // --- 2. pins: F on a spot (gold), dock -> crimson, F on Bram, teal + middle-click on Dov, violet + shift+click on a spot
@@ -229,9 +242,11 @@ test('v2 social: point + pins, desktop and phone', async ({ browser }) => {
   await expect(pp.locator('[data-social-act="point"]')).toBeVisible();
   await shot(pp, 'radial-phone');
   await touch('touchEnd', ps2.x, ps2.y);
+  await hold(pp, true);
   await pp.locator('[data-social-act="point"]').tap();
   await expect.poll(() => handOf(pp, pid.Esme!), { timeout: 3000, intervals: [50] }).toBe(true);
   await pp.screenshot({ path: path.join(OUT, 'v2-social-point-phone.png') });
+  await hold(pp, false);
   const phonePoint = await phoneAcc.tap.until(() => phoneAcc.tap.sent('social:emote', t5)[0], 5000, 'phone point');
   expect(phonePoint.pid).toBe(pid.Ada);
   await ada.tap.until(() => ada.tap.received('social:emote', t5).find((e) => e.pid === pid.Esme), 5000, 'Ada sees Esme point');
@@ -267,6 +282,68 @@ test('v2 social: point + pins, desktop and phone', async ({ browser }) => {
   await st.page.getByRole('button', { name: 'Clear all' }).click();
   await st.tap.until(() => st.tap.sent('social:clearPins', t7)[0]?.scope === 'all', 5000, 'clear all sent');
   await ada.tap.until(() => pinsOf(ada).length === 0, 5000, 'all pins cleared');
+  await phone.close();
+  expect(errors, errors.join('\n')).toEqual([]);
+});
+
+// Quick phone-only check (waiting room, no game): long-press radial, slide-to-pin, tap-to-point, a short tap walks.
+test('v2 social: phone long-press (quick)', async ({ browser }) => {
+  test.setTimeout(240_000);
+  const st = await account(browser, 'Teller2');
+  const lr = await st.page.request.post('/api/lobbies', { data: { name: 'Social phone', maxPlayers: 15, takeStoryteller: true } });
+  const id = ((await lr.json()) as { lobby: { id: string } }).lobby.id;
+  await st.page.goto(`/lobby/${id}`);
+  const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 1, extraHTTPHeaders: { 'X-Forwarded-For': `10.90.${process.pid % 200}.${++ipNo}` } });
+  await installSocketTap(phone);
+  await phone.addInitScript(noHints);
+  const pp = await phone.newPage();
+  pp.on('pageerror', (e) => errors.push(`phone: ${e.message}`));
+  const acc: Acc = { name: 'Pia', ctx: phone, page: pp, tap: new FrameTap('Pia', pp), pid: '' };
+  await pp.goto('/');
+  expect((await pp.request.post('/api/auth/create', { data: { displayName: 'Pia' } })).status()).toBeLessThan(300);
+  await pp.goto(`/lobby/${id}`);
+  await acc.tap.until(() => ents(acc).find((e) => e.id === youPid(acc)), 30_000, 'phone in town');
+  await pp.waitForTimeout(2500);
+  const cdp = await phone.newCDPSession(pp);
+  const touch = async (type: 'touchStart' | 'touchMove' | 'touchEnd', x: number, y: number) =>
+    cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x: Math.round(x), y: Math.round(y) }] });
+  const me = ents(acc).find((e) => e.id === youPid(acc))!;
+  const t0 = Date.now();
+  let p = await toScreen(acc, { x: me.x + 30, y: me.y + 30 });
+  await touch('touchStart', p.x, p.y);
+  await pp.waitForTimeout(600);
+  await expect(pp.locator('[data-social-act="point"]')).toBeVisible();
+  await touch('touchEnd', p.x, p.y);
+  await pp.waitForTimeout(400);
+  const dbg = await pp.evaluate(() => (window as any).__ctSocial?.seen());
+  expect(await pp.locator('[data-social-act="point"]').count(), `radial stays open after lifting (log: ${JSON.stringify(dbg)})`).toBe(1);
+  await pp.locator('[data-social-act="point"]').tap();
+  await acc.tap.until(() => acc.tap.sent('social:emote', t0)[0], 5000, 'phone point');
+  // slide to pin
+  p = await toScreen(acc, { x: me.x - 30, y: me.y + 40 });
+  await touch('touchStart', p.x, p.y);
+  await pp.waitForTimeout(600);
+  const b = (await pp.locator('[data-social-act="pin"]').boundingBox())!;
+  await touch('touchMove', p.x + 4, p.y - 8);
+  await touch('touchMove', b.x + b.width / 2, b.y + b.height / 2);
+  await pp.waitForTimeout(60);
+  await touch('touchEnd', b.x + b.width / 2, b.y + b.height / 2);
+  await acc.tap.until(() => acc.tap.sent('social:pin', t0)[0], 5000, 'phone pin');
+  await acc.tap.until(() => pinsOf(acc).length === 1, 5000, 'pin arrives');
+  await pp.waitForTimeout(600);
+  await shot(pp, 'quick-phone-pin');
+  // a short tap still walks
+  const t1 = Date.now();
+  p = await toScreen(acc, { x: me.x + 40, y: me.y - 20 });
+  await pp.touchscreen.tap(p.x, p.y);
+  await acc.tap.until(() => acc.tap.sent('move', t1).some((m) => m.moving), 5000, 'a tap still walks');
+  // tap my pin: removed
+  await pp.waitForTimeout(2500);
+  const pin = pinsOf(acc)[0];
+  const ps = await toScreen(acc, { x: pin.target.x, y: pin.target.y });
+  const t2 = Date.now();
+  await pp.touchscreen.tap(ps.x, ps.y - 10);
+  await acc.tap.until(() => acc.tap.sent('social:unpin', t2)[0], 5000, 'tap own pin removes it');
   await phone.close();
   expect(errors, errors.join('\n')).toEqual([]);
 });

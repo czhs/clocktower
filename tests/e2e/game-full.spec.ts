@@ -40,6 +40,8 @@ import {
   leaveByKey,
   selfEntity,
   signUp,
+  stPanelMode,
+  storytellerToolsMode,
   tapCottage,
   tapLockedCottage,
   voiceZone,
@@ -132,6 +134,8 @@ test('full game: 1 Storyteller + 5 players, every phase through the real UI', as
     await step('1a 6 accounts signed up through the UI, each picking a character from the roster', 'ui', async () => {
       st = await signUp(browser, ST_NAME, { characterIndex: 0, consoleSink, viewport: { width: 1200, height: 760 } });
       all.push(st);
+      // (st-ui) the classic Now strip + tabs drive most ST steps; the night visits use the script panel
+      await storytellerToolsMode(st);
       // villagers 2,5,8,11 and a CMU mascot (index 14): all distinct
       for (let i = 0; i < NAMES.length; i++) all.push(await signUp(browser, NAMES[i]!, { viewport: { width: 720, height: 450 }, characterIndex: [2, 5, 8, 11, 14][i]!, consoleSink }));
       players = all.slice(1);
@@ -342,8 +346,13 @@ test('full game: 1 Storyteller + 5 players, every phase through the real UI', as
       }
     };
 
-    await step(`4b ST clicks ${A.name}'s cottage on the map (click-to-teleport = a visit, with a poof) and sends info from the night order`, 'ui', async () => {
-      await st.page.locator('.cts-tabs').getByRole('button', { name: 'Night order' }).click();
+    /** (st-ui) The script panel's row for a seat in "Tonight's visits". */
+    const visitRow = (who: GamePlayer) => st.page.locator('.cts-visits > li', { has: st.page.locator('.cts-visit-name', { hasText: who.name }) });
+    await step(`4b ST (script panel) clicks ${A.name}'s cottage on the map (click-to-teleport = a visit, with a poof); the script marks "you are here" and the ST tells them their info`, 'ui', async () => {
+      // the night is run from the default "script" panel, as real Storytellers will
+      await stPanelMode(st.page, 'script');
+      await expect(st.page.locator('.cts-visits')).toBeVisible({ timeout: 15_000 });
+      await shot(st.page, '06a-first-night-st-script');
       visitAt = Date.now();
       note(`ST tap log: ${(await tapCottage(st, stPid, homeOf(A).id, { storyteller: true })).join(' | ')}`);
       const tp = st.tap.received('world:teleport', visitAt).filter((t: any) => t.location === `bld:${homeOf(A).id}`);
@@ -357,9 +366,17 @@ test('full game: 1 Storyteller + 5 players, every phase through the real UI', as
       let text: string;
       if (infoStep?.suggestedInfo) {
         text = infoStep.suggestedInfo.text;
-        await stepRow(infoStep.id).getByRole('button', { name: 'Send info', exact: true }).click();
+        const row = visitRow(A);
+        await expect(row).toHaveClass(/\bhere\b/, { timeout: 15_000 });
+        await expect(row).toContainText('you are here');
+        const tell = row.locator('.cts-tell');
+        await expect(tell.locator('input')).toHaveValue(text);
+        await tell.getByRole('button', { name: 'Tell them' }).click();
+        await expect(row.getByText('✓ told')).toBeVisible({ timeout: 15_000 }).catch(() => note('"✓ told" not shown in the script row'));
       } else {
         text = `You hear a raven at midnight ${suffix}.`;
+        note('no info step tonight: info sent from Grimoire & tools');
+        await stPanelMode(st.page, 'tools');
         await st.page.locator('.cts-tabs').getByRole('button', { name: 'Grimoire' }).click();
         await st.page.locator('.cts-grim', { has: st.page.locator('.cts-name', { hasText: A.name }) }).getByRole('button', { name: 'Info', exact: true }).click();
         await st.page.getByPlaceholder('What they learn…').fill(text);
@@ -373,16 +390,25 @@ test('full game: 1 Storyteller + 5 players, every phase through the real UI', as
       await A.page.locator('.cth-card-head').click();
     });
 
-    await step(`4c ST leaves ${A.name}'s home with the room's Leave button, visits ${B.name} from the night order and prompts them; the player answers in their HUD`, 'ui', async () => {
+    await step(`4c ST leaves ${A.name}'s home with the room's Leave button, goes to ${B.name} with the script's Go button and asks them (script "Ask:"); the player answers in their HUD`, 'ui', async () => {
       await leaveByButton(st, stPid);
       await st.tap.until(() => gv(st).visitingSeat === null, 10_000, 'visit over after Leave');
       await A.tap.until(() => gv(A).storytellerVisitingYou === false, 15_000, 'A no longer visited');
-      await visit(promptStep, B);
+      if (promptStep) {
+        await stPanelMode(st.page, 'script');
+        const row = visitRow(B);
+        await row.locator('.cts-go').click();
+        await expect(row).toContainText('you are here', { timeout: 15_000 });
+      } else await visit(promptStep, B);
       await st.tap.until(() => gv(st).visitingSeat === seatOf(B), 15_000, 'visiting B');
       await A.tap.until(() => gv(A).storytellerVisitingYou === false, 15_000, 'A no longer visited');
       await B.tap.until(() => gv(B).storytellerVisitingYou === true, 15_000, 'B visited');
-      if (promptStep?.prompt) await stepRow(promptStep.id).getByRole('button', { name: /^(Re-)?[Pp]rompt$/ }).click();
-      else {
+      if (promptStep?.prompt) {
+        await visitRow(B).getByRole('button', { name: /^Ask:/ }).click();
+        await shot(st.page, '07b-night-st-script-ask');
+      } else if (promptStep) note(`${B.name}'s step has no prompt: Grimoire prompt instead`);
+      if (!promptStep?.prompt) {
+        await stPanelMode(st.page, 'tools');
         await st.page.locator('.cts-tabs').getByRole('button', { name: 'Grimoire' }).click();
         await st.page.locator('.cts-grim', { has: st.page.locator('.cts-name', { hasText: B.name }) }).getByRole('button', { name: 'Prompt', exact: true }).click();
         await st.page.getByRole('button', { name: 'Send prompt' }).click();
@@ -395,6 +421,11 @@ test('full game: 1 Storyteller + 5 players, every phase through the real UI', as
       await B.tap.until(() => (gv(B).prompts ?? []).every((x: any) => x.id !== pr.id), 15_000, 'prompt answered');
       await st.tap.until(() => queue().some((s) => s.seat === seatOf(B) && s.response) || gv(st).grimoire.find((g: any) => g.seat === seatOf(B))?.sentPrompts?.some((x: any) => !x.open), 15_000, 'ST sees the answer');
       await expect(card).toHaveCount(0);
+      if (promptStep?.prompt) {
+        await expect(visitRow(B).locator('.cts-resp')).toContainText('Answer:', { timeout: 15_000 });
+        const done = visitRow(B).locator('.cts-done');
+        if (await done.isEnabled()) await done.click();
+      }
     });
 
     await step('4d the three unvisited players saw/heard nothing: no ST entity, no visit cue, no "visiting" flag, no hint', 'observe', async () => {
@@ -409,7 +440,8 @@ test('full game: 1 Storyteller + 5 players, every phase through the real UI', as
       for (const p of [A, B]) expect(p.tap.received('sound', visitAt).some((s: any) => s?.cue === 'visit'), `${p.name} visit cue`).toBe(true);
     });
 
-    await step('4e ST leaves, skips the remaining night steps, ends the night (Dawn) and starts the day', 'ui', async () => {
+    await step('4e ST leaves, skips the remaining night steps (Grimoire & tools), ends the night (Dawn) and starts the day', 'ui', async () => {
+      await stPanelMode(st.page, 'tools');
       await st.page.locator('.cts-chip.visit').getByRole('button', { name: 'leave' }).click();
       await st.tap.until(() => gv(st).visitingSeat === null, 10_000, 'left home');
       await st.page.locator('.cts-tabs').getByRole('button', { name: 'Night order' }).click();
@@ -490,6 +522,31 @@ test('full game: 1 Storyteller + 5 players, every phase through the real UI', as
       await leaveByButton(guest, pidOf(guest));
       await guest.tap.until(() => voiceZone(guest) === 'square', 15_000, 'guest back in the square zone');
       await expect(insidePanel(host.page)).toContainText('Nobody else is here', { timeout: 15_000 });
+    });
+
+    // (smoke, new in v2) the private notebook: N opens it, a note autosaves, it survives close/reopen,
+    // and no other browser ever receives it
+    await soft('5c notebook (N): a private note autosaves, survives close/reopen, reaches nobody else', async () => {
+      const w = outsider;
+      const secret = `nb-secret-${suffix} thinks ${host.name.split(' ')[0]} lies`;
+      const t0 = Date.now();
+      await w.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+      await w.page.keyboard.press('KeyN');
+      const nb = w.page.getByRole('complementary', { name: 'Your private notebook' });
+      await expect(nb).toBeVisible({ timeout: 15_000 });
+      await expect(nb).toContainText('Only you can see this');
+      const field = nb.getByLabel(`Note about ${host.name}`);
+      await field.fill(secret);
+      await expect(nb.locator('.ctn-status')).toHaveText(/Saved/, { timeout: 20_000 });
+      await shot(w.page, '09d-notebook');
+      await nb.getByRole('button', { name: 'Close notebook' }).click();
+      await expect(nb).toHaveCount(0);
+      await w.page.keyboard.press('KeyN');
+      await expect(nb.getByLabel(`Note about ${host.name}`)).toHaveValue(secret, { timeout: 15_000 });
+      await nb.getByRole('button', { name: 'Close notebook' }).click();
+      expect(w.tap.sent('notebook:save', t0).length, 'autosave frames sent').toBeGreaterThan(0);
+      await w.page.waitForTimeout(1500);
+      for (const p of all.filter((x) => x !== w)) expect(JSON.stringify(p.tap.frames.filter((f) => f.at >= t0).map((f) => f.payload)).includes(secret), `${p.name} received the note`).toBe(false);
     });
 
     // ============================================================== 6. gather, nominate, vote, execute
@@ -821,6 +878,20 @@ test('full game: 1 Storyteller + 5 players, every phase through the real UI', as
       }
       note(`winner ${winner}`);
       await shot(players[1]!.page, '21-endgame-reveal');
+    });
+
+    // (smoke, new in v2) the Storyteller's story of the game; players have no story (pamphlets are off by default)
+    await soft('9b2 Story: the ST opens "The story" (the whole game); players see no Story/Pamphlets button', async () => {
+      const btn = st.page.locator('.cty-btn');
+      await expect(btn).toBeVisible({ timeout: 15_000 });
+      await btn.click();
+      const dlg = st.page.getByRole('dialog', { name: 'The story' });
+      await expect(dlg).toBeVisible({ timeout: 10_000 });
+      await expect(dlg.locator('.cty-body')).not.toBeEmpty({ timeout: 15_000 });
+      note(`story (first 160 chars): "${((await dlg.locator('.cty-body').textContent()) ?? '').trim().slice(0, 160)}"`);
+      await shot(st.page, '21b-st-story');
+      await dlg.getByRole('button', { name: 'Close' }).click();
+      for (const p of players) await expect(p.page.locator('.cty-btn'), `${p.name}: no pamphlets button (setting off)`).toHaveCount(0);
     });
 
     await step('9c ST presses Play again: everyone is back in a clean waiting room (no game view, nobody ready, seats cleared); Ready works again', 'ui', async () => {

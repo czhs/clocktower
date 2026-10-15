@@ -223,19 +223,6 @@ export function pressState(downAt: number, now: number, moved: number, already: 
 // ---------------------------------------------------------------------------------------
 // point emote geometry
 
-/** Where the pointing hand floats: beside the pointer's chest, toward the target. */
-export function handPose(from: { x: number; y: number }, to: { x: number; y: number }, reach = 12): { x: number; y: number; angle: number; flip: boolean } {
-  const cx = from.x;
-  const cy = from.y - 16; // chest height above the feet
-  const dx = to.x - cx;
-  const dy = to.y - 6 - cy;
-  const d = Math.hypot(dx, dy);
-  const ux = d > 0.001 ? dx / d : 1;
-  const uy = d > 0.001 ? dy / d : 0;
-  const angle = Math.atan2(uy, ux);
-  return { x: cx + ux * reach, y: cy + uy * reach * 0.7, angle, flip: ux < 0 };
-}
-
 /** Emote opacity over its life (quick fade in, hold, fade out over the last 600 ms). */
 export function emoteAlpha(age: number, life: number): number {
   if (age < 0 || age >= life) return 0;

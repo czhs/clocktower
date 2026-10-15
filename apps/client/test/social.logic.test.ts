@@ -8,7 +8,9 @@ import {
   emoteAlpha,
   evictedByDrop,
   fanSlot,
-  handPose,
+  DIR_VECTORS,
+  nearestDir,
+  pinTexels,
   isPinColor,
   loadPinColor,
   LONG_PRESS_MS,
@@ -170,14 +172,17 @@ describe('long-press', () => {
 });
 
 describe('point emote geometry', () => {
-  it('puts the hand toward the target and flips it when pointing left', () => {
-    const r = handPose({ x: 100, y: 100 }, { x: 200, y: 84 });
-    expect(r.x).toBeGreaterThan(100);
-    expect(r.flip).toBe(false);
-    const l = handPose({ x: 100, y: 100 }, { x: 0, y: 100 });
-    expect(l.x).toBeLessThan(100);
-    expect(l.flip).toBe(true);
-    expect(Number.isFinite(handPose({ x: 1, y: 1 }, { x: 1, y: -9 }).angle)).toBe(true);
+  it('picks the art direction closest to the target', () => {
+    expect(nearestDir(10, 0, DIR_VECTORS)).toBe('right');
+    expect(nearestDir(-5, 5.2, DIR_VECTORS)).toBe('down-left');
+    expect(nearestDir(0.1, -9, DIR_VECTORS)).toBe('up');
+    expect(nearestDir(0, 0, DIR_VECTORS)).toBeTypeOf('string');
+  });
+  it('pins: 1 texel per canvas px on phones, 2 on desktops, never more', () => {
+    expect(pinTexels(1.06)).toBe(1);
+    expect(pinTexels(0.5)).toBe(1);
+    expect(pinTexels(2.45)).toBe(2);
+    expect(pinTexels(7)).toBe(2);
   });
   it('fades in, holds, fades out within its life', () => {
     expect(emoteAlpha(-1, 3500)).toBe(0);

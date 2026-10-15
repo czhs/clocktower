@@ -900,3 +900,30 @@ export async function tapLockedCottage(p: Player, pid: string, buildingId: strin
   }
   throw new Error(`${p.name}: could not reach ${buildingId} by tapping`);
 }
+
+/**
+ * (st-ui) The Storyteller panel opens in the simple "script" mode by default; the classic Now strip
+ * and tabs (.cts-now-btn, Stage / Grimoire / Night order / Day / Tools / Log) live behind
+ * "☰ Grimoire & tools" (remembered per viewer: localStorage ct.st.tools = '1'). Start this
+ * Storyteller in tools mode (every later navigation too).
+ */
+export async function storytellerToolsMode(p: Player): Promise<void> {
+  await p.ctx.addInitScript(() => {
+    try {
+      localStorage.setItem('ct.st.tools', '1');
+    } catch {}
+  });
+  await p.page.evaluate(() => {
+    try {
+      localStorage.setItem('ct.st.tools', '1');
+    } catch {}
+  });
+}
+
+/** Switch the Storyteller panel between the script and Grimoire & tools (no-op if already there). */
+export async function stPanelMode(page: Page, mode: 'script' | 'tools'): Promise<void> {
+  const btn = page.getByRole('button', { name: mode === 'script' ? /Back to the script/ : /Grimoire & tools/ });
+  if (await btn.count()) await btn.first().click();
+  if (mode === 'script') await expect(page.locator('.cts-script')).toBeVisible({ timeout: 15_000 });
+  else await expect(page.locator('.cts-tabs')).toBeVisible({ timeout: 15_000 });
+}

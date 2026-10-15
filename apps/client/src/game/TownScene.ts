@@ -468,6 +468,7 @@ export class TownScene extends Phaser.Scene {
         return best?.pid ?? null;
       },
       characterOf: (pid) => this.castKey(pid).key.split('/')[0]!,
+      passTap: (sx, sy) => this.handleTap(sx, sy, false),
       faceToward: (x, y) => {
         if (!this.myAvatar) return;
         this.myDir = dir8(x - this.me.x, y - (this.me.y - 12));
@@ -657,10 +658,16 @@ export class TownScene extends Phaser.Scene {
   // tap / click
 
   private onTap(p: Phaser.Input.Pointer) {
-    if (p.button !== 0 || !this.ready) return;
+    if (p.button !== 0) return;
+    this.handleTap(p.x, p.y, true);
+  }
+
+  /** A primary tap at canvas point (sx, sy); `askSocial` = let the emote/pin layer claim it first. */
+  private handleTap(sx: number, sy: number, askSocial: boolean) {
+    if (!this.ready) return;
     if (stagePick.get()) return; // the Storyteller panel is picking a point
-    const w = this.cameras.main.getWorldPoint(p.x, p.y);
-    if (this.social?.onTap(w.x, w.y)) return; // pointing / pinning
+    const w = this.cameras.main.getWorldPoint(sx, sy);
+    if (askSocial && this.social?.onTap(w.x, w.y)) return; // pointing / pinning
     const target = this.tapTarget(w.x, w.y);
     if (this.amStoryteller() && this.gview?.kind === 'storyteller') {
       // Storyteller: click-to-teleport (a building = straight inside, like a visit).

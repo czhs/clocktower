@@ -15,7 +15,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test, type Page } from '@playwright/test';
-import { armConfirm, FrameTap, geo, inject, insidePanel, leaveButton, selfEntity, signUp, watchConsole, type GamePlayer } from './helpers';
+import { armConfirm, FrameTap, geo, inject, insidePanel, leaveButton, selfEntity, signUp, storytellerToolsMode, watchConsole, type GamePlayer } from './helpers';
 
 const ART = path.join(path.dirname(fileURLToPath(import.meta.url)), 'artifacts');
 const RUN = process.env.GAME_RUN ?? Math.random().toString(36).slice(2, 6);
@@ -81,6 +81,8 @@ test('chaos: unexpected orders, refreshes, duplicate tabs and races during a rea
   try {
     const st = await signUp(browser, `ChaosST ${suffix}`, { consoleSink, viewport: { width: 1200, height: 760 } });
     all.push(st);
+    // (st-ui) chaos drives the classic Grimoire & tools panel (the default is the simple script)
+    await storytellerToolsMode(st);
     for (const [i, n] of NAMES.entries()) all.push(await signUp(browser, n, { viewport: { width: 720, height: 450 }, characterIndex: [3, 6, 9, 12, 16][i]!, consoleSink }));
     const players = all.slice(1);
     const [P1, P2, P3, P4, P5] = players as [GamePlayer, GamePlayer, GamePlayer, GamePlayer, GamePlayer];

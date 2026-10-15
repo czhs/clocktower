@@ -145,6 +145,12 @@ test('ux walkthrough', async ({ browser }) => {
     // ------------------------------------------------------------- auth screens
     const st = await newClient(browser, `Teller ${suffix}`);
     all.push(st);
+    // (st-ui) this walkthrough drives the classic Grimoire & tools panel (the default is the script)
+    await st.ctx.addInitScript(() => {
+      try {
+        localStorage.setItem('ct.st.tools', '1');
+      } catch {}
+    });
     await st.page.goto('/');
     await expect(st.page.getByRole('button', { name: 'Create account' })).toBeVisible();
     for (const s of DESKTOP) {

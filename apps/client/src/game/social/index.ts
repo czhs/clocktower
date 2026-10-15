@@ -69,8 +69,7 @@ export interface SocialCtx {
   /**
    * Optional: run TownScene's normal primary-tap handling for a canvas point (tap-to-go / teleport)
    * without asking the social layer again. Touch taps are held until release (a long-press must not
-   * start a walk first) and replayed through this. CONTRACT-REQUEST(social-client -> lead): wire it
-   * as `passTap: (sx, sy) => this.handleTap(sx, sy)`; until then the layer calls TownScene's onTap.
+   * start a walk first) and replayed through this (wired by TownScene).
    */
   passTap?(sx: number, sy: number): void;
 }
@@ -156,6 +155,8 @@ export function createSocialLayer(scene: Phaser.Scene, ctx: SocialCtx): SocialLa
   let lastTouchAt = -1e9;
   /** (debug hook) pids whose pointing hand has been drawn. */
   const debugSeen: string[] = [];
+  /** (debug hook) keep gestures on screen (slow test machines take seconds per screenshot). */
+  let debugHold = false;
   let qHeld = false;
   let lastPoint = { t: 0, x: NaN, y: NaN, pid: null as string | null };
   const cursor = { sx: 0, sy: 0, over: false, mouse: true };
@@ -266,16 +267,16 @@ export function createSocialLayer(scene: Phaser.Scene, ctx: SocialCtx): SocialLa
 
   socialActions.register({
     point: (t) => {
-      closeRadial();
+      closeRadial('btn:point');
       point(t);
     },
     pin: (t) => {
-      closeRadial();
+      closeRadial('btn:pin');
       pin(t);
     },
     clear,
     cancel: () => {
-      closeRadial();
+      closeRadial('cancel');
       if (socialMode.get().mode !== 'idle') socialMode.set((m) => ({ ...m, mode: 'idle' }));
     },
   });
@@ -373,10 +374,13 @@ export function createSocialLayer(scene: Phaser.Scene, ctx: SocialCtx): SocialLa
       const c = clientOf(p);
       const hot = radialButtonAt(c.x, c.y);
       if (r && hot) {
-        closeRadial();
+        closeRadial(`slide:${hot}`);
         if (hot === 'point') point(r.target);
         else pin(r.target);
-      } else if (r) socialRadial.set({ ...r, hot: null });
+      } else if (r) {
+        socialRadial.set({ ...r, hot: null });
+        radialAt = now(); // lifted without choosing: the radial waits for a tap a while
+      }
       return;
     }
     if (st === 'cancelled') return;
@@ -417,8 +421,10 @@ export function createSocialLayer(scene: Phaser.Scene, ctx: SocialCtx): SocialLa
     return act === 'point' || act === 'pin' ? act : null;
   }
 
-  function closeRadial() {
-    if (socialRadial.get()) socialRadial.set(null);
+  function closeRadial(why = '') {
+    if (!socialRadial.get()) return;
+    if (debugSeen.length < 200) debugSeen.push(`radial-close:${why}`);
+    socialRadial.set(null);
   }
 
   function replayTap(sx: number, sy: number) {
@@ -435,7 +441,7 @@ export function createSocialLayer(scene: Phaser.Scene, ctx: SocialCtx): SocialLa
 
   const keyDown = (e: KeyboardEvent) => {
     if (e.code === 'Escape' && (socialRadial.get() || socialMode.get().mode !== 'idle')) {
-      closeRadial();
+      closeRadial('esc');
       socialMode.set((m) => ({ ...m, mode: 'idle' }));
       e.stopImmediatePropagation(); // don't also leave the cottage
       return;
@@ -476,11 +482,15 @@ export function createSocialLayer(scene: Phaser.Scene, ctx: SocialCtx): SocialLa
     const p = input.activePointer;
     const ev = p.event as PointerEvent | MouseEvent | undefined;
     const touchLike = p.wasTouch || (ev as PointerEvent | undefined)?.pointerType === 'touch' || (ev as PointerEvent | undefined)?.pointerType === 'pen';
+    // Phaser also reports touches that land on HUD elements (its window listeners): those taps
+    // belong to the button under the finger (e.g. the radial's), never to the town.
+    const target = ev?.target as Node | null | undefined;
+    if (target && target !== scene.game.canvas) return true;
     cursor.mouse = !touchLike;
     if (touchLike) lastTouchAt = now();
     else if (now() - lastTouchAt < 800) return true; // the emulated click after a touch: already handled
     if (socialRadial.get()) {
-      closeRadial();
+      closeRadial(`tap:${touchLike ? 'touch' : 'mouse'}`);
       return true; // a tap elsewhere just closes the radial
     }
     const mode = socialMode.get().mode;
@@ -545,7 +555,7 @@ export function createSocialLayer(scene: Phaser.Scene, ctx: SocialCtx): SocialLa
     const z = cam().zoom;
     const still = reducedMotion();
     for (const [pid, e] of emotes) {
-      const age = t - e.t0;
+      const age = debugHold ? Math.min(t - e.t0, EMOTE_POINT_MS / 2) : t - e.t0;
       const a = emoteAlpha(age, EMOTE_POINT_MS);
       if (a <= 0) {
         dropEmote(e);
@@ -892,7 +902,7 @@ export function createSocialLayer(scene: Phaser.Scene, ctx: SocialCtx): SocialLa
       }
     }
     // the radial closes itself if ignored, or when we change place
-    if (socialRadial.get() && !press && (t - radialAt > 5000 || snapLoc !== ctx.me().location)) closeRadial();
+    if (socialRadial.get() && !press && (t - radialAt > 8000 || snapLoc !== ctx.me().location)) closeRadial(t - radialAt > 8000 ? 'timeout' : 'moved');
     // hold Q: re-aim when the cursor moves to something else
     if (qHeld && cursor.over && cursor.mouse && t - lastPoint.t > 650) {
       const w = worldAt(cursor.sx, cursor.sy);
@@ -911,8 +921,10 @@ export function createSocialLayer(scene: Phaser.Scene, ctx: SocialCtx): SocialLa
       const w = window as unknown as { __ctSocial?: unknown };
       w.__ctSocial = {
         seen: () => [...debugSeen],
+        hold: (on: boolean) => void (debugHold = on),
         radial: () => socialRadial.get(),
-        emotes: () => [...emotes.values()].map((e) => ({ pid: e.pid, dir: e.dir, hand: !!e.hand?.visible, alpha: e.hand?.alpha ?? 0, ping: !!e.ping?.visible })),
+        emotes: () =>
+          [...emotes.values()].map((e) => ({ pid: e.pid, dir: e.dir, hand: !!e.hand?.visible, alpha: e.hand?.alpha ?? 0, x: e.hand?.x, y: e.hand?.y, depth: e.hand?.depth, tex: e.hand?.texture.key, frame: e.hand?.frame.name, ping: !!e.ping?.visible })),
         pins: () => [...pins.values()].map((p) => ({ id: p.id, color: p.view.color, kind: p.view.target.kind, visible: p.img.visible, x: p.img.x, y: p.img.y, head: p.head, scale: p.img.scaleX })),
         zoom: () => cam().zoom,
       };
