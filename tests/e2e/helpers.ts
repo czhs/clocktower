@@ -149,13 +149,15 @@ type Geo = {
   isBlockedPx: typeof import('../../packages/protocol/src/index.js').isBlockedPx;
   locationAt: typeof import('../../packages/protocol/src/index.js').locationAt;
   tileCenterPx: typeof import('../../packages/protocol/src/index.js').tileCenterPx;
+  findPath: typeof import('../../apps/server/src/world/path.js').findPath;
 };
 let geoCache: Geo | null = null;
 export async function geo(): Promise<Geo> {
   if (!geoCache) {
     const a = await import('../../packages/assets/src/index.js');
     const pr = await import('../../packages/protocol/src/index.js');
-    geoCache = { L: a.townLayout, presets: a.CHARACTER_PRESETS, isBlockedPx: pr.isBlockedPx, locationAt: pr.locationAt, tileCenterPx: pr.tileCenterPx };
+    const path = await import('../../apps/server/src/world/path.js');
+    geoCache = { L: a.townLayout, presets: a.CHARACTER_PRESETS, isBlockedPx: pr.isBlockedPx, locationAt: pr.locationAt, tileCenterPx: pr.tileCenterPx, findPath: path.findPath };
   }
   return geoCache;
 }
@@ -169,18 +171,29 @@ export function roomFrame(type: string, payload: unknown): number[] {
 /** Remember every same-host WebSocket the page opens (window.__e2e.inject sends on the newest open one). */
 export async function installSocketTap(ctx: BrowserContext): Promise<void> {
   await ctx.addInitScript(() => {
-    const W = window as unknown as { __e2e?: { sockets: WebSocket[]; inject(b: number[]): boolean } };
+    const W = window as unknown as { __e2e?: { sockets: WebSocket[]; log: string[]; inject(b: number[]): boolean } };
     const Orig = window.WebSocket;
     const sockets: WebSocket[] = [];
+    const log: string[] = [];
+    const t0 = performance.now();
+    const ts = () => `${Math.round(performance.now() - t0)}ms`;
     class TapWS extends Orig {
       constructor(u: string | URL, p?: string | string[]) {
         super(u, p);
-        if (String(u).includes(location.host)) sockets.push(this);
+        if (String(u).includes(location.host)) {
+          const n = sockets.push(this);
+          const path = String(u).replace(/^wss?:\/\/[^/]+/, '').replace(/(reconnectionToken|ticket)=[^&]+/g, '$1=…').slice(0, 80);
+          log.push(`${ts()} #${n} new ${path}`);
+          this.addEventListener('open', () => log.push(`${ts()} #${n} open`));
+          this.addEventListener('close', (e) => log.push(`${ts()} #${n} close code=${(e as CloseEvent).code} reason=${(e as CloseEvent).reason.slice(0, 60)}`));
+          this.addEventListener('error', () => log.push(`${ts()} #${n} error`));
+        }
       }
     }
     window.WebSocket = TapWS as typeof WebSocket;
     W.__e2e = {
       sockets,
+      log,
       inject(bytes: number[]) {
         const s = [...sockets].reverse().find((x) => x.readyState === 1);
         if (!s) return false;
@@ -262,8 +275,30 @@ export async function presetIdByName(name: string | null): Promise<string | null
 }
 
 /** Second click of a two-click ConfirmButton (the armed group shows Yes / No). */
-export async function confirmYes(page: Page): Promise<void> {
-  await page.locator('.cts-confirm').getByRole('button', { name: 'Yes', exact: true }).first().click();
+export async function confirmYes(page: Page, timeout = 15_000): Promise<void> {
+  await page.locator('.cts-confirm').getByRole('button', { name: 'Yes', exact: true }).first().click({ timeout });
+}
+
+/**
+ * Arm a two-click ConfirmButton and press Yes. The armed state lasts 6 s; on a CPU-starved host the
+ * second click can miss it, so re-arm (up to 4 times). Returns the number of attempts used.
+ */
+export async function armConfirm(page: Page, button: import('@playwright/test').Locator): Promise<number> {
+  const label = ((await button.first().textContent({ timeout: 30_000 })) ?? '').trim();
+  for (let i = 1; ; i++) {
+    await button.first().click({ timeout: 20_000 });
+    try {
+      await confirmYes(page, 5_000);
+      return i;
+    } catch (e) {
+      if (i >= 4) throw e;
+      // Either the Yes click landed late (the action happened) or the armed state expired: wait for
+      // the armed group to go away, then re-arm only if the very same button is back.
+      await page.locator('.cts-confirm').first().waitFor({ state: 'detached', timeout: 10_000 }).catch(() => undefined);
+      const again = (await button.count()) ? ((await button.first().textContent()) ?? '').trim() : null;
+      if (again !== label) return i;
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------- keyboard walking
@@ -278,12 +313,21 @@ export function selfEntity(p: Player, pid: string): { x: number; y: number; loca
 }
 
 /** 4-neighbour BFS over walkable tiles of one location (outdoors or one interior), compressed to corners. */
-export async function tilePath(from: { x: number; y: number }, to: { x: number; y: number }, location: string): Promise<{ x: number; y: number }[]> {
+export async function tilePath(from: { x: number; y: number }, to: { x: number; y: number }, location: string, strict = true): Promise<{ x: number; y: number }[]> {
   const { L, isBlockedPx, locationAt, tileCenterPx } = await geo();
+  const T = L.tileSize;
+  // Collision is per pixel and keyboard positioning is only ~±8 px precise at a few fps, so prefer
+  // tiles that are free over (almost) their whole area; the endpoints only need their feet spot.
+  const clear = (tx: number, ty: number) => {
+    for (let dy = 0; dy < T; dy += 3) for (let dx = 1; dx < T; dx += 2) if (isBlockedPx(L, tx * T + dx, ty * T + dy) || locationAt(L, tx * T + dx, ty * T + dy) !== location) return false;
+    return true;
+  };
   const ok = (tx: number, ty: number) => {
     if (tx < 0 || ty < 0 || tx >= L.widthTiles || ty >= L.heightTiles) return false;
     const c = tileCenterPx(L, { x: tx, y: ty });
-    return !isBlockedPx(L, c.x, c.y) && locationAt(L, c.x, c.y) === location;
+    if (isBlockedPx(L, c.x, c.y) || locationAt(L, c.x, c.y) !== location) return false;
+    if (!strict || (tx === to.x && ty === to.y) || (tx === from.x && ty === from.y)) return true;
+    return clear(tx, ty);
   };
   const key = (x: number, y: number) => y * L.widthTiles + x;
   const prev = new Map<number, number>([[key(from.x, from.y), -1]]);
@@ -298,50 +342,156 @@ export async function tilePath(from: { x: number; y: number }, to: { x: number; 
       q.push(n);
     }
   }
-  if (!prev.has(key(to.x, to.y))) throw new Error(`no ${location} path from ${from.x},${from.y} to ${to.x},${to.y}`);
+  if (!prev.has(key(to.x, to.y))) {
+    if (strict) return tilePath(from, to, location, false);
+    throw new Error(`no ${location} path from ${from.x},${from.y} to ${to.x},${to.y}`);
+  }
   const path: { x: number; y: number }[] = [];
   for (let k = key(to.x, to.y); k !== -1; k = prev.get(k)!) path.unshift({ x: k % L.widthTiles, y: Math.floor(k / L.widthTiles) });
   return path.filter((p, i) => i === 0 || i === path.length - 1 || !((path[i - 1]!.x === p.x && path[i + 1]!.x === p.x) || (path[i - 1]!.y === p.y && path[i + 1]!.y === p.y)));
 }
 
-/** Hold an arrow key until the server position reaches `target` on one axis (closed loop, real keyboard). */
-export async function walkAxis(p: Player, pid: string, axis: 'x' | 'y', target: number, budgetMs = 90_000): Promise<void> {
+/** Hold an arrow key until the server position reaches `target` on one axis (closed loop, real keyboard).
+ * `cross` = where we want to be on the other axis: when a hold makes no progress (pixel-level
+ * obstacle next to an off-centre path) we nudge back toward it and retry. */
+export async function walkAxis(p: Player, pid: string, axis: 'x' | 'y', target: number, budgetMs = 90_000, cross?: number): Promise<void> {
   await p.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
   const until = Date.now() + budgetMs;
   const trail: number[] = [];
+  const other = axis === 'x' ? 'y' : 'x';
+  let stuck = 0;
+  let last: number | null = null;
+  const tap = async (key: string, d: number) => {
+    await p.page.keyboard.down(key);
+    // Far: hold for most of the distance. Near: a bare tap (one or two rendered frames), since any
+    // hold overshoots when Phaser renders only a few frames per second.
+    if (Math.abs(d) > 28) await p.page.waitForTimeout(Math.min(2500, (Math.abs(d) / 72) * 1000 * 0.75));
+    await p.page.keyboard.up(key);
+  };
   for (let i = 0; Date.now() < until; i++) {
     await p.page.waitForTimeout(350);
     const pos = selfEntity(p, pid);
     if (!pos) continue;
     const d = target - pos[axis];
     trail.push(Math.round(pos[axis]));
-    if (Math.abs(d) <= 5) return;
+    if (Math.abs(d) <= 8) return;
+    stuck = last !== null && Math.abs(pos[axis] - last) < 1 ? stuck + 1 : 0;
+    last = pos[axis];
+    if (stuck >= 2 && cross !== undefined) {
+      // blocked: re-centre on the other axis (alternate sides if already centred)
+      const dc = cross - pos[other];
+      const dir = Math.abs(dc) > 3 ? Math.sign(dc) : stuck % 2 ? 1 : -1;
+      const key = other === 'x' ? (dir > 0 ? 'ArrowRight' : 'ArrowLeft') : dir > 0 ? 'ArrowDown' : 'ArrowUp';
+      await tap(key, 0);
+      continue;
+    }
     const key = axis === 'x' ? (d > 0 ? 'ArrowRight' : 'ArrowLeft') : d > 0 ? 'ArrowDown' : 'ArrowUp';
-    await p.page.keyboard.down(key);
-    await p.page.waitForTimeout(Math.min(2500, Math.max(60, (Math.abs(d) / 72) * 1000 * (Math.abs(d) > 24 ? 0.8 : 0.6))));
-    await p.page.keyboard.up(key);
+    await tap(key, d);
   }
   const pos = selfEntity(p, pid);
-  throw new Error(`${p.name}: could not reach ${axis}=${target} (at ${pos?.x},${pos?.y}; trail ${trail.slice(-12).join(',')})`);
+  const since = until - budgetMs;
+  const sent = p.tap.sent('move', since);
+  const tps = p.tap.received('world:teleport', since).map((t: any) => `${t.reason}@${Math.round(t.x)},${Math.round(t.y)}`);
+  const lastSent = sent.at(-1);
+  const you = p.tap.last('world:snapshot')?.you;
+  throw new Error(
+    `${p.name}: could not reach ${axis}=${target} (at ${pos?.x},${pos?.y} ${pos?.location}; trail ${trail.slice(-12).join(',')}; ` +
+      `move frames sent ${sent.length}, last ${sent.slice(-4).map((m: any) => `#${m.seq} ${m.x},${m.y}${m.moving ? 'm' : ''}`).join(' ')}; ackSeq ${p.tap.last('world:snapshot')?.ackSeq}; ` +
+      `move errors ${JSON.stringify(p.tap.received('error', since).filter((e: any) => e.for === 'move').slice(-3))}; teleports ${tps.slice(-6).join(' ')}; you=${JSON.stringify(you ?? null)})`,
+  );
 }
 
-/** Walk with the real keyboard to a tile of the current location along a collision-free path. */
-export async function walkToTile(p: Player, pid: string, to: { x: number; y: number }): Promise<void> {
+/**
+ * Walk with the real keyboard to a tile of the current location. Follows the server's own A*
+ * waypoints (apps/server/src/world/path.ts: body-box aware, string-pulled) in a closed loop on the
+ * server position, holding one or two arrow keys (diagonals) per leg.
+ */
+export async function walkToTile(p: Player, pid: string, to: { x: number; y: number }, budgetMs = 600_000): Promise<void> {
+  const g = await geo();
   const me = selfEntity(p, pid);
   if (!me) throw new Error(`${p.name}: no own entity`);
-  const TILE = (await geo()).L.tileSize;
-  const start = { x: Math.floor(me.x / TILE), y: Math.floor(me.y / TILE) };
-  const path = await tilePath(start, to, me.location);
-  // centre on the start tile first (we may stand off-centre), then follow the corners
-  const c0 = await tilePx(path[0]!);
-  await walkAxis(p, pid, 'x', c0.x);
-  await walkAxis(p, pid, 'y', c0.y);
-  for (let i = 1; i < path.length; i++) {
-    const a = path[i - 1]!;
-    const b = path[i]!;
-    const cb = await tilePx(b);
-    if (a.x === b.x) await walkAxis(p, pid, 'y', cb.y);
-    else await walkAxis(p, pid, 'x', cb.x);
+  const goal = g.tileCenterPx(g.L, to);
+  let pts = g.findPath(g.L, { x: me.x, y: me.y }, goal, me.location as never);
+  if (!pts) throw new Error(`${p.name}: no path from ${me.x},${me.y} to ${goal.x},${goal.y}`);
+  let replans = 0;
+  await p.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  const until = Date.now() + budgetMs;
+  const since = Date.now();
+  const trail: string[] = [];
+  let i = 0;
+  let still = 0;
+  let flips = 0;
+  let lastSign = 0;
+  let lastSignY = 0;
+  let gain = 0.9;
+  let prev: { x: number; y: number } | null = null;
+  while (i < pts.length) {
+    if (Date.now() > until) {
+      const pos = selfEntity(p, pid);
+      const sent = p.tap.sent('move', since);
+      throw new Error(
+        `${p.name}: keyboard walk to ${goal.x},${goal.y} stuck at ${pos?.x},${pos?.y} (replans ${replans}, waypoint ${i}/${pts.length} ${JSON.stringify(pts[i])}; trail ${trail.slice(-8).join(' ')}; ` +
+          `moves sent ${sent.length} last ${sent.slice(-3).map((m: any) => `#${m.seq} ${m.x},${m.y}`).join(' ')}; ackSeq ${p.tap.last('world:snapshot')?.ackSeq}; ` +
+          `teleports ${p.tap.received('world:teleport', since).map((t: any) => t.reason).join(',')})`,
+      );
+    }
+    await p.page.waitForTimeout(300);
+    const pos = selfEntity(p, pid);
+    if (!pos) continue;
+    trail.push(`${Math.round(pos.x)},${Math.round(pos.y)}`);
+    const wp = pts[i]!;
+    const dx = wp.x - pos.x;
+    const dy = wp.y - pos.y;
+    const d = Math.hypot(dx, dy);
+    const last = i === pts.length - 1;
+    // overshoot detector: frame rates swing between ~1 and ~16 fps, so a hold can overshoot by tens of
+    // px; every reversal (on either axis) halves the hold time (down to bare taps)
+    const sx = Math.abs(dx) > 4 ? Math.sign(dx) : 0;
+    const sy = Math.abs(dy) > 4 ? Math.sign(dy) : 0;
+    if ((lastSign !== 0 && sx !== 0 && sx !== lastSign) || (lastSignY !== 0 && sy !== 0 && sy !== lastSignY)) {
+      flips++;
+      gain *= 0.5;
+    }
+    lastSign = sx || lastSign;
+    lastSignY = sy || lastSignY;
+    if (d <= (last ? 6 : 10) || (flips >= 2 && d <= 18)) {
+      i++;
+      still = 0;
+      flips = 0;
+      lastSign = 0;
+      lastSignY = 0;
+      gain = 0.9;
+      continue;
+    }
+    still = prev && Math.hypot(pos.x - prev.x, pos.y - prev.y) < 1 ? still + 1 : 0;
+    prev = { x: pos.x, y: pos.y };
+    // stuck off the planned line (furniture / corners): re-plan from where we actually stand
+    if ((still >= 4 || flips >= 4) && replans < 20) {
+      const re = g.findPath(g.L, { x: pos.x, y: pos.y }, goal, pos.location as never);
+      if (re && re.length) {
+        pts = re;
+        i = 0;
+        replans++;
+        still = 0;
+        flips = 0;
+        lastSign = 0;
+        lastSignY = 0;
+        gain = 0.9;
+        continue;
+      }
+    }
+    const keys: string[] = [];
+    // a component counts if it is a real part of the direction (or we are stuck: wiggle on it)
+    if (Math.abs(dx) > Math.max(4, d * 0.25)) keys.push(dx > 0 ? 'ArrowRight' : 'ArrowLeft');
+    if (Math.abs(dy) > Math.max(4, d * 0.25)) keys.push(dy > 0 ? 'ArrowDown' : 'ArrowUp');
+    if (still >= 3 && keys.length === 1) {
+      // blocked: add a sideways component toward the waypoint's other axis (or alternate)
+      const side = keys[0]!.includes('Left') || keys[0]!.includes('Right') ? (still % 2 ? 'ArrowUp' : 'ArrowDown') : still % 2 ? 'ArrowLeft' : 'ArrowRight';
+      keys.push(side);
+    }
+    for (const k of keys) await p.page.keyboard.down(k);
+    if (d > 24 && gain > 0.1) await p.page.waitForTimeout(Math.min(3000, (d / 72) * 1000 * gain));
+    for (const k of keys) await p.page.keyboard.up(k);
   }
 }
 

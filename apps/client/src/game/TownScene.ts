@@ -602,16 +602,26 @@ export class TownScene extends Phaser.Scene {
     }
     const prev = this.nearDoor;
     this.nearDoor = best ? { b: best.b, exit: best.exit } : null;
-    if (prev?.b.id === this.nearDoor?.b.id && prev?.exit === this.nearDoor?.exit && !this.promptDirty()) return;
+    // Recompute the lock every frame: the Storyteller can lock/unlock a door at any moment (props),
+    // so the prompt must not wait for a phase or nearest-door change to update.
+    const locked = this.nearDoor ? this.doorLocked(this.nearDoor) : false;
+    const same = prev?.b.id === this.nearDoor?.b.id && prev?.exit === this.nearDoor?.exit;
+    if (same && locked === this.lastPromptLocked && !this.promptDirty()) return;
+    this.lastPromptLocked = locked;
     if (!this.nearDoor) return this.bridge.setPrompt(null);
-    const locked = this.doorLocked(this.nearDoor);
     const name = this.nearDoor.b.name;
+    const night = LOCKED.has(this.phase);
     this.bridge.setPrompt({
       key: 'E',
       locked,
-      text: locked ? (this.nearDoor.exit ? 'The door is barred until morning' : 'Locked for the night') : this.nearDoor.exit ? `Leave ${name}` : `Enter ${name}`,
+      text: locked
+        ? night
+          ? this.nearDoor.exit ? 'The door is barred until morning' : 'Locked for the night'
+          : `${name} is locked by the Storyteller`
+        : this.nearDoor.exit ? `Leave ${name}` : `Enter ${name}`,
     });
   }
+  private lastPromptLocked = false;
   private lastPromptPhase: Phase = 'waiting';
   private promptDirty() {
     const d = this.lastPromptPhase !== this.phase;
