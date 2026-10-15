@@ -2,7 +2,7 @@ import { render } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import { CLOSE_CODES, type AccountView } from '@ct/protocol';
 import { api, ApiFailure } from './net/api';
-import { RoomConnection } from './net/room';
+import { CLIENT_CLOSE, RoomConnection } from './net/room';
 import { useStore } from './net/store';
 import { AuthScreen } from './ui/auth/AuthScreen';
 import { HomeScreen } from './ui/lobby/HomeScreen';
@@ -48,6 +48,9 @@ function LobbyRoute({ id, intent, account }: { id: string; intent: 'player' | 's
       if (code === CLOSE_CODES.kicked) setError('You were removed from this lobby.');
       else if (code === CLOSE_CODES.replaced) setError('This account joined the lobby from another tab or device.');
       else if (code === CLOSE_CODES.lobbyClosed) setError('This lobby was closed.');
+      else if (code === CLIENT_CLOSE.lobbyGone)
+        setError('This lobby no longer exists. The server may have restarted; any game in progress could not be recovered. Your account and stats are safe.');
+      else setError('Lost connection to the lobby and could not reconnect. Check your internet connection, then try again.');
     });
     return () => {
       alive = false;
@@ -60,7 +63,8 @@ function LobbyRoute({ id, intent, account }: { id: string; intent: 'player' | 's
       <div class="screen center">
         <div class="panel">
           <p>{error}</p>
-          <button onClick={() => navigate({ name: 'home' })}>Back to lobbies</button>
+          <button class="primary" onClick={() => navigate({ name: 'home' })}>Back to lobbies</button>{' '}
+          <button onClick={() => location.reload()}>Try again</button>
         </div>
       </div>
     );

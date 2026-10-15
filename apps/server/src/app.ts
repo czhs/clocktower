@@ -132,7 +132,9 @@ export async function startAppServer(config: AppConfig, log: Logger, options: Ap
   });
   app.use(express.json({ limit: '32kb' }));
   app.get('/healthz', (_req, res) => {
-    res.json({ ok: true, env: config.env, version });
+    // activeGames lets the deploy script refuse to restart prod mid-game (games live in memory).
+    const activeGames = services.directory.list().filter((l) => l.phase !== 'waiting' && l.phase !== 'finished').length;
+    res.json({ ok: true, env: config.env, version, activeGames });
   });
 
   registerHttpRoutes(app, services);

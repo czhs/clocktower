@@ -10,7 +10,7 @@ import type {
   StorytellerGameView,
 } from '@ct/protocol';
 import { TERMINAL_CLOSE_CODES } from '@ct/protocol';
-import { api } from './api';
+import { api, ApiFailure } from './api';
 import { createStore, Emitter } from './store';
 
 // LEAD-OWNED. Wraps the Colyseus room for one lobby. Every S2C message is re-emitted on
@@ -22,6 +22,14 @@ export function wsEndpoint(): string {
 }
 
 const RECONNECT_KEY = (lobbyId: string) => `ct.reconnect.${lobbyId}`;
+
+/** Client-side close reasons (never sent by the server). */
+export const CLIENT_CLOSE = {
+  /** The lobby no longer exists (e.g. the server restarted and in-memory games were lost). */
+  lobbyGone: 4190,
+  /** Gave up reconnecting after repeated failures. */
+  gaveUp: 4191,
+} as const;
 
 export class RoomConnection {
   readonly events = new Emitter<S2CMessages & { closed: { code: number } }>();
@@ -99,10 +107,14 @@ export class RoomConnection {
     if (this.closedByUser) return;
     try {
       await this.connect();
-    } catch {
-      if (attempt >= 10) {
+    } catch (e) {
+      // 404 = the lobby is gone; 403/409 = we no longer hold a seat (lobby started without us,
+      // kicked, …). Retrying cannot help, so stop and say so instead of spinning for a minute.
+      const gone = e instanceof ApiFailure && [403, 404, 409].includes(e.status);
+      if (gone || attempt >= 10) {
+        sessionStorage.removeItem(RECONNECT_KEY(this.lobbyId));
         this.status.set('closed');
-        this.events.emit('closed', { code: 1006 });
+        this.events.emit('closed', { code: gone ? CLIENT_CLOSE.lobbyGone : CLIENT_CLOSE.gaveUp });
         return;
       }
       setTimeout(() => void this.retry(attempt + 1), Math.min(8000, 500 * 2 ** attempt));
