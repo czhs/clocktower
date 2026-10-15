@@ -493,6 +493,24 @@ export class TownScene extends Phaser.Scene {
       this.social = null;
     });
     if (import.meta.env.DEV) (window as unknown as { __town?: TownScene }).__town = this;
+    // Test hook (production-safe, opt-in per browser): localStorage 'ct.debug.camera' = '1' exposes the
+    // camera so e2e tests can tap world points without re-implementing the camera maths.
+    let camHook = false;
+    try {
+      camHook = localStorage.getItem('ct.debug.camera') === '1';
+    } catch {
+      // storage blocked
+    }
+    if (camHook)
+      (window as unknown as { __ctCamera?: unknown }).__ctCamera = {
+        worldToScreen: (x: number, y: number) => {
+          const cam = this.cameras.main;
+          const r = this.game.canvas.getBoundingClientRect();
+          return { x: r.left + (x - cam.worldView.x) * cam.zoom, y: r.top + (y - cam.worldView.y) * cam.zoom };
+        },
+        view: () => ({ ...this.cameras.main.worldView, zoom: this.cameras.main.zoom }),
+        me: () => ({ ...this.me }),
+      };
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.cleanup());
     this.events.once(Phaser.Scenes.Events.DESTROY, () => this.cleanup());
   }
