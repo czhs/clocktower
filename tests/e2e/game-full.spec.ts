@@ -199,6 +199,9 @@ test('full game: 1 Storyteller + 5 players, every phase through the real UI', as
       // hold the countdown at once so the keyboard walker has time on a CPU-starved host
       await st.page.getByRole('button', { name: '❚❚ Hold' }).click();
       await st.tap.until(() => gv(st).timerHeld === true, 10_000, 'timer held');
+      await expect(st.page.locator('.cts-now-top')).toContainText('Countdown held');
+      await expect(st.page.locator('.cts-now-top')).not.toContainText('you were away');
+      await expect(walker.page.locator('.cth-phase')).toContainText('Bedtime — first night');
       await expect(walker.page.locator('.cth-hint')).toContainText(/walk home|Walk home/, { timeout: 15_000 });
       await expect(walker.page.locator('.ct-compass')).toContainText('Go home');
       await walker.page.waitForTimeout(1000);
@@ -372,10 +375,10 @@ test('full game: 1 Storyteller + 5 players, every phase through the real UI', as
         await skip.click();
         await st.tap.until(() => queue().filter((s) => !['resolved', 'skipped'].includes(s.status)).length < left, 10_000, 'step skipped');
       }
-      await expect(st.page.locator('.cts-now-btn')).toContainText('End night → Dawn');
+      await expect(st.page.locator('.cts-now-btn')).toContainText('Dawn: review deaths');
       await st.page.locator('.cts-now-btn').click();
       await st.tap.until(() => gv(st).phase === 'dawn', 10_000, 'dawn');
-      await expect(st.page.locator('.cts-now-btn')).toContainText('Start day');
+      await expect(st.page.locator('.cts-now-btn')).toContainText('Start the day');
     });
 
     // ============================================================== 5. day 1: walk out
@@ -435,9 +438,11 @@ test('full game: 1 Storyteller + 5 players, every phase through the real UI', as
     });
 
     await step(`6b ST opens nominations; ${nominator.name} nominates ${nominee.name} from the HUD`, 'ui', async () => {
-      await st.page.locator('.cts-tabs').getByRole('button', { name: 'Day' }).click();
-      await st.page.getByLabel('Nominations open').check();
+      // the Now strip suggests opening nominations once the circle is gathered
+      await expect(st.page.locator('.cts-now-btn')).toContainText('Open nominations');
+      await st.page.locator('.cts-now-btn').click();
       await nominator.tap.until(() => gv(nominator).day?.nominationsOpen, 10_000, 'nominations open');
+      await expect(st.page.locator('.cts-stage').getByRole('button', { name: 'Close nominations' })).toBeVisible();
       await nominateFromHud(nominator, nominee.name);
       await st.tap.until(() => gv(st).day?.nominations?.length === 1, 10_000, 'nomination recorded');
       for (const p of players) await expect(p.page.locator('.cth-vote-pill, .cth-vote')).toContainText(nominee.name, { timeout: 10_000 });
@@ -448,7 +453,7 @@ test('full game: 1 Storyteller + 5 players, every phase through the real UI', as
       const voters = players.filter((p) => p !== nominee);
       // Each voter raises a hand, then must see "your vote counted" while the vote is still running
       // (the panel disappears at the tally).
-      const { n, outcome, attempts } = await runVote(st, 0, voters, (x) => x.voteCount >= x.threshold);
+      const { n, outcome, attempts } = await runVote(st, 0, voters, (x) => x.voteCount >= x.threshold, undefined, [nominator, nominee]);
       note(outcome.join('; '));
       if (attempts > 1) note(`TIMING: the ST had to re-run the vote ${attempts - 1}x (raises lost the race with the clock hand)`);
       await shot(nominator.page, '12-vote-clock');
@@ -469,6 +474,8 @@ test('full game: 1 Storyteller + 5 players, every phase through the real UI', as
       }
       await st.tap.until(() => gv(st).day.onTheBlock?.seat === nomineeSeat, 10_000, 'on the block');
       for (const p of players) await p.tap.until(() => gv(p).day?.onTheBlock?.seat === nomineeSeat, 10_000, 'block public');
+      const yes = voters.find((p) => n.votes[seatOf(p)] === true);
+      if (yes) await expect(yes.page.getByText(/your vote counted/i).first(), '"your vote counted" stays after the tally').toBeVisible();
       await shot(nominator.page, '13-vote-counted');
     });
 
@@ -478,7 +485,7 @@ test('full game: 1 Storyteller + 5 players, every phase through the real UI', as
       const v = await nominee.tap.until(() => gv(nominee).you?.alive === false && gv(nominee), 15_000, 'dead');
       expect(v.you.ghostVoteAvailable).toBe(true);
       await expect(nominee.page.locator('.cth-card-head')).toContainText('Dead · 👻 1 vote');
-      await expect(nominee.page.locator('.cth-hint')).toContainText(/ghost vote/, { timeout: 10_000 }).catch(() => note('dead hint not visible'));
+      await expect(nominee.page.locator('.cth-hint')).toContainText(/ghost vote/, { timeout: 15_000 });
       for (const p of players) {
         const row = gv(p).players.find((x: any) => x.seat === nomineeSeat);
         expect(row.alive).toBe(false);
@@ -496,7 +503,11 @@ test('full game: 1 Storyteller + 5 players, every phase through the real UI', as
       await armConfirm(st.page, st.page.locator('.cts-now-btn'));
       for (const p of players) await p.tap.until(() => gv(p).phase === 'bedtime', 15_000, 'bedtime 2');
       await st.tap.until(() => gv(st).phase === 'night', 240_000, 'night 2');
-      await armConfirm(st.page, st.page.getByRole('button', { name: 'End night' }));
+      // one primary path: Dawn (review) -> Start the day ("End night now" is a secondary prop)
+      await st.page.locator('.cts-controls').getByRole('button', { name: 'Dawn: review deaths' }).click();
+      await st.tap.until(() => gv(st).phase === 'dawn', 10_000, 'dawn 2');
+      await expect(st.page.locator('.cts-now-btn')).toContainText('Start the day');
+      await st.page.locator('.cts-now-btn').click();
       for (const p of all) await p.tap.until(() => gv(p).phase === 'day' && gv(p).dayNumber === 2, 15_000, 'day 2');
     });
 
@@ -523,8 +534,7 @@ test('full game: 1 Storyteller + 5 players, every phase through the real UI', as
       await st.page.locator('.cts-now-btn').click(); // Gather the circle
       await st.tap.until(() => gv(st).gathering === true, 10_000, 'gathered 2');
       await armConfirm(st.page, st.page.getByRole('button', { name: 'Force seats' }));
-      await st.page.locator('.cts-tabs').getByRole('button', { name: 'Day' }).click();
-      await st.page.getByLabel('Nominations open').check();
+      await st.page.locator('.cts-stage').getByRole('button', { name: 'Open nominations' }).click();
       await v2.nor.tap.until(() => gv(v2.nor).day?.nominationsOpen, 10_000, 'open');
       await nominateFromHud(v2.nor, v2.nee.name);
       await st.tap.until(() => gv(st).day?.nominations?.length === 1, 10_000, 'nomination 2');
@@ -769,44 +779,58 @@ async function nominateFromHud(p: GamePlayer, nomineeName: string) {
   await head.click(); // collapse again
 }
 
-/** Raise a hand as soon as the vote panel offers it, then watch for the "counted" confirmation. */
-async function raiseAndWatch(p: GamePlayer, label: string | RegExp = /^Raise hand/, shotName?: string): Promise<string> {
-  const t0 = Date.now();
-  try {
-    await p.page.getByRole('button', { name: label }).click({ timeout: 8000 });
-  } catch {
-    return `${p.name}: MISSED the raise (${Date.now() - t0} ms)`;
-  }
-  const raisedMs = Date.now() - t0;
-  if (shotName) await shot(p.page, shotName);
-  const saw = await p.page
-    .getByText(/your vote counted/i)
-    .first()
-    .waitFor({ timeout: 15_000 })
-    .then(
-      () => 'saw "counted"',
-      () => 'never saw "counted"',
-    );
-  return `${p.name}: raised after ${raisedMs} ms, ${saw}`;
-}
-
 /**
  * Run the vote on nomination `idx`: the ST starts it from the Now strip; every voter raises a hand in
  * its own browser. If `ok` is not met (a raise lost the race with the 1.5 s/seat clock hand on the
  * loaded host) the ST re-runs it with the Stage "Re-vote" button, up to 3 attempts.
  */
-async function runVote(st: GamePlayer, idx: number, voters: GamePlayer[], ok: (n: any) => boolean, ghostLabel?: GamePlayer): Promise<{ n: any; outcome: string[]; attempts: number }> {
+async function runVote(st: GamePlayer, idx: number, voters: GamePlayer[], ok: (n: any) => boolean, ghostLabel?: GamePlayer, pauseCheck?: GamePlayer[]): Promise<{ n: any; outcome: string[]; attempts: number }> {
   const nom = () => st.tap.last('game:view').day.nominations[idx];
-  let outcome: string[] = [];
+  // (B2) hands go up while the nomination is still pending, before the ST starts the clock
+  const early = await Promise.all(
+    voters.map(async (p) => {
+      const t0 = Date.now();
+      const label = p === ghostLabel ? 'Raise hand (uses ghost vote)' : /^Raise hand/;
+      const ok2 = await p.page.getByRole('button', { name: label }).click({ timeout: 20_000 }).then(() => true, () => false);
+      if (ok2) await expect(p.page.getByRole('button', { name: 'Lower hand' })).toBeVisible({ timeout: 15_000 }).catch(() => undefined);
+      return `${p.name}: ${ok2 ? `raised before the vote (${Date.now() - t0} ms)` : 'could not raise early'}`;
+    }),
+  );
+  await st.tap.until(() => voters.every((p) => (nom().handsRaised ?? []).includes(p.tap.last('game:view').you.seat)), 15_000, 'early hands visible to the ST');
+  let outcome: string[] = early;
   for (let attempt = 1; ; attempt++) {
     const t0 = Date.now();
     if (attempt === 1) await st.page.locator('.cts-now-btn').click();
     else await armConfirm(st.page, st.page.locator('.cts-stage').getByRole('button', { name: 'Re-vote', exact: true }));
     await st.tap.until(() => st.tap.received('game:view', t0).some((v: any) => v.day?.nominations?.[idx]?.status === 'voting'), 15_000, 'vote running');
-    outcome = await Promise.all(voters.map((p) => raiseAndWatch(p, p === ghostLabel ? 'Raise hand (uses ghost vote)' : /^Raise hand/)));
-    await st.tap.until(() => nom().status === 'tallied', 40_000, 'tallied');
+    if (attempt === 1) expect(nom().stepMs ?? 3000, 'default clock: 3 s per seat').toBe(3000);
+    if (pauseCheck && attempt === 1) {
+      // ST pauses the clock: no seat locks while paused, players see it; then resumes
+      await st.page.locator('.cts-stage').getByRole('button', { name: '❚❚ Pause clock' }).click();
+      await st.tap.until(() => nom().clockPaused === true, 10_000, 'clock paused');
+      const locked = Object.keys(nom().votes).length;
+      for (const p of pauseCheck) await expect(p.page.getByText('❚❚ clock paused').first()).toBeVisible({ timeout: 15_000 });
+      await st.page.waitForTimeout(4000);
+      expect(Object.keys(nom().votes).length, 'no seat locks while the clock is paused').toBe(locked);
+      await st.page.locator('.cts-stage').getByRole('button', { name: '▶ Resume clock' }).click();
+      await st.tap.until(() => !nom().clockPaused, 10_000, 'clock resumed');
+    }
+    const counted = await Promise.all(
+      voters.map((p) =>
+        p.page
+          .getByText(/your vote counted/i)
+          .first()
+          .waitFor({ timeout: 60_000 })
+          .then(
+            () => 'saw "counted"',
+            () => 'never saw "counted"',
+          ),
+      ),
+    );
+    await st.tap.until(() => nom().status === 'tallied', 60_000, 'tallied');
     const n = nom();
-    if (ok(n) || attempt >= 3) return { n, outcome: outcome.map((o) => `#${attempt} ${o}`), attempts: attempt };
+    outcome = voters.map((p, i) => `#${attempt} ${early[i]}, ${counted[i]}`);
+    if (ok(n) || attempt >= 3) return { n, outcome, attempts: attempt };
   }
 }
 

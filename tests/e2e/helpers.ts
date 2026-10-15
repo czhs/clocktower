@@ -185,6 +185,13 @@ export async function installSocketTap(ctx: BrowserContext): Promise<void> {
           const path = String(u).replace(/^wss?:\/\/[^/]+/, '').replace(/(reconnectionToken|ticket)=[^&]+/g, '$1=…').slice(0, 80);
           log.push(`${ts()} #${n} new ${path}`);
           this.addEventListener('open', () => log.push(`${ts()} #${n} open`));
+          // messages actually delivered to page JS (vs. frames the network layer read: FrameTap)
+          let msgs = 0;
+          let firstMsgAt = '';
+          this.addEventListener('message', () => {
+            if (!msgs++) firstMsgAt = ts();
+            (W.__e2e as any).delivered = { ...((W.__e2e as any).delivered ?? {}), [n]: { msgs, firstMsgAt, lastMsgAt: ts() } };
+          });
           this.addEventListener('close', (e) => log.push(`${ts()} #${n} close code=${(e as CloseEvent).code} reason=${(e as CloseEvent).reason.slice(0, 60)}`));
           this.addEventListener('error', () => log.push(`${ts()} #${n} error`));
         }
@@ -424,6 +431,8 @@ export async function walkToTile(p: Player, pid: string, to: { x: number; y: num
   let lastSign = 0;
   let lastSignY = 0;
   let gain = 0.9;
+  let best = Infinity;
+  let noProgress = 0;
   let prev: { x: number; y: number } | null = null;
   while (i < pts.length) {
     if (Date.now() > until) {
@@ -461,12 +470,21 @@ export async function walkToTile(p: Player, pid: string, to: { x: number; y: num
       lastSign = 0;
       lastSignY = 0;
       gain = 0.9;
+      best = Infinity;
+      noProgress = 0;
       continue;
     }
     still = prev && Math.hypot(pos.x - prev.x, pos.y - prev.y) < 1 ? still + 1 : 0;
     prev = { x: pos.x, y: pos.y };
+    // no progress toward the waypoint for a while (pinned on furniture, or wiggling sideways)
+    if (d < best - 2) {
+      best = d;
+      noProgress = 0;
+    } else noProgress++;
     // stuck off the planned line (furniture / corners): re-plan from where we actually stand
-    if ((still >= 4 || flips >= 4) && replans < 20) {
+    if ((still >= 4 || flips >= 4 || noProgress >= 6) && replans < 20) {
+      best = Infinity;
+      noProgress = 0;
       const re = g.findPath(g.L, { x: pos.x, y: pos.y }, goal, pos.location as never);
       if (re && re.length) {
         pts = re;

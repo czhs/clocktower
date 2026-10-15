@@ -175,7 +175,7 @@ test('chaos: unexpected orders, refreshes, duplicate tabs and races during a rea
       await P4.page.reload();
       await P4.tap.until(() => gv(P4)?.phase === 'bedtime' && P4.tap.received('game:view', Date.now() - 3000).length > 0, 60_000, 'bedtime after reload');
       await sane(P4);
-      await expect(P4.page.locator('.ct-compass')).toContainText(/Go home|home/, { timeout: 20_000 });
+      await expect(P4.page.locator('.ct-compass')).toContainText(/Go home|home/, { timeout: 60_000 }); // a refreshed page needs up to ~45 s on the shared host
     });
 
     await chaos(`B3 ${P5.name} closes the tab during the escort and returns through the share link; night still falls`, async (note) => {
@@ -315,6 +315,26 @@ test('chaos: unexpected orders, refreshes, duplicate tabs and races during a rea
       const t0 = Date.now();
       await armConfirm(st.page, st.page.locator('.cts-stage').getByRole('button', { name: 'Re-vote', exact: true }));
       await st.tap.until(() => st.tap.received('game:view', t0).some((v: any) => v.day?.nominations?.[0]?.status === 'voting'), 15_000, 're-vote running');
+      const tRefresh = Date.now();
+      let bannerAt: number | null = null;
+      let polling = true;
+      const poll = (async () => {
+        while (polling) {
+          if (bannerAt === null && (await P4.page.locator('.ct-conn').count().catch(() => 0))) bannerAt = Date.now();
+          await new Promise((r) => setTimeout(r, 400));
+        }
+      })();
+      // main-thread responsiveness of the refreshed page (a busy renderer stops draining its socket)
+      const lag: string[] = [];
+      const lagProbe = (async () => {
+        await P4.page.waitForTimeout(300);
+        for (let k = 0; k < 12 && polling; k++) {
+          const t = Date.now();
+          const ok = await P4.page.evaluate(() => 1).then(() => true, () => false);
+          lag.push(`${Math.round((t - tRefresh) / 1000)}s:${ok ? `${Date.now() - t}ms` : 'x'}`);
+          await new Promise((r) => setTimeout(r, 2000));
+        }
+      })();
       const reload = P4.page.reload();
       const hammer = (async () => {
         const btn = P5.page.locator('.cth-hand');
@@ -337,22 +357,31 @@ test('chaos: unexpected orders, refreshes, duplicate tabs and races during a rea
       if (typeof pressed === 'boolean') expect(n.votes[seatOf(P5)], 'P5 locked vote = hand state after mashing').toBe(pressed);
       const v4 = gv(P4);
       note(`P4 after reload: phase=${v4?.phase} noms=${JSON.stringify(v4?.day?.nominations?.map((n: any) => n.status))} lobby views=${P4.tap.received('lobby:view').length}`);
+      // B1: after the refresh the player must get the live feed back (the client/server watchdogs
+      // reconnect a dead feed after ~5 s, with the "reconnecting" banner). Measure it.
       const tReload = Date.now();
-      const ended = await P4.tap
-        .until(() => gv(P4)?.day?.nominations?.[0]?.status === 'tallied' || (gv(P4)?.day && !gv(P4).day.nominations.some((n: any) => n.status === 'voting')), 30_000, 'P4 sees the vote end')
-        .then(() => true, () => false);
-      if (!ended) {
-        const gvs = P4.tap.frames.filter((f) => f.dir === 'in' && f.type === 'game:view');
-        const lastGv = gvs.at(-1);
-        const snaps = P4.tap.received('world:snapshot', tReload).length;
-        const sockets = await P4.page.evaluate(() => `${(window as any).__e2e?.sockets?.map((w: WebSocket) => w.readyState).join(',')} log: ${(window as any).__e2e?.log?.join(' / ')}`).catch(() => '?');
-        const banner = await P4.page.locator('.ct-conn, .ct-conn-lost').allTextContents().catch(() => []);
-        throw new Error(
-          `${P4.name} still shows the vote as running ${Math.round((Date.now() - tReload) / 1000)} s after the ST saw the tally: last game:view ${lastGv ? Math.round((Date.now() - lastGv.at) / 1000) : '?'} s ago ` +
-            `(status ${JSON.stringify(lastGv?.payload?.day?.nominations?.map((n: any) => n.status))}); world:snapshots in the last 30 s: ${snaps}; sockets readyState [${sockets}]; banner ${JSON.stringify(banner)}; ` +
-            `ST sees P4 connected=${gv(st).players.find((x: any) => x.seat === seatOf(P4))?.connected}`,
-        );
+      let endedAt: number | null = null;
+      const ended = () => gv(P4)?.day?.nominations?.[0]?.status === 'tallied' || (!!gv(P4)?.day && !gv(P4).day.nominations.some((n: any) => n.status === 'voting'));
+      while (Date.now() - tReload < 45_000 && endedAt === null) {
+        if (ended()) endedAt = Date.now();
+        else await P4.page.waitForTimeout(500);
       }
+      polling = false;
+      await poll;
+      await lagProbe;
+      const delivered = await P4.page.evaluate(() => JSON.stringify((window as any).__e2e?.delivered ?? {})).catch(() => '?');
+      const netFrames = P4.tap.frames.filter((f) => f.dir === 'in' && f.at >= tRefresh);
+      const perSec = new Map<number, number>();
+      for (const f of netFrames) perSec.set(Math.floor((f.at - tRefresh) / 5000) * 5, (perSec.get(Math.floor((f.at - tRefresh) / 5000) * 5) ?? 0) + 1);
+      note(`B1 evidence: main-thread probe (time since refresh: evaluate latency) ${lag.join(' ')}; frames read by the network layer per 5 s since refresh ${JSON.stringify(Object.fromEntries(perSec))}; delivered to page JS per socket ${delivered}`);
+      const gvs = P4.tap.frames.filter((f) => f.dir === 'in' && f.type === 'game:view');
+      const lastGv = gvs.at(-1);
+      const sockets = await P4.page.evaluate(() => `${(window as any).__e2e?.sockets?.map((w: WebSocket) => w.readyState).join(',')} log: ${(window as any).__e2e?.log?.join(' / ')}`).catch(() => '?');
+      note(
+        `B1 check: vote end seen by ${P4.name} ${endedAt ? `${Math.round((endedAt - tReload) / 1000)} s` : 'NEVER (45 s)'} after the ST's tally; refresh→tally ${Math.round((tReload - tRefresh) / 1000)} s; reconnect banner ${bannerAt ? `shown ${Math.round((bannerAt - tRefresh) / 1000)} s after the refresh` : 'not seen'}; ` +
+          `last game:view ${lastGv ? Math.round((Date.now() - lastGv.at) / 1000) : '?'} s ago; sockets [${sockets}]; ST sees P4 connected=${gv(st).players.find((x: any) => x.seat === seatOf(P4))?.connected}`,
+      );
+      expect(endedAt, `${P4.name} gets the live feed back after a mid-vote refresh`).not.toBeNull();
       await sane(P4);
     });
 
