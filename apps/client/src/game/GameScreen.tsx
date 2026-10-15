@@ -11,6 +11,7 @@ import { goTo } from '../ui/lobby/finder';
 import { attachSound, unlockAudio } from './audio';
 import { SocialPalette } from '../ui/social/SocialPalette';
 import { Notebook } from '../ui/notebook/Notebook';
+import { Story } from '../ui/story/Story';
 import './game.css';
 
 // Mounts the Phaser town for this lobby; renders `children` (HUD, Storyteller panel, voice panel,
@@ -87,6 +88,7 @@ export function GameScreen(props: { conn: RoomConnection; account: AccountView; 
       {touch && status === 'ready' && !inside && <TouchControls />}
       {status === 'ready' && <SocialPalette conn={props.conn} touch={touch} />}
       {status === 'ready' && <Notebook conn={props.conn} touch={touch} />}
+      {status === 'ready' && <Story conn={props.conn} touch={touch} />}
       {status === 'ready' && <FirstSteps touch={touch} />}
       <HomeCompass conn={props.conn} />
       <Toolbar conn={props.conn} />
