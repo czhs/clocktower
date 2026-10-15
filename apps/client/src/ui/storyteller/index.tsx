@@ -286,7 +286,7 @@ const UNFINISHED: readonly string[] = ['pending', 'visiting', 'prompted', 'answe
 function nextAction(view: StorytellerGameView, send: Send, goTab: (t: Tab) => void): NextAction | null {
   const p = view.phase;
   const name = (seat: number) => view.players.find((x) => x.seat === seat)?.name ?? `Seat ${seat + 1}`;
-  const pr = view.pendingResult;
+  const pr = view.phase === 'finished' ? null : view.pendingResult;
   if (pr)
     return {
       label: `Confirm result: ${pr.winner === 'good' ? 'Good' : 'Evil'} wins`,
@@ -466,7 +466,7 @@ function PhaseControls({ view, send }: { view: StorytellerGameView; send: Send }
   const p = view.phase;
   const pending = view.pendingDeaths ?? [];
   const voteRunning = p === 'day' && !!view.day?.nominations.some((n) => n.status === 'voting');
-  const pr = view.pendingResult;
+  const pr = view.phase === 'finished' ? null : view.pendingResult;
   if (pr)
     return (
       <div class="cts-controls cts-pending" role="alert">

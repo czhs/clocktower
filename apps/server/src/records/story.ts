@@ -28,6 +28,8 @@ function header(e: { kind?: string; phase: GamePhase; day: number; night: number
   if (e.kind === 'end' || e.phase === 'finished') return 'The end';
   if (e.phase === 'setup') return 'Setup';
   if (NIGHTISH.includes(e.phase)) return e.night <= 1 ? 'The first night' : `Night ${e.night}`;
+  // the bedtime before the first night belongs to setup ("Day 0" would read oddly)
+  if (e.day < 1) return 'Before the first night';
   return `Day ${e.day}`;
 }
 

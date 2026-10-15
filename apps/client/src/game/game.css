@@ -132,3 +132,17 @@
   .ct-inside-title { font-size: 16px; }
   .ct-inside-who { font-size: 13px; }
 }
+
+/* v2 phone fixes: keep the chat toggle clear of the joystick; short landscape gets a lean layout */
+.ct-touch .ct-chat-toggle { bottom: calc(160px + var(--safe-bottom, 0px)); }
+@media (max-height: 460px) {
+  .ct-touch .ct-chat-toggle { bottom: calc(12px + var(--safe-bottom, 0px)); left: calc(136px + var(--safe-left, 0px)); }
+  .ct-hint { display: none; }
+  .ct-waiting { max-height: calc(100dvh - 16px); width: min(400px, 56vw); }
+}
+@media (max-height: 520px) {
+  .ct-inside { padding: 6px 12px 8px; gap: 4px; flex-direction: row; flex-wrap: wrap; justify-content: center; max-width: calc(100vw - 24px); }
+  .ct-inside-title { font-size: 15px; }
+  .ct-inside-who { font-size: 12.5px; }
+  .ct-inside-leave { min-height: 34px; min-width: 110px; }
+}

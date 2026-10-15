@@ -898,7 +898,7 @@ export class TownScene extends Phaser.Scene {
     const rowY = [(r.y + 7.35) * TS, (r.y + 5.95) * TS];
     const out: { x: number; y: number; dir: Dir8 }[] = [];
     rows.forEach((count, ri) => {
-      const span = Math.min(x1 - x0, Math.max(1, count - 1) * 22);
+      const span = Math.min(x1 - x0, Math.max(1, count - 1) * (count <= 4 ? 34 : 22));
       const cx = (x0 + x1) / 2;
       for (let i = 0; i < count; i++) {
         const x = count === 1 ? cx : cx - span / 2 + (span * i) / (count - 1) + (ri ? 11 : 0);
@@ -1233,9 +1233,11 @@ export class TownScene extends Phaser.Scene {
     const w = this.scale.width;
     const h = this.scale.height;
     if (b) {
-      // inside: the whole room, cosy, not huge
-      cam.setZoom(Math.min(Math.min(w / a.w, (h - 8) / a.h) * 0.94, 7));
-      cam.centerOn(a.x + a.w / 2, a.y + a.h / 2);
+      // inside: the whole room, cosy, not huge — above the "Inside … with …" panel at the bottom
+      const reserve = h < 520 ? 92 : 132;
+      const zoom = Math.min(Math.min(w / a.w, (h - reserve - 8) / a.h) * 0.94, 7);
+      cam.setZoom(zoom);
+      cam.centerOn(a.x + a.w / 2, a.y + a.h / 2 + reserve / 2 / zoom);
     } else {
       // outdoors: the largest zoom at which the whole square (+ margin) still fits the screen
       const need = Math.max(PLAZA.rx, PLAZA.ry) * 2 + VIEW_MARGIN * 2;

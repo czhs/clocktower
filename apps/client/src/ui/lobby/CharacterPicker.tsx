@@ -28,7 +28,8 @@ export const characterOf = (c: Cosmetics | null | undefined): CastMember | undef
 /** Who holds each character among the other members of a lobby (character id -> display name). */
 export function takenBy(members: readonly MemberView[], youPid: string): Map<string, string> {
   const m = new Map<string, string>();
-  for (const x of members) if (x.pid !== youPid && x.cosmetics.preset && PLAYABLE_IDS.has(x.cosmetics.preset)) m.set(x.cosmetics.preset, x.displayName);
+  // The Storyteller always appears as the Storyteller sprite, so their pick blocks nobody (server: characterHolder).
+  for (const x of members) if (x.pid !== youPid && x.role !== 'storyteller' && x.cosmetics.preset && PLAYABLE_IDS.has(x.cosmetics.preset)) m.set(x.cosmetics.preset, x.displayName);
   return m;
 }
 

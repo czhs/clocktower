@@ -437,7 +437,7 @@ export function ScriptView({ view, send, castOf, openTools }: { view: Storytelle
   const p = view.phase;
   return (
     <div class="cts-script">
-      {view.pendingResult && <PendingResult view={view} send={send} />}
+      {view.pendingResult && view.phase !== 'finished' && <PendingResult view={view} send={send} />}
       {p === 'setup' && <SetupScript view={view} send={send} castOf={castOf} openTools={openTools} />}
       {p === 'bedtime' && <BedtimeScript view={view} send={send} castOf={castOf} />}
       {isNight(p) && <TonightsVisits view={view} send={send} castOf={castOf} openTools={openTools} />}
@@ -581,7 +581,12 @@ function TonightsVisits({ view, send, castOf, openTools }: { view: StorytellerGa
           <small>{houseOf(next.seat!)?.name ?? ''}</small>
         </button>
       ) : (
-        visits.length > 0 && <p class="cts-script-note cts-ok">✓ Every visit is done.</p>
+        visits.length > 0 &&
+        (visits.some((s) => !FINISHED(s)) ? (
+          <p class="cts-script-note">{visits.filter((s) => !FINISHED(s)).length === 1 ? 'One visit is still open — finish it, then the night is done.' : `${visits.filter((s) => !FINISHED(s)).length} visits are still open.`}</p>
+        ) : (
+          <p class="cts-script-note cts-ok">✓ Every visit is done.</p>
+        ))
       )}
       {!visits.length && <p class="muted cts-script-note">Nobody wakes tonight.</p>}
       {group.length > 0 && (

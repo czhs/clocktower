@@ -69,7 +69,12 @@ async function newClient(browser: Browser, name: string, phone = false): Promise
 async function signUp(p: P, shots?: string) {
   const { page } = p;
   if (!page.url().startsWith('http')) await page.goto('/');
-  await page.getByRole('button', { name: 'Create account' }).click();
+  // signed-out share link: the landing shows the "You've been invited" card (Join the game)
+  const join = page.getByRole('button', { name: 'Join the game' });
+  const create = page.getByRole('button', { name: 'Create account' });
+  await expect(join.or(create).first()).toBeVisible({ timeout: 30_000 });
+  if (await join.count()) await join.click();
+  else await create.click();
   await page.getByLabel('Display name').fill(p.name);
   if (shots) await snap(page, `${shots}-auth-2-create`);
   await page.getByRole('button', { name: 'Create account' }).click();
@@ -136,6 +141,8 @@ async function assertNoOverlap(page: Page, label: string) {
 const gv = (p: P) => p.tap.last('game:view');
 
 test.describe.configure({ mode: 'serial' });
+// no action may hang forever (the config sets no actionTimeout)
+test.use({ actionTimeout: 120_000 });
 
 test('ux walkthrough', async ({ browser }) => {
   test.setTimeout(3_600_000);
@@ -301,7 +308,15 @@ test('ux walkthrough', async ({ browser }) => {
     await snap(ph.page, '09-setup-m390', 1000);
     await st.page.getByRole('button', { name: 'Random setup', exact: true }).click();
     await st.tap.until(() => gv(st)?.grimoire?.length === 5, 10_000, 'grimoire');
-    await st.page.getByRole('button', { name: 'Begin first night', exact: true }).first().click();
+    // (st-ui) phases are jumped with the script panel's stage cues (any cue, with a confirm when it skips ahead)
+    const cueTo = async (id: string, phase: string) => {
+      if (await st.page.getByRole('button', { name: /Back to the script/ }).count()) await st.page.getByRole('button', { name: /Back to the script/ }).click();
+      await st.page.locator(`.cts-cue[data-cue="${id}"]`).click();
+      const yes = st.page.locator('.cts-armed, .cts-confirm').getByRole('button', { name: 'Yes' });
+      if (await yes.first().waitFor({ timeout: 3000 }).then(() => true, () => false)) await yes.first().click();
+      await st.tap.until(() => gv(st)?.phase === phase, 30_000, phase);
+    };
+    await cueTo('first_night', 'first_night');
     for (const p of players) await p.tap.until(() => gv(p)?.phase === 'first_night', 15_000, 'first night');
     await st.page.waitForTimeout(2500);
     await snapSizes(st.page, '10-night-st', 800);
@@ -309,10 +324,10 @@ test('ux walkthrough', async ({ browser }) => {
     await snap(ph.page, '10-night-m390', 800);
 
     // Dawn -> day.
-    await st.page.locator('.cts-controls').getByRole('button', { name: /^Dawn/ }).click();
-    await st.tap.until(() => gv(st)?.phase === 'dawn', 10_000, 'dawn');
-    await st.page.locator('.cts-controls').getByRole('button', { name: /^Day/ }).click();
-    await st.tap.until(() => gv(st)?.phase === 'day', 10_000, 'day');
+    await cueTo('dawn', 'dawn');
+    await snapSizes(st.page, '10b-dawn-st-script', 600);
+    await cueTo('day', 'day');
+    await st.page.getByRole('button', { name: /Grimoire & tools/ }).click();
     await st.page.waitForTimeout(3500);
     await snap(deep.page, '11a-day-player-chat-folded-d1440', 300);
     if (await deep.page.getByRole('button', { name: /^Open chat/ }).count()) await deep.page.getByRole('button', { name: /^Open chat/ }).click();
@@ -396,6 +411,13 @@ test('ux walkthrough', async ({ browser }) => {
     // ------------------------------------------------------------- endgame
     await st.page.locator('.cts-tabs').getByRole('button', { name: 'Tools' }).click();
     await st.page.getByRole('button', { name: 'Good wins', exact: true }).first().click();
+    const sure = st.page.locator('.cts-confirm, .cts-armed').getByRole('button', { name: 'Yes' });
+    if (await sure.first().waitFor({ timeout: 5000 }).then(() => true, () => false)) await sure.first().click();
+    const cge = st.page.getByRole('button', { name: 'Confirm game end' });
+    if (await cge.first().waitFor({ timeout: 5000 }).then(() => true, () => false)) {
+      await cge.first().click();
+      if (await sure.first().waitFor({ timeout: 5000 }).then(() => true, () => false)) await sure.first().click();
+    }
     await expect(deep.page.getByRole('dialog', { name: 'Game results' })).toBeVisible({ timeout: 15_000 });
     await snapSizes(st.page, '14-endgame-st', 1000);
     await snapSizes(deep.page, '14-endgame-player', 1000);
@@ -425,7 +447,8 @@ test('ux walkthrough', async ({ browser }) => {
     await expect(host2.page.getByRole('dialog', { name: 'Waiting room' })).toBeVisible();
     for (const p of players.slice(1)) {
       await p.page.goto(`/lobby/${tiny}`);
-      await expect(p.page.getByRole('dialog', { name: 'Waiting room' })).toBeVisible({ timeout: 10_000 });
+      // ("Joining lobby…" can take > 10 s on the shared host)
+      await expect(p.page.getByRole('dialog', { name: 'Waiting room' })).toBeVisible({ timeout: 60_000 });
     }
     await late.page.goto(`/lobby/${tiny}`);
     await late.page.waitForTimeout(1500);
@@ -445,7 +468,7 @@ test('ux walkthrough', async ({ browser }) => {
     // (c) replaced by another device: the same account opens the lobby in a second tab.
     const tab2 = await players[1]!.ctx.newPage();
     await tab2.goto(`/lobby/${tiny}`);
-    await expect(tab2.getByRole('dialog', { name: 'Waiting room' })).toBeVisible({ timeout: 10_000 });
+    await expect(tab2.getByRole('dialog', { name: 'Waiting room' })).toBeVisible({ timeout: 60_000 });
     await players[1]!.page.waitForTimeout(1500);
     await snap(players[1]!.page, '17-err-replaced-d1440');
     await tab2.close();

@@ -194,7 +194,21 @@ test('full game: 1 Storyteller + 5 players, every phase through the real UI', as
     const grimoire: any[] = await step('2 ST random setup; players still see only "Awaiting your character" (roles arrive with the first night)', 'ui', async () => {
       await expect(st.page.locator('.cts-now-btn')).toContainText('Random setup');
       await st.page.locator('.cts-now-btn').click();
-      const g = await st.tap.until(() => gv(st)?.grimoire?.length === 5 && gv(st).charactersAssigned && gv(st).grimoire, 15_000, 'grimoire with 5 entries');
+      let g = await st.tap.until(() => gv(st)?.grimoire?.length === 5 && gv(st).charactersAssigned && gv(st).grimoire, 15_000, 'grimoire with 5 entries');
+      // A first night with something to TELL and something to ASK exercises the script panel's night
+      // visits (Tell them / Go / Ask); like a real Storyteller, re-deal (script: "↻ Deal again") until so.
+      const INFO = ['washerwoman', 'librarian', 'investigator', 'chef', 'empath'];
+      const ASK = ['fortune_teller', 'poisoner', 'butler'];
+      const good = (x: any[]) => x.some((e) => INFO.includes(e.believedCharacter) && e.character !== 'drunk') && x.some((e) => ASK.includes(e.character));
+      for (let k = 0; k < 8 && !good(g); k++) {
+        await stPanelMode(st.page, 'script');
+        const before = JSON.stringify(g.map((e: any) => e.character));
+        await st.page.getByRole('button', { name: /Deal again/ }).click();
+        if (await st.page.locator('.cts-confirm, .cts-armed').count()) await confirmYes(st.page).catch(() => undefined);
+        g = await st.tap.until(() => JSON.stringify(gv(st)?.grimoire?.map((e: any) => e.character)) !== before && gv(st).grimoire, 15_000, 're-dealt');
+        note(`re-dealt (#${k + 1}): ${g.map((x: any) => x.character).join(',')}`);
+      }
+      await stPanelMode(st.page, 'tools');
       await players[0]!.page.waitForTimeout(1500);
       for (const p of players) {
         expect(gv(p).you.role ?? null, `${p.name}: no role before the first night`).toBeNull();
