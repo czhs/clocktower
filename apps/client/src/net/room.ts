@@ -40,6 +40,9 @@ export class RoomConnection {
   private room: Room | null = null;
   private client = new Client(wsEndpoint());
   private closedByUser = false;
+  /** Last time anything from the world feed arrived (dead-feed watchdog). */
+  private lastFeedAt = 0;
+  private feedTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(readonly lobbyId: string) {}
 
@@ -88,6 +91,24 @@ export class RoomConnection {
   private attach(room: Room) {
     this.room = room;
     this.status.set('open');
+    this.lastFeedAt = Date.now();
+    // Dead feed: the server streams world:snapshot at 12 Hz to every connected seat in every phase.
+    // Nothing for 5 s while "open" means this socket is silently dead: drop it and reconnect.
+    this.feedTimer ??= setInterval(() => {
+      if (this.closedByUser) {
+        clearInterval(this.feedTimer!);
+        this.feedTimer = null;
+        return;
+      }
+      if (this.status.get() !== 'open' || !this.room || Date.now() - this.lastFeedAt < 5000) return;
+      this.lastFeedAt = Date.now();
+      this.status.set('reconnecting');
+      try {
+        (this.room.connection as unknown as { close(): void }).close(); // -> onLeave (non-terminal) -> retry()
+      } catch {
+        /* already closing */
+      }
+    }, 1000);
     const queued = this.pending;
     this.pending = [];
     // Flush after the listeners below are registered (next tick) so replies aren't missed.
@@ -110,6 +131,7 @@ export class RoomConnection {
     ];
     for (const type of types) {
       room.onMessage(type, (payload: never) => {
+        if (type === 'world:snapshot') this.lastFeedAt = Date.now();
         if (type === 'lobby:view') {
           this.lobbyView.set(payload);
           // Rematch: the lobby returned to waiting, so drop the finished game's view.
@@ -167,6 +189,8 @@ export class RoomConnection {
 
   async leave(): Promise<void> {
     this.closedByUser = true;
+    if (this.feedTimer) clearInterval(this.feedTimer);
+    this.feedTimer = null;
     sessionStorage.removeItem(RECONNECT_KEY(this.lobbyId));
     this.room?.send('lobby:leave', {});
     await this.room?.leave(true).catch(() => undefined);

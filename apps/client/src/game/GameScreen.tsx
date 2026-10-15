@@ -115,6 +115,12 @@ function FirstSteps({ touch }: { touch: boolean }) {
   const [done, setDone] = useState(() => hintSeen(MOVE_HINT_KEY));
   const start = useRef<{ x: number; y: number } | null>(null);
   const [youFaded, setYouFaded] = useState(false);
+  // The Storyteller mostly fast-travels, so the "walked 3 tiles" dismissal may never fire: fade anyway.
+  useEffect(() => {
+    if (done) return;
+    const t = setTimeout(() => (markHint(MOVE_HINT_KEY), setDone(true)), 20_000);
+    return () => clearTimeout(t);
+  }, [done]);
   useEffect(() => {
     if (done) return;
     const t = setTimeout(() => setYouFaded(true), 10_000);
