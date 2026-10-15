@@ -51,7 +51,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     sessionSecret: e.SESSION_SECRET,
     passphrasePepper: e.PASSPHRASE_PEPPER,
     cookieSecure: e.COOKIE_SECURE === 'auto' ? httpsOrigin : e.COOKIE_SECURE,
-    cookieName: e.APP_ENV === 'production' ? 'ct_session' : `ct_session_${e.APP_ENV === 'test' ? 'test' : 'dev'}`,
+    // SR-8: '__Host-' (Secure, Path=/, no Domain) stops sibling *.chrisshi.com hosts tossing cookies.
+    cookieName:
+      e.APP_ENV === 'production'
+        ? `${httpsOrigin ? '__Host-' : ''}ct_session`
+        : `ct_session_${e.APP_ENV === 'test' ? 'test' : 'dev'}`,
     sessionTtlDays: e.SESSION_TTL_DAYS,
     lobbyMaxCount: e.LOBBY_MAX_COUNT,
     playerMaxPerLobby: e.PLAYER_MAX_PER_LOBBY,
