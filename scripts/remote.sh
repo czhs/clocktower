@@ -27,7 +27,10 @@ fi
 # Quote the command for the remote shell.
 CMD=$(printf '%q ' "$@")
 set +e
-ssh -o BatchMode=yes "$HOST" "cd ~/$RDIR && . ~/clocktower/env.sh && bash scripts/remote-prepare.sh && $CMD"
+# Every command runs in a resource-capped systemd scope so test/browser runs can never starve the
+# prod/dev services on the same machine (hshi-u1 is also the production host).
+CAP="systemd-run --user --scope --quiet -p MemoryMax=${CT_MEM_MAX:-4G} -p MemorySwapMax=0 -p CPUQuota=${CT_CPU_QUOTA:-400%} --"
+ssh -o BatchMode=yes "$HOST" "export XDG_RUNTIME_DIR=/run/user/\$(id -u); cd ~/$RDIR && . ~/clocktower/env.sh && bash scripts/remote-prepare.sh && $CAP bash -c $(printf %q "$CMD")"
 STATUS=$?
 set -e
 # Bring back the lockfile if the remote install changed it.

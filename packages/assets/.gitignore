@@ -1,1 +1,6 @@
 .review/
+ai/staging/
+# Third-party mood references: never commit, never copy.
+ai/refs/
+# Raw astra outputs (76 MB): archived on hshi-u1 at ~/clocktower/art-archive/raw, not in git.
+ai/raw/
