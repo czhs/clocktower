@@ -132,6 +132,7 @@ export class RoomConnection {
       'game:view',
       'world:snapshot',
       'world:teleport',
+      'social:emote',
       'chat:message',
       'announcement',
       'sound',

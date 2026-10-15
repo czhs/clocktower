@@ -94,4 +94,40 @@ CREATE TRIGGER admin_audit_no_update BEFORE UPDATE ON admin_audit BEGIN SELECT R
 CREATE TRIGGER admin_audit_no_delete BEFORE DELETE ON admin_audit BEGIN SELECT RAISE(ABORT, 'admin_audit is append-only'); END;
 `,
   },
+  {
+    id: 3,
+    name: 'match_records',
+    // (v2) The full record of every game (finished or abandoned), for a future stats feature: one
+    // JSON document per match (schema versioned inside), written once when the game ends.
+    sql: `
+CREATE TABLE match_records (
+  match_id TEXT PRIMARY KEY,
+  lobby_id TEXT NOT NULL,
+  version INTEGER NOT NULL,
+  status TEXT NOT NULL,
+  started_at INTEGER NOT NULL,
+  ended_at INTEGER NOT NULL,
+  winner TEXT,
+  player_count INTEGER NOT NULL,
+  storyteller_account_id TEXT,
+  record_json TEXT NOT NULL
+);
+CREATE INDEX match_records_ended_idx ON match_records (ended_at);
+`,
+  },
+  {
+    id: 4,
+    name: 'notebooks',
+    // (v2) Each player's private notebook for one game (owner-only; never shown to anyone else).
+    sql: `
+CREATE TABLE notebooks (
+  match_id TEXT NOT NULL,
+  account_id TEXT NOT NULL,
+  updated_at INTEGER NOT NULL,
+  data_json TEXT NOT NULL,
+  PRIMARY KEY (match_id, account_id)
+);
+CREATE INDEX notebooks_account_idx ON notebooks (account_id, updated_at);
+`,
+  },
 ];

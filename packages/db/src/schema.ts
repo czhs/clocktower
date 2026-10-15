@@ -78,3 +78,29 @@ export const adminAudit = sqliteTable('admin_audit', {
   targetName: text('target_name'),
   detailJson: text('detail_json'),
 });
+
+/** Migration 3 (v2): one JSON record per game for future stats (see apps/server game records). */
+export const matchRecords = sqliteTable('match_records', {
+  matchId: text('match_id').primaryKey(),
+  lobbyId: text('lobby_id').notNull(),
+  version: integer('version').notNull(),
+  status: text('status').notNull(),
+  startedAt: integer('started_at').notNull(),
+  endedAt: integer('ended_at').notNull(),
+  winner: text('winner'),
+  playerCount: integer('player_count').notNull(),
+  storytellerAccountId: text('storyteller_account_id'),
+  recordJson: text('record_json').notNull(),
+});
+
+/** Migration 4 (v2): private per-player notebook for one game (owner-only). */
+export const notebooks = sqliteTable(
+  'notebooks',
+  {
+    matchId: text('match_id').notNull(),
+    accountId: text('account_id').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+    dataJson: text('data_json').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.matchId, t.accountId] })],
+);
