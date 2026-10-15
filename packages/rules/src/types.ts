@@ -97,6 +97,8 @@ export interface NominationState {
   votes: Record<number, boolean>;
   threshold: number;
   voteCount: number;
+  /** ceil(alive/2) when the vote was tallied (to recompute the block after a struck vote). */
+  minVotes?: number;
 }
 
 export interface VoteState {
@@ -118,6 +120,8 @@ export interface DayState {
   executionOccurred: boolean;
   vote: VoteState | null;
   nomSeq: number;
+  /** The ST overrode today's Mayor win (do not propose it again today). */
+  mayorOverridden?: boolean;
 }
 
 export interface GameState {
@@ -146,13 +150,27 @@ export interface GameState {
   alerts: string[];
   log: { at: number; text: string }[];
   result: GameResult | null;
+  /**
+   * `result` was detected by the engine but not yet confirmed by the ST: the game is NOT finished,
+   * players see nothing, undo still works. confirm_result finishes, override_result clears it.
+   */
+  resultPending: boolean;
   startedAt: number;
   endedAt: number | null;
   voteStepMs: number;
   /** Injected RNG (not part of snapshots). */
   rng: Rng;
-  /** Undo snapshots (serialized cores, newest last; not part of snapshots). */
-  history: string[];
+  /** Undo entries (newest last; not part of snapshots). */
+  history: HistoryEntry[];
+}
+
+/**
+ * One undoable Storyteller command: the state before it, plus the player actions that happened
+ * after it (replayed on undo, so the ST's undo never reverts a player's action).
+ */
+export interface HistoryEntry {
+  snap: string;
+  replay: { seat: number; action: import('./engine.js').PlayerAction; now: number }[];
 }
 
 export interface Ctx {

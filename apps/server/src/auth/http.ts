@@ -1,6 +1,7 @@
 import express, { type NextFunction, type Request, type RequestHandler, type Response } from 'express';
 import type { z } from 'zod';
 import { CreateAccountRequest, SignInRequest, UpdateProfileRequest, type ApiErrorCode } from '@ct/protocol';
+import { isAllowedPreset } from './presets.js';
 import type { AccountRecord } from '@ct/db';
 import type { Services } from '../services.js';
 import type { RateLimiter } from './rateLimit.js';
@@ -116,7 +117,56 @@ export function rateLimit(limiter: RateLimiter, keyOf: (req: Request, res: Respo
   };
 }
 
-export const clientIp = (req: Request): string => req.ip ?? req.socket.remoteAddress ?? 'unknown';
+/**
+ * Rate-limit key for the client. IPv6 clients control at least a /64, so they are keyed by their
+ * /64 prefix (SR-3); IPv4 and v4-mapped addresses are keyed exactly.
+ */
+export const clientIp = (req: Request): string => ipKey(req.ip ?? req.socket.remoteAddress ?? 'unknown');
+
+export function ipKey(ip: string): string {
+  if (!ip.includes(':') || ip.startsWith('::ffff:') || ip === '::1') return ip;
+  const [head = '', tail = ''] = ip.split('%')[0]!.split('::');
+  const h = head ? head.split(':') : [];
+  const t = tail ? tail.split(':') : [];
+  const full = [...h, ...Array<string>(Math.max(0, 8 - h.length - t.length)).fill('0'), ...t];
+  return `${full
+    .slice(0, 4)
+    .map((x) => x.toLowerCase().padStart(4, '0'))
+    .join(':')}::/64`;
+}
+
+/**
+ * Global concurrency gate for scrypt-heavy endpoints (sign-up / sign-in): at most `slots`
+ * hashes in flight (libuv has 4 threads shared with static file serving), a bounded queue,
+ * and 503 beyond it — no matter how many addresses the requests come from (SR-3).
+ */
+class Gate {
+  private active = 0;
+  private waiting: (() => void)[] = [];
+  constructor(
+    private readonly slots: number,
+    private readonly maxQueue: number,
+  ) {}
+  async run<T>(fn: () => Promise<T>): Promise<T> {
+    if (this.active >= this.slots) {
+      if (this.waiting.length >= this.maxQueue) throw new HttpError(503, 'rate_limited', 'The server is busy, please try again in a moment', 2);
+      await new Promise<void>((resolve) => this.waiting.push(resolve));
+    } else this.active++;
+    try {
+      return await fn();
+    } finally {
+      const next = this.waiting.shift();
+      if (next) next();
+      else this.active--;
+    }
+  }
+}
+
+/** Display names that would let a player impersonate the game itself in chat (SR-11). */
+const RESERVED_NAMES = new Set(['storyteller', 'thestoryteller', 'system', 'narrator', 'thenarrator', 'server', 'admin']);
+export function isReservedName(name: string): boolean {
+  return RESERVED_NAMES.has(name.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]/gu, ''));
+}
 
 /** Wraps async handlers so thrown HttpErrors become JSON errors (Express 5 also forwards rejections). */
 export function handler(fn: (req: Request, res: Response) => unknown | Promise<unknown>): RequestHandler {
@@ -136,9 +186,13 @@ export function errorMiddleware(services: Services) {
       if (err.retryAfterSec) res.setHeader('Retry-After', String(err.retryAfterSec));
       return sendError(res, err.status, err.code, err.message);
     }
-    const e = err as { type?: string; status?: number };
+    const e = err as { type?: string; status?: number; statusCode?: number };
     if (e?.type === 'entity.parse.failed') return sendError(res, 400, 'bad_request', 'Malformed JSON');
     if (e?.type === 'entity.too.large') return sendError(res, 413, 'bad_request', 'Request too large');
+    // Other client errors raised by Express/body parsers (e.g. a malformed %-escape in a path
+    // param): the client's fault, not ours — no error log line, generic message (SR-9).
+    const status = e?.status ?? e?.statusCode;
+    if (typeof status === 'number' && status >= 400 && status < 500) return sendError(res, status, 'bad_request', 'Bad request');
     services.log.error('http handler failed', { path: req.path, err: err instanceof Error ? err.message : String(err) });
     sendError(res, 500, 'internal', 'Internal error');
   };
@@ -149,6 +203,7 @@ export function errorMiddleware(services: Services) {
 
 export function authRouter(services: Services): express.Router {
   const r = express.Router();
+  const scrypt = new Gate(2, 32);
   const auth = requireAccount(services);
   const noStore: RequestHandler = (_req, res, next) => {
     res.setHeader('Cache-Control', 'no-store');
@@ -161,7 +216,8 @@ export function authRouter(services: Services): express.Router {
     rateLimit(services.limits.createAccount, (req) => clientIp(req)),
     handler(async (req, res) => {
       const body = parseBody(CreateAccountRequest, req.body);
-      const created = await services.auth.createAccount(body.displayName);
+      if (isReservedName(body.displayName)) throw new HttpError(400, 'bad_request', 'That name is reserved, please pick another');
+      const created = await scrypt.run(() => services.auth.createAccount(body.displayName));
       setSession(res, services, created.token);
       res.status(201).json({ account: services.auth.view(created.account), passphrase: created.passphrase });
     }),
@@ -172,7 +228,7 @@ export function authRouter(services: Services): express.Router {
     rateLimit(services.limits.signIn, (req) => clientIp(req)),
     handler(async (req, res) => {
       const body = parseBody(SignInRequest, req.body);
-      const result = await services.auth.signIn(body.passphrase);
+      const result = await scrypt.run(() => services.auth.signIn(body.passphrase));
       if (!result) throw new HttpError(401, 'unauthenticated', 'That passphrase does not match any account');
       setSession(res, services, result.token);
       res.json(services.auth.view(result.account));
@@ -189,6 +245,17 @@ export function authRouter(services: Services): express.Router {
     }),
   );
 
+  /** SR-12: sign out every device of this account (all sessions are deleted). */
+  r.post(
+    '/auth/signout-all',
+    auth,
+    handler((_req, res) => {
+      services.sessions.deleteForAccount(currentAccount(res).id);
+      clearSession(res, services);
+      res.json({ ok: true });
+    }),
+  );
+
   r.get('/me', auth, (_req, res) => {
     res.json(services.auth.view(currentAccount(res)));
   });
@@ -198,6 +265,8 @@ export function authRouter(services: Services): express.Router {
     auth,
     handler((req, res) => {
       const body = parseBody(UpdateProfileRequest, req.body);
+      if (body.cosmetics && !isAllowedPreset(body.cosmetics.preset)) throw new HttpError(400, 'bad_request', 'Unknown character preset');
+      if (body.displayName !== undefined && isReservedName(body.displayName)) throw new HttpError(400, 'bad_request', 'That name is reserved, please pick another');
       const updated = services.accounts.updateProfile(currentAccount(res).id, body);
       if (!updated) throw new HttpError(404, 'not_found', 'Account not found');
       res.json(services.auth.view(updated));

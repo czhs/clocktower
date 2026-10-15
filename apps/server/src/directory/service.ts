@@ -5,7 +5,12 @@ import type { Logger } from '../rooms/modules.js';
 import type { JoinIntent, TicketService } from './tickets.js';
 
 /** Per-account cap on simultaneously existing lobbies that the account created. */
-export const PER_ACCOUNT_LOBBY_LIMIT = 2;
+/** Active lobbies one account may have created (SR-2: a few free accounts must not fill every slot). */
+export const PER_ACCOUNT_LOBBY_LIMIT = 1;
+/** Active lobbies created from one client IP (IPv6: per /64). Loopback (local dev/tests) is exempt. */
+export const PER_IP_LOBBY_LIMIT = 2;
+
+const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
 export const LOBBY_ID_LENGTH = 10;
 
 export class DirectoryError extends Error {
@@ -38,11 +43,15 @@ export interface LobbyRoomHandle {
   isBanned(accountId: string): boolean;
   connectedCount(): number;
   summary(): LobbySummary;
+  /** Admin action: disconnect everyone and dispose the room (the room then calls remove()). */
+  close?(): void;
 }
 
 interface Entry {
   id: string;
   creatorAccountId: string;
+  /** Rate-limit key of the creating client (null = loopback / unknown). */
+  creatorIp: string | null;
   init: LobbyInit | null;
   roomId: string | null;
   handle: LobbyRoomHandle | null;
@@ -70,6 +79,7 @@ export interface DirectoryDeps {
   /** matchMaker.createRoom('game', { lobbyId }) in production; injectable for tests. */
   createRoom: (lobbyId: string) => Promise<{ roomId: string }>;
   perAccountLimit?: number;
+  perIpLimit?: number;
   now?: () => number;
 }
 
@@ -92,7 +102,8 @@ export class LobbyDirectory {
     return this.entries.size;
   }
 
-  async create(account: AccountRecord, req: CreateLobbyRequest): Promise<LobbySummary> {
+  async create(account: AccountRecord, req: CreateLobbyRequest, clientIp?: string): Promise<LobbySummary> {
+    const ip = clientIp && !LOOPBACK.has(clientIp) ? clientIp : null;
     return this.mutex.run(async () => {
       if (this.entries.size >= this.deps.lobbyMaxCount) {
         throw new DirectoryError(409, 'lobby_limit', `This server already hosts the maximum of ${this.deps.lobbyMaxCount} lobbies`);
@@ -100,7 +111,11 @@ export class LobbyDirectory {
       const limit = this.deps.perAccountLimit ?? PER_ACCOUNT_LOBBY_LIMIT;
       const mine = [...this.entries.values()].filter((e) => e.creatorAccountId === account.id).length;
       if (mine >= limit) {
-        throw new DirectoryError(409, 'lobby_limit', `You can have at most ${limit} open lobbies at a time`);
+        throw new DirectoryError(409, 'lobby_limit', `You can have at most ${limit} open ${limit === 1 ? 'lobby' : 'lobbies'} at a time`);
+      }
+      const ipLimit = this.deps.perIpLimit ?? PER_IP_LOBBY_LIMIT;
+      if (ip && [...this.entries.values()].filter((e) => e.creatorIp === ip).length >= ipLimit) {
+        throw new DirectoryError(409, 'lobby_limit', `At most ${ipLimit} open lobbies can be created from one network`);
       }
       let id = randomId(LOBBY_ID_LENGTH);
       while (this.entries.has(id)) id = randomId(LOBBY_ID_LENGTH);
@@ -119,6 +134,7 @@ export class LobbyDirectory {
       const entry: Entry = {
         id,
         creatorAccountId: account.id,
+        creatorIp: ip,
         init,
         roomId: null,
         handle: null,
@@ -226,6 +242,16 @@ export class LobbyDirectory {
     }
     const t = this.deps.tickets.issue({ accountId: account.id, lobbyId, intent });
     return { lobbyId, roomId: e.roomId, ticket: t.ticket, expiresAt: t.expiresAt };
+  }
+
+  /** Admin: close a lobby (everyone is disconnected; the room disposes and removes itself). */
+  close(lobbyId: string): boolean {
+    const e = this.entries.get(lobbyId);
+    if (!e) return false;
+    this.deps.log.info('lobby closed by admin', { lobbyId });
+    if (e.handle?.close) e.handle.close();
+    else this.remove(lobbyId);
+    return true;
   }
 
   /** For /api/admin/status. */

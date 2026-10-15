@@ -45,11 +45,14 @@ import { createVoiceModule } from '../voice/index.js';
 import type { GameModule, Logger, RoomEvent, RoomHost, RoomMember, VoiceModule, WorldModule } from './modules.js';
 import { randomId } from '../auth/crypto.js';
 import { RateLimiter } from '../auth/rateLimit.js';
+import { isAllowedPreset } from '../auth/presets.js';
 import type { JoinIntent } from '../directory/tickets.js';
-import { memberView, shuffle, startBlockers } from './memberUtil.js';
+import { displayLabels, memberView, shuffle, startBlockers } from './memberUtil.js';
 
 /** Waiting-room disconnect: seat held this long, then released. */
 export const WAITING_GRACE_SEC = 30;
+/** An empty lobby outside a running game is disposed after this long (SR-2). */
+export const EMPTY_LOBBY_TIMEOUT_SEC = 120;
 /** A kicked account cannot rejoin the same lobby for this long. */
 export const KICK_BAN_MS = 10 * 60_000;
 /** If the creator has not shown up after this long, the first joiner becomes host. */
@@ -189,6 +192,19 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
       isBanned: (accountId) => this.isBanned(accountId),
       connectedCount: () => this.connectedSeats().length,
       summary: () => this.summary(),
+      close: () => {
+        if (this.disposing) return;
+        this.disposing = true;
+        this.log.info('lobby closed by admin');
+        for (const s of this.seats.values()) {
+          try {
+            s.client?.send('kicked', { reason: 'This lobby was closed by an administrator' });
+          } catch {
+            // already gone
+          }
+        }
+        void this.disconnect(CLOSE_CODES.lobbyClosed);
+      },
     });
     this.services.directory.update(this.summary());
     this.log.info('room created', { roomId: this.roomId });
@@ -434,6 +450,7 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
       case 'lobby:cosmetics': {
         if (!this.requireWaiting(seat, type)) return;
         const { cosmetics } = msg as C2SParsed<'lobby:cosmetics'>;
+        if (!isAllowedPreset(cosmetics.preset)) return this.sendError(seat, { code: 'invalid', message: 'Unknown character preset', for: type });
         m.cosmetics = cosmetics;
         this.services.accounts.updateProfile(m.accountId, { cosmetics });
         this.lobbyDirty = true;
@@ -544,7 +561,9 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
       }
       case 'st:command': {
         if (!isSt) return this.sendError(seat, { code: 'forbidden', message: 'Storyteller only', for: type });
-        if (this.status !== 'in_game') return this.sendError(seat, { code: 'phase', message: 'No game in progress', for: type });
+        // After the game ends the ST may still announce / move around; the rules module rejects
+        // everything that would change the (final, already recorded) result.
+        if (this.status === 'waiting') return this.sendError(seat, { code: 'phase', message: 'No game in progress', for: type });
         this.game.handleStoryteller(m.pid, msg as C2SParsed<'st:command'>);
         return;
       }
@@ -592,7 +611,7 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
 
     this.host.emit({ type: 'game_started', seats, storytellerPid: st.member.pid });
     this.game.start(
-      players.map((s) => ({ pid: s.member.pid, seat: s.member.seat!, name: s.member.displayName })),
+      players.map((s) => ({ pid: s.member.pid, seat: s.member.seat!, name: this.label(s.member.pid) })),
       st.member.pid,
     );
     try {
@@ -656,7 +675,7 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
     const msg: ChatMessage = {
       id: randomId(10),
       fromPid: m.pid,
-      fromName: m.displayName,
+      fromName: this.label(m.pid),
       text,
       scope: inGame ? (m.role === 'storyteller' ? 'storyteller' : 'zone') : 'lobby',
       at: Date.now(),
@@ -881,7 +900,8 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
       const summary = this.summary();
       this.services.directory.update(summary);
       const blockers = this.startBlockers();
-      const members = [...this.seats.values()].sort((a, b) => a.joinedAt - b.joinedAt).map((s) => memberView(s.member, s.ready));
+      const labels = this.labels();
+      const members = [...this.seats.values()].sort((a, b) => a.joinedAt - b.joinedAt).map((s) => memberView(s.member, s.ready, labels.get(s.member.pid)));
       for (const s of this.connectedSeats()) {
         const view: LobbyRoomView = {
           lobby: summary,
@@ -923,7 +943,10 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
       return;
     }
     this.idleSince ??= now;
-    if (now - this.idleSince >= this.services.config.lobbyIdleTimeoutSec * 1000) {
+    // SR-2: an empty lobby that is not mid-game (never joined, or everyone left) frees its slot
+    // after 2 minutes; a running game keeps its seats for the full idle timeout.
+    const limitSec = this.status === 'in_game' ? this.services.config.lobbyIdleTimeoutSec : Math.min(EMPTY_LOBBY_TIMEOUT_SEC, this.services.config.lobbyIdleTimeoutSec);
+    if (now - this.idleSince >= limitSec * 1000) {
       this.disposing = true;
       this.log.info('idle timeout: disposing lobby');
       void this.disconnect(CLOSE_CODES.lobbyClosed);
@@ -944,6 +967,14 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
 
   private sendError(seat: Seat, err: ServerErrorMsg) {
     if (this.errorLimiter.take(seat.member.pid)) this.sendTo(seat, 'error', err);
+  }
+
+  private labels(): Map<string, string> {
+    return displayLabels([...this.seats.values()].map((s) => ({ pid: s.member.pid, displayName: s.member.displayName, joinedAt: s.joinedAt })));
+  }
+
+  private label(pid: string): string {
+    return this.labels().get(pid) ?? this.seats.get(pid)?.member.displayName ?? '';
   }
 
   private storytellerSeat(): Seat | null {
@@ -999,11 +1030,11 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
       script: this.settings.script,
       maxPlayers: this.settings.maxPlayers,
       playerCount: players,
-      storytellerName: st?.member.displayName ?? null,
+      storytellerName: st ? this.label(st.member.pid) : null,
       storytellerSeatOpen: !st,
       phase: this.directoryPhase(),
       joinable: this.status === 'waiting' && players < this.settings.maxPlayers,
-      hostName: host?.member.displayName ?? this.creatorName,
+      hostName: host ? this.label(host.member.pid) : this.creatorName,
       createdAt: this.createdAt,
       updatedAt: Date.now(),
     };

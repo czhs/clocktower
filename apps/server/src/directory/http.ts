@@ -1,10 +1,13 @@
 import express from 'express';
 import { CreateLobbyRequest, JoinTicketRequest, type DirectoryEvent } from '@ct/protocol';
 import type { Services } from '../services.js';
-import { currentAccount, handler, HttpError, parseBody, rateLimit, requireAccount } from '../auth/http.js';
+import { clientIp, currentAccount, handler, HttpError, parseBody, rateLimit, requireAccount, sendError } from '../auth/http.js';
 import { DirectoryError } from './service.js';
 
 export const SSE_HEARTBEAT_MS = 20_000;
+/** SR-6: open lobby streams per account (more tabs fall back to the 30 s list refresh) and in total. */
+export const SSE_MAX_PER_ACCOUNT = 3;
+export const SSE_MAX_TOTAL = 200;
 const LOBBY_ID_RE = /^[A-Za-z0-9_-]{4,32}$/;
 
 function rethrow(e: unknown): never {
@@ -18,6 +21,8 @@ export function lobbiesRouter(services: Services, opts: { heartbeatMs?: number }
   const auth = requireAccount(services);
   const dir = services.directory;
   const heartbeatMs = opts.heartbeatMs ?? SSE_HEARTBEAT_MS;
+  const streamsByAccount = new Map<string, number>();
+  let streamsTotal = 0;
 
   r.get('/lobbies', auth, (_req, res) => {
     res.setHeader('Cache-Control', 'no-store');
@@ -25,6 +30,21 @@ export function lobbiesRouter(services: Services, opts: { heartbeatMs?: number }
   });
 
   r.get('/lobbies/stream', auth, (req, res) => {
+    const accountId = currentAccount(res).id;
+    const mine = streamsByAccount.get(accountId) ?? 0;
+    if (mine >= SSE_MAX_PER_ACCOUNT) return sendError(res, 429, 'rate_limited', 'Too many open lobby streams for this account');
+    if (streamsTotal >= SSE_MAX_TOTAL) return sendError(res, 503, 'internal', 'The server is busy, please try again shortly');
+    streamsByAccount.set(accountId, mine + 1);
+    streamsTotal++;
+    let released = false;
+    const release = () => {
+      if (released) return;
+      released = true;
+      streamsTotal--;
+      const n = (streamsByAccount.get(accountId) ?? 1) - 1;
+      if (n > 0) streamsByAccount.set(accountId, n);
+      else streamsByAccount.delete(accountId);
+    };
     res.status(200);
     res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
     res.setHeader('Cache-Control', 'no-store, no-transform');
@@ -43,6 +63,7 @@ export function lobbiesRouter(services: Services, opts: { heartbeatMs?: number }
     const close = () => {
       clearInterval(hb);
       unsubscribe();
+      release();
     };
     req.on('close', close);
     res.on('close', close);
@@ -54,7 +75,7 @@ export function lobbiesRouter(services: Services, opts: { heartbeatMs?: number }
     rateLimit(services.limits.createLobby, (_req, res) => currentAccount(res).id),
     handler(async (req, res) => {
       const body = parseBody(CreateLobbyRequest, req.body);
-      const lobby = await dir.create(currentAccount(res), body).catch(rethrow);
+      const lobby = await dir.create(currentAccount(res), body, clientIp(req)).catch(rethrow);
       res.status(201).json({ lobby });
     }),
   );

@@ -1,14 +1,17 @@
 import { CHARACTER_INFO, DEFAULT_BEDTIME_SECONDS, MAX_PLAYERS, MIN_PLAYERS, type CharacterId, type StCommand } from '@ct/protocol';
-import { checkVictory, finish, killPlayer, publish } from './deaths.js';
+import { checkVictory, endPoisonerPoison, finish, killPlayer, publish } from './deaths.js';
 import {
   cancelNomination,
   execute,
+  executeOnBlock,
+  MAYOR_WIN_REASON,
   mayorCheck,
   newDay,
   nominate,
   setHand,
   slayerShot,
   startVote,
+  strikeVote,
   tickVote,
 } from './day.js';
 import { buildNightQueue, findStep, openStepFor, resolveStep } from './night.js';
@@ -26,6 +29,7 @@ import {
   type Ctx,
   type Effect,
   type GameState,
+  type HistoryEntry,
   type PlayerState,
   type PromptState,
   type Rng,
@@ -48,6 +52,8 @@ import {
 } from './util.js';
 
 export const DEFAULT_VOTE_STEP_MS = 1500;
+/** SR-13: bounded reminder tokens per player (view size / memory). */
+export const MAX_REMINDERS_PER_PLAYER = 20;
 const HISTORY_LIMIT = 30;
 
 export interface CreateGameOptions {
@@ -127,6 +133,7 @@ export function createGame(opts: CreateGameOptions): GameState {
     alerts: [],
     log: [],
     result: null,
+    resultPending: false,
     startedAt: opts.now ?? 0,
     endedAt: null,
     voteStepMs: opts.voteStepMs ?? DEFAULT_VOTE_STEP_MS,
@@ -145,25 +152,61 @@ function serializeCore(s: GameState): string {
 }
 
 function pushHistory(s: GameState, snap: string): void {
-  s.history.push(snap);
+  s.history.push({ snap, replay: [] });
   if (s.history.length > HISTORY_LIMIT) s.history.splice(0, s.history.length - HISTORY_LIMIT);
 }
 
+/**
+ * Undo the Storyteller's last command: restore the state before it, then replay the player
+ * actions that happened since (so a nomination, answer or vote made after the ST's mistake
+ * survives). Replayed actions that are no longer legal are dropped; their effects are not
+ * re-broadcast (the restored views carry the state).
+ */
 function undo(s: GameState, op: Op): void {
-  const snap = s.history.pop();
-  if (!snap) throw new RuleError('invalid', 'Nothing to undo');
+  const entry = s.history.pop();
+  if (!entry) throw new RuleError('invalid', 'Nothing to undo');
+  const snap = entry.snap;
   // Keep live presence facts (they mirror the world/connection, not rules decisions).
   const visiting = s.visitingSeat;
   const stConnected = s.storytellerConnected;
   const connected = new Map(s.players.map((p) => [p.seat, p.connected]));
+  // Id counters never go backwards: ids handed to clients (prompts, info, announcements, night
+  // steps, nominations) must never be reused, or a stale/replayed answer to an undone prompt
+  // could apply to a new one.
+  const seqs = { annSeq: s.annSeq, stepSeq: s.stepSeq, nomSeq: s.day?.nomSeq ?? 0 };
+  const playerSeqs = new Map(s.players.map((p) => [p.seat, { promptSeq: p.promptSeq, infoSeq: p.infoSeq }]));
   const core = JSON.parse(snap) as Omit<GameState, 'rng' | 'history'>;
   const { rng, history } = s;
   Object.assign(s, core, { rng, history });
   s.storytellerConnected = stConnected;
-  for (const p of s.players) p.connected = connected.get(p.seat) ?? p.connected;
+  s.annSeq = Math.max(s.annSeq, seqs.annSeq);
+  s.stepSeq = Math.max(s.stepSeq, seqs.stepSeq);
+  if (s.day) s.day.nomSeq = Math.max(s.day.nomSeq, seqs.nomSeq);
+  for (const p of s.players) {
+    p.connected = connected.get(p.seat) ?? p.connected;
+    const q = playerSeqs.get(p.seat);
+    if (q) {
+      p.promptSeq = Math.max(p.promptSeq, q.promptSeq);
+      p.infoSeq = Math.max(p.infoSeq, q.infoSeq);
+    }
+  }
   if (!isNightPhase(s)) s.visitingSeat = null;
   else s.visitingSeat = visiting;
   log(s, op, 'Storyteller undid the last action');
+  const kept: HistoryEntry['replay'] = [];
+  for (const r of entry.replay) {
+    const scratch: Op = { now: r.now, effects: [] };
+    const before = serializeCore(s);
+    try {
+      playerAction(s, scratch, r.seat, r.action);
+      kept.push(r);
+    } catch (e) {
+      if (!(e instanceof RuleError)) throw e;
+      restoreKeepingHistory(s, before);
+    }
+  }
+  // Player actions replayed on top of the previous ST command stay attached to it.
+  s.history.at(-1)?.replay.push(...kept);
 }
 
 // ----------------------------------------------------------------------------------- phases
@@ -242,7 +285,16 @@ function advance(s: GameState, op: Op, to: 'day' | 'bedtime' | 'night' | 'dawn')
   };
   if (!ok[to].includes(from)) throw new RuleError('phase', `Cannot go from ${from} to ${to}`);
   if (from === 'day') {
-    if (s.day?.vote) throw new RuleError('phase', 'A vote is still running');
+    const d = s.day!;
+    if (d.vote) throw new RuleError('phase', 'A vote is still running');
+    // Nominations never voted on lapse when the day ends.
+    for (const n of d.nominations) if (n.status === 'pending') n.status = 'cancelled';
+    // Whoever is on the block when the day ends is executed (Saint / Demon / two-alive checks
+    // apply as for any execution; a detected game end waits for the ST before night falls).
+    if (d.block && !d.executionOccurred) {
+      executeOnBlock(s, op, d.block.seat);
+      if (s.resultPending || s.phase !== 'day') return;
+    }
     if (mayorCheck(s, op)) return;
   }
   if (to === 'day') startDay(s, op);
@@ -330,9 +382,26 @@ function assign(s: GameState, op: Op, cmd: Extract<StCommand, { type: 'assign_ch
   log(s, op, 'Characters assigned manually');
 }
 
+/** While a detected game end awaits the ST, nothing may move the game forward. */
+const BLOCKED_WHILE_PENDING: ReadonlySet<StCommand['type']> = new Set([
+  'advance_phase',
+  'begin_first_night',
+  'set_nominations_open',
+  'start_vote',
+  'execute',
+  'resolve_step',
+  'prompt_player',
+]);
+
 function stCommand(s: GameState, op: Op, cmd: StCommand): void {
+  if (s.resultPending && BLOCKED_WHILE_PENDING.has(cmd.type))
+    throw new RuleError('phase', 'A game end is pending: confirm it or override it first');
+  if ((cmd.type === 'confirm_result' || cmd.type === 'override_result') && !s.resultPending)
+    throw new RuleError('invalid', 'No game end is pending');
   if (s.phase === 'finished') {
-    const allowed: StCommand['type'][] = ['declare_winner', 'undo_last', 'announce', 'set_travel_speed', 'visit_home', 'leave_home'];
+    // The result is final once declared: it has been revealed to everyone and recorded in the
+    // stats (idempotently, exactly once), so neither the winner nor the history may change.
+    const allowed: StCommand['type'][] = ['announce', 'set_travel_speed', 'visit_home', 'leave_home'];
     if (!allowed.includes(cmd.type)) throw new RuleError('phase', 'The game is over');
   }
   switch (cmd.type) {
@@ -388,6 +457,10 @@ function stCommand(s: GameState, op: Op, cmd: StCommand): void {
       if (!cmd.alive) killPlayer(s, op, p, 'storyteller', { raw: true });
       else {
         p.alive = true;
+        if (cmd.restoreGhostVote) {
+          p.ghostVoteAvailable = true;
+          p.ghostVoteUsed = false;
+        }
         if (!isNightPhase(s)) publish(s, op, p, 'storyteller');
         log(s, op, `Storyteller revived ${who(p)}`);
       }
@@ -415,6 +488,7 @@ function stCommand(s: GameState, op: Op, cmd: StCommand): void {
       if (!s.assigned) throw new RuleError('invalid', 'Assign characters first');
       const p = mustPlayer(s, cmd.seat);
       const prev = p.character;
+      if (prev === 'poisoner' && cmd.character !== 'poisoner') endPoisonerPoison(s);
       p.character = cmd.character;
       p.alignment = cmd.alignment ?? CHARACTER_INFO[cmd.character].alignment;
       if (s.phase === 'setup') p.startingCharacter = cmd.character;
@@ -435,9 +509,13 @@ function stCommand(s: GameState, op: Op, cmd: StCommand): void {
         alert(s, op, 'No living Demon in play: declare a winner or assign a Demon.');
       return;
     }
-    case 'add_reminder':
-      addReminder(mustPlayer(s, cmd.seat), cmd.token);
+    case 'add_reminder': {
+      const p = mustPlayer(s, cmd.seat);
+      if (!p.reminders.includes(cmd.token) && p.reminders.length >= MAX_REMINDERS_PER_PLAYER)
+        throw new RuleError('invalid', `At most ${MAX_REMINDERS_PER_PLAYER} reminders per player`);
+      addReminder(p, cmd.token);
       return;
+    }
     case 'remove_reminder':
       removeReminder(mustPlayer(s, cmd.seat), cmd.token);
       return;
@@ -503,6 +581,39 @@ function stCommand(s: GameState, op: Op, cmd: StCommand): void {
     case 'undo_last':
       undo(s, op);
       return;
+    case 'confirm_result': {
+      const r = s.result!;
+      finish(s, op, r.winner, r.reason);
+      return;
+    }
+    case 'override_result': {
+      const r = s.result!;
+      s.result = null;
+      s.resultPending = false;
+      if (r.reason === MAYOR_WIN_REASON && s.day) s.day.mayorOverridden = true;
+      alert(s, op, `Storyteller overrode the game end (${r.reason}); the game continues.`);
+      return;
+    }
+    case 'strike_vote':
+      strikeVote(s, op, cmd.nominationId, cmd.seat);
+      return;
+    case 'set_red_herring': {
+      if (!s.assigned) throw new RuleError('invalid', 'Assign characters first');
+      if (cmd.seat !== null && mustPlayer(s, cmd.seat).alignment !== 'good') throw new RuleError('invalid', 'The red herring must be a good player');
+      s.redHerringSeat = cmd.seat;
+      log(s, op, cmd.seat === null ? 'Red herring cleared' : `Red herring is now ${who(mustPlayer(s, cmd.seat))}`);
+      return;
+    }
+    case 'set_drunk_belief': {
+      const p = mustPlayer(s, cmd.seat);
+      if (p.character !== 'drunk') throw new RuleError('invalid', 'That player is not the Drunk');
+      if (typeOf(cmd.character) !== 'townsfolk') throw new RuleError('invalid', 'The Drunk must believe they are a Townsfolk');
+      if (s.players.some((q) => q !== p && q.character === cmd.character)) alert(s, op, `${charName(cmd.character)} is in play: the Drunk may be exposed.`);
+      p.believedCharacter = cmd.character;
+      if (s.rolesRevealed) giveInfo(s, p, { text: `You are the ${charName(cmd.character)}.`, characters: [cmd.character] });
+      log(s, op, `${who(p)} (the Drunk) now believes they are the ${charName(cmd.character)}`);
+      return;
+    }
   }
 }
 
@@ -513,9 +624,14 @@ function victoryHint(s: GameState, op: Op): void {
   else if (aliveCount(s) <= 2) alert(s, op, 'Only two players alive: evil would win. Use declare_winner if appropriate.');
 }
 
-function run(s: GameState, now: number, fn: (op: Op) => void, undoable: boolean): CommandResult {
+/**
+ * Run one command atomically (rolled back on error). `history`: 'push' = undoable ST command,
+ * 'none' = not recorded (undo itself, presence-only commands, player actions; player actions are
+ * recorded for replay by applyPlayerAction instead).
+ */
+function run(s: GameState, now: number, fn: (op: Op) => void, history: 'push' | 'none', rollback = true): CommandResult {
   const op: Op = { now, effects: [] };
-  const snap = undoable ? serializeCore(s) : null;
+  const snap = rollback || history === 'push' ? serializeCore(s) : null;
   try {
     fn(op);
   } catch (e) {
@@ -527,7 +643,7 @@ function run(s: GameState, now: number, fn: (op: Op) => void, undoable: boolean)
     if (snap) restoreKeepingHistory(s, snap);
     throw e;
   }
-  if (snap) pushHistory(s, snap);
+  if (snap && history === 'push') pushHistory(s, snap);
   return { ok: true, effects: op.effects };
 }
 
@@ -541,7 +657,9 @@ function restoreKeepingHistory(s: GameState, snap: string): void {
 export function applyStCommand(s: GameState, cmd: StCommand, ctx: Ctx): CommandResult {
   const isUndo = cmd.type === 'undo_last';
   const presenceOnly = cmd.type === 'visit_home' || cmd.type === 'leave_home' || cmd.type === 'set_travel_speed';
-  return run(s, ctx.now, (op) => stCommand(s, op, cmd), !isUndo && !presenceOnly);
+  // Confirming a game end is final (the game finishes), so it is not undoable either.
+  const final = cmd.type === 'confirm_result' || cmd.type === 'declare_winner';
+  return run(s, ctx.now, (op) => stCommand(s, op, cmd), isUndo || presenceOnly || final ? 'none' : 'push', !isUndo);
 }
 
 // --------------------------------------------------------------------------- player actions
@@ -596,28 +714,29 @@ function promptResponse(s: GameState, op: Op, p: PlayerState, a: Extract<PlayerA
 
 /** Apply a player action from `seat` (caller maps pid -> seat). */
 export function applyPlayerAction(s: GameState, seat: number, a: PlayerAction, ctx: Ctx): CommandResult {
-  return run(
-    s,
-    ctx.now,
-    (op) => {
-      const p = mustPlayer(s, seat);
-      switch (a.type) {
-        case 'nominate':
-          nominate(s, op, seat, a.nomineeSeat);
-          return;
-        case 'vote':
-          setHand(s, op, seat, a.nominationId, a.vote);
-          return;
-        case 'promptResponse':
-          promptResponse(s, op, p, a);
-          return;
-        case 'slayerShot':
-          slayerShot(s, op, seat, a.targetSeat);
-          return;
-      }
-    },
-    a.type !== 'vote',
-  );
+  const r = run(s, ctx.now, (op) => playerAction(s, op, seat, a), 'none', a.type !== 'vote');
+  // Recorded against the ST's last undoable command so undo_last can replay it.
+  if (r.ok) s.history.at(-1)?.replay.push({ seat, action: a, now: ctx.now });
+  return r;
+}
+
+function playerAction(s: GameState, op: Op, seat: number, a: PlayerAction): void {
+  const p = mustPlayer(s, seat);
+  if (s.resultPending) throw new RuleError('phase', 'Please wait for the Storyteller.');
+  switch (a.type) {
+    case 'nominate':
+      nominate(s, op, seat, a.nomineeSeat);
+      return;
+    case 'vote':
+      setHand(s, op, seat, a.nominationId, a.vote);
+      return;
+    case 'promptResponse':
+      promptResponse(s, op, p, a);
+      return;
+    case 'slayerShot':
+      slayerShot(s, op, seat, a.targetSeat);
+      return;
+  }
 }
 
 // ------------------------------------------------------------------------- timers/presence
@@ -626,7 +745,7 @@ export function applyPlayerAction(s: GameState, seat: number, a: PlayerAction, c
 export function tick(s: GameState, now: number): { changed: boolean; effects: Effect[] } {
   const op: Op = { now, effects: [] };
   let changed = false;
-  if (s.phase === 'bedtime' && s.phaseEndsAt !== null && now >= s.phaseEndsAt) {
+  if (s.phase === 'bedtime' && s.phaseEndsAt !== null && now >= s.phaseEndsAt && !s.resultPending) {
     startNight(s, op, false, 'bedtime');
     changed = true;
   }

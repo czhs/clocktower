@@ -198,6 +198,11 @@ describe('scripted round through the module', () => {
     r.game.handlePlayer('p4', 'game:slayerShot', { targetSeat: 0 });
     expect(r.game.isAlive('p0')).toBe(true);
     r.st({ type: 'execute', seat: 0 });
+    // The detected end waits for the ST's confirmation (nothing finished or recorded yet).
+    expect(r.game.phase()).toBe('day');
+    expect(r.game.outcome()).toBeNull();
+    expect(r.events('game_finished')).toHaveLength(0);
+    r.st({ type: 'confirm_result' });
     expect(r.game.phase()).toBe('finished');
     expect(r.events('game_finished')).toHaveLength(1);
     const out = r.game.outcome()!;

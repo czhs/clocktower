@@ -1,4 +1,4 @@
-import { finish, killPlayer } from './deaths.js';
+import { killPlayer, proposeResult } from './deaths.js';
 import { RuleError, type DayState, type GameState, type NominationState } from './types.js';
 import {
   aliveCount,
@@ -71,14 +71,15 @@ export function nominate(s: GameState, op: Op, nominatorSeat: number, nomineeSea
   log(s, op, `${who(nominator)} nominated ${who(nominee)}`);
 
   // Virgin: the first nomination spends the ability; a Townsfolk nominator is executed at once.
-  if (nominee.character === 'virgin' && !nominee.abilityUsed) {
+  // A dead Virgin has no ability.
+  if (nominee.character === 'virgin' && nominee.alive && !nominee.abilityUsed) {
     nominee.abilityUsed = true;
     if (impaired(nominee)) {
       log(s, op, `Virgin ${who(nominee)} is drunk/poisoned: ability spent without effect`);
     } else if (typeOf(nominator.character) === 'townsfolk') {
       n.status = 'cancelled';
       executeNow(s, op, nominator.seat, 'virgin');
-    } else if (nominator.character === 'spy') {
+    } else if (nominator.character === 'spy' && !impaired(nominator)) {
       alert(
         s,
         op,
@@ -148,7 +149,7 @@ function lockVote(s: GameState, op: Op, n: NominationState, seat: number): void 
     p.ghostVoteAvailable = false;
     p.ghostVoteUsed = true;
   }
-  if (p.character === 'butler' && !impaired(p)) {
+  if (p.character === 'butler' && p.alive && !impaired(p)) {
     const m = p.butlerMasterSeat;
     const masterVotes = m === null ? false : m in n.votes ? n.votes[m] === true : v.hands.includes(m);
     if (!masterVotes)
@@ -163,6 +164,7 @@ function tally(s: GameState, op: Op, n: NominationState): void {
   const nominee = mustPlayer(s, n.nomineeSeat);
   const min = minVotes(s);
   const c = n.voteCount;
+  n.minVotes = min;
   if (c >= min && c > d.highWater) {
     d.block = { seat: n.nomineeSeat, votes: c };
     d.highWater = c;
@@ -178,7 +180,8 @@ function tally(s: GameState, op: Op, n: NominationState): void {
 /** Advance the clock hand (call from tick). Returns true if anything changed. */
 export function tickVote(s: GameState, op: Op): boolean {
   const v = s.day?.vote;
-  if (!v || s.phase !== 'day') return false;
+  // The clock hand waits while the ST reviews a detected game end.
+  if (!v || s.phase !== 'day' || s.resultPending) return false;
   const n = findNomination(s.day!, v.nominationId);
   let changed = false;
   while (s.day?.vote === v && op.now >= v.nextAt) {
@@ -203,6 +206,11 @@ export function finishVoteNow(s: GameState, op: Op): void {
   }
 }
 
+/** The day ends with `seat` on the block: they are executed (rules: no vote needed again). */
+export function executeOnBlock(s: GameState, op: Op, seat: number): void {
+  executeNow(s, op, seat, 'execution');
+}
+
 function executeNow(s: GameState, op: Op, seat: number, cause: 'execution' | 'virgin'): void {
   const d = s.day!;
   const p = mustPlayer(s, seat);
@@ -222,7 +230,7 @@ function executeNow(s: GameState, op: Op, seat: number, cause: 'execution' | 'vi
     if (!impaired(p)) {
       killPlayer(s, op, p, cause, { raw: true });
       s.lastExecutedDiedSeat = seat;
-      finish(s, op, 'evil', 'The Saint was executed.');
+      proposeResult(s, op, 'evil', 'The Saint was executed.');
       return;
     }
     alert(s, op, `Saint ${who(p)} was executed while drunk/poisoned: good does not lose.`);
@@ -259,7 +267,7 @@ export function slayerShot(s: GameState, op: Op, shooterSeat: number, targetSeat
     if (!impaired(shooter)) {
       if (typeOf(target.character) === 'demon') {
         killed = killPlayer(s, op, target, 'slayer');
-      } else if (target.character === 'recluse') {
+      } else if (target.character === 'recluse' && !impaired(target)) {
         alert(
           s,
           op,
@@ -273,7 +281,7 @@ export function slayerShot(s: GameState, op: Op, shooterSeat: number, targetSeat
 
 /** End-of-day Mayor check. Returns true if the game ended. */
 export function mayorCheck(s: GameState, op: Op): boolean {
-  if (!s.day || s.day.executionOccurred) return false;
+  if (!s.day || s.day.executionOccurred || s.day.mayorOverridden) return false;
   if (aliveCount(s) !== 3) return false;
   const mayor = s.players.find((p) => p.alive && p.character === 'mayor');
   if (!mayor) return false;
@@ -281,6 +289,48 @@ export function mayorCheck(s: GameState, op: Op): boolean {
     alert(s, op, `Mayor ${who(mayor)} is drunk/poisoned: no Mayor win with three alive.`);
     return false;
   }
-  finish(s, op, 'good', 'Three players remain, nobody was executed, and the Mayor lives.');
+  proposeResult(s, op, 'good', MAYOR_WIN_REASON);
   return true;
+}
+
+export const MAYOR_WIN_REASON = 'Three players remain, nobody was executed, and the Mayor lives.';
+
+/** Recompute today's block from the tallied nominations (after the ST struck a vote). */
+function recomputeBlock(s: GameState): void {
+  const d = s.day!;
+  if (d.executionOccurred) return;
+  let block: DayState['block'] = null;
+  let high = 0;
+  for (const n of d.nominations) {
+    if (n.status !== 'tallied') continue;
+    const min = n.minVotes ?? minVotes(s);
+    if (n.voteCount >= min && n.voteCount > high) {
+      block = { seat: n.nomineeSeat, votes: n.voteCount };
+      high = n.voteCount;
+    } else if (n.voteCount >= min && n.voteCount === high) block = null;
+  }
+  d.block = block;
+  d.highWater = high;
+}
+
+/** ST: strike one counted vote (e.g. a Butler voting without their master). */
+export function strikeVote(s: GameState, op: Op, nominationId: string, seat: number): void {
+  const d = day(s);
+  const n = findNomination(d, nominationId);
+  if (n.status !== 'tallied' && n.status !== 'voting') throw new RuleError('invalid', 'That nomination has no counted votes');
+  if (n.votes[seat] !== true) throw new RuleError('invalid', 'That player did not vote yes');
+  const p = mustPlayer(s, seat);
+  n.votes[seat] = false;
+  n.voteCount -= 1;
+  if (p.ghostVoteUsed && !p.publicAlive) {
+    p.ghostVoteAvailable = true;
+    p.ghostVoteUsed = false;
+  }
+  if (n.status === 'tallied') {
+    if (d.executionOccurred) alert(s, op, 'A vote was struck after the execution: the execution stands.');
+    recomputeBlock(s);
+  }
+  const nominee = mustPlayer(s, n.nomineeSeat);
+  announce(s, op, 'nomination', `The Storyteller struck ${p.name}'s vote on ${nominee.name}: ${n.voteCount} vote${n.voteCount === 1 ? '' : 's'}.`);
+  log(s, op, `Struck the vote of ${who(p)} on ${n.id}`);
 }

@@ -538,6 +538,43 @@ describe('voice: security', () => {
     expect(newly).not.toContainEqual([room, 'b']);
   });
 
+  it('audit also covers public rooms: a member who kept its square token is removed after entering a building', async () => {
+    const t = setup();
+    t.join('a', SQUARE);
+    t.join('b', SQUARE2);
+    await t.idle();
+    t.place('a', inside(otherBuilding));
+    await t.idle();
+    const square = 'dev-lobbyA-square';
+    expect(t.rs.removed).toContainEqual([square, 'a']);
+    const before = t.rs.removed.length;
+    t.rs.participants.set(square, ['a', 'b']); // 'a' re-joined the square with its old token
+    t.advance(16_000);
+    await t.idle();
+    expect(t.rs.removed.slice(before)).toEqual([[square, 'a']]);
+  });
+
+  it('audit window is extended while intruders keep re-joining', async () => {
+    const t = setup();
+    t.join('a', inside(otherBuilding));
+    await t.idle();
+    t.place('a', SQUARE);
+    await t.idle();
+    const room = `dev-lobbyA-bld-${otherBuilding}`;
+    t.rs.participants.set(room, ['a']);
+    // keep re-joining for longer than the initial audit window (token TTL + 10 min)
+    for (let i = 0; i < 90; i++) {
+      t.advance(15_000);
+      await t.idle();
+    }
+    t.rs.listCalls.length = 0;
+    const before = t.rs.removed.length;
+    t.advance(15_000);
+    await t.idle();
+    expect(t.rs.listCalls).toContain(room);
+    expect(t.rs.removed.slice(before)).toContainEqual([room, 'a']);
+  });
+
   it('tokens and secrets never appear in logs', async () => {
     const t = setup();
     const lines: string[] = [];

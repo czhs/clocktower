@@ -208,9 +208,10 @@ export function projectForStoryteller(s: GameState): StorytellerGameView {
     result: resultView(s),
     bedtimeSeconds: s.bedtimeSeconds,
     pendingDeaths: s.players.filter((p) => p.publicAlive && !p.alive).map((p) => p.seat),
-    canUndo: s.history.length > 0,
+    canUndo: s.history.length > 0 && s.phase !== 'finished',
     setupCounts: { townsfolk: counts.townsfolk, outsiders: counts.outsiders, minions: counts.minions, demons: counts.demons },
     charactersAssigned: s.assigned,
     timerPaused: s.bedtimePausedRemainingMs !== null,
+    pendingResult: s.resultPending && s.result ? { winner: s.result.winner, reason: s.result.reason } : null,
   };
 }

@@ -1,4 +1,4 @@
-import type { Alignment } from '@ct/protocol';
+import type { Alignment, GameResult } from '@ct/protocol';
 import { insertDynamicStep } from './night.js';
 import type { GameState, PlayerState } from './types.js';
 import {
@@ -44,9 +44,7 @@ export function killPlayer(s: GameState, op: Op, p: PlayerState, cause: DeathCau
   log(s, op, `${who(p)} (${p.character}) died: ${cause}`);
   if (publicNow(s, opts)) publish(s, op, p, cause);
   // Abilities end on death.
-  if (p.character === 'poisoner') {
-    for (const q of s.players) if (q.poisonedBy === 'poisoner') q.poisonedBy = null;
-  }
+  if (p.character === 'poisoner') endPoisonerPoison(s);
   if (p.character === 'monk') {
     for (const q of s.players) q.protectedTonight = false;
   }
@@ -88,11 +86,20 @@ export function publish(s: GameState, op: Op, p: PlayerState, cause: DeathCause 
 
 /** Turn a player into the Imp and tell them privately. */
 export function becomeImp(s: GameState, op: Op, p: PlayerState, why: string): void {
+  // Losing the Minion character ends its ability at once (the Poisoner's victim recovers).
+  if (p.character === 'poisoner') endPoisonerPoison(s);
   p.character = 'imp';
   p.believedCharacter = 'imp';
   p.alignment = 'evil';
   p.believedAlignment = 'evil';
   addReminder(p, 'Became the Imp');
+  // The new Imp no longer acts with their old (Minion) ability tonight.
+  for (const st of s.nightQueue) {
+    if (st.seat === p.seat && st.kind !== 'imp' && st.status !== 'resolved' && st.status !== 'skipped') {
+      st.status = 'skipped';
+      p.prompts = p.prompts.filter((q) => q.stepId !== st.id);
+    }
+  }
   giveInfo(s, p, { text: `You are now the Imp (${why}).`, characters: ['imp'] });
   log(s, op, `${who(p)} became the Imp: ${why}`);
 }
@@ -137,15 +144,35 @@ export function starPass(s: GameState, op: Op, imp: PlayerState, chosenSeat: num
   return `Imp ${who(imp)} killed themself; ${who(successor)} became the Imp.`;
 }
 
+export function endPoisonerPoison(s: GameState): void {
+  for (const q of s.players) if (q.poisonedBy === 'poisoner') q.poisonedBy = null;
+}
+
 /** Automatic victory conditions (Saint and Mayor are checked where they trigger). */
 export function checkVictory(s: GameState, op: Op): void {
   if (s.phase === 'finished' || !s.assigned) return;
   const demonAlive = s.players.some((p) => p.alive && typeOf(p.character) === 'demon');
   if (!demonAlive) {
-    finish(s, op, 'good', 'The Demon is dead.');
+    proposeResult(s, op, 'good', 'The Demon is dead.');
     return;
   }
-  if (aliveCount(s) <= 2) finish(s, op, 'evil', 'Only two players remain alive.');
+  if (aliveCount(s) <= 2) proposeResult(s, op, 'evil', 'Only two players remain alive.');
+}
+
+function revealOf(s: GameState): GameResult['reveal'] {
+  return s.players.map((p) => ({ seat: p.seat, pid: p.pid, name: p.name, character: p.character, alignment: p.alignment, alive: p.alive }));
+}
+
+/**
+ * The engine detected a game-ending result. It is held for the Storyteller (confirm_result /
+ * override_result) instead of ending the game irreversibly: players see nothing yet, and the ST
+ * can still undo a mistaken command.
+ */
+export function proposeResult(s: GameState, op: Op, winner: Alignment, reason: string): void {
+  if (s.phase === 'finished' || s.resultPending) return;
+  s.resultPending = true;
+  s.result = { winner, reason, reveal: revealOf(s) };
+  alert(s, op, `Game end detected: ${winner === 'good' ? 'Good' : 'Evil'} wins (${reason}) Confirm to end the game, or override to continue.`);
 }
 
 export function finish(s: GameState, op: Op, winner: Alignment, reason: string): void {
@@ -154,24 +181,18 @@ export function finish(s: GameState, op: Op, winner: Alignment, reason: string):
   s.phaseEndsAt = null;
   s.bedtimePausedRemainingMs = null;
   s.visitingSeat = null;
-  if (s.day) s.day.vote = null;
+  if (s.day) {
+    s.day.vote = null;
+    // A vote/nomination interrupted by the end of the game never completes.
+    for (const n of s.day.nominations) if (n.status === 'pending' || n.status === 'voting') n.status = 'cancelled';
+  }
   for (const p of s.players) {
     p.publicAlive = p.alive;
     p.prompts = [];
   }
   s.endedAt = op.now;
-  s.result = {
-    winner,
-    reason,
-    reveal: s.players.map((p) => ({
-      seat: p.seat,
-      pid: p.pid,
-      name: p.name,
-      character: p.character,
-      alignment: p.alignment,
-      alive: p.alive,
-    })),
-  };
+  s.resultPending = false;
+  s.result = { winner, reason, reveal: revealOf(s) };
   log(s, op, `Game over (${prev}): ${winner} wins — ${reason}`);
   announce(s, op, 'game_over', `${winner === 'good' ? 'Good' : 'Evil'} wins! ${reason}`);
 }

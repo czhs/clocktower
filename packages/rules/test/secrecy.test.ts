@@ -170,6 +170,8 @@ describe('player projections never leak hidden state', () => {
     nominateAndVote(s, 4, 0, [3, 4, 5, 6, 7]);
     st(s, { type: 'execute', seat: 0 });
     expect(s.result).toMatchObject({ winner: 'good' });
+    check('pending result');
+    st(s, { type: 'confirm_result' });
     check('finished');
     for (const p of s.players) {
       const r = projectForPlayer(s, p.seat).result!;

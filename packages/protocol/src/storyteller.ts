@@ -92,6 +92,12 @@ export interface StorytellerGameView {
   charactersAssigned?: boolean;
   /** (additive) Whether the Storyteller is connected (bedtime countdown pauses while not). */
   timerPaused?: boolean;
+  /**
+   * (additive) A game-ending result the engine detected (Saint executed, Mayor win, Demon dead,
+   * two alive) awaiting the Storyteller: confirm_result ends the game, override_result continues.
+   * Players see nothing until it is confirmed; undo_last still works meanwhile.
+   */
+  pendingResult?: { winner: Alignment; reason: string } | null;
 }
 
 const Seat = z.number().int().min(0).max(14);
@@ -139,7 +145,13 @@ export const StCommand = z.discriminatedUnion('type', [
   z.object({ type: z.literal('cancel_nomination'), nominationId: z.string().max(64) }),
   z.object({ type: z.literal('execute'), seat: Seat.nullable() }),
   z.object({ type: z.literal('kill'), seat: Seat, cause: z.string().max(80).optional(), announce: z.boolean() }),
-  z.object({ type: z.literal('set_alive'), seat: Seat, alive: z.boolean() }),
+  z.object({
+    type: z.literal('set_alive'),
+    seat: Seat,
+    alive: z.boolean(),
+    /** (additive) When reviving: also give back a spent ghost vote. */
+    restoreGhostVote: z.boolean().optional(),
+  }),
   z.object({
     type: z.literal('set_status'),
     seat: Seat,
@@ -176,5 +188,15 @@ export const StCommand = z.discriminatedUnion('type', [
   z.object({ type: z.literal('set_travel_speed'), mult: z.number().min(1).max(4) }),
   z.object({ type: z.literal('declare_winner'), winner: z.enum(['good', 'evil']), reason: z.string().max(200) }),
   z.object({ type: z.literal('undo_last') }),
+  /** (additive) Accept the pending game-ending result (the game finishes and is recorded). */
+  z.object({ type: z.literal('confirm_result') }),
+  /** (additive) Reject the pending game-ending result; the game continues. */
+  z.object({ type: z.literal('override_result') }),
+  /** (additive) Strike one counted vote (e.g. a Butler who voted without their master). */
+  z.object({ type: z.literal('strike_vote'), nominationId: z.string().max(64), seat: Seat }),
+  /** (additive) Change the Fortune Teller's red herring (must be a good player) or clear it. */
+  z.object({ type: z.literal('set_red_herring'), seat: Seat.nullable() }),
+  /** (additive) Change the Townsfolk the Drunk believes they are (the player is told). */
+  z.object({ type: z.literal('set_drunk_belief'), seat: Seat, character: CharacterIdSchema }),
 ]);
 export type StCommand = z.infer<typeof StCommand>;

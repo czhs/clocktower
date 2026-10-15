@@ -16,7 +16,7 @@ import {
 } from '@ct/protocol';
 import type { RoomConnection } from '../../net/room';
 import { useStore } from '../../net/store';
-import { charName, CharacterSelect, Countdown, goHome, nameOf, phaseTitle, seatLabel, VoteClock } from './shared';
+import { charName, CharacterSelect, Countdown, goHome, nameOf, PHASE_LABEL, phaseTitle, seatLabel, VoteClock } from './shared';
 import './hud.css';
 
 export function Hud({ conn }: { conn: RoomConnection; account: AccountView }) {
@@ -82,7 +82,8 @@ function Toasts({ conn }: { conn: RoomConnection }) {
 }
 
 function StorytellerHudExtras({ view }: { view: StorytellerGameView }) {
-  const voting = view.day?.nominations.find((n) => n.status === 'voting');
+  // Votes only run during the day; a 'voting' nomination left over in bedtime/finished is stale.
+  const voting = view.phase === 'day' ? view.day?.nominations.find((n) => n.status === 'voting') : undefined;
   if (!voting) return null;
   return (
     <div class="cth-vote">
@@ -106,7 +107,10 @@ function PlayerHud({ view, conn }: { view: PlayerGameView; conn: RoomConnection 
     if (tab === 'info') setSeenInfo(lastInfo);
   }, [tab, lastInfo]);
   const unread = lastInfo - seenInfo;
-  const activeNom = view.day?.nominations.find((n) => n.status === 'voting' || n.status === 'pending');
+  // Nominations/votes only act during the day (the day view lingers into bedtime/finished, where a
+  // pending or interrupted 'voting' nomination can no longer be voted on or started).
+  const activeNom =
+    view.phase === 'day' ? view.day?.nominations.find((n) => n.status === 'voting' || n.status === 'pending') : undefined;
 
   return (
     <>
@@ -206,7 +210,7 @@ function PlayerList({ view, conn }: { view: PlayerGameView; conn: RoomConnection
   const [shootAt, setShootAt] = useState<number | null>(null);
   const nominationsOpen = view.day?.nominationsOpen ?? false;
   const busy = view.day?.nominations.some((n) => n.status === 'voting' || n.status === 'pending') ?? false;
-  const canNominate = view.you.canNominate && nominationsOpen && !busy;
+  const canNominate = view.phase === 'day' && view.you.canNominate && nominationsOpen && !busy;
   return (
     <div>
       <ul class="cth-players">
@@ -272,7 +276,7 @@ function InfoLog({ view }: { view: PlayerGameView }) {
     <ol class="cth-log">
       {[...view.info].reverse().map((i) => (
         <li key={i.id}>
-          <small class="muted">{i.phase === 'day' ? `Day ${i.day}` : `Night (${i.phase.replace('_', ' ')})`}</small>
+          <small class="muted">{i.phase === 'day' || i.phase === 'bedtime' ? `Day ${i.day}` : PHASE_LABEL[i.phase]}</small>
           <div>{i.text}</div>
           {(i.seats?.length || i.characters?.length || i.number !== undefined || i.yes !== undefined) && (
             <div class="cth-infodata">
@@ -345,8 +349,9 @@ function PromptCard({ prompt, view, conn }: { prompt: PromptView; view: PlayerGa
   const [character, setCharacter] = useState<CharacterId | ''>('');
   const min = prompt.minTargets ?? 1;
   const max = prompt.maxTargets ?? min;
+  // Mirrors the server check: a missing allowSelf/allowDead means "not allowed"; dead = publicly dead.
   const eligible = (p: PublicPlayerView) =>
-    (prompt.allowSelf !== false || p.seat !== view.you.seat) && (prompt.allowDead !== false || p.alive);
+    (!!prompt.allowSelf || p.seat !== view.you.seat) && (!!prompt.allowDead || p.alive);
   const toggle = (s: number) =>
     setSeats((x) => (x.includes(s) ? x.filter((y) => y !== s) : max === 1 ? [s] : x.length >= max ? x : [...x, s]));
   return (

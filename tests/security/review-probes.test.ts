@@ -139,7 +139,7 @@ describe('SR-ERR: production error responses', () => {
     console.info('[SR-ERR]', seen.join(' | '));
   });
 
-  it.fails('KNOWN ISSUE SR-9: a malformed percent-escape in an API path param is a logged 500, not a 400', async () => {
+  it('FIXED SR-9: a malformed percent-escape in an API path param is a quiet 400', async () => {
     const before = logLines();
     const r = await raw('GET', '/api/lobbies/%ZZ');
     await new Promise((res) => setTimeout(res, 100));
@@ -179,7 +179,7 @@ describe('SR-XFF: client IP behind cloudflared (trust proxy = loopback)', () => 
     expect(statuses).toContain(429);
   });
 
-  it.fails('KNOWN ISSUE SR-3: IPv6 clients can rotate addresses inside their /64 to evade per-IP limits', async () => {
+  it('FIXED SR-3: IPv6 clients are rate-limited per /64 (rotating addresses does not help)', async () => {
     const statuses: number[] = [];
     for (let i = 0; i < 14; i++) {
       const c = new ApiClient(server.url, { 'X-Forwarded-For': `2001:db8:abcd:12::${(i + 1).toString(16)}` });
@@ -271,7 +271,7 @@ describe('SR-LOG: unauthenticated log amplification', () => {
 });
 
 describe('SR-SSE: lobby stream connections', () => {
-  it.fails('KNOWN ISSUE SR-6: one account can hold an unbounded number of SSE streams', async () => {
+  it('FIXED SR-6: lobby streams are capped per account', async () => {
     const c = new ApiClient(server.url, { 'X-Forwarded-For': ip() });
     expect((await c.createAccount('SSE Probe')).status).toBe(201);
     const ctrls: AbortController[] = [];
@@ -295,7 +295,7 @@ describe('SR-LOBBY: global lobby slots', () => {
   // The test server runs with LOBBY_MAX_COUNT=8 (prod: 4) and PER_ACCOUNT_LOBBY_LIMIT=2, so
   // LOBBY_MAX_COUNT/2 free accounts occupy every slot; nobody else can host until they idle out
   // (LOBBY_IDLE_TIMEOUT_SEC, 600 s in prod) — and the squatter simply re-creates them.
-  it.fails('KNOWN ISSUE SR-2: a handful of free accounts can occupy every lobby slot', async () => {
+  it('FIXED SR-2: a handful of free accounts cannot occupy every lobby slot', async () => {
     const statuses: number[] = [];
     for (let a = 0; a < 5; a++) {
       const c = new ApiClient(server.url, { 'X-Forwarded-For': ip() });

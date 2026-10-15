@@ -28,5 +28,15 @@ export function adminRouter(services: Services): express.Router {
     res.setHeader('Cache-Control', 'no-store');
     res.json(view);
   });
+  /** POST /api/admin/lobbies/:id/close — disconnect everyone and dispose the lobby (SR-2 remedy). */
+  r.post('/admin/lobbies/:id/close', requireAccount(services), (req, res) => {
+    const account = currentAccount(res);
+    if (!services.auth.isAdmin(account.id)) return sendError(res, 403, 'forbidden', 'Admins only');
+    const id = String(req.params.id ?? '');
+    if (!/^[A-Za-z0-9_-]{4,32}$/.test(id) || !services.directory.close(id)) return sendError(res, 404, 'not_found', 'Lobby not found');
+    services.log.info('admin closed lobby', { lobbyId: id, adminId: account.id });
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ ok: true });
+  });
   return r;
 }

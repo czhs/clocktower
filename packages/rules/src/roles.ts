@@ -336,6 +336,9 @@ const defs: Partial<Record<CharacterId, Omit<RoleDef, 'id' | 'type'>>> = {
         const r = playerAt(s, input.redirectSeat);
         if (!r) throw new RuleError('not_found', 'Redirect seat is not a player');
         if (!r.alive) return `Mayor's kill bounced to ${who(r)}, who was already dead.`;
+        // Still a Demon kill: the Monk's protection and a healthy Soldier stop it.
+        if (r.protectedTonight) return `Mayor's kill bounced to ${who(r)}, who is protected by the Monk: nobody dies.`;
+        if (r.character === 'soldier' && !impaired(r)) return `Mayor's kill bounced to ${who(r)}, a healthy Soldier: nobody dies.`;
         victim = r;
       }
       killPlayer(s, op, victim, 'demon');

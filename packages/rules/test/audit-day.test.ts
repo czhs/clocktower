@@ -3,7 +3,7 @@
 // listed in docs/rules-audit.md.
 import type { CharacterId } from '@ct/protocol';
 import { describe, expect, it } from 'vitest';
-import { applyStCommand, projectForPlayer, type GameState } from '../src/index.js';
+import { applyStCommand, projectForPlayer, projectForStoryteller, type GameState } from '../src/index.js';
 import { act, act_night, alive, begin, clock, finishNight, mkGame, nominateAndVote, P, st, toDay, toNight } from './helpers.js';
 
 function day1(chars: CharacterId[], opts: Parameters<typeof mkGame>[1] = {}): GameState {
@@ -235,7 +235,9 @@ describe('audit: Saint / Mayor / Scarlet Woman / victory', () => {
     expect(s.result).toMatchObject({ winner: 'good' });
   });
 
-  it('a night kill leaving two alive ends the game for evil at once', () => {
+  // Updated by lead after F7: detected game ends wait for the ST's Confirm/Override (players see
+  // nothing meanwhile); the ruling itself — evil wins at two alive — is unchanged.
+  it('a night kill leaving two alive makes evil the pending winner; ST confirmation ends the game', () => {
     const s = day1(['imp', 'poisoner', 'chef', 'empath', 'monk']);
     st(s, { type: 'execute', seat: 4 });
     toNight(s);
@@ -246,6 +248,11 @@ describe('audit: Saint / Mayor / Scarlet Woman / victory', () => {
     st(s, { type: 'execute', seat: null });
     toNight(s);
     act_night(s, 'imp', [2]);
+    expect(projectForStoryteller(s).pendingResult).toMatchObject({ winner: 'evil' });
+    expect(s.resultPending).toBe(true);
+    expect(s.phase).not.toBe('finished');
+    st(s, { type: 'confirm_result' });
+    expect(s.phase).toBe('finished');
     expect(s.result).toMatchObject({ winner: 'evil' });
     // the reveal publishes everyone's true status
     expect(projectForPlayer(s, 1).players[2]!.alive).toBe(false);

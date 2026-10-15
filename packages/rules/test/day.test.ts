@@ -198,8 +198,60 @@ describe('slayer', () => {
     const s = day1(S);
     act(s, 2, { type: 'slayerShot', targetSeat: 0 });
     expect(alive(s, 0)).toBe(false);
+    // The detected end waits for the ST (players see nothing yet; play is paused).
+    expect(s.phase).toBe('day');
+    expect(s.resultPending).toBe(true);
+    expect(projectForStoryteller(s).pendingResult).toEqual({ winner: 'good', reason: 'The Demon is dead.' });
+    expect(projectForPlayer(s, 3).result).toBeNull();
+    expect(actErr(s, 3, { type: 'nominate', nomineeSeat: 4 })).toMatch(/wait/);
+    st(s, { type: 'confirm_result' });
     expect(s.phase).toBe('finished');
     expect(s.result!.winner).toBe('good');
+  });
+
+  it('a detected game end can be undone (ST command) or overridden; play resumes', () => {
+    const s = day1(['imp', 'poisoner', 'saint', 'empath', 'chef']);
+    st(s, { type: 'execute', seat: 2 }); // misclick on the Saint
+    expect(s.resultPending).toBe(true);
+    expect(stErr(s, { type: 'advance_phase', to: 'night' })).toMatch(/pending/);
+    st(s, { type: 'undo_last' });
+    expect(s.resultPending).toBe(false);
+    expect(s.result).toBeNull();
+    expect(alive(s, 2)).toBe(true);
+    st(s, { type: 'execute', seat: 2 });
+    st(s, { type: 'override_result' }); // e.g. the ST rules the "Saint" was the Spy registering as one
+    expect(s.result).toBeNull();
+    expect(stErr(s, { type: 'confirm_result' })).toMatch(/No game end/);
+    st(s, { type: 'advance_phase', to: 'night' });
+    expect(s.phase).toBe('night');
+  });
+
+  it('a Mayor win waits for the ST; an override is remembered for the rest of the day', () => {
+    const s = day1(['imp', 'poisoner', 'mayor', 'empath', 'chef']);
+    st(s, { type: 'kill', seat: 3, announce: true });
+    st(s, { type: 'kill', seat: 4, announce: true });
+    st(s, { type: 'advance_phase', to: 'bedtime' });
+    expect(s.phase).toBe('day');
+    expect(s.result).toMatchObject({ winner: 'good', reason: /Mayor/ });
+    st(s, { type: 'override_result' });
+    st(s, { type: 'advance_phase', to: 'bedtime' });
+    expect(s.phase).toBe('bedtime');
+    expect(s.result).toBeNull();
+  });
+
+  it('the ST can strike a vote (Butler without master); the block is recomputed and a ghost vote returned', () => {
+    const s = day1(['imp', 'poisoner', 'butler', 'empath', 'chef']);
+    st(s, { type: 'kill', seat: 3, announce: true }); // dead empath keeps a ghost vote; 4 alive -> 2 votes needed
+    nominateAndVote(s, 4, 1, [2, 3]);
+    expect(s.day!.block).toEqual({ seat: 1, votes: 2 });
+    expect(P(s, 3).ghostVoteAvailable).toBe(false);
+    const id = s.day!.nominations[0]!.id;
+    st(s, { type: 'strike_vote', nominationId: id, seat: 2 });
+    expect(s.day!.nominations[0]!.voteCount).toBe(1);
+    expect(s.day!.block).toBeNull();
+    st(s, { type: 'strike_vote', nominationId: id, seat: 3 });
+    expect(P(s, 3).ghostVoteAvailable).toBe(true);
+    expect(stErr(s, { type: 'strike_vote', nominationId: id, seat: 3 })).toMatch(/did not vote/);
   });
 
   it('non-Slayers and wrong targets: nothing happens; one shot per player', () => {
@@ -312,18 +364,23 @@ describe('saint, mayor, scarlet woman, victory', () => {
     expect(s.result).toMatchObject({ winner: 'evil', reason: 'Only two players remain alive.' });
   });
 
-  it('declare_winner overrides; undo_last restores the previous state', () => {
+  it('declare_winner overrides mid-game; a finished result is final (no undo / re-declare)', () => {
     const s = day1(['imp', 'poisoner', 'saint', 'empath', 'chef']);
     st(s, { type: 'execute', seat: 2 });
+    st(s, { type: 'confirm_result' });
     expect(s.phase).toBe('finished');
-    st(s, { type: 'undo_last' });
-    expect(s.phase).toBe('day');
-    expect(alive(s, 2)).toBe(true);
-    expect(projectForStoryteller(s).canUndo).toBe(true);
-    st(s, { type: 'declare_winner', winner: 'good', reason: 'ST ruling' });
-    expect(s.result).toMatchObject({ winner: 'good', reason: 'ST ruling' });
-    st(s, { type: 'declare_winner', winner: 'evil', reason: 'Changed my mind' });
+    expect(s.result).toMatchObject({ winner: 'evil', reason: 'The Saint was executed.' });
+    // The result was revealed to everyone and is recorded in the stats exactly once.
+    expect(projectForStoryteller(s).canUndo).toBe(false);
+    expect(stErr(s, { type: 'undo_last' })).toMatch(/over/);
+    expect(stErr(s, { type: 'declare_winner', winner: 'good', reason: 'ST ruling' })).toMatch(/over/);
     expect(s.result!.winner).toBe('evil');
+    st(s, { type: 'announce', text: 'Good game!' });
+
+    const t = day1(['imp', 'poisoner', 'saint', 'empath', 'chef']);
+    st(t, { type: 'declare_winner', winner: 'good', reason: 'ST ruling' });
+    expect(t.phase).toBe('finished');
+    expect(t.result).toMatchObject({ winner: 'good', reason: 'ST ruling' });
   });
 
   it('ST corrections: set_alive, set_status, change_character, reminders', () => {
@@ -386,6 +443,7 @@ describe('phases and bedtime', () => {
   it('finished games reject play commands', () => {
     const s = day1(['imp', 'poisoner', 'saint', 'empath', 'chef']);
     st(s, { type: 'execute', seat: 2 });
+    st(s, { type: 'confirm_result' });
     expect(stErr(s, { type: 'advance_phase', to: 'night' })).toMatch(/over/);
     expect(actErr(s, 3, { type: 'nominate', nomineeSeat: 4 })).toMatch(/day/);
   });

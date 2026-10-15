@@ -11,3 +11,6 @@ playwright-report/
 .env.development
 .env.production
 .install-stamp
+packages/assets/ai/staging/
+packages/assets/eggs/staging/
+**/staging/

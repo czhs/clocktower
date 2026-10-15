@@ -303,8 +303,9 @@ describe('other nights', () => {
     st(s, { type: 'execute', seat: 1 });
     toNight(s);
     act_night(s, 'imp', [0]);
+    expect(s.result).toMatchObject({ winner: 'good' });
+    st(s, { type: 'confirm_result' });
     expect(s.phase).toBe('finished');
-    expect(s.result!.winner).toBe('good');
   });
 
   it('ravenkeeper wakes when killed by the demon', () => {

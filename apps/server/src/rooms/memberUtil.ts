@@ -38,11 +38,27 @@ export function startBlockers(s: StartCheckInput): string[] {
   return out;
 }
 
-export function memberView(m: RoomMember, ready: boolean): MemberView {
+/**
+ * Per-lobby display labels (SR-11): display names are not unique, so later joiners with the same
+ * name (case-insensitive) get a suffix: "Ann", "Ann (2)", ... Stable while both are present.
+ */
+export function displayLabels(members: readonly { pid: string; displayName: string; joinedAt: number }[]): Map<string, string> {
+  const out = new Map<string, string>();
+  const seen = new Map<string, number>();
+  for (const m of [...members].sort((a, b) => a.joinedAt - b.joinedAt)) {
+    const key = m.displayName.normalize('NFKC').trim().toLowerCase();
+    const n = (seen.get(key) ?? 0) + 1;
+    seen.set(key, n);
+    out.set(m.pid, n === 1 ? m.displayName : `${m.displayName} (${n})`);
+  }
+  return out;
+}
+
+export function memberView(m: RoomMember, ready: boolean, label = m.displayName): MemberView {
   // Whitelist: never include accountId.
   return {
     pid: m.pid,
-    displayName: m.displayName,
+    displayName: label,
     role: m.role,
     seat: m.seat,
     ready,

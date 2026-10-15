@@ -78,13 +78,22 @@ describe('LobbyDirectory (unit, injected room factory)', () => {
     expect(rejected.every((r) => r.reason.code === 'lobby_limit')).toBe(true);
   });
 
-  it('per-account active lobby limit (2) holds under a race', async () => {
+  it('per-account active lobby limit (1) holds under a race', async () => {
     const d = dir(50);
     const results = await Promise.allSettled(Array.from({ length: 6 }, () => d.create(acct('same'), req)));
-    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(2);
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
     // Removing one frees a slot.
     d.remove(d.list()[0]!.id);
     await expect(d.create(acct('same'), req)).resolves.toMatchObject({ name: 'Lobby' });
+  });
+
+  it('per-IP active lobby limit (2); loopback is exempt', async () => {
+    const d = dir(50);
+    const results = await Promise.allSettled(Array.from({ length: 5 }, (_, i) => d.create(acct(`ip${i}`), req, '203.0.113.9')));
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(2);
+    expect((results.find((r) => r.status === 'rejected') as PromiseRejectedResult).reason.code).toBe('lobby_limit');
+    await expect(d.create(acct('other-net'), req, '2001:db8:1:2::/64')).resolves.toMatchObject({ name: 'Lobby' });
+    for (let i = 0; i < 4; i++) await expect(d.create(acct(`local${i}`), req, '127.0.0.1')).resolves.toBeTruthy();
   });
 
   it('generates many unique ids', async () => {
@@ -186,13 +195,13 @@ describe('lobby directory HTTP + SSE (real Colyseus rooms)', () => {
     expect(l1).toMatchObject({ name: 'First <script>', maxPlayers: 8, playerCount: 0, phase: 'waiting', joinable: true, storytellerSeatOpen: true, hostName: 'Ann' });
     await waitFor(() => stream.events.find((e) => e.type === 'upsert' && e.lobby.id === l1.id), 2000, 'upsert');
 
-    const l2 = await createLobby(srv, a.cookie);
-    const third = await api(srv, 'POST', '/api/lobbies', { cookie: a.cookie, body: { name: 'Third', maxPlayers: 5 } });
-    expect(third.status).toBe(409);
-    expect(third.body.error).toBe('lobby_limit');
+    const second = await api(srv, 'POST', '/api/lobbies', { cookie: a.cookie, body: { name: 'Second', maxPlayers: 5 } });
+    expect(second.status).toBe(409); // one active lobby per account
+    expect(second.body.error).toBe('lobby_limit');
 
-    const l3 = await createLobby(srv, b.cookie);
-    const l4 = await createLobby(srv, b.cookie);
+    const l2 = await createLobby(srv, b.cookie);
+    const l3 = await createLobby(srv, (await makeAccount(srv, 'Dee')).cookie);
+    const l4 = await createLobby(srv, (await makeAccount(srv, 'Eve')).cookie);
     const c = await makeAccount(srv, 'Cat');
     const fifth = await api(srv, 'POST', '/api/lobbies', { cookie: c.cookie, body: { name: 'Fifth', maxPlayers: 5 } });
     expect(fifth.status).toBe(409); // LOBBY_MAX_COUNT=4
