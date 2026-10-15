@@ -1,0 +1,8 @@
+# ~/.cloudflared/clocktower.yml on hshi-u1 (lead-owned template). Only the production port is
+# routed; everything else returns 404 at the tunnel.
+tunnel: <TUNNEL_UUID>
+credentials-file: /home/hshi/.cloudflared/<TUNNEL_UUID>.json
+ingress:
+  - hostname: clocktower.chrisshi.com
+    service: http://127.0.0.1:3000
+  - service: http_status:404

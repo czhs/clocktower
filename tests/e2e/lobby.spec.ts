@@ -1,7 +1,8 @@
 // Two browsers: create accounts -> one creates a lobby -> the other joins via the finder and via the
 // share URL -> both see each other in the member list -> leave.
 // Steps whose UI is not implemented yet are skipped with an explicit reason (never faked).
-import { expect, test, type Browser, type BrowserContext, type Page } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
+import { createAccount, lobbyCount, type Player } from './helpers';
 
 const suffix = Math.random().toString(36).slice(2, 7);
 const ALICE = `Alice ${suffix}`;
@@ -9,37 +10,9 @@ const BOB = `Bob ${suffix}`;
 // Lobby name doubles as an XSS probe: it must render as literal text.
 const LOBBY = `<img src=x onerror=window.__xss=1> ${suffix}`;
 
-async function lobbyCount(page: Page, id: string): Promise<number> {
-  const r = await page.request.get(`/api/lobbies/${id}`);
-  expect(r.status()).toBe(200);
-  return ((await r.json()) as { lobby: { playerCount: number } }).lobby.playerCount;
-}
-
-async function createAccount(browser: Browser, name: string): Promise<{ ctx: BrowserContext; page: Page }> {
-  const ctx = await browser.newContext();
-  const page = await ctx.newPage();
-  await page.goto('/');
-  await page.getByRole('button', { name: 'Create account' }).click();
-  await page.getByLabel('Display name').fill(name);
-  await page.getByRole('button', { name: 'Create account' }).click();
-  const pass = page.getByLabel('Your passphrase');
-  await expect(pass).toBeVisible();
-  const passphrase = (await pass.textContent())!.trim();
-  expect(passphrase.split(/\s+/).length).toBeGreaterThanOrEqual(6);
-  // The credential is not persisted client-side and the session cookie is HttpOnly.
-  const stored = await page.evaluate(() => JSON.stringify({ ...localStorage }) + JSON.stringify({ ...sessionStorage }) + document.cookie);
-  expect(stored).not.toContain(passphrase);
-  expect(stored).not.toContain('ct_session');
-  await expect(page.getByRole('button', { name: 'Enter the town' })).toBeDisabled();
-  await page.getByLabel('I have saved my passphrase somewhere safe').check();
-  await page.getByRole('button', { name: 'Enter the town' }).click();
-  await expect(page.getByRole('heading', { name: 'Lobby finder' })).toBeVisible();
-  return { ctx, page };
-}
-
 test.describe.serial('two players, one lobby', () => {
-  let alice: { ctx: BrowserContext; page: Page };
-  let bob: { ctx: BrowserContext; page: Page };
+  let alice: Player;
+  let bob: Player;
   let lobbyId = '';
 
   test.afterAll(async () => {

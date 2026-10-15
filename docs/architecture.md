@@ -3,7 +3,7 @@
 ## Topology
 
 ```
-friends' browsers ──HTTPS/WSS──▶ Tailscale Funnel (hshi-u1) ──▶ 127.0.0.1:3000  clocktower-prod
+friends' browsers ──HTTPS/WSS──▶ Cloudflare edge (clocktower.chrisshi.com) ══outbound tunnel══▶ cloudflared (hshi-u1) ──▶ 127.0.0.1:3000  clocktower-prod
 developer (SSH -L 3001) ─────────────────────────────────────▶ 127.0.0.1:3001  clocktower-dev
 all browsers ──WebRTC (UDP/TURN)──▶ LiveKit Cloud (never via Funnel)
 ```
@@ -15,6 +15,12 @@ all browsers ──WebRTC (UDP/TURN)──▶ LiveKit Cloud (never via Funnel)
   - `~/clocktower/env/{dev,prod}.env` (chmod 600), `~/clocktower/data/{dev,prod}/clocktower.db`
   - `~/clocktower/work/<agent>/` agent build/test sandboxes (see CLAUDE.md)
 - One HTTP port per environment serves SPA, JSON API, SSE lobby directory and Colyseus WS.
+- Public ingress (decided 2026-10-15 with the user): **Cloudflare Tunnel** (`clocktower-tunnel`
+  systemd user unit, `~/.cloudflared/clocktower.yml`) routes only `clocktower.chrisshi.com` to
+  127.0.0.1:3000. Chosen over Tailscale Funnel because the user's domain is already on Cloudflare
+  DNS (stable branded URL, no Funnel bandwidth cap, no tailnet policy change). Funnel remains an
+  optional fallback (needs tailnet policy approval). Client IPs for rate limiting come from
+  `X-Forwarded-For` appended by Cloudflare (Express `trust proxy = loopback`).
 
 ## Packages
 

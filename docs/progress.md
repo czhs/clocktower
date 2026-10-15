@@ -29,15 +29,14 @@ M0 contracts+skeleton ─┬─▶ R1 rules engine core ─▶ R2 22 roles ─�
 | R1-R4 | Rules engine (22 roles, setup 5–15, night orders, interactions), GameModule, HUD + Storyteller panel | rules-storyteller | ✅ done (89 tests incl. secrecy) |
 | V1-V4 | Acoustic zones + hysteresis, LiveKit grants/revocation/re-join sweep/quota, client voice panel | voice | ✅ code done (55 tests); ⛔ untested against real LiveKit (no credentials) |
 | Q1-Q4 | Harness, integration/security/e2e/load tests, dev+prod systemd user services, deploy+rollback | qa-deploy | ✅ done (64 tests + 5 e2e); load numbers pending real world module |
-| Q5 | Tailscale Funnel on hshi-u1:3000 | qa-deploy | ⛔ blocked on tailnet policy approval |
-| W1-W4 | Handcrafted town, PNG generator, WorldModule, Phaser town/cosmetics/ghosts | world-art | 🔄 art + layout done; module/client being finished |
+| Q5 | Public ingress: Cloudflare Tunnel https://clocktower.chrisshi.com → hshi-u1:3000 | lead | ✅ live, verified with 2 external Chromium browsers (HTTPS+WSS) |
+| W1-W4 | Handcrafted town, PNG generator, WorldModule, Phaser town/cosmetics/ghosts | world-art | ✅ done (18 world tests; 2-browser render check) |
 | M3 | Playable ST-guided round end-to-end in browser | lead | ⏳ after world-art |
 | M5 | Prod release with Funnel; external + mobile test; load test with real movement + voice | lead/qa | ⏳ |
 
 ## Blocked / needs user
 
-1. `sudo loginctl enable-linger hshi` (user services survive logout/reboot) — requested.
-2. `sudo tailscale set --operator=hshi` (manage Funnel without sudo) — requested.
+1. ~~enable-linger~~ ✅ done by user (Linger=yes). 2. ~~tailscale operator~~ ✅ done (OperatorUser=hshi).
 3. Funnel: `tailscale funnel --bg 3000` reports hshi-u1 is not in the tailnet policy's funnel nodeAttr — a tailnet admin must approve (link printed by the CLI) or add the node to the policy.
 4. LiveKit Cloud free project + API key/secret (to be placed in `~/clocktower/env/*.env` on hshi-u1).
 

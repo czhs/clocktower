@@ -17,6 +17,7 @@
     "db:migrate": "pnpm --filter @ct/db migrate"
   },
   "devDependencies": {
+    "@colyseus/msgpackr": "1.11.3",
     "@playwright/test": "1.63.0",
     "@types/node": "^24.0.0",
     "colyseus.js": "~0.16.22",
