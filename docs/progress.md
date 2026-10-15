@@ -43,3 +43,21 @@ M0 contracts+skeleton ─┬─▶ R1 rules engine core ─▶ R2 22 roles ─�
 ## Next
 
 Spawn teammates; integrate M1 vertical slice (auth → two lobbies → movement → voice → night visit).
+
+## Phase: game-night readiness review (started 2026-10-15)
+
+User asked for an adversarial pre-game-night review (rules interactions, town/night leaks, voice
+fragility, multiplayer races, prod reliability, usability, visual polish), verified with real
+browsers and the public endpoint, distinguishing simulated voice (fake devices) from real-mic tests.
+
+| Teammate | Focus | Ownership this phase |
+|---|---|---|
+| playtest | full scripted games 5/7/10/15 via real server; voting/refresh/duplicate-tab/ST-recovery/rematch/malicious-client; fixes | packages/rules src, apps/server/src/{game,rooms (not modules.ts),auth,directory,admin}, ui/hud, ui/storyteller |
+| rules-audit | adversarial TB interaction tests + docs/rules-audit.md (bugs routed to playtest) | packages/rules/test/audit-*.test.ts, docs/rules-audit.md |
+| world-audit | walkability, houses, night edge cases, night-information leak channels | apps/server/src/world, layout.ts, packages/assets/test, docs/world-audit.md |
+| voice2 | real LiveKit in browsers: speaking bug, 10–15 talkers, boundary flicker, walls, transitions, reconnects, cross-browser, modified-client access | voice packages/dirs, tests/e2e/voice-*.spec.ts |
+| ux | first-run onboarding, help, house finding, errors, restart flows, mobile, polish | ui/{auth,lobby,admin,chat,common}, GameScreen.tsx, game.css, CosmeticPreview, index.html, tests/e2e/ux-*.spec.ts |
+| assets | Codex `gpt-6-astra` remaster of existing art as drop-in replacements; RoleIcon; name plates; no ST light leaks | packages/assets (not layout.ts/test), TownScene/sprites/TownGame/audio, public/, ui/common/RoleIcon.tsx |
+| qa-deploy | 6-browser M3 round, load, soak/leaks, crash/restart, network adversity, adversarial WS, finder accuracy, logs, isolation, public endpoint | tests/**, scripts/**, deploy/** (not tunnel/set-livekit), docs/deployment.md, docs/test-results.md |
+
+Public ingress is the Cloudflare Tunnel (https://clocktower.chrisshi.com), not Funnel.
