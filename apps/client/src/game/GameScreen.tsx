@@ -9,6 +9,7 @@ import { HowToPlayHost, openHelp } from '../ui/common/HowToPlay';
 import { applyAmbientVolume, SettingsButton } from '../ui/common/Settings';
 import { goTo } from '../ui/lobby/finder';
 import { attachSound, unlockAudio } from './audio';
+import { SocialPalette } from '../ui/social/SocialPalette';
 import './game.css';
 
 // Mounts the Phaser town for this lobby; renders `children` (HUD, Storyteller panel, voice panel,
@@ -83,6 +84,7 @@ export function GameScreen(props: { conn: RoomConnection; account: AccountView; 
       )}
       {inside && <InsidePanel inside={inside} prompt={prompt} onLeave={() => leaveRef.current?.()} />}
       {touch && status === 'ready' && !inside && <TouchControls />}
+      {status === 'ready' && <SocialPalette conn={props.conn} touch={touch} />}
       {status === 'ready' && <FirstSteps touch={touch} />}
       <HomeCompass conn={props.conn} />
       <Toolbar conn={props.conn} />

@@ -19,6 +19,7 @@ import {
 import { StCommand, type StorytellerGameView } from './storyteller.js';
 import { VoiceAnnounceMsg, VoiceStatusMsg, type VoiceGrant, type VoiceRevoke, type VoiceUnavailable } from './voice.js';
 import { MoveMsg, UseDoorMsg, type WorldSnapshot, type WorldTeleport } from './world.js';
+import { EmoteMsg, PinClearMsg, PinDropMsg, PinRemoveMsg, type EmoteEvent } from './social.js';
 
 /**
  * Every client -> server Colyseus message type and its Zod schema. The GameRoom validates
@@ -41,6 +42,11 @@ export const C2S = {
   // world
   move: MoveMsg,
   'world:useDoor': UseDoorMsg,
+  // social (v2): emotes + pins
+  'social:emote': EmoteMsg,
+  'social:pin': PinDropMsg,
+  'social:unpin': PinRemoveMsg,
+  'social:clearPins': PinClearMsg,
   // chat
   'chat:send': ChatSendMsg,
   // game (players)
@@ -75,6 +81,8 @@ export interface S2CMessages {
   'game:view': PlayerGameView | StorytellerGameView;
   'world:snapshot': WorldSnapshot;
   'world:teleport': WorldTeleport;
+  /** (v2) Someone you can see made a gesture (only sent to viewers who can see them). */
+  'social:emote': EmoteEvent;
   'chat:message': ChatMessage;
   announcement: AnnouncementView;
   /** Sound cue (bell at bedtime, dawn chime, death toll). */

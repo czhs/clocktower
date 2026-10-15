@@ -161,6 +161,8 @@ export interface WorldSnapshot {
    * when the Storyteller turned them off. Never includes the Storyteller. `ghost` = publicly dead.
    */
   doorTags?: Record<string, DoorTag[]>;
+  /** (v2, social) Pins in the viewer's current location (see social.ts for the visibility rule). */
+  pins?: import('./social.js').PinView[];
 }
 
 export interface DoorTag {

@@ -46,6 +46,7 @@ import type { RoomConnection } from '../net/room';
 import { playCue, type Cue } from './audio';
 import { createGameplayLayer, doorTagsStore, stagePick, type DoorBoardView, type GameplayLayer } from './gameplay';
 import { findPath } from './path';
+import { createSocialLayer, type SocialLayer } from './social';
 
 const L = townLayout;
 const TS = L.tileSize;
@@ -276,6 +277,7 @@ export class TownScene extends Phaser.Scene {
   private offs: (() => void)[] = [];
   private myPid: string | null = null;
   private gameplay: GameplayLayer | null = null;
+  private social: SocialLayer | null = null;
   private ready = false;
   private me = { x: 0, y: 0, facing: 'down' as Facing, moving: false, location: 'outdoors' as LocationId };
   private myDir: Dir8 = 'down';
@@ -442,6 +444,39 @@ export class TownScene extends Phaser.Scene {
     this.offs.push(() => {
       this.gameplay?.destroy();
       this.gameplay = null;
+    });
+    this.social = createSocialLayer(this, {
+      conn,
+      myPid: () => this.myPid,
+      me: () => this.me,
+      amStoryteller: () => this.amStoryteller(),
+      positionOf: (pid) => {
+        if (pid === this.myPid) return this.myAvatar && this.ready ? { x: this.myAvatar.sprite.x, y: this.myAvatar.sprite.y } : null;
+        const a = this.avatars.get(pid);
+        return a && a.sprite.visible ? { x: a.sprite.x, y: a.sprite.y } : null;
+      },
+      entityAt: (x, y) => {
+        let best: { pid: string; d: number } | null = null;
+        for (const a of [...this.avatars.values(), ...(this.myAvatar ? [this.myAvatar] : [])]) {
+          if (!a.sprite.visible) continue;
+          const dx = x - a.sprite.x;
+          const dy = y - (a.sprite.y - 14);
+          if (Math.abs(dx) > 14 || Math.abs(dy) > 20) continue;
+          const d = Math.hypot(dx, dy);
+          if (!best || d < best.d) best = { pid: a.pid, d };
+        }
+        return best?.pid ?? null;
+      },
+      characterOf: (pid) => this.castKey(pid).key.split('/')[0]!,
+      faceToward: (x, y) => {
+        if (!this.myAvatar) return;
+        this.myDir = dir8(x - this.me.x, y - (this.me.y - 12));
+        this.myAvatar.setPose(this.myAvatar.sprite.x, this.myAvatar.sprite.y, this.myDir, false);
+      },
+    });
+    this.offs.push(() => {
+      this.social?.destroy();
+      this.social = null;
     });
     if (import.meta.env.DEV) (window as unknown as { __town?: TownScene }).__town = this;
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.cleanup());
@@ -625,6 +660,7 @@ export class TownScene extends Phaser.Scene {
     if (p.button !== 0 || !this.ready) return;
     if (stagePick.get()) return; // the Storyteller panel is picking a point
     const w = this.cameras.main.getWorldPoint(p.x, p.y);
+    if (this.social?.onTap(w.x, w.y)) return; // pointing / pinning
     const target = this.tapTarget(w.x, w.y);
     if (this.amStoryteller() && this.gview?.kind === 'storyteller') {
       // Storyteller: click-to-teleport (a building = straight inside, like a visit).
@@ -1227,6 +1263,7 @@ export class TownScene extends Phaser.Scene {
     this.stepRemotes();
     this.layoutInterior();
     this.gameplay?.update(dt);
+    this.social?.update(dt);
     this.animateDoors(dt);
     this.stepAmbience(dt, time);
     this.updateCamera(dt);

@@ -8,5 +8,6 @@ export * from './game.js';
 export * from './storyteller.js';
 export * from './voice.js';
 export * from './chat.js';
+export * from './social.js';
 export * from './admin.js';
 export * from './messages.js';
