@@ -1,0 +1,75 @@
+# SYSTEM unit (lead): Clocktower Town prod on 127.0.0.1:3000, run as the unprivileged
+# 'clocktower' user in a systemd sandbox. Install: deploy/secure/setup-dedicated-user.sh.
+# The process can read only its release (read-only) and write only /srv/clocktower/data/prod.
+# /home (incl. your SSH keys and projects) is invisible to it; it has no capabilities,
+# no sudo, no setuid, and cannot see the other environment's data or the tunnel credentials.
+[Unit]
+Description=Clocktower Town (prod, 127.0.0.1:3000)
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=10
+
+[Service]
+Type=simple
+WorkingDirectory=/srv/clocktower/prod
+# Read by systemd (PID 1) before privileges are dropped; the file itself is not readable by 'clocktower'.
+EnvironmentFile=/srv/clocktower/env/prod.env
+EnvironmentFile=-/srv/clocktower/prod/.release.env
+Environment=HOME=/srv/clocktower/data/prod
+ExecStart=/usr/bin/env NODE_ENV=production APP_ENV=production HOST=127.0.0.1 PORT=3000 \
+  DATABASE_URL=file:/srv/clocktower/data/prod/clocktower.db LIVEKIT_ROOM_PREFIX=prod \
+  LOG_DIR=/srv/clocktower/data/prod/logs \
+  /srv/clocktower/node/bin/node --enable-source-maps --max-old-space-size=768 apps/server/dist/server.js
+Restart=on-failure
+RestartSec=3
+KillMode=mixed
+TimeoutStopSec=20
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=clocktower-prod
+# Runaway logging protection (per unit).
+LogRateLimitIntervalSec=30s
+LogRateLimitBurst=2000
+
+# --- containment (systemd sandbox; no Docker) ---
+User=clocktower
+Group=clocktower
+UMask=0077
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RemoveIPC=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+# (MemoryDenyWriteExecute is intentionally NOT set: the V8 JIT needs W+X pages.)
+ReadWritePaths=/srv/clocktower/data/prod
+InaccessiblePaths=/srv/clocktower/data/dev /srv/clocktower/backups /srv/clocktower/cloudflared /srv/clocktower/env
+
+# --- resource limits ---
+MemoryHigh=1G
+MemoryMax=1536M
+MemorySwapMax=0
+CPUQuota=300%
+TasksMax=256
+LimitNOFILE=8192
+
+[Install]
+WantedBy=multi-user.target

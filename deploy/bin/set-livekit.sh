@@ -6,7 +6,8 @@
 set -euo pipefail
 ENV_NAME="${1:-}"
 [[ "$ENV_NAME" == dev || "$ENV_NAME" == prod ]] || { echo "usage: $0 dev|prod" >&2; exit 2; }
-FILE="$HOME/clocktower/env/$ENV_NAME.env"
+if [[ -d /srv/clocktower/env ]]; then FILE="/srv/clocktower/env/$ENV_NAME.env"; RESTART=(sudo -n /usr/bin/systemctl restart "clocktower-$ENV_NAME.service"); STATUS=(systemctl is-active "clocktower-$ENV_NAME.service")
+else FILE="$HOME/clocktower/env/$ENV_NAME.env"; RESTART=(systemctl --user restart "clocktower-$ENV_NAME"); STATUS=(systemctl --user is-active "clocktower-$ENV_NAME"); fi
 [[ -f "$FILE" ]] || { echo "missing $FILE" >&2; exit 1; }
 
 read -r -p "LiveKit WebSocket URL (wss://….livekit.cloud): " URL
@@ -33,7 +34,7 @@ grep -vE '^(LIVEKIT_URL|LIVEKIT_API_KEY|LIVEKIT_API_SECRET|VOICE_MONTHLY_MINUTES
 chmod 600 "$TMP"; mv "$TMP" "$FILE"
 unset SECRET
 echo "Saved to $FILE (0600). Restarting clocktower-$ENV_NAME only…"
-systemctl --user restart "clocktower-$ENV_NAME"
+"${RESTART[@]}"
 sleep 2
-systemctl --user is-active "clocktower-$ENV_NAME"
+"${STATUS[@]}"
 echo "Done. (Room prefix for $ENV_NAME is pinned in the unit: $ENV_NAME rooms never mix with the other env.)"

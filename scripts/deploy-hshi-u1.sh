@@ -48,6 +48,6 @@ set -e
 echo "[deploy] $ENVNAME exit=$STATUS in $(( $(date +%s) - START ))s"
 if [[ $STATUS -eq 0 ]]; then
   PORT=$([[ $ENVNAME == prod ]] && echo 3000 || echo 3001)
-  ssh -o BatchMode=yes "$HOST" "systemctl --user is-active clocktower-$ENVNAME; curl -fsS http://127.0.0.1:$PORT/healthz; echo"
+  ssh -o BatchMode=yes "$HOST" "(systemctl is-active clocktower-$ENVNAME 2>/dev/null | grep -qx active && echo 'active (system unit)') || systemctl --user is-active clocktower-$ENVNAME; curl -fsS http://127.0.0.1:$PORT/healthz; echo"
 fi
 exit $STATUS

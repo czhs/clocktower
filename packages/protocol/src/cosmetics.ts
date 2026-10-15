@@ -11,7 +11,16 @@ export const OUTFIT_PALETTES = ['crimson', 'forest', 'midnight', 'ochre', 'plum'
 export const ACCESSORIES = ['none', 'hat', 'lantern', 'scarf', 'spectacles', 'satchel'] as const;
 export const GHOST_STYLES = ['wisp', 'shroud', 'lantern', 'pale'] as const;
 
+/**
+ * Premade character id (astra-generated sprite sheets in @ct/assets, e.g. 'lamplighter').
+ * When set, clients render that preset; the layered fields below are the "advanced
+ * customization" fallback and are still stored so switching back is lossless. Ids are validated
+ * against the generated preset manifest by the server.
+ */
+export const PresetId = z.string().regex(/^[a-z0-9][a-z0-9-]{0,31}$/);
+
 export const Cosmetics = z.object({
+  preset: PresetId.nullable().optional(),
   skin: z.enum(SKIN_TONES),
   hair: z.enum(HAIR_STYLES),
   hairColor: z.enum(HAIR_COLORS),

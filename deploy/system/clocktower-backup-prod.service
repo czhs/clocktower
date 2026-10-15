@@ -1,0 +1,41 @@
+# SYSTEM unit (lead): consistent online backup of the prod SQLite DB, as 'clocktower'.
+[Unit]
+Description=Clocktower Town prod DB backup
+
+[Service]
+Type=oneshot
+ExecStart=/srv/clocktower/bin/backup-db.sh prod
+Environment=CT_ROOT=/srv/clocktower
+# --- containment (systemd sandbox; no Docker) ---
+User=clocktower
+Group=clocktower
+UMask=0077
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RemoveIPC=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+# (MemoryDenyWriteExecute is intentionally NOT set: the V8 JIT needs W+X pages.)
+ReadWritePaths=/srv/clocktower/backups/prod
+ReadOnlyPaths=/srv/clocktower/data/prod
+InaccessiblePaths=/srv/clocktower/env /srv/clocktower/cloudflared
+MemoryMax=512M
+CPUQuota=100%

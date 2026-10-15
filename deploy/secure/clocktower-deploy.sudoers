@@ -1,0 +1,15 @@
+# /etc/sudoers.d/clocktower-deploy (0440, validated with visudo -cf before install).
+# Lets the admin user deploy Clocktower Town without a password prompt: it may ONLY
+# restart/stop/reset these game units and trigger their DB backups. Nothing else.
+Cmnd_Alias CT_SVC = \
+  /usr/bin/systemctl restart clocktower-prod.service, \
+  /usr/bin/systemctl restart clocktower-dev.service, \
+  /usr/bin/systemctl restart clocktower-tunnel.service, \
+  /usr/bin/systemctl stop clocktower-prod.service, \
+  /usr/bin/systemctl stop clocktower-dev.service, \
+  /usr/bin/systemctl reset-failed clocktower-prod.service, \
+  /usr/bin/systemctl reset-failed clocktower-dev.service, \
+  /usr/bin/systemctl reset-failed clocktower-tunnel.service, \
+  /usr/bin/systemctl start clocktower-backup-prod.service, \
+  /usr/bin/systemctl start clocktower-backup-dev.service
+ADMIN_USER ALL=(root) NOPASSWD: CT_SVC

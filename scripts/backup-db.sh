@@ -14,12 +14,12 @@ TAG="${2:-}"
 [[ $ENVNAME == prod || $ENVNAME == dev ]] || { echo "usage: $0 [prod|dev] [tag]" >&2; exit 2; }
 [[ -z $TAG || $TAG =~ ^[a-z0-9-]{1,32}$ ]] || { echo "tag must match [a-z0-9-]{1,32}" >&2; exit 2; }
 
-# Not on the host? Delegate to the installed copy on hshi-u1.
-if [[ ! -d "$HOME/clocktower/data" || "$(uname -s)" != Linux ]]; then
-  exec ssh -o BatchMode=yes "${CT_HOST:-hshi-u1}" "~/clocktower/bin/backup-db.sh $ENVNAME $TAG"
+# Runtime root: CT_ROOT (set by the hardened system unit to /srv/clocktower), else legacy ~/clocktower.
+CT="${CT_ROOT:-$HOME/clocktower}"
+# Not on the host? Delegate to hshi-u1 (system mode: run the sandboxed backup unit).
+if [[ ! -d "$CT/data" && ! -d /srv/clocktower || "$(uname -s)" != Linux ]]; then
+  exec ssh -o BatchMode=yes "${CT_HOST:-hshi-u1}" "if [ -d /srv/clocktower ]; then sudo -n /usr/bin/systemctl start clocktower-backup-$ENVNAME.service && echo backup ok; else ~/clocktower/bin/backup-db.sh $ENVNAME $TAG; fi"
 fi
-
-CT="$HOME/clocktower"
 SRC="$CT/data/$ENVNAME/clocktower.db"
 DEST_DIR="$CT/backups/$ENVNAME"
 umask 077

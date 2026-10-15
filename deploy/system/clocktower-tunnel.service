@@ -1,0 +1,57 @@
+# SYSTEM unit (lead): Cloudflare Tunnel -> 127.0.0.1:3000 (PRODUCTION ONLY), as 'clocktower'.
+# Uses only the tunnel's own credentials JSON (/srv/clocktower/cloudflared); the account-wide
+# cert.pem stays in the admin's home and is not available to this service.
+[Unit]
+Description=Clocktower Town public ingress (Cloudflare Tunnel -> 127.0.0.1:3000)
+After=network-online.target clocktower-prod.service
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=10
+
+[Service]
+Type=simple
+Environment=HOME=/srv/clocktower/cloudflared
+ExecStart=/srv/clocktower/bin/cloudflared --no-autoupdate --metrics 127.0.0.1:20241 tunnel --config /srv/clocktower/cloudflared/clocktower.yml run
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=clocktower-tunnel
+LogRateLimitIntervalSec=30s
+LogRateLimitBurst=1000
+
+# --- containment (systemd sandbox; no Docker) ---
+User=clocktower
+Group=clocktower
+UMask=0077
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RemoveIPC=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+# (MemoryDenyWriteExecute is intentionally NOT set: the V8 JIT needs W+X pages.)
+InaccessiblePaths=/srv/clocktower/data /srv/clocktower/backups /srv/clocktower/env /srv/clocktower/releases /srv/clocktower/dev
+MemoryMax=256M
+CPUQuota=100%
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target
