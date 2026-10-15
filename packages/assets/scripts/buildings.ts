@@ -37,6 +37,8 @@ export interface BuildingSprite {
   leaf: Img | null;
   /** Open doorway (door.w x door.h): dark interior + hearth glow + leaf swung against the jamb. */
   doorway: Img | null;
+  /** (v2.1) Clock tower only: the dial centre + radius (sprite coords); the client draws live hands. */
+  clock?: { x: number; y: number; r: number };
 }
 
 export const EXTRA: Record<string, number> = { house: 16, shop: 16, tavern: 20, chapel: 104, clocktower: 80 };
@@ -1138,6 +1140,7 @@ export function cottageSide(b: BuildingDef, style: BuildingStyle, extra: number,
 // a crenellated parade with corner pinnacles and a flared slate spire with a gilded vane.
 
 export function clocktower(b: BuildingDef, extra: number): BuildingSprite {
+  let clockFace: { x: number; y: number; r: number } | null = null;
   const W = b.footprint.w * TS;
   const FH = b.footprint.h * TS;
   const H = FH + extra;
@@ -1311,16 +1314,9 @@ export function clocktower(b: BuildingDef, extra: number): BuildingSprite {
       if (dd > 0.94) return '#5a4a30';
       return dpick(['#8a8270', '#b0a68c', '#d4ccb0', '#ece4cc', '#f8f2de'], 0.9 - dd * 0.35 - nx * 0.18 - ny * 0.12, x, y);
     });
-    // minute hand (11 o'clock-ish, five to) and hour hand (just before twelve)
-    const hand = (ang: number, len: number, thick: boolean) => {
-      const ex = cx + Math.sin(ang) * len;
-      const ey = fy - Math.cos(ang) * len;
-      img.line(cx, fy, ex, ey, '#120e16');
-      if (thick) img.line(cx - 1, fy, ex - 1, ey, '#120e16');
-    };
-    hand(-Math.PI / 6, R * 0.82, false);
-    hand(-Math.PI / 72, R * 0.55, true);
+    // (v2.1) no baked hands: the client draws live hands showing the town clock (see clock below)
     img.set(cx, fy, BRASS[4]!);
+    clockFace = { x: cx, y: fy, r: R };
     img.set(cx - 1, fy, BRASS[3]!);
     windows.push({ x: cx, y: fy });
   }
@@ -1359,7 +1355,7 @@ export function clocktower(b: BuildingDef, extra: number): BuildingSprite {
     }
   }
   img.outline({ darken: 0.72 });
-  return { img, windows, door: null, chimney: null, leaf: null, doorway: null };
+  return { img, windows, door: null, chimney: null, leaf: null, doorway: null, ...(clockFace ? { clock: clockFace } : {}) };
 }
 
 /** One building's sprite (exported for review tooling). */

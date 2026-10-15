@@ -99,6 +99,10 @@ export interface NightStepView {
 
 export interface StorytellerGameView {
   kind: 'storyteller';
+  /** (v2.1) The town clock (public; see clock.ts). */
+  clock?: import('./clock.js').DayClockView | null;
+  /** (v2.1) 'auto' never has a Storyteller view; present for symmetry. */
+  storytellerMode?: import('./clock.js').StorytellerMode;
   phase: GamePhase;
   dayNumber: number;
   phaseEndsAt: number | null;

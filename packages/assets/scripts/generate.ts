@@ -232,6 +232,15 @@ for (const b of [...townLayout.buildings, ...townMap.landmarks]) {
 // 'depth' come first like every drawable object (frame = the closed leaf; depth just above the
 // building so the door draws over it). Each cottage's 'building' object also gets a 'chimney'
 // property: JSON {x,y} of the chimney's smoke point in WORLD px (absent = no chimney).
+// (v2.1, lead) the clock tower's dial (WORLD px) so the client can draw the live town clock
+for (const b of townMap.landmarks) {
+  const s = buildings.get(b.id)!;
+  if (!s.clock) continue;
+  const left = b.footprint.x * TS;
+  const top = (b.footprint.y + b.footprint.h) * TS - s.img.h;
+  const bo = objects.find((o) => o.type === 'building' && o.name === b.id);
+  if (bo) bo.properties.push({ name: 'clock', type: 'string', value: JSON.stringify({ x: left + s.clock.x, y: top + s.clock.y, r: s.clock.r }) });
+}
 for (const b of townLayout.buildings) {
   const s = buildings.get(b.id)!;
   const left = b.footprint.x * TS;

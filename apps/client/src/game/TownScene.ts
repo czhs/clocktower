@@ -47,6 +47,7 @@ import { playCue, type Cue } from './audio';
 import { createGameplayLayer, doorTagsStore, stagePick, type DoorBoardView, type GameplayLayer } from './gameplay';
 import { findPath } from './path';
 import { createSocialLayer, type SocialLayer } from './social';
+import { noteServerTime, serverNow } from '../net/serverTime';
 
 const L = townLayout;
 const TS = L.tileSize;
@@ -57,8 +58,8 @@ const INTERP_DELAY_MS = 110;
 const DOOR_TRIGGER = 11;
 /** Doors swing open for you within this distance (px). */
 const DOOR_OPEN_RANGE = 34;
-/** The view always fits the square plus this margin (px) around it. */
-const VIEW_MARGIN = 40;
+/** The square's preset view (world px): the whole circle plus the clock tower's face above it. */
+const SQUARE_VIEW = { x: PLAZA.cx - 200, y: 56, w: 400, h: PLAZA.cy + PLAZA.ry + 18 - 56 };
 const LOCKED: ReadonlySet<string> = new Set(['first_night', 'night', 'dawn']);
 const NIGHT: ReadonlySet<string> = new Set(['first_night', 'night']);
 /** Phases with daytime life on the square (townsfolk, boards). */
@@ -312,6 +313,9 @@ export class TownScene extends Phaser.Scene {
   private pigeons: { s: Phaser.GameObjects.Sprite; home: { x: number; y: number }; away: number; ph: number }[] = [];
   private doorGlows: { img: Phaser.GameObjects.Image; d: DoorObj }[] = [];
   private lastPromptKey = '';
+  private clockFace: { x: number; y: number; r: number } | null = null;
+  private clockDepth = 0;
+  private clockGfx: Phaser.GameObjects.Graphics | null = null;
   private lastInsideKey = '';
 
   constructor(bridge: TownBridge) {
@@ -365,6 +369,15 @@ export class TownScene extends Phaser.Scene {
         .setDepth(type === 'flat' ? 2 : 10 + depth);
       if (type === 'building') {
         const id = String(prop(o, 'building') ?? '');
+        const ck = prop(o, 'clock');
+        if (typeof ck === 'string' && ck) {
+          try {
+            this.clockFace = JSON.parse(ck) as { x: number; y: number; r: number };
+            this.clockDepth = 10 + depth + 0.1;
+          } catch {
+            // ignore malformed
+          }
+        }
         buildingDepth.set(id, 10 + depth);
         const ch = prop(o, 'chimney');
         if (typeof ch === 'string' && ch) {
@@ -787,6 +800,7 @@ export class TownScene extends Phaser.Scene {
   }
 
   onSnapshot(s: WorldSnapshot) {
+    noteServerTime(s.t);
     const now = performance.now();
     const seen = new Set<string>();
     for (const e of s.entities) {
@@ -1239,9 +1253,8 @@ export class TownScene extends Phaser.Scene {
       cam.setZoom(zoom);
       cam.centerOn(a.x + a.w / 2, a.y + a.h / 2 + reserve / 2 / zoom);
     } else {
-      // outdoors: the largest zoom at which the whole square (+ margin) still fits the screen
-      const need = Math.max(PLAZA.rx, PLAZA.ry) * 2 + VIEW_MARGIN * 2;
-      cam.setZoom(Math.max(0.2, Math.min(w, h) / need));
+      // outdoors: the zoom of the square's preset view (whole circle + the clock tower's face)
+      cam.setZoom(Math.max(0.2, Math.min(w / SQUARE_VIEW.w, h / SQUARE_VIEW.h)));
       this.view.init = false;
       this.updateCamera(0);
     }
@@ -1276,8 +1289,50 @@ export class TownScene extends Phaser.Scene {
     this.animateDoors(dt);
     this.stepAmbience(dt, time);
     this.updateCamera(dt);
+    this.drawTownClock();
     this.updateLighting(dt);
     this.updatePrompt();
+  }
+
+  /**
+   * The clock tower's dial shows the town clock (public): a gold wedge = time left of the current
+   * stage, the minute hand at its edge; paused = dim with two bars; no clock = hands at five to midnight.
+   */
+  private drawTownClock() {
+    const f = this.clockFace;
+    if (!f) return;
+    if (!this.clockGfx) this.clockGfx = this.add.graphics().setDepth(this.clockDepth);
+    const g = this.clockGfx;
+    g.clear();
+    if (this.me.location !== 'outdoors') return;
+    const c = this.gview?.clock ?? null;
+    const top = -Math.PI / 2;
+    const hand = (ang: number, len: number, w: number, col: number) => {
+      g.lineStyle(w, col, 1);
+      g.lineBetween(f.x, f.y, f.x + Math.cos(ang) * len, f.y + Math.sin(ang) * len);
+    };
+    if (!c || (c.endsAt === null && c.remainingMs === null)) {
+      hand(top - Math.PI / 6, f.r * 0.82, 1, 0x120e16);
+      hand(top - Math.PI / 72, f.r * 0.55, 2, 0x120e16);
+    } else {
+      const left = Math.max(0, c.paused ? (c.remainingMs ?? 0) : (c.endsAt ?? 0) - serverNow());
+      const frac = c.totalMs > 0 ? Math.min(1, left / c.totalMs) : 0;
+      const end = top + frac * Math.PI * 2;
+      const col = c.stage === 'nominations' ? 0xc0413b : c.stage === 'bedtime' ? 0x6f7fd0 : 0xd5b56a;
+      if (frac > 0.002) {
+        g.fillStyle(col, c.paused ? 0.28 : 0.5);
+        g.slice(f.x, f.y, f.r * 0.86, top, end, false);
+        g.fillPath();
+      }
+      hand(end, f.r * 0.86, 1, 0x120e16);
+      if (c.paused) {
+        g.fillStyle(0x120e16, 0.9);
+        g.fillRect(f.x - 3, f.y - 3, 2, 6);
+        g.fillRect(f.x + 1, f.y - 3, 2, 6);
+      }
+    }
+    g.fillStyle(0xe0c060, 1);
+    g.fillRect(Math.round(f.x) - 1, Math.round(f.y) - 1, 2, 2);
   }
 
   /** Outdoors: rest on the square while you're in it, follow you near the edge; clamped to the town. */
@@ -1286,15 +1341,16 @@ export class TownScene extends Phaser.Scene {
     const cam = this.cameras.main;
     const vw = cam.width / cam.zoom;
     const vh = cam.height / cam.zoom;
-    let tx = PLAZA.cx;
-    let ty = PLAZA.cy;
+    // in the square: snap to the preset view (circle + clock); near the edge: follow
+    let tx = SQUARE_VIEW.x + SQUARE_VIEW.w / 2;
+    let ty = SQUARE_VIEW.y + SQUARE_VIEW.h / 2;
     if (this.ready) {
       const inSquare = Math.hypot((this.me.x - PLAZA.cx) / PLAZA.rx, (this.me.y - 8 - PLAZA.cy) / PLAZA.ry) <= 1.08;
       if (!inSquare) {
         // lean toward the player just enough to keep them comfortably on screen
         const lean = 0.85;
-        tx = PLAZA.cx + (this.me.x - PLAZA.cx) * lean;
-        ty = PLAZA.cy + (this.me.y - 10 - PLAZA.cy) * lean;
+        tx = tx + (this.me.x - tx) * lean;
+        ty = ty + (this.me.y - 10 - ty) * lean;
       }
     }
     const clamp = (c: number, lo: number, size: number, view: number) => (size <= view ? lo + size / 2 : Phaser.Math.Clamp(c, lo + view / 2, lo + size - view / 2));
