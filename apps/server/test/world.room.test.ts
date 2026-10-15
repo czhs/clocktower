@@ -234,7 +234,7 @@ describe('night edge cases through the real GameRoom (world-audit)', () => {
     expect(stEnt.location).toBe('outdoors');
   }, 60_000);
 
-  it('bedtime: a player who refuses to go home, and one inside someone else\'s cottage, are put to bed when the countdown expires', async () => {
+  it('bedtime: a player who refuses to go home, and one inside someone else\'s cottage, are WALKED home when the countdown expires (gameplay: no teleport)', async () => {
     const g = await newGame('Bed');
     await cmd(g, { type: 'begin_first_night' }, (v) => v.phase === 'first_night');
     await cmd(g, { type: 'advance_phase', to: 'day' }, (v) => v.phase === 'day');
@@ -251,19 +251,35 @@ describe('night edge cases through the real GameRoom (world-audit)', () => {
     await walk(b, tileCenterPx(L, h4.bed!), tileCenterPx(L, h4.interiorDoor));
     await useDoor(b, 'house-4', 'outdoors');
     // bedtime (module option: 1 s countdown); nobody moves
+    const na = a.c.of('world:teleport').length;
+    const nb = b.c.of('world:teleport').length;
     await cmd(g, { type: 'advance_phase', to: 'bedtime' }, (v) => v.phase === 'bedtime');
-    await waitFor(() => stv(g).phase === 'night', 6000, 'countdown expiry -> night');
-    const ta = await a.c.waitMsg('world:teleport', (t) => t.reason === 'night', 3000);
-    const tb = await b.c.waitMsg('world:teleport', (t) => t.reason === 'night', 3000);
-    expect(ta).toMatchObject({ location: 'bld:house-0', ...tileCenterPx(L, h0.bed!) });
-    expect(tb).toMatchObject({ location: 'bld:house-4', ...tileCenterPx(L, h4.bed!) });
+    // Countdown over: the server escorts both (snapshot.you = auto) through the doors at walking
+    // speed; the night falls once everyone is home. Nobody is teleported.
+    await waitFor(() => stv(g).bedtimeOvertime === true, 6000, 'countdown expiry -> overtime');
+    await waitFor(() => (a.c.last('world:snapshot') as WorldSnapshot).you?.mode === 'auto', 3000, 'a escorted');
+    await waitFor(() => stv(g).phase === 'night', 60_000, 'everyone home -> night');
+    const ta = a.c.of('world:teleport').slice(na);
+    const tb = b.c.of('world:teleport').slice(nb);
+    expect(ta.some((t) => t.reason === 'night' || t.reason === 'bedtime')).toBe(false);
+    expect(tb.some((t) => t.reason === 'night' || t.reason === 'bedtime')).toBe(false);
+    expect(ta.filter((t) => t.reason === 'door').map((t) => t.location).slice(-2)).toEqual(['outdoors', 'bld:house-0']);
+    expect(tb.filter((t) => t.reason === 'door').at(-1)!.location).toBe('bld:house-4');
+    // they end in bed (the walk finishes inside the home)
+    await waitFor(() => {
+      const ea = (a.c.last('world:snapshot') as WorldSnapshot).entities.find((e) => e.id === a.pid);
+      const eb = (b.c.last('world:snapshot') as WorldSnapshot).entities.find((e) => e.id === b.pid);
+      const ba = tileCenterPx(L, h0.bed!);
+      const bb = tileCenterPx(L, h4.bed!);
+      return ea && eb && Math.hypot(ea.x - ba.x, ea.y - ba.y) < 1 && Math.hypot(eb.x - bb.x, eb.y - bb.y) < 1 && !(a.c.last('world:snapshot') as WorldSnapshot).you;
+    }, 10_000, 'in bed');
     // moving back outside is rejected
     b.seq += 1;
     const out = tileCenterPx(L, h4.door);
     b.c.send('move', { seq: b.seq, x: out.x, y: out.y, facing: 'down', moving: true });
     const corr = await b.c.waitMsg('world:teleport', (t) => t.reason === 'correction' && t.seq === b.seq, 3000);
     expect(corr.location).toBe('bld:house-4');
-  }, 60_000);
+  }, 120_000);
 
   it('cosmetics: every client renders the same appearance inputs for a player, after a reconnect and after death', async () => {
     const look = { preset: null, skin: 'umber', hair: 'braid', hairColor: 'white', outfit: 'cleric', palette: 'plum', accessory: 'lantern', ghost: 'shroud' } as const;

@@ -1,34 +1,182 @@
-/* LEAD-OWNED base theme: gothic night palette. Feature UIs add their own CSS files. */
+/* Base theme + shared primitives, implementing docs/art-direction.md ("UI and typography"):
+   near-opaque Panel ink panels with a 1px Frame iron keyline, Parchment text, gold reserved for
+   primary actions / focus / a few headings, 4px radius, 8px rhythm, IM Fell English headings and
+   Alegreya Sans body (self-hosted via @fontsource — the CSP allows fonts from 'self' only). */
+@import '@fontsource/alegreya-sans/400.css';
+@import '@fontsource/alegreya-sans/500.css';
+@import '@fontsource/alegreya-sans/700.css';
+@import '@fontsource/alegreya-sans/400-italic.css';
+@import '@fontsource/im-fell-english/400.css';
+@import '@fontsource/im-fell-english/400-italic.css';
+
 :root {
-  --bg: #0f0d14;
-  --panel: #1b1724e6;
-  --panel-solid: #1b1724;
-  --border: #3d3350;
-  --text: #e9e2d0;
-  --muted: #9b91a8;
-  --accent: #c9a24a;
-  --good: #5d8fd6;
-  --evil: #c0413b;
-  --danger: #d0543f;
-  --ok: #6fae6a;
-  --font: 'Georgia', 'Iowan Old Style', serif;
+  --bg: #13111a;
+  --panel: #211f2cf5;          /* Panel ink, 96% */
+  --panel-solid: #211f2c;
+  --panel-raised: #2a2736;     /* rows / cards inside panels */
+  --panel-sunk: #17151f;       /* inputs, wells */
+  --border: #454250;           /* Frame iron */
+  --border-strong: #626979;    /* Worn iron */
+  --text: #e4d8ba;             /* Parchment */
+  --muted: #b7b0be;            /* Muted text */
+  --ink: #302c36;              /* Ink text on parchment cards */
+  --parchment: #e4d8ba;
+  --accent: #d5b56a;           /* Focus gold / brass edge */
+  --accent-deep: #665032;      /* Ochre shade (primary button fill) */
+  --good: #7fa8d8;
+  --evil: #e0625a;
+  --danger: #e06450;
+  --ok: #8fbf7a;
+  --radius: 4px;
+  --font: 'Alegreya Sans', system-ui, sans-serif;
+  --font-display: 'IM Fell English', Georgia, serif;
   --mono: ui-monospace, 'SF Mono', Menlo, monospace;
+  /* Safe-area insets (non-zero only with viewport-fit=cover on notched devices). Overlays should
+     offset by these: e.g. `bottom: calc(12px + var(--safe-bottom))`. */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  /* Height of the chat dock at the bottom-left (published by ChatPanel), so left-column panels
+     can stop above it: `max-height: calc(100dvh - 24px - var(--ct-chat-h))`. */
+  --ct-chat-h: 0px;
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
-html, body, #app { margin: 0; height: 100%; background: var(--bg); color: var(--text); font-family: var(--font); }
+html, body, #app { margin: 0; height: 100%; background: var(--bg); color: var(--text); font-family: var(--font); font-size: 16px; line-height: 1.4; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+@supports (height: 100dvh) { #app { height: 100dvh; } }
+body { overscroll-behavior: none; -webkit-tap-highlight-color: transparent; }
+h1, h2, h3 { font-family: var(--font-display); font-weight: normal; letter-spacing: 0.01em; }
+
+/* Buttons: idle / hover / pressed / focus / selected / disabled are all distinct. */
 button {
-  font: inherit; color: var(--text); background: #2a2238; border: 1px solid var(--border);
-  padding: 6px 12px; border-radius: 4px; cursor: pointer;
+  font: inherit; line-height: 1.2; color: var(--text); background: #2c2938; border: 1px solid var(--border);
+  padding: 6px 12px; border-radius: var(--radius); cursor: pointer; touch-action: manipulation;
+  transition: background-color 80ms, border-color 80ms;
 }
-button:hover:not(:disabled) { border-color: var(--accent); }
-button:disabled { opacity: 0.5; cursor: default; }
-button.primary { background: #5b4320; border-color: var(--accent); }
+button:hover:not(:disabled) { border-color: var(--border-strong); background: #343042; }
+button:active:not(:disabled) { background: #24212f; transform: translateY(1px); }
+button[aria-pressed='true'], button[aria-selected='true'], button[aria-checked='true'] { border-color: var(--accent); }
+button:disabled { color: #8d8697; background: #24222d; border-color: #35323f; cursor: not-allowed; }
+button.primary { background: var(--accent-deep); border-color: var(--accent); color: #f6ecd2; }
+button.primary:hover:not(:disabled) { background: #7a5f38; border-color: #e6c97a; }
+button.primary:active:not(:disabled) { background: #57442a; }
+button.primary:disabled { background: #3a3226; border-color: #6b5a3a; color: #a99d84; }
 input, select, textarea {
-  font: inherit; color: var(--text); background: #120f18; border: 1px solid var(--border);
-  padding: 6px 8px; border-radius: 4px;
+  font: inherit; line-height: 1.3; color: var(--text); background: var(--panel-sunk); border: 1px solid var(--border);
+  padding: 6px 8px; border-radius: var(--radius);
 }
+input:hover:not(:disabled), select:hover:not(:disabled), textarea:hover:not(:disabled) { border-color: var(--border-strong); }
+/* :not([multiple]) raises specificity so feature CSS `.x select { padding: … }` keeps room for the chevron. */
+select:not([multiple]) {
+  -webkit-appearance: none; appearance: none; padding-right: 24px; cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23d5b56a' stroke-width='1.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 8px center;
+}
+select:disabled { opacity: 0.6; cursor: default; }
+option { background: var(--panel-solid); color: var(--text); }
+input[type='checkbox'], input[type='radio'] { accent-color: var(--accent); width: 16px; height: 16px; margin: 0; }
+textarea { resize: vertical; }
+/* Themed scrollbars (Firefox + WebKit/Blink). */
+* { scrollbar-width: thin; scrollbar-color: #4d4a5a transparent; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #4d4a5a; border-radius: 4px; border: 2px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background-color: #6d6979; }
+input::placeholder, textarea::placeholder { color: #8f889a; }
+/* 2px gold keyboard-focus ring everywhere (mouse clicks don't trigger :focus-visible on buttons). */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offset: 0; border-color: var(--accent); }
+/* Phones: >=16px inputs stop iOS from zooming the page on focus; 40px touch targets. */
+@media (pointer: coarse) {
+  input, select, textarea { font-size: 16px; }
+  button { min-height: 40px; }
+}
+::selection { background: #d5b56a55; }
+
 .screen { position: relative; width: 100%; height: 100%; overflow: hidden; }
 .center { display: flex; align-items: center; justify-content: center; }
-.panel { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 16px; }
+/* Loading / status screens (plain text or a single panel centred on the page). */
+.screen.center {
+  padding: 16px; color: var(--muted); font-style: italic;
+  background: radial-gradient(ellipse at 50% 30%, #2a2638 0%, transparent 60%), var(--bg);
+}
+.screen.center > .panel {
+  font-style: normal; color: var(--text); width: min(440px, 100%); padding: 24px;
+  text-align: center; box-shadow: 0 10px 40px #0008;
+}
+.screen.center > .panel p { line-height: 1.45; margin: 0 0 16px; }
+.screen.center > .panel.ct-auth-panel { text-align: left; width: min(500px, 100%); padding: 28px; }
+.screen.center > .panel.ct-auth-panel p { margin: 0; }
+.screen.center > .panel button { padding: 8px 16px; }
+.panel { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
 .muted { color: var(--muted); }
+.ct-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* Shared status screen (ui/common/StatusScreen.tsx). */
+.ct-status-icon { font-size: 2rem; color: var(--accent); line-height: 1; margin-bottom: 8px; }
+.ct-status-title { margin: 0 0 8px; color: var(--accent); font-weight: normal; font-size: 1.6rem; letter-spacing: 0.02em; }
+.ct-status-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+.ct-spinner {
+  display: inline-block; width: 18px; height: 18px; border-radius: 50%; vertical-align: -3px; margin-right: 10px;
+  border: 2px solid #d5b56a33; border-top-color: var(--accent); animation: ct-spin 0.9s linear infinite;
+}
+@keyframes ct-spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+}
+
+/* Shared small primitives (also used by auth/admin/lobby). */
+.ct-small { font-size: 0.875rem; }
+button.ct-link { background: none; border: none; padding: 2px 4px; color: var(--accent); text-decoration: underline; text-underline-offset: 2px; min-height: 0; }
+button.ct-link:hover:not(:disabled) { color: #e6c97a; }
+button.ct-link.ct-danger { color: var(--danger); }
+
+/* UI art from the assets teammate (apps/client/public/art/ui/*, gpt-6-astra; look owned by assets,
+   implementation here). Native-pixel 9-slice frames drawn 1:1 in CSS px, nearest-neighbour.
+   Applied to the screens ux owns; other panels can opt in with the `ct-art-panel` /
+   `ct-art-buttons` classes. */
+.panel, .ct-art-panel, .ct-chat, .ct-help {
+  border-color: transparent;
+  border-image: url('/art/ui/panel.png') 8 fill / 8px / 0 stretch;
+  image-rendering: pixelated;
+  background-color: transparent;
+}
+.ct-help-body { image-rendering: auto; }
+.ct-art-parchment {
+  border-color: transparent; color: var(--ink);
+  border-image: url('/art/ui/panel-parchment.png') 8 fill / 8px / 0 stretch; image-rendering: pixelated;
+}
+
+/* Framed buttons inside ux-owned screens (link-style, tab, toggle and tile buttons keep their own look). */
+:is(.ct-auth, .ct-home, .ct-waiting, .ct-modal, .ct-help-foot, .ct-chat-form, .screen.center, .ct-toolbar, .ct-admin, .ct-art-buttons)
+  button:not(.ct-link, .ct-preset, .ct-waiting-toggle, .ct-chat-min, .ct-help-close, .ct-waiting-newbie, [role='tab'], [role='radio'], .ct-danger-btn) {
+  border-color: transparent; background-color: transparent;
+  border-image: url('/art/ui/button.png') 6 fill / 6px / 0 stretch; image-rendering: pixelated;
+}
+:is(.ct-auth, .ct-home, .ct-waiting, .ct-modal, .ct-help-foot, .ct-chat-form, .screen.center, .ct-toolbar, .ct-admin, .ct-art-buttons)
+  button:not(.ct-link, .ct-preset, .ct-waiting-toggle, .ct-chat-min, .ct-help-close, .ct-waiting-newbie, [role='tab'], [role='radio'], .ct-danger-btn):hover:not(:disabled) {
+  border-image-source: url('/art/ui/button-hover.png'); background-color: transparent;
+}
+/* Primary actions keep the CSS ochre/gold treatment: button-primary.png has 5 transparent rows at the
+   top, so it cannot be 9-sliced (reported to assets). */
+:is(.ct-auth, .ct-home, .ct-waiting, .ct-modal, .ct-help-foot, .ct-chat-form, .screen.center, .ct-toolbar, .ct-admin, .ct-art-buttons)
+  button.primary:not(.ct-link) {
+  border-image: none; border-color: var(--accent); background-color: var(--accent-deep); color: #f6ecd2; image-rendering: auto;
+}
+:is(.ct-auth, .ct-home, .ct-waiting, .ct-modal, .ct-help-foot, .ct-chat-form, .screen.center, .ct-toolbar, .ct-admin, .ct-art-buttons)
+  button.primary:not(.ct-link):hover:not(:disabled) { border-image: none; background-color: #7a5f38; border-color: #e6c97a; }
+:is(.ct-auth, .ct-home, .ct-waiting, .ct-modal, .ct-help-foot, .ct-chat-form, .screen.center, .ct-toolbar, .ct-admin, .ct-art-buttons)
+  button.primary:not(.ct-link):disabled { background-color: #3a3226; border-color: #6b5a3a; color: #a99d84; filter: none; }
+:is(.ct-auth, .ct-home, .ct-waiting, .ct-modal, .ct-help-foot, .ct-chat-form, .screen.center, .ct-toolbar, .ct-admin, .ct-art-buttons)
+  button:not(.ct-link):disabled { filter: saturate(0.4) brightness(0.8); }
+:is(.ct-auth, .ct-home, .ct-waiting, .ct-modal, .ct-help-foot, .ct-chat-form, .screen.center, .ct-toolbar, .ct-admin, .ct-art-buttons)
+  button[aria-pressed='true']:not(.ct-link, .primary) { filter: sepia(0.5) brightness(1.15); }
+:is(.ct-auth, .ct-home, .ct-waiting, .ct-modal, .ct-help-foot, .ct-chat-form, .screen.center, .ct-toolbar, .ct-admin, .ct-art-buttons)
+  button:not(.ct-link) { padding-left: 14px; padding-right: 14px; }
+
+/* 16x16 icons, rendered at integer sizes. */
+.ct-icon { display: inline-block; width: 16px; height: 16px; image-rendering: pixelated; vertical-align: -3px; flex: none; }
+.ct-icon-2x { width: 32px; height: 32px; }

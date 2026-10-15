@@ -1,7 +1,11 @@
-// OWNED BY rules-storyteller. Player HUD: phase/countdown, own role card, Alive/Dead, May nominate?,
+// OWNED BY rules-storyteller. (gameplay) "The world does the talking": the player HUD is mostly
+// collapsed — a tiny phase pill (top-right), a character/house chip (top-left) that expands on hover
+// or click, one fading context hint, and prompt / vote cards docked on the right only while
+// actionable. The Storyteller's view lives in the ST panel (this HUD only adds toasts + endgame).
+// Player HUD: phase/countdown, own role card, Alive/Dead, May nominate?,
 // ghost vote, player list, nominations + clock-hand voting, ST prompts, private info log,
 // announcements and the endgame reveal. All text is rendered through Preact (auto-escaped).
-import { useEffect, useMemo, useState } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import {
   CHARACTER_INFO,
   type AccountView,
@@ -12,11 +16,11 @@ import {
   type PlayerGameView,
   type PromptView,
   type PublicPlayerView,
-  type StorytellerGameView,
 } from '@ct/protocol';
 import type { RoomConnection } from '../../net/room';
 import { useStore } from '../../net/store';
-import { charName, CharacterSelect, Countdown, goHome, nameOf, PHASE_LABEL, phaseTitle, seatLabel, VoteClock } from './shared';
+import { charName, CharacterSelect, Countdown, friendlyError, goHome, nameOf, PHASE_LABEL, phaseTitle, seatLabel, VoteClock } from './shared';
+import { homeOf, MoveHint } from './hints';
 import './hud.css';
 
 export function Hud({ conn }: { conn: RoomConnection; account: AccountView }) {
@@ -24,9 +28,8 @@ export function Hud({ conn }: { conn: RoomConnection; account: AccountView }) {
   if (!view) return null;
   return (
     <div class="cth">
-      <PhaseBar view={view} />
       <Toasts conn={conn} />
-      {view.kind === 'player' ? <PlayerHud view={view} conn={conn} /> : <StorytellerHudExtras view={view} />}
+      {view.kind === 'player' && <PlayerHud view={view} conn={conn} />}
       {view.result && <Endgame result={view.result} key={view.result.reason} />}
     </div>
   );
@@ -34,19 +37,17 @@ export function Hud({ conn }: { conn: RoomConnection; account: AccountView }) {
 
 // ------------------------------------------------------------------------------- phase bar
 
-function PhaseBar({ view }: { view: PlayerGameView | StorytellerGameView }) {
+/** Tiny phase / time pill (e.g. "Day 2 ☼", "Bedtime 🔔 0:23"). */
+function PhaseBar({ view }: { view: PlayerGameView }) {
   const night = view.phase === 'night' || view.phase === 'first_night';
   return (
-    <div class={`cth-phase cth-phase-${view.phase}`}>
-      <span class="cth-phase-icon" aria-hidden="true">
-        {night ? '☾' : view.phase === 'bedtime' ? '🔔' : view.phase === 'dawn' ? '☀' : view.phase === 'day' ? '☼' : '✦'}
-      </span>
+    <div class={`cth-phase cth-phase-${view.phase}`} title={view.gathering && view.phase === 'day' ? 'The town is gathered in the circle' : undefined}>
       <span class="cth-phase-name">{phaseTitle(view.phase, view.dayNumber)}</span>
+      <span class="cth-phase-icon" aria-hidden="true">
+        {night ? '☾' : view.phase === 'bedtime' ? '🔔' : view.phase === 'dawn' ? '☀' : view.phase === 'day' ? (view.gathering ? '◯' : '☼') : '✦'}
+      </span>
       {view.phaseEndsAt !== null && <Countdown endsAt={view.phaseEndsAt} />}
-      {view.kind === 'storyteller' && view.timerPaused && <span class="cth-chip">paused</span>}
-      {view.kind === 'player' && view.storytellerVisitingYou && (
-        <span class="cth-visit">The Storyteller is in your home</span>
-      )}
+      {view.storytellerVisitingYou && <span class="cth-visit" title="The Storyteller is in your home: private">🕯</span>}
     </div>
   );
 }
@@ -62,7 +63,7 @@ function Toasts({ conn }: { conn: RoomConnection }) {
     };
     const offA = conn.events.on('announcement', (a: AnnouncementView) => push({ id: a.id, kind: a.kind, text: a.text }));
     const offE = conn.events.on('error', (e) => {
-      if (e.for?.startsWith('game:')) push({ id: `err${++seq}`, kind: 'error', text: e.message });
+      if (e.for?.startsWith('game:')) push({ id: `err${++seq}`, kind: 'error', text: friendlyError(e.message) });
     });
     return () => {
       offA();
@@ -81,24 +82,15 @@ function Toasts({ conn }: { conn: RoomConnection }) {
   );
 }
 
-function StorytellerHudExtras({ view }: { view: StorytellerGameView }) {
-  // Votes only run during the day; a 'voting' nomination left over in bedtime/finished is stale.
-  const voting = view.phase === 'day' ? view.day?.nominations.find((n) => n.status === 'voting') : undefined;
-  if (!voting) return null;
-  return (
-    <div class="cth-vote">
-      <VoteSummary nom={voting} players={view.players} />
-      <VoteClock nom={voting} players={view.players} />
-    </div>
-  );
-}
-
 // ------------------------------------------------------------------------------ player HUD
 
 type Tab = 'players' | 'info' | 'town' | 'grimoire';
 
 function PlayerHud({ view, conn }: { view: PlayerGameView; conn: RoomConnection }) {
-  const [open, setOpen] = useState(true);
+  const [pinned, setPinned] = useState(false);
+  const [hover, setHover] = useState(false);
+  const leaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const open = pinned || hover;
   const [tab, setTab] = useState<Tab>('players');
   const you = view.you;
   const lastInfo = view.info.length;
@@ -112,20 +104,47 @@ function PlayerHud({ view, conn }: { view: PlayerGameView; conn: RoomConnection 
   const activeNom =
     view.phase === 'day' ? view.day?.nominations.find((n) => n.status === 'voting' || n.status === 'pending') : undefined;
 
+  const home = homeOf(you.seat);
+  const me = you.seat;
+  const locked = !!activeNom && me in activeNom.votes;
   return (
     <>
-      <aside class={`cth-card${open ? '' : ' cth-card-closed'}`}>
-        <header class="cth-card-head">
-          <button class="cth-toggle" onClick={() => setOpen(!open)} aria-expanded={open} title={open ? 'Collapse' : 'Expand'}>
-            {open ? '▾' : '▸'}
-          </button>
+      <MoveHint view={view} conn={conn} />
+      <aside
+        class={`cth-card${open ? '' : ' cth-card-closed'}`}
+        onMouseEnter={() => {
+          if (leaveTimer.current) clearTimeout(leaveTimer.current);
+          setHover(true);
+        }}
+        onMouseLeave={() => {
+          // Small grace period (native selects / brief slips off the edge).
+          leaveTimer.current = setTimeout(() => setHover(false), 350);
+        }}
+      >
+        <button
+          class="cth-card-head"
+          onClick={() => {
+            // Hover opens it; a click pins it open; a second click collapses it.
+            if (pinned) {
+              setPinned(false);
+              setHover(false);
+            } else setPinned(true);
+          }}
+          aria-expanded={open}
+          title={pinned ? 'Collapse' : 'Your character and house (click to keep open)'}
+        >
           <RoleBadge view={view} />
-          <span class={`cth-chip ${you.alive ? 'ok' : 'dead'}`}>{you.alive ? 'Alive' : 'Dead'}</span>
-        </header>
+          {home && <span class="cth-chip cth-house">⌂ {home.name}</span>}
+          {!you.alive && <span class="cth-chip dead">{you.ghostVoteAvailable ? 'Dead · 👻 1 vote' : 'Dead'}</span>}
+          {unread > 0 && <span class="cth-badge" title="New private notes">{unread}</span>}
+          {pinned && <span class="cth-pin" aria-hidden="true">▴</span>}
+        </button>
         {open && (
           <>
             <RoleCard view={view} />
             <div class="cth-status">
+              <span class={`cth-chip ${you.alive ? 'ok' : 'dead'}`}>{you.alive ? 'Alive' : 'Dead'}</span>
+              <span class="cth-chip" title="Your seat in the circle">Seat {you.seat + 1}</span>
               <span class={`cth-chip ${you.canNominate ? 'ok' : ''}`}>May nominate? {you.canNominate ? 'Yes' : 'No'}</span>
               <span
                 class={`cth-chip ${you.ghostVoteAvailable ? 'ok' : 'dead'}`}
@@ -159,13 +178,16 @@ function PlayerHud({ view, conn }: { view: PlayerGameView; conn: RoomConnection 
           </>
         )}
       </aside>
-      {view.prompts.length > 0 && <PromptCard key={view.prompts[0]!.id} prompt={view.prompts[0]!} view={view} conn={conn} />}
-      {activeNom && <VotePanel nom={activeNom} view={view} conn={conn} />}
-      {!activeNom && view.day?.onTheBlock && view.phase === 'day' && (
-        <div class="cth-block">
-          On the block: <b>{nameOf(view.players, view.day.onTheBlock.seat)}</b> ({view.day.onTheBlock.votes} votes)
-        </div>
-      )}
+      <div class="cth-dock">
+        <PhaseBar view={view} />
+        {view.prompts.length > 0 && <PromptCard key={view.prompts[0]!.id} prompt={view.prompts[0]!} view={view} conn={conn} />}
+        {activeNom && <VotePanel key={`${activeNom.id}-${activeNom.status}-${locked}`} nom={activeNom} view={view} conn={conn} />}
+        {!activeNom && view.day?.onTheBlock && view.phase === 'day' && (
+          <div class="cth-block">
+            ⚖ <b>{nameOf(view.players, view.day.onTheBlock.seat)}</b> is on the block ({view.day.onTheBlock.votes})
+          </div>
+        )}
+      </div>
     </>
   );
 }
@@ -411,17 +433,27 @@ function PromptCard({ prompt, view, conn }: { prompt: PromptView; view: PlayerGa
 
 // ---------------------------------------------------------------------------------- voting
 
-function VoteSummary({ nom, players }: { nom: NominationView; players: PublicPlayerView[] }) {
+function VoteSummary({ nom, players, me }: { nom: NominationView; players: PublicPlayerView[]; me?: number }) {
+  const reached = nom.voteCount >= nom.threshold;
   return (
     <div class="cth-vote-sum">
       <div>
-        <b>{nameOf(players, nom.nominatorSeat)}</b> nominated <b>{nameOf(players, nom.nomineeSeat)}</b>
+        <b>{nameOf(players, nom.nominatorSeat)}</b> nominated <b class="cth-nominee">{nameOf(players, nom.nomineeSeat)}</b>
       </div>
-      <div class="muted">
-        {nom.status === 'pending'
-          ? 'Waiting for the Storyteller to start the vote'
-          : `Votes ${nom.voteCount} / ${nom.threshold} needed${nom.currentVoterSeat !== null ? ` · hand at ${nameOf(players, nom.currentVoterSeat)}` : ''}`}
-      </div>
+      {nom.status === 'pending' ? (
+        <div class="muted">Waiting for the Storyteller to start the vote</div>
+      ) : (
+        <>
+          <div class={`cth-tally${reached ? ' reached' : ''}`}>
+            {nom.voteCount} / {nom.threshold} votes {reached ? '— enough for the block' : 'needed'}
+          </div>
+          {nom.currentVoterSeat !== null && (
+            <div class={nom.currentVoterSeat === me ? 'cth-yourturn' : 'muted'}>
+              {nom.currentVoterSeat === me ? 'The clock hand is on you' : `Clock hand: ${nameOf(players, nom.currentVoterSeat)}`}
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -432,17 +464,39 @@ function VotePanel({ nom, view, conn }: { nom: NominationView; view: PlayerGameV
   const raised = (nom.handsRaised ?? []).includes(me);
   const canVote = view.you.alive || view.you.ghostVoteAvailable;
   const isButler = view.you.role?.character === 'butler';
+  // Seats until the clock hand reaches you (clockwise by seat number), ~1.5 s per seat.
+  const order = [...view.players].map((p) => p.seat).sort((a, b) => a - b);
+  const cur = nom.currentVoterSeat === null ? -1 : order.indexOf(nom.currentVoterSeat);
+  const mine = order.indexOf(me);
+  const away = cur >= 0 && mine >= 0 ? (mine - cur + order.length) % order.length : null;
+  // Expanded only while the vote needs you (running, your seat not locked yet); otherwise a pill.
+  const [manual, setManual] = useState<boolean | null>(null);
+  const expanded = manual ?? (nom.status === 'voting' && !locked && canVote);
+  if (!expanded)
+    return (
+      <button class="cth-vote-pill" onClick={() => setManual(true)} title="Show the vote">
+        ⚖ {nameOf(view.players, nom.nomineeSeat)}
+        {nom.status === 'pending' ? ' nominated · waiting' : ` · ${nom.voteCount}/${nom.threshold}`}
+        {locked && (nom.votes[me] ? ' · ✓ your vote counted' : ' · not counted')}
+      </button>
+    );
   return (
     <div class="cth-vote">
-      <VoteSummary nom={nom} players={view.players} />
+      {manual && (
+        <button class="cth-vote-hide" onClick={() => setManual(false)} title="Collapse">
+          ▴
+        </button>
+      )}
+      <VoteSummary nom={nom} players={view.players} me={me} />
       {nom.status === 'voting' && <VoteClock nom={nom} players={view.players} />}
       {nom.status === 'voting' && (
         <div class="cth-vote-actions">
           {locked ? (
-            <span class="cth-chip">Your vote: {nom.votes[me] ? 'YES' : 'no'}</span>
+            <span class={`cth-chip ${nom.votes[me] ? 'ok' : ''}`}>{nom.votes[me] ? '✓ Your vote counted' : 'Not counted (hand down)'}</span>
           ) : canVote ? (
             <button
-              class={raised ? 'primary' : ''}
+              class={`cth-hand${raised ? ' primary' : ''}`}
+              aria-pressed={raised}
               onClick={() => conn.send('game:vote', { nominationId: nom.id, vote: !raised })}
             >
               {raised ? 'Lower hand' : view.you.alive ? 'Raise hand' : 'Raise hand (uses ghost vote)'}
@@ -450,6 +504,12 @@ function VotePanel({ nom, view, conn }: { nom: NominationView; view: PlayerGameV
           ) : (
             <span class="muted">Your ghost vote is spent.</span>
           )}
+          {!locked && away !== null && (
+            <small class={away === 0 ? 'cth-yourturn' : 'muted'}>
+              {away === 0 ? 'Locking your vote now…' : `Clock reaches you in ~${Math.ceil(away * 1.5)}s (${away} seat${away > 1 ? 's' : ''})`}
+            </small>
+          )}
+          {!locked && raised && <small class="cth-ok">✋ Hand raised: it counts when the clock reaches you.</small>}
           {isButler && !locked && <small class="muted">Butler: only vote if your master votes.</small>}
         </div>
       )}

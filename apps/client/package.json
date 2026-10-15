@@ -12,6 +12,8 @@
     "@ct/assets": "workspace:*",
     "@ct/protocol": "workspace:*",
     "@ct/voice": "workspace:*",
+    "@fontsource/alegreya-sans": "5.3.0",
+    "@fontsource/im-fell-english": "5.3.0",
     "colyseus.js": "~0.16.22",
     "livekit-client": "^2.22.0",
     "phaser": "3.90.0",

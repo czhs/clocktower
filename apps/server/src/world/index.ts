@@ -16,8 +16,23 @@
 //   night starts  -> an ST standing inside a cottage is moved to its doorstep (outdoors, unseen)
 //   dawn / day    -> the ST is returned to the storyteller spawn, so nobody can infer the last visit
 //                    from where the ST stands when the doors unlock
+//
+// Walking, not teleporting (gameplay, 2026-10-15):
+//   bedtime       -> players walk home themselves (no relocation at the bell)
+//   overtime      -> setEscort(true) when the countdown ends: every seated player not inside their own
+//                    home is walked there by the server (A* through doors at walking speed, see
+//                    path.ts); players already home cannot leave. The client shows its own avatar at
+//                    the server position while `snapshot.you` says 'auto'.
+//   night starts  -> a player who is home but not in bed walks to bed; ONLY a player still not home
+//                    (the Storyteller forced the night) is teleported to bed ("absolutely necessary")
+//   morning       -> nobody is moved: players wake in bed and walk out (doors unlock at day)
+//   Storyteller   -> explicit teleport / walk_to / freeze / door locks / circle seats (stage API)
 import { townLayout } from '@ct/assets';
 import {
+  circleSpots,
+  CIRCLE_SEATED_PX,
+  DEFAULT_ST_SETTINGS,
+  homeBuilding,
   isBlockedPx,
   locationAt,
   MOVE_TOLERANCE,
@@ -30,14 +45,35 @@ import {
   type Facing,
   type GamePhase,
   type LocationId,
+  type SelfControl,
+  type StagePlayerView,
+  type StagePresence,
+  type StageTarget,
+  type StageView,
+  type DoorTag,
+  type StSettings,
   type TownLayout,
   type WorldSnapshot,
   type WorldTeleport,
 } from '@ct/protocol';
 import type { RoomEvent, RoomHost, WorldModule } from '../rooms/modules.js';
+import { findPath, nearestFree, type Pt } from './path.js';
 
-/** Max px the client may lead its last accepted position by (burst allowance, seconds of travel). */
-const BURST_SECONDS = 0.6;
+/**
+ * Max seconds of travel the client may lead its last accepted position by. Moves arrive in bursts
+ * on lossy links (a 200-600 ms stall + 300 ms RTT, then a catch-up burst); the budget keeps
+ * accumulating at the max speed for up to this long, so physically plausible catch-up is accepted
+ * while sustained speed hacks (budget refills at only MOVE_TOLERANCE x walking speed) and long-range
+ * teleports stay impossible. The swept collision check stays strict.
+ */
+export const BURST_SECONDS = 2;
+/**
+ * After the server told a client where it is (door / Storyteller teleport, correction), moves that
+ * were already in flight still describe the old position. Within this window failing moves are
+ * dropped silently (never applied): the client is already being snapped to the server position, and
+ * correcting every in-flight move would multiply the rubber-banding on slow links (RTT p95 ~800 ms).
+ */
+const SYNC_GRACE_MS = 1500;
 /** Flat slack for rounding / jitter (px). */
 const SLACK_PX = 3;
 /** Door "use" radius from the door tile centre (px). */
@@ -56,6 +92,32 @@ interface Entity {
   /** Distance budget (px) the client may still travel; refilled over time at the max speed. */
   budget: number;
   budgetAt: number;
+  /** Last time the server sent this client its position (teleport / correction), for SYNC_GRACE_MS. */
+  syncedAt: number;
+  /** Where the client believed it was when that sync was sent (in-flight moves continue from here). */
+  preSync: { x: number; y: number; location: LocationId } | null;
+  /** Storyteller froze this player's own movement. */
+  frozen: boolean;
+  /** Server-driven walk in progress. */
+  walk: Walk | null;
+}
+
+interface Dest {
+  location: LocationId;
+  x: number;
+  y: number;
+  facing?: Facing;
+}
+
+interface Walk {
+  goal: NonNullable<SelfControl['goal']>;
+  dest: Dest;
+  /** Bedtime escort (ends when setEscort(false)). */
+  escort: boolean;
+  /** Remaining waypoints of the current leg (current location). */
+  pts: Pt[];
+  /** Door to pass at the end of the current leg (building id), if any. */
+  door: { building: string; exit: boolean } | null;
 }
 
 export interface WorldOptions {
@@ -72,12 +134,21 @@ export function createWorldModule(host: RoomHost, opts: WorldOptions = {}): Worl
   const travelMult = new Map<string, number>();
   let phase: GamePhase | null = null;
   const seatOverride = new Map<string, number>();
+  /** Nomination circle seats (null = not gathered). */
+  let circleSeats: number[] | null = null;
+  let escort = false;
+  const doorLocks = new Map<string, boolean>();
+  let lastStageKey = '';
+  /** Storyteller settings that affect the world (door tags). */
+  let settings: StSettings = { ...DEFAULT_ST_SETTINGS };
+  /** Publicly dead players (alive_changed carries the PUBLIC status): ghost door tags. */
+  const ghosts = new Set<string>();
 
   const isST = (pid: string) => host.member(pid)?.role === 'storyteller' || host.storytellerPid() === pid;
   const seatOf = (pid: string): number | null => seatOverride.get(pid) ?? host.member(pid)?.seat ?? null;
   const homeOf = (pid: string): BuildingDef | undefined => {
     const seat = seatOf(pid);
-    return seat === null ? undefined : buildingById.get(`house-${seat}`);
+    return homeBuilding(layout, seat);
   };
   const maxSpeed = (pid: string) => PLAYER_SPEED * (isST(pid) ? Math.min(STORYTELLER_MAX_SPEED_MULT, Math.max(1, travelMult.get(pid) ?? 1)) : 1) * MOVE_TOLERANCE;
 
@@ -114,8 +185,12 @@ export function createWorldModule(host: RoomHost, opts: WorldOptions = {}): Worl
     return tileCenterPx(layout, base);
   }
 
-  function teleport(e: Entity, x: number, y: number, reason: WorldTeleport['reason']) {
+  function teleport(e: Entity, x: number, y: number, reason: WorldTeleport['reason'], facing?: Facing, keepWalk = false) {
     const prev = e.location;
+    if (!keepWalk) e.walk = null;
+    e.syncedAt = host.now();
+    e.preSync = { x: e.x, y: e.y, location: e.location };
+    if (facing) e.facing = facing;
     e.x = x;
     e.y = y;
     e.moving = false;
@@ -126,7 +201,20 @@ export function createWorldModule(host: RoomHost, opts: WorldOptions = {}): Worl
     if (prev !== e.location) host.emit({ type: 'location_changed', pid: e.id, location: e.location, prev });
   }
 
-  function correct(e: Entity, seq: number) {
+  /** A move that continues the client's pre-sync trajectory (sent before it learnt the new position). */
+  function inFlight(e: Entity, x: number, y: number): boolean {
+    const p = e.preSync;
+    if (!p || host.now() - e.syncedAt >= SYNC_GRACE_MS) return false;
+    return locationAt(layout, x, y) === p.location && Math.hypot(x - p.x, y - p.y) <= maxSpeed(e.id) * BURST_SECONDS + SLACK_PX && !isBlockedPx(layout, x, y);
+  }
+
+  function correct(e: Entity, seq: number, why = 'invalid', at?: { x: number; y: number }) {
+    // A position sync is already on its way and this move merely continues the old trajectory:
+    // drop it silently (never applied). Anything else (teleport hacks, walls, other places) is answered.
+    if (at && inFlight(e, at.x, at.y)) return;
+    host.log.debug('move corrected', { lobbyId: host.lobbyId, why });
+    e.syncedAt = host.now();
+    e.preSync = at ? { x: at.x, y: at.y, location: locationAt(layout, at.x, at.y) } : null;
     e.lastSeq = Math.max(e.lastSeq, seq);
     host.send(e.id, 'world:teleport', { x: e.x, y: e.y, location: e.location, reason: 'correction', seq });
   }
@@ -137,7 +225,7 @@ export function createWorldModule(host: RoomHost, opts: WorldOptions = {}): Worl
     let e = entities.get(pid);
     if (!e) {
       const p = spawnPoint(pid);
-      e = { id: pid, x: p.x, y: p.y, facing: 'down', moving: false, location: locationAt(layout, p.x, p.y), lastSeq: 0, budget: 0, budgetAt: host.now() };
+      e = { id: pid, x: p.x, y: p.y, facing: 'down', moving: false, location: locationAt(layout, p.x, p.y), lastSeq: 0, budget: 0, budgetAt: host.now(), syncedAt: -Infinity, preSync: null, frozen: false, walk: null };
       entities.set(pid, e);
       host.send(pid, 'world:teleport', { x: e.x, y: e.y, location: e.location, reason: 'spawn', seq: 0 });
       host.emit({ type: 'location_changed', pid, location: e.location, prev: null });
@@ -146,6 +234,7 @@ export function createWorldModule(host: RoomHost, opts: WorldOptions = {}): Worl
   }
 
   /** True when the straight segment a->b never overlaps blocked tiles. */
+  // (kept local: same sweep as path.ts segmentClear)
   function segmentClear(ax: number, ay: number, bx: number, by: number): boolean {
     const d = Math.hypot(bx - ax, by - ay);
     const n = Math.max(1, Math.ceil(d / SWEEP_STEP));
@@ -173,13 +262,223 @@ export function createWorldModule(host: RoomHost, opts: WorldOptions = {}): Worl
 
   function canEnter(pid: string, b: BuildingDef): boolean {
     if (isST(pid)) return true;
+    const o = doorLocks.get(b.id);
+    if (o !== undefined) return !o;
     if (phase && LOCKED_PHASES.has(phase)) return homeOf(pid)?.id === b.id;
     return true;
   }
   function canExit(pid: string, b: BuildingDef): boolean {
     if (isST(pid)) return true;
+    const o = doorLocks.get(b.id);
+    if (o !== undefined) return !o;
     if (phase && LOCKED_PHASES.has(phase)) return homeOf(pid)?.id !== b.id;
+    // Bedtime overtime: whoever made it home stays home.
+    if (escort && phase === 'bedtime') return homeOf(pid)?.id !== b.id;
     return true;
+  }
+
+  // ---------------------------------------------------------------------------------------
+  // stage: seats, homes, targets, server-driven walks
+
+  const isHomeEntity = (e: Entity): boolean => {
+    const home = homeOf(e.id);
+    return !!home && e.location === `bld:${home.id}`;
+  };
+
+  function allSeats(): number[] {
+    const seats = new Set<number>();
+    for (const m of host.members()) {
+      if (isST(m.pid)) continue;
+      const s = seatOf(m.pid);
+      if (s !== null) seats.add(s);
+    }
+    return [...seats];
+  }
+
+  function seatSpot(pid: string): { x: number; y: number; facing: Facing } | null {
+    const seat = seatOf(pid);
+    if (seat === null) return null;
+    const seats = circleSeats ?? allSeats();
+    return spotsFor(seats.includes(seat) ? seats : [...seats, seat]).find((s) => s.seat === seat) ?? null;
+  }
+  let spotCache: { key: string; spots: ReturnType<typeof circleSpots> } = { key: '', spots: [] };
+  function spotsFor(seats: number[]) {
+    const key = [...seats].sort((a, b) => a - b).join(',');
+    if (spotCache.key !== key) spotCache = { key, spots: circleSpots(layout, seats) };
+    return spotCache.spots;
+  }
+
+  /** Small deterministic spread so a group sent to one point does not stand on one pixel. */
+  function spread(pid: string, base: Pt): Pt {
+    const seat = seatOf(pid) ?? 0;
+    const ring = seat === 0 ? { x: 0, y: 0 } : { x: Math.round(Math.cos(seat * 2.4) * (10 + seat)), y: Math.round(Math.sin(seat * 2.4) * (6 + seat * 0.6)) };
+    return nearestFree(layout, { x: base.x + ring.x, y: base.y + ring.y }, 40) ?? nearestFree(layout, base, 40) ?? base;
+  }
+
+  /** Resolve a Storyteller target for one player. string = error. */
+  function resolveTarget(pid: string, to: StageTarget): (Dest & { goal: Walk['goal'] }) | string {
+    const at = (p: Pt, goal: Walk['goal'], facing?: Facing) => ({ location: locationAt(layout, p.x, p.y), x: p.x, y: p.y, goal, ...(facing ? { facing } : {}) });
+    switch (to.kind) {
+      case 'seat': {
+        const s = seatSpot(pid);
+        return s ? at(s, 'seat', s.facing) : 'That player has no seat';
+      }
+      case 'home': {
+        const home = homeOf(pid);
+        return home ? at(placeAt(home, 'bed'), 'home') : 'That player has no home';
+      }
+      case 'square':
+        return at(spread(pid, { x: layout.square.cx, y: layout.square.cy + 24 }), 'square');
+      case 'storyteller': {
+        const st = storyteller();
+        if (!st) return 'No Storyteller in town';
+        const base = { x: st.x, y: st.y + 12 };
+        const p = spread(pid, base);
+        return locationAt(layout, p.x, p.y) === st.location ? at(p, 'point') : at({ x: st.x, y: st.y }, 'point');
+      }
+      case 'building': {
+        const b = buildingById.get(to.buildingId);
+        if (!b) return 'No such building';
+        return at(spread(pid, placeAt(b, 'door')), 'building');
+      }
+      case 'point': {
+        const p = nearestFree(layout, { x: to.x, y: to.y }, 24);
+        if (!p) return 'That spot is not walkable';
+        return at(spread(pid, p), 'point');
+      }
+    }
+  }
+
+  /** Plan the next leg of a walk from the entity's current spot. false = no route. */
+  function planLeg(e: Entity, w: Walk): boolean {
+    const here = e.location;
+    const dest = w.dest;
+    if (here === dest.location) {
+      const pts = findPath(layout, { x: e.x, y: e.y }, dest, here);
+      if (!pts) return false;
+      w.pts = pts;
+      w.door = null;
+      return true;
+    }
+    // Leave the current building first, then walk outdoors to the destination's door.
+    if (here !== 'outdoors') {
+      const b = buildingById.get(here.slice(4));
+      if (!b) return false;
+      const pts = findPath(layout, { x: e.x, y: e.y }, tileCenterPx(layout, b.interiorDoor), here);
+      if (!pts) return false;
+      w.pts = pts;
+      w.door = { building: b.id, exit: true };
+      return true;
+    }
+    const b = buildingById.get(dest.location.slice(4));
+    if (!b) return false;
+    const pts = findPath(layout, { x: e.x, y: e.y }, tileCenterPx(layout, b.door), 'outdoors');
+    if (!pts) return false;
+    w.pts = pts;
+    w.door = { building: b.id, exit: false };
+    return true;
+  }
+
+  function startWalk(e: Entity, dest: Dest, goal: Walk['goal'], isEscort: boolean): void {
+    const w: Walk = { goal, dest, escort: isEscort, pts: [], door: null };
+    if (!planLeg(e, w)) {
+      // No route (should not happen on the shipped map): the only fallback is a teleport.
+      host.log.warn('walk: no route, teleporting', { lobbyId: host.lobbyId, goal });
+      teleport(e, dest.x, dest.y, isEscort ? 'bedtime' : 'storyteller', dest.facing);
+      return;
+    }
+    e.walk = w;
+    e.budget = 0;
+  }
+
+  function finishWalk(e: Entity): void {
+    const w = e.walk!;
+    e.walk = null;
+    e.moving = false;
+    if (w.dest.facing) e.facing = w.dest.facing;
+    e.budget = 0;
+    e.budgetAt = host.now();
+  }
+
+  /** Advance one server-driven walk by dt. */
+  function stepWalk(e: Entity, dt: number): void {
+    const w = e.walk!;
+    let budget = PLAYER_SPEED * dt;
+    let guard = 0;
+    while (budget > 0 && e.walk === w && guard++ < 50) {
+      const next = w.pts[0];
+      if (!next) {
+        if (w.door) {
+          const b = buildingById.get(w.door.building)!;
+          const p = w.door.exit ? tileCenterPx(layout, b.door) : placeAt(b, 'door');
+          w.door = null;
+          teleport(e, p.x, p.y, 'door', undefined, true);
+          if (!planLeg(e, w)) {
+            teleport(e, w.dest.x, w.dest.y, w.escort ? 'bedtime' : 'storyteller', w.dest.facing);
+            return;
+          }
+          continue;
+        }
+        finishWalk(e);
+        return;
+      }
+      const dx = next.x - e.x;
+      const dy = next.y - e.y;
+      const d = Math.hypot(dx, dy);
+      if (d > 0.01) e.facing = Math.abs(dx) > Math.abs(dy) ? (dx < 0 ? 'left' : 'right') : dy < 0 ? 'up' : 'down';
+      if (d <= budget) {
+        e.x = next.x;
+        e.y = next.y;
+        w.pts.shift();
+        budget -= d;
+      } else {
+        e.x += (dx / d) * budget;
+        e.y += (dy / d) * budget;
+        budget = 0;
+      }
+      e.moving = true;
+    }
+  }
+
+  function escortStragglers(): void {
+    for (const m of host.members()) {
+      if (isST(m.pid) || seatOf(m.pid) === null) continue;
+      const e = entities.get(m.pid) ?? ensureEntity(m.pid);
+      if (!e || isHomeEntity(e) || e.walk?.goal === 'home') continue;
+      const home = homeOf(m.pid)!;
+      const bed = placeAt(home, 'bed');
+      startWalk(e, { location: `bld:${home.id}`, x: bed.x, y: bed.y }, 'home', true);
+    }
+  }
+
+  /**
+   * Door tags: who is inside each building (public, identical for every viewer). Daytime only
+   * (waiting / setup / day) and never the Storyteller, so nothing about the night or about ST
+   * visits can ever show up here. Deterministic order (seat, then pid).
+   */
+  function doorTags(): Record<string, DoorTag[]> | null {
+    if (!settings.doorTags) return null;
+    if (phase !== null && phase !== 'setup' && phase !== 'day') return null;
+    let out: Record<string, DoorTag[]> | null = null;
+    const inside = [...entities.values()].filter((e) => e.location !== 'outdoors' && !isST(e.id) && host.member(e.id));
+    inside.sort((a, b) => (seatOf(a.id) ?? 99) - (seatOf(b.id) ?? 99) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    for (const e of inside) {
+      const id = e.location.slice(4);
+      out ??= {};
+      (out[id] ??= []).push({ pid: e.id, ghost: ghosts.has(e.id) });
+    }
+    return out;
+  }
+
+  function presenceOf(e: Entity): { presence: StagePresence; building: string | null } {
+    if (isHomeEntity(e)) return { presence: 'home', building: e.location.slice(4) };
+    if (e.walk) return { presence: 'escorted', building: e.location === 'outdoors' ? null : e.location.slice(4) };
+    if (e.location !== 'outdoors') return { presence: 'inside', building: e.location.slice(4) };
+    if (circleSeats) {
+      const s = seatSpot(e.id);
+      if (s && Math.hypot(s.x - e.x, s.y - e.y) <= CIRCLE_SEATED_PX) return { presence: 'seated', building: null };
+    }
+    return { presence: e.moving ? 'walking' : 'outdoors', building: null };
   }
 
   function storyteller(): Entity | undefined {
@@ -191,7 +490,22 @@ export function createWorldModule(host: RoomHost, opts: WorldOptions = {}): Worl
     const prev = phase;
     phase = next;
     if (NIGHT_PHASES.has(next)) {
-      for (const m of host.members()) if (m.role === 'player' && seatOf(m.pid) !== null) api.sendHome(m.pid, 'night');
+      escort = false;
+      for (const m of host.members()) {
+        if (m.role !== 'player' || seatOf(m.pid) === null) continue;
+        const e = entities.get(m.pid) ?? ensureEntity(m.pid);
+        if (!e) continue;
+        const home = homeOf(m.pid)!;
+        const bed = placeAt(home, 'bed');
+        if (isHomeEntity(e)) {
+          // Home already: walk to bed (no teleport). Night isolation hides it from everyone else.
+          if (Math.hypot(e.x - bed.x, e.y - bed.y) >= 1 && e.walk?.goal !== 'home') startWalk(e, { location: `bld:${home.id}`, x: bed.x, y: bed.y }, 'home', false);
+        } else {
+          // Still en route although the night has fallen (the Storyteller forced it): teleport.
+          e.walk = null;
+          api.sendHome(m.pid, 'night');
+        }
+      }
       // world-audit: the night starts with the Storyteller OUTSIDE every home. Otherwise an ST who
       // lingered in a cottage at bedtime is physically "in" that home (visible to / audible by its
       // occupant) without the rules engine registering a visit.
@@ -226,6 +540,7 @@ export function createWorldModule(host: RoomHost, opts: WorldOptions = {}): Worl
           break;
         case 'member_left':
           entities.delete(e.pid);
+          lastStageKey = '';
           travelMult.delete(e.pid);
           seatOverride.delete(e.pid);
           break;
@@ -244,7 +559,15 @@ export function createWorldModule(host: RoomHost, opts: WorldOptions = {}): Worl
           ensureEntity(e.pid);
           if (e.role !== 'storyteller') travelMult.delete(e.pid);
           break;
+        case 'alive_changed':
+          if (e.alive) ghosts.delete(e.pid);
+          else ghosts.add(e.pid);
+          break;
         case 'game_started':
+          ghosts.clear();
+          circleSeats = null;
+          escort = false;
+          doorLocks.clear();
           for (const s of e.seats) {
             seatOverride.set(s.pid, s.seat);
             ensureEntity(s.pid);
@@ -260,6 +583,13 @@ export function createWorldModule(host: RoomHost, opts: WorldOptions = {}): Worl
         case 'game_finished':
           phase = 'finished';
           seatOverride.clear();
+          circleSeats = null;
+          escort = false;
+          doorLocks.clear();
+          for (const ent of entities.values()) {
+            ent.walk = null;
+            ent.frozen = false;
+          }
           break;
         default:
           break;
@@ -270,15 +600,17 @@ export function createWorldModule(host: RoomHost, opts: WorldOptions = {}): Worl
       const e = entities.get(pid);
       if (!e) return;
       if (msg.seq <= e.lastSeq) return; // stale / duplicate
+      // Server-driven (walk) or frozen: the player's own moves are not applied.
+      if (e.walk || e.frozen) return correct(e, msg.seq, e.walk ? 'walk' : 'frozen', msg);
       const now = host.now();
       const speed = maxSpeed(pid);
       e.budget = Math.min(speed * BURST_SECONDS, e.budget + (Math.max(0, now - e.budgetAt) / 1000) * speed);
       e.budgetAt = now;
       const dist = Math.hypot(msg.x - e.x, msg.y - e.y);
-      if (dist > e.budget + SLACK_PX) return correct(e, msg.seq);
+      if (dist > e.budget + SLACK_PX) return correct(e, msg.seq, 'speed', msg);
       if (dist > 0) {
-        if (locationAt(layout, msg.x, msg.y) !== e.location) return correct(e, msg.seq);
-        if (isBlockedPx(layout, msg.x, msg.y) || !pathClear(e.x, e.y, msg.x, msg.y)) return correct(e, msg.seq);
+        if (locationAt(layout, msg.x, msg.y) !== e.location) return correct(e, msg.seq, 'location', msg);
+        if (isBlockedPx(layout, msg.x, msg.y) || !pathClear(e.x, e.y, msg.x, msg.y)) return correct(e, msg.seq, 'collision', msg);
       }
       e.budget = Math.max(0, e.budget - dist);
       e.x = msg.x;
@@ -295,16 +627,18 @@ export function createWorldModule(host: RoomHost, opts: WorldOptions = {}): Worl
         host.send(pid, 'error', { code: 'not_found', message: 'No such door.', for: 'world:useDoor' });
         return;
       }
+      if (e.walk) return; // the server is walking them; ignore
+      if (e.frozen) return host.send(pid, 'error', { code: 'forbidden', message: 'The Storyteller has paused your movement.', for: 'world:useDoor' });
       const inside = e.location === `bld:${b.id}`;
       if (inside) {
         if (!nearTile(e, b.interiorDoor)) return host.send(pid, 'error', { code: 'forbidden', message: 'Too far from the door.', for: 'world:useDoor' });
-        if (!canExit(pid, b)) return host.send(pid, 'error', { code: 'phase', message: 'You must stay home until morning.', for: 'world:useDoor' });
+        if (!canExit(pid, b)) return host.send(pid, 'error', { code: 'phase', message: doorLocks.get(b.id) ? 'The door is locked.' : 'You must stay home until morning.', for: 'world:useDoor' });
         const p = tileCenterPx(layout, b.door);
         teleport(e, p.x, p.y, 'door');
         return;
       }
       if (e.location !== 'outdoors' || !nearTile(e, b.door)) return host.send(pid, 'error', { code: 'forbidden', message: 'Too far from the door.', for: 'world:useDoor' });
-      if (!canEnter(pid, b)) return host.send(pid, 'error', { code: 'phase', message: 'The door is locked for the night.', for: 'world:useDoor' });
+      if (!canEnter(pid, b)) return host.send(pid, 'error', { code: 'phase', message: doorLocks.get(b.id) ? 'The door is locked.' : 'The door is locked for the night.', for: 'world:useDoor' });
       const p = placeAt(b, 'door');
       teleport(e, p.x, p.y, 'door');
     },
@@ -329,7 +663,13 @@ export function createWorldModule(host: RoomHost, opts: WorldOptions = {}): Worl
       const list: EntityState[] = [];
       for (const o of entities.values())
         if (visible(o)) list.push({ id: o.id, x: Math.round(o.x * 10) / 10, y: Math.round(o.y * 10) / 10, facing: o.facing, moving: o.moving, location: o.location });
-      return { t, ackSeq: me.lastSeq, entities: list };
+      const snap: WorldSnapshot = { t, ackSeq: me.lastSeq, entities: list };
+      if (me.walk) snap.you = { mode: 'auto', goal: me.walk.goal, path: me.walk.pts.slice(0, 12).map((p) => ({ x: Math.round(p.x * 10) / 10, y: Math.round(p.y * 10) / 10 })) };
+      else if (me.frozen) snap.you = { mode: 'frozen' };
+      if (doorLocks.size) snap.doors = Object.fromEntries(doorLocks);
+      const tags = doorTags();
+      if (tags) snap.doorTags = tags;
+      return snap;
     },
 
     sendHome(pid, reason) {
@@ -362,8 +702,100 @@ export function createWorldModule(host: RoomHost, opts: WorldOptions = {}): Worl
       teleport(e, p.x, p.y, reason);
     },
 
-    tick() {
-      // Movement is event-driven; snapshots are pulled by the room via snapshotFor().
+    tick(dtMs) {
+      // Player movement is event-driven; only server-driven walks advance here.
+      const dt = Math.min(0.25, Math.max(0, dtMs) / 1000);
+      if (escort && phase === 'bedtime') escortStragglers();
+      for (const e of entities.values()) if (e.walk) stepWalk(e, dt);
+      // Presence changes refresh the Storyteller's stage view.
+      if (seatOverride.size) {
+        const key = JSON.stringify(api.stageView());
+        if (key !== lastStageKey) {
+          lastStageKey = key;
+          host.markGameDirty();
+        }
+      }
+    },
+
+    setCircle(seats) {
+      circleSeats = seats && seats.length ? [...seats].sort((a, b) => a - b) : null;
+    },
+
+    setEscort(on) {
+      if (escort === on) return;
+      escort = on;
+      if (on) escortStragglers();
+      else
+        for (const e of entities.values())
+          if (e.walk?.escort) {
+            e.walk = null;
+            e.moving = false;
+            e.budget = 0;
+            e.budgetAt = host.now();
+          }
+    },
+
+    isHome(pid) {
+      const e = entities.get(pid);
+      return !!e && isHomeEntity(e);
+    },
+
+    teleportTo(pid, to) {
+      const e = entities.get(pid) ?? ensureEntity(pid);
+      if (!e || isST(pid)) return 'Not a player';
+      const d = resolveTarget(pid, to);
+      if (typeof d === 'string') return d;
+      teleport(e, d.x, d.y, 'storyteller', d.facing);
+      return null;
+    },
+
+    walkTo(pid, to) {
+      const e = entities.get(pid) ?? ensureEntity(pid);
+      if (!e || isST(pid)) return 'Not a player';
+      if (to === null) {
+        if (e.walk) {
+          e.walk = null;
+          e.moving = false;
+          e.budget = 0;
+          e.budgetAt = host.now();
+        }
+        return null;
+      }
+      const d = resolveTarget(pid, to);
+      if (typeof d === 'string') return d;
+      startWalk(e, d, d.goal, false);
+      return null;
+    },
+
+    setFrozen(pid, frozen) {
+      const e = entities.get(pid) ?? ensureEntity(pid);
+      if (!e || isST(pid)) return;
+      e.frozen = frozen;
+      if (frozen) e.moving = false;
+      e.budget = 0;
+      e.budgetAt = host.now();
+    },
+
+    setDoorLock(buildingId, locked) {
+      if (!buildingById.has(buildingId)) return 'No such building';
+      if (locked === null) doorLocks.delete(buildingId);
+      else doorLocks.set(buildingId, locked);
+      return null;
+    },
+
+    applySettings(next) {
+      settings = { ...DEFAULT_ST_SETTINGS, ...next };
+    },
+
+    stageView(): StageView {
+      const players: StagePlayerView[] = [];
+      for (const [pid, seat] of [...seatOverride.entries()].sort((a, b) => a[1] - b[1])) {
+        const e = entities.get(pid);
+        if (!e) continue;
+        const p = presenceOf(e);
+        players.push({ seat, pid, presence: p.presence, building: p.building, frozen: e.frozen });
+      }
+      return { players, doors: Object.fromEntries(doorLocks), storytellerLocation: storyteller()?.location ?? null };
     },
   };
   return api;

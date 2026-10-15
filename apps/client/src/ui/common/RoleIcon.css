@@ -1,0 +1,30 @@
+/* Role icon plaque (see RoleIcon.tsx and docs/art-direction.md, UI section). */
+.ct-role-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  vertical-align: middle;
+  line-height: 1;
+}
+.ct-role-icon img {
+  image-rendering: pixelated;
+  width: 100%;
+  height: 100%;
+}
+/* fallback: chamfered iron plaque with the team ring colour */
+.ct-role-icon--fallback {
+  box-sizing: border-box;
+  background: #211f2c;
+  color: #e4d8ba;
+  font-family: 'IM Fell English', Georgia, serif;
+  border: 2px solid #454250;
+  box-shadow: inset 0 0 0 2px var(--ct-role-ring, #626979);
+  clip-path: polygon(18% 0, 82% 0, 100% 18%, 100% 82%, 82% 100%, 18% 100%, 0 82%, 0 18%);
+}
+.ct-role-icon--good {
+  --ct-role-ring: #41676a;
+}
+.ct-role-icon--evil {
+  --ct-role-ring: #814953;
+}

@@ -1,10 +1,10 @@
-/* lobby-auth: admin status page. */
+/* Admin status page. */
 .ct-admin-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; max-width: 1100px; margin: 0 auto; }
 .ct-admin-wide { grid-column: 1 / -1; }
 @media (max-width: 760px) { .ct-admin-grid { grid-template-columns: 1fr; } }
 .ct-admin h3 { margin: 0 0 10px; color: var(--accent); font-weight: normal; }
 .ct-admin-denied { max-width: 480px; }
-.ct-quota { height: 14px; background: #120f18; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
+.ct-quota { height: 14px; background: var(--panel-sunk); border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
 .ct-quota-fill { height: 100%; background: var(--ok); transition: width 0.4s; }
 .ct-quota-warn .ct-quota-fill { background: #d1a33a; }
 .ct-quota-critical .ct-quota-fill { background: #d9722f; }
@@ -14,6 +14,13 @@
 .ct-level-critical { color: #d9722f; }
 .ct-level-exhausted { color: var(--danger); }
 .ct-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
-.ct-table th, .ct-table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+.ct-table-wrap { overflow-x: auto; }
+.ct-table th, .ct-table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.ct-table td:first-child { white-space: normal; overflow-wrap: anywhere; min-width: 8em; }
+.ct-table td.num, .ct-table th.num { text-align: right; }
 .ct-table th { color: var(--muted); font-weight: normal; }
 .ct-errors { list-style: none; padding: 0; margin: 0; font-family: var(--mono); font-size: 0.8rem; display: flex; flex-direction: column; gap: 4px; max-height: 300px; overflow-y: auto; }
+.ct-admin-denied h2 { color: var(--accent); font-weight: normal; margin-top: 0; }
+.ct-admin-msg { max-width: 1100px; margin: 0 auto 12px; }
+button.ct-danger-btn { border-color: #7a3a30; color: #f0b4a8; padding: 3px 10px; font-size: 0.85rem; }
+button.ct-danger-btn:hover:not(:disabled) { border-color: var(--danger); background: #3a1714; }

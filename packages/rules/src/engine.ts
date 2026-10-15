@@ -1,8 +1,14 @@
-import { CHARACTER_INFO, DEFAULT_BEDTIME_SECONDS, MAX_PLAYERS, MIN_PLAYERS, type CharacterId, type StCommand } from '@ct/protocol';
+import { CHARACTER_INFO, DEFAULT_BEDTIME_SECONDS, DEFAULT_ST_SETTINGS, MAX_PLAYERS, MIN_PLAYERS, type CharacterId, type ForcePhase, type StCommand } from '@ct/protocol';
 import { checkVictory, endPoisonerPoison, finish, killPlayer, publish } from './deaths.js';
 import {
   cancelNomination,
+  closeVote,
+  createNomination,
   execute,
+  forceExecute,
+  forceVote,
+  setBlock,
+  setVote,
   executeOnBlock,
   MAYOR_WIN_REASON,
   mayorCheck,
@@ -103,6 +109,7 @@ export function createGame(opts: CreateGameOptions): GameState {
       connected: true,
       info: [],
       prompts: [],
+      promptHistory: [],
       promptSeq: 0,
       infoSeq: 0,
       evilTeam: null,
@@ -117,6 +124,11 @@ export function createGame(opts: CreateGameOptions): GameState {
     phaseEndsAt: null,
     bedtimeSeconds: opts.bedtimeSeconds ?? DEFAULT_BEDTIME_SECONDS,
     bedtimePausedRemainingMs: null,
+    bedtimeHeld: false,
+    bedtimeOvertime: false,
+    bedtimeFirst: false,
+    gathering: false,
+    settings: { ...DEFAULT_ST_SETTINGS },
     storytellerConnected: true,
     assigned: false,
     rolesRevealed: false,
@@ -215,11 +227,20 @@ function clearStepPrompts(s: GameState): void {
   for (const p of s.players) p.prompts = p.prompts.filter((q) => q.stepId === null);
 }
 
+/** Leave the bedtime/circle sub-states (any phase change). */
+function clearStage(s: GameState): void {
+  s.bedtimePausedRemainingMs = null;
+  s.bedtimeHeld = false;
+  s.bedtimeOvertime = false;
+  s.bedtimeFirst = false;
+  s.gathering = false;
+}
+
 function startNight(s: GameState, op: Op, first: boolean, reason: 'bedtime' | 'night'): void {
   s.phase = first ? 'first_night' : 'night';
   s.nightNumber += 1;
   s.phaseEndsAt = null;
-  s.bedtimePausedRemainingMs = null;
+  clearStage(s);
   s.day = null;
   for (const p of s.players) {
     if (p.poisonedBy === 'poisoner') p.poisonedBy = null;
@@ -237,6 +258,7 @@ function startDay(s: GameState, op: Op): void {
   s.phase = 'day';
   s.dayNumber += 1;
   s.phaseEndsAt = null;
+  clearStage(s);
   s.visitingSeat = null;
   s.day = newDay();
   s.lastExecutedDiedSeat = null;
@@ -261,8 +283,10 @@ function startDay(s: GameState, op: Op): void {
   log(s, op, `Day ${s.dayNumber} begins`);
 }
 
-function startBedtime(s: GameState, op: Op): void {
+function startBedtime(s: GameState, op: Op, first = false): void {
   s.phase = 'bedtime';
+  clearStage(s);
+  s.bedtimeFirst = first;
   const ms = s.bedtimeSeconds * 1000;
   if (s.storytellerConnected) {
     s.phaseEndsAt = op.now + ms;
@@ -280,10 +304,11 @@ function advance(s: GameState, op: Op, to: 'day' | 'bedtime' | 'night' | 'dawn')
   const ok: Record<typeof to, string[]> = {
     day: ['first_night', 'night', 'dawn'],
     dawn: ['first_night', 'night'],
-    bedtime: ['day'],
+    bedtime: ['day', 'setup'],
     night: ['day', 'bedtime'],
   };
   if (!ok[to].includes(from)) throw new RuleError('phase', `Cannot go from ${from} to ${to}`);
+  if (from === 'setup' && !s.assigned) throw new RuleError('invalid', 'Assign characters first');
   if (from === 'day') {
     const d = s.day!;
     if (d.vote) throw new RuleError('phase', 'A vote is still running');
@@ -302,8 +327,123 @@ function advance(s: GameState, op: Op, to: 'day' | 'bedtime' | 'night' | 'dawn')
     s.phase = 'dawn';
     s.phaseEndsAt = null;
     log(s, op, 'Dawn: reviewing the night');
-  } else if (to === 'bedtime') startBedtime(s, op);
-  else startNight(s, op, false, 'night');
+  } else if (to === 'bedtime') startBedtime(s, op, from === 'setup');
+  else startNight(s, op, from === 'bedtime' && s.bedtimeFirst, 'night');
+}
+
+/**
+ * (gameplay) Storyteller "props": jump to any phase, skipping the engine's readiness checks (a
+ * running vote is dropped, the block is NOT executed, no Mayor check). Advisory alerts only.
+ */
+function forcePhase(s: GameState, op: Op, to: ForcePhase): void {
+  const from = s.phase;
+  if (from === 'finished') throw new RuleError('phase', 'The game is over');
+  const d = s.day;
+  if (d && from === 'day' && to !== 'gather' && to !== 'day') {
+    if (d.vote) {
+      const n = d.nominations.find((x) => x.id === d.vote!.nominationId);
+      if (n) n.status = 'cancelled';
+      d.vote = null;
+      alert(s, op, 'Forced phase change: the running vote was dropped.');
+    }
+    if (d.block && !d.executionOccurred)
+      alert(s, op, `Forced phase change: seat ${d.block.seat + 1} was on the block and was NOT executed.`);
+  }
+  if (s.resultPending) alert(s, op, 'A game end is still pending: confirm or override it.');
+  const night0 = s.nightNumber === 0;
+  switch (to) {
+    case 'setup':
+      s.phase = 'setup';
+      s.phaseEndsAt = null;
+      clearStage(s);
+      s.day = null;
+      s.visitingSeat = null;
+      s.nightQueue = [];
+      clearStepPrompts(s);
+      announce(s, op, 'phase', 'The Storyteller returns the town to setup.');
+      break;
+    case 'first_night':
+      if (!s.assigned) throw new RuleError('invalid', 'Assign characters first');
+      startNight(s, op, true, 'night');
+      break;
+    case 'night':
+      if (night0 && !s.assigned) throw new RuleError('invalid', 'Assign characters first');
+      startNight(s, op, night0, 'night');
+      break;
+    case 'day':
+    case 'gather':
+      if (from !== 'day') startDay(s, op);
+      if (to === 'gather') setGathering(s, op, true);
+      break;
+    case 'bedtime':
+      if (night0 && !s.assigned) alert(s, op, 'Characters are not assigned yet: assign them before the first night falls.');
+      startBedtime(s, op, night0);
+      break;
+    case 'dawn':
+      s.phase = 'dawn';
+      s.phaseEndsAt = null;
+      clearStage(s);
+      if (from === 'day' || from === 'bedtime') s.day = null;
+      break;
+  }
+  log(s, op, `Storyteller forced the phase: ${from} -> ${to}`);
+}
+
+function setGathering(s: GameState, op: Op, on: boolean): void {
+  if (on && s.phase !== 'day' && s.phase !== 'setup')
+    throw new RuleError('phase', 'The circle gathers by day (use force phase "gather")');
+  if (s.gathering === on) return;
+  s.gathering = on;
+  if (on) announce(s, op, 'storyteller', 'The Storyteller calls everyone to the circle around the clock tower.');
+  log(s, op, on ? 'Circle gathered' : 'Circle dissolved');
+}
+
+/** (gameplay) Bedtime countdown controls: pause (hold), resume, extend, restart. */
+function bedtimeTimer(s: GameState, op: Op, action: 'pause' | 'resume' | 'extend' | 'restart', seconds?: number): void {
+  requirePhase(s, 'bedtime');
+  const now = op.now;
+  switch (action) {
+    case 'pause':
+      if (s.phaseEndsAt !== null) {
+        s.bedtimePausedRemainingMs = Math.max(0, s.phaseEndsAt - now);
+        s.phaseEndsAt = null;
+      }
+      s.bedtimeHeld = true;
+      log(s, op, 'Bedtime countdown held');
+      return;
+    case 'resume':
+      s.bedtimeHeld = false;
+      if (s.bedtimePausedRemainingMs !== null && s.storytellerConnected) {
+        s.phaseEndsAt = now + s.bedtimePausedRemainingMs;
+        s.bedtimePausedRemainingMs = null;
+      }
+      log(s, op, 'Bedtime countdown resumed');
+      return;
+    case 'extend':
+    case 'restart': {
+      const ms = (seconds ?? (action === 'extend' ? 15 : s.bedtimeSeconds)) * 1000;
+      const running = !s.bedtimeHeld && s.storytellerConnected;
+      let remaining: number;
+      if (action === 'restart' || s.bedtimeOvertime) remaining = ms;
+      else remaining = (s.phaseEndsAt !== null ? Math.max(0, s.phaseEndsAt - now) : (s.bedtimePausedRemainingMs ?? 0)) + ms;
+      s.bedtimeOvertime = false;
+      if (running) {
+        s.phaseEndsAt = now + remaining;
+        s.bedtimePausedRemainingMs = null;
+      } else {
+        s.phaseEndsAt = null;
+        s.bedtimePausedRemainingMs = remaining;
+      }
+      announce(s, op, 'phase', `The Storyteller grants more time: ${Math.round(remaining / 1000)} seconds until dark.`);
+      return;
+    }
+  }
+}
+
+function findPromptForResend(p: PlayerState, id: string): PromptState {
+  const q = p.prompts.find((x) => x.id === id) ?? p.promptHistory.find((x) => x.id === id);
+  if (!q) throw new RuleError('not_found', 'Unknown prompt');
+  return q;
 }
 
 // ------------------------------------------------------------------------------ ST commands
@@ -357,6 +497,7 @@ function addPrompt(s: GameState, op: Op, p: PlayerState, spec: Extract<StCommand
   if (spec.characterOptions) prompt.characterOptions = [...spec.characterOptions];
   p.prompts.push(prompt);
   if (p.prompts.length > 10) p.prompts.splice(0, p.prompts.length - 10);
+  p.promptHistory = [...(p.promptHistory ?? []), { ...prompt, ...(prompt.characterOptions ? { characterOptions: [...prompt.characterOptions] } : {}) }].slice(-10);
   log(s, op, `Prompt to ${who(p)}: ${spec.title}`);
 }
 
@@ -401,7 +542,7 @@ function stCommand(s: GameState, op: Op, cmd: StCommand): void {
   if (s.phase === 'finished') {
     // The result is final once declared: it has been revealed to everyone and recorded in the
     // stats (idempotently, exactly once), so neither the winner nor the history may change.
-    const allowed: StCommand['type'][] = ['announce', 'set_travel_speed', 'visit_home', 'leave_home'];
+    const allowed: StCommand['type'][] = ['announce', 'set_travel_speed', 'visit_home', 'leave_home', 'set_setting'];
     if (!allowed.includes(cmd.type)) throw new RuleError('phase', 'The game is over');
   }
   switch (cmd.type) {
@@ -604,6 +745,84 @@ function stCommand(s: GameState, op: Op, cmd: StCommand): void {
       log(s, op, cmd.seat === null ? 'Red herring cleared' : `Red herring is now ${who(mustPlayer(s, cmd.seat))}`);
       return;
     }
+    // ---- (gameplay) props
+    case 'set_setting': {
+      const changed: string[] = [];
+      for (const [k, v] of Object.entries(cmd.settings) as [keyof typeof s.settings, boolean | undefined][]) {
+        if (v === undefined || s.settings[k] === v) continue;
+        s.settings[k] = v;
+        changed.push(`${k}=${v}`);
+      }
+      if (changed.length) log(s, op, `Settings: ${changed.join(', ')}`);
+      return;
+    }
+    case 'force_phase':
+      forcePhase(s, op, cmd.to);
+      return;
+    case 'gather':
+      setGathering(s, op, cmd.on);
+      return;
+    case 'force_vote':
+      forceVote(s, op, cmd.nominationId);
+      return;
+    case 'create_nomination':
+      createNomination(s, op, cmd.nominatorSeat, cmd.nomineeSeat, cmd.startVote ?? false);
+      return;
+    case 'close_vote':
+      closeVote(s, op, cmd.mode);
+      return;
+    case 'set_block':
+      setBlock(s, op, cmd.seat, cmd.votes);
+      return;
+    case 'set_vote':
+      setVote(s, op, cmd.nominationId, cmd.seat, cmd.vote);
+      return;
+    case 'force_execute':
+      forceExecute(s, op, cmd.seat);
+      return;
+    case 'bedtime_timer':
+      bedtimeTimer(s, op, cmd.action, cmd.seconds);
+      return;
+    case 'resend_prompt': {
+      const p = mustPlayer(s, cmd.seat);
+      const q = findPromptForResend(p, cmd.promptId);
+      const step = q.stepId ? s.nightQueue.find((x) => x.id === q.stepId) : undefined;
+      const stepOpen = !!step && step.status !== 'resolved' && step.status !== 'skipped';
+      // Re-sending an open prompt replaces it (fresh id, back on top).
+      p.prompts = p.prompts.filter((x) => x.id !== q.id);
+      addPrompt(s, op, p, {
+        kind: q.kind,
+        title: q.title,
+        ...(q.body !== undefined ? { body: q.body } : {}),
+        ...(q.minTargets !== undefined ? { minTargets: q.minTargets } : {}),
+        ...(q.maxTargets !== undefined ? { maxTargets: q.maxTargets } : {}),
+        ...(q.allowSelf !== undefined ? { allowSelf: q.allowSelf } : {}),
+        ...(q.allowDead !== undefined ? { allowDead: q.allowDead } : {}),
+        ...(q.characterOptions ? { characterOptions: [...q.characterOptions] } : {}),
+        ...(stepOpen ? { stepId: q.stepId! } : {}),
+      });
+      return;
+    }
+    case 'resend_info': {
+      const p = mustPlayer(s, cmd.seat);
+      const i = p.info.find((x) => x.id === cmd.infoId);
+      if (!i) throw new RuleError('not_found', 'Unknown info');
+      giveInfo(s, p, {
+        text: i.text,
+        ...(i.seats ? { seats: i.seats } : {}),
+        ...(i.characters ? { characters: i.characters } : {}),
+        ...(i.number !== undefined ? { number: i.number } : {}),
+        ...(i.yes !== undefined ? { yes: i.yes } : {}),
+      });
+      log(s, op, `Re-sent info to ${who(p)}: ${i.text}`);
+      return;
+    }
+    case 'teleport':
+    case 'walk_to':
+    case 'freeze':
+    case 'door_lock':
+      // Physical "props" are handled by the world module (apps/server/src/game routes them there).
+      throw new RuleError('invalid', 'Handled by the world module');
     case 'set_drunk_belief': {
       const p = mustPlayer(s, cmd.seat);
       if (p.character !== 'drunk') throw new RuleError('invalid', 'That player is not the Drunk');
@@ -741,13 +960,37 @@ function playerAction(s: GameState, op: Op, seat: number, a: PlayerAction): void
 
 // ------------------------------------------------------------------------- timers/presence
 
-/** Advance timers: bedtime countdown and the voting clock hand. */
-export function tick(s: GameState, now: number): { changed: boolean; effects: Effect[] } {
+export interface TickOptions {
+  /**
+   * (gameplay) Whether every seated player is inside their own home (from the world module).
+   * When given, bedtime works as "walk home": the countdown expiring only starts the overtime
+   * (stragglers are walked home) and the night falls once everyone is home (unless the ST holds
+   * the countdown or is disconnected). When omitted (engine-only use), the countdown expiring
+   * starts the night directly.
+   */
+  everyoneHome?: boolean;
+}
+
+/** Advance timers: bedtime countdown / nightfall and the voting clock hand. */
+export function tick(s: GameState, now: number, opts: TickOptions = {}): { changed: boolean; effects: Effect[] } {
   const op: Op = { now, effects: [] };
   let changed = false;
-  if (s.phase === 'bedtime' && s.phaseEndsAt !== null && now >= s.phaseEndsAt && !s.resultPending) {
-    startNight(s, op, false, 'bedtime');
-    changed = true;
+  if (s.phase === 'bedtime' && !s.resultPending) {
+    const expired = s.phaseEndsAt !== null && now >= s.phaseEndsAt;
+    if (opts.everyoneHome === undefined) {
+      if (expired) {
+        startNight(s, op, s.bedtimeFirst, 'bedtime');
+        changed = true;
+      }
+    } else if (opts.everyoneHome && s.storytellerConnected && !s.bedtimeHeld) {
+      startNight(s, op, s.bedtimeFirst, 'bedtime');
+      changed = true;
+    } else if (expired && !s.bedtimeOvertime) {
+      s.bedtimeOvertime = true;
+      s.phaseEndsAt = null;
+      log(s, op, 'Bedtime is over: stragglers are walked home');
+      changed = true;
+    }
   }
   if (tickVote(s, op)) changed = true;
   return { changed, effects: op.effects };
@@ -761,7 +1004,7 @@ export function setStorytellerConnected(s: GameState, connected: boolean, now: n
   if (!connected && s.phaseEndsAt !== null) {
     s.bedtimePausedRemainingMs = Math.max(0, s.phaseEndsAt - now);
     s.phaseEndsAt = null;
-  } else if (connected && s.bedtimePausedRemainingMs !== null) {
+  } else if (connected && s.bedtimePausedRemainingMs !== null && !s.bedtimeHeld) {
     s.phaseEndsAt = now + s.bedtimePausedRemainingMs;
     s.bedtimePausedRemainingMs = null;
   }
@@ -776,6 +1019,11 @@ export function setPlayerConnected(s: GameState, seat: number, connected: boolea
 }
 
 /** The ST entered (seat) or left (null) a home. Only meaningful at night. */
+/** (gameplay) Append a Storyteller log line for world-side "props" (teleport, freeze, doors). */
+export function noteStoryteller(s: GameState, now: number, text: string): void {
+  log(s, { now, effects: [] }, text);
+}
+
 export function setVisiting(s: GameState, seat: number | null): boolean {
   if (seat === s.visitingSeat) return false;
   if (s.visitingSeat !== null) {

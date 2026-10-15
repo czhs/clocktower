@@ -55,6 +55,11 @@ export interface TownLayout {
   playerSpawn: TilePoint;
   storytellerSpawn: TilePoint;
   streetlights: TilePoint[];
+  /**
+   * (additive, gameplay) Optional nomination-circle ring in PIXELS (feet positions). When absent
+   * the ring is derived from `square` (circleCentre / circleRadii).
+   */
+  circle?: { cx: number; cy: number; rx: number; ry: number };
 }
 
 /** 'outdoors' or the id of the building whose interior contains the point. */
@@ -142,6 +147,32 @@ export interface WorldSnapshot {
   /** Last move seq the server applied for this client. */
   ackSeq: number;
   entities: EntityState[];
+  /**
+   * (additive, gameplay) Present only while the VIEWER's own avatar is not under their control:
+   * 'auto' = the server walks them (bedtime escort / Storyteller "walk to"), 'frozen' = the
+   * Storyteller froze them. The client stops predicting/sending moves and shows its own entity at
+   * the server position. `path` = remaining waypoints (feet px) in the current location.
+   */
+  you?: SelfControl;
+  /** (additive, gameplay) Storyteller door overrides: buildingId -> true (locked) / false (forced open). Public. */
+  doors?: Record<string, boolean>;  /**
+   * (additive, gameplay) Door tags: who is inside each building, hung on its door. Public, the same
+   * for every viewer, daytime only (waiting / setup / day): absent from bedtime through dawn and
+   * when the Storyteller turned them off. Never includes the Storyteller. `ghost` = publicly dead.
+   */
+  doorTags?: Record<string, DoorTag[]>;
+}
+
+export interface DoorTag {
+  pid: string;
+  ghost: boolean;
+}
+
+export interface SelfControl {
+  mode: 'auto' | 'frozen';
+  path?: { x: number; y: number }[];
+  /** Where an 'auto' walk ends: 'home' (bed), 'seat' (circle spot), or a free point. */
+  goal?: 'home' | 'seat' | 'square' | 'point' | 'building';
 }
 
 export interface WorldTeleport {
@@ -152,3 +183,82 @@ export interface WorldTeleport {
   /** Client must discard pending predicted moves with seq <= this. */
   seq: number;
 }
+
+// ---------------------------------------------------------------------------------------
+// (additive, gameplay 2026-10-15) The nomination circle. One spot per seat on a ring around the
+// clock tower, seat order clockwise from 12 o'clock (= the clockwise vote order). Computed
+// identically by the server (Storyteller "force seats", presence) and the client (markers,
+// clock hand), from the layout and the list of seats only.
+
+export interface CircleSpot {
+  seat: number;
+  /** Feet position (px), outdoors and walkable. */
+  x: number;
+  y: number;
+  /** Facing toward the clock tower. */
+  facing: Facing;
+}
+
+/** (additive, gameplay) A seat's home: the house whose houseIndex is the seat (layout-driven, no id convention). */
+export function homeBuilding(layout: TownLayout, seat: number | null | undefined): BuildingDef | undefined {
+  if (seat === null || seat === undefined) return undefined;
+  return layout.buildings.find((b) => b.kind === 'house' && b.houseIndex === seat);
+}
+
+/** (additive, gameplay) The seat living in a building (a house with a houseIndex), else null. */
+export function seatOfBuilding(layout: TownLayout, buildingId: string): number | null {
+  const b = layout.buildings.find((x) => x.id === buildingId);
+  return b && b.kind === 'house' && b.houseIndex !== null ? b.houseIndex : null;
+}
+
+/** The public gathering ring belongs to the square, independently of the tower landmark. */
+export function circleCentre(layout: TownLayout): { x: number; y: number } {
+  if (layout.circle) return { x: layout.circle.cx, y: layout.circle.cy };
+  return { x: layout.square.cx, y: layout.square.cy - layout.tileSize };
+}
+
+/** Ring radii stay tied to public paving, never to a movable landmark's footprint. */
+export function circleRadii(layout: TownLayout): { rx: number; ry: number } {
+  if (layout.circle) return { rx: layout.circle.rx, ry: layout.circle.ry };
+  const ts = layout.tileSize;
+  return { rx: 6.5 * ts, ry: 5.75 * ts };
+}
+
+/** Seat spots, clockwise from 12 o'clock by ascending seat number. Deterministic. */
+export function circleSpots(layout: TownLayout, seats: readonly number[]): CircleSpot[] {
+  const sorted = [...new Set(seats)].sort((a, b) => a - b);
+  const c = circleCentre(layout);
+  const { rx, ry } = circleRadii(layout);
+  const n = sorted.length;
+  const out: CircleSpot[] = [];
+  const taken: { x: number; y: number }[] = [];
+  const free = (x: number, y: number) =>
+    !isBlockedPx(layout, x, y) && locationAt(layout, x, y) === 'outdoors' && taken.every((t) => Math.hypot(t.x - x, t.y - y) >= 12);
+  sorted.forEach((seat, i) => {
+    // Open north arc leaves the tower and Storyteller behind the gathering. Vote order
+    // still runs clockwise, but nobody is placed behind the landmark.
+    const th = Math.PI / 3 + (4 * Math.PI / 3 * i) / Math.max(1, n - 1);
+    const ix = Math.round(c.x + Math.sin(th) * rx);
+    const iy = Math.round(c.y - Math.cos(th) * ry);
+    let best = { x: ix, y: iy };
+    search: for (let r = 0; r <= 40; r += 2) {
+      const steps = r === 0 ? 1 : Math.max(8, Math.round((2 * Math.PI * r) / 2));
+      for (let k = 0; k < steps; k++) {
+        const a = (2 * Math.PI * k) / steps;
+        const x = Math.round(ix + Math.cos(a) * r);
+        const y = Math.round(iy + Math.sin(a) * r);
+        if (free(x, y)) {
+          best = { x, y };
+          break search;
+        }
+      }
+    }
+    taken.push(best);
+    const facing: Facing = 'down';
+    out.push({ seat, x: best.x, y: best.y, facing });
+  });
+  return out;
+}
+
+/** Distance (px) within which a player counts as "seated" on their spot. */
+export const CIRCLE_SEATED_PX = 12;

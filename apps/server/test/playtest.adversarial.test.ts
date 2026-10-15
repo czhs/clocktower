@@ -311,7 +311,9 @@ describe('playtest: adversarial', () => {
         const v = (await gg.st.waitMsg('game:view', (x) => x.kind === 'storyteller', 5000)) as StorytellerGameView;
         expect(v.phase).toBe('first_night');
         expect(v.visitingSeat).toBe(p.seat);
-        expect(v.grimoire).toEqual(before.grimoire);
+        // (gameplay) the grimoire's open-prompt list legitimately changed: the prompt was answered.
+        const noPrompts = (gr: typeof v.grimoire) => gr.map(({ openPrompts: _o, sentPrompts: _s, ...rest }) => rest);
+        expect(noPrompts(v.grimoire)).toEqual(noPrompts(before.grimoire));
         expect(queueState(v)).toEqual(queueState(before).map((s) => (s.startsWith(`${step.id}:`) ? `${step.id}:poisoner:answered` : s)));
         expect(stepOf(v, step.id)!.response).toEqual({ seats: [3] });
         expect(gg.pv(p).storytellerVisitingYou).toBe(true);

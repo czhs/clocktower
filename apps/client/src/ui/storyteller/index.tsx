@@ -2,6 +2,8 @@
 // bluffs), Grimoire with status toggles & reminders, night-order checklist with engine
 // suggestions, visits (fast travel), prompt/info composer, phase/nomination/execution controls,
 // kill/revive, travel speed, announcements, declare winner, undo, alerts and log.
+// (gameplay) The Stage bar + Stage tab (stage.tsx): the game as malleable props — circle, votes,
+// force phase, walk / teleport / freeze, doors, bedtime timer. The engine only advises.
 // Rendered only for the seated Storyteller (the server sends a StorytellerGameView only to them).
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import {
@@ -19,12 +21,13 @@ import {
 } from '@ct/protocol';
 import type { RoomConnection } from '../../net/room';
 import { useStore } from '../../net/store';
-import { charName, CharacterSelect, Countdown, phaseTitle, seatLabel, VoteClock } from '../hud/shared';
+import { charName, CharacterSelect, Countdown, friendlyError, phaseTitle, seatLabel, VoteClock } from '../hud/shared';
+import { ConfirmButton, deathEffects, EVERYONE, noExecutionEffects, only, PickBanner, StageBar, StageTab, StatusBadges, Toggle } from './stage';
 import './storyteller.css';
 
 type Cmd = C2SPayload<'st:command'>;
 type Send = (c: Cmd) => void;
-type Tab = 'setup' | 'grimoire' | 'night' | 'day' | 'tools' | 'log';
+type Tab = 'setup' | 'stage' | 'grimoire' | 'night' | 'day' | 'tools' | 'log';
 
 interface ComposerState {
   seat: number | null;
@@ -47,8 +50,37 @@ export function StorytellerPanel({ conn }: { conn: RoomConnection; account: Acco
   return <StPanel view={view} conn={conn} />;
 }
 
+/** Per-viewer panel layout, remembered in localStorage (may be unavailable: private mode etc.). */
+type Dock = 'left' | 'right';
+const LS_COLLAPSED = 'ct.st.collapsed';
+const LS_DOCK = 'ct.st.dock';
+function lsGet(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+function lsSet(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    /* storage unavailable: the choice lasts for this page only */
+  }
+}
+
 function StPanel({ view, conn }: { view: StorytellerGameView; conn: RoomConnection }) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpenState] = useState(() => lsGet(LS_COLLAPSED) !== '1');
+  const [dock, setDockState] = useState<Dock>(() => (lsGet(LS_DOCK) === 'right' ? 'right' : 'left'));
+  const setOpen = (v: boolean) => {
+    setOpenState(v);
+    lsSet(LS_COLLAPSED, v ? '0' : '1');
+  };
+  const toggleDock = () => {
+    const next: Dock = dock === 'left' ? 'right' : 'left';
+    setDockState(next);
+    lsSet(LS_DOCK, next);
+  };
   const [tab, setTab] = useState<Tab>(view.phase === 'setup' ? 'setup' : 'grimoire');
   const [error, setError] = useState<string | null>(null);
   const [dismissedAlerts, setDismissedAlerts] = useState<string[]>([]);
@@ -60,7 +92,7 @@ function StPanel({ view, conn }: { view: StorytellerGameView; conn: RoomConnecti
   useEffect(
     () =>
       conn.events.on('error', (e) => {
-        if (e.for === 'st:command') setError(e.message);
+        if (e.for === 'st:command') setError(friendlyError(e.message, true));
       }),
     [conn],
   );
@@ -70,6 +102,10 @@ function StPanel({ view, conn }: { view: StorytellerGameView; conn: RoomConnecti
     else if (view.phase === 'first_night' || view.phase === 'night') setTab('night');
     else if (view.phase === 'day') setTab('day');
   }, [view.phase]);
+  // Gathering the circle: the stage diagram is the useful view.
+  useEffect(() => {
+    if (view.gathering) setTab('stage');
+  }, [view.gathering]);
 
   const openComposer = (patch: Partial<ComposerState>) => {
     // A night-step link belongs to one seat; the server rejects send_info/prompt for another seat.
@@ -80,17 +116,34 @@ function StPanel({ view, conn }: { view: StorytellerGameView; conn: RoomConnecti
 
   if (!open)
     return (
-      <button class="cts-tab-closed" onClick={() => setOpen(true)} title="Open the Grimoire">
-        ☾ Grimoire{alerts.length > 0 && <span class="cts-badge">{alerts.length}</span>}
-      </button>
+      <div class={`cts-slim dock-${dock}`} role="region" aria-label="Storyteller (collapsed)">
+        <div class="cts-slim-row">
+          <button class="cts-slim-open" onClick={() => setOpen(true)} title="Open the Grimoire">
+            ☾{alerts.length > 0 && <span class="cts-badge">{alerts.length}</span>}
+          </button>
+          <span class="cts-now-phase">{phaseTitle(view.phase, view.dayNumber)}</span>
+          {view.phaseEndsAt !== null && <Countdown endsAt={view.phaseEndsAt} />}
+          <NextButton view={view} send={send} goTab={(t) => { setTab(t); setOpen(true); }} />
+          <button class="cts-icon" onClick={toggleDock} title={`Dock on the ${dock === 'left' ? 'right' : 'left'}`}>
+            ⇆
+          </button>
+        </div>
+        {error && (
+          <div class="cts-error" role="alert">
+            {error}
+            <button class="cts-icon" onClick={() => setError(null)}>
+              ✕
+            </button>
+          </div>
+        )}
+        <PickBanner />
+      </div>
     );
 
   return (
-    <aside class="cts">
+    <aside class={`cts dock-${dock}`}>
       <header class="cts-head">
         <span class="cts-title">Storyteller</span>
-        <span class="cts-phase">{phaseTitle(view.phase, view.dayNumber)}</span>
-        {view.phaseEndsAt !== null && <Countdown endsAt={view.phaseEndsAt} />}
         {view.visitingSeat !== null && (
           <span class="cts-chip visit">
             In home of {seatLabel(view.players, view.visitingSeat)}{' '}
@@ -100,14 +153,20 @@ function StPanel({ view, conn }: { view: StorytellerGameView; conn: RoomConnecti
           </span>
         )}
         <span class="cts-spacer" />
-        <button class="cts-icon" disabled={!view.canUndo} onClick={() => send({ type: 'undo_last' })} title="Undo the last action">
-          ↶
+        <button class="cts-undo" disabled={!view.canUndo} onClick={() => send({ type: 'undo_last' })} title={view.canUndo ? 'Undo the last game action' : 'Nothing to undo'}>
+          ↶ Undo
         </button>
-        <button class="cts-icon" onClick={() => setOpen(false)} title="Collapse">
-          ✕
+        <button class="cts-icon" onClick={toggleDock} title={`Dock on the ${dock === 'left' ? 'right' : 'left'}`}>
+          ⇆
+        </button>
+        <button class="cts-icon" onClick={() => setOpen(false)} title="Collapse to a slim bar">
+          ▁
         </button>
       </header>
+      <NowStrip view={view} send={send} goTab={setTab} />
       <PhaseControls view={view} send={send} />
+      <StageBar view={view} send={send} />
+      <PickBanner />
       {error && (
         <div class="cts-error" role="alert">
           {error}
@@ -127,7 +186,7 @@ function StPanel({ view, conn }: { view: StorytellerGameView; conn: RoomConnecti
         </div>
       )}
       <nav class="cts-tabs">
-        {(['setup', 'grimoire', 'night', 'day', 'tools', 'log'] as Tab[])
+        {(['setup', 'stage', 'grimoire', 'night', 'day', 'tools', 'log'] as Tab[])
           .filter((t) => t !== 'setup' || view.phase === 'setup')
           .map((t) => (
             <button key={t} class={tab === t ? 'on' : ''} onClick={() => setTab(t)}>
@@ -137,6 +196,7 @@ function StPanel({ view, conn }: { view: StorytellerGameView; conn: RoomConnecti
       </nav>
       <div class="cts-body">
         {tab === 'setup' && <SetupTab view={view} send={send} />}
+        {tab === 'stage' && <StageTab view={view} send={send} openComposer={openComposer} />}
         {tab === 'grimoire' && <GrimoireTab view={view} send={send} openComposer={openComposer} />}
         {tab === 'night' && <NightTab view={view} send={send} openComposer={openComposer} />}
         {tab === 'day' && <DayTab view={view} send={send} />}
@@ -159,6 +219,189 @@ function unseenAlerts(all: string[], seen: string[]): string[] {
   return all;
 }
 
+// --------------------------------------------------------------------------------- now strip
+
+interface NextAction {
+  label: string;
+  run: () => void;
+  confirm?: { ask: string; audience?: string; effects?: string[]; undo?: 'yes' | 'final' };
+  hint?: string;
+}
+
+const UNFINISHED: readonly string[] = ['pending', 'visiting', 'prompted', 'answered'];
+
+/** The single most likely next Storyteller action (advisory; every other control stays available). */
+function nextAction(view: StorytellerGameView, send: Send, goTab: (t: Tab) => void): NextAction | null {
+  const p = view.phase;
+  const name = (seat: number) => view.players.find((x) => x.seat === seat)?.name ?? `Seat ${seat + 1}`;
+  const pr = view.pendingResult;
+  if (pr)
+    return {
+      label: `Confirm result: ${pr.winner === 'good' ? 'Good' : 'Evil'} wins`,
+      run: () => send({ type: 'confirm_result' }),
+      confirm: { ask: 'End the game now?', audience: 'Everyone sees the result and every character.', undo: 'final' },
+      hint: 'or Override below to continue the game',
+    };
+  if (p === 'setup') {
+    if (!view.charactersAssigned) return { label: 'Random setup', run: () => send({ type: 'random_setup' }), hint: 'or assign characters by hand in Setup' };
+    return { label: 'Begin first night (ring the bell)', run: () => send({ type: 'advance_phase', to: 'bedtime' }), hint: 'players walk home; the first night falls when all are in' };
+  }
+  if (p === 'first_night' || p === 'night') {
+    const step = view.nightQueue.find((x) => UNFINISHED.includes(x.status));
+    if (!step) return { label: 'End night → Dawn', run: () => send({ type: 'advance_phase', to: 'dawn' }), hint: 'review before deaths are announced' };
+    const title = stepTitle(step);
+    if (step.seat === null) return { label: `Resolve ${title}`, run: () => send({ type: 'resolve_step', stepId: step.id }) };
+    const seat = step.seat;
+    const who = name(seat);
+    if (view.visitingSeat !== seat)
+      return { label: `Visit ${who} (${title})`, run: () => send({ type: 'visit_home', seat }), hint: 'next in night order' };
+    if (step.prompt && (step.status === 'pending' || step.status === 'visiting')) {
+      const prompt = step.prompt;
+      return { label: `Ask ${who}: ${prompt.title}`, run: () => send({ type: 'prompt_player', seat, prompt }), hint: `only ${who} sees the prompt` };
+    }
+    if (step.status === 'prompted') return { label: `Waiting for ${who}… (open night order)`, run: () => goTab('night'), hint: 'you can choose on their behalf there' };
+    if (step.suggestedInfo) {
+      const info = step.suggestedInfo;
+      return {
+        label: `Tell ${who}: ${info.text.length > 48 ? `${info.text.slice(0, 47)}…` : info.text}`,
+        run: () => send({ type: 'send_info', seat, info: { ...info, stepId: step.id } }),
+        confirm: { ask: `Send this to ${who}?`, audience: only(view.players, seat), effects: step.impaired ? ['They are impaired: you may change it to false info (Night order).'] : undefined },
+      };
+    }
+    const g = view.grimoire.find((x) => x.seat === seat);
+    if (TARGET_STEPS.includes(step.character) && g?.character !== 'drunk' && !step.response?.seats?.length)
+      return { label: `Pick ${who}'s target (night order)`, run: () => goTab('night') };
+    return { label: `Resolve ${title}`, run: () => send({ type: 'resolve_step', stepId: step.id }) };
+  }
+  if (p === 'dawn') {
+    const n = view.pendingDeaths?.length ?? 0;
+    return {
+      label: n ? `Start day (${n} death${n > 1 ? 's' : ''} announced)` : 'Start day (nobody died)',
+      run: () => send({ type: 'advance_phase', to: 'day' }),
+      confirm: n ? { ask: 'Announce the night and start the day?', audience: EVERYONE, effects: view.pendingDeaths!.map((s) => `${name(s)} dies.`), undo: 'yes' } : undefined,
+    };
+  }
+  if (p === 'day') {
+    const d = view.day;
+    const voting = d?.nominations.find((n) => n.status === 'voting');
+    if (voting) return { label: 'Close vote (tally)', run: () => send({ type: 'close_vote', mode: 'tally' }), hint: `${voting.voteCount}/${voting.threshold} on ${name(voting.nomineeSeat)}` };
+    const pending = d?.nominations.filter((n) => n.status === 'pending') ?? [];
+    const nom = pending[pending.length - 1];
+    if (nom) return { label: `Start vote on ${name(nom.nomineeSeat)}`, run: () => send({ type: 'force_vote', nominationId: nom.id }), hint: `nominated by ${name(nom.nominatorSeat)}` };
+    if (!view.gathering && !d?.nominations.length && d?.executedSeat === null)
+      return { label: 'Gather the circle', run: () => send({ type: 'gather', on: true }), hint: 'when discussion winds down; players walk to their seats' };
+    const block = d && d.executedSeat === null ? d.onTheBlock : null;
+    return {
+      label: 'Ring bedtime bell',
+      run: () => send({ type: 'advance_phase', to: 'bedtime' }),
+      confirm: {
+        ask: block ? `End the day? ${name(block.seat)} is executed.` : 'End the day with no execution?',
+        audience: EVERYONE,
+        effects: block ? deathEffects(view, block.seat, 'execute') : noExecutionEffects(view),
+        undo: 'yes',
+      },
+    };
+  }
+  if (p === 'bedtime') {
+    const out = (view.stage?.players ?? []).filter((x) => x.presence !== 'home');
+    if (out.length)
+      return {
+        label: `Walk ${out.length} straggler${out.length > 1 ? 's' : ''} home`,
+        run: () => send({ type: 'walk_to', who: out.map((x) => x.seat), to: { kind: 'home' } }),
+        hint: out.slice(0, 4).map((x) => name(x.seat)).join(', ') + (out.length > 4 ? '…' : ''),
+      };
+    const to = view.bedtimeFirstNight ? 'first_night' : 'night';
+    return { label: 'Everyone is home: night now', run: () => send({ type: 'force_phase', to }) };
+  }
+  return null;
+}
+
+/** "Now" strip: phase, what is pending, and the single most likely next action. */
+function NowStrip({ view, send, goTab }: { view: StorytellerGameView; send: Send; goTab: (t: Tab) => void }) {
+  const next = nextAction(view, send, goTab);
+  const p = view.phase;
+  const items: { text: string; tone?: string; tab?: Tab }[] = [];
+  const stepsLeft = view.nightQueue.filter((x) => UNFINISHED.includes(x.status)).length;
+  if ((p === 'first_night' || p === 'night' || p === 'dawn') && stepsLeft) items.push({ text: `${stepsLeft} night step${stepsLeft > 1 ? 's' : ''} left`, tab: 'night' });
+  if (view.pendingResult) items.push({ text: 'game end to confirm', tone: 'bad' });
+  if ((p === 'night' || p === 'first_night' || p === 'dawn') && view.pendingDeaths?.length)
+    items.push({ text: `dies at dawn: ${view.pendingDeaths.map((s) => nameOfSeat(view, s)).join(', ')}`, tone: 'bad' });
+  if (p === 'day' && view.day) {
+    const voting = view.day.nominations.find((n) => n.status === 'voting');
+    const pend = view.day.nominations.filter((n) => n.status === 'pending').length;
+    if (voting) items.push({ text: `vote on ${nameOfSeat(view, voting.nomineeSeat)}: ${voting.voteCount}/${voting.threshold}`, tone: 'warn', tab: 'stage' });
+    if (pend) items.push({ text: `${pend} nomination${pend > 1 ? 's' : ''} pending`, tone: 'warn', tab: 'day' });
+    if (view.day.onTheBlock && view.day.executedSeat === null) items.push({ text: `⚖ ${nameOfSeat(view, view.day.onTheBlock.seat)} on the block`, tab: 'stage' });
+    if (view.day.executedSeat !== null) items.push({ text: `executed: ${nameOfSeat(view, view.day.executedSeat)}` });
+  }
+  const stage = view.stage?.players ?? [];
+  if (p === 'bedtime') {
+    const out = stage.filter((x) => x.presence !== 'home');
+    items.push(out.length ? { text: `${out.length} not home: ${out.map((x) => nameOfSeat(view, x.seat)).join(', ')}`, tone: 'warn', tab: 'stage' } : { text: 'everyone home', tone: 'ok' });
+  }
+  if (view.gathering && p === 'day') {
+    const out = stage.filter((x) => x.presence !== 'seated');
+    items.push(out.length ? { text: `${out.length} not seated: ${out.map((x) => nameOfSeat(view, x.seat)).join(', ')}`, tone: 'warn', tab: 'stage' } : { text: 'everyone seated', tone: 'ok' });
+  }
+  const frozen = stage.filter((x) => x.frozen).length;
+  if (frozen) items.push({ text: `❄ ${frozen} frozen`, tab: 'stage' });
+  const offline = view.players.filter((x) => !x.connected);
+  if (offline.length) items.push({ text: `offline: ${offline.map((x) => x.name).join(', ')}`, tone: 'bad' });
+  return (
+    <div class="cts-now">
+      <div class="cts-now-top">
+        <span class="cts-now-phase">{phaseTitle(p, view.dayNumber)}</span>
+        {view.phaseEndsAt !== null && <Countdown endsAt={view.phaseEndsAt} />}
+        {view.timerPaused && <span class="cts-chip">timer paused (you were away)</span>}
+      </div>
+      {items.length > 0 && (
+        <div class="cts-now-items">
+          {items.map((it) =>
+            it.tab ? (
+              <button key={it.text} class={`cts-now-item ${it.tone ?? ''}`} onClick={() => goTab(it.tab!)}>
+                {it.text}
+              </button>
+            ) : (
+              <span key={it.text} class={`cts-now-item ${it.tone ?? ''}`}>
+                {it.text}
+              </span>
+            ),
+          )}
+        </div>
+      )}
+      {next && (
+        <div class="cts-now-next">
+          <NextActionButton next={next} />
+          {next.hint && <small class="muted">{next.hint}</small>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function NextActionButton({ next, slim }: { next: NextAction; slim?: boolean }) {
+  const cls = `cts-now-btn primary${slim ? ' slim' : ''}`;
+  return next.confirm ? (
+    <ConfirmButton class={cls} ask={next.confirm.ask} audience={next.confirm.audience} effects={next.confirm.effects} undo={next.confirm.undo} onConfirm={next.run} title={next.hint}>
+      ▶ {next.label}
+    </ConfirmButton>
+  ) : (
+    <button class={cls} onClick={next.run} title={next.hint}>
+      ▶ {next.label}
+    </button>
+  );
+}
+
+/** The next-action button alone (collapsed panel). */
+function NextButton({ view, send, goTab }: { view: StorytellerGameView; send: Send; goTab: (t: Tab) => void }) {
+  const next = nextAction(view, send, goTab);
+  return next ? <NextActionButton next={next} slim /> : null;
+}
+
+function nameOfSeat(view: StorytellerGameView, seat: number): string {
+  return view.players.find((x) => x.seat === seat)?.name ?? `Seat ${seat + 1}`;
+}
+
 // ---------------------------------------------------------------------------- phase controls
 
 function PhaseControls({ view, send }: { view: StorytellerGameView; send: Send }) {
@@ -172,9 +415,9 @@ function PhaseControls({ view, send }: { view: StorytellerGameView; send: Send }
         <span>
           <b>Game end detected:</b> {pr.winner === 'good' ? 'Good' : 'Evil'} wins — {pr.reason} Players have not been told yet.
         </span>
-        <button class="primary" onClick={() => confirm(`End the game: ${pr.winner === 'good' ? 'Good' : 'Evil'} wins?`) && send({ type: 'confirm_result' })}>
+        <ConfirmButton class="primary" ask={`End the game: ${pr.winner === 'good' ? 'Good' : 'Evil'} wins?`} audience="Everyone sees the result and every character." undo="final" onConfirm={() => send({ type: 'confirm_result' })}>
           Confirm game end
-        </button>
+        </ConfirmButton>
         <button onClick={() => send({ type: 'override_result' })} title="Rule otherwise: the game continues">
           Override (continue)
         </button>
@@ -190,9 +433,26 @@ function PhaseControls({ view, send }: { view: StorytellerGameView; send: Send }
         </span>
       )}
       {p === 'setup' && (
-        <button class="primary" disabled={!view.charactersAssigned} onClick={() => send({ type: 'begin_first_night' })}>
-          Begin first night
+        <button
+          class="primary"
+          disabled={!view.charactersAssigned}
+          onClick={() => send({ type: 'advance_phase', to: 'bedtime' })}
+          title="The bell rings: players walk home; the first night falls once everyone is in"
+        >
+          Begin first night (ring the bell)
         </button>
+      )}
+      {p === 'setup' && (
+        <ConfirmButton
+          disabled={!view.charactersAssigned}
+          ask="Night now? Anyone not home is teleported to bed."
+          audience={EVERYONE}
+          undo="yes"
+          onConfirm={() => send({ type: 'begin_first_night' })}
+          title="Prop: skip the walk home"
+        >
+          Force night now
+        </ConfirmButton>
       )}
       {(p === 'first_night' || p === 'night') && (
         <button onClick={() => send({ type: 'advance_phase', to: 'dawn' })}>Dawn (review)</button>
@@ -203,12 +463,12 @@ function PhaseControls({ view, send }: { view: StorytellerGameView; send: Send }
         </button>
       )}
       {p === 'day' && (
-        <button class="primary" disabled={voteRunning} onClick={() => send({ type: 'advance_phase', to: 'bedtime' })}>
+        <button class="primary" onClick={() => send({ type: 'advance_phase', to: 'bedtime' })} title={voteRunning ? 'A vote is running: close it first (Stage)' : undefined}>
           Ring bedtime bell
         </button>
       )}
       {(p === 'day' || p === 'bedtime') && (
-        <button disabled={voteRunning} onClick={() => send({ type: 'advance_phase', to: 'night' })}>
+        <button onClick={() => send({ type: 'advance_phase', to: 'night' })} title={voteRunning ? 'A vote is running: close it first (Stage)' : undefined}>
           Night now
         </button>
       )}
@@ -394,6 +654,7 @@ function GrimoireRow({ g, view, send, openComposer }: { g: GrimoireEntry; view: 
         <span class={`cts-char cts-${g.alignment}`}>{charName(g.character)}</span>
         {g.character !== g.believedCharacter && <span class="muted">thinks {charName(g.believedCharacter)}</span>}
         <span class="cts-spacer" />
+        <StatusBadges g={g} />
         <span class={`cts-chip ${g.alive ? 'ok' : 'dead'}`}>{g.alive ? 'alive' : pendingDeath ? 'dies at dawn' : 'dead'}</span>
       </div>
       <div class="cts-grim-flags">
@@ -401,9 +662,6 @@ function GrimoireRow({ g, view, send, openComposer }: { g: GrimoireEntry; view: 
         <Toggle on={g.drunk} label="Drunk" disabled={over || g.character === 'drunk'} onClick={() => send({ type: 'set_status', seat: g.seat, drunk: !g.drunk })} />
         <Toggle on={g.protectedTonight} label="Protected" disabled={over} onClick={() => send({ type: 'set_status', seat: g.seat, protectedTonight: !g.protectedTonight })} />
         <Toggle on={g.ghostVoteAvailable} label="Ghost vote" disabled={over} onClick={() => send({ type: 'set_ghost_vote', seat: g.seat, available: !g.ghostVoteAvailable })} />
-        {g.isRedHerring && <span class="cts-chip">red herring</span>}
-        {g.isButlerMaster && <span class="cts-chip">master</span>}
-        {g.abilityUsed && <span class="cts-chip">ability used</span>}
         {g.reminders.map((r) => (
           <span class="cts-chip rem" key={r}>
             {r}
@@ -424,25 +682,28 @@ function GrimoireRow({ g, view, send, openComposer }: { g: GrimoireEntry; view: 
           Prompt
         </button>
         {g.alive ? (
-          <button
+          <ConfirmButton
             class="danger"
             disabled={over || view.phase === 'setup'}
-            onClick={() => {
-              if (confirm(`Kill ${g.name}? ${night ? 'The death is announced at dawn.' : 'The death is announced now.'}`))
-                send({ type: 'kill', seat: g.seat, announce: !night });
-            }}
+            ask={`Kill ${g.name}?`}
+            audience={night ? 'Announced at dawn: everyone will see it then.' : EVERYONE}
+            effects={deathEffects(view, g.seat, 'kill')}
+            undo="yes"
+            onConfirm={() => send({ type: 'kill', seat: g.seat, announce: !night })}
           >
             Kill
-          </button>
+          </ConfirmButton>
         ) : (
-          <button
-            disabled={over}
-            onClick={() =>
-              send({ type: 'set_alive', seat: g.seat, alive: true, restoreGhostVote: !g.ghostVoteAvailable && confirm('Also give back their spent ghost vote?') })
-            }
-          >
-            Revive
-          </button>
+          <>
+            <button disabled={over} onClick={() => send({ type: 'set_alive', seat: g.seat, alive: true })}>
+              Revive
+            </button>
+            {!g.ghostVoteAvailable && (
+              <button disabled={over} onClick={() => send({ type: 'set_alive', seat: g.seat, alive: true, restoreGhostVote: true })} title="Also give back their spent ghost vote">
+                Revive + vote back
+              </button>
+            )}
+          </>
         )}
         <button disabled={over} onClick={() => setEditing(!editing)}>{editing ? 'Cancel' : 'Change…'}</button>
       </div>
@@ -467,9 +728,15 @@ function GrimoireRow({ g, view, send, openComposer }: { g: GrimoireEntry; view: 
           >
             Apply
           </button>
-          <button class="cts-link" onClick={() => send({ type: 'set_alive', seat: g.seat, alive: !g.alive })}>
-            Force {g.alive ? 'dead' : 'alive'} (no triggers)
-          </button>
+          {g.alive ? (
+            <ConfirmButton class="cts-link" ask={`Mark ${g.name} dead (no triggers)?`} audience={night ? 'Players learn of it at dawn.' : EVERYONE} undo="yes" onConfirm={() => send({ type: 'set_alive', seat: g.seat, alive: false })}>
+              Force dead (no triggers)
+            </ConfirmButton>
+          ) : (
+            <button class="cts-link" onClick={() => send({ type: 'set_alive', seat: g.seat, alive: true })}>
+              Force alive (no triggers)
+            </button>
+          )}
           {g.alignment === 'good' && !g.isRedHerring && view.phase !== 'setup' && (
             <button class="cts-link" onClick={() => send({ type: 'set_red_herring', seat: g.seat })} title="Fortune Teller's red herring">
               Make red herring
@@ -498,14 +765,6 @@ function GrimoireRow({ g, view, send, openComposer }: { g: GrimoireEntry; view: 
       </form>
       )}
     </div>
-  );
-}
-
-function Toggle({ on, label, onClick, disabled }: { on: boolean; label: string; onClick: () => void; disabled?: boolean }) {
-  return (
-    <button class={`cts-toggle ${on ? 'on' : ''}`} disabled={disabled} onClick={onClick} aria-pressed={on}>
-      {label}
-    </button>
   );
 }
 
@@ -543,7 +802,12 @@ function NightStep({ step, view, send, openComposer }: { step: NightStepView; vi
   const [override, setOverride] = useState<number | ''>('');
   const [starpass, setStarpass] = useState<number | ''>('');
   const [redirect, setRedirect] = useState<number | ''>('');
+  const [infoText, setInfoText] = useState(step.suggestedInfo?.text ?? '');
+  // Follow a fresh engine suggestion (e.g. after a status change) unless the ST is editing.
+  const sugText = step.suggestedInfo?.text ?? '';
+  useEffect(() => setInfoText(sugText), [sugText]);
   const finished = step.status === 'resolved' || step.status === 'skipped';
+  const visited = step.status === 'visiting' || step.status === 'prompted' || step.status === 'answered' || step.status === 'resolved';
   const g = step.seat === null ? undefined : view.grimoire.find((x) => x.seat === step.seat);
   const minions = view.grimoire.filter((x) => x.alive && CHARACTER_INFO[x.character].type === 'minion');
   const needsTarget = TARGET_STEPS.includes(step.character) && g?.character !== 'drunk';
@@ -564,21 +828,48 @@ function NightStep({ step, view, send, openComposer }: { step: NightStepView; vi
   return (
     <li class={`cts-step ${step.status} ${step.seat !== null && view.visitingSeat === step.seat ? 'visiting' : ''}`}>
       <div class="cts-step-head">
-        <span class={`cts-status ${step.status}`}>{step.status}</span>
+        <span class={`cts-status ${step.status}`}>{step.status === 'resolved' ? '✓ done' : step.status}</span>
         <b>{stepTitle(step)}</b>
-        {g && (
-          <span>
-            — {seatLabel(view.players, g.seat)}
-            {step.impaired && <span class="cts-warn"> (impaired)</span>}
+        {g && <span>— {seatLabel(view.players, g.seat)}</span>}
+        {step.seat !== null && step.status !== 'skipped' && (
+          <span class={`cts-visited ${visited ? 'yes' : ''}`}>{visited ? '✓ visited' : 'not visited'}</span>
+        )}
+        {step.impaired && (
+          <span class="cts-chip cts-impaired" title="Their ability does nothing tonight; you may give false info">
+            {g?.poisoned ? 'poisoned' : 'drunk'}: false info OK
           </span>
         )}
       </div>
-      {step.suggestion && <div class="cts-sugg">{step.suggestion}</div>}
+      {step.suggestion && (
+        <div class="cts-sugg">
+          <span class="muted">{step.suggestedInfo ? 'Learns: ' : 'Suggested: '}</span>
+          {step.suggestion}
+        </div>
+      )}
       {step.notes?.map((n, i) => (
-        <div class="cts-note" key={i}>
+        <div class={`cts-note ${step.impaired && /poisoned|drunk/i.test(n) ? 'cts-warn' : ''}`} key={i}>
           {n}
         </div>
       ))}
+      {step.character === 'imp' && g && (override === g.seat || (override === '' && step.response?.seats?.includes(g.seat))) && (
+        <div class="cts-note cts-warn">⚠ The Imp chose themself: star-pass — a Minion becomes the Imp (pick below, or auto).</div>
+      )}
+      {!finished && step.suggestedInfo && step.seat !== null && (
+        <form
+          class="cts-row cts-wrap"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const text = infoText.trim();
+            if (text) send({ type: 'send_info', seat: step.seat!, info: { ...step.suggestedInfo!, text: text.slice(0, 500), stepId: step.id } });
+          }}
+        >
+          <input class="cts-grow" value={infoText} maxLength={500} onInput={(e) => setInfoText((e.currentTarget as HTMLInputElement).value)} title="Edit before sending" />
+          <button type="submit" class="primary" disabled={!infoText.trim()}>
+            Send info
+          </button>
+          <small class="muted">{only(view.players, step.seat)}</small>
+        </form>
+      )}
       {step.response && (
         <div class="cts-resp">
           Answer:{' '}
@@ -593,11 +884,6 @@ function NightStep({ step, view, send, openComposer }: { step: NightStepView; vi
           {step.prompt && step.seat !== null && (
             <button onClick={() => send({ type: 'prompt_player', seat: step.seat!, prompt: step.prompt! })}>
               {step.status === 'prompted' ? 'Re-prompt' : 'Prompt'}
-            </button>
-          )}
-          {step.suggestedInfo && step.seat !== null && (
-            <button onClick={() => send({ type: 'send_info', seat: step.seat!, info: step.suggestedInfo! })} title={step.suggestedInfo.text}>
-              Send suggested
             </button>
           )}
           {step.seat !== null && (
@@ -654,6 +940,9 @@ function NightStep({ step, view, send, openComposer }: { step: NightStepView; vi
 
 function DayTab({ view, send }: { view: StorytellerGameView; send: Send }) {
   const [execSeat, setExecSeat] = useState<number | ''>('');
+  const [nomBy, setNomBy] = useState<number | ''>('');
+  const [nomOf, setNomOf] = useState<number | ''>('');
+  const [nomStart, setNomStart] = useState(true);
   const d = view.day;
   if (!d) return <p class="muted">Day controls appear during the day.</p>;
   const isDay = view.phase === 'day';
@@ -672,7 +961,7 @@ function DayTab({ view, send }: { view: StorytellerGameView; send: Send }) {
           />{' '}
           Nominations open
         </label>
-        {!isDay && <span class="muted">Day is over: these controls are read-only.</span>}
+        {!isDay && <span class="muted">Day is over: execution buttons here force it (no rules).</span>}
       </div>
       {d.nominations.length === 0 && <p class="muted">No nominations yet.</p>}
       <ul class="cts-list">
@@ -687,12 +976,23 @@ function DayTab({ view, send }: { view: StorytellerGameView; send: Send }) {
               </span>
             )}
             {isDay && n.status === 'pending' && (
-              <button class="primary" disabled={!!voting} onClick={() => send({ type: 'start_vote', nominationId: n.id })}>
+              <button
+                class="primary"
+                onClick={() => send(voting ? { type: 'force_vote', nominationId: n.id } : { type: 'start_vote', nominationId: n.id })}
+                title={voting ? 'Replaces the running vote' : undefined}
+              >
                 Start vote
               </button>
             )}
-            {isDay && (n.status === 'pending' || n.status === 'voting') && (
-              <button onClick={() => send({ type: 'cancel_nomination', nominationId: n.id })}>Cancel</button>
+            {(n.status === 'tallied' || n.status === 'cancelled') && (
+              <ConfirmButton class="cts-link" ask="Re-run this vote (votes reset)?" audience={EVERYONE} undo="yes" onConfirm={() => send({ type: 'force_vote', nominationId: n.id })}>
+                re-vote
+              </ConfirmButton>
+            )}
+            {(n.status === 'pending' || n.status === 'voting') && (
+              <ConfirmButton ask="Cancel this nomination?" audience={EVERYONE} undo="yes" onConfirm={() => send({ type: 'cancel_nomination', nominationId: n.id })}>
+                Cancel
+              </ConfirmButton>
             )}
             {isDay && (n.status === 'tallied' || n.status === 'voting') && Object.entries(n.votes).some(([, v]) => v) && (
               <div class="cts-row">
@@ -700,23 +1000,71 @@ function DayTab({ view, send }: { view: StorytellerGameView; send: Send }) {
                 {Object.entries(n.votes)
                   .filter(([, v]) => v)
                   .map(([seat]) => (
-                    <button
+                    <ConfirmButton
                       key={seat}
                       class="cts-link"
                       title="Strike this vote (e.g. a Butler who voted without their master)"
-                      onClick={() => confirm(`Strike the vote of ${seatLabel(view.players, Number(seat))}?`) && send({ type: 'strike_vote', nominationId: n.id, seat: Number(seat) })}
+                      ask={`Strike the vote of ${seatLabel(view.players, Number(seat))}?`}
+                      audience={EVERYONE}
+                      undo="yes"
+                      onConfirm={() => send({ type: 'strike_vote', nominationId: n.id, seat: Number(seat) })}
                     >
                       {seatLabel(view.players, Number(seat))} ✕
-                    </button>
+                    </ConfirmButton>
                   ))}
               </div>
             )}
           </li>
         ))}
       </ul>
+      <div class="cts-row cts-wrap">
+        <span class="muted">New nomination:</span>
+        <select value={nomBy} onChange={(e) => { const v = (e.currentTarget as HTMLSelectElement).value; setNomBy(v === '' ? '' : Number(v)); }}>
+          <option value="">nominator…</option>
+          {view.players.map((p) => (
+            <option key={p.seat} value={p.seat}>
+              {seatLabel(view.players, p.seat)}
+            </option>
+          ))}
+        </select>
+        →
+        <select value={nomOf} onChange={(e) => { const v = (e.currentTarget as HTMLSelectElement).value; setNomOf(v === '' ? '' : Number(v)); }}>
+          <option value="">nominee…</option>
+          {view.players.map((p) => (
+            <option key={p.seat} value={p.seat}>
+              {seatLabel(view.players, p.seat)}
+            </option>
+          ))}
+        </select>
+        <label class="cts-check">
+          <input type="checkbox" checked={nomStart} onChange={(e) => setNomStart((e.currentTarget as HTMLInputElement).checked)} /> start vote
+        </label>
+        <button
+          disabled={nomBy === '' || nomOf === ''}
+          onClick={() => {
+            if (nomBy === '' || nomOf === '') return;
+            send({ type: 'create_nomination', nominatorSeat: nomBy, nomineeSeat: nomOf, startVote: nomStart });
+            setNomBy('');
+            setNomOf('');
+          }}
+          title="Create a nomination regardless of the rules"
+        >
+          Create
+        </button>
+      </div>
       {voting && (
         <div class="cts-center">
           <VoteClock nom={voting} players={view.players} size={170} />
+        </div>
+      )}
+      {voting && (
+        <div class="cts-row cts-wrap cts-center">
+          <button class="primary" onClick={() => send({ type: 'close_vote', mode: 'tally' })}>
+            Close vote (tally)
+          </button>
+          <ConfirmButton ask="Discard this vote?" audience={EVERYONE} undo="yes" onConfirm={() => send({ type: 'close_vote', mode: 'cancel' })}>
+            Cancel vote
+          </ConfirmButton>
         </div>
       )}
       <div class="cts-block">
@@ -727,15 +1075,22 @@ function DayTab({ view, send }: { view: StorytellerGameView; send: Send }) {
             <span>
               On the block: <b>{seatLabel(view.players, d.onTheBlock.seat)}</b> ({d.onTheBlock.votes} votes)
             </span>
-            <button class="danger" disabled={!isDay || !!voting} onClick={() => send({ type: 'execute', seat: d.onTheBlock!.seat })}>
+            <ConfirmButton
+              class="danger"
+              ask={`Execute ${seatLabel(view.players, d.onTheBlock.seat)}?`}
+              audience={EVERYONE}
+              effects={deathEffects(view, d.onTheBlock.seat, 'execute')}
+              undo="yes"
+              onConfirm={() => send(isDay && !voting ? { type: 'execute', seat: d.onTheBlock!.seat } : { type: 'force_execute', seat: d.onTheBlock!.seat })}
+            >
               Execute
-            </button>
+            </ConfirmButton>
           </>
         ) : (
           <span class="muted">Nobody is on the block.</span>
         )}
       </div>
-      {isDay && d.executedSeat === null && (
+      {d.executedSeat === null && (
         <div class="cts-row">
           <select value={execSeat} onChange={(e) => { const v = (e.currentTarget as HTMLSelectElement).value; setExecSeat(v === '' ? '' : Number(v)); }}>
             <option value="">execute someone else…</option>
@@ -745,12 +1100,20 @@ function DayTab({ view, send }: { view: StorytellerGameView; send: Send }) {
               </option>
             ))}
           </select>
-          <button class="danger" disabled={execSeat === '' || !!voting} onClick={() => execSeat !== '' && send({ type: 'execute', seat: execSeat })}>
+          <ConfirmButton
+            class="danger"
+            disabled={execSeat === ''}
+            ask={execSeat === '' ? undefined : `Execute ${seatLabel(view.players, execSeat)}?`}
+            audience={EVERYONE}
+            effects={execSeat === '' ? undefined : deathEffects(view, execSeat, 'execute')}
+            undo="yes"
+            onConfirm={() => execSeat !== '' && send(isDay && !voting ? { type: 'execute', seat: execSeat } : { type: 'force_execute', seat: execSeat })}
+          >
             Execute
-          </button>
-          <button disabled={!!voting} onClick={() => send({ type: 'execute', seat: null })}>
+          </ConfirmButton>
+          <ConfirmButton ask="Declare no execution today?" audience={EVERYONE} effects={noExecutionEffects(view)} undo="yes" onConfirm={() => send(isDay && !voting ? { type: 'execute', seat: null } : { type: 'force_execute', seat: null })}>
             No execution
-          </button>
+          </ConfirmButton>
         </div>
       )}
     </div>
@@ -779,6 +1142,7 @@ function ToolsTab({ view, send, composer, setComposer }: { view: StorytellerGame
         <input class="cts-grow" value={announce} maxLength={300} placeholder="Public announcement…" onInput={(e) => setAnnounce((e.currentTarget as HTMLInputElement).value)} />
         <button type="submit">Announce</button>
       </form>
+      <small class="muted">📢 {EVERYONE}</small>
       <h4>Travel & timers</h4>
       <label class="cts-field">
         Travel speed ×{view.travelSpeedMult}
@@ -809,20 +1173,26 @@ function ToolsTab({ view, send, composer, setComposer }: { view: StorytellerGame
       <h4>Declare winner</h4>
       <div class="cts-row">
         <input class="cts-grow" value={winReason} maxLength={200} placeholder="Reason (optional)" onInput={(e) => setWinReason((e.currentTarget as HTMLInputElement).value)} />
-        <button
+        <ConfirmButton
           class="cts-good-btn"
           disabled={over}
-          onClick={() => confirm('Declare GOOD the winner?') && send({ type: 'declare_winner', winner: 'good', reason: winReason || 'Declared by the Storyteller.' })}
+          ask="Declare GOOD the winner?"
+          audience="Everyone sees the result and every character."
+          undo="final"
+          onConfirm={() => send({ type: 'declare_winner', winner: 'good', reason: winReason || 'Declared by the Storyteller.' })}
         >
           Good wins
-        </button>
-        <button
+        </ConfirmButton>
+        <ConfirmButton
           class="cts-evil-btn"
           disabled={over}
-          onClick={() => confirm('Declare EVIL the winner?') && send({ type: 'declare_winner', winner: 'evil', reason: winReason || 'Declared by the Storyteller.' })}
+          ask="Declare EVIL the winner?"
+          audience="Everyone sees the result and every character."
+          undo="final"
+          onConfirm={() => send({ type: 'declare_winner', winner: 'evil', reason: winReason || 'Declared by the Storyteller.' })}
         >
           Evil wins
-        </button>
+        </ConfirmButton>
       </div>
     </div>
   );
@@ -979,9 +1349,12 @@ function Composer({ view, send, composer, setComposer }: { view: StorytellerGame
           )}
         </>
       )}
-      <button class="primary" disabled={!canSend} onClick={doSend}>
-        Send {composer.mode}
-      </button>
+      <div class="cts-row">
+        <button class="primary" disabled={!canSend} onClick={doSend}>
+          Send {composer.mode}
+        </button>
+        {composer.seat !== null && <small class="muted">🔒 {only(view.players, composer.seat)}</small>}
+      </div>
     </div>
   );
 }

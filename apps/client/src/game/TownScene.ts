@@ -29,6 +29,7 @@ import {
 import { localPlayer, remoteEntities } from '../net/localPlayer';
 import type { RoomConnection } from '../net/room';
 import { playCue, type Cue } from './audio';
+import { createGameplayLayer, type GameplayLayer } from './gameplay';
 import { appearanceKey, CHAR, CHARACTERS_URL, composeSheet, layerKeys, type SpriteKind } from './sprites';
 
 const L = townLayout;
@@ -151,6 +152,7 @@ export class TownScene extends Phaser.Scene {
   private offs: (() => void)[] = [];
   // local player
   private myPid: string | null = null;
+  private gameplay: GameplayLayer | null = null;
   private ready = false;
   private me = { x: 0, y: 0, facing: 'down' as Dir, moving: false, location: 'outdoors' as LocationId };
   private seq = 0;
@@ -287,6 +289,8 @@ export class TownScene extends Phaser.Scene {
     this.input.on('pointerup', () => (this.pointerTarget = null));
     this.input.on('pointerupoutside', () => (this.pointerTarget = null));
 
+    this.gameplay = createGameplayLayer(this, { conn: this.bridge.conn, myPid: () => this.myPid, me: () => this.me, amStoryteller: () => this.amStoryteller() });
+    this.offs.push(() => { this.gameplay?.destroy(); this.gameplay = null; });
     if (import.meta.env.DEV) (window as unknown as { __town?: TownScene }).__town = this;
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.cleanup());
     this.events.once(Phaser.Scenes.Events.DESTROY, () => this.cleanup());
@@ -426,7 +430,10 @@ export class TownScene extends Phaser.Scene {
   }
 
   private doorLocked(d: { b: BuildingDef; exit: boolean }): boolean {
-    if (this.amStoryteller() || !LOCKED.has(this.phase)) return false;
+    if (this.amStoryteller()) return false;
+    const o = this.gameplay?.doorOverride(d.b.id);
+    if (o !== null && o !== undefined) return o;
+    if (!LOCKED.has(this.phase)) return false;
     const home = this.mySeat() === null ? null : `house-${this.mySeat()}`;
     return d.exit ? d.b.id === home : d.b.id !== home;
   }
@@ -486,11 +493,21 @@ export class TownScene extends Phaser.Scene {
       this.findDoor();
     }
     this.stepRemotes();
+    this.gameplay?.update(dt);
     this.updateCamera(dt);
     this.updateLighting(dt);
   }
 
   private stepLocal(dt: number, now: number) {
+    // Server-driven walk / freeze / ST pick mode: the server pose replaces local input.
+    const d = this.gameplay?.drive(dt) ?? null;
+    if (d) {
+      this.me.x = d.x; this.me.y = d.y; this.me.facing = d.facing; this.me.moving = d.moving;
+      this.myAvatar!.setPose(d.x, d.y, d.facing, d.moving);
+      this.lastSent = { x: d.x, y: d.y, moving: false, facing: d.facing };
+      this.publishLocal(false);
+      return;
+    }
     let vx = 0;
     let vy = 0;
     if (this.keys.has('left')) vx -= 1;

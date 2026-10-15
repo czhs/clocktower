@@ -820,8 +820,10 @@ export async function verifyFinished(g: Game, expected: { winner?: 'good' | 'evi
 
 const PLAYER_VIEW_KEYS = [
   'announcements',
+  'bedtimeOvertime',
   'day',
   'dayNumber',
+  'gathering',
   'info',
   'kind',
   'phase',

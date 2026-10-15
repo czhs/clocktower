@@ -1,41 +1,69 @@
 import { useState } from 'preact/hooks';
-import { DISPLAY_NAME_MAX, type AccountView } from '@ct/protocol';
+import { DEFAULT_COSMETICS, DISPLAY_NAME_MAX, type AccountView, type Cosmetics } from '@ct/protocol';
 import { api } from '../../net/api';
 import { copyText, errorText } from '../lobby/finder';
+import { HowToPlayHost, openHelp } from '../common/HowToPlay';
+import { CosmeticEditor, randomPreset } from '../lobby/CosmeticEditor';
 import './auth.css';
 
-// OWNED BY lobby-auth. Passphrase-only accounts: Create Account (generated passphrase shown
-// exactly once) / Sign In (passphrase only — there is no username).
+// Passphrase-only accounts: Create Account (generated passphrase shown exactly once) / Sign In
+// (passphrase only — there is no username). Opened from a shared /lobby/<id> link, it says so; the
+// app returns to that lobby after sign-in (main.tsx keeps the route).
 
-type Mode = { m: 'choose' } | { m: 'create' } | { m: 'reveal'; account: AccountView; passphrase: string } | { m: 'signin' };
+type Mode = { m: 'choose' } | { m: 'create' } | { m: 'reveal'; account: AccountView; passphrase: string; cosmetics: Cosmetics } | { m: 'signin' };
 
 export function AuthScreen({ onSignedIn }: { onSignedIn: (a: AccountView) => void }) {
   const [mode, setMode] = useState<Mode>({ m: 'choose' });
+  const invited = /^\/lobby\/[A-Za-z0-9_-]{4,32}\/?$/.test(location.pathname);
   return (
     <div class="screen center ct-auth">
       <div class="panel ct-auth-panel">
         <h1 class="ct-auth-title">Clocktower Town</h1>
         <p class="muted ct-auth-sub">A gothic town of whispers, nominations and night visits.</p>
+        {invited && mode.m !== 'reveal' && (
+          <p class="ct-auth-invite" role="status">
+            You've been invited to a lobby. Create an account or sign in and you'll be taken straight there.
+          </p>
+        )}
         {mode.m === 'choose' && (
           <div class="ct-auth-choose">
             <button class="primary" onClick={() => setMode({ m: 'create' })}>
               Create account
             </button>
             <button onClick={() => setMode({ m: 'signin' })}>Sign in with passphrase</button>
+            <p class="muted ct-small ct-auth-note">
+              No email or username — your account is a secret passphrase we generate for you.{' '}
+              <button class="ct-link" onClick={openHelp}>
+                How to play
+              </button>
+            </p>
           </div>
         )}
         {mode.m === 'create' && (
-          <CreateForm onBack={() => setMode({ m: 'choose' })} onCreated={(account, passphrase) => setMode({ m: 'reveal', account, passphrase })} />
+          <CreateForm onBack={() => setMode({ m: 'choose' })} onCreated={(account, passphrase, cosmetics) => setMode({ m: 'reveal', account, passphrase, cosmetics })} />
         )}
-        {mode.m === 'reveal' && <Reveal passphrase={mode.passphrase} onDone={() => onSignedIn(mode.account)} />}
+        {mode.m === 'reveal' && <Reveal passphrase={mode.passphrase} onDone={() => enterAsNew(mode.account, mode.cosmetics, onSignedIn)} />}
         {mode.m === 'signin' && <SignInForm onBack={() => setMode({ m: 'choose' })} onSignedIn={onSignedIn} />}
       </div>
+      <HowToPlayHost />
     </div>
   );
 }
 
-function CreateForm({ onBack, onCreated }: { onBack: () => void; onCreated: (a: AccountView, passphrase: string) => void }) {
+/** Apply the villager picked during sign-up (a random premade one unless they chose). Failure is
+ * harmless: they keep the default look and can change it on the home screen. */
+async function enterAsNew(account: AccountView, cosmetics: Cosmetics, onSignedIn: (a: AccountView) => void) {
+  if (account.cosmetics.preset === cosmetics.preset && !cosmetics.preset) return onSignedIn(account);
+  try {
+    onSignedIn(await api.updateMe({ cosmetics }));
+  } catch {
+    onSignedIn(account);
+  }
+}
+
+function CreateForm({ onBack, onCreated }: { onBack: () => void; onCreated: (a: AccountView, passphrase: string, cosmetics: Cosmetics) => void }) {
   const [name, setName] = useState('');
+  const [look, setLook] = useState<Cosmetics>(() => ({ ...DEFAULT_COSMETICS, preset: randomPreset() }));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const submit = async (e: Event) => {
@@ -45,7 +73,7 @@ function CreateForm({ onBack, onCreated }: { onBack: () => void; onCreated: (a: 
     setError(null);
     try {
       const r = await api.createAccount(name.trim());
-      onCreated(r.account, r.passphrase);
+      onCreated(r.account, r.passphrase, { ...r.account.cosmetics, preset: look.preset ?? null });
     } catch (err) {
       setError(errorText(err));
       setBusy(false);
@@ -65,6 +93,10 @@ function CreateForm({ onBack, onCreated }: { onBack: () => void; onCreated: (a: 
         />
         <small class="muted">Shown to other players; it does not need to be unique and you can change it later.</small>
       </label>
+      <div class="ct-field">
+        <span>Pick your villager</span>
+        <CosmeticEditor value={look} onChange={setLook} compact simple />
+      </div>
       {error && <p class="ct-error" role="alert">{error}</p>}
       <div class="ct-row">
         <button type="button" onClick={onBack} disabled={busy}>

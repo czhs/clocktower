@@ -99,7 +99,7 @@ test('M3: Storyteller-guided round with 1 ST + 5 players', async ({ browser }) =
     });
 
     const grimoire = await step('ST random setup (Grimoire filled)', 'ui', async () => {
-      await st.page.getByRole('button', { name: 'Random setup' }).click();
+      await st.page.getByRole('button', { name: 'Random setup', exact: true }).click();
       return st.tap.until(() => gv(st)?.grimoire?.length === 5 && gv(st).grimoire, 10_000, 'grimoire with 5 entries');
     });
 

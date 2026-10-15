@@ -10,22 +10,26 @@
 .ct-countdown-low { color: var(--danger); animation: cth-pulse 1s infinite; }
 @keyframes cth-pulse { 50% { opacity: 0.45; } }
 
-/* phase bar */
+/* phase pill (tiny, top-right, first item of the right dock) */
 .cth-phase {
-  position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
-  display: flex; align-items: center; gap: 8px; padding: 5px 16px;
-  background: linear-gradient(#241d31f0, #16121ef0); border: 1px solid var(--border);
-  border-radius: 16px; box-shadow: 0 4px 14px #0008, inset 0 0 0 1px #c9a24a1f;
+  display: flex; align-items: center; gap: 6px; padding: 2px 10px; font-size: 12px;
+  background: #1b1724cc; border: 1px solid var(--border);
+  border-radius: 12px; box-shadow: 0 2px 8px #0006;
   font-variant: small-caps; letter-spacing: 0.06em; white-space: nowrap;
 }
+.cth-phase .ct-countdown { margin-left: 2px; }
 .cth-phase-icon { color: var(--accent); }
 .cth-phase-night .cth-phase-icon, .cth-phase-first_night .cth-phase-icon { color: #9fb4e8; }
 .cth-phase-name { color: var(--text); }
-.cth-visit {
-  margin-left: 8px; padding: 1px 8px; border-radius: 10px; color: #e8d9ff;
-  background: #4b3a6a; border: 1px solid #8a6fb0; font-variant: normal; letter-spacing: 0;
-  animation: cth-pulse 2.4s infinite;
+.cth-visit { animation: cth-pulse 2.4s infinite; }
+
+/* right dock: phase pill, then prompt / vote cards only while actionable (never centred) */
+.cth > .cth-dock {
+  position: absolute; top: 10px; right: 12px; width: min(300px, calc(100vw - 24px));
+  max-height: calc(100vh - 220px); overflow-y: auto; overflow-x: hidden;
+  display: flex; flex-direction: column; align-items: flex-end; gap: 6px; pointer-events: none;
 }
+.cth-dock > * { pointer-events: auto; }
 
 /* toasts */
 .cth-toasts {
@@ -42,16 +46,23 @@
 .cth-toast-game_over { border-left-color: #fff; font-weight: bold; }
 @keyframes cth-in { from { opacity: 0; transform: translateY(-6px); } }
 
-/* status card */
+/* character / house chip (top-left): expands on hover or click */
 .cth-card {
   position: absolute; top: 10px; left: 12px; width: 300px; max-width: calc(100vw - 24px);
   max-height: calc(100vh - 230px); display: flex; flex-direction: column;
   background: var(--panel); border: 1px solid var(--border); border-radius: 6px;
   box-shadow: 0 6px 18px #0009, inset 0 0 0 1px #c9a24a14;
 }
-.cth-card-closed { width: auto; max-width: 300px; }
-.cth-card-head { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-bottom: 1px solid var(--border); }
-.cth-card-closed .cth-card-head { border-bottom: none; }
+.cth-card-closed { width: auto; max-width: min(300px, calc(100vw - 24px)); background: #1b1724cc; border-radius: 14px; box-shadow: 0 2px 8px #0006; }
+.cth .cth-card-head {
+  display: flex; align-items: center; gap: 6px; padding: 4px 10px; border: none; border-bottom: 1px solid var(--border);
+  background: none; border-radius: 0; color: inherit; text-align: left; cursor: pointer; width: 100%; min-height: 0;
+}
+.cth-card-closed .cth-card-head { border-bottom: none; padding: 2px 10px; }
+.cth-card-closed .cth-role-name { font-size: 13px; flex: 0 1 auto; }
+.cth-card-closed .cth-role-name small { display: none; }
+.cth-house { color: var(--text); }
+.cth-pin { color: var(--accent); font-size: 10px; }
 .cth-toggle { padding: 0 6px !important; background: none; border: none; color: var(--accent); }
 .cth-role-name { flex: 1; font-variant: small-caps; letter-spacing: 0.05em; font-size: 15px; }
 .cth-role-name small { color: var(--muted); font-size: 11px; font-variant: normal; }
@@ -97,11 +108,11 @@ p.cth-ability { padding: 0; }
 .cth-table td { padding: 3px 4px; border-bottom: 1px solid #3d335044; vertical-align: top; }
 .cth-table tr.dead td { opacity: 0.6; }
 
-/* prompt */
+/* prompt (docked right while open) */
 .cth-prompt {
-  position: absolute; top: 56px; left: 50%; transform: translateX(-50%); width: min(420px, 92vw);
+  width: 100%; box-sizing: border-box;
   background: linear-gradient(#2a2238f5, #1b1724f5); border: 1px solid var(--accent); border-radius: 8px;
-  padding: 12px 16px; box-shadow: 0 10px 30px #000b; max-height: 60vh; overflow: auto;
+  padding: 10px 12px; box-shadow: 0 8px 24px #000b; animation: cth-in 200ms ease-out;
 }
 .cth-prompt h3 { margin: 0 0 6px; font-variant: small-caps; letter-spacing: 0.06em; color: var(--accent); }
 .cth-prompt p { margin: 4px 0 8px; }
@@ -109,17 +120,16 @@ p.cth-ability { padding: 0; }
 .cth-choices button.on { background: #5b4320; border-color: var(--accent); }
 .cth-row { display: flex; gap: 8px; margin-top: 8px; }
 
-/* voting */
+/* voting (docked right; a pill unless the vote needs you) */
 .cth-vote {
-  position: absolute; top: 56px; right: 12px; width: 220px; display: flex; flex-direction: column; align-items: center; gap: 6px;
+  position: relative; width: 220px; display: flex; flex-direction: column; align-items: center; gap: 6px;
   background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 8px; box-shadow: 0 6px 18px #0009;
 }
+.cth .cth-vote-pill { font-size: 12px; padding: 2px 10px; border-radius: 12px; background: #1b1724dd; border: 1px solid #c9a24a88; max-width: 100%; text-align: right; }
+.cth .cth-vote-hide { position: absolute; top: 2px; right: 4px; padding: 0 6px; background: none; border: none; color: var(--muted); }
 .cth-vote-sum { text-align: center; }
 .cth-vote-actions { display: flex; flex-direction: column; align-items: center; gap: 4px; }
-.cth-block {
-  position: absolute; top: 48px; right: 12px; padding: 5px 12px; background: #3a1714ee;
-  border: 1px solid #c0413b99; border-radius: 4px;
-}
+.cth-block { padding: 2px 10px; font-size: 12px; background: #3a1714dd; border: 1px solid #c0413b99; border-radius: 12px; }
 .ct-voteclock { display: block; }
 .ct-vc-ring { fill: #120f18; stroke: var(--border); stroke-width: 2; }
 .ct-vc-hand { stroke: var(--accent); stroke-width: 3; stroke-linecap: round; transition: all 200ms; }
@@ -139,10 +149,39 @@ p.cth-ability { padding: 0; }
   border: 1px solid var(--accent); border-radius: 10px; padding: 16px 20px; box-shadow: 0 20px 60px #000d; z-index: 40;
 }
 .cth-endgame h2 { margin: 0 0 4px; font-variant: small-caps; letter-spacing: 0.08em; }
-.cth-endgame-reopen { position: absolute; top: 10px; right: 12px; }
+.cth-endgame-reopen { position: absolute; top: 44px; right: 12px; }
 
 @media (max-width: 720px) {
   .cth-card { max-height: 45vh; width: 260px; }
-  .cth-vote { top: auto; bottom: 70px; }
+  .cth > .cth-dock { top: 44px; width: min(260px, calc(100vw - 24px)); max-height: 50vh; }
 }
 .cth-toast-error { border-left-color: var(--danger); background: #3a1714ee; color: #f6c9c0; }
+
+/* (gameplay) movement hint: bottom-centre above the door prompt */
+.cth-hint {
+  position: absolute; left: 50%; bottom: calc(140px + var(--safe-bottom, 0px)); transform: translateX(-50%);
+  display: flex; align-items: center; gap: 6px; padding: 6px 14px; max-width: calc(100vw - 32px);
+  background: linear-gradient(#2a2238f2, #1b1724f2); border: 1px solid var(--accent); border-radius: 16px;
+  box-shadow: 0 4px 16px #000a; font-size: 14px; text-align: center; pointer-events: none;
+}
+.cth-hint { transition: opacity 600ms, padding 300ms, font-size 300ms; }
+.cth-hint.pill { padding: 2px 10px; font-size: 12px; opacity: 0.9; }
+.cth-hint.fade { animation: cth-hintfade 6.6s ease-in-out forwards; }
+@keyframes cth-hintfade { 0% { opacity: 0; } 5% { opacity: 1; } 88% { opacity: 1; } 100% { opacity: 0; } }
+.cth-hint.ok { border-color: #6fae6a99; color: var(--ok); }
+.cth-hint.auto { border-color: #8a6fb0; color: #e8d9ff; }
+.cth-hint.frozen { border-color: #7fb6d8; color: #cfe6f6; }
+.cth-hint .ct-countdown { margin-left: 4px; }
+.cth-nominee { color: var(--evil); }
+.cth-tally { font-family: var(--mono); color: var(--accent); }
+.cth-tally.reached { color: var(--ok); }
+.cth-yourturn { color: #fff; font-weight: bold; animation: cth-pulse 1s infinite; }
+.cth-hand { min-width: 140px; }
+@media (max-width: 720px) {
+  .cth-hint { bottom: calc(190px + var(--safe-bottom, 0px)); font-size: 13px; }
+}
+.cth-hint.private { border-color: #8a6fb0; color: #e8d9ff; background: linear-gradient(#3b2f5af2, #241d38f2); }
+.cth-hint.vote { border-color: var(--accent); color: #fff; }
+.cth-hint.night { border-color: #5d6fa0; color: #c9d6f2; }
+.cth-hint.dead { border-color: var(--border); color: var(--muted); }
+.cth-ok { color: var(--ok); }

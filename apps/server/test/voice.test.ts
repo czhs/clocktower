@@ -42,6 +42,15 @@ function fakeWorld() {
     sendHome() {},
     teleportToBuilding() {},
     exitBuilding() {},
+    setCircle: () => undefined,
+    setEscort: () => undefined,
+    isHome: () => false,
+    teleportTo: () => null,
+    walkTo: () => null,
+    setFrozen: () => undefined,
+    setDoorLock: () => null,
+    stageView: () => ({ players: [], doors: {}, storytellerLocation: null }),
+    applySettings: () => undefined,
     tick() {},
   };
   return { w, pos };

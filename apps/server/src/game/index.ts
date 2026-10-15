@@ -1,13 +1,27 @@
 // OWNED BY rules-storyteller. Wraps @ct/rules for one lobby: authorisation (ST / seat / phase),
 // timers (bedtime countdown, voting clock hand), cross-module events and per-client projections.
 // The full GameState never leaves this module; clients only get projectForPlayer / projectForStoryteller.
+//
+// (gameplay 2026-10-15) Walking-not-teleporting + Storyteller "props":
+//   * bedtime: the world module tells us when every seated player is inside their own home
+//     (isHome); the rules tick then starts the night. When the countdown ends the rules engine
+//     enters "overtime" and we turn on the world's escort (server-driven walk home).
+//   * the nomination circle and the escort are synced from the rules state into the world after
+//     every change (setCircle / setEscort), so undo and forced phases stay consistent.
+//   * physical ST commands (teleport / walk_to / freeze / door_lock) go to the world module; every
+//     other command goes through the rules engine, which only advises (alerts), never gates.
+//   * structured info logs: phase changes, nominations, tallies, executions, ST command types and
+//     rejected actions. Never characters, prompt/info contents or (at night) ST targets.
 import { randomBytes } from 'node:crypto';
-import type { AnnouncementView, C2SParsed, DirectoryPhase, GamePhase, PlayerGameView, StorytellerGameView } from '@ct/protocol';
+import { townLayout } from '@ct/assets';
+import { homeBuilding, seatOfBuilding, type TownLayout } from '@ct/protocol';
+import type { AnnouncementView, C2SParsed, DirectoryPhase, GamePhase, PlayerGameView, StCommand, StorytellerGameView } from '@ct/protocol';
 import {
   applyPlayerAction,
   applyStCommand,
   createGame,
   mulberry32,
+  noteStoryteller,
   projectForPlayer,
   projectForStoryteller,
   setPlayerConnected,
@@ -29,6 +43,10 @@ export interface GameModuleOptions {
   voteStepMs?: number;
   /** Initial bedtime countdown (s); the ST can change it with set_bedtime_seconds. */
   bedtimeSeconds?: number;
+  /** Bedtime: night falls once every player has been home for this long (a theatrical beat). */
+  nightfallGraceMs?: number;
+  /** Town layout (homes for visits). Default: the shipped @ct/assets layout. */
+  layout?: TownLayout;
 }
 
 type PlayerMsgType = 'game:nominate' | 'game:vote' | 'game:promptResponse' | 'game:slayerShot';
@@ -39,11 +57,38 @@ interface PublicSnapshot {
   alive: Map<number, boolean>;
   visitingSeat: number | null;
   finished: boolean;
+  dayNumber: number;
+  /** nomination id -> status (for logging nominations / tallies). */
+  noms: Map<string, string>;
+  executedSeat: number | null;
 }
 
 const NIGHT_PHASES: GamePhase[] = ['first_night', 'night'];
+/** Phases during which ST targets are secret (logs carry only the command type). */
+const SECRET_PHASES: GamePhase[] = ['first_night', 'night', 'dawn'];
+/** Physical "props" handled by the world module. */
+const STAGE_COMMANDS = new Set<StCommand['type']>(['teleport', 'walk_to', 'freeze', 'door_lock']);
+/** ST commands whose seat is public by day (logged with the seat outside night phases). */
+const PUBLIC_SEAT_COMMANDS = new Set<StCommand['type']>([
+  'execute',
+  'force_execute',
+  'set_block',
+  'create_nomination',
+  'cancel_nomination',
+  'start_vote',
+  'force_vote',
+  'strike_vote',
+  'set_vote',
+  'teleport',
+  'walk_to',
+  'freeze',
+]);
 
 export function createGameModule(host: RoomHost, opts: GameModuleOptions = {}): GameModule {
+  const opts0 = opts;
+  const layout = opts.layout ?? townLayout;
+  /** Bedtime: since when every seated player has been inside their own home (nightfall beat). */
+  let allHomeSince: number | null = null;
   let state: GameState | null = null;
   let stPid: string | null = null;
   const seatByPid = new Map<string, number>();
@@ -55,7 +100,49 @@ export function createGameModule(host: RoomHost, opts: GameModuleOptions = {}): 
     alive: new Map(s.players.map((p) => [p.seat, p.publicAlive])),
     visitingSeat: s.visitingSeat,
     finished: s.phase === 'finished',
+    dayNumber: s.dayNumber,
+    noms: new Map((s.day?.nominations ?? []).map((n) => [n.id, n.status])),
+    executedSeat: s.day?.executedSeat ?? null,
   });
+  /** Last values pushed into the world (circle / escort). */
+  let synced = { circle: '', escort: false, settings: '' };
+
+  /** Push rules-side stage state into the world (idempotent). */
+  function syncWorld() {
+    const s = state;
+    const w = world();
+    if (!s || !w) return;
+    const circle = s.gathering ? s.players.map((p) => p.seat).join(',') : '';
+    if (circle !== synced.circle) {
+      w.setCircle(s.gathering ? s.players.map((p) => p.seat) : null);
+      synced.circle = circle;
+    }
+    const settings = JSON.stringify(s.settings);
+    if (settings !== synced.settings) {
+      w.applySettings({ ...s.settings });
+      synced.settings = settings;
+    }
+    const escort = s.phase === 'bedtime' && s.bedtimeOvertime;
+    if (escort !== synced.escort) {
+      w.setEscort(escort);
+      synced.escort = escort;
+    }
+  }
+
+  function logChanges(before: PublicSnapshot) {
+    const s = state!;
+    const base = { lobbyId: host.lobbyId, phase: s.phase, day: s.dayNumber };
+    if (s.phase !== before.phase) host.log.info('phase changed', { ...base, prev: before.phase });
+    for (const n of s.day?.nominations ?? []) {
+      const was = before.dayNumber === s.dayNumber ? before.noms.get(n.id) : undefined;
+      if (was === n.status) continue;
+      if (was === undefined) host.log.info('nomination', { ...base, nominatorSeat: n.nominatorSeat, nomineeSeat: n.nomineeSeat });
+      if (n.status === 'voting') host.log.info('vote started', { ...base, nomineeSeat: n.nomineeSeat });
+      if (n.status === 'tallied') host.log.info('vote tallied', { ...base, nomineeSeat: n.nomineeSeat, votes: n.voteCount, threshold: n.threshold });
+    }
+    const ex = s.day?.executedSeat ?? null;
+    if (ex !== null && (ex !== before.executedSeat || before.dayNumber !== s.dayNumber)) host.log.info('execution', { ...base, seat: ex });
+  }
 
   function world() {
     try {
@@ -88,7 +175,10 @@ export function createGameModule(host: RoomHost, opts: GameModuleOptions = {}): 
             }
           break;
         case 'visit_home':
-          if (stPid) world()?.teleportToBuilding(stPid, `house-${e.seat}`, 'storyteller');
+          if (stPid) {
+            const home = homeBuilding(layout, e.seat);
+            if (home) world()?.teleportToBuilding(stPid, home.id, 'storyteller');
+          }
           break;
         case 'leave_home':
           // Fast travel back outside the visited home; visit_changed follows from location_changed.
@@ -97,11 +187,10 @@ export function createGameModule(host: RoomHost, opts: GameModuleOptions = {}): 
         case 'travel_speed':
           if (stPid) host.emit({ type: 'travel_speed', pid: stPid, mult: e.mult });
           break;
-        case 'send_home': {
-          const w = world();
-          if (w) for (const pid of seatByPid.keys()) w.sendHome(pid, e.reason);
+        case 'send_home':
+          // Nightfall placement is the world module's job (phase_changed): players already home
+          // walk to bed; only a player still en route (a forced night) is teleported.
           break;
-        }
       }
     }
   }
@@ -126,8 +215,57 @@ export function createGameModule(host: RoomHost, opts: GameModuleOptions = {}): 
       host.markLobbyDirty();
     }
     if (s.phase !== before.phase) host.markLobbyDirty();
+    logChanges(before);
     runEffects(effects);
+    syncWorld();
     host.markGameDirty();
+  }
+
+  function stageCommand(pid: string, cmd: Extract<StCommand, { type: 'teleport' | 'walk_to' | 'freeze' | 'door_lock' }>) {
+    const s = state!;
+    const w = world();
+    if (!w) return host.send(pid, 'error', { code: 'internal', message: 'No world', for: 'st:command' });
+    const err = (message: string) => host.send(pid, 'error', { code: 'invalid', message, for: 'st:command' });
+    if (cmd.type === 'door_lock') {
+      const e = w.setDoorLock(cmd.buildingId, cmd.lock === 'default' ? null : cmd.lock === 'locked');
+      if (e) return err(e);
+      noteStoryteller(s, host.now(), `Door of ${cmd.buildingId}: ${cmd.lock}`);
+      host.markGameDirty();
+      return;
+    }
+    const seats = cmd.who === 'all' ? s.players.map((p) => p.seat) : [...new Set(cmd.who)];
+    const pids: string[] = [];
+    for (const seat of seats) {
+      const p = pidBySeat.get(seat);
+      if (!p) return err(`No player in seat ${seat + 1}`);
+      pids.push(p);
+    }
+    const errors: string[] = [];
+    for (const p of pids) {
+      const e = cmd.type === 'teleport' ? w.teleportTo(p, cmd.to) : cmd.type === 'walk_to' ? w.walkTo(p, cmd.to) : (w.setFrozen(p, cmd.frozen), null);
+      if (e) errors.push(`seat ${seatByPid.get(p)! + 1}: ${e}`);
+    }
+    const whoText = cmd.who === 'all' ? 'everyone' : seats.map((x) => `seat ${x + 1}`).join(', ');
+    const what =
+      cmd.type === 'teleport' ? `Teleported ${whoText} to ${cmd.to.kind}` : cmd.type === 'walk_to' ? (cmd.to ? `Walking ${whoText} to ${cmd.to.kind}` : `Stopped walking ${whoText}`) : `${cmd.frozen ? 'Froze' : 'Unfroze'} ${whoText}`;
+    noteStoryteller(s, host.now(), what);
+    host.markGameDirty();
+    if (errors.length) err(errors.join('; '));
+  }
+
+  function logStCommand(cmd: StCommand, ok: boolean, code?: string) {
+    const s = state;
+    const phase = s?.phase ?? null;
+    const data: Record<string, unknown> = { lobbyId: host.lobbyId, phase, day: s?.dayNumber ?? 0, cmd: cmd.type };
+    if (phase && !SECRET_PHASES.includes(phase) && PUBLIC_SEAT_COMMANDS.has(cmd.type)) {
+      const c = cmd as { seat?: number | null; who?: number[] | 'all'; nominatorSeat?: number; nomineeSeat?: number };
+      if (c.seat !== undefined) data.seat = c.seat;
+      if (c.who !== undefined) data.who = c.who;
+      if (c.nominatorSeat !== undefined) data.nominatorSeat = c.nominatorSeat;
+      if (c.nomineeSeat !== undefined) data.nomineeSeat = c.nomineeSeat;
+    }
+    if (ok) host.log.info('st command', data);
+    else host.log.info('st command rejected', { ...data, code });
   }
 
   function reportError(pid: string, r: CommandResult, forType: string) {
@@ -162,8 +300,8 @@ export function createGameModule(host: RoomHost, opts: GameModuleOptions = {}): 
     const before = snap(s);
     let seat: number | null = null;
     if (NIGHT_PHASES.includes(s.phase)) {
-      const m = /^bld:house-(\d+)$/.exec(location);
-      if (m && pidBySeat.has(Number(m[1]))) seat = Number(m[1]);
+      const home = location.startsWith('bld:') ? seatOfBuilding(layout, location.slice(4)) : null;
+      if (home !== null && pidBySeat.has(home)) seat = home;
     }
     if (setVisiting(s, seat)) commit(before, []);
   }
@@ -195,6 +333,7 @@ export function createGameModule(host: RoomHost, opts: GameModuleOptions = {}): 
         pidBySeat.set(x.seat, x.pid);
       }
       stPid = storytellerPid;
+      synced = { circle: '', escort: false, settings: '' };
       state = createGame({
         players: seats.map((x) => ({ pid: x.pid, seat: x.seat, name: x.name })),
         rng: mulberry32(seed),
@@ -217,7 +356,11 @@ export function createGameModule(host: RoomHost, opts: GameModuleOptions = {}): 
       if (seat === undefined) return host.send(pid, 'error', { code: 'forbidden', message: 'You are not seated in this game', for: type });
       const before = snap(s);
       const r = applyPlayerAction(s, seat, toAction(type, payload), { now: host.now() });
-      if (!r.ok) return reportError(pid, r, type);
+      if (!r.ok) {
+        const secret = SECRET_PHASES.includes(s.phase);
+        host.log.info('player action rejected', { lobbyId: host.lobbyId, phase: s.phase, day: s.dayNumber, action: type, code: r.code, ...(secret ? {} : { seat }) });
+        return reportError(pid, r, type);
+      }
       commit(before, r.effects);
     },
 
@@ -226,8 +369,14 @@ export function createGameModule(host: RoomHost, opts: GameModuleOptions = {}): 
       if (pid !== host.storytellerPid() || (stPid !== null && pid !== stPid))
         return host.send(pid, 'error', { code: 'forbidden', message: 'Only the Storyteller can do that', for: 'st:command' });
       if (!s) return host.send(pid, 'error', { code: 'phase', message: 'No game in progress', for: 'st:command' });
+      if (STAGE_COMMANDS.has(cmd.type)) {
+        if (s.phase === 'finished') return host.send(pid, 'error', { code: 'phase', message: 'The game is over', for: 'st:command' });
+        logStCommand(cmd, true);
+        return stageCommand(pid, cmd as Extract<StCommand, { type: 'teleport' | 'walk_to' | 'freeze' | 'door_lock' }>);
+      }
       const before = snap(s);
       const r = applyStCommand(s, cmd, { now: host.now() });
+      logStCommand(cmd, r.ok, r.ok ? undefined : r.code);
       if (!r.ok) return reportError(pid, r, 'st:command');
       commit(before, r.effects);
     },
@@ -235,7 +384,12 @@ export function createGameModule(host: RoomHost, opts: GameModuleOptions = {}): 
     viewFor(pid): PlayerGameView | StorytellerGameView | null {
       const s = state;
       if (!s) return null;
-      if (pid === stPid && pid === host.storytellerPid()) return projectForStoryteller(s);
+      if (pid === stPid && pid === host.storytellerPid()) {
+        const v = projectForStoryteller(s);
+        const w = world();
+        if (w) v.stage = w.stageView();
+        return v;
+      }
       const seat = seatByPid.get(pid);
       return seat === undefined ? null : projectForPlayer(s, seat);
     },
@@ -273,7 +427,17 @@ export function createGameModule(host: RoomHost, opts: GameModuleOptions = {}): 
       const s = state;
       if (!s) return;
       const before = snap(s);
-      const r = rulesTick(s, now);
+      // Bedtime: night falls once every seated player is inside their own home (world module).
+      const w = world();
+      let opts = {};
+      if (w && s.phase === 'bedtime') {
+        const home = [...seatByPid.keys()].every((pid) => w.isHome(pid));
+        // The beat restarts whenever someone leaves home or the Storyteller is away.
+        if (!home || !s.storytellerConnected) allHomeSince = null;
+        else allHomeSince ??= now;
+        opts = { everyoneHome: home && now - allHomeSince! >= (opts0.nightfallGraceMs ?? 3000) };
+      } else allHomeSince = null;
+      const r = rulesTick(s, now, opts);
       if (r.changed) commit(before, r.effects);
     },
 

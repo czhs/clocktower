@@ -110,13 +110,20 @@ This is now covered by a unit test: two players share a doorstep and both keep m
 
 | Case | Behaviour | Test |
 |---|---|---|
-| Player refuses to go home at bedtime | Countdown expiry → `startNight` → `send_home` + WorldModule `onPhase` puts every seated player in their own bed (`teleport reason 'night'`). | unit + real server (1 s countdown) |
-| Player inside someone else's cottage at bedtime | Stays there during bedtime; at nightfall moved to their own bed. | unit + real server |
+| Player refuses to go home at bedtime | *(updated by gameplay, 2026-10-15)* Countdown expiry → overtime: the WorldModule escorts every player not yet home (A* through the doors at walking speed, `snapshot.you = auto`). The night falls once everyone has been home for 3 s. No teleport, except a player still en route when the ST **forces** the night (`teleport reason 'night'`). | unit (`world.stage.test.ts`) + real server (`world.room.test.ts`, `playtest.gameplay.test.ts`) |
+| Player inside someone else's cottage at bedtime | *(updated)* Stays there during bedtime; at countdown expiry they are walked out of that cottage and into their own (two `door` transitions), then to bed. | unit + real server |
 | Disconnects on the way, reconnects at night | `sendHome` also runs for disconnected entities; on reconnect the world sends a `spawn` teleport with the home position; the snapshot shows only themselves. Added safety net: a seated player who is somehow not home during a locked phase is put to bed on reconnect. | unit + real server (fresh `reconnect` ticket) |
 | Leaving home at night | `world:useDoor` → `phase` error. A `move` outside the room → `correction` back to the current position. | unit + real server |
 | ST visits several homes in sequence | Each `visit_home` teleports to the visit point; `location_changed` → `visitingSeat`. Only the current home's occupant sees the ST. | unit + leak test + real server |
 | ST visits while the player is mid-prompt | The visit moves on, the prompt stays open, and the player can still answer (no error, response recorded). | real server |
 | Dawn → day | Dawn still locked (door refused). Day unlocks. The ST is returned to its spawn at dawn and again at day (L1). | unit + real server |
+
+Escort / circle secrecy (gameplay, 2026-10-15): the escort and the night walk to bed are
+visible only in the walker's own snapshot (`you`) and to viewers who may see that location by the
+normal rules (at night: nobody else). Seat markers and the vote clock are public by-day
+information. The ST-only stage view (presence per player) is only in the Storyteller's game view.
+Tests: `world.stage.test.ts` (night snapshots contain only yourself while everyone walks to bed)
+and `playtest.gameplay.test.ts` (night snapshot scan, no `stage` in any player view).
 
 ## 4. Night-information leaks
 

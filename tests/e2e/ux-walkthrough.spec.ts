@@ -87,7 +87,8 @@ async function snap(page: Page, name: string, settle = 350) {
 
 /** Screenshot a desktop page at every desktop size. */
 async function snapSizes(page: Page, name: string, settle = 500) {
-  for (const s of DESKTOP) {
+  // UX_FAST=1: 1440x900 only (the shared host is often heavily loaded).
+  for (const s of process.env.UX_FAST ? DESKTOP.slice(0, 1) : DESKTOP) {
     await page.setViewportSize({ width: s.width, height: s.height });
     await snap(page, `${name}-${s.tag}`, settle);
     await assertNoOverlap(page, `${name}-${s.tag}`);
@@ -136,7 +137,7 @@ const gv = (p: P) => p.tap.last('game:view');
 test.describe.configure({ mode: 'serial' });
 
 test('ux walkthrough', async ({ browser }) => {
-  test.setTimeout(1_800_000);
+  test.setTimeout(3_600_000);
   const all: P[] = [];
   const notes: string[] = [];
   try {
@@ -286,9 +287,9 @@ test('ux walkthrough', async ({ browser }) => {
     await st.tap.until(() => gv(st)?.phase === 'setup', 15_000, 'setup');
     await snapSizes(st.page, '09-setup-st', 1000);
     await snap(ph.page, '09-setup-m390', 1000);
-    await st.page.getByRole('button', { name: 'Random setup' }).click();
+    await st.page.getByRole('button', { name: 'Random setup', exact: true }).click();
     await st.tap.until(() => gv(st)?.grimoire?.length === 5, 10_000, 'grimoire');
-    await st.page.getByRole('button', { name: 'Begin first night' }).click();
+    await st.page.getByRole('button', { name: 'Begin first night', exact: true }).first().click();
     for (const p of players) await p.tap.until(() => gv(p)?.phase === 'first_night', 15_000, 'first night');
     await st.page.waitForTimeout(2500);
     await snapSizes(st.page, '10-night-st', 800);
@@ -301,9 +302,17 @@ test('ux walkthrough', async ({ browser }) => {
     await st.page.locator('.cts-controls').getByRole('button', { name: /^Day/ }).click();
     await st.tap.until(() => gv(st)?.phase === 'day', 10_000, 'day');
     await st.page.waitForTimeout(3500);
+    await snap(deep.page, '11a-day-player-chat-folded-d1440', 300);
+    if (await deep.page.getByRole('button', { name: /^Open chat/ }).count()) await deep.page.getByRole('button', { name: /^Open chat/ }).click();
     await deep.page.getByLabel('Chat message').fill('Who visited whom last night?');
     await deep.page.getByLabel('Chat message').press('Enter');
     await snapSizes(st.page, '11-day-st', 800);
+    const gear = st.page.getByRole('button', { name: 'Settings' });
+    if (await gear.count()) {
+      await gear.click();
+      await snap(st.page, '11b-settings-d1440', 300);
+      await gear.click();
+    }
     await snapSizes(deep.page, '11-day-player', 800);
     await snap(ph.page, '11-day-m390', 800);
     await assertNoOverlap(ph.page, '11-day-m390');
@@ -366,7 +375,7 @@ test('ux walkthrough', async ({ browser }) => {
 
     // ------------------------------------------------------------- endgame
     await st.page.locator('.cts-tabs').getByRole('button', { name: 'Tools' }).click();
-    await st.page.getByRole('button', { name: 'Good wins' }).click();
+    await st.page.getByRole('button', { name: 'Good wins', exact: true }).first().click();
     await expect(deep.page.getByRole('dialog', { name: 'Game results' })).toBeVisible({ timeout: 15_000 });
     await snapSizes(st.page, '14-endgame-st', 1000);
     await snapSizes(deep.page, '14-endgame-player', 1000);

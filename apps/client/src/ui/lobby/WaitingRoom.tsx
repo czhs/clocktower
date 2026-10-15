@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import {
   LOBBY_DESCRIPTION_MAX,
   LOBBY_NAME_MAX,
@@ -11,19 +11,23 @@ import {
 } from '@ct/protocol';
 import { useStore } from '../../net/store';
 import type { RoomConnection } from '../../net/room';
+import { helpSeen, openHelp } from '../common/HowToPlay';
 import { CosmeticEditor } from './CosmeticEditor';
 import { copyText, SCRIPT_LABEL, shareUrl } from './finder';
 import '../auth/auth.css';
 import './lobby.css';
 
-// OWNED BY lobby-auth. Overlay on top of the town while the lobby is waiting: members, ready
-// states, Storyteller seat, host controls, share URL, start button. (Lobby chat is ChatPanel,
-// rendered bottom-left by main.tsx.)
+// Waiting room: a compact, collapsible sheet over the town (top-left on desktop, where the HUD
+// lives once the game starts; a top sheet on phones) so players can walk around while they wait.
+// The header + primary action (Ready / Start) are always visible; details scroll. (Lobby chat is
+// ChatPanel, docked bottom-left; this sheet stops above it via --ct-chat-h.)
+const narrow = () => typeof matchMedia === 'function' && matchMedia('(max-width: 640px)').matches;
+
 export function WaitingRoom({ conn, onLeave }: { conn: RoomConnection; account: AccountView; onLeave: () => void }) {
   const view = useStore(conn.lobbyView);
   const status = useStore(conn.status);
   const [notice, setNotice] = useState<string | null>(null);
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(narrow);
 
   useEffect(
     () =>
@@ -38,54 +42,98 @@ export function WaitingRoom({ conn, onLeave }: { conn: RoomConnection; account: 
     return () => clearTimeout(t);
   }, [notice]);
 
-  if (!view) return <div class="ct-waiting panel">Joining lobby…</div>;
+  if (!view)
+    return (
+      <div class="ct-waiting panel" role="status">
+        <span class="ct-spinner" aria-hidden="true" />
+        Joining lobby…
+      </div>
+    );
   const me = view.members.find((m) => m.pid === view.youPid);
   const isHost = !!me?.isHost;
   const isSt = me?.role === 'storyteller';
   const st = view.members.find((m) => m.role === 'storyteller') ?? null;
   const players = view.members.filter((m) => m.role === 'player');
-
-  if (collapsed)
-    return (
-      <div class="ct-waiting ct-waiting-collapsed panel">
-        <strong>{view.lobby.name}</strong>
-        <span class="muted">
-          {players.length}/{view.lobby.maxPlayers} players
-        </span>
-        <button onClick={() => setCollapsed(false)}>Show lobby</button>
-      </div>
-    );
+  const readyCount = players.filter((m) => m.ready).length;
+  const notReady = players.filter((m) => !m.ready);
 
   return (
-    <div class="ct-waiting panel" role="dialog" aria-label="Waiting room">
+    <div class={`ct-waiting panel${collapsed ? ' ct-waiting-collapsed' : ''}`} role="dialog" aria-label="Waiting room" aria-modal="false">
       <header class="ct-waiting-head">
-        <div>
+        <button
+          class="ct-waiting-toggle"
+          aria-expanded={!collapsed}
+          aria-controls="ct-waiting-body"
+          title={collapsed ? 'Show lobby details' : 'Hide lobby details (look around the town)'}
+          onClick={() => setCollapsed((c) => !c)}
+        >
+          <span aria-hidden="true">{collapsed ? '▸' : '▾'}</span>
+          <span class="ct-sr-only">{collapsed ? 'Show lobby details' : 'Hide lobby details'}</span>
+        </button>
+        <div class="ct-waiting-title">
           <h2>{view.lobby.name}</h2>
           <div class="muted ct-small">
-            {SCRIPT_LABEL[view.lobby.script]} · {players.length}/{view.lobby.maxPlayers} players · host {view.lobby.hostName}
+            {players.length}/{view.lobby.maxPlayers} players · {readyCount} ready
+            {!collapsed && <> · {SCRIPT_LABEL[view.lobby.script]}</>}
             {status === 'reconnecting' && <span class="ct-error"> · reconnecting…</span>}
           </div>
-          {view.lobby.description && <p class="ct-waiting-desc">{view.lobby.description}</p>}
         </div>
-        <div class="ct-row">
-          <button class="ct-link" onClick={() => setCollapsed(true)} title="Look around the town while you wait">
-            Hide
-          </button>
-          <button onClick={onLeave}>Leave</button>
-        </div>
+        <button class="ct-waiting-leave" onClick={onLeave}>
+          Leave
+        </button>
       </header>
 
-      <ShareLink lobbyId={view.lobby.id} />
+      <div class="ct-waiting-actions">
+        {me?.role === 'player' && <ReadyButton conn={conn} ready={me.ready} lastOne={!me.ready && notReady.length === 1 && players.length >= MIN_PLAYERS} />}
+        {isSt && (
+          <button class="primary ct-start" disabled={!view.canStart} onClick={() => conn.send('lobby:start', {})}>
+            Start game
+          </button>
+        )}
+        {!st && !isSt && (
+          <button onClick={() => conn.send('lobby:claimStoryteller', {})} title="Run the game as the Storyteller (not counted as a player)">
+            Be the Storyteller
+          </button>
+        )}
+        {notReady.length > 0 && players.length >= MIN_PLAYERS && (isSt || isHost || me?.ready) ? (
+          <p class="ct-waiting-status muted ct-small" aria-live="polite">
+            Waiting for {listNames(notReady.map((m) => m.displayName))} to press Ready
+            {notReady.some((m) => !m.connected) && ' (some are disconnected)'}
+          </p>
+        ) : view.startBlockers.length > 0 ? (
+          <p class="ct-waiting-status muted ct-small" aria-live="polite">
+            {view.startBlockers[0]}
+            {view.startBlockers.length > 1 && ` (+${view.startBlockers.length - 1} more)`}
+          </p>
+        ) : (
+          <p class="ct-waiting-status ct-ok ct-small" aria-live="polite">
+            {isSt ? 'Everyone is ready — start when you like.' : 'Everyone is ready. Waiting for the Storyteller to start.'}
+          </p>
+        )}
+      </div>
 
-      <div class="ct-waiting-grid">
-        <section>
+      {!helpSeen() && (
+        <button class="ct-waiting-newbie" onClick={openHelp}>
+          <span aria-hidden="true">?</span> First time here? <u>How to play</u> — one minute
+        </button>
+      )}
+      {notice && (
+        <p class="ct-error ct-notice" role="alert">
+          {notice}
+        </p>
+      )}
+
+      {!collapsed && (
+        <div class="ct-waiting-body" id="ct-waiting-body">
+          {view.lobby.description && <p class="ct-waiting-desc">{view.lobby.description}</p>}
+          <ShareLink lobbyId={view.lobby.id} />
+
           <h3>Storyteller</h3>
           {st ? (
             <MemberRow m={st} view={view} me={me} />
           ) : (
             <div class="ct-member ct-member-empty">
-              <span class="muted">Seat open</span>
-              {!isSt && <button onClick={() => conn.send('lobby:claimStoryteller', {})}>Take the Storyteller seat</button>}
+              <span class="muted">Seat open — someone must take it to start.</span>
             </div>
           )}
           <h3>
@@ -97,45 +145,100 @@ export function WaitingRoom({ conn, onLeave }: { conn: RoomConnection; account: 
                 <MemberRow m={m} view={view} me={me} conn={conn} />
               </li>
             ))}
-            {players.length === 0 && <li class="muted">No players yet — share the link.</li>}
+            {players.length === 0 && <li class="muted ct-small">No players yet — share the link above.</li>}
           </ul>
-        </section>
-
-        <section class="ct-waiting-side">
-          {me?.role === 'player' && (
-            <button class={me.ready ? '' : 'primary'} onClick={() => conn.send('lobby:ready', { ready: !me.ready })}>
-              {me.ready ? 'Not ready' : "I'm ready"}
-            </button>
+          {view.startBlockers.length > 1 && (
+            <ul class="ct-blockers">
+              {view.startBlockers.map((b) => (
+                <li key={b}>{b}</li>
+              ))}
+            </ul>
           )}
-          {isSt && (
-            <>
-              <button class="primary ct-start" disabled={!view.canStart} onClick={() => conn.send('lobby:start', {})}>
-                Start game
+
+          <div class="ct-waiting-more">
+            {isSt && (
+              <button class="ct-link" onClick={() => conn.send('lobby:releaseStoryteller', {})}>
+                Give up Storyteller seat
               </button>
-              {view.startBlockers.length > 0 && (
-                <ul class="ct-blockers">
-                  {view.startBlockers.map((b) => (
-                    <li key={b}>{b}</li>
-                  ))}
-                </ul>
-              )}
-              <button onClick={() => conn.send('lobby:releaseStoryteller', {})}>Give up Storyteller seat</button>
-            </>
-          )}
-          {!isSt && view.startBlockers.length > 0 && (
-            <p class="muted ct-small">Waiting: {view.startBlockers.join(' · ')}</p>
-          )}
-          {isHost && <HostSettings view={view} conn={conn} />}
-          {me && <LobbyAppearance conn={conn} current={me.cosmetics} />}
-        </section>
-      </div>
-
-      {notice && (
-        <p class="ct-error ct-notice" role="alert">
-          {notice}
-        </p>
+            )}
+            {isHost && <HostSettings view={view} conn={conn} />}
+            {me && <LobbyAppearance conn={conn} current={me.cosmetics} />}
+            <button class="ct-link" onClick={openHelp}>
+              How to play
+            </button>
+          </div>
+          <p class="muted ct-small ct-waiting-tip">Walk around while you wait — WASD / arrow keys{narrow() ? ' or the joystick' : ''}.</p>
+        </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Ready toggle. Optimistic: the label flips on click, and the latest server view confirms it. If the
+ * server hasn't confirmed within 2.5 s the request is re-sent once (lost click / dropped frame),
+ * then the button falls back to the server's state with a hint. The click handler reads the
+ * desired state from a ref, never from a stale render.
+ */
+function listNames(names: string[]): string {
+  if (names.length <= 3) return names.join(', ').replace(/, ([^,]*)$/, ' and $1');
+  return `${names.slice(0, 3).join(', ')} and ${names.length - 3} more`;
+}
+
+function ReadyButton({ conn, ready, lastOne }: { conn: RoomConnection; ready: boolean; lastOne?: boolean }) {
+  const [pending, setPending] = useState<boolean | null>(null);
+  const [hint, setHint] = useState<string | null>(null);
+  const serverReady = useRef(ready);
+  serverReady.current = ready;
+  const pendingRef = useRef<boolean | null>(null);
+  useEffect(() => {
+    if (pendingRef.current !== null && pendingRef.current === ready) {
+      pendingRef.current = null;
+      setPending(null);
+      setHint(null);
+    }
+  }, [ready]);
+  useEffect(() => {
+    if (pending === null) return;
+    const want = pending;
+    const retry = setTimeout(() => {
+      if (pendingRef.current === want && serverReady.current !== want) conn.send('lobby:ready', { ready: want });
+    }, 2500);
+    const giveUp = setTimeout(() => {
+      if (pendingRef.current === want && serverReady.current !== want) {
+        pendingRef.current = null;
+        setPending(null);
+        setHint('The server did not confirm — check your connection and try again.');
+      }
+    }, 6000);
+    return () => {
+      clearTimeout(retry);
+      clearTimeout(giveUp);
+    };
+  }, [pending, conn]);
+  const shown = pending ?? ready;
+  return (
+    <>
+      <button
+        class={shown ? 'ct-ready-on' : `primary${lastOne ? ' ct-nudge' : ''}`}
+        title={lastOne && !shown ? 'Everyone else is ready' : undefined}
+        aria-pressed={shown}
+        onClick={() => {
+          const want = !(pendingRef.current ?? serverReady.current);
+          pendingRef.current = want;
+          setPending(want);
+          setHint(null);
+          conn.send('lobby:ready', { ready: want });
+        }}
+      >
+        {shown ? 'Not ready' : "I'm ready"}
+      </button>
+      {hint && (
+        <p class="ct-error ct-small ct-waiting-status" role="alert">
+          {hint}
+        </p>
+      )}
+    </>
   );
 }
 
@@ -166,8 +269,16 @@ function MemberRow({ m, view, me, conn }: { m: MemberView; view: LobbyRoomView; 
       <span class="ct-member-name">
         {m.displayName}
         {you && <span class="ct-badge">you</span>}
-        {m.role === 'storyteller' && <span class="ct-badge ct-badge-st">Storyteller</span>}
-        {m.isHost && <span class="ct-badge ct-badge-host">Host</span>}
+        {m.role === 'storyteller' && (
+          <span class="ct-badge ct-badge-st">
+            <img class="ct-icon" src="/art/ui/storyteller.png" alt="" /> Storyteller
+          </span>
+        )}
+        {m.isHost && (
+          <span class="ct-badge ct-badge-host">
+            <img class="ct-icon" src="/art/ui/host.png" alt="" /> Host
+          </span>
+        )}
         {m.role === 'player' && (m.ready ? <span class="ct-badge ct-badge-ready">Ready</span> : <span class="ct-badge ct-badge-wait">Not ready</span>)}
         {!m.connected && <span class="ct-badge ct-badge-away">reconnecting</span>}
       </span>
@@ -262,12 +373,12 @@ function LobbyAppearance({ conn, current }: { conn: RoomConnection; current: Cos
           setOpen(true);
         }}
       >
-        Change appearance…
+        Change character…
       </button>
     );
   return (
     <div class="ct-lobby-appearance">
-      <CosmeticEditor value={draft} onChange={setDraft} />
+      <CosmeticEditor value={draft} onChange={setDraft} compact />
       <div class="ct-row">
         <button onClick={() => setOpen(false)}>Cancel</button>
         <button

@@ -58,7 +58,10 @@ function LobbyRoute({ id, intent, account }: { id: string; intent: 'player' | 's
       offClosed();
       void c.leave();
     };
-  }, [id, intent]);
+    // Only the lobby id identifies the connection: an intent change for the same lobby (e.g. the
+    // route re-parsed on popstate) must not tear down and re-join (two sockets for one account).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
   if (error)
     return (
       <div class="screen center">

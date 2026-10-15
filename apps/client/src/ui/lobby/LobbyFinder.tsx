@@ -51,6 +51,8 @@ function usePing(): number | null {
 export function LobbyFinder({ onJoin }: { onJoin: (lobbyId: string, intent: 'player' | 'storyteller') => void }) {
   const [lobbies, setLobbies] = useState<Map<string, LobbySummary>>(new Map());
   const [loaded, setLoaded] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
   const [filters, setFilters] = useState<FinderFilters>(loadFilters);
   const [creating, setCreating] = useState(false);
   const ping = usePing();
@@ -63,18 +65,22 @@ export function LobbyFinder({ onJoin }: { onJoin: (lobbyId: string, intent: 'pla
         if (!alive) return;
         setLobbies((prev) => (prev.size ? prev : new Map(l.map((x) => [x.id, x]))));
         setLoaded(true);
+        setLoadError(null);
       })
-      .catch(() => undefined);
+      .catch((e: unknown) => alive && setLoadError(errorText(e)));
     const off = subscribeDirectory((e) => {
       if (!alive) return;
       setLobbies((prev) => applyDirectoryEvent(prev, e));
-      if (e.type === 'snapshot') setLoaded(true);
+      if (e.type === 'snapshot') {
+        setLoaded(true);
+        setLoadError(null);
+      }
     });
     return () => {
       alive = false;
       off();
     };
-  }, []);
+  }, [attempt]);
 
   useEffect(() => {
     try {
@@ -143,10 +149,32 @@ export function LobbyFinder({ onJoin }: { onJoin: (lobbyId: string, intent: 'pla
       </div>
 
       <div class="ct-lobby-list" role="list">
-        {!loaded && <p class="muted">Loading lobbies…</p>}
+        {!loaded && !loadError && (
+          <p class="muted ct-empty" role="status">
+            <span class="ct-spinner" aria-hidden="true" />
+            Loading lobbies…
+          </p>
+        )}
+        {loadError && (
+          <div class="ct-empty ct-load-error" role="alert">
+            <p class="ct-error">Couldn't load lobbies: {loadError}</p>
+            <button onClick={() => (setLoadError(null), setAttempt((a) => a + 1))}>Try again</button>
+          </div>
+        )}
         {loaded && shown.length === 0 && (
           <p class="muted ct-empty">
-            {lobbies.size === 0 ? 'No lobbies yet — create the first one.' : 'No lobbies match these filters.'}
+            {lobbies.size === 0 ? (
+              <>
+                No lobbies yet. <button class="ct-link" onClick={() => setCreating(true)}>Create the first one</button> and share its link.
+              </>
+            ) : (
+              <>
+                No lobbies match these filters.{' '}
+                <button class="ct-link" onClick={() => setFilters({ ...DEFAULT_FILTERS, status: 'all' })}>
+                  Clear filters
+                </button>
+              </>
+            )}
           </p>
         )}
         {shown.map((l) => (
@@ -179,7 +207,7 @@ function LobbyRow({ lobby: l, onJoin }: { lobby: LobbySummary; onJoin: (id: stri
         {l.description && <div class="ct-lobby-desc muted">{l.description}</div>}
         <div class="ct-lobby-meta muted">
           <span title="Players seated / seats">
-            👥 {l.playerCount}/{l.maxPlayers}
+            {l.playerCount}/{l.maxPlayers} players
           </span>
           <span>{l.storytellerName ? `Storyteller: ${l.storytellerName}` : 'Storyteller seat open'}</span>
           <span>{SCRIPT_LABEL[l.script] ?? l.script}</span>

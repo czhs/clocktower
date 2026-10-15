@@ -41,6 +41,7 @@ export const api = {
   createAccount: (displayName: string) => call<CreateAccountResponse>('POST', '/api/auth/create', { displayName }),
   signIn: (passphrase: string) => call<AccountView>('POST', '/api/auth/signin', { passphrase }),
   signOut: () => call<{ ok: true }>('POST', '/api/auth/signout', {}),
+  signOutAll: () => call<{ ok: true }>('POST', '/api/auth/signout-all', {}),
   me: () => call<AccountView>('GET', '/api/me'),
   updateMe: (patch: UpdateProfileRequest) => call<AccountView>('PATCH', '/api/me', patch),
   stats: () => call<StatsView>('GET', '/api/me/stats'),
@@ -51,6 +52,7 @@ export const api = {
   ticket: (id: string, req: JoinTicketRequest) =>
     call<JoinTicketResponse>('POST', `/api/lobbies/${encodeURIComponent(id)}/ticket`, req),
   adminStatus: () => call<AdminStatusView>('GET', '/api/admin/status'),
+  adminCloseLobby: (id: string) => call<{ ok: true }>('POST', `/api/admin/lobbies/${encodeURIComponent(id)}/close`, {}),
 };
 
 /** Live lobby directory over SSE with automatic reconnect (EventSource) + periodic resync. */

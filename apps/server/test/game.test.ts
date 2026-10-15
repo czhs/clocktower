@@ -9,7 +9,7 @@ const CHARS: CharacterId[] = ['imp', 'poisoner', 'washerwoman', 'empath', 'fortu
 interface Rig {
   host: FakeHost;
   game: GameModule;
-  world: { calls: string[] };
+  world: { calls: string[]; home: Set<string> };
   st(cmd: StCommand): void;
   stView(): StorytellerGameView;
   view(seat: number): PlayerGameView;
@@ -21,8 +21,9 @@ function rig(n = 8, opts: { withWorld?: boolean } = {}): Rig {
   const host = createFakeHost('lobbyA');
   host.addMember({ pid: 'st', role: 'storyteller', displayName: 'Teller' });
   for (let i = 0; i < n; i++) host.addMember({ pid: `p${i}`, seat: i, displayName: `Player${i + 1}` });
-  const game = createGameModule(host, { seed: 42, voteStepMs: 100, bedtimeSeconds: 30 });
+  const game = createGameModule(host, { seed: 42, voteStepMs: 100, bedtimeSeconds: 30, nightfallGraceMs: 0 });
   const calls: string[] = [];
+  const home = new Set<string>();
   const world: WorldModule = {
     onEvent: () => undefined,
     handleMove: () => undefined,
@@ -39,6 +40,15 @@ function rig(n = 8, opts: { withWorld?: boolean } = {}): Rig {
       calls.push(`exit:${pid}:${reason}`);
       host.emit({ type: 'location_changed', pid, location: 'outdoors', prev: null });
     },
+    setCircle: (seats) => calls.push(`circle:${seats ? seats.join(',') : 'off'}`),
+    setEscort: (on) => calls.push(`escort:${on}`),
+    isHome: (pid) => home.has(pid),
+    teleportTo: (pid, to) => (calls.push(`teleport:${pid}:${to.kind}`), null),
+    walkTo: (pid, to) => (calls.push(`walk:${pid}:${to ? to.kind : 'stop'}`), null),
+    setFrozen: (pid, frozen) => calls.push(`freeze:${pid}:${frozen}`),
+    setDoorLock: (b, locked) => (calls.push(`door:${b}:${locked}`), null),
+    stageView: () => ({ players: [], doors: {}, storytellerLocation: null }),
+    applySettings: (s) => calls.push(`settings:${JSON.stringify(s)}`),
     tick: () => undefined,
   };
   host.setModules(opts.withWorld === false ? { game } : { game, world });
@@ -49,7 +59,7 @@ function rig(n = 8, opts: { withWorld?: boolean } = {}): Rig {
   const r: Rig = {
     host,
     game,
-    world: { calls },
+    world: { calls, home },
     st(cmd) {
       host.clock.now += 50;
       const before = (host.sent.get('st') ?? []).length;
@@ -141,7 +151,8 @@ describe('scripted round through the module', () => {
     r.st({ type: 'begin_first_night' });
     expect(r.game.phase()).toBe('first_night');
     expect(r.game.directoryPhase()).toBe('night');
-    expect(r.world.calls.filter((c) => c.startsWith('home:'))).toHaveLength(8);
+    // Nightfall placement is the world module's job on phase_changed (walk to bed / forced teleport).
+    expect(r.world.calls.filter((c) => c.startsWith('home:'))).toEqual([]);
     expect(r.view(0).you.role).toEqual({ character: 'imp', characterType: 'demon', alignment: 'evil' });
     // night steps
     r.st({ type: 'resolve_step', stepId: stepId(r, 'minion_info') });
@@ -184,9 +195,20 @@ describe('scripted round through the module', () => {
     expect(r.view(3).phaseEndsAt).toBe(bed.phaseEndsAt);
     r.game.tick(r.host.clock.now + 29_000);
     expect(r.game.phase()).toBe('bedtime');
+    // Countdown over: nobody is teleported; the world walks the stragglers home (escort).
     r.game.tick(r.host.clock.now + 30_000);
+    expect(r.game.phase()).toBe('bedtime');
+    expect(r.view(3).bedtimeOvertime).toBe(true);
+    expect(r.world.calls.filter((c) => c.startsWith('escort:'))).toEqual(['escort:true']);
+    expect(r.world.calls.filter((c) => c.startsWith('home:'))).toEqual([]);
+    // Night falls once every seated player (living and dead) is inside their home.
+    for (let i = 0; i < 7; i++) r.world.home.add(`p${i}`);
+    r.game.tick(r.host.clock.now + 31_000);
+    expect(r.game.phase()).toBe('bedtime');
+    r.world.home.add('p7');
+    r.game.tick(r.host.clock.now + 32_000);
     expect(r.game.phase()).toBe('night');
-    expect(r.world.calls.filter((c) => c.endsWith(':bedtime'))).toHaveLength(8);
+    expect(r.world.calls.filter((c) => c.startsWith('escort:'))).toEqual(['escort:true', 'escort:false']);
     // night 2: imp kills the empath; publicly unknown until day
     promptAndResolve(r, 'imp', 0, [3]);
     expect(r.game.isAlive('p3')).toBe(true);
@@ -231,6 +253,9 @@ describe('scripted round through the module', () => {
     r.game.tick(t0 + 229_999);
     expect(r.game.phase()).toBe('bedtime');
     r.game.tick(t0 + 230_000);
+    expect(r.stView().bedtimeOvertime).toBe(true);
+    for (let i = 0; i < 8; i++) r.world.home.add(`p${i}`);
+    r.game.tick(t0 + 230_050);
     expect(r.game.phase()).toBe('night');
   });
 

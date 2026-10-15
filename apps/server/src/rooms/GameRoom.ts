@@ -105,7 +105,18 @@ interface Seat {
   leaving: boolean;
   graceTimer: { clear(): void } | null;
   reconnection: Reconnection | null;
+  /**
+   * Messages from a Colyseus token-reconnection client that arrived before reattach() bound it
+   * to this seat (same sessionId as the seat's client; the reattach runs a few microtasks after
+   * Colyseus starts listening). Replayed in order by reattach(). Bounded.
+   */
+  pending?: { client: GameClient; type: string; raw: unknown }[];
 }
+
+/** Max messages held for a client that is not bound to its seat yet. */
+const PENDING_MAX = 32;
+/** Stale-connection warnings: at most one per pid per this many ms. */
+const STALE_WARN_MS = 10_000;
 
 const CreateOptions = z.object({ lobbyId: z.string().min(4).max(32) });
 
@@ -185,6 +196,10 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
     for (const [type, spec] of Object.entries(MESSAGE_LIMITS)) this.limiters.set(type, new RateLimiter(spec));
     this.onMessage('*', (client, type, message) => this.handleMessage(client as GameClient, String(type), message));
     this.setSimulationInterval((dt) => this.tick(dt), 1000 / SERVER_TICK_HZ);
+    // A joining socket must arrive within this many seconds of the HTTP seat reservation. The
+    // Colyseus default (15 s) expired under heavy host load ("seat reservation expired", 4002),
+    // which made clients retry with a second join.
+    this.setSeatReservationTime(30);
 
     this.services.directory.attachRoom(lobbyId, {
       roomId: this.roomId,
@@ -365,6 +380,8 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
   }
 
   private reattach(seat: Seat, client: GameClient) {
+    const pending = seat.pending;
+    seat.pending = undefined;
     seat.client = client;
     seat.leaving = false;
     seat.graceTimer?.clear();
@@ -378,6 +395,12 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
     this.gameDirty = true;
     this.forceGameView.add(seat.member.pid);
     this.lastGameView.delete(seat.member.pid);
+    // Replay what the reconnecting client sent before it was bound (same session only).
+    if (pending?.length) {
+      queueMicrotask(() => {
+        for (const m of pending) if (seat.client === client && m.client.sessionId === client.sessionId) this.handleMessage(client, m.type, m.raw);
+      });
+    }
   }
 
   private removeMember(seat: Seat, reason: 'left' | 'grace_expired' | 'kicked') {
@@ -417,10 +440,45 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
   // ------------------------------------------------------------------------------------
   // Messages
 
+  private staleWarnAt = new Map<string, number>();
+
+  /**
+   * A message from a connection that is not (or not yet) the seat's current client.
+   * - Token reconnection not bound yet (same Colyseus sessionId, reconnection pending): queue it;
+   *   reattach() replays it, so nothing a player clicks right after a reconnect is lost.
+   * - Otherwise the connection was replaced (newer tab/device, or a client retry that opened a
+   *   second socket) or its seat is gone: say so (error + close 4102) instead of dropping it
+   *   silently, so the client can recover, and log it (rate-limited).
+   */
+  private strayMessage(client: GameClient, seat: Seat | undefined, pid: string | undefined, type: string, raw: unknown) {
+    if (seat && seat.client && seat.reconnection && seat.client.sessionId === client.sessionId) {
+      seat.pending ??= [];
+      if (seat.pending.length < PENDING_MAX) seat.pending.push({ client, type, raw });
+      return;
+    }
+    const key = pid ?? client.sessionId;
+    const now = Date.now();
+    if ((this.staleWarnAt.get(key) ?? 0) + STALE_WARN_MS <= now) {
+      this.staleWarnAt.set(key, now);
+      if (this.staleWarnAt.size > 500) this.staleWarnAt.clear();
+      this.log.warn('message from a stale connection', { lobbyId: this.lobbyId, pid: pid ?? null, type: type.slice(0, 40), seat: seat ? 'replaced' : 'none' });
+    }
+    try {
+      client.send('error', {
+        code: 'forbidden',
+        message: seat ? 'stale_connection: this connection was replaced by a newer one' : 'stale_connection: you are no longer in this lobby',
+        for: type.slice(0, 40),
+      } satisfies ServerErrorMsg);
+      if (seat && client.state !== ClientState.LEAVING) client.leave(CLOSE_CODES.replaced, 'This connection was replaced');
+    } catch {
+      // already closed
+    }
+  }
+
   private handleMessage(client: GameClient, type: string, raw: unknown) {
     const pid = client.userData?.pid;
     const seat = pid ? this.seats.get(pid) : undefined;
-    if (!seat || seat.client !== client) return;
+    if (!seat || seat.client !== client) return this.strayMessage(client, seat, pid, type, raw);
     const schema = (C2S as Record<string, z.ZodType>)[type];
     if (!schema) return this.sendError(seat, { code: 'invalid', message: 'Unknown message type', for: type.slice(0, 40) });
     const limiter = this.limiters.get(type) ?? this.limiters.get('default')!;

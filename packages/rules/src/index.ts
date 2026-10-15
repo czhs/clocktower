@@ -16,7 +16,9 @@ export {
   setStorytellerConnected,
   setPlayerConnected,
   setVisiting,
+  noteStoryteller,
   DEFAULT_VOTE_STEP_MS,
+  type TickOptions,
   type CreateGameOptions,
   type PlayerAction,
 } from './engine.js';

@@ -64,6 +64,8 @@ export interface PlayerState {
   connected: boolean;
   info: InfoView[];
   prompts: PromptState[];
+  /** (gameplay) Recently sent prompts (open or answered, newest last, at most 10) for re-sending. */
+  promptHistory: PromptState[];
   promptSeq: number;
   infoSeq: number;
   evilTeam: EvilTeamView | null;
@@ -133,6 +135,16 @@ export interface GameState {
   phaseEndsAt: number | null;
   bedtimeSeconds: number;
   bedtimePausedRemainingMs: number | null;
+  /** (gameplay) The ST holds the bedtime countdown (bedtime_timer pause); nightfall waits too. */
+  bedtimeHeld: boolean;
+  /** (gameplay) Countdown over: stragglers are walked home; night falls once everyone is home. */
+  bedtimeOvertime: boolean;
+  /** (gameplay) This bedtime was rung from setup and leads into the first night. */
+  bedtimeFirst: boolean;
+  /** (gameplay) Nomination circle gathered (day / setup only). */
+  gathering: boolean;
+  /** (gameplay) Storyteller settings (generic toggles: door tags, …). */
+  settings: import('@ct/protocol').StSettings;
   storytellerConnected: boolean;
   assigned: boolean;
   rolesRevealed: boolean;

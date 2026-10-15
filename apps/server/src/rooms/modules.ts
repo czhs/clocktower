@@ -17,6 +17,9 @@ import type {
   PlayerGameView,
   S2CMessages,
   S2CType,
+  StageTarget,
+  StageView,
+  StSettings,
   StorytellerGameView,
   WorldSnapshot,
 } from '@ct/protocol';
@@ -130,6 +133,29 @@ export interface WorldModule {
   teleportToBuilding(pid: string, buildingId: string, reason: 'storyteller' | 'door'): void;
   /** Move a member out of the building they are in to just outside its door (ST 'leave_home'). No-op outdoors. */
   exitBuilding(pid: string, reason: 'storyteller' | 'door'): void;
+  // ---- (gameplay 2026-10-15) walking-not-teleporting, nomination circle, Storyteller "props".
+  /** Mark the nomination circle for these seats (spots = protocol circleSpots), or dissolve it (null). */
+  setCircle(seats: number[] | null): void;
+  /**
+   * Bedtime overtime. on: every seated player who is not inside their own home is walked there by the
+   * server (A* on the tile grid, through doors, at walking speed); players already home cannot leave.
+   * off: stop those walks and hand control back.
+   */
+  setEscort(on: boolean): void;
+  /** True when the seated player is inside their own home. */
+  isHome(pid: string): boolean;
+  /** Storyteller teleport of a player (seat spot / bed / square / next to the ST / building / map point). Returns an error message or null. */
+  teleportTo(pid: string, to: StageTarget): string | null;
+  /** Server-driven walk at walking speed to a target (null = stop). Returns an error message or null. */
+  walkTo(pid: string, to: StageTarget | null): string | null;
+  /** Freeze / unfreeze a player's own movement and door use (server-driven walks and teleports still apply). */
+  setFrozen(pid: string, frozen: boolean): void;
+  /** Door override for players: true locked, false forced open, null = phase default. Returns an error message or null. */
+  setDoorLock(buildingId: string, locked: boolean | null): string | null;
+  /** Presence of every seated player + door overrides (ST-only; the game module puts it in the Storyteller view). */
+  stageView(): StageView;
+  /** (gameplay) Storyteller settings that affect the world (door tags on/off). Synced by the game module after every change. */
+  applySettings(settings: StSettings): void;
   tick(dtMs: number): void;
 }
 

@@ -10,8 +10,10 @@ const OPTS = { drunkBelieves: 'investigator' as CharacterId, redHerringSeat: 8, 
 const PUBLIC_PLAYER_KEYS = ['alive', 'connected', 'ghostVoteAvailable', 'name', 'nominatedToday', 'pid', 'seat', 'wasNominatedToday'];
 const TOP_KEYS = [
   'announcements',
+  'bedtimeOvertime',
   'day',
   'dayNumber',
+  'gathering',
   'info',
   'kind',
   'phase',

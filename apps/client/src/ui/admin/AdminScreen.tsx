@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { AccountView, AdminStatusView } from '@ct/protocol';
 import { api } from '../../net/api';
+import { adminCloseLobby } from '../common/http';
 import { errorText, goTo, PHASE_LABEL } from '../lobby/finder';
 import '../auth/auth.css';
 import '../lobby/lobby.css';
 import './admin.css';
 
-// OWNED BY lobby-auth. Admin status (server enforces ADMIN_ACCOUNT_IDS): health, lobbies,
+// Admin status (server enforces ADMIN_ACCOUNT_IDS): health, lobbies,
 // voice quota, recent errors. Polls every 5 s.
 
 function fmtUptime(sec: number): string {
@@ -19,6 +20,9 @@ function fmtUptime(sec: number): string {
 export function AdminScreen({ account }: { account: AccountView }) {
   const [status, setStatus] = useState<AdminStatusView | null>(null);
   const [error, setError] = useState<{ code: number; message: string } | null>(null);
+  const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
+  const [closing, setClosing] = useState<string | null>(null);
+  const [tick, setTick] = useState(0);
 
   useEffect(() => {
     let alive = true;
@@ -37,7 +41,21 @@ export function AdminScreen({ account }: { account: AccountView }) {
       alive = false;
       clearInterval(id);
     };
-  }, []);
+  }, [tick]);
+
+  const closeLobby = async (id: string, name: string) => {
+    if (!confirm(`Close the lobby “${name}”? Everyone in it is disconnected and any game in progress ends without results.`)) return;
+    setClosing(id);
+    try {
+      await adminCloseLobby(id);
+      setNotice({ ok: true, text: `Closed “${name}”.` });
+      setTick((t) => t + 1);
+    } catch (e) {
+      setNotice({ ok: false, text: `Could not close “${name}”: ${errorText(e)}` });
+    } finally {
+      setClosing(null);
+    }
+  };
 
   const back = (
     <button class="ct-link" onClick={() => goTo('/')}>
@@ -70,7 +88,16 @@ export function AdminScreen({ account }: { account: AccountView }) {
         <div class="ct-brand">Server status</div>
         {back}
       </header>
-      {error && <p class="ct-error">Refresh failed: {error.message}</p>}
+      {error && (
+        <p class="ct-error ct-admin-msg" role="alert">
+          Refresh failed: {error.message}
+        </p>
+      )}
+      {notice && (
+        <p class={`${notice.ok ? 'ct-ok' : 'ct-error'} ct-admin-msg`} role={notice.ok ? 'status' : 'alert'}>
+          {notice.text}
+        </p>
+      )}
       <div class="ct-admin-grid">
         <section class="panel">
           <h3>Health</h3>
@@ -105,14 +132,18 @@ export function AdminScreen({ account }: { account: AccountView }) {
           {status.lobbies.length === 0 ? (
             <p class="muted">No lobbies.</p>
           ) : (
+            <div class="ct-table-wrap">
             <table class="ct-table">
               <thead>
                 <tr>
                   <th>Name</th>
                   <th>Id</th>
                   <th>Phase</th>
-                  <th>Players</th>
-                  <th>Connected</th>
+                  <th class="num">Players</th>
+                  <th class="num">Online</th>
+                  <th>
+                    <span class="ct-sr-only">Actions</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -123,12 +154,18 @@ export function AdminScreen({ account }: { account: AccountView }) {
                       <code>{l.id}</code>
                     </td>
                     <td>{PHASE_LABEL[l.phase]}</td>
-                    <td>{l.players}</td>
-                    <td>{l.connected}</td>
+                    <td class="num">{l.players}</td>
+                    <td class="num">{l.connected}</td>
+                    <td>
+                      <button class="ct-danger-btn" disabled={closing === l.id} onClick={() => void closeLobby(l.id, l.name)}>
+                        {closing === l.id ? 'Closing…' : 'Close lobby'}
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+            </div>
           )}
         </section>
 

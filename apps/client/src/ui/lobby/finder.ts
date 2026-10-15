@@ -113,10 +113,38 @@ export function goTo(path: '/' | '/admin') {
   window.dispatchEvent(new CustomEvent('ct:navigate', { detail: route }));
 }
 
-/** Human-readable message for a failed API call (server messages are plain text, rendered escaped). */
+const FIELD_LABEL: Record<string, string> = {
+  displayName: 'Name',
+  name: 'Lobby name',
+  description: 'Description',
+  passphrase: 'Passphrase',
+  maxPlayers: 'Player seats',
+};
+
+/** Turn a server validation message ("displayName: Too big: expected string to have <=24
+ * characters") into plain language. Other server messages are already written for players. */
+function humanize(message: string): string {
+  const m = message.match(/^([A-Za-z.]+): (.*)$/);
+  if (!m) return message;
+  const field = FIELD_LABEL[m[1]!.split('.').pop()!] ?? 'That value';
+  const rest = m[2]!;
+  const big = rest.match(/Too big.*?(\d+)/i);
+  if (big) return `${field} is too long (at most ${big[1]} characters).`;
+  const small = rest.match(/Too small.*?(\d+)/i);
+  if (small) return `${field} is too short (at least ${small[1]} characters).`;
+  return `${field}: ${rest.charAt(0).toLowerCase()}${rest.slice(1)}`;
+}
+
+/** Friendly message for a failed API call (server messages are plain text, rendered escaped). */
 export function errorText(e: unknown): string {
-  const body = (e as { body?: { message?: unknown } } | null)?.body;
-  if (body && typeof body.message === 'string') return body.message;
-  if (e instanceof TypeError) return 'Network error — is the server reachable?';
-  return e instanceof Error ? e.message : 'Something went wrong';
+  const err = e as { status?: number; body?: { message?: unknown; error?: unknown } } | null;
+  const status = typeof err?.status === 'number' ? err.status : 0;
+  if (status === 429) return 'Too many attempts — please wait a moment and try again.';
+  if (status >= 500) return 'The server had a problem. Please try again in a moment.';
+  const body = err?.body;
+  if (body && typeof body.message === 'string' && body.message) return humanize(body.message);
+  if (status === 401) return 'Your session has ended — please sign in again.';
+  if (e instanceof TypeError) return "Can't reach the server — check your internet connection and try again.";
+  if (e instanceof SyntaxError) return 'The server sent an unexpected reply. Please try again in a moment.';
+  return 'Something went wrong. Please try again.';
 }

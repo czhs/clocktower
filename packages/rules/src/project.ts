@@ -160,6 +160,8 @@ export function projectForPlayer(s: GameState, seat: number): PlayerGameView {
     storytellerVisitingYou: isNightPhase(s) && s.visitingSeat === me.seat,
     result: resultView(s),
     spyGrimoire: spyView(me.spyGrimoire),
+    gathering: s.gathering,
+    bedtimeOvertime: s.phase === 'bedtime' && s.bedtimeOvertime,
   };
   return view;
 }
@@ -182,6 +184,9 @@ function grimoireEntry(s: GameState, p: PlayerState): GrimoireEntry {
     isRedHerring: s.redHerringSeat === p.seat,
     isButlerMaster: s.players.some((b) => b.character === 'butler' && b.butlerMasterSeat === p.seat),
     abilityUsed: p.abilityUsed,
+    openPrompts: p.prompts.map(promptView),
+    sentPrompts: (p.promptHistory ?? []).map((q) => ({ id: q.id, title: q.title, open: p.prompts.some((o) => o.id === q.id) })),
+    info: p.info.slice(-20).map(infoView),
   };
 }
 
@@ -213,5 +218,12 @@ export function projectForStoryteller(s: GameState): StorytellerGameView {
     charactersAssigned: s.assigned,
     timerPaused: s.bedtimePausedRemainingMs !== null,
     pendingResult: s.resultPending && s.result ? { winner: s.result.winner, reason: s.result.reason } : null,
+    gathering: s.gathering,
+    bedtimeOvertime: s.phase === 'bedtime' && s.bedtimeOvertime,
+    timerHeld: s.bedtimeHeld,
+    bedtimeRemainingMs: s.bedtimePausedRemainingMs,
+    bedtimeFirstNight: s.phase === 'bedtime' && s.bedtimeFirst,
+    stage: null,
+    settings: { ...s.settings },
   };
 }

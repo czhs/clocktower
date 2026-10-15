@@ -3,11 +3,13 @@ import { DISPLAY_NAME_MAX, type AccountView, type Cosmetics, type StatsView } fr
 import { api } from '../../net/api';
 import { CosmeticEditor } from './CosmeticEditor';
 import { LobbyFinder } from './LobbyFinder';
+import { HowToPlayHost, openHelp } from '../common/HowToPlay';
+import { signOutAll } from '../common/http';
 import { errorText, goTo } from './finder';
 import '../auth/auth.css';
 import './lobby.css';
 
-// OWNED BY lobby-auth. Account home: account header (display name edit), cosmetic editor,
+// Account home: account header (display name edit), cosmetic editor,
 // stats, live Lobby Finder and the Create Lobby modal (no password field).
 export function HomeScreen({
   account,
@@ -32,6 +34,7 @@ export function HomeScreen({
           <LobbyFinder onJoin={onJoin} />
         </main>
       </div>
+      <HowToPlayHost />
     </div>
   );
 }
@@ -72,6 +75,17 @@ function AccountHeader({
       onSignedOut();
     }
   };
+  const signOutEverywhere = async () => {
+    if (!confirm('Sign out on every device and browser where this account is signed in? You will need your passphrase to sign back in.')) return;
+    setBusy(true);
+    try {
+      await signOutAll();
+      onSignedOut();
+    } catch (err) {
+      setError(errorText(err));
+      setBusy(false);
+    }
+  };
 
   return (
     <header class="ct-home-header">
@@ -102,12 +116,18 @@ function AccountHeader({
             </button>
           </>
         )}
+        <button class="ct-link" onClick={openHelp}>
+          How to play
+        </button>
         {account.isAdmin && (
           <button class="ct-link" onClick={() => goTo('/admin')}>
             Admin
           </button>
         )}
         <button onClick={signOut}>Sign out</button>
+        <button class="ct-link ct-small" onClick={signOutEverywhere} disabled={busy} title="Ends every session of this account">
+          Sign out on all devices
+        </button>
       </div>
       {error && <p class="ct-error ct-header-error">{error}</p>}
     </header>
@@ -129,12 +149,12 @@ function AppearancePanel({ account, onAccountChange }: { account: AccountView; o
   };
   return (
     <section class="panel ct-side-panel">
-      <h3>Appearance</h3>
+      <h3>Your villager</h3>
       <CosmeticEditor value={draft} onChange={(c) => (setDraft(c), setStatus(null))} />
       <div class="ct-row">
         {status && <span class="muted ct-small">{status}</span>}
         <button class="primary" disabled={!dirty} onClick={save}>
-          Save appearance
+          Save character
         </button>
       </div>
       <p class="muted ct-small ct-account-id">

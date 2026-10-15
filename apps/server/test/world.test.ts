@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { townLayout } from '@ct/assets';
 import { isBlockedPx, MOVE_TOLERANCE, PLAYER_SPEED, tileCenterPx, type TownLayout, type WorldSnapshot, type WorldTeleport } from '@ct/protocol';
-import { createWorldModule } from '../src/world/index.js';
+import { BURST_SECONDS, createWorldModule } from '../src/world/index.js';
 import { createFakeHost, type FakeHost } from './helpers/fakeHost.js';
 
 function setup(opts: { players?: number; st?: boolean; layout?: TownLayout } = {}) {
@@ -113,7 +113,7 @@ describe('WorldModule movement', () => {
     expect(tp).toMatchObject({ reason: 'correction', seq: 1, x: p.x, y: p.y });
     // even after a long idle the burst allowance is capped (no stored-up teleports)
     host.clock.now += 60_000;
-    const cap = PLAYER_SPEED * MOVE_TOLERANCE * 0.6;
+    const cap = PLAYER_SPEED * MOVE_TOLERANCE * BURST_SECONDS;
     world.handleMove('p0', { seq: 2, x: p.x + cap + 10, y: p.y, facing: 'right', moving: true });
     expect(world.positionOf('p0')).toEqual(p);
   });

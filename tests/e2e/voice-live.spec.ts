@@ -1141,7 +1141,7 @@ test('voice night (SIMULATED mic)', async ({ browser }) => {
 
     await ST.page.getByRole('button', { name: 'Start game' }).click();
     await ST.tap.until(() => ST.tap.last('game:view')?.phase === 'setup', 15_000, 'setup');
-    await ST.page.getByRole('button', { name: 'Random setup' }).click();
+    await ST.page.getByRole('button', { name: 'Random setup', exact: true }).click();
     await ST.tap.until(() => ST.tap.last('game:view')?.grimoire?.length === 5, 10_000, 'grimoire');
     const tNight = Date.now();
     await ST.page.getByRole('button', { name: 'Begin first night' }).click();

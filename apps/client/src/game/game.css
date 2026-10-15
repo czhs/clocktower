@@ -1,23 +1,33 @@
-/* OWNED BY world-art: town canvas + its own small overlays (door prompt, phase caption). */
-.ct-game { position: absolute; inset: 0; overflow: hidden; background: #09070d; }
+/* Town canvas + its own small overlays (door prompt, phase caption, connection banner, touch controls). */
+.ct-game {
+  position: absolute; inset: 0; overflow: hidden; background: #09070d;
+  /* No page pan/zoom or text selection while playing (pinch/double-tap zoom glitches on phones). */
+  touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+}
+/* Panels (chat, HUD lists, Grimoire…) keep normal scrolling and selection. */
+.ct-game input, .ct-game textarea, .ct-game select { -webkit-user-select: text; user-select: text; }
+.ct-game :where(.ct-chat, .ct-waiting, .cth, .cts, .ctv) { touch-action: pan-y; }
 .ct-game-canvas { position: absolute; inset: 0; }
 .ct-game-canvas canvas { display: block; image-rendering: pixelated; image-rendering: crisp-edges; }
 .ct-game-loading {
-  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 4px;
   color: var(--muted, #9b91a8); font-style: italic; pointer-events: none;
 }
+.ct-game-failed { flex-direction: column; pointer-events: auto; font-style: normal; }
+.ct-game-failed p { margin: 0 0 12px; }
+
 /* Door prompt: bottom-centre, clear of the voice panel (bottom-right) and chat (bottom-left). */
 .ct-game-prompt {
-  position: absolute; left: 50%; bottom: 96px; transform: translateX(-50%); z-index: 20;
+  position: absolute; left: 50%; bottom: calc(96px + var(--safe-bottom, 0px)); transform: translateX(-50%); z-index: 20;
   display: flex; align-items: center; gap: 8px; padding: 6px 12px; pointer-events: none;
-  background: var(--panel, #1b1724e6); border: 1px solid var(--border, #3d3350); border-radius: 6px;
+  background: var(--panel, #211f2ce6); border: 1px solid var(--border, #454250); border-radius: var(--radius);
   color: var(--text, #e9e2d0); font-size: 14px; white-space: nowrap; max-width: calc(100vw - 32px);
   box-shadow: 0 4px 18px #0008;
 }
 .ct-game-prompt.locked { color: var(--muted, #9b91a8); font-style: italic; }
 .ct-game-prompt kbd {
   font-family: var(--mono, monospace); font-size: 12px; padding: 1px 6px; border-radius: 3px;
-  border: 1px solid var(--accent, #c9a24a); color: var(--accent, #c9a24a); background: #0f0c14;
+  border: 1px solid var(--accent, #d5b56a); color: var(--accent, #d5b56a); background: #17151f;
 }
 /* Phase caption: top-centre, fades in. */
 .ct-game-caption {
@@ -27,7 +37,78 @@
   text-shadow: 0 2px 8px #000, 0 0 2px #000; animation: ct-caption 4.2s ease-in-out both;
 }
 @keyframes ct-caption { 0% { opacity: 0; } 15% { opacity: 1; } 80% { opacity: 1; } 100% { opacity: 0; } }
+
+/* Connection banner: top-centre under the phase pill, above every panel. */
+.ct-conn {
+  position: fixed; left: 50%; top: calc(52px + var(--safe-top, 0px)); transform: translateX(-50%); z-index: 60;
+  display: flex; align-items: center; gap: 10px; padding: 8px 14px; max-width: calc(100vw - 24px);
+  background: #3a1714f2; border: 1px solid #a0473a; border-radius: var(--radius); color: #f6d9cf; font-size: 14px;
+  box-shadow: 0 6px 24px #000a;
+}
+.ct-conn .ct-spinner { margin-right: 0; border-color: #f6d9cf33; border-top-color: #f6d9cf; }
+.ct-conn-lost { flex-wrap: wrap; justify-content: center; text-align: center; }
+
+/* ---- touch controls (shown on coarse-pointer devices) -------------------------------------- */
+.ct-touch-stick {
+  position: fixed; z-index: 26; left: calc(18px + var(--safe-left, 0px)); bottom: calc(24px + var(--safe-bottom, 0px));
+  width: 128px; height: 128px; border-radius: 50%; touch-action: none;
+  background: radial-gradient(circle, #211f2c66 0%, #211f2caa 70%); border: 2px solid #d5b56a55;
+  box-shadow: inset 0 0 18px #0009, 0 4px 16px #0007; display: flex; align-items: center; justify-content: center;
+}
+.ct-touch-stick::before {
+  content: ''; position: absolute; inset: 14px; border-radius: 50%; border: 1px dashed #d5b56a33; pointer-events: none;
+}
+.ct-touch-stick.active { border-color: #d5b56aaa; }
+.ct-touch-knob {
+  width: 52px; height: 52px; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(circle at 35% 30%, #e6c97a, #8a6a2a 70%); border: 1px solid #f1dc9a;
+  box-shadow: 0 3px 10px #000a; transition: transform 90ms ease-out;
+}
+.ct-touch-stick.active .ct-touch-knob { transition: none; }
+.ct-touch-use {
+  position: fixed; z-index: 31; /* above an expanded voice panel (z 30) */ right: calc(16px + var(--safe-right, 0px)); bottom: calc(64px + var(--safe-bottom, 0px));
+  min-width: 76px; max-width: min(46vw, 200px); min-height: 64px; padding: 6px 12px; border-radius: 32px;
+  display: flex; align-items: center; gap: 8px; background: #665032ee; border: 2px solid var(--accent, #d5b56a);
+  box-shadow: 0 4px 16px #000a; font-size: 14px; line-height: 1.2; text-align: left;
+}
+.ct-touch-use.locked { background: #2a2736ee; border-color: var(--border, #454250); color: var(--muted); opacity: 1; font-style: italic; }
+.ct-touch-use-icon { font-size: 22px; color: #f1dc9a; flex: none; }
+.ct-touch-use.locked .ct-touch-use-icon { color: var(--muted); font-size: 16px; }
+.ct-touch-use-text { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+
 @media (max-width: 600px) {
-  .ct-game-prompt { bottom: 140px; font-size: 13px; }
+  .ct-game-prompt { bottom: calc(140px + var(--safe-bottom, 0px)); font-size: 13px; }
   .ct-game-caption { font-size: 15px; top: 14%; }
+}
+/* Short landscape phones: smaller stick. */
+@media (max-height: 460px) {
+  .ct-touch-stick { width: 108px; height: 108px; bottom: calc(12px + var(--safe-bottom, 0px)); }
+  .ct-touch-use { bottom: calc(52px + var(--safe-bottom, 0px)); min-height: 52px; }
+}
+
+/* ---- first steps: "you are here" marker + controls hint -------------------------------------- */
+.ct-you {
+  position: absolute; z-index: 19; left: 50%; top: calc(50% - 150px); transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center; pointer-events: none;
+  color: var(--accent, #d5b56a); text-shadow: 0 2px 6px #000, 0 0 2px #000; animation: ct-you-bob 1.1s ease-in-out infinite;
+}
+.ct-you span { font-family: var(--font-display); font-size: 20px; }
+.ct-you i { font-style: normal; font-size: 18px; line-height: 1; }
+@keyframes ct-you-bob { 50% { transform: translate(-50%, 6px); } }
+.ct-hint {
+  position: fixed; z-index: 21; left: 50%; bottom: calc(60px + var(--safe-bottom, 0px)); transform: translateX(-50%);
+  display: flex; align-items: center; gap: 4px; flex-wrap: wrap; justify-content: center;
+  max-width: min(560px, calc(100vw - 24px)); padding: 8px 8px 8px 14px; border-radius: 4px;
+  background: #211f2cf2; border: 1px solid var(--accent, #d5b56a); color: var(--text); font-size: 15px;
+  box-shadow: 0 6px 20px #000a; animation: ct-hint-in 400ms ease-out both;
+}
+.ct-hint b { color: #f1e2b8; font-weight: 700; }
+.ct-hint kbd {
+  font-family: var(--mono, monospace); font-size: 13px; min-width: 20px; text-align: center; padding: 0 5px; border-radius: 3px;
+  border: 1px solid var(--accent, #d5b56a); color: var(--accent, #d5b56a); background: #17151f;
+}
+.ct-hint-close { background: none !important; border: none !important; color: var(--muted); padding: 0 6px; min-height: 0; margin-left: 4px; }
+@keyframes ct-hint-in { from { opacity: 0; transform: translate(-50%, 8px); } }
+@media (max-width: 640px) {
+  .ct-hint { bottom: calc(262px + var(--safe-bottom, 0px)); font-size: 14px; }
 }

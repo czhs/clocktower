@@ -334,3 +334,169 @@ export function strikeVote(s: GameState, op: Op, nominationId: string, seat: num
   announce(s, op, 'nomination', `The Storyteller struck ${p.name}'s vote on ${nominee.name}: ${n.voteCount} vote${n.voteCount === 1 ? '' : 's'}.`);
   log(s, op, `Struck the vote of ${who(p)} on ${n.id}`);
 }
+
+// ------------------------------------------------------------------------------------------
+// (gameplay 2026-10-15) Storyteller "props": overrides that ignore the usual day rules. The engine
+// only advises (alerts); it never refuses these for rules reasons.
+
+/** Refund ghost votes spent on a nomination (its votes are being discarded / re-run). */
+function refundGhostVotes(s: GameState, n: NominationState): void {
+  for (const [k, yes] of Object.entries(n.votes)) {
+    if (!yes) continue;
+    const p = mustPlayer(s, Number(k));
+    if (!p.publicAlive && p.ghostVoteUsed) {
+      p.ghostVoteAvailable = true;
+      p.ghostVoteUsed = false;
+    }
+  }
+}
+
+/** Stop the running vote (if any): its nomination returns to 'pending' with its votes discarded. */
+function abortRunningVote(s: GameState): NominationState | null {
+  const d = s.day!;
+  const v = d.vote;
+  if (!v) return null;
+  const n = findNomination(d, v.nominationId);
+  refundGhostVotes(s, n);
+  n.votes = {};
+  n.voteCount = 0;
+  n.status = 'pending';
+  d.vote = null;
+  return n;
+}
+
+/** ST: start a vote on any nomination (re-votes reset it); a running vote is stopped first. */
+export function forceVote(s: GameState, op: Op, nominationId: string): void {
+  const d = day(s);
+  const n = findNomination(d, nominationId);
+  const stopped = abortRunningVote(s);
+  if (stopped && stopped !== n) alert(s, op, `The running vote on seat ${stopped.nomineeSeat + 1} was stopped (it is pending again).`);
+  if (n.status === 'tallied' || n.status === 'cancelled') {
+    if (n.status === 'tallied') refundGhostVotes(s, n);
+    n.votes = {};
+    n.voteCount = 0;
+    n.status = 'pending';
+    delete n.minVotes;
+    mustPlayer(s, n.nominatorSeat).nominatedToday = true;
+    mustPlayer(s, n.nomineeSeat).wasNominatedToday = true;
+    recomputeBlock(s);
+  }
+  if (d.executionOccurred) alert(s, op, 'Someone was already executed today; this vote cannot put anyone on the block by the rules.');
+  startVote(s, op, n.id);
+  announce(s, op, 'nomination', `The Storyteller calls the vote on ${mustPlayer(s, n.nomineeSeat).name}.`);
+}
+
+/** ST: create a nomination ignoring who may nominate / be nominated (no Virgin trigger). */
+export function createNomination(s: GameState, op: Op, nominatorSeat: number, nomineeSeat: number, start: boolean): NominationState {
+  const d = day(s);
+  const nominator = mustPlayer(s, nominatorSeat);
+  const nominee = mustPlayer(s, nomineeSeat);
+  if (start) {
+    const stopped = abortRunningVote(s);
+    if (stopped) alert(s, op, `The running vote on seat ${stopped.nomineeSeat + 1} was stopped (it is pending again).`);
+  }
+  nominator.nominatedToday = true;
+  nominator.nominationsMade += 1;
+  nominee.wasNominatedToday = true;
+  const n: NominationState = {
+    id: `d${s.dayNumber}-nom${++d.nomSeq}`,
+    nominatorSeat,
+    nomineeSeat,
+    status: 'pending',
+    votes: {},
+    threshold: Math.max(minVotes(s), d.highWater + 1),
+    voteCount: 0,
+  };
+  d.nominations.push(n);
+  announce(s, op, 'nomination', `${nominator.name} nominates ${nominee.name}.`);
+  log(s, op, `Storyteller recorded a nomination: ${who(nominator)} -> ${who(nominee)}`);
+  if (nominee.character === 'virgin' && nominee.alive && !nominee.abilityUsed)
+    alert(s, op, `${who(nominee)} is the Virgin: the Storyteller-made nomination does not trigger it; use force execute if it should.`);
+  if (start) startVote(s, op, n.id);
+  return n;
+}
+
+/** ST: end the running vote now: tally (lock every remaining hand) or cancel (discard, back to pending). */
+export function closeVote(s: GameState, op: Op, mode: 'tally' | 'cancel'): void {
+  const d = day(s);
+  if (!d.vote) throw new RuleError('invalid', 'No vote is running');
+  if (mode === 'tally') return finishVoteNow(s, op);
+  const n = abortRunningVote(s)!;
+  announce(s, op, 'nomination', `The Storyteller stopped the vote on ${mustPlayer(s, n.nomineeSeat).name}.`);
+}
+
+/** ST: put a player on the block with a vote count, or clear the block. */
+export function setBlock(s: GameState, op: Op, seat: number | null, votes?: number): void {
+  const d = day(s);
+  if (seat === null) {
+    d.block = null;
+    announce(s, op, 'nomination', 'The Storyteller clears the block: nobody is about to be executed.');
+    return;
+  }
+  const p = mustPlayer(s, seat);
+  const count = votes ?? Math.max(d.highWater, d.block?.votes ?? 0, minVotes(s));
+  d.block = { seat, votes: count };
+  d.highWater = count;
+  if (d.executionOccurred) alert(s, op, 'Someone was already executed today; the block will not be executed automatically.');
+  announce(s, op, 'nomination', `The Storyteller places ${p.name} on the block (${count} vote${count === 1 ? '' : 's'}).`);
+}
+
+/** ST: set one recorded vote (yes adds a counted vote, no removes it). */
+export function setVote(s: GameState, op: Op, nominationId: string, seat: number, vote: boolean): void {
+  const d = day(s);
+  const n = findNomination(d, nominationId);
+  const p = mustPlayer(s, seat);
+  const v = d.vote && d.vote.nominationId === n.id ? d.vote : null;
+  if (v && !(seat in n.votes)) {
+    // The clock hand has not reached this seat yet: raise/lower the hand for them.
+    v.hands = v.hands.filter((x) => x !== seat);
+    if (vote) v.hands.push(seat);
+    log(s, op, `Storyteller ${vote ? 'raised' : 'lowered'} the hand of ${who(p)}`);
+    return;
+  }
+  if (n.status !== 'tallied' && n.status !== 'voting') throw new RuleError('invalid', 'That nomination has no recorded votes');
+  const was = n.votes[seat] === true;
+  if (was === vote) return;
+  n.votes[seat] = vote;
+  n.voteCount += vote ? 1 : -1;
+  if (!p.publicAlive) {
+    if (vote) {
+      p.ghostVoteAvailable = false;
+      p.ghostVoteUsed = true;
+    } else if (p.ghostVoteUsed) {
+      p.ghostVoteAvailable = true;
+      p.ghostVoteUsed = false;
+    }
+  }
+  if (n.status === 'tallied') {
+    if (d.executionOccurred) alert(s, op, 'A vote changed after the execution: the execution stands.');
+    recomputeBlock(s);
+  }
+  const nominee = mustPlayer(s, n.nomineeSeat);
+  announce(s, op, 'nomination', `The Storyteller recorded ${p.name}'s vote on ${nominee.name} as ${vote ? 'yes' : 'no'}: ${n.voteCount} vote${n.voteCount === 1 ? '' : 's'}.`);
+}
+
+/** ST: execute (or "nobody is executed") regardless of today's execution / a running vote / the phase. */
+export function forceExecute(s: GameState, op: Op, seat: number | null): void {
+  const d = s.day;
+  if (!d || s.phase !== 'day') {
+    if (seat === null) throw new RuleError('invalid', 'There is no day to end without an execution');
+    const p = mustPlayer(s, seat);
+    p.executed = true;
+    log(s, op, `${who(p)} executed outside the day (Storyteller)`);
+    if (!p.alive) announce(s, op, 'execution', `${p.name} is executed, but was already dead.`);
+    else killPlayer(s, op, p, 'execution', { announce: true });
+    s.lastExecutedDiedSeat = seat;
+    return;
+  }
+  if (d.vote) abortRunningVote(s);
+  if (seat === null) {
+    d.block = null;
+    d.nominationsOpen = false;
+    for (const n of d.nominations) if (n.status === 'pending') n.status = 'cancelled';
+    announce(s, op, 'execution', 'Nobody is executed today.');
+    return;
+  }
+  if (d.executionOccurred) alert(s, op, 'A second execution today (Storyteller override).');
+  executeNow(s, op, seat, 'execution');
+}

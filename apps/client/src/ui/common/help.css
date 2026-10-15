@@ -1,0 +1,99 @@
+/* How-to-play dialog + in-game toolbar + home compass + toasts (ux). */
+.ct-help-backdrop {
+  position: fixed; inset: 0; z-index: 70; background: #05030acc; display: flex; align-items: center; justify-content: center;
+  padding: calc(12px + var(--safe-top)) calc(12px + var(--safe-right)) calc(12px + var(--safe-bottom)) calc(12px + var(--safe-left));
+}
+.ct-help {
+  width: min(560px, 100%); max-height: 100%; display: flex; flex-direction: column; padding: 0; overflow: hidden;
+  background: linear-gradient(#2a2736, #15111c); border-color: var(--accent); box-shadow: 0 20px 60px #000d;
+}
+.ct-help-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px 6px 20px; }
+.ct-help-head h2 { margin: 0; color: var(--accent); font-weight: normal; font-size: 1.75rem; }
+.ct-help-close { background: none; border-color: transparent; color: var(--muted); font-size: 1.1rem; padding: 2px 8px; }
+.ct-help-tabs { display: flex; border-bottom: 1px solid var(--border); padding: 0 12px; overflow-x: auto; }
+.ct-help-tabs button { flex: 1 0 auto; background: none; border: none; border-radius: 0; color: var(--muted); padding: 10px 10px; min-height: 40px; }
+.ct-help-tabs button.on { color: var(--accent); box-shadow: inset 0 -2px 0 var(--accent); }
+.ct-help-body { overflow-y: auto; padding: 4px 20px 8px; line-height: 1.5; background: var(--parchment); color: var(--ink); }
+.ct-help-body ul { margin: 10px 0; padding-left: 18px; display: flex; flex-direction: column; gap: 8px; }
+.ct-help-body b { color: #4b2a1c; font-weight: 700; }
+.ct-help-body kbd, .ct-help-chip {
+  font-family: var(--mono); font-size: 0.875rem; padding: 0 6px; border-radius: 3px; border: 1px solid #665032; color: var(--ink); background: #f3ead2;
+}
+.ct-help-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 16px 14px 20px; border-top: 1px solid var(--border); }
+.ct-help-foot .primary { padding: 8px 20px; }
+
+/* In-game toolbar: top-right (help / leave / play again). */
+.ct-toolbar {
+  position: fixed; z-index: 32; top: calc(10px + var(--safe-top)); right: calc(12px + var(--safe-right));
+  display: flex; gap: 6px; align-items: center;
+}
+.ct-toolbar button { background: #2a2736f0; box-shadow: 0 3px 12px #0008; padding: 5px 10px; font-size: 13px; min-height: 30px; }
+.ct-tb-glyph { color: var(--accent); }
+.ct-toolbar .ct-tb-icon { width: 32px; padding: 0; font-size: 15px; color: var(--accent); }
+.ct-toolbar button.primary { background: #665032f0; }
+
+/* Home compass: bottom-centre, between the chat dock and the voice panel. */
+.ct-compass {
+  position: fixed; z-index: 21; left: 50%; bottom: calc(14px + var(--safe-bottom)); transform: translateX(-50%);
+  display: flex; align-items: center; gap: 8px; padding: 4px 12px 4px 6px; border-radius: 18px; pointer-events: none;
+  background: #211f2ce0; border: 1px solid #d5b56a88; color: var(--text); font-size: 13px; white-space: nowrap;
+  box-shadow: 0 4px 14px #0009;
+}
+.ct-compass.urgent { border-color: var(--danger); animation: ct-compass-pulse 1.4s ease-in-out infinite; }
+@keyframes ct-compass-pulse { 50% { box-shadow: 0 0 0 4px #e0645044, 0 4px 14px #0009; } }
+.ct-compass-arrow {
+  width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  background: #17151f; border: 1px solid var(--accent); color: var(--accent); font-size: 15px; transition: transform 120ms linear;
+}
+.ct-compass-home .ct-compass-arrow { transform: none !important; }
+.ct-compass small { color: var(--muted); }
+
+/* Toasts for errors no other panel shows. */
+.ct-toasts {
+  position: fixed; z-index: 61; left: 50%; top: calc(96px + var(--safe-top)); transform: translateX(-50%);
+  display: flex; flex-direction: column; gap: 6px; width: min(440px, calc(100vw - 24px)); pointer-events: none;
+}
+.ct-toast {
+  pointer-events: auto; display: flex; gap: 10px; align-items: center; justify-content: space-between; padding: 8px 12px; border-radius: var(--radius);
+  background: #3a1714f2; border: 1px solid #a0473a; color: #f6d9cf; font-size: 14px; box-shadow: 0 6px 20px #000a;
+}
+.ct-toast button { background: none; border-color: transparent; color: inherit; padding: 0 6px; min-height: 0; }
+
+@media (max-width: 640px) {
+  .ct-help-body { padding: 4px 14px 8px; font-size: 0.95rem; }
+  .ct-help-head { padding-left: 14px; }
+  /* Phones: compass sits above the joystick/door button row. */
+  .ct-compass { bottom: calc(216px + var(--safe-bottom)); font-size: 12px; }
+  .ct-toolbar .ct-tb-label { display: none; }
+}
+
+/* Settings popover (gear in the toolbar). */
+.ct-settings { position: relative; }
+.ct-settings-panel {
+  position: absolute; top: calc(100% + 6px); right: 0; width: min(300px, calc(100vw - 24px)); z-index: 65;
+  display: flex; flex-direction: column; gap: 14px; padding: 14px 16px; box-shadow: 0 10px 30px #000c; font-size: 15px;
+}
+.ct-settings-row { display: flex; flex-direction: column; gap: 6px; }
+.ct-settings-row > span { color: var(--text); }
+.ct-settings-row small { font-size: 0.875rem; line-height: 1.3; }
+.ct-settings-row input[type='range'] { width: 100%; accent-color: var(--accent); padding: 0; background: none; border: none; }
+.ct-seg { display: flex; }
+.ct-seg button { flex: 1; border-radius: 0; padding: 5px 4px; font-size: 14px; min-height: 32px; }
+.ct-seg button:first-child { border-radius: var(--radius) 0 0 var(--radius); }
+.ct-seg button:last-child { border-radius: 0 var(--radius) var(--radius) 0; }
+.ct-seg button + button { border-left-width: 0; }
+.ct-seg button.on { background: var(--accent-deep); border-color: var(--accent); color: #f6ecd2; }
+.ct-settings-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.ct-settings-actions button { flex: 1; font-size: 14px; }
+@media (max-width: 640px) {
+  /* While waiting on a phone the lobby sheet owns the top: park the toolbar above the chat button. */
+  .ct-toolbar-waiting { top: auto; bottom: calc(216px + var(--safe-bottom)); right: calc(12px + var(--safe-right)); }
+  .ct-toolbar-waiting .ct-settings-panel { top: auto; bottom: calc(100% + 6px); }
+}
+.ct-settings-panel button { box-shadow: none; }
+.ct-settings-leave { display: none; }
+@media (max-width: 640px) {
+  /* Phones: Leave lives in the settings popover so the toolbar stays narrow beside the HUD. */
+  .ct-toolbar .ct-tb-leave { display: none; }
+  .ct-settings-leave { display: block; flex-basis: 100%; }
+}

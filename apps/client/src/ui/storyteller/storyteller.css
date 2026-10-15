@@ -116,3 +116,120 @@
   padding: 6px 8px;
   flex-wrap: wrap;
 }
+
+/* ---- (gameplay) Stage: the game as malleable props ------------------------------------- */
+.cts-stage { border-bottom: 1px solid var(--border); background: #1a1524cc; }
+.cts-stage-head { display: flex; align-items: center; gap: 6px; padding: 4px 8px 2px; flex-wrap: wrap; }
+.cts-stage-title { font-variant: small-caps; letter-spacing: 0.08em; color: var(--accent); }
+.cts-stage-body { padding: 2px 8px 6px; }
+.cts-bigrow { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0; align-items: center; }
+.cts button.cts-big { padding: 5px 10px; font-size: 12.5px; min-height: 30px; }
+.cts button.cts-big.on { background: #2f4a2a; border-color: var(--ok); }
+.cts-startvote { display: inline-flex; gap: 4px; align-items: center; flex-wrap: wrap; max-width: 100%; }
+.cts-startvote select { max-width: 220px; }
+.cts-confirm { display: inline-flex; gap: 3px; align-items: center; padding: 1px 4px; border: 1px dashed #c0413b99; border-radius: 4px; background: #2a1210; }
+.cts-confirm-ask { font-size: 12px; color: #f6c9c0; }
+.cts-timer { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin: 4px 0; padding: 4px 6px; border: 1px solid #c9a24a55; border-radius: 4px; background: #2a2210aa; }
+.cts-timer-label { font-variant: small-caps; color: var(--accent); }
+.cts-targets { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin: 4px 0; padding: 4px 6px; border: 1px dashed var(--border); border-radius: 4px; }
+.cts-targets select { max-width: 170px; }
+.cts-pick { display: flex; gap: 8px; align-items: center; padding: 5px 8px; background: #2c2448; color: #e8d9ff; border-bottom: 1px solid #8a6fb0; animation: cts-pulse 2s infinite; }
+@keyframes cts-pulse { 50% { background: #3b2f60; } }
+.cts-link.on { color: var(--text); }
+
+/* seat circle */
+.cts-circle { display: block; width: 100%; max-width: 400px; max-height: max(200px, calc(100vh - 560px)); margin: 0 auto; user-select: none; }
+.cts-c-ring { fill: #120f18; stroke: var(--border); stroke-width: 2; stroke-dasharray: 4 3; }
+.cts-c-hand { stroke: var(--accent); stroke-width: 3; stroke-linecap: round; }
+.cts-c-hub { fill: var(--accent); }
+.cts-c-centre { fill: var(--accent); font-size: 15px; text-anchor: middle; font-family: var(--mono); }
+.cts-c-centre.small { font-size: 10px; fill: var(--muted); font-family: var(--font); }
+.cts-c-player { cursor: pointer; outline: none; }
+.cts-c-seat { fill: #2a2238; stroke: var(--border); stroke-width: 2; transition: fill 150ms; }
+.cts-c-seat.good { stroke: #5d8fd6aa; }
+.cts-c-seat.evil { stroke: #c0413bcc; }
+.cts-c-seat.dead { fill: #0c0a10; stroke-dasharray: 3 2; }
+.cts-c-seat.yes { fill: #c9a24a; }
+.cts-c-seat.raised { fill: #6b5326; animation: cth-pulse 1s infinite; }
+.cts-c-seat.voter { stroke: #fff; stroke-width: 3; }
+.cts-c-seat.nominee { stroke: var(--evil); stroke-width: 4; }
+.cts-c-seat.sel { fill: #5b4320; stroke: var(--accent); stroke-width: 3; }
+.cts-c-player:hover .cts-c-seat, .cts-c-player:focus-visible .cts-c-seat { stroke: var(--accent); }
+.cts-c-num { fill: var(--text); font-size: 11px; text-anchor: middle; font-family: var(--mono); pointer-events: none; }
+.cts-c-mark { font-size: 10px; text-anchor: middle; pointer-events: none; }
+.cts-c-name { fill: var(--text); font-size: 10.5px; pointer-events: none; }
+.cts-c-name.off { fill: var(--muted); font-style: italic; }
+.cts-c-pres { fill: var(--muted); font-size: 9px; pointer-events: none; }
+.cts-c-pres.seated { fill: var(--ok); }
+.cts-c-pres.walking, .cts-c-pres.escorted { fill: var(--accent); }
+.cts-c-pres.inside { fill: #cdb6f0; }
+.cts-legend { font-size: 11px; text-align: center; margin: 0 0 6px; }
+
+/* player card (circle popover) */
+.cts-pcard { border: 1px solid var(--accent); border-radius: 6px; padding: 5px 7px; margin: 4px 0 8px; background: #1d1828; box-shadow: 0 4px 14px #0008; }
+.cts-pcard-head { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; padding-bottom: 4px; border-bottom: 1px solid var(--border); }
+.cts-pcard-sec { display: flex; flex-wrap: wrap; gap: 3px; align-items: center; margin: 4px 0; }
+.cts-sec { width: 62px; font-size: 11px; font-variant: small-caps; letter-spacing: 0.05em; color: var(--accent); }
+.cts-pcard-sec select { max-width: 160px; }
+.cts-inline input { width: 110px; background: transparent; border-style: dashed; }
+.cts-resend { margin: 2px 0 4px 66px; font-size: 12px; }
+.cts-resend-row { display: flex; gap: 4px; align-items: center; }
+.cts-resend-row .cts-grow { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.cts-votebox { border: 1px solid var(--border); border-radius: 5px; padding: 5px 8px; margin: 6px 0; background: #120f1880; }
+.cts-doors { margin: 6px 0; }
+.cts-doors summary { cursor: pointer; color: var(--accent); font-variant: small-caps; letter-spacing: 0.06em; }
+.cts-seg { display: inline-flex; }
+.cts-seg button { border-radius: 0 !important; padding: 1px 7px !important; font-size: 11px !important; }
+.cts-seg button:first-child { border-radius: 4px 0 0 4px !important; }
+.cts-seg button:last-child { border-radius: 0 4px 4px 0 !important; }
+
+/* ---- (gameplay) "Now" strip: phase, what's pending, the next action ---------------------- */
+.cts-now { padding: 6px 8px; border-bottom: 1px solid var(--border); background: linear-gradient(#2a2238, #1f1a2a); }
+.cts-now-top { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.cts-now-phase { font-family: var(--font-display); font-size: 17px; color: var(--text); }
+.cts-now-items { display: flex; flex-wrap: wrap; gap: 3px; margin: 4px 0 2px; }
+.cts .cts-now-item { font-size: 11px; padding: 0 7px; border-radius: 9px; border: 1px solid var(--border); color: var(--muted); background: none; line-height: 18px; }
+.cts .cts-now-item.warn { color: #f1dca2; border-color: #c9a24a88; }
+.cts .cts-now-item.bad { color: #f6c9c0; border-color: #c0413b99; }
+.cts .cts-now-item.ok { color: var(--ok); border-color: #6fae6a66; }
+.cts-now-next { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 4px; }
+.cts button.cts-now-btn { font-size: 14px; padding: 6px 14px; min-height: 34px; max-width: 100%; text-align: left; }
+.cts-undo { margin-left: 2px; }
+
+/* confirm details (who sees it, what the rules say follows, undo) */
+.cts-confirm { flex-wrap: wrap; max-width: 100%; }
+.cts-confirm-more { display: flex; flex-direction: column; gap: 1px; width: 100%; font-size: 11px; order: 3; }
+.cts-confirm-effect { color: #f1dca2; }
+.cts-confirm-aud { color: #cdb6f0; }
+
+/* status at a glance */
+.cts-badges { display: inline-flex; flex-wrap: wrap; gap: 2px; }
+.cts-b { font-size: 10px; padding: 0 5px; border-radius: 3px; border: 1px solid var(--border); color: var(--muted); white-space: nowrap; }
+.cts-b.poison { color: #c9f0a0; border-color: #6fae6a99; background: #24331c; }
+.cts-b.drunk { color: #f1dca2; border-color: #c9a24a88; background: #33291a; }
+.cts-b.prot { color: #cfe6f6; border-color: #7fb6d899; background: #1a2733; }
+.cts-visited { font-size: 10px; color: var(--muted); }
+.cts-visited.yes { color: var(--ok); }
+.cts-impaired { color: #f1dca2 !important; border-color: #c9a24a88 !important; }
+
+/* ---- (gameplay) dock + collapse: never covers the whole map ------------------------------ */
+.cts.dock-right { left: auto; right: 12px; }
+.cts { width: min(420px, calc(100vw - 24px), 36vw); min-width: min(340px, calc(100vw - 24px)); }
+.cts-slim {
+  position: fixed; top: 10px; left: 12px; z-index: 25; max-width: min(460px, calc(100vw - 24px));
+  display: flex; flex-direction: column; font-size: 13px;
+  background: linear-gradient(#1f1a2af2, #15111cf2); border: 1px solid #5a4a72; border-radius: 6px;
+  box-shadow: 0 6px 18px #000a;
+}
+.cts-slim.dock-right { left: auto; right: 12px; }
+.cts-slim-row { display: flex; align-items: center; gap: 6px; padding: 4px 6px; flex-wrap: wrap; }
+.cts-slim button { padding: 3px 9px; font-size: 12px; }
+.cts-slim .muted { color: var(--muted); }
+.cts-slim .cts-now-phase { font-size: 14px; }
+.cts-slim-open { color: var(--accent); font-size: 14px !important; }
+.cts-slim .cts-error { font-size: 12px; }
+.cts-slim .cts-confirm-more { font-size: 11px; }
+.cts button.cts-now-btn.slim, .cts-slim button.cts-now-btn { font-size: 12.5px; padding: 3px 10px; min-height: 26px; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cts-slim button.danger { border-color: #c0413b99; color: #f0b3a8; }
+.cts-setting { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; cursor: pointer; }

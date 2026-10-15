@@ -8,8 +8,11 @@ import {
   type DayView,
   type GamePhase,
   type GameResult,
+  type InfoView,
+  type PromptView,
   type PublicPlayerView,
 } from './game.js';
+import type { LocationId } from './world.js';
 
 // ---------------------------------------------------------------------------------------
 // Storyteller contracts. Co-owned by rules-storyteller (additive changes; log them in
@@ -37,6 +40,37 @@ export interface GrimoireEntry {
   isButlerMaster?: boolean;
   /** (additive) Once-per-game ability spent (Slayer shot, Virgin triggered). */
   abilityUsed?: boolean;
+  /** (additive, gameplay) Prompts currently open for this player. */
+  openPrompts?: PromptView[];
+  /** (additive, gameplay) Recently sent prompts (open or answered), newest last; re-sendable. */
+  sentPrompts?: { id: string; title: string; open: boolean }[];
+  /** (additive, gameplay) Info this player has received (newest last, at most 20); re-sendable. */
+  info?: InfoView[];
+}
+
+/**
+ * (additive, gameplay) Where each player physically is, for the Storyteller's stage diagram.
+ *   home      inside their own home          seated   on their circle spot (gathered)
+ *   walking   outdoors, moving themselves    escorted the server is walking them (auto-walk)
+ *   outdoors  outdoors, standing             inside   inside another building (`building`)
+ */
+export type StagePresence = 'home' | 'seated' | 'walking' | 'escorted' | 'outdoors' | 'inside';
+
+export interface StagePlayerView {
+  seat: number;
+  pid: string;
+  presence: StagePresence;
+  /** Building id when presence is 'inside' (or 'home'). */
+  building: string | null;
+  frozen: boolean;
+}
+
+export interface StageView {
+  players: StagePlayerView[];
+  /** Door overrides: buildingId -> true locked / false forced open (absent = phase default). */
+  doors: Record<string, boolean>;
+  /** Storyteller's own location. */
+  storytellerLocation: LocationId | null;
 }
 
 export type NightStepStatus = 'pending' | 'visiting' | 'prompted' | 'answered' | 'resolved' | 'skipped';
@@ -98,7 +132,27 @@ export interface StorytellerGameView {
    * Players see nothing until it is confirmed; undo_last still works meanwhile.
    */
   pendingResult?: { winner: Alignment; reason: string } | null;
+  /** (additive, gameplay) The nomination circle is gathered. */
+  gathering?: boolean;
+  /** (additive, gameplay) Bedtime countdown over; stragglers are being walked home. */
+  bedtimeOvertime?: boolean;
+  /** (additive, gameplay) Bedtime countdown held by the Storyteller (bedtime_timer pause). */
+  timerHeld?: boolean;
+  /** (additive, gameplay) Remaining bedtime ms while the countdown is paused/held. */
+  bedtimeRemainingMs?: number | null;
+  /** (additive, gameplay) This bedtime leads into the FIRST night (rang from setup). */
+  bedtimeFirstNight?: boolean;
+  /** (additive, gameplay) Physical presence of every player (from the world module). */
+  stage?: StageView | null;  /** (additive, gameplay) Storyteller settings (generic toggles; see `set_setting`). */
+  settings?: StSettings;
 }
+
+/** (additive, gameplay) Storyteller settings. Add new toggles here (optional in StSettingsPatch). */
+export interface StSettings {
+  /** Door tags: players' icons hang on the door of the building they are in (daytime only). */
+  doorTags: boolean;
+}
+export const DEFAULT_ST_SETTINGS: StSettings = { doorTags: true };
 
 const Seat = z.number().int().min(0).max(14);
 
@@ -124,6 +178,29 @@ export const InfoSpec = z.object({
   stepId: z.string().max(64).optional(),
 });
 export type InfoSpecInput = z.input<typeof InfoSpec>;
+
+/** (additive, gameplay) A partial StSettings update (every key optional). */
+export const StSettingsPatch = z.object({ doorTags: z.boolean().optional() }).strict();
+export type StSettingsPatch = z.infer<typeof StSettingsPatch>;
+
+/** (additive, gameplay) Phases the Storyteller can force (`gather` = day + circle). */
+export const FORCE_PHASES = ['setup', 'first_night', 'day', 'gather', 'bedtime', 'night', 'dawn'] as const;
+export type ForcePhase = (typeof FORCE_PHASES)[number];
+
+/** (additive, gameplay) Who a stage command applies to. */
+export const StageWho = z.union([z.array(Seat).min(1).max(15), z.literal('all')]);
+export type StageWho = z.infer<typeof StageWho>;
+
+/** (additive, gameplay) Where a teleport / walk goes. 'storyteller' = next to the Storyteller. */
+export const StageTarget = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('seat') }),
+  z.object({ kind: z.literal('home') }),
+  z.object({ kind: z.literal('square') }),
+  z.object({ kind: z.literal('storyteller') }),
+  z.object({ kind: z.literal('building'), buildingId: z.string().min(1).max(32) }),
+  z.object({ kind: z.literal('point'), x: z.number().finite().min(0).max(4096), y: z.number().finite().min(0).max(4096) }),
+]);
+export type StageTarget = z.infer<typeof StageTarget>;
 
 /** All ST actions, sent as C2S 'st:command'. Server rejects unless sender is the lobby's ST. */
 export const StCommand = z.discriminatedUnion('type', [
@@ -198,5 +275,40 @@ export const StCommand = z.discriminatedUnion('type', [
   z.object({ type: z.literal('set_red_herring'), seat: Seat.nullable() }),
   /** (additive) Change the Townsfolk the Drunk believes they are (the player is told). */
   z.object({ type: z.literal('set_drunk_belief'), seat: Seat, character: CharacterIdSchema }),
+
+  // ---- (additive, gameplay 2026-10-15) "props": the Storyteller can override anything. The rules
+  // engine only advises (alerts); none of these is gated on engine readiness.
+  /** Jump to any phase. 'gather' = day + nomination circle. Skips block execution / Mayor checks. */
+  z.object({ type: z.literal('force_phase'), to: z.enum(FORCE_PHASES) }),
+  /** Mark (or dissolve) the nomination circle around the clock tower. */
+  z.object({ type: z.literal('gather'), on: z.boolean() }),
+  /** Start a vote on ANY nomination (pending, tallied or cancelled: votes reset); replaces a running vote. */
+  z.object({ type: z.literal('force_vote'), nominationId: z.string().max(64) }),
+  /** Create a nomination regardless of the rules (dead nominator, repeats, nominations closed). */
+  z.object({ type: z.literal('create_nomination'), nominatorSeat: Seat, nomineeSeat: Seat, startVote: z.boolean().optional() }),
+  /** End the running vote now: 'tally' locks every remaining hand and counts; 'cancel' discards it. */
+  z.object({ type: z.literal('close_vote'), mode: z.enum(['tally', 'cancel']) }),
+  /** Put a player on the block (with a vote count) or clear the block. */
+  z.object({ type: z.literal('set_block'), seat: Seat.nullable(), votes: z.number().int().min(0).max(30).optional() }),
+  /** Set one recorded vote of a nomination (adds or removes a counted vote). */
+  z.object({ type: z.literal('set_vote'), nominationId: z.string().max(64), seat: Seat, vote: z.boolean() }),
+  /** Execute (or declare no execution) ignoring the one-per-day rule and a running vote. */
+  z.object({ type: z.literal('force_execute'), seat: Seat.nullable() }),
+  /** Bedtime countdown: pause (hold), resume, extend by / restart with `seconds`. */
+  z.object({ type: z.literal('bedtime_timer'), action: z.enum(['pause', 'resume', 'extend', 'restart']), seconds: z.number().int().min(1).max(600).optional() }),
+  /** Re-send a prompt (open or answered) as a fresh prompt. */
+  z.object({ type: z.literal('resend_prompt'), seat: Seat, promptId: z.string().min(1).max(64) }),
+  /** Re-send a piece of info as a fresh copy. */
+  z.object({ type: z.literal('resend_info'), seat: Seat, infoId: z.string().min(1).max(64) }),
+  /** Teleport players (explicit Storyteller action; the only player teleport besides forced nightfall). */
+  z.object({ type: z.literal('teleport'), who: StageWho, to: StageTarget }),
+  /** Walk players (server-driven, normal walking speed) to a target; `to: null` stops the walk. */
+  z.object({ type: z.literal('walk_to'), who: StageWho, to: StageTarget.nullable() }),
+  /** Freeze / unfreeze player movement (server rejects their moves and door use). */
+  z.object({ type: z.literal('freeze'), who: StageWho, frozen: z.boolean() }),
+  /** Change Storyteller settings (only the given keys); applies immediately, server-authoritative. */
+  z.object({ type: z.literal('set_setting'), settings: StSettingsPatch }),
+  /** Lock / force-open any door for players, or return it to the phase default. */
+  z.object({ type: z.literal('door_lock'), buildingId: z.string().min(1).max(32), lock: z.enum(['locked', 'unlocked', 'default']) }),
 ]);
 export type StCommand = z.infer<typeof StCommand>;

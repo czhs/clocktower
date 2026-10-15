@@ -6,6 +6,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { matchMaker } from '@colyseus/core';
+import { PRESET_IDS } from '@ct/assets';
 import { DEFAULT_COSMETICS, type LobbyRoomView, type StatsView } from '@ct/protocol';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { api, createLobby, makeAccount, sleep, TestClient, waitFor } from '../src/rooms/testkit.js';
@@ -25,6 +26,8 @@ import {
   vote,
 } from './playtestHarness.js';
 
+/** Any preset id of the generated manifest (ids are renamed by the art pipeline from time to time). */
+const [PRESET, PRESET2, PRESET3] = [...PRESET_IDS] as [string, string, string];
 const PORT = 3314; // playtest range 3310-3319
 const DB = `file:${path.join(mkdtempSync(path.join(tmpdir(), 'ct-playtest-persist-')), 'persist.db')}`;
 
@@ -43,9 +46,9 @@ describe('playtest: persistence', () => {
     expect((await api(env.srv, 'GET', '/api/me', { cookie: twinA.cookie })).status).toBe(200);
     const bad = await api(env.srv, 'PATCH', '/api/me', { cookie: twinA.cookie, body: { cosmetics: { ...DEFAULT_COSMETICS, preset: 'not-a-preset' } } });
     expect(bad.status).toBe(400);
-    const good = await api(env.srv, 'PATCH', '/api/me', { cookie: twinA.cookie, body: { cosmetics: { ...DEFAULT_COSMETICS, preset: 'lamplighter' } } });
+    const good = await api(env.srv, 'PATCH', '/api/me', { cookie: twinA.cookie, body: { cosmetics: { ...DEFAULT_COSMETICS, preset: PRESET } } });
     expect(good.status).toBe(200);
-    expect(JSON.stringify(good.body)).toContain('"preset":"lamplighter"');
+    expect(JSON.stringify(good.body)).toContain(`"preset":"${PRESET}"`);
     const cleared = await api(env.srv, 'PATCH', '/api/me', { cookie: twinB.cookie, body: { cosmetics: { ...DEFAULT_COSMETICS, preset: null } } });
     expect(cleared.status).toBe(200);
 
@@ -60,11 +63,11 @@ describe('playtest: persistence', () => {
     // Same display name: the later joiner is shown with a suffix (SR-11), keyed by pid.
     expect(lv.members.find((m) => m.pid === jA!.c.pid)!.displayName).toBe('Twin');
     expect(lv.members.find((m) => m.pid === jB!.c.pid)!.displayName).toBe('Twin (2)');
-    expect(memberCosmetics(lv, jA!.c.pid!)?.preset).toBe('lamplighter');
+    expect(memberCosmetics(lv, jA!.c.pid!)?.preset).toBe(PRESET);
     jB!.c.send('lobby:cosmetics', { cosmetics: { ...DEFAULT_COSMETICS, preset: 'bogus-preset' } });
     await jB!.c.waitMsg('error', (e) => e.for === 'lobby:cosmetics' && /preset/i.test(e.message));
-    jB!.c.send('lobby:cosmetics', { cosmetics: { ...DEFAULT_COSMETICS, preset: 'baker' } });
-    await g.st.view((v) => memberCosmetics(v, jB!.c.pid!)?.preset === 'baker');
+    jB!.c.send('lobby:cosmetics', { cosmetics: { ...DEFAULT_COSMETICS, preset: PRESET2 } });
+    await g.st.view((v) => memberCosmetics(v, jB!.c.pid!)?.preset === PRESET2);
 
     // 0 imp, 1 poisoner, 2 chef, 3 empath, 4 washerwoman (seats are shuffled; twins are found by pid)
     await startGame(g, ['imp', 'poisoner', 'chef', 'empath', 'washerwoman']);
@@ -77,16 +80,16 @@ describe('playtest: persistence', () => {
     expect((await api(env.srv, 'POST', '/api/auth/create', { body: { displayName: 'system' } })).status).toBe(400);
 
     // No mid-game disguises: lobby:cosmetics is refused and an account-level PATCH does not reach the room.
-    A.c.send('lobby:cosmetics', { cosmetics: { ...DEFAULT_COSMETICS, preset: 'gravedigger' } });
+    A.c.send('lobby:cosmetics', { cosmetics: { ...DEFAULT_COSMETICS, preset: PRESET3 } });
     await A.c.waitMsg('error', (e) => e.for === 'lobby:cosmetics' && e.code === 'phase');
-    expect((await api(env.srv, 'PATCH', '/api/me', { cookie: twinA.cookie, body: { cosmetics: { ...DEFAULT_COSMETICS, preset: 'gravedigger' } } })).status).toBe(200);
+    expect((await api(env.srv, 'PATCH', '/api/me', { cookie: twinA.cookie, body: { cosmetics: { ...DEFAULT_COSMETICS, preset: PRESET3 } } })).status).toBe(200);
     A.c.drop();
     A.past.push(A.c);
     A.c = await TestClient.join(env.srv, A.cookie, g.lobbyId, 'reconnect', A.name);
     attachBot(A);
     await A.c.waitMsg('game:view', (v) => v.kind === 'player');
     await sleep(200);
-    expect(memberCosmetics(g.st.last('lobby:view'), A.pid)?.preset).toBe('lamplighter');
+    expect(memberCosmetics(g.st.last('lobby:view'), A.pid)?.preset).toBe(PRESET);
 
     await runNight(g);
     await toDay(g, false);
@@ -138,7 +141,7 @@ describe('playtest: persistence', () => {
     }
     const me = await api(env.srv, 'GET', '/api/me', { cookie: twinA.cookie });
     expect(me.status).toBe(200); // session survived
-    expect(JSON.stringify(me.body)).toContain('"preset":"gravedigger"');
+    expect(JSON.stringify(me.body)).toContain(`"preset":"${PRESET3}"`);
     expect(env.srv.services.stats.matchCount()).toBe(1);
     // Admin "close lobby" (SR-2 remedy): non-admins are refused; members are told and disconnected.
     const host = await makeAccount(env.srv, 'Squatter');

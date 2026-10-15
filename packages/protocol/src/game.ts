@@ -161,6 +161,13 @@ export interface PlayerGameView {
   result: GameResult | null;
   /** (additive) Only in the Spy's own view. */
   spyGrimoire?: SpyGrimoireView | null;
+  /** (additive, gameplay) The Storyteller gathered the town into the nomination circle (public). */
+  gathering?: boolean;
+  /**
+   * (additive, gameplay) Bedtime countdown is over: everyone not yet home is being walked home by
+   * the server; the night falls once every player is inside their own home (public).
+   */
+  bedtimeOvertime?: boolean;
 }
 
 // Player C2S payloads

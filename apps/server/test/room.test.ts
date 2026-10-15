@@ -453,3 +453,49 @@ describe('GameRoom lifecycle (real Colyseus, fake gameplay modules)', () => {
     }
   });
 });
+
+describe('no silent message drops (gameplay, 2026-10-15: "the first Ready click does not take")', () => {
+  it('lobby:ready sent in the same tick as the join is applied', async () => {
+    const L = await seatLobby(0, { prefix: 'Rdy' });
+    const a = await makeAccount(srv, 'Rdy-quick');
+    const t = await getTicket(srv, a.cookie, L.lobby.id, 'player');
+    const c = track(await TestClient.joinWithTicket(srv, t.body, 'Rdy-quick'));
+    c.send('lobby:ready', { ready: true }); // before any lobby:view arrived
+    const pid = (await c.view()).youPid;
+    await L.st.view((v) => v.members.some((m) => m.pid === pid && m.ready), 3000);
+    expect(c.of('error')).toEqual([]);
+  });
+
+  it('a message sent right after a token reconnection is applied (queued until the seat is re-bound)', async () => {
+    const L = await seatLobby(1, { prefix: 'Rtk' });
+    const p = L.players[0]!;
+    const pid = p.pid!;
+    const token = p.room.reconnectionToken;
+    p.drop();
+    await L.st.view((x) => x.members.some((m) => m.pid === pid && !m.connected));
+    p.messages = [];
+    await p.reconnectWithToken(srv, token);
+    p.send('lobby:ready', { ready: true }); // immediately, no round trip in between
+    await L.st.view((v) => v.members.some((m) => m.pid === pid && m.connected && m.ready), 3000);
+    expect(p.of('error')).toEqual([]);
+  });
+
+  it('a replaced (stale) connection is told so instead of being ignored', async () => {
+    const L = await seatLobby(1, { prefix: 'Stl' });
+    const old = L.players[0]!;
+    const pid = old.pid!;
+    // The same account joins again (second tab / a client retry that opened a second socket).
+    const fresh = await join(L.accounts[0]!.cookie, L.lobby.id, 'player', 'Stl-fresh');
+    expect((await fresh.view()).youPid).toBe(pid);
+    // Whatever the old socket still manages to send is answered (error and/or close 4102), never dropped silently.
+    try {
+      old.send('lobby:ready', { ready: true });
+    } catch {
+      // already closed by the newest-wins policy: also an answer
+    }
+    await waitFor(() => old.closeCode === CLOSE_CODES.replaced || old.of('error').some((e) => /stale_connection/.test(e.message)), 3000, 'stale answer');
+    // and it did not mark the seat ready behind the new connection's back
+    await sleep(200);
+    expect(L.st.last('lobby:view')!.members.find((m) => m.pid === pid)!.ready).toBe(false);
+  });
+});

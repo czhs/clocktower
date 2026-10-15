@@ -43,24 +43,55 @@ export class RoomConnection {
 
   constructor(readonly lobbyId: string) {}
 
+  /** In-flight join: connect() is single-flight (a retry or a re-mount never opens a second socket). */
+  private connecting: Promise<void> | null = null;
+
   /** Join (or restore) this lobby. intent 'storyteller' claims the open ST seat. */
-  async connect(intent: 'player' | 'storyteller' = 'player'): Promise<void> {
+  connect(intent: 'player' | 'storyteller' = 'player'): Promise<void> {
+    this.connecting ??= this.doConnect(intent).finally(() => {
+      this.connecting = null;
+    });
+    return this.connecting;
+  }
+
+  private async doConnect(intent: 'player' | 'storyteller'): Promise<void> {
+    if (this.room) return; // already connected
     const token = sessionStorage.getItem(RECONNECT_KEY(this.lobbyId));
     if (token) {
       try {
-        this.attach(await this.client.reconnect(token));
+        this.adopt(await this.client.reconnect(token));
         return;
       } catch {
         sessionStorage.removeItem(RECONNECT_KEY(this.lobbyId));
       }
     }
+    if (this.closedByUser) return;
     const t = await api.ticket(this.lobbyId, { intent });
-    this.attach(await this.client.joinById(t.roomId, { ticket: t.ticket }));
+    if (this.closedByUser) return; // the user left while we were fetching the ticket: don't join at all
+    this.adopt(await this.client.joinById(t.roomId, { ticket: t.ticket }));
+  }
+
+  /** Attach a freshly joined room, unless the user already left meanwhile (then leave it at once). */
+  private adopt(room: Room): void {
+    if (this.closedByUser) {
+      try {
+        room.send('lobby:leave', {});
+      } catch {
+        /* closing */
+      }
+      void room.leave(true).catch(() => undefined);
+      return;
+    }
+    this.attach(room);
   }
 
   private attach(room: Room) {
     this.room = room;
     this.status.set('open');
+    const queued = this.pending;
+    this.pending = [];
+    // Flush after the listeners below are registered (next tick) so replies aren't missed.
+    if (queued.length) setTimeout(() => queued.forEach((m) => room.send(m.type, m.payload)), 0);
     sessionStorage.setItem(RECONNECT_KEY(this.lobbyId), room.reconnectionToken);
     const types: S2CType[] = [
       'lobby:view',
@@ -121,8 +152,17 @@ export class RoomConnection {
     }
   }
 
+  /** Messages sent while (re)connecting; flushed on attach. Movement is dropped (stale by then). */
+  private pending: { type: C2SType; payload: unknown }[] = [];
+
   send<T extends C2SType>(type: T, payload: C2SPayload<T>): void {
-    this.room?.send(type, payload);
+    if (this.room) {
+      this.room.send(type, payload);
+      return;
+    }
+    if (type === 'move' || this.closedByUser) return;
+    // Never silently lose a click (Ready, vote, nominate, ST command) during a brief reconnect.
+    this.pending = [...this.pending.filter((m) => !(m.type === type && type === 'lobby:ready')), { type, payload }].slice(-20);
   }
 
   async leave(): Promise<void> {
