@@ -16,15 +16,16 @@ const ST_NAME = `Teller ${suffix}`;
 const PLAYER_NAMES = ['Ada', 'Bram', 'Cora', 'Dov', 'Esme'].map((n) => `${n} ${suffix}`);
 
 /** Step log written to artifacts/m3-steps.json (which steps were UI-driven, what was verified). */
-const steps: { step: string; driver: 'ui' | 'message' | 'observe'; ok: boolean; note?: string }[] = [];
+const steps: { step: string; driver: 'ui' | 'message' | 'observe'; ok: boolean; ms: number; note?: string }[] = [];
 async function step<T>(name: string, driver: 'ui' | 'message' | 'observe', fn: () => Promise<T>, note?: string): Promise<T> {
   return test.step(name, async () => {
+    const t0 = Date.now();
     try {
       const r = await fn();
-      steps.push({ step: name, driver, ok: true, ...(note ? { note } : {}) });
+      steps.push({ step: name, driver, ok: true, ms: Date.now() - t0, ...(note ? { note } : {}) });
       return r;
     } catch (e) {
-      steps.push({ step: name, driver, ok: false, note: (e as Error).message.split('\n')[0] });
+      steps.push({ step: name, driver, ok: false, ms: Date.now() - t0, note: (e as Error).message.split('\n')[0] });
       throw e;
     }
   });
@@ -36,11 +37,15 @@ async function shot(page: Page, name: string) {
   await page.screenshot({ path: path.join(ART, `m3-${name}.png`) });
 }
 
+const readyRetries: string[] = [];
+let voteNote = '';
 const gv = (p: Player) => p.tap.last('game:view');
 const pidOf = (p: Player): string => p.tap.last('lobby:view')?.youPid;
 
 test('M3: Storyteller-guided round with 1 ST + 5 players', async ({ browser }) => {
-  test.setTimeout(300_000);
+  // Generous budget: six software-rendered Phaser pages on a host shared with other test runs
+  // (load avg ~30 on 12 cores observed) can take minutes just to load the town.
+  test.setTimeout(1_200_000);
   mkdirSync(ART, { recursive: true });
   const all: Player[] = [];
   try {
@@ -48,7 +53,8 @@ test('M3: Storyteller-guided round with 1 ST + 5 players', async ({ browser }) =
     const st = await step('6 accounts created through the UI', 'ui', async () => {
       const s = await createAccount(browser, ST_NAME);
       all.push(s);
-      for (const n of PLAYER_NAMES) all.push(await createAccount(browser, n));
+      // Smaller player viewports halve the software-rendering cost per page; assertions are unchanged.
+      for (const n of PLAYER_NAMES) all.push(await createAccount(browser, n, { width: 960, height: 600 }));
       return s;
     });
     const players = all.slice(1);
@@ -67,7 +73,16 @@ test('M3: Storyteller-guided round with 1 ST + 5 players', async ({ browser }) =
     await step('5 players open the share URL and press Ready', 'ui', async () => {
       for (const p of players) {
         await p.page.goto(new URL(shareUrl).pathname);
-        await p.page.getByRole('button', { name: "I'm ready" }).click();
+        // Click, then confirm the server acknowledged it (button flips to "Not ready"); retry if not.
+        for (let attempt = 1; ; attempt++) {
+          await p.page.getByRole('button', { name: "I'm ready" }).click();
+          const ok = await p.page.getByRole('button', { name: 'Not ready' }).waitFor({ timeout: 4000 }).then(() => true, () => false);
+          if (ok) break;
+          const sentReady = p.tap.sent('lobby:ready').length;
+          const views = p.tap.received('lobby:view').length;
+          readyRetries.push(`${p.name}: attempt ${attempt} not acknowledged (lobby:ready frames sent so far: ${sentReady}, lobby:view received: ${views})`);
+          if (attempt >= 3) throw new Error(`${p.name}: Ready not acknowledged after 3 clicks`);
+        }
       }
       await st.tap.until(() => {
         const v = st.tap.last('lobby:view');
@@ -75,6 +90,7 @@ test('M3: Storyteller-guided round with 1 ST + 5 players', async ({ browser }) =
       }, 20_000, '5 ready players + canStart');
       await shot(st.page, '1-waiting-room');
     });
+    if (readyRetries.length) steps.at(-1)!.note = `ready click retries: ${readyRetries.join('; ')}`;
 
     // ---------------------------------------------------------------- start + setup
     await step('ST starts the game', 'ui', async () => {
@@ -171,13 +187,24 @@ test('M3: Storyteller-guided round with 1 ST + 5 players', async ({ browser }) =
     await step('ST starts the vote; 4 players raise hands; clock hand tallies', 'ui', async () => {
       await st.page.getByRole('button', { name: 'Start vote' }).click();
       const voters = players.filter((p) => p !== nominee);
-      await Promise.all(voters.map((p) => p.page.getByRole('button', { name: 'Raise hand' }).click()));
+      // The clock hand locks one seat every 1.5 s, so a hand raised after the hand passed is too late
+      // (the button disappears): bound each click and record who made it.
+      const outcome = await Promise.all(
+        voters.map((p) =>
+          p.page.getByRole('button', { name: 'Raise hand' }).click({ timeout: 6000 }).then(
+            () => `${p.name}: raised`,
+            () => `${p.name}: missed (hand already passed)`,
+          ),
+        ),
+      );
+      voteNote = outcome.join('; ');
       await shot(nominator.page, '5-day-vote-clock');
       await st.tap.until(() => gv(st)?.day?.onTheBlock?.seat === nomineeEntry.seat, 20_000, 'nominee on the block');
       const n = gv(st).day.nominations[0];
       expect(n.status).toBe('tallied');
       expect(n.voteCount).toBeGreaterThanOrEqual(3);
     });
+    steps.at(-1)!.note = voteNote;
 
     await step('ST executes; the executed player becomes a ghost with a ghost vote', 'ui', async () => {
       await st.page.locator('.cts-block').getByRole('button', { name: 'Execute' }).click();
@@ -219,6 +246,6 @@ test('M3: Storyteller-guided round with 1 ST + 5 players', async ({ browser }) =
     });
   } finally {
     writeFileSync(path.join(ART, 'm3-steps.json'), JSON.stringify(steps, null, 2));
-    await Promise.all(all.map((p) => p.ctx.close()));
+    await Promise.all(all.map((p) => p.ctx.close().catch(() => undefined)));
   }
 });

@@ -3,7 +3,8 @@
 // By default the config builds the app and starts a throwaway server on 127.0.0.1:3398 with a temp
 // SQLite DB and random secrets (webServer below). To run against an existing deployment instead:
 //   E2E_BASE_URL=http://127.0.0.1:3001 pnpm test:e2e      # dev service (on hshi-u1)
-//   E2E_BASE_URL=https://hshi-u1.tailf28040.ts.net pnpm test:e2e   # prod via Funnel (creates accounts!)
+//   E2E_PUBLIC=1 E2E_RESOLVE_IP=$(dig +short @1.1.1.1 clocktower.chrisshi.com A | head -1) pnpm test:e2e
+//       # public endpoint: public.spec.ts only (creates 2 accounts on prod — run sparingly)
 // CT_E2E_NO_BUILD=1 skips the build step (use a dist you just built).
 import { randomBytes } from 'node:crypto';
 import { mkdtempSync } from 'node:fs';
@@ -14,13 +15,20 @@ import { defineConfig, devices } from '@playwright/test';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const PORT = 3398;
-const external = process.env.E2E_BASE_URL;
+// Public-endpoint run (only when E2E_PUBLIC=1): runs ONLY public.spec.ts against E2E_BASE_URL
+// (default https://clocktower.chrisshi.com). E2E_RESOLVE_IP pins the hostname for Chromium
+// (--host-resolver-rules), for hosts whose local resolver is stale.
+const PUBLIC = process.env.E2E_PUBLIC === '1';
+const external = process.env.E2E_BASE_URL ?? (PUBLIC ? 'https://clocktower.chrisshi.com' : undefined);
+const pinnedHost = external ? new URL(external).hostname : '';
+const resolveArgs = process.env.E2E_RESOLVE_IP ? [`--host-resolver-rules=MAP ${pinnedHost} ${process.env.E2E_RESOLVE_IP}`] : [];
 const baseURL = external ?? `http://127.0.0.1:${PORT}`;
 const dataDir = external ? '' : mkdtempSync(path.join(os.tmpdir(), 'ct-e2e-'));
 
 export default defineConfig({
   testDir: '.',
-  testMatch: /.*\.spec\.ts/,
+  testMatch: PUBLIC ? /public\.spec\.ts/ : /.*\.spec\.ts/,
+  testIgnore: PUBLIC ? [] : [/public\.spec\.ts/],
   outputDir: path.join(root, 'test-results/e2e'),
   reporter: [['list'], ['html', { outputFolder: path.join(root, 'playwright-report'), open: 'never' }]],
   timeout: 60_000,
@@ -34,7 +42,7 @@ export default defineConfig({
     screenshot: 'only-on-failure',
     video: 'off',
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'], launchOptions: { args: resolveArgs } } }],
   webServer: external
     ? undefined
     : {

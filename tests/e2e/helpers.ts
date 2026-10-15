@@ -68,6 +68,11 @@ export class FrameTap {
   sent(type: string, since = 0): any[] {
     return this.frames.filter((f) => f.dir === 'out' && f.type === type && f.at >= since).map((f) => f.payload);
   }
+  typeCounts(): Record<string, number> {
+    const c: Record<string, number> = {};
+    for (const f of this.frames) c[`${f.dir}:${f.type}`] = (c[`${f.dir}:${f.type}`] ?? 0) + 1;
+    return c;
+  }
   last(type: string): any {
     for (let i = this.frames.length - 1; i >= 0; i--) if (this.frames[i]!.dir === 'in' && this.frames[i]!.type === type) return this.frames[i]!.payload;
     return undefined;
@@ -79,7 +84,7 @@ export class FrameTap {
       .poll(() => {
         v = fn();
         return Boolean(v);
-      }, { timeout: timeoutMs, message: `${this.label}: ${what}` })
+      }, { timeout: timeoutMs, message: `${this.label}: ${what} (frames seen: ${JSON.stringify(this.typeCounts())})` })
       .toBe(true);
     return v as T;
   }

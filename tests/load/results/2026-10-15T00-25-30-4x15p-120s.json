@@ -1,0 +1,1162 @@
+{
+  "at": "2026-10-15T00:25:30.993Z",
+  "host": "hshi-u1",
+  "cpuModel": "AMD Ryzen 5 5500",
+  "cores": 12,
+  "target": "http://127.0.0.1:3399",
+  "serverVersion": "test-354a656f4218",
+  "serverPid": 3749456,
+  "config": {
+    "lobbies": 4,
+    "playersPerLobby": 15,
+    "storytellers": 4,
+    "clients": 64,
+    "durationS": 120,
+    "moveHz": 10,
+    "pingMs": 1000,
+    "startGame": true
+  },
+  "setupMs": 2068,
+  "gameState": {
+    "SLTMW-Pdzw": "phase=day",
+    "jLOjLfWoEz": "phase=day",
+    "eGsnHoJx5w": "phase=day",
+    "2NBwIEYZOh": "phase=day"
+  },
+  "elapsedS": 120.1,
+  "server": {
+    "cpuPctAvg": 4.9,
+    "cpuPctP95": 6,
+    "cpuPctMax": 13,
+    "rssMbStart": 247.8,
+    "rssMbMax": 249.2,
+    "rssMbEnd": 116.8
+  },
+  "loadGenerator": {
+    "cpuPctAvg": 5
+  },
+  "traffic": {
+    "c2sMsgsPerSec": 629,
+    "s2cMsgsPerSec": 842,
+    "c2sKBps": 28,
+    "s2cKBps": 869,
+    "perClientS2cKBps": 13.6,
+    "s2cKBpsP95": 878.1,
+    "s2cKBpsMax": 895.4,
+    "s2cMbitPerSec": 7.12,
+    "loopbackKBps": 1063.8,
+    "s2cByType": {
+      "world:teleport": 244,
+      "voice:unavailable": 64,
+      "lobby:view": 326,
+      "world:snapshot": 108368,
+      "game:view": 196,
+      "announcement": 128,
+      "sound": 64,
+      "pong": 7872
+    }
+  },
+  "latency": {
+    "pingSent": 7872,
+    "pongReceived": 7872,
+    "rttMsP50": 0.6,
+    "rttMsP95": 2.2,
+    "rttMsP99": 3.1,
+    "rttMsMax": 5.3,
+    "snapshotSamples": 93376,
+    "entitiesPerSnapshotAvg": 16,
+    "serverCorrections": 0,
+    "outdoorsAtStart": 64,
+    "outdoorsAtEnd": 64,
+    "snapshotDelayMsP50": 0,
+    "snapshotDelayMsP95": 2,
+    "snapshotDelayMsMax": 8
+  },
+  "errors": {
+    "count": 0,
+    "sample": [],
+    "disconnected": []
+  },
+  "samples": [
+    {
+      "t": 1,
+      "cpuPct": 5,
+      "rssMb": 247.8,
+      "loadCpuPct": 9.5,
+      "rxMsgs": 848,
+      "txMsgs": 601,
+      "s2cKBps": 878
+    },
+    {
+      "t": 2,
+      "cpuPct": 6,
+      "rssMb": 247.8,
+      "loadCpuPct": 6.1,
+      "rxMsgs": 847,
+      "txMsgs": 662,
+      "s2cKBps": 878.6
+    },
+    {
+      "t": 3,
+      "cpuPct": 5,
+      "rssMb": 247.9,
+      "loadCpuPct": 8.2,
+      "rxMsgs": 831,
+      "txMsgs": 660,
+      "s2cKBps": 854.6
+    },
+    {
+      "t": 4,
+      "cpuPct": 5,
+      "rssMb": 247.9,
+      "loadCpuPct": 5.1,
+      "rxMsgs": 832,
+      "txMsgs": 594,
+      "s2cKBps": 852.1
+    },
+    {
+      "t": 5,
+      "cpuPct": 6,
+      "rssMb": 247.9,
+      "loadCpuPct": 6.6,
+      "rxMsgs": 821,
+      "txMsgs": 649,
+      "s2cKBps": 855.5
+    },
+    {
+      "t": 6,
+      "cpuPct": 6,
+      "rssMb": 248.1,
+      "loadCpuPct": 5.1,
+      "rxMsgs": 842,
+      "txMsgs": 667,
+      "s2cKBps": 860.5
+    },
+    {
+      "t": 7,
+      "cpuPct": 5,
+      "rssMb": 248.1,
+      "loadCpuPct": 6.1,
+      "rxMsgs": 832,
+      "txMsgs": 650,
+      "s2cKBps": 860.7
+    },
+    {
+      "t": 8,
+      "cpuPct": 5,
+      "rssMb": 248.1,
+      "loadCpuPct": 5.3,
+      "rxMsgs": 815,
+      "txMsgs": 642,
+      "s2cKBps": 837.3
+    },
+    {
+      "t": 9,
+      "cpuPct": 6,
+      "rssMb": 248.1,
+      "loadCpuPct": 5.5,
+      "rxMsgs": 832,
+      "txMsgs": 620,
+      "s2cKBps": 855.7
+    },
+    {
+      "t": 10,
+      "cpuPct": 5,
+      "rssMb": 248.1,
+      "loadCpuPct": 5,
+      "rxMsgs": 848,
+      "txMsgs": 620,
+      "s2cKBps": 874.5
+    },
+    {
+      "t": 11,
+      "cpuPct": 4,
+      "rssMb": 248.1,
+      "loadCpuPct": 4.9,
+      "rxMsgs": 827,
+      "txMsgs": 582,
+      "s2cKBps": 855.9
+    },
+    {
+      "t": 12,
+      "cpuPct": 6,
+      "rssMb": 248.2,
+      "loadCpuPct": 5.8,
+      "rxMsgs": 836,
+      "txMsgs": 611,
+      "s2cKBps": 855.9
+    },
+    {
+      "t": 13,
+      "cpuPct": 10,
+      "rssMb": 248.6,
+      "loadCpuPct": 5,
+      "rxMsgs": 848,
+      "txMsgs": 657,
+      "s2cKBps": 877.5
+    },
+    {
+      "t": 14,
+      "cpuPct": 7,
+      "rssMb": 248.8,
+      "loadCpuPct": 6.2,
+      "rxMsgs": 799,
+      "txMsgs": 643,
+      "s2cKBps": 823.1
+    },
+    {
+      "t": 15,
+      "cpuPct": 6,
+      "rssMb": 248.8,
+      "loadCpuPct": 5,
+      "rxMsgs": 832,
+      "txMsgs": 653,
+      "s2cKBps": 859.8
+    },
+    {
+      "t": 16,
+      "cpuPct": 5,
+      "rssMb": 248.8,
+      "loadCpuPct": 5.1,
+      "rxMsgs": 815,
+      "txMsgs": 644,
+      "s2cKBps": 858.2
+    },
+    {
+      "t": 17,
+      "cpuPct": 5,
+      "rssMb": 248.8,
+      "loadCpuPct": 4.9,
+      "rxMsgs": 863,
+      "txMsgs": 630,
+      "s2cKBps": 895.4
+    },
+    {
+      "t": 18,
+      "cpuPct": 5,
+      "rssMb": 248.8,
+      "loadCpuPct": 5.8,
+      "rxMsgs": 818,
+      "txMsgs": 615,
+      "s2cKBps": 839.8
+    },
+    {
+      "t": 19,
+      "cpuPct": 5,
+      "rssMb": 248.3,
+      "loadCpuPct": 4.4,
+      "rxMsgs": 844,
+      "txMsgs": 612,
+      "s2cKBps": 853.3
+    },
+    {
+      "t": 20,
+      "cpuPct": 5,
+      "rssMb": 248.6,
+      "loadCpuPct": 4.8,
+      "rxMsgs": 832,
+      "txMsgs": 636,
+      "s2cKBps": 855.8
+    },
+    {
+      "t": 21,
+      "cpuPct": 4,
+      "rssMb": 248.8,
+      "loadCpuPct": 4.7,
+      "rxMsgs": 846,
+      "txMsgs": 614,
+      "s2cKBps": 872.2
+    },
+    {
+      "t": 22,
+      "cpuPct": 4,
+      "rssMb": 248.8,
+      "loadCpuPct": 4.3,
+      "rxMsgs": 832,
+      "txMsgs": 580,
+      "s2cKBps": 857.6
+    },
+    {
+      "t": 23,
+      "cpuPct": 5,
+      "rssMb": 248.2,
+      "loadCpuPct": 4.8,
+      "rxMsgs": 816,
+      "txMsgs": 667,
+      "s2cKBps": 844.3
+    },
+    {
+      "t": 24,
+      "cpuPct": 5,
+      "rssMb": 248.2,
+      "loadCpuPct": 4.4,
+      "rxMsgs": 815,
+      "txMsgs": 662,
+      "s2cKBps": 842.9
+    },
+    {
+      "t": 25,
+      "cpuPct": 5,
+      "rssMb": 248.2,
+      "loadCpuPct": 4.8,
+      "rxMsgs": 848,
+      "txMsgs": 648,
+      "s2cKBps": 880.8
+    },
+    {
+      "t": 26,
+      "cpuPct": 4,
+      "rssMb": 248.2,
+      "loadCpuPct": 4.5,
+      "rxMsgs": 848,
+      "txMsgs": 636,
+      "s2cKBps": 879.8
+    },
+    {
+      "t": 27,
+      "cpuPct": 4,
+      "rssMb": 248.2,
+      "loadCpuPct": 4.6,
+      "rxMsgs": 832,
+      "txMsgs": 630,
+      "s2cKBps": 859.8
+    },
+    {
+      "t": 28,
+      "cpuPct": 5,
+      "rssMb": 248.3,
+      "loadCpuPct": 6.2,
+      "rxMsgs": 847,
+      "txMsgs": 617,
+      "s2cKBps": 874
+    },
+    {
+      "t": 29,
+      "cpuPct": 5,
+      "rssMb": 248.3,
+      "loadCpuPct": 4.6,
+      "rxMsgs": 831,
+      "txMsgs": 652,
+      "s2cKBps": 856.9
+    },
+    {
+      "t": 30,
+      "cpuPct": 5,
+      "rssMb": 248.2,
+      "loadCpuPct": 4.8,
+      "rxMsgs": 800,
+      "txMsgs": 640,
+      "s2cKBps": 819.7
+    },
+    {
+      "t": 31,
+      "cpuPct": 4,
+      "rssMb": 248.2,
+      "loadCpuPct": 4.5,
+      "rxMsgs": 830,
+      "txMsgs": 626,
+      "s2cKBps": 855
+    },
+    {
+      "t": 32,
+      "cpuPct": 5,
+      "rssMb": 248.2,
+      "loadCpuPct": 4.6,
+      "rxMsgs": 831,
+      "txMsgs": 608,
+      "s2cKBps": 856.3
+    },
+    {
+      "t": 33,
+      "cpuPct": 4,
+      "rssMb": 248.2,
+      "loadCpuPct": 4.5,
+      "rxMsgs": 830,
+      "txMsgs": 602,
+      "s2cKBps": 857.7
+    },
+    {
+      "t": 34,
+      "cpuPct": 5,
+      "rssMb": 248.2,
+      "loadCpuPct": 4.5,
+      "rxMsgs": 832,
+      "txMsgs": 619,
+      "s2cKBps": 859.3
+    },
+    {
+      "t": 35,
+      "cpuPct": 5,
+      "rssMb": 248.2,
+      "loadCpuPct": 4.9,
+      "rxMsgs": 847,
+      "txMsgs": 625,
+      "s2cKBps": 878.1
+    },
+    {
+      "t": 36,
+      "cpuPct": 4,
+      "rssMb": 248.2,
+      "loadCpuPct": 4.3,
+      "rxMsgs": 832,
+      "txMsgs": 646,
+      "s2cKBps": 859.5
+    },
+    {
+      "t": 37,
+      "cpuPct": 4,
+      "rssMb": 248.2,
+      "loadCpuPct": 4.8,
+      "rxMsgs": 831,
+      "txMsgs": 600,
+      "s2cKBps": 854.5
+    },
+    {
+      "t": 38,
+      "cpuPct": 5,
+      "rssMb": 248.2,
+      "loadCpuPct": 4.5,
+      "rxMsgs": 832,
+      "txMsgs": 587,
+      "s2cKBps": 856.1
+    },
+    {
+      "t": 39,
+      "cpuPct": 4,
+      "rssMb": 248.2,
+      "loadCpuPct": 4.5,
+      "rxMsgs": 832,
+      "txMsgs": 627,
+      "s2cKBps": 857.8
+    },
+    {
+      "t": 40,
+      "cpuPct": 5,
+      "rssMb": 248.2,
+      "loadCpuPct": 4.9,
+      "rxMsgs": 847,
+      "txMsgs": 668,
+      "s2cKBps": 876.9
+    },
+    {
+      "t": 41,
+      "cpuPct": 4,
+      "rssMb": 248.2,
+      "loadCpuPct": 4.6,
+      "rxMsgs": 831,
+      "txMsgs": 669,
+      "s2cKBps": 863
+    },
+    {
+      "t": 42,
+      "cpuPct": 5,
+      "rssMb": 248.2,
+      "loadCpuPct": 4.7,
+      "rxMsgs": 816,
+      "txMsgs": 656,
+      "s2cKBps": 842.9
+    },
+    {
+      "t": 43,
+      "cpuPct": 4,
+      "rssMb": 248.2,
+      "loadCpuPct": 4.6,
+      "rxMsgs": 831,
+      "txMsgs": 625,
+      "s2cKBps": 858.3
+    },
+    {
+      "t": 44,
+      "cpuPct": 4,
+      "rssMb": 248.3,
+      "loadCpuPct": 4.8,
+      "rxMsgs": 816,
+      "txMsgs": 638,
+      "s2cKBps": 842.5
+    },
+    {
+      "t": 45,
+      "cpuPct": 5,
+      "rssMb": 248.3,
+      "loadCpuPct": 4.8,
+      "rxMsgs": 832,
+      "txMsgs": 648,
+      "s2cKBps": 859.2
+    },
+    {
+      "t": 46,
+      "cpuPct": 4,
+      "rssMb": 248.3,
+      "loadCpuPct": 4.7,
+      "rxMsgs": 832,
+      "txMsgs": 622,
+      "s2cKBps": 856.9
+    },
+    {
+      "t": 47,
+      "cpuPct": 6,
+      "rssMb": 248.4,
+      "loadCpuPct": 5,
+      "rxMsgs": 848,
+      "txMsgs": 624,
+      "s2cKBps": 876.5
+    },
+    {
+      "t": 48,
+      "cpuPct": 5,
+      "rssMb": 248.4,
+      "loadCpuPct": 4.8,
+      "rxMsgs": 830,
+      "txMsgs": 637,
+      "s2cKBps": 857.9
+    },
+    {
+      "t": 49,
+      "cpuPct": 4,
+      "rssMb": 248.4,
+      "loadCpuPct": 4.9,
+      "rxMsgs": 848,
+      "txMsgs": 608,
+      "s2cKBps": 873.9
+    },
+    {
+      "t": 50,
+      "cpuPct": 6,
+      "rssMb": 248.7,
+      "loadCpuPct": 4.7,
+      "rxMsgs": 816,
+      "txMsgs": 574,
+      "s2cKBps": 838.1
+    },
+    {
+      "t": 51,
+      "cpuPct": 4,
+      "rssMb": 248.7,
+      "loadCpuPct": 5,
+      "rxMsgs": 832,
+      "txMsgs": 587,
+      "s2cKBps": 856.7
+    },
+    {
+      "t": 52,
+      "cpuPct": 5,
+      "rssMb": 248.7,
+      "loadCpuPct": 4.8,
+      "rxMsgs": 831,
+      "txMsgs": 620,
+      "s2cKBps": 856.6
+    },
+    {
+      "t": 53,
+      "cpuPct": 5,
+      "rssMb": 248.7,
+      "loadCpuPct": 4.9,
+      "rxMsgs": 832,
+      "txMsgs": 659,
+      "s2cKBps": 858
+    },
+    {
+      "t": 54,
+      "cpuPct": 4,
+      "rssMb": 248.7,
+      "loadCpuPct": 4.6,
+      "rxMsgs": 831,
+      "txMsgs": 628,
+      "s2cKBps": 859
+    },
+    {
+      "t": 55,
+      "cpuPct": 5,
+      "rssMb": 248.7,
+      "loadCpuPct": 4.7,
+      "rxMsgs": 847,
+      "txMsgs": 616,
+      "s2cKBps": 876.4
+    },
+    {
+      "t": 56,
+      "cpuPct": 4,
+      "rssMb": 248.7,
+      "loadCpuPct": 4.7,
+      "rxMsgs": 831,
+      "txMsgs": 631,
+      "s2cKBps": 858.6
+    },
+    {
+      "t": 57,
+      "cpuPct": 5,
+      "rssMb": 248.7,
+      "loadCpuPct": 4.5,
+      "rxMsgs": 818,
+      "txMsgs": 663,
+      "s2cKBps": 847.7
+    },
+    {
+      "t": 58,
+      "cpuPct": 4,
+      "rssMb": 248.7,
+      "loadCpuPct": 5.2,
+      "rxMsgs": 831,
+      "txMsgs": 671,
+      "s2cKBps": 860
+    },
+    {
+      "t": 59,
+      "cpuPct": 4,
+      "rssMb": 248.7,
+      "loadCpuPct": 4.7,
+      "rxMsgs": 816,
+      "txMsgs": 639,
+      "s2cKBps": 841.4
+    },
+    {
+      "t": 60,
+      "cpuPct": 6,
+      "rssMb": 248.7,
+      "loadCpuPct": 5.1,
+      "rxMsgs": 832,
+      "txMsgs": 661,
+      "s2cKBps": 859.3
+    },
+    {
+      "t": 61,
+      "cpuPct": 3,
+      "rssMb": 248.7,
+      "loadCpuPct": 4.9,
+      "rxMsgs": 831,
+      "txMsgs": 646,
+      "s2cKBps": 856.9
+    },
+    {
+      "t": 62,
+      "cpuPct": 5,
+      "rssMb": 248.7,
+      "loadCpuPct": 4.8,
+      "rxMsgs": 848,
+      "txMsgs": 660,
+      "s2cKBps": 876.5
+    },
+    {
+      "t": 63,
+      "cpuPct": 5,
+      "rssMb": 248.7,
+      "loadCpuPct": 4.8,
+      "rxMsgs": 847,
+      "txMsgs": 638,
+      "s2cKBps": 876
+    },
+    {
+      "t": 64,
+      "cpuPct": 5,
+      "rssMb": 248.7,
+      "loadCpuPct": 5.1,
+      "rxMsgs": 831,
+      "txMsgs": 623,
+      "s2cKBps": 854.8
+    },
+    {
+      "t": 65,
+      "cpuPct": 4,
+      "rssMb": 248.7,
+      "loadCpuPct": 4.7,
+      "rxMsgs": 832,
+      "txMsgs": 627,
+      "s2cKBps": 856.2
+    },
+    {
+      "t": 66,
+      "cpuPct": 4,
+      "rssMb": 248.7,
+      "loadCpuPct": 5,
+      "rxMsgs": 832,
+      "txMsgs": 639,
+      "s2cKBps": 857.3
+    },
+    {
+      "t": 67,
+      "cpuPct": 5,
+      "rssMb": 248.7,
+      "loadCpuPct": 4.4,
+      "rxMsgs": 832,
+      "txMsgs": 641,
+      "s2cKBps": 859.2
+    },
+    {
+      "t": 68,
+      "cpuPct": 4,
+      "rssMb": 248.7,
+      "loadCpuPct": 4.6,
+      "rxMsgs": 815,
+      "txMsgs": 646,
+      "s2cKBps": 842.7
+    },
+    {
+      "t": 69,
+      "cpuPct": 5,
+      "rssMb": 248.7,
+      "loadCpuPct": 4.9,
+      "rxMsgs": 816,
+      "txMsgs": 641,
+      "s2cKBps": 842.7
+    },
+    {
+      "t": 70,
+      "cpuPct": 5,
+      "rssMb": 248.7,
+      "loadCpuPct": 4.7,
+      "rxMsgs": 832,
+      "txMsgs": 612,
+      "s2cKBps": 854.7
+    },
+    {
+      "t": 71,
+      "cpuPct": 5,
+      "rssMb": 248.7,
+      "loadCpuPct": 5.1,
+      "rxMsgs": 847,
+      "txMsgs": 628,
+      "s2cKBps": 873.3
+    },
+    {
+      "t": 72,
+      "cpuPct": 4,
+      "rssMb": 248.7,
+      "loadCpuPct": 4.8,
+      "rxMsgs": 864,
+      "txMsgs": 612,
+      "s2cKBps": 892.8
+    },
+    {
+      "t": 73,
+      "cpuPct": 4,
+      "rssMb": 249,
+      "loadCpuPct": 4.5,
+      "rxMsgs": 816,
+      "txMsgs": 620,
+      "s2cKBps": 838.6
+    },
+    {
+      "t": 74,
+      "cpuPct": 4,
+      "rssMb": 249,
+      "loadCpuPct": 4.8,
+      "rxMsgs": 832,
+      "txMsgs": 674,
+      "s2cKBps": 857.8
+    },
+    {
+      "t": 75,
+      "cpuPct": 5,
+      "rssMb": 249,
+      "loadCpuPct": 4.9,
+      "rxMsgs": 831,
+      "txMsgs": 673,
+      "s2cKBps": 856.2
+    },
+    {
+      "t": 76,
+      "cpuPct": 5,
+      "rssMb": 249,
+      "loadCpuPct": 4.9,
+      "rxMsgs": 831,
+      "txMsgs": 614,
+      "s2cKBps": 855.4
+    },
+    {
+      "t": 77,
+      "cpuPct": 4,
+      "rssMb": 249,
+      "loadCpuPct": 4.8,
+      "rxMsgs": 832,
+      "txMsgs": 602,
+      "s2cKBps": 857
+    },
+    {
+      "t": 78,
+      "cpuPct": 4,
+      "rssMb": 249,
+      "loadCpuPct": 4.8,
+      "rxMsgs": 832,
+      "txMsgs": 614,
+      "s2cKBps": 859.1
+    },
+    {
+      "t": 79,
+      "cpuPct": 5,
+      "rssMb": 249,
+      "loadCpuPct": 4.6,
+      "rxMsgs": 816,
+      "txMsgs": 623,
+      "s2cKBps": 843.2
+    },
+    {
+      "t": 80,
+      "cpuPct": 5,
+      "rssMb": 249,
+      "loadCpuPct": 5.1,
+      "rxMsgs": 832,
+      "txMsgs": 656,
+      "s2cKBps": 860.4
+    },
+    {
+      "t": 81,
+      "cpuPct": 4,
+      "rssMb": 249,
+      "loadCpuPct": 4.7,
+      "rxMsgs": 847,
+      "txMsgs": 643,
+      "s2cKBps": 873.6
+    },
+    {
+      "t": 82,
+      "cpuPct": 4,
+      "rssMb": 249,
+      "loadCpuPct": 5.2,
+      "rxMsgs": 831,
+      "txMsgs": 607,
+      "s2cKBps": 858.3
+    },
+    {
+      "t": 83,
+      "cpuPct": 5,
+      "rssMb": 249,
+      "loadCpuPct": 4.8,
+      "rxMsgs": 832,
+      "txMsgs": 631,
+      "s2cKBps": 859.5
+    },
+    {
+      "t": 84,
+      "cpuPct": 5,
+      "rssMb": 249,
+      "loadCpuPct": 5.2,
+      "rxMsgs": 816,
+      "txMsgs": 648,
+      "s2cKBps": 844.1
+    },
+    {
+      "t": 85,
+      "cpuPct": 4,
+      "rssMb": 249,
+      "loadCpuPct": 5,
+      "rxMsgs": 832,
+      "txMsgs": 630,
+      "s2cKBps": 858.6
+    },
+    {
+      "t": 86,
+      "cpuPct": 5,
+      "rssMb": 249,
+      "loadCpuPct": 4.8,
+      "rxMsgs": 848,
+      "txMsgs": 618,
+      "s2cKBps": 875
+    },
+    {
+      "t": 87,
+      "cpuPct": 5,
+      "rssMb": 249,
+      "loadCpuPct": 5.4,
+      "rxMsgs": 831,
+      "txMsgs": 644,
+      "s2cKBps": 860.1
+    },
+    {
+      "t": 88,
+      "cpuPct": 5,
+      "rssMb": 249,
+      "loadCpuPct": 5.1,
+      "rxMsgs": 832,
+      "txMsgs": 627,
+      "s2cKBps": 857
+    },
+    {
+      "t": 89,
+      "cpuPct": 5,
+      "rssMb": 249,
+      "loadCpuPct": 5.3,
+      "rxMsgs": 832,
+      "txMsgs": 600,
+      "s2cKBps": 854.9
+    },
+    {
+      "t": 90,
+      "cpuPct": 4,
+      "rssMb": 249,
+      "loadCpuPct": 4.8,
+      "rxMsgs": 848,
+      "txMsgs": 600,
+      "s2cKBps": 875.7
+    },
+    {
+      "t": 91,
+      "cpuPct": 5,
+      "rssMb": 249,
+      "loadCpuPct": 8.9,
+      "rxMsgs": 832,
+      "txMsgs": 625,
+      "s2cKBps": 858
+    },
+    {
+      "t": 92,
+      "cpuPct": 4,
+      "rssMb": 249,
+      "loadCpuPct": 4.9,
+      "rxMsgs": 816,
+      "txMsgs": 621,
+      "s2cKBps": 840.1
+    },
+    {
+      "t": 93,
+      "cpuPct": 6,
+      "rssMb": 249,
+      "loadCpuPct": 5.1,
+      "rxMsgs": 823,
+      "txMsgs": 626,
+      "s2cKBps": 856
+    },
+    {
+      "t": 94,
+      "cpuPct": 5,
+      "rssMb": 249,
+      "loadCpuPct": 5,
+      "rxMsgs": 826,
+      "txMsgs": 623,
+      "s2cKBps": 848.4
+    },
+    {
+      "t": 95,
+      "cpuPct": 4,
+      "rssMb": 249,
+      "loadCpuPct": 4.8,
+      "rxMsgs": 838,
+      "txMsgs": 589,
+      "s2cKBps": 859.9
+    },
+    {
+      "t": 96,
+      "cpuPct": 4,
+      "rssMb": 249,
+      "loadCpuPct": 5.2,
+      "rxMsgs": 832,
+      "txMsgs": 612,
+      "s2cKBps": 857.2
+    },
+    {
+      "t": 97,
+      "cpuPct": 4,
+      "rssMb": 249,
+      "loadCpuPct": 5.1,
+      "rxMsgs": 826,
+      "txMsgs": 658,
+      "s2cKBps": 855.4
+    },
+    {
+      "t": 98,
+      "cpuPct": 5,
+      "rssMb": 249,
+      "loadCpuPct": 4.9,
+      "rxMsgs": 822,
+      "txMsgs": 673,
+      "s2cKBps": 849.8
+    },
+    {
+      "t": 99,
+      "cpuPct": 6,
+      "rssMb": 249,
+      "loadCpuPct": 5.1,
+      "rxMsgs": 847,
+      "txMsgs": 619,
+      "s2cKBps": 873.4
+    },
+    {
+      "t": 100,
+      "cpuPct": 4,
+      "rssMb": 249,
+      "loadCpuPct": 4.9,
+      "rxMsgs": 848,
+      "txMsgs": 580,
+      "s2cKBps": 871.3
+    },
+    {
+      "t": 101,
+      "cpuPct": 5,
+      "rssMb": 249,
+      "loadCpuPct": 4.7,
+      "rxMsgs": 815,
+      "txMsgs": 610,
+      "s2cKBps": 839.3
+    },
+    {
+      "t": 102,
+      "cpuPct": 4,
+      "rssMb": 249,
+      "loadCpuPct": 5.2,
+      "rxMsgs": 840,
+      "txMsgs": 645,
+      "s2cKBps": 858.5
+    },
+    {
+      "t": 103,
+      "cpuPct": 6,
+      "rssMb": 249,
+      "loadCpuPct": 5,
+      "rxMsgs": 831,
+      "txMsgs": 645,
+      "s2cKBps": 857.9
+    },
+    {
+      "t": 104.1,
+      "cpuPct": 4,
+      "rssMb": 249,
+      "loadCpuPct": 4.9,
+      "rxMsgs": 831,
+      "txMsgs": 638,
+      "s2cKBps": 857.8
+    },
+    {
+      "t": 105.1,
+      "cpuPct": 5,
+      "rssMb": 249,
+      "loadCpuPct": 5,
+      "rxMsgs": 832,
+      "txMsgs": 621,
+      "s2cKBps": 858
+    },
+    {
+      "t": 106.1,
+      "cpuPct": 4,
+      "rssMb": 249,
+      "loadCpuPct": 4.8,
+      "rxMsgs": 831,
+      "txMsgs": 610,
+      "s2cKBps": 858
+    },
+    {
+      "t": 107.1,
+      "cpuPct": 5,
+      "rssMb": 249,
+      "loadCpuPct": 5.2,
+      "rxMsgs": 831,
+      "txMsgs": 606,
+      "s2cKBps": 858.8
+    },
+    {
+      "t": 108.1,
+      "cpuPct": 4,
+      "rssMb": 249,
+      "loadCpuPct": 4.8,
+      "rxMsgs": 829,
+      "txMsgs": 633,
+      "s2cKBps": 856.7
+    },
+    {
+      "t": 109.1,
+      "cpuPct": 5,
+      "rssMb": 249,
+      "loadCpuPct": 5,
+      "rxMsgs": 848,
+      "txMsgs": 646,
+      "s2cKBps": 876.1
+    },
+    {
+      "t": 110.1,
+      "cpuPct": 5,
+      "rssMb": 249,
+      "loadCpuPct": 4.5,
+      "rxMsgs": 832,
+      "txMsgs": 597,
+      "s2cKBps": 854.6
+    },
+    {
+      "t": 111.1,
+      "cpuPct": 4,
+      "rssMb": 249.1,
+      "loadCpuPct": 4.7,
+      "rxMsgs": 832,
+      "txMsgs": 552,
+      "s2cKBps": 854.5
+    },
+    {
+      "t": 112.1,
+      "cpuPct": 4,
+      "rssMb": 249.1,
+      "loadCpuPct": 4.6,
+      "rxMsgs": 815,
+      "txMsgs": 619,
+      "s2cKBps": 839.7
+    },
+    {
+      "t": 113.1,
+      "cpuPct": 5,
+      "rssMb": 249.1,
+      "loadCpuPct": 4.9,
+      "rxMsgs": 832,
+      "txMsgs": 649,
+      "s2cKBps": 858.3
+    },
+    {
+      "t": 114.1,
+      "cpuPct": 6,
+      "rssMb": 249.2,
+      "loadCpuPct": 5.3,
+      "rxMsgs": 830,
+      "txMsgs": 627,
+      "s2cKBps": 855.6
+    },
+    {
+      "t": 115.1,
+      "cpuPct": 5,
+      "rssMb": 249.2,
+      "loadCpuPct": 4.7,
+      "rxMsgs": 832,
+      "txMsgs": 624,
+      "s2cKBps": 855.9
+    },
+    {
+      "t": 116.1,
+      "cpuPct": 5,
+      "rssMb": 249.2,
+      "loadCpuPct": 5.1,
+      "rxMsgs": 847,
+      "txMsgs": 631,
+      "s2cKBps": 870.6
+    },
+    {
+      "t": 117.1,
+      "cpuPct": 13,
+      "rssMb": 115.4,
+      "loadCpuPct": 4.9,
+      "rxMsgs": 832,
+      "txMsgs": 604,
+      "s2cKBps": 855
+    },
+    {
+      "t": 118.1,
+      "cpuPct": 7,
+      "rssMb": 116.8,
+      "loadCpuPct": 5.2,
+      "rxMsgs": 832,
+      "txMsgs": 637,
+      "s2cKBps": 857.3
+    },
+    {
+      "t": 119.1,
+      "cpuPct": 5,
+      "rssMb": 116.8,
+      "loadCpuPct": 4.8,
+      "rxMsgs": 832,
+      "txMsgs": 621,
+      "s2cKBps": 859.7
+    },
+    {
+      "t": 120.1,
+      "cpuPct": 6,
+      "rssMb": 116.8,
+      "loadCpuPct": 4.8,
+      "rxMsgs": 831,
+      "txMsgs": 619,
+      "s2cKBps": 856.8
+    }
+  ]
+}

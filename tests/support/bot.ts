@@ -45,6 +45,8 @@ export class Bot {
   accountId: string | null = null;
   passphrase: string | null = null;
   reconnectionToken: string | null = null;
+  /** Every join ticket this bot was issued (for log/secret scans). */
+  readonly tickets: string[] = [];
   lastCloseCode: number | null = null;
   errors: { code: number | string; message: string }[] = [];
   readonly ping: PingStats = { sent: 0, received: 0, rtts: [] };
@@ -89,6 +91,7 @@ export class Bot {
   async getTicket(lobbyId: string, intent: 'player' | 'storyteller' | 'reconnect' = 'player'): Promise<JoinTicketResponse> {
     const r = await this.api.ticket(lobbyId, intent);
     if (r.status !== 200) throw new Error(`ticket ${r.status}: ${r.text.slice(0, 200)}`);
+    this.tickets.push(r.body.ticket);
     return r.body;
   }
 
@@ -159,9 +162,12 @@ export class Bot {
       this.snapshotEntities += s.entities?.length ?? 0;
       const me = this.pid ? s.entities?.find((e) => e.id === this.pid) : undefined;
       if (me && !this.pos) this.pos = { x: me.x, y: me.y };
+      if (me) this.location = me.location;
     } else if (type === 'world:teleport') {
       const tp = payload as WorldTeleport;
       this.pos = { x: tp.x, y: tp.y };
+      this.location = tp.location;
+      this.path = [];
       this.seq = Math.max(this.seq, tp.seq + 1);
     } else if (type === 'game:view') {
       this.autoRespond(payload as PlayerGameView | StorytellerGameView);
@@ -245,11 +251,22 @@ export class Bot {
   }
 
   // ---- behaviour -------------------------------------------------------------------------
-  /** Random walk over walkable tiles at a realistic rate (move msgs at `hz`, ~0.9x walking speed). */
+  /** Current location as reported by the server ('outdoors' | 'bld:<id>'). */
+  location = 'outdoors';
+  /** When true the bot walks to its building's door and leaves whenever the phase allows it. */
+  exitBuildings = false;
+  private path: { x: number; y: number }[] = [];
+
+  /**
+   * Realistic walking: picks a random reachable tile within ~10 tiles, follows a BFS path over
+   * walkable tiles (so every move is a valid, collision-free step the server accepts), sends
+   * `move` at `hz` at ~0.9x walking speed, and pauses sometimes "to talk". With `exitBuildings`
+   * it first walks to the interior door and uses it (e.g. leaving home after the first night).
+   */
   startWandering(hz = 10, speedMult = 0.9) {
     if (!this.pos) this.pos = tileCenterPx(layout, layout.playerSpawn);
-    let target = this.pickTarget();
     let pause = 0;
+    let doorWait = 0;
     const dt = 1 / hz;
     let facing: 'down' | 'up' | 'left' | 'right' = 'down';
     const timer = setInterval(() => {
@@ -258,24 +275,50 @@ export class Bot {
         pause -= dt;
         return;
       }
-      const dx = target.x - this.pos.x;
-      const dy = target.y - this.pos.y;
-      const dist = Math.hypot(dx, dy);
-      const step = PLAYER_SPEED * speedMult * dt;
-      let moving = true;
-      if (dist < step) {
-        target = this.pickTarget();
-        if (Math.random() < 0.3) pause = 0.5 + Math.random() * 2; // people stop to talk
-        moving = false;
-      } else {
-        const nx = this.pos.x + (dx / dist) * step;
-        const ny = this.pos.y + (dy / dist) * step;
-        if (isBlockedPx(layout, nx, ny)) {
-          target = this.pickTarget();
-          moving = false;
+      if (doorWait > 0) doorWait -= dt;
+      let moving = false;
+      if (!this.path.length) {
+        const inside = this.location.startsWith('bld:') ? layout.buildings.find((b) => `bld:${b.id}` === this.location) : undefined;
+        const phase = (this.latest['game:view'] as { phase?: string } | undefined)?.phase;
+        const locked = phase === 'first_night' || phase === 'night' || phase === 'dawn';
+        if (inside && this.exitBuildings && !locked) {
+          const door = tileCenterPx(layout, inside.interiorDoor);
+          if (Math.hypot(door.x - this.pos.x, door.y - this.pos.y) < 12) {
+            if (doorWait <= 0) {
+              this.room.send('world:useDoor', { buildingId: inside.id });
+              doorWait = 1;
+            }
+          } else this.path = planPath(this.pos, inside.interiorDoor) ?? [];
         } else {
+          for (let i = 0; i < 10 && !this.path.length; i++) {
+            const goal = randomNearbyTile(this.pos);
+            if (goal) this.path = planPath(this.pos, goal) ?? [];
+          }
+          if (this.path.length && Math.random() < 0.3) pause = 0.5 + Math.random() * 2; // people stop to talk
+        }
+      }
+      const wp = this.path[0];
+      if (wp) {
+        const dx = wp.x - this.pos.x;
+        const dy = wp.y - this.pos.y;
+        const dist = Math.hypot(dx, dy);
+        let budget = PLAYER_SPEED * speedMult * dt;
+        let nx = this.pos.x;
+        let ny = this.pos.y;
+        if (dist <= budget) {
+          nx = wp.x;
+          ny = wp.y;
+          this.path.shift();
+          budget -= dist;
+        } else {
+          nx += (dx / dist) * budget;
+          ny += (dy / dist) * budget;
+        }
+        if (isBlockedPx(layout, nx, ny)) this.path = [];
+        else {
+          if (dist > 0.01) facing = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : dy > 0 ? 'down' : 'up';
           this.pos = { x: nx, y: ny };
-          facing = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : dy > 0 ? 'down' : 'up';
+          moving = true;
         }
       }
       try {
@@ -285,18 +328,6 @@ export class Bot {
       }
     }, 1000 / hz);
     this.timers.push(timer);
-  }
-
-  private pickTarget(): { x: number; y: number } {
-    const cur = this.pos ?? tileCenterPx(layout, layout.playerSpawn);
-    const ts = layout.tileSize;
-    for (let i = 0; i < 50; i++) {
-      const tx = Math.floor(cur.x / ts) + rand(17) - 8;
-      const ty = Math.floor(cur.y / ts) + rand(17) - 8;
-      const p = tileCenterPx(layout, { x: tx, y: ty });
-      if (!isBlockedPx(layout, p.x, p.y)) return p;
-    }
-    return cur;
   }
 
   startPinging(intervalMs = 1000) {
@@ -353,4 +384,59 @@ export async function makeBots(n: number, prefix: string, baseUrl: string, wsUrl
     bots.push(new Bot(`${prefix}${i + 1}`, baseUrl, wsUrl, { ...opts, headers: { 'X-Forwarded-For': fakeClientIp(), ...opts.headers } }));
   for (let i = 0; i < bots.length; i += 4) await Promise.all(bots.slice(i, i + 4).map((b) => b.signUp()));
   return bots;
+}
+
+// ---- path planning ---------------------------------------------------------------------------
+const walkableCache = new Map<number, boolean>();
+function walkableTile(tx: number, ty: number): boolean {
+  if (tx < 0 || ty < 0 || tx >= layout.widthTiles || ty >= layout.heightTiles) return false;
+  const k = ty * layout.widthTiles + tx;
+  let v = walkableCache.get(k);
+  if (v === undefined) {
+    const c = tileCenterPx(layout, { x: tx, y: ty });
+    v = !isBlockedPx(layout, c.x, c.y);
+    walkableCache.set(k, v);
+  }
+  return v;
+}
+
+function randomNearbyTile(pos: { x: number; y: number }): { x: number; y: number } | null {
+  const ts = layout.tileSize;
+  for (let i = 0; i < 40; i++) {
+    const tx = Math.floor(pos.x / ts) + rand(21) - 10;
+    const ty = Math.floor(pos.y / ts) + rand(21) - 10;
+    if (walkableTile(tx, ty)) return { x: tx, y: ty };
+  }
+  return null;
+}
+
+/** BFS over 4-connected walkable tiles; returns tile-centre waypoints (excluding the start). */
+export function planPath(from: { x: number; y: number }, goal: { x: number; y: number }, maxNodes = 6000): { x: number; y: number }[] | null {
+  const ts = layout.tileSize;
+  const W = layout.widthTiles;
+  const sx = Math.floor(from.x / ts);
+  const sy = Math.floor(from.y / ts);
+  if (!walkableTile(goal.x, goal.y)) return null;
+  const start = sy * W + sx;
+  const target = goal.y * W + goal.x;
+  const prev = new Map<number, number>([[start, -1]]);
+  const queue = [start];
+  for (let qi = 0; qi < queue.length && qi < maxNodes; qi++) {
+    const cur = queue[qi]!;
+    if (cur === target) break;
+    const cx = cur % W;
+    const cy = Math.floor(cur / W);
+    for (const [nx, ny] of [[cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]] as const) {
+      const k = ny * W + nx;
+      if (prev.has(k) || !walkableTile(nx, ny)) continue;
+      prev.set(k, cur);
+      queue.push(k);
+    }
+  }
+  if (!prev.has(target)) return null;
+  const out: { x: number; y: number }[] = [];
+  // First waypoint: centre of the start tile (re-centres the bot before turning corners).
+  for (let k = target; k !== -1 && k !== start; k = prev.get(k)!) out.push(tileCenterPx(layout, { x: k % W, y: Math.floor(k / W) }));
+  out.push(tileCenterPx(layout, { x: sx, y: sy }));
+  return out.reverse();
 }

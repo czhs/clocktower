@@ -13,15 +13,22 @@ afterAll(async () => {
 });
 
 /** Try to take a seat; resolves true if seated (ticket issued AND room joined AND lobby:view received). */
+/** Try to take a seat; resolves true if the room accepted the join (seat confirmed by a lobby:view
+ * naming this bot). No tight client-side deadline: under full-suite load a 3-4 s wait for the first
+ * lobby:view caused false "not seated" results. */
 async function tryJoin(b: Bot, lobbyId: string): Promise<boolean> {
   const t = await b.api.ticket(lobbyId, 'player');
   if (t.status !== 200) return false;
   try {
     await b.joinWithTicket(t.body);
-    await b.waitFor('lobby:view', () => true, 4000);
-    return true;
   } catch {
     return false;
+  }
+  try {
+    await b.waitFor<any>('lobby:view', (v) => v.members.some((m: any) => m.pid === v.youPid), 20_000);
+    return true;
+  } catch {
+    return b.room !== null; // joined but no view yet: the server still holds the seat
   }
 }
 

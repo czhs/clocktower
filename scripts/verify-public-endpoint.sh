@@ -1,96 +1,156 @@
 #!/usr/bin/env bash
-# Verify the public production endpoint (Tailscale Funnel on hshi-u1) from OUTSIDE the host, over
-# public DNS/Internet paths (not the tailnet), and verify the dev service is NOT publicly reachable.
+# Verify the PUBLIC production endpoint from outside hshi-u1 (read-only + one WSS upgrade), and
+# verify the dev service is not exposed.
 #
-#   scripts/verify-public-endpoint.sh [hostname] [--expect-version <sha>]
-#   default hostname: hshi-u1.tailf28040.ts.net
+#   scripts/verify-public-endpoint.sh [public-url] [--expect-version <sha>] [--resolver <ip>]
+#   CT_PUBLIC_URL=https://clocktower.chrisshi.com scripts/verify-public-endpoint.sh
+#   default public URL: $CT_PUBLIC_URL or https://clocktower.chrisshi.com (Cloudflare Tunnel)
+#
+# Name resolution: the hostname is resolved through PUBLIC DNS (default 1.1.1.1, falling back to
+# 8.8.8.8; override with --resolver) and pinned with `curl --resolve`, so a stale local/MagicDNS
+# cache (e.g. a cached NXDOMAIN, or AAAA-only answers on a host without an IPv6 route) cannot
+# produce false failures. The resolver used is printed.
 #
 # Checks
-#   1. public DNS (1.1.1.1 / 8.8.8.8) resolves the name (Funnel publishes public A/AAAA records)
-#   2. HTTPS with a valid certificate for the name (curl verifies the chain), cert details
-#   3. GET /healthz over the public IP -> ok, env=production (+ version if given)
-#   4. WebSocket Upgrade on the Colyseus path (/<processId>/<roomId>) -> HTTP 101 through Funnel
-#   5. dev is private: public IP :3001 refused/unreachable; Funnel ports 443/8443/10000 never
-#      answer with env=development; `tailscale funnel status --json` on hshi-u1 never targets
-#      :3001; :3001 listens on 127.0.0.1 only; tailnet IP :3001 refused.
-# Exit 0 only if every check passed.
+#   1. public DNS A record
+#   2. TLS: certificate valid for the name (curl verifies the chain) + subject/issuer/expiry
+#   3. GET /healthz -> ok, env=production (+ version if given); CDN headers reported
+#   4. GET / -> SPA shell; security headers survive the proxy (nosniff, X-Frame-Options)
+#   5. WebSocket Upgrade on the Colyseus path (/<processId>/<roomId>) -> HTTP 101 (WSS works)
+#   6. dev is private:
+#        - the public hostname never answers env=development; https://host:3001 is not served
+#        - live cloudflared ingress (metrics /config, else the unit's --config file) never targets :3001
+#        - tailscale serve/funnel config never targets :3001
+#        - :3001 and :3000 listen on 127.0.0.1 only; the tailnet IP refuses both
+#   7. (optional) Tailscale Funnel: checked only if `tailscale funnel status --json` is non-empty
+# Exit 0 only if every non-skipped check passed.
 set -uo pipefail
-NAME="hshi-u1.tailf28040.ts.net"; EXPECT_VERSION=""
+URL="${CT_PUBLIC_URL:-https://clocktower.chrisshi.com}"; EXPECT_VERSION=""; RESOLVER=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --expect-version) EXPECT_VERSION="$2"; shift ;;
+    --resolver) RESOLVER="$2"; shift ;;
     -*) echo "unknown flag $1" >&2; exit 2 ;;
-    *) NAME="$1" ;;
+    *) URL="$1" ;;
   esac
   shift
 done
+URL="${URL%/}"
+NAME=$(sed -E 's#^https?://([^/:]+).*#\1#' <<<"$URL")
+[[ $URL == https://* ]] || { echo "public URL must be https://" >&2; exit 2; }
 SSH_HOST="${CT_HOST:-hshi-u1}"
-FAILS=0
+FAILS=0; SKIPS=0
 pass() { printf '  PASS  %s\n' "$*"; }
 fail() { printf '  FAIL  %s\n' "$*"; FAILS=$((FAILS + 1)); }
+skip() { printf '  SKIP  %s\n' "$*"; SKIPS=$((SKIPS + 1)); }
 info() { printf '  ....  %s\n' "$*"; }
 
-echo "public endpoint verification: https://$NAME"
+echo "public endpoint verification: $URL"
 
-# 1. Public DNS ---------------------------------------------------------------------------
-IP=""
-for r in 1.1.1.1 8.8.8.8; do
-  IP=$(dig +short @"$r" "$NAME" A 2>/dev/null | grep -E '^[0-9.]+$' | grep -vE '^100\.' | head -1)
-  [[ -n $IP ]] && break
+# 1. Public DNS --------------------------------------------------------------------------------
+IP=""; USED=""
+for r in ${RESOLVER:-1.1.1.1 8.8.8.8}; do
+  IP=$(dig +short +time=3 +tries=2 @"$r" "$NAME" A 2>/dev/null | grep -E '^[0-9.]+$' | head -1)
+  if [[ -n $IP ]]; then USED=$r; break; fi
 done
 if [[ -n $IP ]]; then
-  pass "public DNS: $NAME -> $IP (resolver $r)"
+  pass "public DNS (resolver $USED): $NAME -> $IP"
 else
-  STATUS=$(dig @1.1.1.1 "$NAME" A 2>/dev/null | grep -oE 'status: [A-Z]+' | head -1)
-  fail "public DNS has no A record for $NAME (${STATUS:-no answer}) — Funnel is not active"
+  fail "no A record for $NAME via ${RESOLVER:-1.1.1.1/8.8.8.8}"
 fi
 
 if [[ -n $IP ]]; then
   RES=(--resolve "$NAME:443:$IP")
-  # 2. Certificate ----------------------------------------------------------------------
-  CERT=$(echo | openssl s_client -connect "$IP:443" -servername "$NAME" 2>/dev/null | openssl x509 -noout -subject -issuer -enddate 2>/dev/null)
-  if curl -sS -o /dev/null --max-time 15 "${RES[@]}" "https://$NAME/healthz"; then
-    pass "TLS certificate valid for $NAME ($(echo "$CERT" | tr '\n' ' ' | sed 's/  */ /g'))"
-  else
-    fail "TLS/HTTPS failed for $NAME via $IP"
-  fi
-  # 3. /healthz -----------------------------------------------------------------------------
-  H=$(curl -sS --max-time 15 "${RES[@]}" "https://$NAME/healthz" 2>&1)
+  # 2. TLS ------------------------------------------------------------------------------------
+  CERT=$(echo | openssl s_client -connect "$IP:443" -servername "$NAME" 2>/dev/null | openssl x509 -noout -subject -issuer -enddate 2>/dev/null | tr '\n' ' ' | sed 's/  */ /g')
+  if curl -sS -o /dev/null --max-time 15 "${RES[@]}" "$URL/healthz"; then pass "TLS certificate valid for $NAME ($CERT)"
+  else fail "TLS/HTTPS failed for $NAME via $IP"; fi
+  # 3. /healthz -------------------------------------------------------------------------------
+  HDR=$(mktemp); H=$(curl -sS --max-time 15 -D "$HDR" "${RES[@]}" "$URL/healthz" 2>&1)
   if python3 -c 'import json,sys; d=json.loads(sys.argv[1]); sys.exit(0 if d.get("ok") and d.get("env")=="production" and (not sys.argv[2] or d.get("version")==sys.argv[2]) else 1)' "$H" "$EXPECT_VERSION" 2>/dev/null; then
-    pass "/healthz over Funnel: $H"
-  else
-    fail "/healthz over Funnel: ${H:0:200}"
-  fi
-  # 4. WSS upgrade --------------------------------------------------------------------------
+    pass "/healthz: $H"
+  else fail "/healthz: ${H:0:200} (expected env=production${EXPECT_VERSION:+, version $EXPECT_VERSION})"; fi
+  CDN=$(tr -d '\r' <"$HDR" | grep -iE '^(server|cf-ray):' | tr '\n' ' ')
+  info "edge headers: ${CDN:-none}"
+  rm -f "$HDR"
+  # 4. SPA + security headers --------------------------------------------------------------
+  HDR=$(mktemp); BODY=$(curl -sS --max-time 15 -D "$HDR" "${RES[@]}" "$URL/" 2>/dev/null)
+  if grep -q '<div id="app"' <<<"$BODY"; then pass "SPA shell served at /"; else fail "SPA shell not served at /"; fi
+  H2=$(tr -d '\r' <"$HDR")
+  grep -qi '^x-content-type-options: nosniff' <<<"$H2" && pass "X-Content-Type-Options survives the proxy" || fail "X-Content-Type-Options missing at the edge"
+  grep -qi '^x-frame-options: deny' <<<"$H2" && pass "X-Frame-Options survives the proxy" || fail "X-Frame-Options missing at the edge"
+  rm -f "$HDR"
+  # 5. WSS upgrade --------------------------------------------------------------------------
   KEY=$(openssl rand -base64 16)
-  UP=$(curl -sS --http1.1 -i --max-time 6 "${RES[@]}" \
+  UP=$(curl -sS --http1.1 -i --max-time 8 "${RES[@]}" \
     -H 'Connection: Upgrade' -H 'Upgrade: websocket' -H 'Sec-WebSocket-Version: 13' -H "Sec-WebSocket-Key: $KEY" \
-    "https://$NAME/verifyproc/verifyroom?sessionId=verify" 2>/dev/null | head -1 | tr -d '\r')
-  if [[ $UP == *" 101"* ]]; then pass "WSS upgrade through Funnel: $UP"; else fail "WSS upgrade through Funnel: '${UP:-no response}'"; fi
-  # 5a. dev port on the public IP ------------------------------------------------------------
-  for scheme in https http; do
-    if curl -sS -o /dev/null --max-time 6 -k --resolve "$NAME:3001:$IP" "$scheme://$NAME:3001/healthz" 2>/dev/null; then
-      fail "$scheme://$NAME:3001 answered publicly"
-    else pass "$scheme://$NAME:3001 not reachable publicly"; fi
-  done
-  for p in 8443 10000; do
-    B=$(curl -sS --max-time 6 --resolve "$NAME:$p:$IP" "https://$NAME:$p/healthz" 2>/dev/null)
-    if [[ $B == *development* ]]; then fail "Funnel port $p serves the DEV service"; else pass "Funnel port $p does not serve dev (${B:0:60})"; fi
-  done
+    "$URL/verifyproc/verifyroom?sessionId=verify" 2>/dev/null | head -1 | tr -d '\r')
+  if [[ $UP == *" 101"* ]]; then pass "WSS upgrade on the Colyseus path: $UP"; else fail "WSS upgrade: '${UP:-no response}'"; fi
+  # 6a. dev never reachable through the public name -----------------------------------------
+  if curl -sS -o /dev/null --max-time 8 --resolve "$NAME:3001:$IP" "https://$NAME:3001/healthz" 2>/dev/null; then
+    fail "https://$NAME:3001 answered"
+  else pass "https://$NAME:3001 not served"; fi
+  [[ $H == *development* ]] && fail "public hostname serves the DEV service" || pass "public hostname does not serve dev"
 fi
 
-# 5b. host-side checks over SSH (private) ---------------------------------------------------
-FS=$(ssh -o BatchMode=yes "$SSH_HOST" 'tailscale funnel status --json' 2>&1)
-if [[ $FS == *3001* ]]; then fail "tailscale serve/funnel config references :3001 -> $FS"; else pass "funnel/serve config never targets :3001 ($(tr -d '\n ' <<<"$FS" | head -c 160))"; fi
-L=$(ssh -o BatchMode=yes "$SSH_HOST" "ss -Hltn 'sport = :3001'" 2>&1)
-if [[ -z $L ]]; then info "nothing listening on :3001 (dev service down?)"
-elif grep -vqE '127\.0\.0\.1:3001' <<<"$L"; then fail ":3001 listens on a non-loopback address: $L"
-else pass ":3001 bound to 127.0.0.1 only"; fi
+# 6b. host-side checks over SSH (private) -------------------------------------------------------
+# Unit scope: CT_SYSTEMD_SCOPE=system|user|auto (auto: system unit if it exists, else --user).
+# Live tunnel ingress: from cloudflared's local metrics endpoint (/config), whose address is taken
+# from the unit's --metrics flag (or $CT_CLOUDFLARED_METRICS). Fallback: the unit's own --config
+# file if readable; otherwise SKIP (never a stale file from elsewhere).
+SCOPE="${CT_SYSTEMD_SCOPE:-auto}"
+HOSTCHK=$(ssh -o BatchMode=yes "$SSH_HOST" "SCOPE=$SCOPE METRICS=${CT_CLOUDFLARED_METRICS:-} bash -s" <<'REMOTE' 2>/dev/null
+sc() { local u=$1; shift
+  if [ "$SCOPE" = system ] || { [ "$SCOPE" = auto ] && systemctl cat "$u" >/dev/null 2>&1; }; then systemctl "$@" "$u"; else systemctl --user "$@" "$u"; fi; }
+scope_of() { if [ "$SCOPE" != auto ]; then echo "$SCOPE"; elif systemctl cat "$1" >/dev/null 2>&1; then echo system; else echo user; fi; }
+echo "TUNNEL_SCOPE=$(scope_of clocktower-tunnel)"
+echo "TUNNEL_ACTIVE=$(sc clocktower-tunnel is-active 2>/dev/null)"
+UNIT=$(sc clocktower-tunnel cat 2>/dev/null)
+CFG=$(grep -oE -- '--config[= ][^ ]+' <<<"$UNIT" | head -1 | sed -E 's/--config[= ]//; s#%h#'"$HOME"'#')
+M=${METRICS:-$(grep -oE -- '--metrics[= ][^ ]+' <<<"$UNIT" | head -1 | sed -E 's/--metrics[= ]//')}
+if [ -n "$M" ] && J=$(curl -fsS --max-time 3 "http://$M/config" 2>/dev/null); then
+  echo "SRC=live cloudflared /config at $M"
+  python3 -c 'import json,sys
+for r in json.loads(sys.argv[1])["config"]["ingress"]: print("ING=%s -> %s" % (r.get("hostname") or "*", r.get("service")))' "$J"
+elif [ -n "$CFG" ] && [ -r "$CFG" ]; then
+  echo "SRC=$CFG"; grep -hE '^\s*-?\s*(hostname|service):' "$CFG" | sed 's/^/ING=/'
+elif [ -n "$CFG" ]; then echo "UNREADABLE=$CFG (no metrics endpoint answered)"
+fi
+REMOTE
+)
+info "clocktower-tunnel: $(sed -n 's/^TUNNEL_SCOPE=//p' <<<"$HOSTCHK") unit, $(sed -n 's/^TUNNEL_ACTIVE=//p' <<<"$HOSTCHK")"
+ING=$(sed -n 's/^ING=//p' <<<"$HOSTCHK")
+SRC=$(sed -n 's/^SRC=//p' <<<"$HOSTCHK")
+if [[ -z $ING ]]; then skip "tunnel ingress not inspectable as $SSH_HOST user ($(sed -n 's/^UNREADABLE=//p' <<<"$HOSTCHK"))"
+elif grep -qE ':3001\b' <<<"$ING"; then fail "tunnel ingress references :3001 ($SRC): $(tr '\n' ';' <<<"$ING")"
+elif ! grep -qE '127\.0\.0\.1:3000|localhost:3000' <<<"$ING"; then fail "tunnel ingress does not route to prod :3000 ($SRC): $(tr '\n' ';' <<<"$ING")"
+else pass "tunnel ingress -> prod only, never :3001 ($SRC: $(tr '\n' ';' <<<"$ING" | tr -s ' '))"; fi
+FS=$(ssh -o BatchMode=yes "$SSH_HOST" 'tailscale serve status --json 2>/dev/null; tailscale funnel status --json 2>/dev/null' 2>&1)
+if grep -qE ':3001\b' <<<"$FS"; then fail "tailscale serve/funnel references :3001"; else pass "tailscale serve/funnel never targets :3001"; fi
+for port in 3001 3000; do
+  L=$(ssh -o BatchMode=yes "$SSH_HOST" "ss -Hltn 'sport = :$port'" 2>&1)
+  if [[ -z $L ]]; then info "nothing listening on :$port"
+  elif grep -vqE "127\.0\.0\.1:$port" <<<"$L"; then fail ":$port listens on a non-loopback address: $L"
+  else pass ":$port bound to 127.0.0.1 only"; fi
+done
 TIP=$(ssh -o BatchMode=yes "$SSH_HOST" 'tailscale ip -4' 2>/dev/null | head -1)
 if [[ -n $TIP ]]; then
-  if curl -sS -o /dev/null --max-time 5 "http://$TIP:3001/healthz" 2>/dev/null; then fail "dev reachable on tailnet IP $TIP:3001"; else pass "dev not reachable on tailnet IP $TIP:3001"; fi
-  if curl -sS -o /dev/null --max-time 5 "http://$TIP:3000/healthz" 2>/dev/null; then fail "prod reachable directly on tailnet IP $TIP:3000 (should be loopback only)"; else pass "prod not reachable directly on $TIP:3000 (loopback bind)"; fi
+  for port in 3001 3000; do
+    if curl -sS -o /dev/null --max-time 5 "http://$TIP:$port/healthz" 2>/dev/null; then fail "reachable directly on tailnet IP $TIP:$port"; else pass "not reachable on tailnet IP $TIP:$port"; fi
+  done
 fi
 
-echo "result: $FAILS failed"
+# 7. optional Tailscale Funnel -------------------------------------------------------------------
+FJ=$(ssh -o BatchMode=yes "$SSH_HOST" 'tailscale funnel status --json 2>/dev/null' 2>/dev/null | tr -d ' \n')
+if [[ -z $FJ || $FJ == "{}" ]]; then skip "Tailscale Funnel not configured (optional)"
+else
+  FH=$(python3 -c 'import json,sys; d=json.loads(sys.argv[1]); print(next(iter(d.get("AllowFunnel",{})),"").split(":")[0])' "$FJ" 2>/dev/null)
+  if [[ -n $FH ]]; then
+    FIP=$(dig +short @1.1.1.1 "$FH" A | grep -E '^[0-9.]+$' | head -1)
+    B=$(curl -sS --max-time 10 ${FIP:+--resolve "$FH:443:$FIP"} "https://$FH/healthz" 2>/dev/null)
+    [[ $B == *'"env":"production"'* ]] && pass "Funnel https://$FH/healthz: $B" || fail "Funnel https://$FH/healthz: ${B:-no answer}"
+  else skip "Funnel status present but no AllowFunnel host"; fi
+fi
+
+echo "result: $FAILS failed, $SKIPS skipped"
 [[ $FAILS -eq 0 ]]

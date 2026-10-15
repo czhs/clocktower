@@ -26,9 +26,9 @@ export class ApiClient {
     return [...this.cookies].map(([k, v]) => `${k}=${v}`).join('; ');
   }
 
-  /** The session cookie (name starts with ct_session), if any. */
+  /** The session cookie (ct_session, ct_session_<env> or __Host-ct_session…), if any. */
   sessionCookie(): { name: string; value: string } | null {
-    for (const [name, value] of this.cookies) if (name.startsWith('ct_session')) return { name, value };
+    for (const [name, value] of this.cookies) if (/^(__Host-)?ct_session/.test(name)) return { name, value };
     return null;
   }
 

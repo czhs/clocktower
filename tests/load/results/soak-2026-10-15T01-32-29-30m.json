@@ -1,0 +1,712 @@
+{
+  "at": "2026-10-15T01:32:29.592Z",
+  "host": "hshi-u1",
+  "config": {
+    "minutes": 30,
+    "workers": 3,
+    "sampleS": 30,
+    "env": {
+      "LOBBY_MAX_COUNT": "12",
+      "LOBBY_IDLE_TIMEOUT_SEC": "10",
+      "RECONNECT_GRACE_SEC": "5"
+    }
+  },
+  "stats": {
+    "cycles": 531,
+    "games": 389,
+    "rematches": 172,
+    "switches": 141,
+    "drops": 142,
+    "failures": 1,
+    "failureSamples": [
+      "01:20:20 w0: timeout (5000ms): finished"
+    ]
+  },
+  "baseline": {
+    "t": 28,
+    "phase": "warmup",
+    "rssMb": 230.9,
+    "heapUsedMb": 64,
+    "serverRssMb": 230,
+    "fds": 27,
+    "lobbies": 0,
+    "cycles": 3
+  },
+  "final": {
+    "t": 1899,
+    "phase": "idle",
+    "rssMb": 144.2,
+    "heapUsedMb": 36,
+    "serverRssMb": 143,
+    "fds": 27,
+    "lobbies": 0,
+    "cycles": 531
+  },
+  "peak": {
+    "rssMb": 246.1,
+    "heapUsedMb": 91
+  },
+  "slopeMbPerHour": {
+    "rss": -223.07,
+    "heapUsed": -23.41,
+    "fdsPerHour": -1.58
+  },
+  "idleDelta": {
+    "rssMb": -86.7,
+    "heapUsedMb": -28,
+    "fds": 0,
+    "lobbiesLeft": 0
+  },
+  "samples": [
+    {
+      "t": 28,
+      "phase": "warmup",
+      "rssMb": 230.9,
+      "heapUsedMb": 64,
+      "serverRssMb": 230,
+      "fds": 27,
+      "lobbies": 0,
+      "cycles": 3
+    },
+    {
+      "t": 58,
+      "phase": "load",
+      "rssMb": 246.1,
+      "heapUsedMb": 58,
+      "serverRssMb": 245,
+      "fds": 47,
+      "lobbies": 5,
+      "cycles": 10
+    },
+    {
+      "t": 88,
+      "phase": "load",
+      "rssMb": 230,
+      "heapUsedMb": 42,
+      "serverRssMb": 229,
+      "fds": 47,
+      "lobbies": 6,
+      "cycles": 19
+    },
+    {
+      "t": 118,
+      "phase": "load",
+      "rssMb": 218.5,
+      "heapUsedMb": 74,
+      "serverRssMb": 217,
+      "fds": 46,
+      "lobbies": 7,
+      "cycles": 26
+    },
+    {
+      "t": 148,
+      "phase": "load",
+      "rssMb": 220.6,
+      "heapUsedMb": 55,
+      "serverRssMb": 219,
+      "fds": 47,
+      "lobbies": 6,
+      "cycles": 36
+    },
+    {
+      "t": 178,
+      "phase": "load",
+      "rssMb": 222,
+      "heapUsedMb": 38,
+      "serverRssMb": 220,
+      "fds": 47,
+      "lobbies": 6,
+      "cycles": 44
+    },
+    {
+      "t": 208,
+      "phase": "load",
+      "rssMb": 222.1,
+      "heapUsedMb": 67,
+      "serverRssMb": 221,
+      "fds": 46,
+      "lobbies": 6,
+      "cycles": 53
+    },
+    {
+      "t": 238,
+      "phase": "load",
+      "rssMb": 222.3,
+      "heapUsedMb": 44,
+      "serverRssMb": 221,
+      "fds": 48,
+      "lobbies": 6,
+      "cycles": 61
+    },
+    {
+      "t": 268,
+      "phase": "load",
+      "rssMb": 222.7,
+      "heapUsedMb": 75,
+      "serverRssMb": 221,
+      "fds": 47,
+      "lobbies": 7,
+      "cycles": 71
+    },
+    {
+      "t": 298,
+      "phase": "load",
+      "rssMb": 224.3,
+      "heapUsedMb": 54,
+      "serverRssMb": 223,
+      "fds": 47,
+      "lobbies": 7,
+      "cycles": 79
+    },
+    {
+      "t": 328,
+      "phase": "load",
+      "rssMb": 224.4,
+      "heapUsedMb": 82,
+      "serverRssMb": 223,
+      "fds": 46,
+      "lobbies": 5,
+      "cycles": 86
+    },
+    {
+      "t": 358,
+      "phase": "load",
+      "rssMb": 224.1,
+      "heapUsedMb": 65,
+      "serverRssMb": 223,
+      "fds": 48,
+      "lobbies": 5,
+      "cycles": 96
+    },
+    {
+      "t": 388,
+      "phase": "load",
+      "rssMb": 224.4,
+      "heapUsedMb": 44,
+      "serverRssMb": 223,
+      "fds": 46,
+      "lobbies": 6,
+      "cycles": 105
+    },
+    {
+      "t": 418,
+      "phase": "load",
+      "rssMb": 224.9,
+      "heapUsedMb": 70,
+      "serverRssMb": 223,
+      "fds": 45,
+      "lobbies": 6,
+      "cycles": 114
+    },
+    {
+      "t": 448,
+      "phase": "load",
+      "rssMb": 225.7,
+      "heapUsedMb": 50,
+      "serverRssMb": 224,
+      "fds": 46,
+      "lobbies": 7,
+      "cycles": 122
+    },
+    {
+      "t": 478,
+      "phase": "load",
+      "rssMb": 225.2,
+      "heapUsedMb": 84,
+      "serverRssMb": 224,
+      "fds": 47,
+      "lobbies": 8,
+      "cycles": 134
+    },
+    {
+      "t": 508,
+      "phase": "load",
+      "rssMb": 225.2,
+      "heapUsedMb": 58,
+      "serverRssMb": 224,
+      "fds": 45,
+      "lobbies": 6,
+      "cycles": 142
+    },
+    {
+      "t": 538,
+      "phase": "load",
+      "rssMb": 225.2,
+      "heapUsedMb": 40,
+      "serverRssMb": 224,
+      "fds": 46,
+      "lobbies": 6,
+      "cycles": 150
+    },
+    {
+      "t": 568,
+      "phase": "load",
+      "rssMb": 225.2,
+      "heapUsedMb": 66,
+      "serverRssMb": 224,
+      "fds": 47,
+      "lobbies": 6,
+      "cycles": 158
+    },
+    {
+      "t": 598,
+      "phase": "load",
+      "rssMb": 225.7,
+      "heapUsedMb": 45,
+      "serverRssMb": 224,
+      "fds": 45,
+      "lobbies": 6,
+      "cycles": 165
+    },
+    {
+      "t": 628,
+      "phase": "load",
+      "rssMb": 225.7,
+      "heapUsedMb": 78,
+      "serverRssMb": 224,
+      "fds": 46,
+      "lobbies": 6,
+      "cycles": 175
+    },
+    {
+      "t": 658,
+      "phase": "load",
+      "rssMb": 225.1,
+      "heapUsedMb": 58,
+      "serverRssMb": 224,
+      "fds": 47,
+      "lobbies": 5,
+      "cycles": 184
+    },
+    {
+      "t": 688,
+      "phase": "load",
+      "rssMb": 224.9,
+      "heapUsedMb": 43,
+      "serverRssMb": 224,
+      "fds": 47,
+      "lobbies": 10,
+      "cycles": 195
+    },
+    {
+      "t": 718,
+      "phase": "load",
+      "rssMb": 225.1,
+      "heapUsedMb": 71,
+      "serverRssMb": 224,
+      "fds": 47,
+      "lobbies": 6,
+      "cycles": 204
+    },
+    {
+      "t": 748,
+      "phase": "load",
+      "rssMb": 226.3,
+      "heapUsedMb": 52,
+      "serverRssMb": 225,
+      "fds": 45,
+      "lobbies": 5,
+      "cycles": 213
+    },
+    {
+      "t": 778,
+      "phase": "load",
+      "rssMb": 226.5,
+      "heapUsedMb": 84,
+      "serverRssMb": 225,
+      "fds": 45,
+      "lobbies": 5,
+      "cycles": 221
+    },
+    {
+      "t": 808,
+      "phase": "load",
+      "rssMb": 226.8,
+      "heapUsedMb": 62,
+      "serverRssMb": 226,
+      "fds": 47,
+      "lobbies": 5,
+      "cycles": 229
+    },
+    {
+      "t": 838,
+      "phase": "load",
+      "rssMb": 227.3,
+      "heapUsedMb": 48,
+      "serverRssMb": 226,
+      "fds": 46,
+      "lobbies": 6,
+      "cycles": 238
+    },
+    {
+      "t": 868,
+      "phase": "load",
+      "rssMb": 227.3,
+      "heapUsedMb": 43,
+      "serverRssMb": 226,
+      "fds": 47,
+      "lobbies": 7,
+      "cycles": 248
+    },
+    {
+      "t": 898,
+      "phase": "load",
+      "rssMb": 226.8,
+      "heapUsedMb": 74,
+      "serverRssMb": 226,
+      "fds": 45,
+      "lobbies": 6,
+      "cycles": 255
+    },
+    {
+      "t": 928,
+      "phase": "load",
+      "rssMb": 226.8,
+      "heapUsedMb": 65,
+      "serverRssMb": 226,
+      "fds": 47,
+      "lobbies": 6,
+      "cycles": 264
+    },
+    {
+      "t": 958,
+      "phase": "load",
+      "rssMb": 226.7,
+      "heapUsedMb": 44,
+      "serverRssMb": 226,
+      "fds": 46,
+      "lobbies": 6,
+      "cycles": 273
+    },
+    {
+      "t": 988,
+      "phase": "load",
+      "rssMb": 227.6,
+      "heapUsedMb": 81,
+      "serverRssMb": 227,
+      "fds": 47,
+      "lobbies": 6,
+      "cycles": 283
+    },
+    {
+      "t": 1018,
+      "phase": "load",
+      "rssMb": 226.9,
+      "heapUsedMb": 68,
+      "serverRssMb": 226,
+      "fds": 46,
+      "lobbies": 6,
+      "cycles": 291
+    },
+    {
+      "t": 1048,
+      "phase": "load",
+      "rssMb": 219.3,
+      "heapUsedMb": 55,
+      "serverRssMb": 218,
+      "fds": 47,
+      "lobbies": 6,
+      "cycles": 299
+    },
+    {
+      "t": 1078,
+      "phase": "load",
+      "rssMb": 220.1,
+      "heapUsedMb": 87,
+      "serverRssMb": 219,
+      "fds": 45,
+      "lobbies": 6,
+      "cycles": 305
+    },
+    {
+      "t": 1108,
+      "phase": "load",
+      "rssMb": 220.4,
+      "heapUsedMb": 72,
+      "serverRssMb": 219,
+      "fds": 45,
+      "lobbies": 4,
+      "cycles": 313
+    },
+    {
+      "t": 1138,
+      "phase": "load",
+      "rssMb": 211.5,
+      "heapUsedMb": 56,
+      "serverRssMb": 210,
+      "fds": 46,
+      "lobbies": 6,
+      "cycles": 323
+    },
+    {
+      "t": 1170,
+      "phase": "load",
+      "rssMb": 212.6,
+      "heapUsedMb": 59,
+      "serverRssMb": 212,
+      "fds": 38,
+      "lobbies": 3,
+      "cycles": 327
+    },
+    {
+      "t": 1200,
+      "phase": "load",
+      "rssMb": 219.5,
+      "heapUsedMb": 91,
+      "serverRssMb": 218,
+      "fds": 47,
+      "lobbies": 8,
+      "cycles": 336
+    },
+    {
+      "t": 1230,
+      "phase": "load",
+      "rssMb": 220.4,
+      "heapUsedMb": 82,
+      "serverRssMb": 219,
+      "fds": 46,
+      "lobbies": 9,
+      "cycles": 346
+    },
+    {
+      "t": 1260,
+      "phase": "load",
+      "rssMb": 220.4,
+      "heapUsedMb": 66,
+      "serverRssMb": 219,
+      "fds": 47,
+      "lobbies": 6,
+      "cycles": 353
+    },
+    {
+      "t": 1290,
+      "phase": "load",
+      "rssMb": 220.8,
+      "heapUsedMb": 54,
+      "serverRssMb": 220,
+      "fds": 45,
+      "lobbies": 7,
+      "cycles": 363
+    },
+    {
+      "t": 1320,
+      "phase": "load",
+      "rssMb": 221,
+      "heapUsedMb": 45,
+      "serverRssMb": 220,
+      "fds": 46,
+      "lobbies": 7,
+      "cycles": 377
+    },
+    {
+      "t": 1350,
+      "phase": "load",
+      "rssMb": 221.1,
+      "heapUsedMb": 87,
+      "serverRssMb": 220,
+      "fds": 46,
+      "lobbies": 6,
+      "cycles": 390
+    },
+    {
+      "t": 1380,
+      "phase": "load",
+      "rssMb": 221.1,
+      "heapUsedMb": 71,
+      "serverRssMb": 220,
+      "fds": 47,
+      "lobbies": 7,
+      "cycles": 400
+    },
+    {
+      "t": 1410,
+      "phase": "load",
+      "rssMb": 221.1,
+      "heapUsedMb": 54,
+      "serverRssMb": 220,
+      "fds": 46,
+      "lobbies": 7,
+      "cycles": 407
+    },
+    {
+      "t": 1440,
+      "phase": "load",
+      "rssMb": 221.1,
+      "heapUsedMb": 45,
+      "serverRssMb": 220,
+      "fds": 46,
+      "lobbies": 7,
+      "cycles": 417
+    },
+    {
+      "t": 1470,
+      "phase": "load",
+      "rssMb": 85.7,
+      "heapUsedMb": 36,
+      "serverRssMb": 85,
+      "fds": 47,
+      "lobbies": 6,
+      "cycles": 426
+    },
+    {
+      "t": 1500,
+      "phase": "load",
+      "rssMb": 94,
+      "heapUsedMb": 41,
+      "serverRssMb": 93,
+      "fds": 47,
+      "lobbies": 6,
+      "cycles": 433
+    },
+    {
+      "t": 1530,
+      "phase": "load",
+      "rssMb": 101,
+      "heapUsedMb": 39,
+      "serverRssMb": 100,
+      "fds": 45,
+      "lobbies": 6,
+      "cycles": 443
+    },
+    {
+      "t": 1560,
+      "phase": "load",
+      "rssMb": 101.4,
+      "heapUsedMb": 40,
+      "serverRssMb": 100,
+      "fds": 44,
+      "lobbies": 6,
+      "cycles": 453
+    },
+    {
+      "t": 1590,
+      "phase": "load",
+      "rssMb": 107.9,
+      "heapUsedMb": 48,
+      "serverRssMb": 107,
+      "fds": 47,
+      "lobbies": 8,
+      "cycles": 461
+    },
+    {
+      "t": 1620,
+      "phase": "load",
+      "rssMb": 114.1,
+      "heapUsedMb": 48,
+      "serverRssMb": 113,
+      "fds": 47,
+      "lobbies": 6,
+      "cycles": 469
+    },
+    {
+      "t": 1650,
+      "phase": "load",
+      "rssMb": 115.3,
+      "heapUsedMb": 44,
+      "serverRssMb": 114,
+      "fds": 45,
+      "lobbies": 5,
+      "cycles": 475
+    },
+    {
+      "t": 1680,
+      "phase": "load",
+      "rssMb": 117.4,
+      "heapUsedMb": 49,
+      "serverRssMb": 116,
+      "fds": 45,
+      "lobbies": 4,
+      "cycles": 482
+    },
+    {
+      "t": 1710,
+      "phase": "load",
+      "rssMb": 117.6,
+      "heapUsedMb": 41,
+      "serverRssMb": 117,
+      "fds": 48,
+      "lobbies": 6,
+      "cycles": 492
+    },
+    {
+      "t": 1740,
+      "phase": "load",
+      "rssMb": 117.9,
+      "heapUsedMb": 51,
+      "serverRssMb": 117,
+      "fds": 47,
+      "lobbies": 6,
+      "cycles": 500
+    },
+    {
+      "t": 1770,
+      "phase": "load",
+      "rssMb": 143.6,
+      "heapUsedMb": 44,
+      "serverRssMb": 142,
+      "fds": 45,
+      "lobbies": 6,
+      "cycles": 508
+    },
+    {
+      "t": 1800,
+      "phase": "load",
+      "rssMb": 143.7,
+      "heapUsedMb": 54,
+      "serverRssMb": 142,
+      "fds": 47,
+      "lobbies": 4,
+      "cycles": 516
+    },
+    {
+      "t": 1830,
+      "phase": "load",
+      "rssMb": 144.2,
+      "heapUsedMb": 41,
+      "serverRssMb": 143,
+      "fds": 46,
+      "lobbies": 7,
+      "cycles": 528
+    },
+    {
+      "t": 1854,
+      "phase": "idle",
+      "rssMb": 144.2,
+      "heapUsedMb": 36,
+      "serverRssMb": 143,
+      "fds": 27,
+      "lobbies": 0,
+      "cycles": 531
+    },
+    {
+      "t": 1869,
+      "phase": "idle",
+      "rssMb": 144.2,
+      "heapUsedMb": 36,
+      "serverRssMb": 143,
+      "fds": 27,
+      "lobbies": 0,
+      "cycles": 531
+    },
+    {
+      "t": 1884,
+      "phase": "idle",
+      "rssMb": 144.2,
+      "heapUsedMb": 37,
+      "serverRssMb": 143,
+      "fds": 27,
+      "lobbies": 0,
+      "cycles": 531
+    },
+    {
+      "t": 1899,
+      "phase": "idle",
+      "rssMb": 144.2,
+      "heapUsedMb": 36,
+      "serverRssMb": 143,
+      "fds": 27,
+      "lobbies": 0,
+      "cycles": 531
+    }
+  ]
+}

@@ -1,0 +1,95 @@
+{
+  "mode": "test",
+  "at": "2026-10-15T01:47:19.807Z",
+  "target": "http://127.0.0.1:3396",
+  "before": "☼ Day 1 | Dawn breaks on day 1. Nobody died in the night.",
+  "shot15": true,
+  "shot45": true,
+  "restart": {
+    "pidBefore": "3823371",
+    "pidAfter": "3823692",
+    "nRestarts": "1",
+    "healthyAfterMs": 2493
+  },
+  "browserTimeline": [
+    {
+      "t": 128,
+      "status": "☼ Day 1 | Dawn breaks on day 1. Nobody died in the night.",
+      "health": false
+    },
+    {
+      "t": 1336,
+      "status": "☼ Day 1 | Dawn breaks on day 1. Nobody died in the night. | Connection lost — reconnecting…",
+      "health": false
+    },
+    {
+      "t": 5169,
+      "status": "☼ Day 1 | Connection lost — reconnecting…",
+      "health": true
+    },
+    {
+      "t": 61030,
+      "status": "☼ Day 1 | Connection lost. Your seat is kept for a while. Reconnect",
+      "health": true
+    }
+  ],
+  "bots": [
+    {
+      "bot": "crashtest-1",
+      "closeCode": 1006,
+      "reconnect": "reconnect failed: room \"6OmxXmIEa\" has been disposed.",
+      "reconnectTicket": "404 not_found",
+      "sessionStillValid": true
+    },
+    {
+      "bot": "crashtest-2",
+      "closeCode": 1006,
+      "reconnect": "reconnect failed: room \"6OmxXmIEa\" has been disposed.",
+      "reconnectTicket": "404 not_found",
+      "sessionStillValid": true
+    },
+    {
+      "bot": "crashtest-3",
+      "closeCode": 1006,
+      "reconnect": "reconnect failed: room \"6OmxXmIEa\" has been disposed.",
+      "reconnectTicket": "404 not_found",
+      "sessionStillValid": true
+    },
+    {
+      "bot": "crashtest-4",
+      "closeCode": 1006,
+      "reconnect": "reconnect failed: room \"6OmxXmIEa\" has been disposed.",
+      "reconnectTicket": "404 not_found",
+      "sessionStillValid": true
+    },
+    {
+      "bot": "crashtest-5",
+      "closeCode": 1006,
+      "reconnect": "reconnect failed: room \"6OmxXmIEa\" has been disposed.",
+      "reconnectTicket": "404 not_found",
+      "sessionStillValid": true
+    }
+  ],
+  "lobbyAfter": "gone",
+  "afterReload": {
+    "url": "http://127.0.0.1:3396/lobby/JLB7GxxaZK",
+    "status": "Lobby not found Back to lobbies | Lobby not found"
+  },
+  "consoleTail": [
+    "warning: [.WebGL-0x2e6c01fc2800]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+    "warning: [.WebGL-0x2e6c01fc2800]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+    "warning: [.WebGL-0x2e6c01fc2800]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)",
+    "error: Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "error: Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "error: Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "error: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "error: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "error: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "error: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "error: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "error: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "error: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "error: Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "error: Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ]
+}

@@ -6,7 +6,6 @@
 //     Auto-skips (with a printed reason) while the game module is a stub.
 import { afterAll, describe, expect, it } from 'vitest';
 import {
-  CHARACTER_IDS,
   type GrimoireEntry,
   type LobbySummary,
   type PlayerGameView,
@@ -15,6 +14,7 @@ import {
 import { Bot, makeBots } from '../support/bot.js';
 import { pending } from '../support/features.js';
 import { collectKeys, findLeaks, type RecordedMessage } from '../support/recorder.js';
+import { forbiddenKeysIn, nonPublicPlayerKeys, strayCharacters } from '../support/secrecy.js';
 import { eventually, sleep, suiteServer, uniq } from '../support/suite.js';
 
 const { server, features } = await suiteServer();
@@ -28,12 +28,6 @@ const SUMMARY_KEYS: (keyof LobbySummary)[] = [
   'storytellerSeatOpen', 'phase', 'joinable', 'hostName', 'createdAt', 'updatedAt',
 ];
 const MEMBER_KEYS = ['pid', 'displayName', 'role', 'seat', 'ready', 'connected', 'isHost', 'cosmetics'];
-/** Fields that exist only in StorytellerGameView / GrimoireEntry / server state. */
-const ST_ONLY_KEYS = [
-  'grimoire', 'demonBluffs', 'nightQueue', 'visitingSeat', 'travelSpeedMult', 'alerts', 'believedCharacter',
-  'poisoned', 'drunk', 'protectedTonight', 'reminders', 'redHerringSeat', 'accountId', 'passphrase',
-];
-
 describe.skipIf(!features.rooms)(`credential & identity secrecy${pending(features.rooms, features.reasons.rooms)}`, () => {
   it('no account ids / passphrases / session tokens / tickets in room messages; public-only views', async () => {
     const bots = await makeBots(5, uniq('sec-'), server.url, server.wsUrl);
@@ -71,38 +65,6 @@ describe.skipIf(!features.rooms)(`credential & identity secrecy${pending(feature
     expect(findLeaks([{ label: 'api', messages: [{ json: list.text } as RecordedMessage] } as any], needles)).toEqual([]);
   });
 });
-
-function forbiddenKeysIn(msgs: RecordedMessage[]): string[] {
-  const found = new Set<string>();
-  for (const m of msgs) {
-    if (m.type === 'chat:message') continue;
-    const keys = collectKeys(m.payload);
-    for (const k of ST_ONLY_KEYS) if (keys.has(k)) found.add(`${m.type}.${k}`);
-  }
-  return [...found];
-}
-
-/** Character ids found in a player's messages OUTSIDE their legitimate private channels. */
-function strayCharacters(msgs: RecordedMessage[]): { type: string; character: string; excerpt: string }[] {
-  const out: { type: string; character: string; excerpt: string }[] = [];
-  for (const m of msgs) {
-    if (m.type === 'chat:message' || m.type === 'announcement') continue; // user text / public ST announcements
-    let payload: any = m.payload;
-    if (m.type === 'game:view' && payload && typeof payload === 'object') {
-      // Own role, own info and own prompts are legitimate; the end-of-game reveal is public.
-      const { you, info, prompts, announcements, result, ...rest } = payload;
-      const { role, ...youRest } = you ?? {};
-      payload = { ...rest, you: youRest };
-      void role; void info; void prompts; void announcements; void result;
-    }
-    const json = JSON.stringify(payload) ?? '';
-    for (const c of CHARACTER_IDS) {
-      const i = json.indexOf(`"${c}"`);
-      if (i >= 0) out.push({ type: m.type, character: c, excerpt: json.slice(Math.max(0, i - 80), i + 40) });
-    }
-  }
-  return out;
-}
 
 interface Game {
   st: Bot;
@@ -194,6 +156,7 @@ describe.skipIf(!features.rooms)(`Grimoire / role secrecy in a scripted game${pe
     for (const p of players) {
       const msgs = p.recorder.messages;
       expect(forbiddenKeysIn(msgs), `${p.name}: ST-only fields`).toEqual([]);
+      expect(nonPublicPlayerKeys(msgs), `${p.name}: non-public fields on players[]`).toEqual([]);
       for (const m of msgs.filter((m) => m.type === 'game:view')) {
         expect((m.payload as any).kind).toBe('player');
         expect((m.payload as PlayerGameView).result).toBeNull();

@@ -1,9 +1,9 @@
 {
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
-    "lib": ["ES2023", "DOM"],
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "types": ["node"],
     "allowImportingTsExtensions": false
   },
-  "include": ["support/**/*.ts", "integration/**/*.ts", "security/**/*.ts", "unit/**/*.ts", "load/**/*.ts", "e2e/**/*.ts"]
+  "include": ["support/**/*.ts", "integration/**/*.ts", "security/**/*.ts", "unit/**/*.ts", "load/**/*.ts", "e2e/**/*.ts", "resilience/**/*.ts"]
 }

@@ -36,6 +36,8 @@ export interface StartOptions {
   mode?: 'source' | 'dist';
   port?: number;
   env?: Record<string, string>;
+  /** Reuse this data dir (DB persists across restarts; not deleted on stop). Default: fresh temp dir. */
+  dataDir?: string;
   /** ms to wait for /healthz (default 45s; tsx cold start on a busy host can be slow). */
   readyTimeoutMs?: number;
 }
@@ -59,6 +61,17 @@ export async function pickPort(min = TEST_PORT_MIN, max = TEST_PORT_MAX): Promis
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+// Never leave orphaned test servers behind, even if the test process crashes or is interrupted.
+const children = new Set<ChildProcess>();
+process.once('exit', () => {
+  for (const c of children) c.kill('SIGKILL');
+});
+for (const sig of ['SIGINT', 'SIGTERM'] as const)
+  process.once(sig, () => {
+    for (const c of children) c.kill('SIGKILL');
+    process.exit(130);
+  });
+
 export async function startServer(opts: StartOptions = {}): Promise<TestServer> {
   let lastErr: unknown;
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -76,7 +89,8 @@ export async function startServer(opts: StartOptions = {}): Promise<TestServer> 
 async function launch(port: number, opts: StartOptions): Promise<TestServer> {
   if (port === 3000 || port === 3001) throw new Error('refusing to bind prod/dev port in tests');
   const mode = opts.mode ?? (process.env.CT_TEST_SERVER === 'dist' ? 'dist' : 'source');
-  const dataDir = mkdtempSync(path.join(os.tmpdir(), 'ct-test-'));
+  const ownDir = !opts.dataDir;
+  const dataDir = opts.dataDir ?? mkdtempSync(path.join(os.tmpdir(), 'ct-test-'));
   // Unique per launch: /healthz must echo it, so a port race can never make us talk to another
   // test file's server.
   const nonce = `test-${randomBytes(6).toString('hex')}`;
@@ -115,6 +129,8 @@ async function launch(port: number, opts: StartOptions): Promise<TestServer> {
     env,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
+  children.add(child);
+  child.once('exit', () => children.delete(child));
   let output = '';
   const append = (b: Buffer) => {
     output += b.toString();
@@ -154,7 +170,7 @@ async function launch(port: number, opts: StartOptions): Promise<TestServer> {
         await Promise.race([exitPromise, sleep(2000)]);
       }
     }
-    rmSync(dataDir, { recursive: true, force: true });
+    if (ownDir) rmSync(dataDir, { recursive: true, force: true });
   };
   if (!ready) {
     await stop();

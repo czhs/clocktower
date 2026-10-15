@@ -90,6 +90,8 @@ interface Sample {
   loadCpuPct: number;
   rxMsgs: number;
   txMsgs: number;
+  /** server -> clients WS payload KB/s in this 1 s window (= outbound tunnel traffic, before TLS/framing) */
+  s2cKBps: number;
 }
 
 // ---- main ------------------------------------------------------------------------------------
@@ -160,8 +162,9 @@ async function main() {
     log('game state', JSON.stringify(gameState));
   }
 
-  // Activity + sampling.
+  // Activity: everyone walks (valid BFS paths over walkable tiles) and leaves buildings when allowed.
   for (const l of lobbies) {
+    for (const b of [l.st, ...l.players]) b.exitBuildings = true;
     l.st.startWandering(MOVE_HZ, 1.5);
     l.st.startPinging(PING_MS);
     for (const p of l.players) {
@@ -169,6 +172,12 @@ async function main() {
       p.startPinging(PING_MS);
     }
   }
+  // Warm-up: wait (max 45 s) until bots have walked out of their homes into the town.
+  const outdoors = () => everyone.filter((b) => b.location === 'outdoors').length;
+  const warm0 = Date.now();
+  while (Date.now() - warm0 < 45_000 && outdoors() < everyone.length * 0.9) await sleep(1000);
+  const outdoorsAtStart = outdoors();
+  log(`warm-up ${Math.round((Date.now() - warm0) / 1000)}s: ${outdoorsAtStart}/${everyone.length} bots outdoors`);
   const samples: Sample[] = [];
   const lo0 = loBytes();
   let lastTicks = serverPid ? procTicks(serverPid) : null;
@@ -187,6 +196,10 @@ async function main() {
   const baseBytes = everyone.reduce((a, b) => ({ rx: a.rx + b.recorder.rxBytes, tx: a.tx + b.recorder.txBytes }), { rx: 0, tx: 0 });
   const start = performance.now();
   let lastTotals = base;
+  let lastRxBytes = baseBytes.rx;
+  const corrections0 = everyone.reduce((a, b) => a + (b.recorder.typeCounts['world:teleport'] ?? 0), 0);
+  const snapEnt0 = everyone.reduce((a, b) => a + b.snapshotEntities, 0);
+  const snapN0 = everyone.reduce((a, b) => a + b.snapshotDelays.length, 0);
   log(`running ${DURATION_S}s: ${everyone.length} clients, move ${MOVE_HZ} Hz, ping every ${PING_MS} ms`);
   while (performance.now() - start < DURATION_S * 1000) {
     await sleep(1000);
@@ -203,6 +216,12 @@ async function main() {
       loadCpuPct: Math.round(((cu.user + cu.system) / 1e6 / dt) * 1000) / 10,
       rxMsgs: Math.round((tt.rx - lastTotals.rx) / dt),
       txMsgs: Math.round((tt.tx - lastTotals.tx) / dt),
+      s2cKBps: (() => {
+        const rxNow = everyone.reduce((a, b) => a + b.recorder.rxBytes, 0);
+        const v = Math.round((rxNow - lastRxBytes) / dt / 102.4) / 10;
+        lastRxBytes = rxNow;
+        return v;
+      })(),
     });
     lastTicks = ticks;
     lastCpu = process.cpuUsage();
@@ -210,7 +229,7 @@ async function main() {
     lastTotals = tt;
     if (samples.length % 10 === 0) {
       const s = samples.at(-1)!;
-      log(`t=${s.t}s server cpu ${s.cpuPct}% rss ${s.rssMb} MB | rx ${s.rxMsgs}/s tx ${s.txMsgs}/s`);
+      log(`t=${s.t}s server cpu ${s.cpuPct}% rss ${s.rssMb} MB | s2c ${s.rxMsgs} msg/s ${s.s2cKBps} KB/s | c2s ${s.txMsgs} msg/s | outdoors ${outdoors()}/${everyone.length}`);
     }
   }
   const elapsed = (performance.now() - start) / 1000;
@@ -259,6 +278,9 @@ async function main() {
       c2sKBps: Math.round((endBytes.tx - baseBytes.tx) / elapsed / 102.4) / 10,
       s2cKBps: Math.round((endBytes.rx - baseBytes.rx) / elapsed / 102.4) / 10,
       perClientS2cKBps: Math.round((endBytes.rx - baseBytes.rx) / elapsed / everyone.length / 102.4) / 10,
+      s2cKBpsP95: pct(samples.map((x) => x.s2cKBps), 95),
+      s2cKBpsMax: max(samples.map((x) => x.s2cKBps)),
+      s2cMbitPerSec: Math.round(((endBytes.rx - baseBytes.rx) * 8) / elapsed / 1e4) / 100,
       loopbackKBps: lo0 !== null && lo1 !== null ? Math.round((lo1 - lo0) / elapsed / 102.4) / 10 : null,
       s2cByType: typeTotals,
     },
@@ -269,8 +291,14 @@ async function main() {
       rttMsP95: pct(rtts, 95),
       rttMsP99: pct(rtts, 99),
       rttMsMax: max(rtts),
-      snapshotSamples: delays.length,
-      entitiesPerSnapshotAvg: delays.length ? Math.round((everyone.reduce((a, b) => a + b.snapshotEntities, 0) / delays.length) * 10) / 10 : null,
+      snapshotSamples: delays.length - snapN0,
+      entitiesPerSnapshotAvg:
+        delays.length - snapN0 > 0
+          ? Math.round(((everyone.reduce((a, b) => a + b.snapshotEntities, 0) - snapEnt0) / (delays.length - snapN0)) * 10) / 10
+          : null,
+      serverCorrections: everyone.reduce((a, b) => a + (b.recorder.typeCounts['world:teleport'] ?? 0), 0) - corrections0,
+      outdoorsAtStart,
+      outdoorsAtEnd: outdoors(),
       snapshotDelayMsP50: pct(delays, 50),
       snapshotDelayMsP95: pct(delays, 95),
       snapshotDelayMsMax: max(delays),
@@ -310,6 +338,9 @@ function markdown(s: any): string {
 | S2C messages/s (all clients) | ${s.traffic.s2cMsgsPerSec} |
 | C2S / S2C KB/s (WS payload) | ${s.traffic.c2sKBps} / ${s.traffic.s2cKBps} |
 | S2C KB/s per client | ${s.traffic.perClientS2cKBps} |
+| **Outbound (S2C) KB/s p95 / max; Mbit/s avg** | ${v(s.traffic.s2cKBpsP95)} / ${v(s.traffic.s2cKBpsMax)}; ${v(s.traffic.s2cMbitPerSec)} |
+| Bots outdoors at start / end of window | ${s.latency.outdoorsAtStart} / ${s.latency.outdoorsAtEnd} of ${s.config.clients} |
+| Server move corrections (world:teleport) during window | ${s.latency.serverCorrections} |
 | Loopback KB/s (all lo traffic) | ${v(s.traffic.loopbackKBps)} |
 | Ping RTT ms (p50 / p95 / p99 / max) | ${v(s.latency.rttMsP50)} / ${v(s.latency.rttMsP95)} / ${v(s.latency.rttMsP99)} / ${v(s.latency.rttMsMax)} |
 | Pongs / pings | ${s.latency.pongReceived} / ${s.latency.pingSent} |

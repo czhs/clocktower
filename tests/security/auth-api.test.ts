@@ -32,6 +32,7 @@ describe.skipIf(!features.accounts)(`API authentication${pending(features.accoun
     const c = anon();
     c.cookies.set('ct_session_test', 'a'.repeat(64));
     c.cookies.set('ct_session', 'b'.repeat(64));
+    c.cookies.set('__Host-ct_session', 'c'.repeat(64));
     const r = await c.req(method, path, body, path.endsWith('/stream') ? { signal: AbortSignal.timeout(3000) } : {});
     expect(r.status).toBe(401);
   });
@@ -51,12 +52,12 @@ describe.skipIf(!features.accounts)(`API authentication${pending(features.accoun
       body: JSON.stringify({ displayName: 'cookie check' }),
     });
     const body = (await res.json()) as { account: { id: string }; passphrase: string };
-    const sc = res.headers.getSetCookie().find((c) => c.startsWith('ct_session'));
+    const sc = res.headers.getSetCookie().find((c) => /^(__Host-)?ct_session/.test(c));
     expect(sc, 'session cookie set').toBeTruthy();
     expect(sc!).toMatch(/;\s*HttpOnly/i);
     expect(sc!).toMatch(/;\s*SameSite=(Lax|Strict)/i);
     expect(sc!).toMatch(/;\s*Path=\//i);
-    expect(sc!.startsWith('ct_session_test=')).toBe(true); // env-specific cookie name
+    expect(sc!.split('=')[0]).toMatch(/ct_session_test$/); // env-specific cookie name (never the prod one)
     expect(sc!).not.toContain(body.account.id);
     expect(sc!).not.toContain(body.passphrase);
   });
@@ -110,7 +111,7 @@ describe.skipIf(!features.accounts)(`API authentication${pending(features.accoun
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ displayName: 'secure check' }),
       });
-      const sc = res.headers.getSetCookie().find((c) => c.startsWith('ct_session'));
+      const sc = res.headers.getSetCookie().find((c) => /^(__Host-)?ct_session/.test(c));
       expect(sc).toMatch(/;\s*Secure/i);
     } finally {
       await s2.stop();
