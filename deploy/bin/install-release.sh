@@ -31,16 +31,16 @@ log() { printf '[deploy:%s %s] %s\n' "$ENVNAME" "$(date +%H:%M:%S)" "$*" >&2; }
 die() { log "ERROR: $*"; exit 1; }
 
 case "$ENVNAME" in
-  dev) PORT=3001 UNIT=clocktower-dev ;;
-  prod) PORT=3000 UNIT=clocktower-prod ;;
+  dev) PORT=3001 UNIT=clocktower-dev.service ;;
+  prod) PORT=3000 UNIT=clocktower-prod.service ;;
   *) die "env must be dev or prod" ;;
 esac
 [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || die "sha must be a full 40-char commit id"
 [[ -f "$CT/env/$ENVNAME.env" ]] || die "missing $CT/env/$ENVNAME.env — run scripts/setup-hshi-u1.sh first"
 if [[ $MODE == system ]]; then
-  [[ -f "/etc/systemd/system/$UNIT.service" ]] || die "missing system unit $UNIT"
+  [[ -f "/etc/systemd/system/$UNIT" ]] || die "missing system unit $UNIT"
 else
-  [[ -f "$HOME/.config/systemd/user/$UNIT.service" ]] || die "missing unit $UNIT — run scripts/setup-hshi-u1.sh first"
+  [[ -f "$HOME/.config/systemd/user/$UNIT" ]] || die "missing unit $UNIT — run scripts/setup-hshi-u1.sh first"
 fi
 
 exec 9>"$LOCKS/.deploy-$ENVNAME.lock"
