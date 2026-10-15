@@ -1,0 +1,11 @@
+{
+ "model": "gpt-6-astra",
+ "files": [
+  "hand-raised.png",
+  "home-arrow.png",
+  "seat.png",
+  "seat-active.png",
+  "seat-ghost.png",
+  "vote-hand.png"
+ ]
+}

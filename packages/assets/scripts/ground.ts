@@ -2,8 +2,8 @@
 // codes (layout.ts), with domain-warped organic edges between soft materials, a geometric
 // town-square circle, shorelines, contact shadows and 3/4-view walls. The result is sliced into
 // 16x16 tiles and de-duplicated into a Tiled tileset (terrain.png) + ground layer indices.
-import { G, interiorBuildingAt, townLayout, townMap, TS } from '../src/layout.js';
-import { bayer, dpick, fbm, hash, Img, mix, type Color, type RGBA, vnoise } from './lib/img.js';
+import { G, interiorBuildingAt, townLayout, townMap, TS, WEAR_POINTS } from '../src/layout.js';
+import { dpick, fbm, hash, Img, mix, type Color, type RGBA, vnoise } from './lib/img.js';
 
 const W = townMap.width;
 const H = townMap.height;
@@ -94,36 +94,57 @@ function interiorKind(tx: number, ty: number): string {
 // ---------------------------------------------------------------------------------------
 // Materials
 
+// Quiet ground (docs/art-direction.md): <= 4 colours per tile, broad low-contrast masses picked by
+// thresholds (no dithering, no per-pixel noise), a few deliberate clusters per tile. Tufts and
+// flowers are decals placed in patches by layout.ts.
+const GQ = ['#29412f', '#2e4733', '#344f37', '#44603f'];
+const FQ = ['#18231e', '#1d2a23', '#233127', '#3a3024'];
+const thr3 = (n: number, a: number, b: number, pal: readonly string[], o = 0) => col4(n < a ? pal[o]! : n < b ? pal[o + 1]! : pal[o + 2]!);
+/** One small cluster per 8x8 lattice cell (hash-gated), as a local pixel offset or null. */
+function cluster(px: number, py: number, cell: number, seed: number, chance: number): { lx: number; ly: number } | null {
+  const qx = pm(px);
+  const qy = pm(py);
+  const cx = Math.floor(qx / cell);
+  const cy = Math.floor(qy / cell);
+  if (hash(cx, cy, seed) >= chance) return null;
+  const bx = cx * cell + 1 + Math.floor(hash(cx, cy, seed + 1) * (cell - 4));
+  const by = cy * cell + 1 + Math.floor(hash(cx, cy, seed + 2) * (cell - 4));
+  return { lx: qx - bx, ly: qy - by };
+}
+
 function grass(px: number, py: number): RGBA {
-  const n = fbm(px, py, 16, 1, P) * 0.75 + vnoise(px, py, 4, 2, P) * 0.25;
-  const h = hash(pm(px), pm(py), 3);
-  if (h < 0.035) return mix(GRASS[4]!, '#7a8f55', 0.35);
-  if (hash(pm(px), pm(py - 1), 3) < 0.035) return mix(GRASS[0]!, GRASS[1]!, 0.5);
-  return dpick(GRASS, n * 1.05 - 0.02, px, py);
+  const n = fbm(px, py, 16, 1, P) * 0.7 + vnoise(px, py, 6, 2, P) * 0.3;
+  const k = cluster(px, py, 8, 3, 0.3);
+  if (k) {
+    // a little blade cluster: two strokes, lit tip, darker root
+    if ((k.lx === 0 && k.ly >= 0 && k.ly <= 2) || (k.lx === 2 && k.ly >= 1 && k.ly <= 2)) return col4(k.ly === (k.lx === 0 ? 0 : 1) ? GQ[3]! : GQ[2]!);
+    if ((k.lx === 1 && k.ly === 3) || (k.lx === 0 && k.ly === 3)) return col4(GQ[0]!);
+  }
+  return thr3(n, 0.42, 0.6, GQ);
 }
 function forest(px: number, py: number): RGBA {
   const n = fbm(px, py, 16, 5, P);
-  const h = hash(pm(px), pm(py), 6);
-  if (h < 0.05) return mix('#4a3626', '#2a1f18', hash(pm(px), pm(py), 7));
-  return dpick(FOREST, n, px, py);
+  const k = cluster(px, py, 8, 6, 0.35);
+  if (k && k.ly >= 0 && k.ly <= 1 && k.lx >= 0 && k.lx <= 1 + (k.ly === 0 ? 1 : 0)) return col4(FQ[3]!); // leaf litter
+  return thr3(n, 0.4, 0.62, FQ);
 }
 function dirt(px: number, py: number): RGBA {
-  const n = fbm(px, py, 8, 8, P);
-  const h = hash(pm(px), pm(py), 9);
-  if (h < 0.03) return col4(DIRT[4]!);
-  if (hash(pm(px), pm(py - 1), 9) < 0.03) return col4(DIRT[0]!);
-  return dpick(DIRT, 0.15 + n * 0.75, px, py);
+  const n = fbm(px, py, 8, 8, P) * 0.75 + vnoise(px, py, 3, 10, P) * 0.25;
+  const k = cluster(px, py, 16, 9, 0.35);
+  if (k && k.ly === 0 && k.lx >= 0 && k.lx <= 1) return col4(DIRT[4]!); // pebble
+  if (k && k.ly === 1 && k.lx >= 0 && k.lx <= 1) return col4(DIRT[0]!);
+  return thr3(n, 0.36, 0.62, DIRT, 1);
 }
 function sand(px: number, py: number): RGBA {
-  return dpick(SAND, fbm(px, py, 8, 11, P) * 0.9 + (hash(pm(px), pm(py), 12) < 0.05 ? 0.3 : 0), px, py);
+  return thr3(fbm(px, py, 8, 11, P), 0.38, 0.64, SAND);
 }
 function soil(px: number, py: number): RGBA {
   const r = pm(py) % 6;
-  const base = r === 0 ? 0.05 : r === 1 ? 0.3 : r < 4 ? 0.75 : 0.5;
-  return dpick(SOIL, base + (vnoise(px, py, 4, 13, P) - 0.5) * 0.4, px, py);
+  const n = vnoise(px, py, 4, 13, P);
+  return col4(r === 0 ? SOIL[0]! : r === 1 ? SOIL[1]! : r < 4 ? (n < 0.3 ? SOIL[2]! : SOIL[3]!) : SOIL[2]!);
 }
 function gravel(px: number, py: number): RGBA {
-  return dpick(GRAVEL, vnoise(px, py, 2, 14, P) * 0.7 + vnoise(px, py, 8, 15, P) * 0.3, px, py);
+  return thr3(vnoise(px, py, 2, 14, P) * 0.7 + vnoise(px, py, 8, 15, P) * 0.3, 0.38, 0.62, GRAVEL, 1);
 }
 function col4(c: Color): RGBA {
   return typeof c === 'string' ? (mix(c, c, 0) as RGBA) : c;
@@ -149,17 +170,41 @@ function stones(px: number, py: number, rh: number, sw: number, pal: string[], m
   return dpick(pal, v, px, py);
 }
 
-function water(px: number, py: number, shore: number): RGBA {
+/**
+ * Quiet paving: flat stone bodies (one of three values per stone), mortar only a step darker,
+ * a 1 px shadow on the lower half of each stone's bottom edge, an occasional lit corner. No
+ * bright edging on every stone, no per-pixel noise.
+ */
+function paving(px: number, py: number, rh: number, sw: number, pal: readonly string[], mortar: string, seed: number): RGBA {
+  const qy = pm(py);
+  const row = Math.floor(qy / rh);
+  const ly = qy - row * rh;
+  const off = (row % 2) * Math.floor(sw / 2) + Math.floor(hash(row, 0, seed) * 3);
+  const qx = pm(px + off);
+  const sx = Math.floor(qx / sw);
+  const lx = qx - sx * sw;
+  const sid = hash(sx, row, seed + 1);
+  // joints stay readable but quiet (art review: paving seams competed with characters)
+  if (ly === 0 || lx === 0) return mix(mortar, pal[1]!, 0.35);
+  const body = sid < 0.12 ? 0 : sid < 0.55 ? 1 : sid < 0.92 ? 2 : 3;
+  if (ly === rh - 1 && lx > sw / 2) return col4(pal[Math.max(0, body - 1)]!);
+  if (ly === 1 && lx === 1 && sid > 0.7) return col4(pal[Math.min(pal.length - 1, body + 1)]!);
+  return col4(pal[body]!);
+}
+
+// Water: a dark open-water field, restrained directional ripples (calm horizontal dashes on the
+// pond, south-flowing streaks on the river) and a stepped shallow band along the banks.
+const WATERQ = ['#1a2a3f', '#1F3046', '#304F6B', '#577B93'];
+const SHALLOW = ['#4a6064', '#3a5669', '#2c445e'];
+function water(px: number, py: number, shore: number, river = false): RGBA {
   const n = fbm(px, py, 16, 21, P);
-  let v = 0.25 + n * 0.55;
-  const wave = Math.sin((pm(px) / P) * Math.PI * 2 * 3 + (pm(py) / P) * Math.PI * 2 * 13 + vnoise(px, py, 16, 22, P) * 9);
-  if (wave > 0.93) v = 0.98;
-  else if (wave > 0.85) v += 0.2;
-  let c = dpick(WATER, v, px, py);
-  if (hash(pm(px), pm(py), 23) < 0.003) c = col4('#8fb2c9');
-  if (shore === 1) c = mix(c, '#6f8c99', 0.7);
-  else if (shore === 2) c = mix(c, '#3f6078', 0.45);
-  else if (shore === 3) c = mix(c, '#2a4866', 0.25);
+  let c = col4(n < 0.5 ? WATERQ[0]! : WATERQ[1]!);
+  const k = river ? cluster(px, py, 8, 22, 0.45) : cluster(px, py, 16, 22, 0.45);
+  if (k) {
+    if (!river && k.ly === 0 && k.lx >= 0 && k.lx <= 4) c = col4(k.lx === 1 && hash(Math.floor(pm(px) / 16), Math.floor(pm(py) / 16), 24) < 0.3 ? WATERQ[3]! : WATERQ[2]!);
+    if (river && k.lx === 0 && k.ly >= 0 && k.ly <= 3) c = col4(k.ly === 0 && hash(Math.floor(pm(px) / 8), Math.floor(pm(py) / 8), 25) < 0.25 ? WATERQ[3]! : WATERQ[2]!);
+  }
+  if (shore >= 1 && shore <= 3) c = col4(SHALLOW[shore - 1]!);
   return c;
 }
 
@@ -191,21 +236,32 @@ function bridge(px: number, py: number, tx: number, ty: number): RGBA {
   return c;
 }
 
+// Clipped hedges (art review: no black boxes): a leafy top with a lit upper-left rim and shaded
+// right/bottom rims, a darker front face (side plane) and a contact line at its foot. Flat value
+// steps, no dithering.
+const step = (pal: readonly string[], v: number) => col4(pal[Math.max(0, Math.min(pal.length - 1, Math.floor(v * pal.length)))]!);
 function hedge(px: number, py: number, tx: number, ty: number): RGBA {
   const lx = px - tx * TS;
   const ly = py - ty * TS;
+  const top = code(tx, ty - 1) !== G.hedge;
+  const left = code(tx - 1, ty) !== G.hedge;
+  const right = code(tx + 1, ty) !== G.hedge;
   const faceBelow = code(tx, ty + 1) !== G.hedge;
   const n = vnoise(px, py, 4, 41, P) * 0.6 + vnoise(px, py, 8, 42, P) * 0.4;
+  const leaf = hash(px >> 1, py >> 1, 43);
   if (faceBelow && ly >= 10) {
-    if (ly === 15) return col4('#070d09');
-    return dpick(HEDGE_FACE, n * 0.9 + (ly < 12 ? 0.2 : 0), px, py);
+    if (ly === 15) return col4('#0d1a12'); // contact with the ground
+    let v = 0.25 + n * 0.5 + (ly === 10 ? 0.35 : 0) - (right && lx > 13 ? 0.2 : 0);
+    if (leaf < 0.1) v += 0.2;
+    return step(HEDGE_FACE, v);
   }
-  let v = n;
-  if (code(tx, ty - 1) !== G.hedge && ly < 2) v += 0.35;
-  let c = dpick(HEDGE_TOP, v, px, py);
-  if ((code(tx - 1, ty) !== G.hedge && lx === 0) || (code(tx + 1, ty) !== G.hedge && lx === 15)) c = col4('#0b150e');
-  if (code(tx, ty - 1) !== G.hedge && ly === 0) c = col4('#0b150e');
-  return c;
+  let v = 0.15 + n * 0.55;
+  if (top && ly < 2) v += 0.35;
+  if (left && lx < 2) v += 0.2;
+  if (right && lx > 13) v -= 0.3;
+  if (leaf < 0.08) v += 0.25; // lit leaf clusters
+  else if (leaf > 0.94) v -= 0.2;
+  return step(HEDGE_TOP, v);
 }
 
 function stoneWall(px: number, py: number, tx: number, ty: number): RGBA {
@@ -253,7 +309,7 @@ function cliff(px: number, py: number, tx: number, ty: number): RGBA {
     const jag = 11 + Math.floor(vnoise(px, 0, 5, 67) * 6);
     if (ly > jag) {
       const under = code(tx, ty + 1);
-      return mix(under === G.forest ? forest(px, py) : grass(px, py), '#06040c', 0.55 - (ly - jag) * 0.06);
+      return mix(texel(under === G.forest ? 'forest' : 'grass', px, py), '#06040c', 0.55 - (ly - jag) * 0.06);
     }
     if (ly === jag) return col4('#0d0a12');
     const t = Math.max(0, (ly - 7) / 7);
@@ -271,12 +327,11 @@ function floorWood(px: number, py: number, tx: number, ty: number): RGBA {
   const off = Math.floor(hash(row, 0, 71) * 40);
   const seg = Math.floor((pm(px) + off) / 32);
   const segX = (pm(px) + off) % 32;
-  if (ly === 3) return col4('#160e0a');
-  if (segX === 0) return col4('#1c120d');
+  // lower contrast than the furniture: seams one step below the darkest board, flat boards
+  if (ly === 3 || segX === 0) return mix(pal[0]!, '#0c0808', 0.35);
   const grain = vnoise(px, 0, 16, 72 + row, P);
-  let v = 0.3 + hash(seg, row, 73) * 0.35 + (grain - 0.5) * 0.35;
-  if (ly === 0) v += 0.25;
-  return dpick(pal, v, px, py);
+  const v = 0.35 + hash(seg, row, 73) * 0.3 + (grain - 0.5) * 0.2 + (ly === 0 ? 0.15 : 0);
+  return col4(pal[Math.min(3, Math.max(0, Math.floor(v * 4)))]!);
 }
 
 function floorStone(px: number, py: number, tx: number, ty: number): RGBA {
@@ -359,36 +414,96 @@ function shoreDist(px: number, py: number): number {
   return 0;
 }
 
+// ---------------------------------------------------------------------------------------
+// Base material textures (period P). AI remasters (packages/assets/ai) may replace them; the
+// edges, shores, square geometry, contact shadows and walls stay procedural.
+
+export const TERRAIN_TEXTURES = ['grass', 'forest', 'dense', 'dirt', 'sand', 'soil', 'gravel', 'cobble', 'plaza', 'ring', 'water'] as const;
+export type TerrainTexture = (typeof TERRAIN_TEXTURES)[number];
+let textures: Partial<Record<TerrainTexture, Img>> = {};
+
+function proceduralTexel(t: TerrainTexture, px: number, py: number): RGBA {
+  switch (t) {
+    case 'grass':
+      return grass(px, py);
+    case 'forest':
+      return forest(px, py);
+    case 'dense':
+      return dpick(DENSE, fbm(px, py, 8, 91, P), px, py);
+    case 'dirt':
+      return dirt(px, py);
+    case 'sand':
+      return sand(px, py);
+    case 'soil':
+      return soil(px, py);
+    case 'gravel':
+      return gravel(px, py);
+    case 'cobble':
+      return paving(px, py, 6, 8, COBBLE, '#3a3646', 33);
+    case 'plaza':
+      return paving(px, py, 8, 12, PLAZA, '#4a4553', 34);
+    case 'ring':
+      return paving(px, py, 5, 9, RING, '#3a2b2d', 36);
+    case 'water':
+      return water(px, py, 0);
+  }
+}
+// Density-2 rendering (2026-10 overhaul): base materials may come from 2x textures (period 2P in
+// texels) sampled at the current texel (SUB); all structure (edges, shores, shadows) keeps the 1x
+// logic of the enclosing world pixel.
+let SUB: { x: number; y: number } | null = null;
+let LAST_T: TerrainTexture | null = null;
+function texel(t: TerrainTexture, px: number, py: number): RGBA {
+  LAST_T = t;
+  const tex = textures[t];
+  if (tex && tex.w === P * 2) {
+    if (SUB) return tex.get(((SUB.x % tex.w) + tex.w) % tex.w, ((SUB.y % tex.h) + tex.h) % tex.h);
+    return tex.get(pm(px) * 2, pm(py) * 2);
+  }
+  return tex ? tex.get(pm(px), pm(py)) : proceduralTexel(t, px, py);
+}
+/** The procedural P x P tile of a base material (AI reference / fallback). */
+export function proceduralTexture(t: TerrainTexture): Img {
+  const img = new Img(P, P);
+  for (let y = 0; y < P; y++) for (let x = 0; x < P; x++) img.set(x, y, proceduralTexel(t, x, y));
+  return img;
+}
+export const TEXTURE_PERIOD = P;
+
 function baseColor(px: number, py: number): RGBA {
   const tx = Math.floor(px / TS);
   const ty = Math.floor(py / TS);
   const m = matAt(px, py);
   switch (m) {
     case G.grass:
-      return grass(px, py);
+      return texel('grass', px, py);
     case G.forest:
-      return forest(px, py);
+      return texel('forest', px, py);
     case G.dense:
-      return dpick(DENSE, fbm(px, py, 8, 91, P), px, py);
+      return texel('dense', px, py);
     case G.dirt:
-      return dirt(px, py);
+      return texel('dirt', px, py);
     case G.sand:
-      return sand(px, py);
+      return texel('sand', px, py);
     case G.soil:
-      return soil(px, py);
+      return texel('soil', px, py);
     case G.gravel:
-      return gravel(px, py);
+      return texel('gravel', px, py);
     case G.cobble:
-      return stones(px, py, 6, 8, COBBLE, '#24212c', 33);
+      return texel('cobble', px, py);
     case G.plaza: {
       const d = Math.hypot(px + 0.5 - SQ.cx, py + 0.5 - SQ.cy);
-      if (d > SQ.r * 0.52 && d < SQ.r * 0.52 + 7) return stones(px, py, 7, 7, RING, '#241a1c', 35);
-      return stones(px, py, 8, 12, PLAZA, '#2e2a36', 34);
+      // (the inner paving band was removed: the clock-face mosaic prop now marks the voting circle)
+      return texel('plaza', px, py);
     }
     case G.ring:
-      return stones(px, py, 5, 9, RING, '#221819', 36);
-    case G.water:
-      return water(px, py, shoreDist(px, py));
+      return texel('ring', px, py);
+    case G.water: {
+      if (!textures.water) return water(px, py, shoreDist(px, py), tx >= 70);
+      const shore = shoreDist(px, py);
+      const c = texel('water', px, py);
+      return shore === 1 ? mix(c, '#6f8c99', 0.7) : shore === 2 ? mix(c, '#3f6078', 0.45) : shore === 3 ? mix(c, '#2a4866', 0.25) : c;
+    }
     case G.bridge:
       return bridge(px, py, tx, ty);
     case G.hedge:
@@ -436,32 +551,76 @@ function shadowAmount(px: number, py: number, m: string): number {
   return s;
 }
 
-export function renderGround(): Img {
-  const img = new Img(W * TS, H * TS);
-  for (let py = 0; py < img.h; py++)
-    for (let px = 0; px < img.w; px++) {
+// Wear where feet go (layout WEAR_POINTS: doorsteps, gates, junctions and turns): compacted,
+// smoother earth; polished paving; grass thinned to trodden earth. Bucketed per tile.
+const wearBuckets = new Map<number, { cx: number; cy: number; r: number }[]>();
+for (const w of WEAR_POINTS) {
+  const e = { cx: (w.x + 0.5) * TS, cy: (w.y + 0.5) * TS, r: w.r * TS };
+  for (let ty = Math.floor(w.y - w.r - 1); ty <= Math.ceil(w.y + w.r + 1); ty++)
+    for (let tx = Math.floor(w.x - w.r - 1); tx <= Math.ceil(w.x + w.r + 1); tx++) {
+      const k = ty * W + tx;
+      if (!wearBuckets.has(k)) wearBuckets.set(k, []);
+      wearBuckets.get(k)!.push(e);
+    }
+}
+function worn(px: number, py: number): boolean {
+  const b = wearBuckets.get(Math.floor(py / TS) * W + Math.floor(px / TS));
+  if (!b) return false;
+  const wob = (vnoise(px, py, 5, 111) - 0.5) * 7;
+  return b.some((e) => Math.hypot((px - e.cx) * 0.85, py - e.cy) < e.r + wob);
+}
+function wear(c: RGBA, m: string, px: number, py: number): RGBA {
+  if (m === G.dirt || m === G.sand) return col4(vnoise(px, py, 6, 112) < 0.45 ? DIRT[2]! : DIRT[3]!);
+  if (m === G.cobble || m === G.plaza || m === G.ring || m === G.gravel) return mix(c, '#7d7888', 0.18);
+  if (m === G.grass || m === G.forest) return vnoise(px, py, 4, 113) > 0.5 ? col4(DIRT[2]!) : c;
+  return c;
+}
+
+export function renderGround(tex: Partial<Record<TerrainTexture, Img>> = {}, density: 1 | 2 = 1): Img {
+  textures = tex;
+  const D = density;
+  const img = new Img(W * TS * D, H * TS * D);
+  const has2x = Object.values(tex).some((t) => t && t.w === P * 2);
+  for (let py = 0; py < H * TS; py++)
+    for (let px = 0; px < W * TS; px++) {
       const m = matAt(px, py);
-      let c = baseColor(px, py);
+      SUB = null;
+      LAST_T = null;
+      const base1 = baseColor(px, py);
+      const lt = LAST_T as TerrainTexture | null; // set inside baseColor() via texel()
+      const t2 = D === 2 && has2x && lt !== null && textures[lt]?.w === P * 2;
+      const isWorn = px < 96 * TS && worn(px, py);
       const s = shadowAmount(px, py, m);
-      if (s > 0) c = mix(c, '#06040c', s);
-      // grass edge highlight where it meets lower ground below
-      if ((m === G.grass || m === G.forest) && LOW.has(matAt(px, py + 1)) && bayer(px, py) < 0.6) c = mix(c, '#6f8a52', 0.25);
-      img.set(px, py, c);
+      // grass edge highlight where it meets lower ground below (broken into short runs)
+      const lip = (m === G.grass || m === G.forest) && LOW.has(matAt(px, py + 1)) && vnoise(px, py, 3, 114) > 0.4;
+      for (let j = 0; j < D; j++)
+        for (let i = 0; i < D; i++) {
+          let c = base1;
+          if (t2) {
+            SUB = { x: px * D + i, y: py * D + j };
+            c = baseColor(px, py);
+            SUB = null;
+          }
+          if (isWorn) c = wear(c, m, px, py);
+          if (s > 0) c = mix(c, '#06040c', s);
+          if (lip) c = mix(c, '#6f8a52', 0.22);
+          img.set(px * D + i, py * D + j, c);
+        }
     }
   return img;
 }
 
 /** Slice into unique 16x16 tiles. Returns tileset image + per-cell tile index (0-based). */
-export function sliceTiles(img: Img, columns = 64): { tileset: Img; indices: number[]; count: number } {
-  const w = img.w / TS;
-  const h = img.h / TS;
+export function sliceTiles(img: Img, columns = 64, tile = TS): { tileset: Img; indices: number[]; count: number } {
+  const w = img.w / tile;
+  const h = img.h / tile;
   const map = new Map<string, number>();
   const tiles: Img[] = [];
   const indices = new Array<number>(w * h);
   for (let ty = 0; ty < h; ty++)
     for (let tx = 0; tx < w; tx++) {
-      const t = new Img(TS, TS);
-      t.copy(img, 0, 0, tx * TS, ty * TS, TS, TS);
+      const t = new Img(tile, tile);
+      t.copy(img, 0, 0, tx * tile, ty * tile, tile, tile);
       const key = Buffer.from(t.data.buffer).toString('base64');
       let idx = map.get(key);
       if (idx === undefined) {
@@ -472,7 +631,7 @@ export function sliceTiles(img: Img, columns = 64): { tileset: Img; indices: num
       indices[ty * w + tx] = idx;
     }
   const rows = Math.ceil(tiles.length / columns);
-  const tileset = new Img(columns * TS, rows * TS);
-  tiles.forEach((t, i) => tileset.copy(t, (i % columns) * TS, Math.floor(i / columns) * TS));
+  const tileset = new Img(columns * tile, rows * tile);
+  tiles.forEach((t, i) => tileset.copy(t, (i % columns) * tile, Math.floor(i / columns) * tile));
   return { tileset, indices, count: tiles.length };
 }

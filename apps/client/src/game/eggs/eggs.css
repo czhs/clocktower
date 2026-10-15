@@ -1,0 +1,53 @@
+/* CMU easter eggs (cmu-eggs). Cards follow docs/art-direction.md "UI and typography":
+   parchment cards with Ink text for notes, Panel ink + Frame iron for the rest, 4 px radius,
+   8 px rhythm, 16 px body text, gold only for focus. */
+.ct-egg-prompt { z-index: 21; }
+.ct-egg-touch {
+  display: none; position: absolute; right: calc(16px + var(--safe-right, 0px)); bottom: calc(190px + var(--safe-bottom, 0px));
+  z-index: 22; min-height: 44px; padding: 0 16px; border-radius: 4px; font-size: 16px;
+  background: #211F2Cf5; border: 1px solid #454250; color: #E4D8BA;
+}
+.ct-touch .ct-egg-touch:not([hidden]) { display: block; }
+
+.ct-egg-card {
+  position: absolute; left: 50%; bottom: calc(132px + var(--safe-bottom, 0px)); transform: translateX(-50%); z-index: 25;
+  width: min(440px, calc(100vw - 32px)); max-height: min(60vh, 460px); overflow: auto; box-sizing: border-box;
+  padding: 16px 16px 12px; border-radius: 4px; box-shadow: 0 8px 28px #000b;
+  font-family: 'Alegreya Sans', system-ui, sans-serif; font-size: 16px; line-height: 1.4;
+  animation: ct-egg-in 160ms ease-out both;
+}
+@keyframes ct-egg-in { from { opacity: 0; transform: translate(-50%, 6px); } to { opacity: 1; transform: translate(-50%, 0); } }
+.ct-egg-title { margin: 0 24px 8px 0; font-family: 'IM Fell English', Georgia, serif; font-size: 22px; font-weight: normal; line-height: 1.2; }
+.ct-egg-line { margin: 0 0 8px; }
+.ct-egg-foot { margin: 8px 0 0; font-size: 14px; opacity: 0.8; font-style: italic; }
+.ct-egg-banner { margin: 4px 0 12px; font-family: 'IM Fell English', Georgia, serif; font-size: 20px; text-align: center; letter-spacing: 0.02em; }
+.ct-egg-x {
+  position: absolute; right: 8px; top: 8px; width: 32px; height: 32px; padding: 0; border-radius: 4px;
+  background: transparent; border: 1px solid transparent; color: inherit; font-size: 20px; line-height: 1; cursor: pointer;
+}
+.ct-egg-x:hover { border-color: currentColor; }
+.ct-egg-x:focus-visible, .ct-egg-cmd:focus-visible { outline: 2px solid #D5B56A; outline-offset: 2px; }
+
+/* parchment: notes, books, plaques */
+.ct-egg-parchment, .ct-egg-notice { background: #E4D8BA; color: #302C36; border: 1px solid #454250; }
+.ct-egg-notice .ct-egg-line { padding: 8px; border: 1px solid #302C3633; border-radius: 4px; background: #DED2B7; }
+.ct-egg-notice .ct-egg-line::before { content: '✦ '; color: #814953; }
+/* stone: the crypt, the lift */
+.ct-egg-stone { background: #333646f7; color: #E4D8BA; border: 1px solid #626979; }
+.ct-egg-stone .ct-egg-line:first-child { font-family: 'IM Fell English', Georgia, serif; font-size: 18px; letter-spacing: 0.04em; }
+/* terminal: the calculating engine under the hatch */
+.ct-egg-terminal { background: #10140f; color: #8fd48a; border: 1px solid #3F5540; font-family: var(--mono, ui-monospace, monospace); font-size: 14px; }
+.ct-egg-terminal .ct-egg-title { font-family: 'Alegreya Sans', system-ui, sans-serif; font-size: 16px; color: #DED2B7; font-style: italic; margin-bottom: 12px; }
+.ct-egg-terminal .ct-egg-body { max-height: 220px; overflow: auto; }
+.ct-egg-terminal pre.ct-egg-line { margin: 0; white-space: pre-wrap; font: inherit; }
+.ct-egg-cmds { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.ct-egg-cmd {
+  min-height: 40px; padding: 0 12px; border-radius: 4px; font-family: var(--mono, ui-monospace, monospace); font-size: 14px;
+  background: #1a2418; color: #b8e8b0; border: 1px solid #3F5540; cursor: pointer;
+}
+.ct-egg-cmd:hover { border-color: #91A46A; }
+@media (max-width: 600px) {
+  .ct-egg-card { bottom: calc(150px + var(--safe-bottom, 0px)); font-size: 15px; }
+}
+/* the [hidden] attribute must win over .ct-game-prompt's display:flex */
+.ct-egg-prompt[hidden], .ct-egg-touch[hidden] { display: none !important; }

@@ -2,9 +2,10 @@ import { useEffect, useRef } from 'preact/hooks';
 import type { Cosmetics } from '@ct/protocol';
 import { CHAR, composeSheet, frameIndex, layerKeys, loadCharactersImage } from './sprites';
 
-// OWNED BY world-art. Renders the composed character sprite for a cosmetics selection
-// (used by the lobby cosmetics editor). Walks in place, turning every couple of seconds.
-export function CosmeticPreview(props: { cosmetics: Cosmetics; ghost?: boolean; scale?: number; animate?: boolean }) {
+// Renders the composed character sprite for a cosmetics selection (lobby appearance picker).
+// A premade preset (cosmetics.preset, if present in the atlas) takes precedence over the layered
+// cosmetics — see layerKeys(). Walks in place, turning every couple of seconds.
+export function CosmeticPreview(props: { cosmetics: Cosmetics; ghost?: boolean; scale?: number; animate?: boolean; label?: string }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const scale = props.scale ?? 4;
   const keys = layerKeys({ kind: 'player', cosmetics: props.cosmetics, ghost: !!props.ghost }).join('|');
@@ -57,7 +58,8 @@ export function CosmeticPreview(props: { cosmetics: Cosmetics; ghost?: boolean; 
       width={CHAR.frameWidth * scale}
       height={CHAR.frameHeight * scale}
       style={{ imageRendering: 'pixelated', width: `${CHAR.frameWidth * scale}px`, height: `${CHAR.frameHeight * scale}px` }}
-      aria-label="Character preview"
+      aria-label={props.label ?? (props.ghost ? 'Ghost preview' : 'Character preview')}
+      class="ct-cosmetic-canvas"
       role="img"
     />
   );

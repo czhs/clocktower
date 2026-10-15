@@ -1,0 +1,2823 @@
+{
+ "procedural": false,
+ "density": 2,
+ "upscaled": [
+  "egg_camp",
+  "egg_chonk",
+  "egg_cilantro_0",
+  "egg_cilantro_1",
+  "egg_cow_0",
+  "egg_cow_1",
+  "egg_fence",
+  "egg_fence_1",
+  "egg_fence_2",
+  "egg_fence_3",
+  "egg_fox_0",
+  "egg_fox_1",
+  "egg_frog_blue_0",
+  "egg_frog_blue_1",
+  "egg_frog_green_0",
+  "egg_frog_green_1",
+  "egg_greenting_0",
+  "egg_greenting_1",
+  "egg_hamerschlag",
+  "egg_hatch",
+  "egg_honk_0",
+  "egg_honk_1",
+  "egg_honk_2",
+  "egg_opal_0",
+  "egg_opal_1",
+  "egg_panda_0",
+  "egg_panda_1",
+  "egg_polly_0_0",
+  "egg_polly_0_1",
+  "egg_polly_1_0",
+  "egg_polly_1_1",
+  "egg_polly_2_0",
+  "egg_polly_2_1",
+  "egg_requin_0",
+  "egg_requin_1",
+  "egg_requin_grin",
+  "egg_scotty_0",
+  "egg_scotty_1",
+  "egg_scotty_2",
+  "egg_sky",
+  "egg_theo_0",
+  "egg_theo_1",
+  "egg_wean",
+  "kerb",
+  "stubble"
+ ],
+ "frames": [
+  {
+   "frame": "bld_tavern",
+   "job": "bld-tavern",
+   "status": "ai",
+   "iou": 0.971
+  },
+  {
+   "frame": "bld_chapel",
+   "job": "bld-chapel",
+   "status": "ai",
+   "iou": 0.991
+  },
+  {
+   "frame": "bld_clocktower",
+   "job": "bld-clocktower-windmill",
+   "status": "ai",
+   "iou": 0.991
+  },
+  {
+   "frame": "windmill",
+   "job": "bld-clocktower-windmill",
+   "status": "ai",
+   "iou": 0.951
+  },
+  {
+   "frame": "bld_house-0",
+   "job": "bld-houses-0-1",
+   "status": "ai",
+   "iou": 0.976
+  },
+  {
+   "frame": "bld_house-1",
+   "job": "bld-houses-0-1",
+   "status": "ai",
+   "iou": 0.974
+  },
+  {
+   "frame": "bld_house-2",
+   "job": "bld-houses-2-3",
+   "status": "ai",
+   "iou": 0.98
+  },
+  {
+   "frame": "bld_house-3",
+   "job": "bld-houses-2-3",
+   "status": "ai",
+   "iou": 0.998
+  },
+  {
+   "frame": "bld_house-4",
+   "job": "bld-houses-4-5",
+   "status": "ai",
+   "iou": 0.997
+  },
+  {
+   "frame": "bld_house-5",
+   "job": "bld-houses-4-5",
+   "status": "ai",
+   "iou": 0.999
+  },
+  {
+   "frame": "bld_house-6",
+   "job": "bld-houses-6-7",
+   "status": "ai",
+   "iou": 0.954
+  },
+  {
+   "frame": "bld_house-7",
+   "job": "bld-houses-6-7",
+   "status": "ai",
+   "iou": 0.989
+  },
+  {
+   "frame": "bld_house-8",
+   "job": "bld-houses-8-9",
+   "status": "ai",
+   "iou": 0.986
+  },
+  {
+   "frame": "bld_house-9",
+   "job": "bld-houses-8-9",
+   "status": "ai",
+   "iou": 0.989
+  },
+  {
+   "frame": "bld_house-10",
+   "job": "bld-houses-10-11",
+   "status": "ai",
+   "iou": 0.993
+  },
+  {
+   "frame": "bld_house-11",
+   "job": "bld-houses-10-11",
+   "status": "ai",
+   "iou": 0.999
+  },
+  {
+   "frame": "bld_house-12",
+   "job": "bld-houses-12-13",
+   "status": "ai",
+   "iou": 0.998
+  },
+  {
+   "frame": "bld_house-13",
+   "job": "bld-houses-12-13",
+   "status": "ai",
+   "iou": 0.991
+  },
+  {
+   "frame": "bld_house-14",
+   "job": "bld-house-14-shop",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "bld_shop",
+   "job": "bld-house-14-shop",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "lamp",
+   "job": "props-lamps",
+   "status": "ai",
+   "iou": 0.911
+  },
+  {
+   "frame": "gatepost",
+   "job": "props-lamps",
+   "status": "ai",
+   "iou": 0.887
+  },
+  {
+   "frame": "signpost",
+   "job": "props-lamps",
+   "status": "ai",
+   "iou": 0.908
+  },
+  {
+   "frame": "oak",
+   "job": "props-nature",
+   "status": "ai",
+   "iou": 0.962
+  },
+  {
+   "frame": "oak2",
+   "job": "props-nature",
+   "status": "ai",
+   "iou": 0.967
+  },
+  {
+   "frame": "pine",
+   "job": "props-nature",
+   "status": "ai",
+   "iou": 0.978
+  },
+  {
+   "frame": "pinetall",
+   "job": "props-nature",
+   "status": "ai",
+   "iou": 0.951
+  },
+  {
+   "frame": "deadtree",
+   "job": "props-nature",
+   "status": "ai",
+   "iou": 0.826
+  },
+  {
+   "frame": "willow",
+   "job": "props-nature",
+   "status": "ai",
+   "iou": 0.957
+  },
+  {
+   "frame": "fruittree",
+   "job": "props-nature",
+   "status": "ai",
+   "iou": 0.896
+  },
+  {
+   "frame": "bigrock",
+   "job": "props-nature",
+   "status": "ai",
+   "iou": 0.952
+  },
+  {
+   "frame": "bush",
+   "job": "props-nature",
+   "status": "ai",
+   "iou": 0.892
+  },
+  {
+   "frame": "bushberry",
+   "job": "props-nature",
+   "status": "ai",
+   "iou": 0.915
+  },
+  {
+   "frame": "rock",
+   "job": "props-nature",
+   "status": "ai",
+   "iou": 0.947
+  },
+  {
+   "frame": "stump",
+   "job": "props-nature",
+   "status": "ai",
+   "iou": 0.946
+  },
+  {
+   "frame": "reeds",
+   "job": "props-nature",
+   "status": "ai",
+   "iou": 0.98
+  },
+  {
+   "frame": "lamp",
+   "job": "props-square",
+   "status": "ai",
+   "iou": 0.831
+  },
+  {
+   "frame": "well",
+   "job": "props-square",
+   "status": "ai",
+   "iou": 0.937
+  },
+  {
+   "frame": "fountain",
+   "job": "props-square",
+   "status": "ai",
+   "iou": 0.919
+  },
+  {
+   "frame": "stall_red",
+   "job": "props-square",
+   "status": "ai",
+   "iou": 0.997
+  },
+  {
+   "frame": "stall_green",
+   "job": "props-square",
+   "status": "ai",
+   "iou": 0.994
+  },
+  {
+   "frame": "stall_blue",
+   "job": "props-square",
+   "status": "ai",
+   "iou": 0.988
+  },
+  {
+   "frame": "stall_gold",
+   "job": "props-square",
+   "status": "ai",
+   "iou": 0.988
+  },
+  {
+   "frame": "bench",
+   "job": "props-square",
+   "status": "ai",
+   "iou": 0.952
+  },
+  {
+   "frame": "barrel",
+   "job": "props-square",
+   "status": "ai",
+   "iou": 0.906
+  },
+  {
+   "frame": "crates",
+   "job": "props-square",
+   "status": "ai",
+   "iou": 0.987
+  },
+  {
+   "frame": "cart",
+   "job": "props-square",
+   "status": "ai",
+   "iou": 0.924
+  },
+  {
+   "frame": "haystack",
+   "job": "props-square",
+   "status": "ai",
+   "iou": 0.874
+  },
+  {
+   "frame": "signpost",
+   "job": "props-square",
+   "status": "ai",
+   "iou": 0.879
+  },
+  {
+   "frame": "noticeboard",
+   "job": "props-square",
+   "status": "ai",
+   "iou": 0.975
+  },
+  {
+   "frame": "crypt",
+   "job": "props-yard",
+   "status": "ai",
+   "iou": 0.943
+  },
+  {
+   "frame": "shed",
+   "job": "props-yard",
+   "status": "ai",
+   "iou": 0.959
+  },
+  {
+   "frame": "waterfall",
+   "job": "props-yard",
+   "status": "ai",
+   "iou": 0.863
+  },
+  {
+   "frame": "angel",
+   "job": "props-yard",
+   "status": "ai",
+   "iou": 0.929
+  },
+  {
+   "frame": "scarecrow",
+   "job": "props-yard",
+   "status": "ai",
+   "iou": 0.818
+  },
+  {
+   "frame": "gatepost",
+   "job": "props-yard",
+   "status": "ai",
+   "iou": 0.87
+  },
+  {
+   "frame": "grave1",
+   "job": "props-yard",
+   "status": "ai",
+   "iou": 0.834
+  },
+  {
+   "frame": "grave2",
+   "job": "props-yard",
+   "status": "ai",
+   "iou": 0.829
+  },
+  {
+   "frame": "grave3",
+   "job": "props-yard",
+   "status": "ai",
+   "iou": 0.819
+  },
+  {
+   "frame": "anvil",
+   "job": "props-yard",
+   "status": "ai",
+   "iou": 0.906
+  },
+  {
+   "frame": "pumpkins",
+   "job": "props-yard",
+   "status": "ai",
+   "iou": 0.939
+  },
+  {
+   "frame": "storyteller",
+   "job": "chars-storyteller",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "bed",
+   "job": "interior-home-2",
+   "status": "ai",
+   "iou": 0.994
+  },
+  {
+   "frame": "bed_0",
+   "job": "interior-home-2",
+   "status": "ai",
+   "iou": 0.992
+  },
+  {
+   "frame": "bed_1",
+   "job": "interior-home-2",
+   "status": "ai",
+   "iou": 0.994
+  },
+  {
+   "frame": "bed_2",
+   "job": "interior-home-2",
+   "status": "ai",
+   "iou": 0.992
+  },
+  {
+   "frame": "bed_3",
+   "job": "interior-home-2",
+   "status": "ai",
+   "iou": 0.996
+  },
+  {
+   "frame": "bed_4",
+   "job": "interior-home-2",
+   "status": "ai",
+   "iou": 0.992
+  },
+  {
+   "frame": "bedwide",
+   "job": "interior-home-2",
+   "status": "ai",
+   "iou": 0.997
+  },
+  {
+   "frame": "nightstand",
+   "job": "interior-home-2",
+   "status": "ai",
+   "iou": 0.86
+  },
+  {
+   "frame": "table",
+   "job": "interior-home-2",
+   "status": "ai",
+   "iou": 0.938
+  },
+  {
+   "frame": "roundtable",
+   "job": "interior-home-2",
+   "status": "ai",
+   "iou": 0.932
+  },
+  {
+   "frame": "chair",
+   "job": "interior-home-2",
+   "status": "ai",
+   "iou": 0.978
+  },
+  {
+   "frame": "stool",
+   "job": "interior-home-2",
+   "status": "ai",
+   "iou": 0.937
+  },
+  {
+   "frame": "wardrobe",
+   "job": "interior-home-2",
+   "status": "ai",
+   "iou": 0.973
+  },
+  {
+   "frame": "bookshelf",
+   "job": "interior-home-2",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "chest",
+   "job": "interior-home-2",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "fireplace",
+   "job": "interior-home-2",
+   "status": "ai",
+   "iou": 0.912
+  },
+  {
+   "frame": "wallshelf",
+   "job": "interior-home-2",
+   "status": "ai",
+   "iou": 0.948
+  },
+  {
+   "frame": "plant",
+   "job": "interior-home-2",
+   "status": "ai",
+   "iou": 0.924
+  },
+  {
+   "frame": "loom",
+   "job": "interior-home-2",
+   "status": "ai",
+   "iou": 0.996
+  },
+  {
+   "frame": "window",
+   "job": "interior-home-2",
+   "status": "ai",
+   "iou": 0.991
+  },
+  {
+   "frame": "bar",
+   "job": "interior-public-2",
+   "status": "ai",
+   "iou": 0.956
+  },
+  {
+   "frame": "kegs",
+   "job": "interior-public-2",
+   "status": "ai",
+   "iou": 0.928
+  },
+  {
+   "frame": "counter",
+   "job": "interior-public-2",
+   "status": "ai",
+   "iou": 0.948
+  },
+  {
+   "frame": "shopshelf",
+   "job": "interior-public-2",
+   "status": "ai",
+   "iou": 0.998
+  },
+  {
+   "frame": "candelabra",
+   "job": "interior-public-2",
+   "status": "failed",
+   "iou": 0.792,
+   "reason": "silhouette IoU 0.79 < 0.8"
+  },
+  {
+   "frame": "altar",
+   "job": "interior-public-2",
+   "status": "ai",
+   "iou": 0.938
+  },
+  {
+   "frame": "pew",
+   "job": "interior-public-2",
+   "status": "ai",
+   "iou": 0.904
+  },
+  {
+   "frame": "stainedglass",
+   "job": "interior-public-2",
+   "status": "ai",
+   "iou": 0.988
+  },
+  {
+   "frame": "gears",
+   "job": "interior-public-2",
+   "status": "ai",
+   "iou": 0.834
+  },
+  {
+   "frame": "bellrope",
+   "job": "interior-public-2",
+   "status": "failed",
+   "iou": 0.637,
+   "reason": "silhouette IoU 0.64 < 0.8"
+  },
+  {
+   "frame": "ladder",
+   "job": "interior-public-2",
+   "status": "ai",
+   "iou": 0.86
+  },
+  {
+   "frame": "sacks",
+   "job": "interior-public-2",
+   "status": "ai",
+   "iou": 0.919
+  },
+  {
+   "frame": "brazier",
+   "job": "props-showpiece",
+   "status": "ai",
+   "iou": 0.861
+  },
+  {
+   "frame": "banner",
+   "job": "props-showpiece",
+   "status": "ai",
+   "iou": 0.924
+  },
+  {
+   "frame": "bld_clocktower",
+   "job": "bld-clocktower-2",
+   "status": "ai",
+   "iou": 0.996
+  },
+  {
+   "frame": "bellcradle",
+   "job": "props-landmarks",
+   "status": "ai",
+   "iou": 0.991
+  },
+  {
+   "frame": "memorialgate",
+   "job": "props-landmarks",
+   "status": "ai",
+   "iou": 0.939
+  },
+  {
+   "frame": "kiosk",
+   "job": "props-landmarks",
+   "status": "ai",
+   "iou": 0.973
+  },
+  {
+   "frame": "yew",
+   "job": "props-landmarks",
+   "status": "ai",
+   "iou": 0.953
+  },
+  {
+   "frame": "levelpost",
+   "job": "props-landmarks",
+   "status": "ai",
+   "iou": 0.932
+  },
+  {
+   "frame": "rainbarrel",
+   "job": "props-landmarks",
+   "status": "ai",
+   "iou": 0.951
+  },
+  {
+   "frame": "pottingshelf",
+   "job": "props-landmarks",
+   "status": "ai",
+   "iou": 0.944
+  },
+  {
+   "frame": "dryingnet",
+   "job": "props-landmarks",
+   "status": "ai",
+   "iou": 0.917
+  },
+  {
+   "frame": "plaque",
+   "job": "props-landmarks",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "votive",
+   "job": "props-landmarks",
+   "status": "ai",
+   "iou": 0.949
+  },
+  {
+   "frame": "workbench",
+   "job": "props-kit",
+   "status": "ai",
+   "iou": 0.908
+  },
+  {
+   "frame": "parcels",
+   "job": "props-kit",
+   "status": "ai",
+   "iou": 0.982
+  },
+  {
+   "frame": "cupboard",
+   "job": "props-kit",
+   "status": "ai",
+   "iou": 0.993
+  },
+  {
+   "frame": "coatstand",
+   "job": "props-kit",
+   "status": "ai",
+   "iou": 0.973
+  },
+  {
+   "frame": "broom",
+   "job": "props-kit",
+   "status": "ai",
+   "iou": 0.872
+  },
+  {
+   "frame": "sheaves",
+   "job": "props-kit",
+   "status": "ai",
+   "iou": 0.949
+  },
+  {
+   "frame": "boots",
+   "job": "props-kit",
+   "status": "ai",
+   "iou": 0.936
+  },
+  {
+   "frame": "blanket",
+   "job": "props-kit",
+   "status": "ai",
+   "iou": 0.886
+  },
+  {
+   "frame": "basket",
+   "job": "props-kit",
+   "status": "ai",
+   "iou": 0.95
+  },
+  {
+   "frame": "books",
+   "job": "props-kit",
+   "status": "ai",
+   "iou": 0.899
+  },
+  {
+   "frame": "woodpile",
+   "job": "props-kit",
+   "status": "ai",
+   "iou": 0.969
+  },
+  {
+   "frame": "oilcan",
+   "job": "props-kit",
+   "status": "ai",
+   "iou": 0.86
+  },
+  {
+   "frame": "herbs",
+   "job": "props-kit",
+   "status": "ai",
+   "iou": 0.817
+  },
+  {
+   "frame": "mendstool",
+   "job": "props-kit",
+   "status": "ai",
+   "iou": 0.851
+  },
+  {
+   "frame": "table_meal",
+   "job": "interior-variants",
+   "status": "ai",
+   "iou": 0.941
+  },
+  {
+   "frame": "table_craft",
+   "job": "interior-variants",
+   "status": "ai",
+   "iou": 0.941
+  },
+  {
+   "frame": "table_papers",
+   "job": "interior-variants",
+   "status": "ai",
+   "iou": 0.891
+  },
+  {
+   "frame": "roundtable_meal",
+   "job": "interior-variants",
+   "status": "ai",
+   "iou": 0.964
+  },
+  {
+   "frame": "roundtable_mugs",
+   "job": "interior-variants",
+   "status": "ai",
+   "iou": 0.958
+  },
+  {
+   "frame": "roundtable_mugs2",
+   "job": "interior-variants",
+   "status": "ai",
+   "iou": 0.957
+  },
+  {
+   "frame": "roundtable_clear",
+   "job": "interior-variants",
+   "status": "ai",
+   "iou": 0.944
+  },
+  {
+   "frame": "bedwide_1",
+   "job": "interior-variants",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "bedwide_2",
+   "job": "interior-variants",
+   "status": "ai",
+   "iou": 0.97
+  },
+  {
+   "frame": "wallshelf_sparse",
+   "job": "interior-variants",
+   "status": "ai",
+   "iou": 0.959
+  },
+  {
+   "frame": "shopshelf_sparse",
+   "job": "interior-variants",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "pew_repaired",
+   "job": "interior-variants",
+   "status": "ai",
+   "iou": 0.983
+  },
+  {
+   "frame": "pew_cloth",
+   "job": "interior-variants",
+   "status": "ai",
+   "iou": 0.997
+  },
+  {
+   "frame": "workbench_cobbler",
+   "job": "interior-variants",
+   "status": "ai",
+   "iou": 0.917
+  },
+  {
+   "frame": "crates2",
+   "job": "interior-variants",
+   "status": "ai",
+   "iou": 0.987
+  },
+  {
+   "frame": "herbs2",
+   "job": "interior-variants",
+   "status": "ai",
+   "iou": 0.924
+  },
+  {
+   "frame": "herbs3",
+   "job": "interior-variants",
+   "status": "ai",
+   "iou": 0.902
+  },
+  {
+   "frame": "preset/lantern-wanderer",
+   "job": "bold-lantern-wanderer-mushroom-priest",
+   "status": "ai",
+   "iou": 0.654
+  },
+  {
+   "frame": "preset/mushroom-priest",
+   "job": "bold-lantern-wanderer-mushroom-priest",
+   "status": "ai",
+   "iou": 0.688
+  },
+  {
+   "frame": "preset/skeleton-baker",
+   "job": "bold-skeleton-baker-frog-knight",
+   "status": "ai",
+   "iou": 0.759
+  },
+  {
+   "frame": "preset/frog-knight",
+   "job": "bold-skeleton-baker-frog-knight",
+   "status": "ai",
+   "iou": 0.646
+  },
+  {
+   "frame": "preset/hooded-bean",
+   "job": "bold-hooded-bean-moth-lamplighter",
+   "status": "ai",
+   "iou": 0.638
+  },
+  {
+   "frame": "preset/moth-lamplighter",
+   "job": "bold-hooded-bean-moth-lamplighter",
+   "status": "ai",
+   "iou": 0.499
+  },
+  {
+   "frame": "preset/owl-archivist",
+   "job": "bold-owl-archivist-crow-gravedigger",
+   "status": "ai",
+   "iou": 0.554
+  },
+  {
+   "frame": "preset/crow-gravedigger",
+   "job": "bold-owl-archivist-crow-gravedigger",
+   "status": "ai",
+   "iou": 0.687
+  },
+  {
+   "frame": "preset/cat-innkeeper",
+   "job": "bold-cat-innkeeper-snail-tinker",
+   "status": "ai",
+   "iou": 0.625
+  },
+  {
+   "frame": "preset/snail-tinker",
+   "job": "bold-cat-innkeeper-snail-tinker",
+   "status": "ai",
+   "iou": 0.525
+  },
+  {
+   "frame": "preset/toad-miller",
+   "job": "bold-toad-miller-bat-bellringer",
+   "status": "ai",
+   "iou": 0.484
+  },
+  {
+   "frame": "preset/bat-bellringer",
+   "job": "bold-toad-miller-bat-bellringer",
+   "status": "ai",
+   "iou": 0.512
+  },
+  {
+   "frame": "preset/mole-blacksmith",
+   "job": "bold-mole-blacksmith-rabbit-herbalist",
+   "status": "ai",
+   "iou": 0.643
+  },
+  {
+   "frame": "preset/rabbit-herbalist",
+   "job": "bold-mole-blacksmith-rabbit-herbalist",
+   "status": "ai",
+   "iou": 0.659
+  },
+  {
+   "frame": "preset/fox-seamstress",
+   "job": "bold-fox-seamstress-goat-magistrate",
+   "status": "ai",
+   "iou": 0.562
+  },
+  {
+   "frame": "preset/goat-magistrate",
+   "job": "bold-fox-seamstress-goat-magistrate",
+   "status": "ai",
+   "iou": 0.645
+  },
+  {
+   "frame": "storyteller",
+   "job": "bold-storyteller",
+   "status": "ai",
+   "iou": 0.817
+  },
+  {
+   "frame": "phase-day",
+   "job": "ui-icons",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "phase-night",
+   "job": "ui-icons",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "phase-dusk",
+   "job": "ui-icons",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "phase-dawn",
+   "job": "ui-icons",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "vote-hand",
+   "job": "ui-icons",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "vote-yes",
+   "job": "ui-icons",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "nominate",
+   "job": "ui-icons",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "alive",
+   "job": "ui-icons",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "dead",
+   "job": "ui-icons",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "ghost-vote",
+   "job": "ui-icons",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "ghost-vote-spent",
+   "job": "ui-icons",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "storyteller",
+   "job": "ui-icons",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "host",
+   "job": "ui-icons",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "speaking",
+   "job": "ui-icons",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "muted",
+   "job": "ui-icons",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "locked",
+   "job": "ui-icons",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "panel",
+   "job": "ui-frames",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "panel-parchment",
+   "job": "ui-frames",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "button",
+   "job": "ui-frames",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "button-hover",
+   "job": "ui-frames",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "button-primary",
+   "job": "ui-frames",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "divider",
+   "job": "ui-frames",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "title-scene",
+   "job": "title-scene",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "emblem",
+   "job": "emblem",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "emblem-small",
+   "job": "emblem",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "seat",
+   "job": "gameplay-markers",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "seat-active",
+   "job": "gameplay-markers",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "seat-ghost",
+   "job": "gameplay-markers",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "hand-raised",
+   "job": "gameplay-markers",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "home-arrow",
+   "job": "gameplay-markers",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "vote-hand",
+   "job": "gameplay-markers",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "washerwoman",
+   "job": "roles-a",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "librarian",
+   "job": "roles-a",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "investigator",
+   "job": "roles-a",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "chef",
+   "job": "roles-a",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "empath",
+   "job": "roles-a",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "fortune_teller",
+   "job": "roles-a",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "undertaker",
+   "job": "roles-a",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "monk",
+   "job": "roles-a",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "ravenkeeper",
+   "job": "roles-a",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "virgin",
+   "job": "roles-a",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "slayer",
+   "job": "roles-a",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "soldier",
+   "job": "roles-a",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "mayor",
+   "job": "roles-b",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "butler",
+   "job": "roles-b",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "drunk",
+   "job": "roles-b",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "recluse",
+   "job": "roles-b",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "saint",
+   "job": "roles-b",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "poisoner",
+   "job": "roles-b",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "spy",
+   "job": "roles-b",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "scarlet_woman",
+   "job": "roles-b",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "baron",
+   "job": "roles-b",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "imp",
+   "job": "roles-b",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "unknown",
+   "job": "roles-b",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "preset/lantern-wanderer",
+   "job": "hd-lantern-wanderer",
+   "status": "ai",
+   "iou": 0.858
+  },
+  {
+   "frame": "preset/mushroom-priest",
+   "job": "hd-mushroom-priest",
+   "status": "ai",
+   "iou": 0.882
+  },
+  {
+   "frame": "preset/skeleton-baker",
+   "job": "hd-skeleton-baker",
+   "status": "ai",
+   "iou": 0.835
+  },
+  {
+   "frame": "preset/frog-knight",
+   "job": "hd-frog-knight",
+   "status": "ai",
+   "iou": 0.898
+  },
+  {
+   "frame": "preset/hooded-bean",
+   "job": "hd-hooded-bean",
+   "status": "ai",
+   "iou": 0.869
+  },
+  {
+   "frame": "preset/moth-lamplighter",
+   "job": "hd-moth-lamplighter",
+   "status": "ai",
+   "iou": 0.803
+  },
+  {
+   "frame": "preset/owl-archivist",
+   "job": "hd-owl-archivist",
+   "status": "ai",
+   "iou": 0.856
+  },
+  {
+   "frame": "preset/crow-gravedigger",
+   "job": "hd-crow-gravedigger",
+   "status": "ai",
+   "iou": 0.836
+  },
+  {
+   "frame": "preset/cat-innkeeper",
+   "job": "hd-cat-innkeeper",
+   "status": "ai",
+   "iou": 0.832
+  },
+  {
+   "frame": "preset/snail-tinker",
+   "job": "hd-snail-tinker",
+   "status": "ai",
+   "iou": 0.874
+  },
+  {
+   "frame": "preset/toad-miller",
+   "job": "hd-toad-miller",
+   "status": "ai",
+   "iou": 0.858
+  },
+  {
+   "frame": "preset/bat-bellringer",
+   "job": "hd-bat-bellringer",
+   "status": "ai",
+   "iou": 0.841
+  },
+  {
+   "frame": "preset/mole-blacksmith",
+   "job": "hd-mole-blacksmith",
+   "status": "ai",
+   "iou": 0.85
+  },
+  {
+   "frame": "preset/rabbit-herbalist",
+   "job": "hd-rabbit-herbalist",
+   "status": "ai",
+   "iou": 0.834
+  },
+  {
+   "frame": "preset/fox-seamstress",
+   "job": "hd-fox-seamstress",
+   "status": "ai",
+   "iou": 0.697
+  },
+  {
+   "frame": "preset/goat-magistrate",
+   "job": "hd-goat-magistrate",
+   "status": "ai",
+   "iou": 0.831
+  },
+  {
+   "frame": "storyteller",
+   "job": "hd-storyteller",
+   "status": "ai",
+   "iou": 0.77
+  },
+  {
+   "frame": "bld_tavern",
+   "job": "hd-bld-tavern",
+   "status": "ai",
+   "iou": 0.735
+  },
+  {
+   "frame": "bld_chapel",
+   "job": "hd-bld-chapel",
+   "status": "ai",
+   "iou": 0.628
+  },
+  {
+   "frame": "bld_shop",
+   "job": "hd-bld-shop",
+   "status": "ai",
+   "iou": 0.975
+  },
+  {
+   "frame": "bld_house-0",
+   "job": "hd-bld-house-0",
+   "status": "ai",
+   "iou": 0.806
+  },
+  {
+   "frame": "bld_house-1",
+   "job": "hd-bld-house-1",
+   "status": "ai",
+   "iou": 0.738
+  },
+  {
+   "frame": "bld_house-2",
+   "job": "hd-bld-house-2",
+   "status": "ai",
+   "iou": 0.877
+  },
+  {
+   "frame": "bld_house-3",
+   "job": "hd-bld-house-3",
+   "status": "ai",
+   "iou": 0.537
+  },
+  {
+   "frame": "bld_house-4",
+   "job": "hd-bld-house-4",
+   "status": "ai",
+   "iou": 0.766
+  },
+  {
+   "frame": "bld_house-5",
+   "job": "hd-bld-house-5",
+   "status": "ai",
+   "iou": 0.752
+  },
+  {
+   "frame": "bld_house-6",
+   "job": "hd-bld-house-6",
+   "status": "ai",
+   "iou": 0.625
+  },
+  {
+   "frame": "bld_house-7",
+   "job": "hd-bld-house-7",
+   "status": "ai",
+   "iou": 0.581
+  },
+  {
+   "frame": "bld_house-8",
+   "job": "hd-bld-house-8",
+   "status": "ai",
+   "iou": 0.544
+  },
+  {
+   "frame": "bld_house-9",
+   "job": "hd-bld-house-9",
+   "status": "ai",
+   "iou": 0.617
+  },
+  {
+   "frame": "bld_house-10",
+   "job": "hd-bld-house-10",
+   "status": "ai",
+   "iou": 0.774
+  },
+  {
+   "frame": "bld_house-11",
+   "job": "hd-bld-house-11",
+   "status": "ai",
+   "iou": 0.757
+  },
+  {
+   "frame": "bld_house-12",
+   "job": "hd-bld-house-12",
+   "status": "ai",
+   "iou": 0.872
+  },
+  {
+   "frame": "bld_house-13",
+   "job": "hd-bld-house-13",
+   "status": "ai",
+   "iou": 0.561
+  },
+  {
+   "frame": "bld_house-14",
+   "job": "hd-bld-house-14",
+   "status": "ai",
+   "iou": 0.59
+  },
+  {
+   "frame": "bld_clocktower",
+   "job": "hd-bld-clocktower",
+   "status": "ai",
+   "iou": 0.763
+  },
+  {
+   "frame": "grass",
+   "job": "hd-terrain-a",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "forest",
+   "job": "hd-terrain-a",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "dense",
+   "job": "hd-terrain-a",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "dirt",
+   "job": "hd-terrain-a",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "sand",
+   "job": "hd-terrain-c",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "gravel",
+   "job": "hd-terrain-c",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "soil",
+   "job": "hd-terrain-c",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "oak",
+   "job": "hd-trees-a",
+   "status": "ai",
+   "iou": 0.943
+  },
+  {
+   "frame": "oak2",
+   "job": "hd-trees-a",
+   "status": "ai",
+   "iou": 0.941
+  },
+  {
+   "frame": "deadtree",
+   "job": "hd-trees-a",
+   "status": "ai",
+   "iou": 0.801
+  },
+  {
+   "frame": "willow",
+   "job": "hd-trees-a",
+   "status": "ai",
+   "iou": 0.916
+  },
+  {
+   "frame": "fruittree",
+   "job": "hd-trees-a",
+   "status": "ai",
+   "iou": 0.871
+  },
+  {
+   "frame": "pine",
+   "job": "hd-trees-b",
+   "status": "ai",
+   "iou": 0.933
+  },
+  {
+   "frame": "pinetall",
+   "job": "hd-trees-b",
+   "status": "ai",
+   "iou": 0.927
+  },
+  {
+   "frame": "oak_b",
+   "job": "hd-trees-b",
+   "status": "ai",
+   "iou": 0.945
+  },
+  {
+   "frame": "oak2_b",
+   "job": "hd-trees-b",
+   "status": "ai",
+   "iou": 0.959
+  },
+  {
+   "frame": "pine_b",
+   "job": "hd-trees-b",
+   "status": "ai",
+   "iou": 0.937
+  },
+  {
+   "frame": "pinetall_b",
+   "job": "hd-trees-b",
+   "status": "ai",
+   "iou": 0.919
+  },
+  {
+   "frame": "bigrock",
+   "job": "hd-nature",
+   "status": "ai",
+   "iou": 0.966
+  },
+  {
+   "frame": "bush",
+   "job": "hd-nature",
+   "status": "ai",
+   "iou": 0.931
+  },
+  {
+   "frame": "bushberry",
+   "job": "hd-nature",
+   "status": "ai",
+   "iou": 0.906
+  },
+  {
+   "frame": "rock",
+   "job": "hd-nature",
+   "status": "ai",
+   "iou": 0.96
+  },
+  {
+   "frame": "stump",
+   "job": "hd-nature",
+   "status": "ai",
+   "iou": 0.954
+  },
+  {
+   "frame": "reeds",
+   "job": "hd-nature",
+   "status": "ai",
+   "iou": 0.777
+  },
+  {
+   "frame": "pumpkins",
+   "job": "hd-nature",
+   "status": "ai",
+   "iou": 0.887
+  },
+  {
+   "frame": "haystack",
+   "job": "hd-nature",
+   "status": "ai",
+   "iou": 0.932
+  },
+  {
+   "frame": "sheaves",
+   "job": "hd-nature",
+   "status": "ai",
+   "iou": 0.928
+  },
+  {
+   "frame": "crypt",
+   "job": "hd-yard-a",
+   "status": "ai",
+   "iou": 0.977
+  },
+  {
+   "frame": "shed",
+   "job": "hd-yard-a",
+   "status": "ai",
+   "iou": 0.995
+  },
+  {
+   "frame": "angel",
+   "job": "hd-yard-a",
+   "status": "ai",
+   "iou": 0.93
+  },
+  {
+   "frame": "scarecrow",
+   "job": "hd-yard-a",
+   "status": "ai",
+   "iou": 0.778
+  },
+  {
+   "frame": "grave1",
+   "job": "hd-yard-b",
+   "status": "ai",
+   "iou": 0.982
+  },
+  {
+   "frame": "grave2",
+   "job": "hd-yard-b",
+   "status": "ai",
+   "iou": 0.904
+  },
+  {
+   "frame": "grave3",
+   "job": "hd-yard-b",
+   "status": "ai",
+   "iou": 0.93
+  },
+  {
+   "frame": "anvil",
+   "job": "hd-yard-b",
+   "status": "ai",
+   "iou": 0.969
+  },
+  {
+   "frame": "waterfall",
+   "job": "hd-yard-b",
+   "status": "ai",
+   "iou": 0.889
+  },
+  {
+   "frame": "bellcradle",
+   "job": "hd-landmarks",
+   "status": "ai",
+   "iou": 0.962
+  },
+  {
+   "frame": "memorialgate",
+   "job": "hd-landmarks",
+   "status": "ai",
+   "iou": 0.91
+  },
+  {
+   "frame": "kiosk",
+   "job": "hd-landmarks",
+   "status": "ai",
+   "iou": 0.956
+  },
+  {
+   "frame": "yew",
+   "job": "hd-landmarks",
+   "status": "ai",
+   "iou": 0.937
+  },
+  {
+   "frame": "levelpost",
+   "job": "hd-landmarks",
+   "status": "ai",
+   "iou": 0.846
+  },
+  {
+   "frame": "rainbarrel",
+   "job": "hd-landmarks",
+   "status": "ai",
+   "iou": 0.936
+  },
+  {
+   "frame": "pottingshelf",
+   "job": "hd-landmarks",
+   "status": "ai",
+   "iou": 0.914
+  },
+  {
+   "frame": "dryingnet",
+   "job": "hd-landmarks",
+   "status": "ai",
+   "iou": 0.918
+  },
+  {
+   "frame": "plaque",
+   "job": "hd-landmarks",
+   "status": "ai",
+   "iou": 0.964
+  },
+  {
+   "frame": "votive",
+   "job": "hd-landmarks",
+   "status": "ai",
+   "iou": 0.926
+  },
+  {
+   "frame": "windmill",
+   "job": "hd-windmill",
+   "status": "ai",
+   "iou": 0.924
+  },
+  {
+   "frame": "bed",
+   "job": "hd-int-beds",
+   "status": "ai",
+   "iou": 0.998
+  },
+  {
+   "frame": "bed_0",
+   "job": "hd-int-beds",
+   "status": "ai",
+   "iou": 0.99
+  },
+  {
+   "frame": "bed_1",
+   "job": "hd-int-beds",
+   "status": "ai",
+   "iou": 0.998
+  },
+  {
+   "frame": "bed_2",
+   "job": "hd-int-beds",
+   "status": "ai",
+   "iou": 0.997
+  },
+  {
+   "frame": "bed_3",
+   "job": "hd-int-beds",
+   "status": "ai",
+   "iou": 0.997
+  },
+  {
+   "frame": "bed_4",
+   "job": "hd-int-beds",
+   "status": "ai",
+   "iou": 0.997
+  },
+  {
+   "frame": "bedwide",
+   "job": "hd-int-beds",
+   "status": "ai",
+   "iou": 0.986
+  },
+  {
+   "frame": "bedwide_1",
+   "job": "hd-int-beds",
+   "status": "ai",
+   "iou": 0.986
+  },
+  {
+   "frame": "bedwide_2",
+   "job": "hd-int-beds",
+   "status": "ai",
+   "iou": 0.983
+  },
+  {
+   "frame": "nightstand",
+   "job": "hd-int-beds",
+   "status": "ai",
+   "iou": 0.955
+  },
+  {
+   "frame": "table",
+   "job": "hd-int-tables",
+   "status": "ai",
+   "iou": 0.98
+  },
+  {
+   "frame": "table_meal",
+   "job": "hd-int-tables",
+   "status": "ai",
+   "iou": 0.979
+  },
+  {
+   "frame": "table_craft",
+   "job": "hd-int-tables",
+   "status": "ai",
+   "iou": 0.964
+  },
+  {
+   "frame": "table_papers",
+   "job": "hd-int-tables",
+   "status": "ai",
+   "iou": 0.886
+  },
+  {
+   "frame": "roundtable",
+   "job": "hd-int-tables",
+   "status": "ai",
+   "iou": 0.926
+  },
+  {
+   "frame": "roundtable_meal",
+   "job": "hd-int-tables",
+   "status": "ai",
+   "iou": 0.937
+  },
+  {
+   "frame": "roundtable_mugs",
+   "job": "hd-int-tables",
+   "status": "ai",
+   "iou": 0.958
+  },
+  {
+   "frame": "roundtable_mugs2",
+   "job": "hd-int-tables",
+   "status": "ai",
+   "iou": 0.942
+  },
+  {
+   "frame": "roundtable_clear",
+   "job": "hd-int-tables",
+   "status": "ai",
+   "iou": 0.917
+  },
+  {
+   "frame": "chair",
+   "job": "hd-int-tables",
+   "status": "ai",
+   "iou": 0.914
+  },
+  {
+   "frame": "stool",
+   "job": "hd-int-tables",
+   "status": "ai",
+   "iou": 0.918
+  },
+  {
+   "frame": "wardrobe",
+   "job": "hd-int-storage",
+   "status": "ai",
+   "iou": 0.963
+  },
+  {
+   "frame": "bookshelf",
+   "job": "hd-int-storage",
+   "status": "ai",
+   "iou": 0.988
+  },
+  {
+   "frame": "chest",
+   "job": "hd-int-storage",
+   "status": "ai",
+   "iou": 0.961
+  },
+  {
+   "frame": "cupboard",
+   "job": "hd-int-storage",
+   "status": "ai",
+   "iou": 0.981
+  },
+  {
+   "frame": "wallshelf",
+   "job": "hd-int-storage",
+   "status": "ai",
+   "iou": 0.846
+  },
+  {
+   "frame": "wallshelf_sparse",
+   "job": "hd-int-storage",
+   "status": "ai",
+   "iou": 0.823
+  },
+  {
+   "frame": "shopshelf",
+   "job": "hd-int-storage",
+   "status": "ai",
+   "iou": 0.968
+  },
+  {
+   "frame": "shopshelf_sparse",
+   "job": "hd-int-storage",
+   "status": "ai",
+   "iou": 0.987
+  },
+  {
+   "frame": "parcels",
+   "job": "hd-int-storage",
+   "status": "ai",
+   "iou": 0.971
+  },
+  {
+   "frame": "coatstand",
+   "job": "hd-int-storage",
+   "status": "ai",
+   "iou": 0.894
+  },
+  {
+   "frame": "fireplace",
+   "job": "hd-int-hearth",
+   "status": "ai",
+   "iou": 0.991
+  },
+  {
+   "frame": "plant",
+   "job": "hd-int-hearth",
+   "status": "ai",
+   "iou": 0.895
+  },
+  {
+   "frame": "loom",
+   "job": "hd-int-hearth",
+   "status": "ai",
+   "iou": 0.97
+  },
+  {
+   "frame": "window",
+   "job": "hd-int-hearth",
+   "status": "ai",
+   "iou": 0.993
+  },
+  {
+   "frame": "stainedglass",
+   "job": "hd-int-hearth",
+   "status": "ai",
+   "iou": 0.985
+  },
+  {
+   "frame": "candelabra",
+   "job": "hd-int-hearth",
+   "status": "ai",
+   "iou": 0.713
+  },
+  {
+   "frame": "workbench",
+   "job": "hd-int-hearth",
+   "status": "ai",
+   "iou": 0.874
+  },
+  {
+   "frame": "workbench_cobbler",
+   "job": "hd-int-hearth",
+   "status": "ai",
+   "iou": 0.91
+  },
+  {
+   "frame": "broom",
+   "job": "hd-int-hearth",
+   "status": "ai",
+   "iou": 0.861
+  },
+  {
+   "frame": "woodpile",
+   "job": "hd-int-hearth",
+   "status": "ai",
+   "iou": 0.925
+  },
+  {
+   "frame": "bar",
+   "job": "hd-int-public-a",
+   "status": "ai",
+   "iou": 0.956
+  },
+  {
+   "frame": "kegs",
+   "job": "hd-int-public-a",
+   "status": "ai",
+   "iou": 0.975
+  },
+  {
+   "frame": "counter",
+   "job": "hd-int-public-a",
+   "status": "ai",
+   "iou": 0.956
+  },
+  {
+   "frame": "altar",
+   "job": "hd-int-public-a",
+   "status": "ai",
+   "iou": 0.968
+  },
+  {
+   "frame": "pew",
+   "job": "hd-int-public-b",
+   "status": "ai",
+   "iou": 0.965
+  },
+  {
+   "frame": "pew_repaired",
+   "job": "hd-int-public-b",
+   "status": "ai",
+   "iou": 0.89
+  },
+  {
+   "frame": "pew_cloth",
+   "job": "hd-int-public-b",
+   "status": "ai",
+   "iou": 0.907
+  },
+  {
+   "frame": "gears",
+   "job": "hd-int-public-b",
+   "status": "ai",
+   "iou": 0.914
+  },
+  {
+   "frame": "bellrope",
+   "job": "hd-int-public-b",
+   "status": "ai",
+   "iou": 0.744
+  },
+  {
+   "frame": "ladder",
+   "job": "hd-int-public-b",
+   "status": "ai",
+   "iou": 0.919
+  },
+  {
+   "frame": "sacks",
+   "job": "hd-int-public-b",
+   "status": "ai",
+   "iou": 0.945
+  },
+  {
+   "frame": "boots",
+   "job": "hd-int-kit",
+   "status": "ai",
+   "iou": 0.885
+  },
+  {
+   "frame": "blanket",
+   "job": "hd-int-kit",
+   "status": "ai",
+   "iou": 0.944
+  },
+  {
+   "frame": "basket",
+   "job": "hd-int-kit",
+   "status": "ai",
+   "iou": 0.933
+  },
+  {
+   "frame": "books",
+   "job": "hd-int-kit",
+   "status": "ai",
+   "iou": 0.929
+  },
+  {
+   "frame": "oilcan",
+   "job": "hd-int-kit",
+   "status": "ai",
+   "iou": 0.914
+  },
+  {
+   "frame": "herbs",
+   "job": "hd-int-kit",
+   "status": "ai",
+   "iou": 0.883
+  },
+  {
+   "frame": "herbs2",
+   "job": "hd-int-kit",
+   "status": "ai",
+   "iou": 0.905
+  },
+  {
+   "frame": "herbs3",
+   "job": "hd-int-kit",
+   "status": "ai",
+   "iou": 0.923
+  },
+  {
+   "frame": "mendstool",
+   "job": "hd-int-kit",
+   "status": "ai",
+   "iou": 0.898
+  },
+  {
+   "frame": "rug_red",
+   "job": "hd-flats-a",
+   "status": "ai",
+   "iou": 0.984
+  },
+  {
+   "frame": "rug_blue",
+   "job": "hd-flats-a",
+   "status": "ai",
+   "iou": 0.984
+  },
+  {
+   "frame": "rug_green",
+   "job": "hd-flats-a",
+   "status": "ai",
+   "iou": 0.984
+  },
+  {
+   "frame": "rug_long",
+   "job": "hd-flats-a",
+   "status": "ai",
+   "iou": 0.999
+  },
+  {
+   "frame": "doormat",
+   "job": "hd-flats-b",
+   "status": "ai",
+   "iou": 0.998
+  },
+  {
+   "frame": "landing",
+   "job": "hd-flats-b",
+   "status": "ai",
+   "iou": 0.986
+  },
+  {
+   "frame": "gravebed",
+   "job": "hd-flats-b",
+   "status": "ai",
+   "iou": 0.961
+  },
+  {
+   "frame": "stubble",
+   "job": "hd-flats-b",
+   "status": "failed",
+   "iou": 0.422,
+   "reason": "silhouette IoU 0.42 < 0.8"
+  },
+  {
+   "frame": "floorpatch",
+   "job": "hd-flats-b",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "runnel",
+   "job": "hd-flats-b",
+   "status": "ai",
+   "iou": 0.995
+  },
+  {
+   "frame": "runnel_end",
+   "job": "hd-flats-b",
+   "status": "ai",
+   "iou": 0.948
+  },
+  {
+   "frame": "stepstone",
+   "job": "hd-flats-b",
+   "status": "ai",
+   "iou": 0.91
+  },
+  {
+   "frame": "critter_cat_0",
+   "job": "hd-critters",
+   "status": "ai",
+   "iou": 0.839
+  },
+  {
+   "frame": "critter_cat_1",
+   "job": "hd-critters",
+   "status": "ai",
+   "iou": 0.858
+  },
+  {
+   "frame": "critter_dog_0",
+   "job": "hd-critters",
+   "status": "ai",
+   "iou": 0.863
+  },
+  {
+   "frame": "critter_dog_1",
+   "job": "hd-critters",
+   "status": "ai",
+   "iou": 0.884
+  },
+  {
+   "frame": "critter_crow_0",
+   "job": "hd-critters",
+   "status": "ai",
+   "iou": 0.777
+  },
+  {
+   "frame": "critter_crow_1",
+   "job": "hd-critters",
+   "status": "ai",
+   "iou": 0.734
+  },
+  {
+   "frame": "fence_0",
+   "job": "hd-fences",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "fence_1",
+   "job": "hd-fences",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "fence_2",
+   "job": "hd-fences",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "fence_3",
+   "job": "hd-fences",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "fence_4",
+   "job": "hd-fences",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "fence_5",
+   "job": "hd-fences",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "fence_6",
+   "job": "hd-fences",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "fence_7",
+   "job": "hd-fences",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "fence_8",
+   "job": "hd-fences",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "fence_9",
+   "job": "hd-fences",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "fence_10",
+   "job": "hd-fences",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "fence_11",
+   "job": "hd-fences",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "fence_12",
+   "job": "hd-fences",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "fence_13",
+   "job": "hd-fences",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "fence_14",
+   "job": "hd-fences",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "fence_15",
+   "job": "hd-fences",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "iron_0",
+   "job": "hd-iron",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "iron_1",
+   "job": "hd-iron",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "iron_2",
+   "job": "hd-iron",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "iron_3",
+   "job": "hd-iron",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "iron_4",
+   "job": "hd-iron",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "iron_5",
+   "job": "hd-iron",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "iron_6",
+   "job": "hd-iron",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "iron_7",
+   "job": "hd-iron",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "iron_8",
+   "job": "hd-iron",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "iron_9",
+   "job": "hd-iron",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "iron_10",
+   "job": "hd-iron",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "iron_11",
+   "job": "hd-iron",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "iron_12",
+   "job": "hd-iron",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "iron_13",
+   "job": "hd-iron",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "iron_14",
+   "job": "hd-iron",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "iron_15",
+   "job": "hd-iron",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "mosaic",
+   "job": "hd-sq-mosaic",
+   "status": "ai",
+   "iou": 0.903
+  },
+  {
+   "frame": "kerb",
+   "job": "hd-sq-kerb",
+   "status": "failed",
+   "iou": 0.33,
+   "reason": "silhouette IoU 0.33 < 0.65"
+  },
+  {
+   "frame": "dais",
+   "job": "hd-sq-dais",
+   "status": "ai",
+   "iou": 0.99
+  },
+  {
+   "frame": "plazafountain",
+   "job": "hd-sq-props-a",
+   "status": "ai",
+   "iou": 0.954
+  },
+  {
+   "frame": "brazier",
+   "job": "hd-sq-props-a",
+   "status": "ai",
+   "iou": 0.88
+  },
+  {
+   "frame": "banner",
+   "job": "hd-sq-props-a",
+   "status": "ai",
+   "iou": 0.963
+  },
+  {
+   "frame": "archpier",
+   "job": "hd-sq-props-a",
+   "status": "ai",
+   "iou": 0.983
+  },
+  {
+   "frame": "lamp",
+   "job": "hd-sq-props-a",
+   "status": "ai",
+   "iou": 0.852
+  },
+  {
+   "frame": "gatepost",
+   "job": "hd-sq-props-a",
+   "status": "ai",
+   "iou": 0.956
+  },
+  {
+   "frame": "signpost",
+   "job": "hd-sq-props-a",
+   "status": "ai",
+   "iou": 0.97
+  },
+  {
+   "frame": "bench",
+   "job": "hd-sq-props-b",
+   "status": "ai",
+   "iou": 0.923
+  },
+  {
+   "frame": "bench_r",
+   "job": "hd-sq-props-b",
+   "status": "ai",
+   "iou": 0.942
+  },
+  {
+   "frame": "barrel",
+   "job": "hd-sq-props-b",
+   "status": "ai",
+   "iou": 0.95
+  },
+  {
+   "frame": "barrel_o",
+   "job": "hd-sq-props-b",
+   "status": "ai",
+   "iou": 0.928
+  },
+  {
+   "frame": "crates",
+   "job": "hd-sq-props-b",
+   "status": "ai",
+   "iou": 0.969
+  },
+  {
+   "frame": "crates2",
+   "job": "hd-sq-props-b",
+   "status": "ai",
+   "iou": 0.941
+  },
+  {
+   "frame": "noticeboard",
+   "job": "hd-sq-props-b",
+   "status": "ai",
+   "iou": 0.919
+  },
+  {
+   "frame": "cart",
+   "job": "hd-sq-props-b",
+   "status": "ai",
+   "iou": 0.921
+  },
+  {
+   "frame": "well",
+   "job": "hd-sq-props-b",
+   "status": "ai",
+   "iou": 0.921
+  },
+  {
+   "frame": "fountain",
+   "job": "hd-sq-props-b",
+   "status": "ai",
+   "iou": 0.901
+  },
+  {
+   "frame": "stall_red",
+   "job": "hd-sq-stalls",
+   "status": "ai",
+   "iou": 0.956
+  },
+  {
+   "frame": "stall_green",
+   "job": "hd-sq-stalls",
+   "status": "ai",
+   "iou": 0.98
+  },
+  {
+   "frame": "stall_blue",
+   "job": "hd-sq-stalls",
+   "status": "ai",
+   "iou": 0.966
+  },
+  {
+   "frame": "stall_gold",
+   "job": "hd-sq-stalls",
+   "status": "ai",
+   "iou": 0.968
+  },
+  {
+   "frame": "bunting",
+   "job": "hd-fg-a",
+   "status": "ai",
+   "iou": 0.718
+  },
+  {
+   "frame": "bunting_l",
+   "job": "hd-fg-a",
+   "status": "ai",
+   "iou": 0.698
+  },
+  {
+   "frame": "bunting_r",
+   "job": "hd-fg-a",
+   "status": "ai",
+   "iou": 0.721
+  },
+  {
+   "frame": "fg_arch",
+   "job": "hd-fg-a",
+   "status": "ai",
+   "iou": 0.964
+  },
+  {
+   "frame": "fg_arch_small",
+   "job": "hd-fg-a",
+   "status": "ai",
+   "iou": 0.945
+  },
+  {
+   "frame": "fg_branch",
+   "job": "hd-fg-b",
+   "status": "ai",
+   "iou": 0.923
+  },
+  {
+   "frame": "fg_bough",
+   "job": "hd-fg-b",
+   "status": "ai",
+   "iou": 0.914
+  },
+  {
+   "frame": "fg_deadbranch",
+   "job": "hd-fg-b",
+   "status": "ai",
+   "iou": 0.864
+  },
+  {
+   "frame": "fg_lantern",
+   "job": "hd-fg-b",
+   "status": "ai",
+   "iou": 0.808
+  },
+  {
+   "frame": "fg_sign",
+   "job": "hd-fg-b",
+   "status": "ai",
+   "iou": 0.946
+  },
+  {
+   "frame": "fg_sign2",
+   "job": "hd-fg-b",
+   "status": "ai",
+   "iou": 0.952
+  },
+  {
+   "frame": "fg_laundry",
+   "job": "hd-fg-b",
+   "status": "ai",
+   "iou": 0.939
+  },
+  {
+   "frame": "fg_laundry2",
+   "job": "hd-fg-b",
+   "status": "ai",
+   "iou": 0.904
+  },
+  {
+   "frame": "ghost/wisp",
+   "job": "hd-ghost-wisp",
+   "status": "ai",
+   "iou": 0.734
+  },
+  {
+   "frame": "ghost/shroud",
+   "job": "hd-ghost-shroud",
+   "status": "ai",
+   "iou": 0.711
+  },
+  {
+   "frame": "ghost/lantern",
+   "job": "hd-ghost-lantern",
+   "status": "ai",
+   "iou": 0.744
+  },
+  {
+   "frame": "ghost/pale",
+   "job": "hd-ghost-pale",
+   "status": "ai",
+   "iou": 0.655
+  },
+  {
+   "frame": "body/fair",
+   "job": "hd-layer-body-fair",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "outfit/peasant/crimson",
+   "job": "hd-layer-outfit-peasant-crimson",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "outfit/merchant/crimson",
+   "job": "hd-layer-outfit-merchant-crimson",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "outfit/noble/crimson",
+   "job": "hd-layer-outfit-noble-crimson",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "outfit/cleric/crimson",
+   "job": "hd-layer-outfit-cleric-crimson",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "outfit/smith/crimson",
+   "job": "hd-layer-outfit-smith-crimson",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "outfit/scholar/crimson",
+   "job": "hd-layer-outfit-scholar-crimson",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "hair/short/brown",
+   "job": "hd-layer-hair-short-brown",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "hair/long/brown",
+   "job": "hd-layer-hair-long-brown",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "hair/braid/brown",
+   "job": "hd-layer-hair-braid-brown",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "hair/bun/brown",
+   "job": "hd-layer-hair-bun-brown",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "hair/hood/brown",
+   "job": "hd-layer-hair-hood-brown",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "accessory/hat",
+   "job": "hd-layer-accessory-hat",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "accessory/lantern",
+   "job": "hd-layer-accessory-lantern",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "accessory/scarf",
+   "job": "hd-layer-accessory-scarf",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "accessory/spectacles",
+   "job": "hd-layer-accessory-spectacles",
+   "status": "ai",
+   "iou": 1
+  },
+  {
+   "frame": "accessory/satchel",
+   "job": "hd-layer-accessory-satchel",
+   "status": "ai",
+   "iou": 1
+  }
+ ]
+}

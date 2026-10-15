@@ -4,6 +4,8 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   ACCESSORIES,
+  circleCentre,
+  circleSpots,
   GHOST_STYLES,
   HAIR_COLORS,
   HAIR_STYLES,
@@ -64,13 +66,15 @@ describe('handcrafted town layout', () => {
     for (const row of townMap.ground) expect(row.length).toBe(L.widthTiles);
   });
 
-  it('puts the clock tower inside a circular square that contains the spawn', () => {
+  it('puts the clock tower behind the open gathering floor and keeps the spawn in the square', () => {
     const tower = L.buildings.find((b) => b.id === 'clocktower')!;
     const c = tileCenterPx(L, { x: tower.footprint.x + 2, y: tower.footprint.y + 2 });
-    expect(inSquare(L, c.x, c.y)).toBe(true);
+    expect(c.y).toBeLessThan(L.square.cy);
+    expect(Math.abs(c.x - L.square.cx)).toBeLessThan(3 * L.tileSize);
+    for (const p of circleSpots(L, Array.from({length:15},(_,i)=>i))) expect(p.y).toBeGreaterThan((tower.footprint.y + tower.footprint.h) * L.tileSize);
     const s = tileCenterPx(L, L.playerSpawn);
     expect(inSquare(L, s.x, s.y)).toBe(true);
-    expect(L.square.r).toBeGreaterThanOrEqual(10 * 16);
+    expect(L.square.r).toBeGreaterThanOrEqual(9 * 16);
   });
 
   it('has walkable spawns, doors right below footprints, and every door reachable from the spawn', () => {
@@ -86,6 +90,20 @@ describe('handcrafted town layout', () => {
       expect(locationAt(L, tileCenterPx(L, b.door).x, tileCenterPx(L, b.door).y)).toBe('outdoors');
     }
     expect(reach.has(`${L.storytellerSpawn.x},${L.storytellerSpawn.y}`)).toBe(true);
+  });
+
+  it('keeps all fifteen voting places open when the tower moves off the center', () => {
+    const center = circleCentre(L);
+    expect(isBlockedPx(L, center.x, center.y)).toBe(false);
+    const spots = circleSpots(L, Array.from({ length: 15 }, (_, i) => i));
+    expect(spots).toHaveLength(15);
+    for (const s of spots) {
+      expect(inSquare(L, s.x, s.y)).toBe(true);
+      expect(isBlockedPx(L, s.x, s.y)).toBe(false);
+      for (const other of spots) if (other !== s) expect(Math.hypot(s.x - other.x, s.y - other.y)).toBeGreaterThanOrEqual(12);
+    }
+    const moved = { ...L, buildings: L.buildings.map(b => b.kind === 'clocktower' ? { ...b, footprint: { ...b.footprint, x: b.footprint.x + 3 } } : b) };
+    expect(circleCentre(moved)).toEqual(center);
   });
 
   it('has interiors outside the town with walkable door, bed and visit point', () => {

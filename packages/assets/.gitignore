@@ -4,3 +4,7 @@ ai/staging/
 ai/refs/
 # Raw astra outputs (76 MB): archived on hshi-u1 at ~/clocktower/art-archive/raw, not in git.
 ai/raw/
+# Easter-egg pipeline intermediates (archived on hshi-u1 at ~/clocktower/art-archive/eggs, not in git).
+eggs/raw/
+eggs/incoming/
+eggs/refs/

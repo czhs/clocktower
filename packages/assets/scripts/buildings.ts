@@ -10,6 +10,36 @@ export interface BuildingSprite {
   img: Img;
   /** Window glow points in sprite coords (for night facade lights). */
   windows: { x: number; y: number }[];
+  /** Chimney mouths in sprite coords (ambient smoke emitters). */
+  chimneys?: { x: number; y: number }[];
+  /** Clock face (clock tower) in sprite coords; hands are drawn at runtime. */
+  clock?: { x: number; y: number; r: number };
+}
+
+/** Authored tower sprite size over its independent five-tile ground footprint. */
+// Low-camera composition: the clock must remain visible above the gathering.
+// This is an authored render size, independent of its five-tile collision footprint.
+export const TOWER_HD = { sx: 1.125, sy: 0.78125, offsetX: -5 } as const;
+/** Nearest-neighbour stretch of a density-2 tower frame to the showpiece size (alignment baseline). */
+export function enlargeTower(img: Img): Img {
+  const w = Math.round(img.w * TOWER_HD.sx);
+  const h = Math.round(img.h * TOWER_HD.sy);
+  const out = new Img(w, h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) out.set(x, y, img.get(Math.floor((x * img.w) / w), Math.floor((y * img.h) / h)));
+  return out;
+}
+/** Map a point of the 1x tower sprite (sprite coords, world px) to the showpiece sprite's coords. */
+export const towerPoint = (p: { x: number; y: number }, h1: number) => ({ x: p.x * TOWER_HD.sx, y: h1 * TOWER_HD.sy - (h1 - p.y) * TOWER_HD.sy });
+
+/** Clock-face colours (also used to repaint the face without hands). */
+export const CLOCK_FACE = ['#8a8270', '#b0a890', '#d4ccb4', '#ece4cc'];
+/** Repaint the inner clock face (removes the static hands; the client draws live hands). */
+export function clearClockHands(img: Img, c: { x: number; y: number; r: number }) {
+  const inner = Math.floor(c.r * 0.62);
+  img.ellipse(c.x, c.y, inner, inner, (x, y, nx, ny) => {
+    const d = Math.sqrt(nx * nx + ny * ny) * 0.62;
+    return dpick(CLOCK_FACE, 0.85 - d * 0.4 - nx * 0.62 * 0.15, x, y);
+  });
 }
 
 const EXTRA: Record<string, number> = { house: 16, shop: 16, tavern: 20, chapel: 104, clocktower: 176 };
@@ -253,6 +283,7 @@ function frontGable(img: Img, style: BuildingStyle, cx: number, top: number, bot
 }
 
 function cottage(b: BuildingDef, style: BuildingStyle, extra: number, seed: number): BuildingSprite {
+  const chimneys: { x: number; y: number }[] = [];
   const W = b.footprint.w * TS;
   const FH = b.footprint.h * TS;
   const H = FH + extra;
@@ -320,6 +351,7 @@ function cottage(b: BuildingDef, style: BuildingStyle, extra: number, seed: numb
   if (style.chimney !== 'none') {
     const cx = style.chimney === 'left' ? Math.round(W * 0.26) : Math.round(W * 0.74);
     chimney(img, cx, 3, roofTop + 14, style.wall);
+    chimneys.push({ x: cx, y: 2 });
   }
   if (style.roofType === 'cross') frontGable(img, style, dx, roofTop + 8, roofBottom, Math.min(26, Math.floor(W / 3.4)), seed + 7);
 
@@ -343,7 +375,7 @@ function cottage(b: BuildingDef, style: BuildingStyle, extra: number, seed: numb
     img.set(sx + 5, wallTop + 15, '#d0a0f0');
   }
   img.outline({ darken: 0.72 });
-  return { img, windows };
+  return { img, windows, chimneys };
 }
 
 function chapel(b: BuildingDef, style: BuildingStyle, extra: number): BuildingSprite {
@@ -514,7 +546,7 @@ function clocktower(b: BuildingDef, extra: number): BuildingSprite {
   wallLantern(img, cx + 14, H - 18);
   wallLantern(img, cx - 12, H - 18);
   img.outline({ darken: 0.72 });
-  return { img, windows };
+  return { img, windows, clock: { x: cx, y: fy, r: 22 } };
 }
 
 export function drawBuildings(): Map<string, BuildingSprite> {

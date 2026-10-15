@@ -1,0 +1,8 @@
+{
+ "model": "gpt-6-astra",
+ "files": [
+  "emblem.png",
+  "emblem-small.png",
+  "title-scene.png"
+ ]
+}

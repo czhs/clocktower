@@ -1,12 +1,16 @@
-// OWNED BY world-art. The Phaser town: tilemap + y-sorted objects, layered avatars, client
-// prediction against the shared collision helpers, server reconciliation, interpolation of
-// remote entities, door prompts, day/night lighting and the night isolation overlay.
+// OWNED BY world-art (render core). The Phaser town scene: wiring of the render modules
+// (render/: world map + occlusion, actors + labels + shadows, camera + overlay camera, lighting,
+// foreground; fx/: atmosphere, grade, quality; AmbientLayer: ambient life), plus the parts that
+// are game logic on the client: network views, local movement/prediction (stepLocal), remote
+// interpolation (with privacy filtering), doors, phase presentation and the gameplay/eggs hooks.
 import * as Phaser from 'phaser';
-import { townLayout } from '@ct/assets';
-import objectsAtlas from '@ct/assets/generated/objects.json';
+import { townLayout, townMap } from '@ct/assets';
 import terrainUrl from '@ct/assets/generated/terrain.png';
 import decorUrl from '@ct/assets/generated/decor.png';
 import objectsUrl from '@ct/assets/generated/objects.png';
+import buildingsDayUrl from '@ct/assets/generated/buildings-day.png';
+import buildingsNightUrl from '@ct/assets/generated/buildings-night.png';
+import foregroundBakedUrl from '@ct/assets/generated/foreground-baked.png';
 import lightsUrl from '@ct/assets/generated/lights.png';
 import townJsonUrl from '@ct/assets/generated/town.json?url';
 import {
@@ -28,8 +32,21 @@ import {
 } from '@ct/protocol';
 import { localPlayer, remoteEntities } from '../net/localPlayer';
 import type { RoomConnection } from '../net/room';
+import { AmbientLayer, ambientTime } from './AmbientLayer';
+import { mountEggs } from './eggs';
 import { playCue, type Cue } from './audio';
+import { FxLayer } from './fx/FxLayer';
+import { reducedMotion } from './fx/motion';
+import { FxQualityController } from './fx/quality';
+import { ensureFxTextures } from './fx/textures';
 import { createGameplayLayer, type GameplayLayer } from './gameplay';
+import { Avatar, createCharacterAnims, LabelLayout, type ActorHost } from './render/Actors';
+import { CameraRig } from './render/CameraRig';
+import { Foreground, foregroundItems } from './render/Foreground';
+import { Lighting, type Carrier } from './render/Lighting';
+import { Plates } from './render/Plates';
+import { MUTED_ICON, MUTED_ICON_URL, VoiceMarks } from './render/VoiceMarks';
+import { WorldMap } from './render/WorldMap';
 import { appearanceKey, CHAR, CHARACTERS_URL, composeSheet, layerKeys, type SpriteKind } from './sprites';
 
 const L = townLayout;
@@ -37,6 +54,7 @@ const TS = L.tileSize;
 const MOVE_HZ = 15;
 const INTERP_DELAY_MS = 110;
 const DOOR_RANGE = 20; // a little tighter than the server's 22 px
+const CORNER_NUDGE = 4; // px, see stepLocal
 const LOCKED: ReadonlySet<string> = new Set(['first_night', 'night', 'dawn']);
 const NIGHT: ReadonlySet<string> = new Set(['first_night', 'night']);
 
@@ -49,110 +67,11 @@ export interface TownBridge {
   setCaption(c: string | null): void;
 }
 
-const AMBIENT_OUT: Record<Phase, number> = {
-  waiting: 0xd0c8dc,
-  setup: 0xc4b8d2,
-  day: 0xe4dfec,
-  bedtime: 0x9a7c98,
-  first_night: 0x262c52,
-  night: 0x262c52,
-  dawn: 0xc59eac,
-  finished: 0xe4dfec,
-};
-const AMBIENT_IN: Record<Phase, number> = {
-  waiting: 0xcabba8,
-  setup: 0xc0b0a0,
-  day: 0xd0c2b0,
-  bedtime: 0x8c7488,
-  first_night: 0x4a3e60,
-  night: 0x4a3e60,
-  dawn: 0x9c8494,
-  finished: 0xd0c2b0,
-};
-const LIGHT_TINT: Record<string, number> = { warm: 0xffb868, cool: 0x8a9ad0, fire: 0xff9440, holy: 0xc89aff, lantern: 0xffc070, st: 0xffcf7a };
-
-interface LightSrc {
-  x: number;
-  y: number;
-  r: number;
-  color: string;
-  building: string | null;
-  facade: boolean;
-}
-
-interface Sample {
-  t: number;
-  x: number;
-  y: number;
-  facing: Dir;
-  moving: boolean;
-}
-
-class Avatar {
-  sprite: Phaser.GameObjects.Sprite;
-  label: Phaser.GameObjects.Text;
-  key = '';
-  facing: Dir = 'down';
-  moving = false;
-  location: LocationId = 'outdoors';
-  samples: Sample[] = [];
-  hasLantern = false;
-  isST = false;
-  constructor(
-    readonly scene: TownScene,
-    readonly pid: string,
-    x: number,
-    y: number,
-  ) {
-    this.sprite = scene.add.sprite(x, y, '__DEFAULT').setOrigin(CHAR.anchor.x / CHAR.frameWidth, CHAR.anchor.y / CHAR.frameHeight);
-    this.label = scene.add
-      .text(x, y, '', { fontFamily: 'Georgia, serif', fontSize: '7px', color: '#efe6cf', stroke: '#0b0812', strokeThickness: 2, resolution: scene.textRes() })
-      .setOrigin(0.5, 1)
-      .setDepth(5200);
-  }
-  setAppearance(kind: SpriteKind, name: string) {
-    const key = this.scene.ensureCharacterTexture(kind);
-    this.isST = kind.kind === 'storyteller';
-    this.hasLantern = kind.kind === 'player' && !kind.ghost && kind.cosmetics.accessory === 'lantern';
-    if (this.label.text !== name) this.label.setText(name);
-    this.label.setColor(this.isST ? '#e8c76a' : '#efe6cf');
-    if (key !== this.key) {
-      this.key = key;
-      this.sprite.setTexture(key, 0);
-      this.play(true);
-    }
-  }
-  setPose(x: number, y: number, facing: Dir, moving: boolean) {
-    this.sprite.setPosition(Math.round(x), Math.round(y));
-    this.sprite.setDepth(10 + y);
-    this.label.setPosition(Math.round(x), Math.round(y) - CHAR.anchor.y - 1);
-    if (facing !== this.facing || moving !== this.moving) {
-      this.facing = facing;
-      this.moving = moving;
-      this.play();
-    }
-  }
-  play(force = false) {
-    if (!this.key) return;
-    const anim = `${this.key}#${this.moving ? 'walk' : 'idle'}-${this.facing}`;
-    if (force || this.sprite.anims.currentAnim?.key !== anim) this.sprite.play(anim, !force);
-  }
-  setVisible(v: boolean) {
-    this.sprite.setVisible(v);
-    this.label.setVisible(v);
-  }
-  destroy() {
-    this.sprite.destroy();
-    this.label.destroy();
-  }
-}
-
 export class TownScene extends Phaser.Scene {
   private bridge: TownBridge;
   private offs: (() => void)[] = [];
   // local player
   private myPid: string | null = null;
-  private gameplay: GameplayLayer | null = null;
   private ready = false;
   private me = { x: 0, y: 0, facing: 'down' as Dir, moving: false, location: 'outdoors' as LocationId };
   private seq = 0;
@@ -169,65 +88,79 @@ export class TownScene extends Phaser.Scene {
   private lobby: LobbyRoomView | null = null;
   private gview: PlayerGameView | StorytellerGameView | null = null;
   private phase: Phase = 'waiting';
-  // rendering
-  private lightSrcs: LightSrc[] = [];
-  private lightRT!: Phaser.GameObjects.RenderTexture;
+  private phaseStart = { at: Date.now(), phase: '' };
+  // render modules
+  private world!: WorldMap;
+  private rig!: CameraRig;
+  private lighting!: Lighting;
+  private labels = new LabelLayout();
+  private plates!: Plates;
+  private foreground!: Foreground;
+  private life!: AmbientLayer;
+  private fx!: FxLayer;
+  private fxQuality!: FxQualityController;
   private mask!: Phaser.GameObjects.Graphics;
-  private ambient = { r: 0xd0, g: 0xc8, b: 0xdc };
-  private view = { left: 0, top: 0, w: 0, h: 0, init: false };
-  private zoom = 3;
+  private host!: ActorHost;
+  private clockAlpha = 1;
   private nearDoor: { b: BuildingDef; exit: boolean } | null = null;
   private lastLocalPublish = { x: NaN, y: NaN, loc: '' };
+  private gameplay: GameplayLayer | null = null;
+  private voice!: VoiceMarks;
 
   constructor(bridge: TownBridge) {
     super({ key: 'town' });
     this.bridge = bridge;
   }
 
+  /** Camera view in world px (shared with the camera rig; dev review tooling writes into it). */
+  get view() {
+    return this.rig.view;
+  }
+  get zoom() {
+    return this.rig.zoom;
+  }
+
   textRes() {
     return Math.max(1, Math.round(this.zoom * (window.devicePixelRatio || 1)));
+  }
+  /** Name labels are drawn at 1/zoom world scale, i.e. 1 text px = 1 CSS px. */
+  labelRes() {
+    return Math.max(1, window.devicePixelRatio || 1);
   }
 
   preload() {
     this.load.image('terrain', terrainUrl);
     this.load.image('decor', decorUrl);
     this.load.image('objects', objectsUrl);
+    this.load.image('buildings-day', buildingsDayUrl);
+    this.load.image('buildings-night', buildingsNightUrl);
+    this.load.image('foreground-baked', foregroundBakedUrl);
     this.load.image('chars', CHARACTERS_URL);
     this.load.spritesheet('lights', lightsUrl, { frameWidth: 128, frameHeight: 128 });
     this.load.tilemapTiledJSON('town', townJsonUrl);
+    this.load.image(MUTED_ICON, MUTED_ICON_URL);
   }
 
   create() {
     const conn = this.bridge.conn;
-    // --- map
-    const map = this.make.tilemap({ key: 'town' });
-    const terrain = map.addTilesetImage('terrain', 'terrain')!;
-    const decor = map.addTilesetImage('decor', 'decor')!;
-    map.createLayer('ground', terrain, 0, 0)!.setDepth(0);
-    map.createLayer('decor', decor, 0, 0)!.setDepth(1);
-    const atlas = this.textures.get('objects');
-    for (const [name, r] of Object.entries((objectsAtlas as unknown as { frames: Record<string, { x: number; y: number; w: number; h: number }> }).frames)) atlas.add(name, 0, r.x, r.y, r.w, r.h);
-    const layer = map.getObjectLayer('objects');
-    for (const o of layer?.objects ?? []) {
-      const type = (o.type as string) || ((o as unknown as { class?: string }).class ?? '');
-      if (type === 'light') {
-        this.lightSrcs.push({ x: o.x!, y: o.y!, r: Number(prop(o, 'radius') ?? 40), color: String(prop(o, 'color') ?? 'warm'), building: (prop(o, 'building') as string) || null, facade: !!prop(o, 'facade') });
-        continue;
-      }
-      const frame = String(prop(o, 'frame'));
-      const depth = Number(prop(o, 'depth') ?? o.y! + o.height!);
-      this.add
-        .image(o.x!, o.y!, 'objects', frame)
-        .setOrigin(0, 0)
-        .setDepth(type === 'flat' ? 2 : 10 + depth);
-    }
-    // --- lighting + night/interior mask
-    // Fixed-size light map (Phaser 3.90 RenderTexture.resize() breaks later draws); covers up to
-    // 3200x2000 CSS px at the minimum zoom of 2.
-    this.lightRT = this.add.renderTexture(0, 0, 1600, 1000).setOrigin(0, 0).setScrollFactor(0).setDepth(5000).setBlendMode(Phaser.BlendModes.MULTIPLY);
+    ensureFxTextures(this);
+    this.rig = new CameraRig(this, this.offs);
+    this.host = { scene: this, ensureCharacterTexture: (k) => this.ensureCharacterTexture(k), toOverlay: (o) => this.rig.toOverlay(o), labelRes: () => this.labelRes() };
+    this.world = new WorldMap(this);
+    this.foreground = new Foreground(this, foregroundItems(), this.world.props.filter((p) => /^(oak|oak2|pine|pinetall|fruittree|willow|yew|deadtree)(_b)?$/.test(p.frame)));
+    this.life = new AmbientLayer(
+      this,
+      this.world.lights.filter((l) => l.color === 'fire' && l.building),
+    );
+    this.lighting = new Lighting(this, this.world.lights, this.world.props);
+    this.fxQuality = new FxQualityController(performance.now(), this.renderer.type === Phaser.WEBGL);
+    this.fx = new FxLayer(this, this.world.lights, this.world.props, (on) => this.life.setFallback(on), (l) => this.lighting.lampK(l));
+    this.fx.setBellTower(this.world.clockTop);
+    this.applyQuality();
+    this.plates = new Plates(this, () => this.textRes());
+    this.voice = new VoiceMarks(this, (o) => this.rig.toOverlay(o), this.offs);
+    // interior isolation mask (everything outside the current room is black)
     this.mask = this.add.graphics().setDepth(5300);
-    this.cameras.main.setBackgroundColor('#09070d');
-    this.cameras.main.setRoundPixels(true);
     this.applyZoom();
     this.scale.on(Phaser.Scale.Events.RESIZE, () => this.applyZoom());
 
@@ -250,7 +183,16 @@ export class TownScene extends Phaser.Scene {
     this.offs.push(conn.gameView.subscribe(onGame));
     this.offs.push(conn.events.on('world:teleport', (t) => this.onTeleport(t)));
     this.offs.push(conn.events.on('world:snapshot', (s) => this.onSnapshot(s)));
-    this.offs.push(conn.events.on('sound', (s) => playCue(s.cue as Cue)));
+    this.offs.push(
+      conn.events.on('sound', (s) => {
+        playCue(s.cue as Cue);
+        // public cues only: the bells swing in the belfry
+        if (s.cue === 'bell' || s.cue === 'toll') {
+          this.life.bell();
+          this.fx.bell();
+        }
+      }),
+    );
 
     // --- input (window-level so we can ignore typing in inputs)
     const down = (e: KeyboardEvent) => {
@@ -282,18 +224,55 @@ export class TownScene extends Phaser.Scene {
       window.removeEventListener('blur', blur);
     });
     // press-and-hold on the canvas walks toward the pointer (touch devices)
-    this.input.on('pointerdown', (p: Phaser.Input.Pointer) => (this.pointerTarget = { x: p.worldX, y: p.worldY }));
+    this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
+      const world = this.cameras.main.getWorldPoint(p.x, p.y);
+      this.pointerTarget = { x: world.x, y: world.y };
+    });
     this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
-      if (p.isDown) this.pointerTarget = { x: p.worldX, y: p.worldY };
+      if (p.isDown) {
+        const world = this.cameras.main.getWorldPoint(p.x, p.y);
+        this.pointerTarget = { x: world.x, y: world.y };
+      }
     });
     this.input.on('pointerup', () => (this.pointerTarget = null));
     this.input.on('pointerupoutside', () => (this.pointerTarget = null));
 
-    this.gameplay = createGameplayLayer(this, { conn: this.bridge.conn, myPid: () => this.myPid, me: () => this.me, amStoryteller: () => this.amStoryteller() });
-    this.offs.push(() => { this.gameplay?.destroy(); this.gameplay = null; });
+    // CMU easter eggs (cmu-eggs): mounted once the town is rendered
+    const phaseSubs = new Set<(p: string) => void>();
+    this.onPhaseSubs = phaseSubs;
+    const unmountEggs = mountEggs(this, {
+      layout: L,
+      townMap,
+      localPlayer,
+      phase: () => this.phase,
+      onPhase: (cb) => {
+        phaseSubs.add(cb);
+        return () => phaseSubs.delete(cb);
+      },
+      showPopup: (c) => {
+        this.bridge.setCaption(typeof c === 'string' ? c : `${c.title} — ${c.body}`);
+        this.time.delayedCall(4200, () => this.bridge.setCaption(null));
+      },
+      depthFor: (bottomY) => 10 + bottomY,
+      layers: { ground: 3, air: 4000, lighting: 5000 },
+      objectsTexture: 'objects',
+    });
+    if (unmountEggs) this.offs.push(unmountEggs);
+
+    this.gameplay = createGameplayLayer(this, { conn, myPid: () => this.myPid, me: () => this.me, amStoryteller: () => this.amStoryteller() });
+    this.offs.push(() => {
+      this.gameplay?.destroy();
+      this.gameplay = null;
+    });
+
     if (import.meta.env.DEV) (window as unknown as { __town?: TownScene }).__town = this;
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.cleanup());
     this.events.once(Phaser.Scenes.Events.DESTROY, () => this.cleanup());
+  }
+
+  /** Render a game object on the overlay camera only (crisp, ungraded, never blurred). */
+  toOverlay(o: Phaser.GameObjects.GameObject) {
+    this.rig.toOverlay(o);
   }
 
   private cleanup() {
@@ -312,21 +291,7 @@ export class TownScene extends Phaser.Scene {
     const tex = this.textures.addCanvas(key, canvas)!;
     const cols = CHAR.frames.length;
     for (let r = 0; r < CHAR.directions.length; r++) for (let c = 0; c < cols; c++) tex.add(r * cols + c, 0, c * CHAR.frameWidth, r * CHAR.frameHeight, CHAR.frameWidth, CHAR.frameHeight);
-    const ghost = kind.kind === 'player' && kind.ghost;
-    CHAR.directions.forEach((dir, r) => {
-      this.anims.create({
-        key: `${key}#walk-${dir}`,
-        frames: [1, 2, 3, 4].map((c) => ({ key, frame: r * cols + c })),
-        frameRate: CHAR.walkFps,
-        repeat: -1,
-      });
-      this.anims.create({
-        key: `${key}#idle-${dir}`,
-        frames: (ghost ? [0, 1, 2, 3, 4] : [0]).map((c) => ({ key, frame: r * cols + c })),
-        frameRate: ghost ? 5 : 1,
-        repeat: -1,
-      });
-    });
+    createCharacterAnims(this, key, kind.kind === 'player' && kind.ghost);
     return key;
   }
 
@@ -341,6 +306,7 @@ export class TownScene extends Phaser.Scene {
 
   private refreshAppearances() {
     if (!this.sys.isActive() && !this.sys.settings.active) return;
+    this.plates.refresh(this.lobby, this.myPid);
     if (this.myAvatar && this.myPid) {
       const k = this.kindFor(this.myPid);
       this.myAvatar.setAppearance(k.kind, k.name);
@@ -370,7 +336,7 @@ export class TownScene extends Phaser.Scene {
     this.me.location = location;
     this.me.moving = false;
     if (!this.myAvatar && this.myPid) {
-      this.myAvatar = new Avatar(this, this.myPid, x, y);
+      this.myAvatar = new Avatar(this.host, this.myPid, x, y);
       const k = this.kindFor(this.myPid);
       this.myAvatar.setAppearance(k.kind, k.name);
     }
@@ -388,7 +354,10 @@ export class TownScene extends Phaser.Scene {
     this.lastSent = { x: t.x, y: t.y, moving: false, facing: this.me.facing };
     const changed = t.location !== this.me.location;
     this.placeMe(t.x, t.y, t.location);
-    if (t.reason === 'door' && changed) playCue('door');
+    if (t.reason === 'door' && changed) {
+      playCue('door');
+      if (t.location === 'outdoors') this.swingDoorNear(t.x, t.y);
+    }
   }
 
   onSnapshot(s: WorldSnapshot) {
@@ -402,7 +371,9 @@ export class TownScene extends Phaser.Scene {
       seen.add(e.id);
       let a = this.avatars.get(e.id);
       if (!a) {
-        a = new Avatar(this, e.id, e.x, e.y);
+        // someone visible stepped out of a door next to us
+        if (this.ready && e.location === 'outdoors' && this.me.location === 'outdoors') this.swingDoorNear(e.x, e.y);
+        a = new Avatar(this.host, e.id, e.x, e.y);
         const k = this.kindFor(e.id);
         a.setAppearance(k.kind, k.name);
         a.location = e.location;
@@ -417,10 +388,19 @@ export class TownScene extends Phaser.Scene {
     }
     for (const [pid, a] of this.avatars)
       if (!seen.has(pid)) {
+        // a visible avatar vanished right at a door: it went inside
+        if (a.location === 'outdoors' && this.me.location === 'outdoors' && a.sprite.visible) this.swingDoorNear(a.sprite.x, a.sprite.y);
         a.destroy();
         this.avatars.delete(pid);
         remoteEntities.delete(pid);
       }
+  }
+
+  private swingDoorNear(x: number, y: number) {
+    for (const b of L.buildings) {
+      const c = tileCenterPx(L, b.door);
+      if (Math.hypot(c.x - x, c.y - y) <= 26) return this.life.doorSwing(b, ambientTime());
+    }
   }
 
   private useDoor() {
@@ -430,10 +410,9 @@ export class TownScene extends Phaser.Scene {
   }
 
   private doorLocked(d: { b: BuildingDef; exit: boolean }): boolean {
-    if (this.amStoryteller()) return false;
+    if (this.amStoryteller() || !LOCKED.has(this.phase)) return false;
     const o = this.gameplay?.doorOverride(d.b.id);
     if (o !== null && o !== undefined) return o;
-    if (!LOCKED.has(this.phase)) return false;
     const home = this.mySeat() === null ? null : `house-${this.mySeat()}`;
     return d.exit ? d.b.id === home : d.b.id !== home;
   }
@@ -441,15 +420,21 @@ export class TownScene extends Phaser.Scene {
   // ---------------------------------------------------------------------------------------
   // phase presentation
 
+  private onPhaseSubs = new Set<(p: string) => void>();
+  private createdAt = Date.now();
   private onPhaseChange(prev: Phase, next: Phase) {
+    this.phaseStart = { at: Date.now(), phase: next };
+    // joining mid-game: show the current phase's light at once instead of a 10 s transition
+    if (prev === 'waiting' && Date.now() - this.createdAt < 5000) {
+      this.lighting?.snap();
+      this.fx?.snap();
+    }
+    for (const cb of this.onPhaseSubs) cb(next);
     const cam = this.cameras.main;
     const st = this.amStoryteller();
     if (NIGHT.has(next) && !NIGHT.has(prev)) {
       this.bridge.setCaption(st ? 'Night falls. The town sleeps — walk to the homes you must visit.' : 'Night falls. You are alone in your home…');
-      if (!st) {
-        cam.fadeOut(650, 4, 2, 10);
-        cam.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => cam.fadeIn(1600, 4, 2, 10));
-      }
+      if (!st) this.rig.fadeThrough(650, 1600, 4, 2, 10);
       this.time.delayedCall(4200, () => this.bridge.setCaption(null));
     } else if (next === 'bedtime') {
       this.bridge.setCaption('The bell tolls. Return to your home before dark.');
@@ -459,6 +444,13 @@ export class TownScene extends Phaser.Scene {
       if (!st) cam.flash(900, 70, 40, 50);
       this.time.delayedCall(3500, () => this.bridge.setCaption(null));
     }
+  }
+
+  /** Public phase progress 0..1 from the public phaseEndsAt (null if unknown). */
+  private phaseProgress(): number | null {
+    const endsAt = this.gview?.phaseEndsAt ?? null;
+    const ps = this.phaseStart;
+    return endsAt && ps.phase === this.phase && endsAt > ps.at ? Math.min(1, (Date.now() - ps.at) / (endsAt - ps.at)) : null;
   }
 
   private onLocationChange() {
@@ -494,16 +486,28 @@ export class TownScene extends Phaser.Scene {
     }
     this.stepRemotes();
     this.gameplay?.update(dt);
+    const bodies = this.visibleBodies();
+    this.clockAlpha = this.world.fade(this.me.location === 'outdoors' ? bodies : [], dt);
+    this.life.setClockAlpha(this.clockAlpha);
     this.updateCamera(dt);
+    this.life.setClockOffset(this.world.parallax(this.view, reducedMotion()));
     this.updateLighting(dt);
+    this.updateFx(dt, deltaMs, bodies);
+    this.labels.layout(this.ready ? this.myAvatar : null, this.avatars.values(), this.view, this.zoom, { w: this.cameras.main.width, h: this.cameras.main.height }, dt, (x, y) => this.me.location === 'outdoors' && this.world.covered(x, y));
+    this.updateVoiceMarks();
+    this.rig.sync();
   }
 
+  /** Local movement + prediction: the ONE place the local avatar moves (gameplay hooks go here). */
   private stepLocal(dt: number, now: number) {
-    // Server-driven walk / freeze / ST pick mode: the server pose replaces local input.
     const d = this.gameplay?.drive(dt) ?? null;
     if (d) {
-      this.me.x = d.x; this.me.y = d.y; this.me.facing = d.facing; this.me.moving = d.moving;
+      this.me.x = d.x;
+      this.me.y = d.y;
+      this.me.facing = d.facing;
+      this.me.moving = d.moving;
       this.myAvatar!.setPose(d.x, d.y, d.facing, d.moving);
+      if (d.moving) this.life.footstep('me', d.x, d.y, ambientTime());
       this.lastSent = { x: d.x, y: d.y, moving: false, facing: d.facing };
       this.publishLocal(false);
       return;
@@ -517,10 +521,10 @@ export class TownScene extends Phaser.Scene {
     if (vx === 0 && vy === 0 && this.pointerTarget) {
       const dx = this.pointerTarget.x - this.me.x;
       const dy = this.pointerTarget.y - (this.me.y - 8);
-      const d = Math.hypot(dx, dy);
-      if (d > 6) {
-        vx = dx / d;
-        vy = dy / d;
+      const dd = Math.hypot(dx, dy);
+      if (dd > 6) {
+        vx = dx / dd;
+        vy = dy / dd;
       }
     }
     const len = Math.hypot(vx, vy);
@@ -530,16 +534,50 @@ export class TownScene extends Phaser.Scene {
       vy /= len;
       const mult = this.amStoryteller() && this.gview?.kind === 'storyteller' ? Math.min(STORYTELLER_MAX_SPEED_MULT, Math.max(1, this.gview.travelSpeedMult)) : 1;
       const step = PLAYER_SPEED * mult * dt;
-      const nx = this.me.x + vx * step;
-      const ny = this.me.y + vy * step;
+      const sx = vx * step;
+      const sy = vy * step;
       // axis-separated collision (slides along walls), never changes location
-      if (!isBlockedPx(L, nx, this.me.y) && locationAt(L, nx, this.me.y) === this.me.location) this.me.x = nx;
-      if (!isBlockedPx(L, this.me.x, ny) && locationAt(L, this.me.x, ny) === this.me.location) this.me.y = ny;
+      const free = (x: number, y: number) => !isBlockedPx(L, x, y) && locationAt(L, x, y) === this.me.location;
+      let movedX = false;
+      let movedY = false;
+      if (free(this.me.x + sx, this.me.y)) {
+        this.me.x += sx;
+        movedX = true;
+      }
+      if (free(this.me.x, this.me.y + sy)) {
+        this.me.y += sy;
+        movedY = true;
+      }
+      // corner nudge (docs/world-audit.md, packages/assets/test/navsim.ts stepClient): when the
+      // dominant axis is blocked but a gap opens within CORNER_NUDGE px on the other axis, slide
+      // toward it (at most one frame's step). The server accepts these small lateral moves.
+      if (!movedX && Math.abs(vx) > 0.5 && Math.abs(sy) < 0.5 * step) {
+        for (let off = 1; off <= CORNER_NUDGE; off++) {
+          const dirs = vy !== 0 ? [Math.sign(vy)] : [1, -1];
+          const s = dirs.find((q) => free(this.me.x, this.me.y + q * off) && free(this.me.x + Math.sign(vx) * Math.max(1, Math.abs(sx)), this.me.y + q * off));
+          if (s !== undefined) {
+            const ty = this.me.y + s * Math.min(off, step);
+            if (free(this.me.x, ty)) this.me.y = ty;
+            break;
+          }
+        }
+      } else if (!movedY && Math.abs(vy) > 0.5 && Math.abs(sx) < 0.5 * step) {
+        for (let off = 1; off <= CORNER_NUDGE; off++) {
+          const dirs = vx !== 0 ? [Math.sign(vx)] : [1, -1];
+          const s = dirs.find((q) => free(this.me.x + q * off, this.me.y) && free(this.me.x + q * off, this.me.y + Math.sign(vy) * Math.max(1, Math.abs(sy))));
+          if (s !== undefined) {
+            const tx = this.me.x + s * Math.min(off, step);
+            if (free(tx, this.me.y)) this.me.x = tx;
+            break;
+          }
+        }
+      }
       this.me.facing = Math.abs(vx) > Math.abs(vy) + 0.01 ? (vx < 0 ? 'left' : 'right') : vy < 0 ? 'up' : 'down';
       moving = true;
     }
     this.me.moving = moving;
     this.myAvatar!.setPose(this.me.x, this.me.y, this.me.facing, moving);
+    if (moving) this.life.footstep('me', this.me.x, this.me.y, ambientTime());
     // send at ~15 Hz while something changed
     const changed = Math.abs(this.me.x - this.lastSent.x) > 0.05 || Math.abs(this.me.y - this.lastSent.y) > 0.05 || moving !== this.lastSent.moving || this.me.facing !== this.lastSent.facing;
     if (changed && now - this.lastSentAt >= 1000 / MOVE_HZ) {
@@ -586,9 +624,33 @@ export class TownScene extends Phaser.Scene {
       }
       // treat a sample-less gap as standing still
       const stale = performance.now() - s[s.length - 1]!.t > 600;
-      a.setPose(x, y, ref.facing, ref.moving && !stale);
+      // Defence in depth for night privacy: only render (sprite, label, shadow, walk animation,
+      // carried light) entities in the same location as us. The server already filters snapshots.
+      const show = this.ready && a.location === this.me.location;
+      a.setVisible(show);
+      if (show) {
+        a.setPose(x, y, ref.facing, ref.moving && !stale);
+        if (ref.moving && !stale) this.life.footstep(a.pid, x, y, ambientTime());
+      } else if (a.sprite.anims.isPlaying) a.sprite.anims.stop();
       remoteEntities.set(a.pid, { x, y, location: a.location });
     }
+  }
+
+  /** Speaking rings under visible characters, muted icon by our own name. */
+  private updateVoiceMarks() {
+    const bodies: { pid: string; x: number; y: number }[] = [];
+    if (this.ready && this.myPid && this.myAvatar) bodies.push({ pid: this.myPid, x: this.myAvatar.sprite.x, y: this.myAvatar.sprite.y });
+    for (const a of this.avatars.values()) if (a.sprite.visible && a.location === this.me.location) bodies.push({ pid: a.pid, x: a.sprite.x, y: a.sprite.y });
+    const dark = NIGHT.has(this.phase) ? 1 : this.phase === 'bedtime' || this.phase === 'dawn' ? 0.7 : 0;
+    this.voice.update(bodies, this.myPid, this.ready && this.myAvatar ? this.myAvatar.label : null, this.zoom, dark, reducedMotion());
+  }
+
+  /** Feet of every character we can see in our own location (incl. ourselves). */
+  private visibleBodies(): { x: number; y: number }[] {
+    const out: { x: number; y: number }[] = [];
+    if (this.ready) out.push({ x: this.me.x, y: this.me.y });
+    for (const a of this.avatars.values()) if (a.sprite.visible && a.location === this.me.location) out.push({ x: a.sprite.x, y: a.sprite.y });
+    return out;
   }
 
   private findDoor() {
@@ -602,26 +664,16 @@ export class TownScene extends Phaser.Scene {
     }
     const prev = this.nearDoor;
     this.nearDoor = best ? { b: best.b, exit: best.exit } : null;
-    // Recompute the lock every frame: the Storyteller can lock/unlock a door at any moment (props),
-    // so the prompt must not wait for a phase or nearest-door change to update.
-    const locked = this.nearDoor ? this.doorLocked(this.nearDoor) : false;
-    const same = prev?.b.id === this.nearDoor?.b.id && prev?.exit === this.nearDoor?.exit;
-    if (same && locked === this.lastPromptLocked && !this.promptDirty()) return;
-    this.lastPromptLocked = locked;
+    if (prev?.b.id === this.nearDoor?.b.id && prev?.exit === this.nearDoor?.exit && !this.promptDirty()) return;
     if (!this.nearDoor) return this.bridge.setPrompt(null);
+    const locked = this.doorLocked(this.nearDoor);
     const name = this.nearDoor.b.name;
-    const night = LOCKED.has(this.phase);
     this.bridge.setPrompt({
       key: 'E',
       locked,
-      text: locked
-        ? night
-          ? this.nearDoor.exit ? 'The door is barred until morning' : 'Locked for the night'
-          : `${name} is locked by the Storyteller`
-        : this.nearDoor.exit ? `Leave ${name}` : `Enter ${name}`,
+      text: locked ? (this.nearDoor.exit ? 'The door is barred until morning' : 'Locked for the night') : this.nearDoor.exit ? `Leave ${name}` : `Enter ${name}`,
     });
   }
-  private lastPromptLocked = false;
   private lastPromptPhase: Phase = 'waiting';
   private promptDirty() {
     const d = this.lastPromptPhase !== this.phase;
@@ -630,97 +682,72 @@ export class TownScene extends Phaser.Scene {
   }
 
   private applyZoom() {
-    const cam = this.cameras.main;
-    const w = this.scale.width;
-    const h = this.scale.height;
-    this.zoom = Phaser.Math.Clamp(Math.round(Math.min(w / 400, h / 270)), 2, 6);
-    cam.setZoom(this.zoom);
-    this.lightRT.setPosition((w - w / this.zoom) / 2 - 1, (h - h / this.zoom) / 2 - 1);
-    const res = this.textRes();
-    for (const a of [...this.avatars.values(), ...(this.myAvatar ? [this.myAvatar] : [])]) a.label.setResolution(res);
-    this.view.init = false;
+    this.rig.applyZoom();
+    this.lighting.place(this.rig.screenOrigin());
+    const lres = this.labelRes();
+    for (const a of [...this.avatars.values(), ...(this.myAvatar ? [this.myAvatar] : [])]) if (a.label.style.resolution !== lres) a.label.setResolution(lres);
+    this.plates.setResolution(this.textRes());
   }
 
-  /** Manual camera (keeps lighting and scroll in lock-step): follow + clamp to area bounds. */
+  /** Manual camera (keeps lighting and scroll in lock-step): lagging follow, clamped to the area. */
   private updateCamera(dt: number) {
-    const cam = this.cameras.main;
-    const vw = cam.width / this.zoom;
-    const vh = cam.height / this.zoom;
     const b = this.currentBuilding();
     const area = b
       ? { x: (b.interior.x - 1) * TS, y: (b.interior.y - 1) * TS, w: (b.interior.w + 2) * TS, h: (b.interior.h + 2) * TS }
       : { x: L.townBounds.x * TS, y: L.townBounds.y * TS, w: L.townBounds.w * TS, h: L.townBounds.h * TS };
-    const tx = this.ready ? this.me.x : L.square.cx;
-    const ty = this.ready ? this.me.y - 8 : L.square.cy;
-    const clamp = (c: number, lo: number, size: number, view: number) => (size <= view ? lo + (size - view) / 2 : Phaser.Math.Clamp(c - view / 2, lo, lo + size - view));
-    const left = clamp(tx, area.x, area.w, vw);
-    const top = clamp(ty, area.y, area.h, vh);
-    if (!this.view.init) {
-      this.view.left = left;
-      this.view.top = top;
-      this.view.init = true;
-    } else {
-      const k = 1 - Math.exp(-dt * 12);
-      this.view.left += (left - this.view.left) * k;
-      this.view.top += (top - this.view.top) * k;
+    const target = this.ready ? { x: this.me.x, y: this.me.y - 8 } : { x: L.square.cx, y: L.square.cy };
+    // the square: frame the gathering ring (look a little south of the tower toward the apron) so
+    // the playable ring has breathing room instead of filling the view with tower masonry
+    if (!b) {
+      const d = Math.hypot(target.x - L.square.cx, target.y - L.square.cy);
+      const w = Phaser.Math.Clamp(1 - d / (L.square.r + 32), 0, 1);
+      target.y += 26 * w;
     }
-    const L0 = Math.round(this.view.left);
-    const T0 = Math.round(this.view.top);
-    cam.setScroll(L0 - (cam.width - vw) / 2, T0 - (cam.height - vh) / 2);
-    this.view.w = vw;
-    this.view.h = vh;
+    this.rig.follow(dt, target, area);
   }
 
   private updateLighting(dt: number) {
     const inside = this.me.location !== 'outdoors';
-    const target = (inside ? AMBIENT_IN : AMBIENT_OUT)[this.phase] ?? 0xffffff;
-    const k = 1 - Math.exp(-dt * 1.6);
-    this.ambient.r += (((target >> 16) & 255) - this.ambient.r) * k;
-    this.ambient.g += (((target >> 8) & 255) - this.ambient.g) * k;
-    this.ambient.b += ((target & 255) - this.ambient.b) * k;
-    const amb = (Math.round(this.ambient.r) << 16) | (Math.round(this.ambient.g) << 8) | Math.round(this.ambient.b);
-    const rt = this.lightRT;
-    rt.clear();
-    rt.fill(amb, 1);
-    const left = Math.round(this.view.left) - 1;
-    const top = Math.round(this.view.top) - 1;
+    const here = inside ? this.me.location.slice(4) : null;
     const night = NIGHT.has(this.phase);
     const dusk = this.phase === 'bedtime' || this.phase === 'dawn';
-    const lampK = night ? 1 : dusk ? 0.8 : 0.28;
-    const facadeK = night ? 0.95 : dusk ? 0.6 : 0;
-    const here = inside ? this.me.location.slice(4) : null;
-    const stamp = (x: number, y: number, r: number, color: number, alpha: number, soft = 0) => {
-      if (alpha <= 0.01) return;
-      if (x + r < left || y + r < top || x - r > left + this.view.w + 2 || y - r > top + this.view.h + 2) return;
-      rt.stamp('lights', soft, x - left, y - top, { scale: (r * 2) / 128, tint: color, alpha, blendMode: Phaser.BlendModes.ADD });
-    };
-    const flicker = (x: number) => 0.92 + 0.08 * Math.sin(this.time.now / 130 + x * 0.37) * Math.sin(this.time.now / 370 + x);
-    for (const l of this.lightSrcs) {
-      if (l.building !== here) continue;
-      const tint = LIGHT_TINT[l.color] ?? LIGHT_TINT.warm!;
-      if (inside) stamp(l.x, l.y, l.r * 1.3, tint, (l.color === 'fire' ? 0.85 : 0.6) * flicker(l.x), 1);
-      else if (l.facade) stamp(l.x, l.y, l.r, tint, facadeK * 0.7 * flicker(l.y));
-      else stamp(l.x, l.y, l.r * 0.85, tint, lampK * 0.8 * flicker(l.x + l.y), 0);
-    }
-    const dark = night || dusk;
-    // carried lights: storyteller lantern, lantern accessories, and a faint aura for yourself
-    const carried = (a: Avatar, x: number, y: number) => {
-      if (a.isST) stamp(x, y - 12, a === this.myAvatar && night ? 104 : 70, LIGHT_TINT.st!, dark ? 0.95 : 0.25, 0);
-      else if (a.hasLantern) stamp(x, y - 10, 46, LIGHT_TINT.lantern!, dark ? 0.75 : 0.15, 1);
-    };
-    for (const a of this.avatars.values()) if (a.sprite.visible) carried(a, a.sprite.x, a.sprite.y);
-    if (this.myAvatar && this.ready) {
-      carried(this.myAvatar, this.me.x, this.me.y);
-      if (dark && !this.myAvatar.isST) stamp(this.me.x, this.me.y - 10, 44, 0x9aa4d8, 0.35, 1);
-    }
+    const progress = this.phaseProgress();
+    // carried lights / moonlit auras: avatars visible to us in our own location, and ourselves
+    const carriers: Carrier[] = [];
+    for (const a of this.avatars.values()) if (a.sprite.visible && a.location === this.me.location) carriers.push({ x: a.sprite.x, y: a.sprite.y, st: a.isST, lantern: a.hasLantern, mine: false });
+    if (this.myAvatar && this.ready) carriers.push({ x: this.me.x, y: this.me.y, st: this.myAvatar.isST, lantern: this.myAvatar.hasLantern, mine: true });
+    const view = { left: this.view.left, top: this.view.top, w: this.view.w, h: this.view.h };
+    this.lighting.update({ dt, phase: this.phase, inside, here, view, zoom: this.zoom, progress, sinceMs: Date.now() - this.phaseStart.at, carriers });
+    this.world.updatePhase(this.phase, dt);
+    // ambient life (public, deterministic; see AmbientLayer)
+    this.life.update({ t: ambientTime(), dt, phase: this.phase, night, dusk, inside, here, view, stamp: this.lighting.stamp, progress });
   }
-}
 
-function prop(o: Phaser.Types.Tilemaps.TiledObject, name: string): unknown {
-  const p = o.properties as unknown;
-  if (Array.isArray(p)) return (p as { name: string; value: unknown }[]).find((x) => x.name === name)?.value;
-  if (p && typeof p === 'object') return (p as Record<string, unknown>)[name];
-  return undefined;
+  private applyQuality() {
+    const q = this.fxQuality.level;
+    this.fx.setQuality(q);
+    this.foreground.setQuality(q);
+  }
+
+  /** HD-2D atmosphere (fx/FxLayer) + foreground + avatar shadows/rim/idle bounce + auto quality. */
+  private updateFx(dt: number, deltaMs: number, bodies: { x: number; y: number }[]) {
+    if (this.fxQuality.sample(deltaMs, performance.now())) this.applyQuality();
+    const inside = this.me.location !== 'outdoors';
+    const night = NIGHT.has(this.phase);
+    const dusk = this.phase === 'bedtime' || this.phase === 'dawn';
+    const here = inside ? this.me.location.slice(4) : null;
+    const t = ambientTime();
+    const view = { left: this.view.left, top: this.view.top, w: this.view.w, h: this.view.h };
+    this.fx.update({ t, dt, phase: this.phase, night, dusk, inside, here, view, clockAlpha: this.clockAlpha });
+    this.foreground.update(dt, view, bodies, !inside, this.rig.screenOrigin(), reducedMotion());
+    const rimOn = this.fx.quality !== 'low';
+    // how much of the ambient darkening the actor-identity boost compensates
+    const dark = inside ? (night ? 0.5 : 0) : night ? 1 : dusk ? 0.6 : 0;
+    const still = reducedMotion();
+    const now = performance.now() / 1000;
+    for (const a of this.avatars.values()) if (a.sprite.visible) a.fx(now, this.fx.lightAt(a.sprite.x, a.sprite.y), rimOn, dark, still);
+    if (this.myAvatar && this.ready) this.myAvatar.fx(now, this.fx.lightAt(this.myAvatar.sprite.x, this.myAvatar.sprite.y), rimOn, dark, still);
+  }
 }
 
 function keyDir(code: string): 'up' | 'down' | 'left' | 'right' | null {

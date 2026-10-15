@@ -1,0 +1,188 @@
+{
+ "density": 2,
+ "frameWidth": 48,
+ "frameHeight": 64,
+ "anchor": {
+  "x": 24,
+  "y": 60
+ },
+ "directions": [
+  "down",
+  "up",
+  "left",
+  "right"
+ ],
+ "frames": [
+  "idle",
+  "walk1",
+  "walk2",
+  "walk3",
+  "walk4"
+ ],
+ "portrait": {
+  "w": 48,
+  "h": 48
+ },
+ "presets": [
+  {
+   "id": "lantern-wanderer",
+   "name": "Lantern Wanderer",
+   "blurb": "A cloaked traveller whose head is a softly glowing lantern.",
+   "lantern": true,
+   "sheet": "presets/lantern-wanderer.png",
+   "ghost": "presets/lantern-wanderer-ghost.png",
+   "portrait": "presets/lantern-wanderer-portrait.png",
+   "art": "gpt-6-astra"
+  },
+  {
+   "id": "mushroom-priest",
+   "name": "Mushroom Priest",
+   "blurb": "A round red-capped mushroom in a tiny cassock, swinging a censer.",
+   "lantern": false,
+   "sheet": "presets/mushroom-priest.png",
+   "ghost": "presets/mushroom-priest-ghost.png",
+   "portrait": "presets/mushroom-priest-portrait.png",
+   "art": "gpt-6-astra"
+  },
+  {
+   "id": "skeleton-baker",
+   "name": "Skeleton Baker",
+   "blurb": "A cheerful skeleton in an apron and a floppy chef hat, loaf in hand.",
+   "lantern": false,
+   "sheet": "presets/skeleton-baker.png",
+   "ghost": "presets/skeleton-baker-ghost.png",
+   "portrait": "presets/skeleton-baker-portrait.png",
+   "art": "gpt-6-astra"
+  },
+  {
+   "id": "frog-knight",
+   "name": "Frog Knight",
+   "blurb": "A small green frog in dented armour with a leaf shield.",
+   "lantern": false,
+   "sheet": "presets/frog-knight.png",
+   "ghost": "presets/frog-knight-ghost.png",
+   "portrait": "presets/frog-knight-portrait.png",
+   "art": "gpt-6-astra"
+  },
+  {
+   "id": "hooded-bean",
+   "name": "Hooded Bean",
+   "blurb": "A shy bean-shaped figure in a plum hood with two big eyes.",
+   "lantern": false,
+   "sheet": "presets/hooded-bean.png",
+   "ghost": "presets/hooded-bean-ghost.png",
+   "portrait": "presets/hooded-bean-portrait.png",
+   "art": "gpt-6-astra"
+  },
+  {
+   "id": "moth-lamplighter",
+   "name": "Moth Lamplighter",
+   "blurb": "A fuzzy moth with feathery antennae who lights the square every dusk.",
+   "lantern": true,
+   "sheet": "presets/moth-lamplighter.png",
+   "ghost": "presets/moth-lamplighter-ghost.png",
+   "portrait": "presets/moth-lamplighter-portrait.png",
+   "art": "gpt-6-astra"
+  },
+  {
+   "id": "owl-archivist",
+   "name": "Owl Archivist",
+   "blurb": "A round owl in spectacles, never without a scroll.",
+   "lantern": false,
+   "sheet": "presets/owl-archivist.png",
+   "ghost": "presets/owl-archivist-ghost.png",
+   "portrait": "presets/owl-archivist-portrait.png",
+   "art": "gpt-6-astra"
+  },
+  {
+   "id": "crow-gravedigger",
+   "name": "Crow Gravedigger",
+   "blurb": "A tall crow in a long coat, shovel over the shoulder.",
+   "lantern": false,
+   "sheet": "presets/crow-gravedigger.png",
+   "ghost": "presets/crow-gravedigger-ghost.png",
+   "portrait": "presets/crow-gravedigger-portrait.png",
+   "art": "gpt-6-astra"
+  },
+  {
+   "id": "cat-innkeeper",
+   "name": "Cat Innkeeper",
+   "blurb": "A chubby ginger cat in an apron, tankard always ready.",
+   "lantern": false,
+   "sheet": "presets/cat-innkeeper.png",
+   "ghost": "presets/cat-innkeeper-ghost.png",
+   "portrait": "presets/cat-innkeeper-portrait.png",
+   "art": "gpt-6-astra"
+  },
+  {
+   "id": "snail-tinker",
+   "name": "Snail Tinker",
+   "blurb": "A snail whose shell is a backpack of gears and pots.",
+   "lantern": false,
+   "sheet": "presets/snail-tinker.png",
+   "ghost": "presets/snail-tinker-ghost.png",
+   "portrait": "presets/snail-tinker-portrait.png",
+   "art": "gpt-6-astra"
+  },
+  {
+   "id": "toad-miller",
+   "name": "Toad Miller",
+   "blurb": "A flour-dusted toad hauling a sack of grain.",
+   "lantern": false,
+   "sheet": "presets/toad-miller.png",
+   "ghost": "presets/toad-miller-ghost.png",
+   "portrait": "presets/toad-miller-portrait.png",
+   "art": "gpt-6-astra"
+  },
+  {
+   "id": "bat-bellringer",
+   "name": "Bat Bellringer",
+   "blurb": "A small bat with folded wings and a tiny brass hand bell.",
+   "lantern": false,
+   "sheet": "presets/bat-bellringer.png",
+   "ghost": "presets/bat-bellringer-ghost.png",
+   "portrait": "presets/bat-bellringer-portrait.png",
+   "art": "gpt-6-astra"
+  },
+  {
+   "id": "mole-blacksmith",
+   "name": "Mole Blacksmith",
+   "blurb": "A burly mole with goggles, leather apron and hammer.",
+   "lantern": false,
+   "sheet": "presets/mole-blacksmith.png",
+   "ghost": "presets/mole-blacksmith-ghost.png",
+   "portrait": "presets/mole-blacksmith-portrait.png",
+   "art": "gpt-6-astra"
+  },
+  {
+   "id": "rabbit-herbalist",
+   "name": "Rabbit Herbalist",
+   "blurb": "A rabbit with a flower crown and a satchel of herbs.",
+   "lantern": false,
+   "sheet": "presets/rabbit-herbalist.png",
+   "ghost": "presets/rabbit-herbalist-ghost.png",
+   "portrait": "presets/rabbit-herbalist-portrait.png",
+   "art": "gpt-6-astra"
+  },
+  {
+   "id": "fox-seamstress",
+   "name": "Fox Seamstress",
+   "blurb": "A fox with a tape-measure scarf and a big needle.",
+   "lantern": false,
+   "sheet": "presets/fox-seamstress.png",
+   "ghost": "presets/fox-seamstress-ghost.png",
+   "portrait": "presets/fox-seamstress-portrait.png",
+   "art": "gpt-6-astra"
+  },
+  {
+   "id": "goat-magistrate",
+   "name": "Goat Magistrate",
+   "blurb": "A goat in a judge’s robe with curled horns and a gavel.",
+   "lantern": false,
+   "sheet": "presets/goat-magistrate.png",
+   "ghost": "presets/goat-magistrate-ghost.png",
+   "portrait": "presets/goat-magistrate-portrait.png",
+   "art": "gpt-6-astra"
+  }
+ ]
+}

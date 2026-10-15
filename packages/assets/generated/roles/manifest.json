@@ -1,0 +1,28 @@
+{
+ "model": "gpt-6-astra",
+ "files": [
+  "baron.png",
+  "butler.png",
+  "chef.png",
+  "drunk.png",
+  "empath.png",
+  "fortune_teller.png",
+  "imp.png",
+  "investigator.png",
+  "librarian.png",
+  "mayor.png",
+  "monk.png",
+  "poisoner.png",
+  "ravenkeeper.png",
+  "recluse.png",
+  "saint.png",
+  "scarlet_woman.png",
+  "slayer.png",
+  "soldier.png",
+  "spy.png",
+  "undertaker.png",
+  "unknown.png",
+  "virgin.png",
+  "washerwoman.png"
+ ]
+}

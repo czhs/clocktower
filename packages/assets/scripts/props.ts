@@ -1,8 +1,9 @@
 // Every non-building object sprite (nature, town furniture, interior furniture), drawn by code.
 // Frame sizes must match PROP_DEFS in src/layout.ts (asserted by the generator).
-import { PROP_DEFS } from '../src/layout.js';
+import { PROP_DEFS, EGG_KINDS } from '../src/layout.js';
 import { box, canopy, flame, planks, shadow, sphere, stonework } from './lib/draw.js';
-import { bayer, dpick, hash, Img, mix, ramp, vnoise } from './lib/img.js';
+import { bayer, col, dpick, hash, Img, mix, ramp, vnoise } from './lib/img.js';
+import { C as PC, deriveVariants, EXTRA_DRAW, EXTRA_FRAMES, gearTrain, oval as oval3, PAPER3, slab as slab3, WINE3 } from './props-extra.js';
 
 type Draw = (img: Img) => void;
 
@@ -801,17 +802,27 @@ function bed(img: Img, wide: boolean, seed: number) {
   const blanket = BLANKETS[seed % BLANKETS.length]!;
   box(img, 0, 0, w, 9, 3, WOOD); // headboard
   img.rect(1, 9, w - 2, img.h - 10, WOOD[1]!);
-  // pillow(s)
+  // pillow(s): one dented / pushed aside
   const pillows = wide ? [2, w / 2 + 1] : [2];
-  for (const px of pillows) img.ellipse(px + (wide ? 6 : 6), 12, wide ? 6 : 6, 3, (x, y, nx, ny) => dpick(['#8a8478', '#b0a898', '#d4ccbc', '#ece6d8'], 0.7 - ny * 0.3 - nx * 0.2, x, y));
-  // blanket
+  pillows.forEach((px0, k) => {
+    const dx = k === 1 || (!wide && seed % 2) ? 1 : 0;
+    img.ellipse(px0 + 6 + dx, 12, 6, 3, (x, y, nx, ny) => (nx * -0.6 + ny * -0.8 > 0.25 ? PC.linen : nx * -0.6 + ny * -0.8 < -0.35 ? PC.oldpl : PC.lime));
+    img.set(px0 + 6 + dx, 12, PC.oldpl); // dent
+  });
+  // blanket, turned back at the top corner (uneven bedding)
+  const fold = 17 + (seed % 3);
   for (let y = 15; y < img.h - 2; y++)
     for (let x = 1; x < w - 1; x++) {
-      let v = 0.6 - (x / w) * 0.35 + (y === 15 ? 0.35 : 0);
-      if ((x + y) % 6 === 0 && y > 17) v += 0.15;
-      img.set(x, y, dpick(blanket, v, x, y));
+      const turned = y < fold && x > w - 1 - (fold - y) * 2 - (wide ? 6 : 2);
+      if (turned) {
+        img.set(x, y, y === 15 ? PC.linen : PC.lime); // sheet showing
+        continue;
+      }
+      const l = (x < 4 ? 0.3 : x > w - 4 ? -0.4 : 0) + (y === 15 || y === fold ? 0.5 : 0) + ((x + 2 * y) % 9 === 0 && y > 18 ? -0.5 : 0);
+      img.set(x, y, l > 0.25 ? blanket[4]! : l < -0.25 ? blanket[1]! : blanket[2]!);
     }
-  img.hline(1, w - 2, 16, mix(blanket[4]!, '#ffffff', 0.2));
+  // diagonal fold edge
+  for (let y = 15; y < fold; y++) img.set(w - 1 - (fold - y) * 2 - (wide ? 6 : 2), y, blanket[1]!);
   img.rect(0, img.h - 3, w, 3, WOOD[2]!);
   img.outline({ darken: 0.7 });
 }
@@ -828,21 +839,66 @@ function nightstand(img: Img) {
   img.outline({ darken: 0.7 });
 }
 
-function table(img: Img, round: boolean) {
+type TableItems = 'clear' | 'meal' | 'craft' | 'papers' | 'mugs' | 'mugs2' | 'candle';
+function mug(img: Img, x: number, y: number, empty = false) {
+  img.rect(x, y, 3, 4, PC.oldpl);
+  img.vline(x, y, y + 3, PC.lime);
+  img.vline(x + 2, y + 1, y + 3, PC.trod);
+  img.hline(x, x + 2, y, empty ? PC.charred : PC.strawT);
+  img.set(x + 3, y + 1, PC.oldpl);
+}
+function table(img: Img, round: boolean, items: TableItems = 'clear') {
   const w = img.w;
   if (round) {
     img.rect(w / 2 - 2, 10, 4, 12, WOOD[1]!);
     img.rect(w / 2 - 6, 20, 12, 2, WOOD[1]!);
-    img.ellipse(w / 2, 8, 15, 6, (x, y, nx, ny) => dpick(WOOD_LIGHT, 0.7 - nx * 0.2 - ny * 0.3 + (ny > 0.6 ? -0.4 : 0), x, y));
+    img.ellipse(w / 2, 8, 15, 6, (x, y, nx, ny) => (ny > 0.62 ? WOOD_LIGHT[0]! : nx * -0.6 + ny * -0.8 > 0.3 ? WOOD_LIGHT[4]! : WOOD_LIGHT[3]!));
   } else {
     for (const x of [2, w - 5]) img.rect(x, 10, 3, 13, WOOD[1]!);
     box(img, 0, 2, w, 10, 7, WOOD_LIGHT);
   }
-  // mug + bread
-  img.rect(w / 2 - 6, 3, 3, 4, '#8a7a6a');
-  img.set(w / 2 - 6, 3, '#d8d0c0');
-  img.ellipse(w / 2 + 5, 6, 3, 2, '#a0702a');
-  img.set(w / 2 + 4, 5, '#d0a050');
+  const cy = round ? 4 : 3;
+  if (items === 'meal') {
+    // bread board with a cut loaf, a bowl, a mug
+    img.rect(w / 2 - 1, cy + 1, 8, 4, PC.worn);
+    img.hline(w / 2 - 1, w / 2 + 6, cy + 4, PC.oak);
+    oval3(img, w / 2 + 3, cy + 2, 3, 1.8, [PC.trod, PC.strawC, PC.strawT]);
+    img.vline(w / 2 + 1, cy + 1, cy + 3, PC.linen); // cut face
+    img.ellipse(w / 2 - 6, cy + 3, 3, 1.6, PC.lime);
+    img.hline(w / 2 - 7, w / 2 - 5, cy + 3, PC.oxide);
+    mug(img, w / 2 - 12 + (round ? 3 : 0), cy);
+  } else if (items === 'craft') {
+    // fabric being mended, a spool and scissors
+    img.rect(w / 2 - 8, cy + 1, 9, 4, PC.tealF);
+    img.hline(w / 2 - 8, w / 2, cy + 4, PC.teal);
+    img.hline(w / 2 - 6, w / 2 - 2, cy + 2, PC.linen);
+    img.rect(w / 2 + 3, cy + 1, 2, 3, PC.wine);
+    img.set(w / 2 + 3, cy + 1, PC.wineF);
+    img.line(w / 2 + 6, cy + 1, w / 2 + 9, cy + 3, PC.wiron);
+    img.line(w / 2 + 6, cy + 3, w / 2 + 9, cy + 1, PC.wiron);
+  } else if (items === 'papers') {
+    // loose letters, ink pot and quill, a candle stub
+    img.rect(w / 2 - 9, cy + 1, 6, 4, PC.linen);
+    img.rect(w / 2 - 5, cy + 2, 6, 4, PC.lime);
+    img.hline(w / 2 - 4, w / 2, cy + 3, PC.oldpl);
+    img.rect(w / 2 + 3, cy + 2, 2, 2, PC.soot);
+    img.line(w / 2 + 4, cy + 1, w / 2 + 7, cy - 2, PC.linen);
+    img.rect(w / 2 + 8, cy, 2, 3, PC.linen);
+    img.set(w / 2 + 8, cy - 1, PC.lamp);
+  } else if (items === 'mugs' || items === 'mugs2') {
+    mug(img, w / 2 - 8, cy - 1, true);
+    mug(img, w / 2 + 3, cy, items === 'mugs');
+    if (items === 'mugs2') {
+      img.ellipse(w / 2 - 1, cy + 4, 3, 1.5, PC.lime);
+      img.set(w / 2 - 1, cy + 4, PC.strawC); // crusts on a plate
+    }
+    img.set(w / 2 - 2, cy + 1, PC.wet); // spill
+    img.set(w / 2 - 1, cy + 1, PC.wet);
+  } else if (items === 'candle') {
+    img.rect(w / 2 - 1, cy, 2, 3, PC.linen);
+    img.set(w / 2 - 1, cy - 1, PC.lamp);
+    img.ellipse(w / 2, cy + 3, 2.5, 1, PC.brass);
+  }
   img.outline({ darken: 0.7 });
 }
 
@@ -920,17 +976,29 @@ function fireplace(img: Img) {
   img.outline({ darken: 0.6 });
 }
 
-function wallshelf(img: Img) {
+function wallshelf(img: Img, sparse = false) {
   img.rect(0, 11, 32, 2, WOOD[3]!);
   img.hline(0, 31, 13, WOOD[0]!);
-  for (const [x, c, h] of [
-    [3, '#6a8aa0', 6],
-    [9, '#a06040', 5],
-    [14, '#d8c8a0', 7],
-    [21, '#5a7a4a', 5],
-    [26, '#8a4a6a', 6],
-  ] as const) {
+  for (const [x, c, h] of (sparse
+    ? [
+        [3, '#6a8aa0', 6],
+        [20, '#d8c8a0', 7],
+      ]
+    : [
+        [3, '#6a8aa0', 6],
+        [9, '#a06040', 5],
+        [14, '#d8c8a0', 7],
+        [21, '#5a7a4a', 5],
+        [26, '#8a4a6a', 6],
+      ]) as [number, string, number][]) {
     sphere(img, x + 2, 11 - h / 2, 2.4, h / 2, [mix(c, '#000000', 0.5), mix(c, '#000000', 0.25), c, mix(c, '#ffffff', 0.35)]);
+  }
+  if (sparse) {
+    // a tipped-over cup and a folded cloth where bottles used to stand
+    img.rect(10, 8, 4, 3, PC.oldpl);
+    img.hline(10, 13, 8, PC.lime);
+    img.rect(26, 8, 5, 3, PC.wineF);
+    img.hline(26, 30, 10, PC.wine);
   }
   img.outline({ darken: 0.6 });
 }
@@ -1015,6 +1083,18 @@ function rug(img: Img, pal: string[], long = false) {
       }
       img.set(x, y, dpick(pal, v, x, y));
     }
+  // wear: the pattern fades along the passage (lower middle), one darned corner
+  const wx = w / 2;
+  const wy = long ? h * 0.75 : h - 8;
+  for (let y = 3; y < h - 3; y++)
+    for (let x = 3; x < w - 3; x++) {
+      const d = Math.hypot((x - wx) / (long ? 4 : 7), (y - wy) / (long ? 18 : 4)) + (hash(x >> 1, y >> 1, 5) - 0.5) * 0.3;
+      if (d < 1 && img.alpha(x, y) > 0) img.set(x, y, pal[2]!);
+    }
+  if (!long) {
+    img.rect(w - 9, 3, 5, 4, pal[3]!);
+    for (let x = w - 9; x < w - 4; x += 2) img.set(x, 4, pal[1]!);
+  }
   // fringe
   if (!long)
     for (let y = 2; y < h - 2; y += 2) {
@@ -1036,6 +1116,13 @@ function bar(img: Img) {
   }
   img.ellipse(52, 4, 3, 2, '#5a2a3a');
   img.rect(51, 0, 2, 3, '#2a3a2a');
+  // serving board with cheese and bread, a bar cloth
+  img.rect(62, 2, 10, 4, PC.worn);
+  img.hline(62, 71, 5, PC.oak);
+  img.rect(64, 2, 3, 2, PC.strawT);
+  img.ellipse(69, 3, 2, 1.3, PC.strawC);
+  img.rect(84, 3, 6, 3, PC.linen);
+  img.hline(84, 89, 5, PC.lime);
   img.outline({ darken: 0.7 });
 }
 
@@ -1053,11 +1140,26 @@ function kegs(img: Img) {
   img.outline({ darken: 0.7 });
 }
 
-function pew(img: Img) {
+function pew(img: Img, v: 'plain' | 'repaired' | 'cloth' = 'plain') {
   const w = img.w;
   box(img, 0, 0, w, 10, 2, WOOD);
   box(img, 0, 10, w, 7, 3, WOOD_LIGHT);
   for (const x of [1, w - 4]) img.rect(x, 17, 3, 6, WOOD[1]!);
+  if (v === 'repaired') {
+    // one new, paler seat board with nail heads, and a splinted leg
+    img.rect(30, 11, 14, 2, PC.worn);
+    img.hline(30, 43, 13, PC.oak);
+    img.set(31, 11, PC.wiron);
+    img.set(42, 11, PC.wiron);
+    img.rect(w - 4, 18, 3, 2, PC.worn);
+  } else if (v === 'cloth') {
+    // a folded altar cloth and a hymn book left on the seat
+    img.rect(8, 9, 9, 3, PC.linen);
+    img.hline(8, 16, 11, PC.lime);
+    img.set(12, 10, PC.plumF);
+    img.rect(44, 9, 5, 3, PC.wine);
+    img.hline(44, 48, 9, PC.wineF);
+  }
   img.outline({ darken: 0.7 });
 }
 
@@ -1089,26 +1191,6 @@ function candelabra(img: Img) {
   img.outline({ darken: 0.6 });
 }
 
-function gears(img: Img) {
-  const gear = (cx: number, cy: number, r: number, teeth: number) => {
-    for (let y = Math.floor(cy - r - 2); y <= cy + r + 2; y++)
-      for (let x = Math.floor(cx - r - 2); x <= cx + r + 2; x++) {
-        const d = Math.hypot(x + 0.5 - cx, y + 0.5 - cy);
-        const a = Math.atan2(y + 0.5 - cy, x + 0.5 - cx);
-        const tooth = Math.cos(a * teeth) > 0.3 ? 2 : 0;
-        if (d > r + tooth || d < r * 0.3) continue;
-        if (d > r * 0.55 && d < r * 0.75 && Math.cos(a * 4) < 0.4) continue;
-        img.set(x, y, dpick(BRASS, 0.7 - (x - cx) / (r * 3) - (y - cy) / (r * 3), x, y));
-      }
-  };
-  img.rect(4, 30, 40, 16, WOOD[1]!);
-  box(img, 2, 30, 44, 17, 3, WOOD);
-  gear(14, 18, 11, 10);
-  gear(33, 14, 8, 8);
-  gear(36, 29, 5, 6);
-  img.outline({ darken: 0.65 });
-}
-
 function bellrope(img: Img) {
   for (let y = 0; y < img.h - 4; y++) img.set(8 + (y % 6 < 3 ? 0 : 1), y, y % 3 === 0 ? '#8a6a3a' : '#b89a5a');
   sphere(img, 8.5, img.h - 4, 3, 3.5, ['#3a1a1a', '#6a2a2a', '#9a3a3a', '#c06050']);
@@ -1125,30 +1207,82 @@ function counter(img: Img) {
   const w = img.w;
   box(img, 0, 6, w, 24, 6, WOOD);
   planks(img, 1, 13, w - 2, 16, WOOD_LIGHT, { vertical: true, size: 8, seed: 41 });
-  // scales + ledger + jar
-  img.rect(8, 2, 10, 2, BRASS[3]!);
-  img.vline(13, 0, 3, BRASS[2]!);
-  img.rect(28, 3, 10, 4, '#d8ccb0');
-  img.rect(46, 0, 6, 7, '#5a8a9a');
-  img.rect(46, 0, 6, 1, '#c0e0e8');
+  // scales, an open ledger with a quill, and a wrapping space: paper roll, string, half-wrapped parcel
+  img.rect(4, 2, 8, 2, BRASS[3]!);
+  img.vline(8, 0, 3, BRASS[2]!);
+  img.rect(15, 3, 12, 5, PC.linen);
+  img.vline(21, 3, 7, PC.oldpl);
+  img.hline(16, 19, 5, PC.oldpl);
+  img.hline(23, 25, 5, PC.oldpl);
+  img.line(25, 2, 28, 0, PC.linen);
+  img.rect(31, 2, 12, 3, PC.dry);
+  img.hline(31, 42, 2, PC.worn);
+  img.ellipse(43, 3.5, 1.5, 1.8, PC.trod);
+  slab3(img, 47, 1, 8, 6, 2, PAPER3);
+  img.vline(51, 1, 6, PC.linen);
+  img.ellipse(58, 5, 2.2, 1.6, PC.lime);
+  img.set(58, 5, PC.oldpl);
   img.outline({ darken: 0.7 });
 }
 
-function shopshelf(img: Img) {
+function shopshelf(img: Img, sparse = false) {
   const w = img.w;
   box(img, 0, 1, w, 38, 3, WOOD);
-  const potion = ['#a02a3a', '#2a8a5a', '#3a5aa0', '#c0a02a', '#7a3aa0', '#d0d0e0'];
-  for (const sy of [12, 24, 36]) {
+  // mixed stock: jars, wrapped bundles, small boxes, bottles; a few gaps
+  type Item = (x: number, sy: number) => number;
+  const jar: Item = (x, sy) => {
+    img.rect(x, sy - 5, 4, 5, PC.lime);
+    img.vline(x, sy - 5, sy - 1, PC.linen);
+    img.hline(x, x + 3, sy - 6, PC.wiron);
+    img.rect(x + 1, sy - 3, 2, 2, PC.clay);
+    return 5;
+  };
+  const bottle: Item = (x, sy) => {
+    img.rect(x, sy - 5, 3, 5, PC.teal);
+    img.vline(x, sy - 5, sy - 1, PC.tealF);
+    img.rect(x + 1, sy - 7, 1, 2, PC.tealS);
+    return 4;
+  };
+  const bundle: Item = (x, sy) => {
+    img.rect(x, sy - 4, 7, 4, PC.dry);
+    img.hline(x, x + 6, sy - 4, PC.worn);
+    img.vline(x + 3, sy - 4, sy - 1, PC.linen);
+    return 8;
+  };
+  const boxI: Item = (x, sy) => {
+    slab3(img, x, sy - 6, 6, 6, 2, WINE3);
+    return 7;
+  };
+  const tin: Item = (x, sy) => {
+    img.rect(x, sy - 3, 4, 3, PC.brass);
+    img.hline(x, x + 3, sy - 3, PC.brassE);
+    return 5;
+  };
+  const tall: Item = (x, sy) => {
+    img.rect(x, sy - 8, 4, 8, PC.wine);
+    img.vline(x, sy - 8, sy - 1, PC.wineF);
+    img.hline(x, x + 3, sy - 6, PC.linen);
+    return 4;
+  };
+  const rows: Item[][] = sparse
+    ? [
+        [jar, tall, bundle],
+        [boxI, tin],
+        [bundle, jar],
+      ]
+    : [
+        [jar, bottle, tall, bundle, tin, jar, bottle],
+        [boxI, bundle, jar, tall, bottle, tin],
+        [bundle, boxI, jar, tin, tall, bottle],
+      ];
+  [12, 24, 36].forEach((sy, r) => {
     img.rect(2, sy, w - 4, 2, WOOD[3]!);
-    for (let i = 0; i < 6; i++) {
-      const x = 4 + i * 7;
-      const c = potion[(i + sy) % potion.length]!;
-      const h = 4 + ((i + sy) % 3);
-      img.rect(x, sy - h, 4, h, c);
-      img.set(x, sy - h, mix(c, '#ffffff', 0.5));
-      img.rect(x + 1, sy - h - 2, 2, 2, '#8a7a6a');
-    }
-  }
+    let x = 3 + ((r * 2) % 3);
+    rows[r]!.forEach((it, k) => {
+      if (x > w - 9) return;
+      x += it(x, sy) + (sparse ? 7 : k === 2 && r === 1 ? 3 : 1);
+    });
+  });
   img.outline({ darken: 0.7 });
 }
 
@@ -1170,7 +1304,104 @@ function doormat(img: Img) {
 
 // ---------------------------------------------------------------------------------------
 
+// Square showpieces: iron fire baskets on stone plinths, and plum banners with the town's
+// broken-hour ring (docs/art-direction.md). The client adds flames/embers at the 'fire' light.
+function brazier(img: Img) {
+  shadow(img, 8, img.h - 2, 6, 1.5, 0.45);
+  const b = img.h - 2;
+  // stone plinth
+  for (let y = b - 10; y < b; y++) for (let x = 3; x < 13; x++) img.set(x, y, dpick(STONE, 0.75 - (x - 3) * 0.05 - (y === b - 10 ? -0.2 : 0), x, y));
+  img.hline(3, 12, b - 10, STONE[4]!);
+  // iron stem + basket
+  img.rect(7, b - 16, 2, 6, IRON[2]!);
+  img.rect(3, b - 21, 10, 5, IRON[1]!);
+  for (let x = 4; x < 12; x += 2) img.vline(x, b - 21, b - 17, IRON[3]!);
+  img.hline(2, 13, b - 21, IRON[3]!);
+  // coals + flame
+  img.rect(4, b - 23, 8, 2, '#5a1e10');
+  for (let x = 5; x < 11; x++) img.set(x, b - 23, x % 2 ? '#e0662a' : '#a8341c');
+  flame(img, 8, b - 24, true);
+  flame(img, 6, b - 23, false);
+  flame(img, 10, b - 23, false);
+  img.set(8, b - 28, '#ffe9a0');
+  img.set(7, b - 27, '#ffb43a');
+  img.outline({ darken: 0.5 });
+}
+function banner(img: Img) {
+  shadow(img, 8, img.h - 2, 4, 1.2, 0.4);
+  const b = img.h - 2;
+  for (let y = 4; y < b; y++) {
+    img.set(7, y, IRON[3]!);
+    img.set(8, y, IRON[1]!);
+  }
+  img.rect(5, b - 2, 6, 2, IRON[1]!);
+  img.rect(2, 5, 12, 1, IRON[2]!); // cross bar
+  img.set(7, 3, BRASS3[2]!);
+  img.set(8, 3, BRASS3[1]!);
+  // cloth with swallowtail
+  for (let y = 6; y < 30; y++)
+    for (let x = 3; x < 13; x++) {
+      if (y > 25 && Math.abs(x - 7.5) < (y - 25) * 1.2) continue;
+      img.set(x, y, x < 5 ? '#806184' : x > 10 ? '#30243f' : '#574064');
+    }
+  // broken-hour ring motif
+  for (let a = 0; a < 16; a++) {
+    if (a === 4) continue;
+    const ang = (a / 16) * Math.PI * 2;
+    img.set(Math.round(8 + Math.cos(ang) * 3), Math.round(15 + Math.sin(ang) * 3), BRASS3[2]!);
+  }
+  img.set(8, 15, BRASS3[1]!);
+  img.outline({ darken: 0.5 });
+}
+const BRASS3 = ['#665032', '#a38348', '#d5b56a'];
+
+// Raised two-step round stone dais around the clock-tower base (flat: drawn under characters).
+// 176x144, centred on the voting-circle centre (sprite (88,72) = world (776,760)); the lower step
+// stays inside the chapter ring of the clock-face mosaic, the upper step carries the tower, the
+// door and the two braziers. Concentric slab courses, radial joints, lit rims, south faces.
+function dais(img: Img) {
+  const stone = ['#353442', '#505061', '#747383', '#a39dab'];
+  const cx = 88;
+  const tier = (cy: number, rx: number, ry: number, face: number, lit: string, courses: number, seed: number) => {
+    const inside = (x: number, y: number) => ((x + 0.5 - cx) / rx) ** 2 + ((y + 0.5 - cy) / ry) ** 2 < 1;
+    for (let y = 0; y < img.h; y++)
+      for (let x = 0; x < img.w; x++) {
+        const dx = x + 0.5 - cx;
+        const dy = y + 0.5 - cy;
+        const e = Math.sqrt((dx / rx) ** 2 + (dy / ry) ** 2);
+        if (e < 1) {
+          // top surface: concentric courses of slabs
+          const ring = Math.floor(e * courses);
+          const a = (Math.atan2(dy / ry, dx / rx) + Math.PI) / (2 * Math.PI);
+          const n = 8 + ring * 6;
+          const seg = a * n + (ring % 2) * 0.5;
+          const jointR = Math.abs(e * courses - Math.round(e * courses)) * Math.min(rx, ry) / courses < 0.55 && ring > 0;
+          const jointA = Math.abs(seg - Math.round(seg)) * (2 * Math.PI * e * Math.min(rx, ry)) / n < 0.5;
+          // one flat tone per slab (no dithering): body, a lighter and a darker variant
+          const h = hash(ring, Math.floor(seg), seed);
+          let c = col(h < 0.22 ? mix(lit, stone[1]!, 0.45) : h > 0.84 ? mix(lit, stone[3]!, 0.25) : lit);
+          if (jointR || jointA) c = col(stone[0]!);
+          if (e > 1 - 1.5 / Math.min(rx, ry)) c = col((dx * -0.62 + dy * -0.78) / Math.hypot(dx, dy) > -0.2 ? stone[3]! : stone[2]!);
+          img.set(x, y, c);
+          continue;
+        }
+        let k = 0;
+        for (let j = 1; j <= face; j++)
+          if (inside(x, y - j)) {
+            k = j;
+            break;
+          }
+        if (k) img.set(x, y, k === face ? stone[0]! : (x + (k > face / 2 ? 3 : 0)) % 9 === 0 ? stone[0]! : stone[1]!);
+      }
+  };
+  tier(72, 86, 62, 6, '#625f70', 4, 7);
+  tier(68, 62, 46, 4, '#6e6c7d', 3, 8);
+}
+
 const DRAW: Record<string, Draw> = {
+  dais,
+  brazier,
+  banner,
   oak: (i) => oakTree(i, false, 11),
   oak2: (i) => oakTree(i, true, 12),
   pine: (i) => pineTree(i, 4, 21),
@@ -1214,14 +1445,14 @@ const DRAW: Record<string, Draw> = {
   bedwide: (i) => bed(i, true, 3),
   nightstand,
   table: (i) => table(i, false),
-  roundtable: (i) => table(i, true),
+  roundtable: (i) => table(i, true, 'candle'),
   chair,
   stool,
   wardrobe,
   bookshelf,
   chest,
   fireplace,
-  wallshelf,
+  wallshelf: (i) => wallshelf(i),
   window: windowInterior,
   stainedglass: stainedGlass,
   plant,
@@ -1232,22 +1463,24 @@ const DRAW: Record<string, Draw> = {
   rug_long: (i) => rug(i, CLOTH.red!, true),
   bar,
   kegs,
-  pew,
+  pew: (i) => pew(i),
   altar,
   candelabra,
-  gears,
+  gears: gearTrain,
   bellrope,
   ladder,
   counter,
-  shopshelf,
+  shopshelf: (i) => shopshelf(i),
   sacks,
   doormat,
+  ...EXTRA_DRAW,
 };
 
 /** All prop frames: name -> image. Fence/iron produce 16 auto-connect frames each. */
 export function drawProps(): Map<string, Img> {
   const out = new Map<string, Img>();
   for (const [kind, def] of Object.entries(PROP_DEFS)) {
+    if (EGG_KINDS.has(kind)) continue; // CMU eggs bring their own PNGs (src/eggs, EGG_SPRITES)
     if (kind === 'fence' || kind === 'iron') {
       for (let m = 0; m < 16; m++) {
         const img = new Img(def.w, def.h);
@@ -1268,6 +1501,25 @@ export function drawProps(): Map<string, Img> {
     bed(a, false, s);
     out.set(`bed_${s}`, a);
   }
+  // Interior furniture variants (frame overrides; same size as their kind).
+  const variant = (name: string, kind: string, fn: Draw) => {
+    const d = PROP_DEFS[kind]!;
+    const im = new Img(d.w, d.h);
+    fn(im);
+    out.set(name, im);
+  };
+  for (const it of ['meal', 'craft', 'papers'] as const) variant(`table_${it}`, 'table', (i) => table(i, false, it));
+  for (const it of ['meal', 'mugs', 'mugs2', 'clear'] as const) variant(`roundtable_${it}`, 'roundtable', (i) => table(i, true, it));
+  variant('wallshelf_sparse', 'wallshelf', (i) => wallshelf(i, true));
+  variant('shopshelf_sparse', 'shopshelf', (i) => shopshelf(i, true));
+  variant('pew_repaired', 'pew', (i) => pew(i, 'repaired'));
+  variant('pew_cloth', 'pew', (i) => pew(i, 'cloth'));
+  variant('bedwide_1', 'bedwide', (i) => bed(i, true, 1));
+  variant('bedwide_2', 'bedwide', (i) => bed(i, true, 2));
+  for (const [name, [kind, fn]] of Object.entries(EXTRA_FRAMES)) variant(name, kind, fn);
+  // High-use outdoor variants derived from their base frames. generate.ts should call
+  // deriveVariants() again after AI remasters so the variants follow the remastered art.
+  deriveVariants(out);
   return out;
 }
 

@@ -1,4 +1,6 @@
 import type { BuildingDef, BuildingKind, TilePoint, TileRect, TownLayout } from '@ct/protocol';
+import { EGG_PROP_DEFS, EGG_PROPS, EGG_STRUCTURES } from './eggs/index.js';
+import { ARCH_PIERS, FG_PROP_DEFS, FOREGROUND } from './foreground.js';
 
 // =========================================================================================
 // HANDCRAFTED TOWN — "Hollowmere" (world-art)
@@ -83,6 +85,15 @@ export const PROP_DEFS: Record<string, PropDef> = {
   waterfall: { w: 64, h: 64, col: null },
   // town furniture
   lamp: { w: 16, h: 48, col: one, light: { dx: 8, dy: -40, r: 72, color: 'warm' } },
+  brazier: { w: 16, h: 32, col: one, light: { dx: 8, dy: -24, r: 64, color: 'fire' } },
+  dais: { w: 176, h: 144, col: null, flat: true },
+  // town-square showpiece (assets-square): carved kerb of the raised plaza, clock-face mosaic
+  // (chapter ring under the voting circle), the square fountain, archway piers
+  kerb: { w: 400, h: 400, col: null, flat: true },
+  mosaic: { w: 240, h: 240, col: null, flat: true },
+  plazafountain: { w: 48, h: 48, col: { x: 0, y: -1, w: 3, h: 2 } },
+  archpier: { w: 16, h: 40, col: one },
+  banner: { w: 16, h: 48, col: one },
   well: { w: 32, h: 40, col: { x: 0, y: -1, w: 2, h: 2 } },
   fountain: { w: 48, h: 40, col: { x: 0, y: -1, w: 3, h: 2 } },
   stall_red: { w: 48, h: 48, col: { x: 0, y: -1, w: 3, h: 2 } },
@@ -115,7 +126,8 @@ export const PROP_DEFS: Record<string, PropDef> = {
   bedwide: { w: 32, h: 32, col: { x: 0, y: -1, w: 2, h: 2 } },
   nightstand: { w: 16, h: 24, col: one, light: { dx: 8, dy: -18, r: 40, color: 'fire' } },
   table: { w: 32, h: 24, col: { x: 0, y: 0, w: 2, h: 1 } },
-  roundtable: { w: 32, h: 24, col: { x: 0, y: 0, w: 2, h: 1 } },
+  // round tables carry a candle: a small warm pool (cozy tavern/cottage interiors at night)
+  roundtable: { w: 32, h: 24, col: { x: 0, y: 0, w: 2, h: 1 }, light: { dx: 16, dy: -14, r: 40, color: 'fire' } },
   chair: { w: 16, h: 24, col: one },
   stool: { w: 16, h: 16, col: one },
   wardrobe: { w: 32, h: 40, col: { x: 0, y: 0, w: 2, h: 1 } },
@@ -143,7 +155,45 @@ export const PROP_DEFS: Record<string, PropDef> = {
   shopshelf: { w: 48, h: 40, col: { x: 0, y: 0, w: 3, h: 1 } },
   sacks: { w: 32, h: 24, col: { x: 0, y: 0, w: 2, h: 1 } },
   doormat: { w: 16, h: 16, col: null, flat: true },
+  // domestic kit (lived-in interiors; mostly non-colliding small decor)
+  boots: { w: 16, h: 16, col: null },
+  coatstand: { w: 16, h: 32, col: one },
+  blanket: { w: 16, h: 16, col: null },
+  basket: { w: 16, h: 16, col: null },
+  broom: { w: 16, h: 32, col: null },
+  books: { w: 16, h: 16, col: null },
+  woodpile: { w: 16, h: 16, col: null },
+  workbench: { w: 32, h: 24, col: { x: 0, y: 0, w: 2, h: 1 } },
+  oilcan: { w: 16, h: 16, col: null },
+  parcels: { w: 32, h: 24, col: { x: 0, y: 0, w: 2, h: 1 } },
+  floorpatch: { w: 16, h: 16, col: null, flat: true },
+  cupboard: { w: 16, h: 32, col: one },
+  votive: { w: 16, h: 24, col: one, light: { dx: 8, dy: -12, r: 40, color: 'fire' } }, // candle niche
+  // town structure landmarks (docs/art-direction.md "Town structure proposals")
+  bellcradle: { w: 48, h: 48, col: { x: 0, y: -1, w: 3, h: 2 } },
+  plaque: { w: 16, h: 24, col: one },
+  rainbarrel: { w: 16, h: 32, col: one },
+  runnel: { w: 16, h: 16, col: null, flat: true },
+  herbs: { w: 16, h: 16, col: null },
+  stepstone: { w: 16, h: 16, col: null, flat: true },
+  memorialgate: { w: 48, h: 64, col: null },
+  yew: { w: 32, h: 48, col: { x: 0, y: 0, w: 2, h: 1 } },
+  gravebed: { w: 16, h: 16, col: null, flat: true },
+  landing: { w: 32, h: 32, col: null, flat: true },
+  mendstool: { w: 16, h: 16, col: null },
+  dryingnet: { w: 32, h: 32, col: { x: 0, y: 0, w: 2, h: 1 } },
+  pottingshelf: { w: 16, h: 32, col: one },
+  levelpost: { w: 16, h: 40, col: one },
+  kiosk: { w: 32, h: 48, col: { x: 0, y: 0, w: 2, h: 1 } },
+  sheaves: { w: 16, h: 24, col: null },
+  stubble: { w: 16, h: 16, col: null, flat: true },
 };
+
+// Foreground-layer kinds (src/foreground.ts): non-colliding, packed into the atlas like any prop.
+for (const [kind, def] of Object.entries(FG_PROP_DEFS)) {
+  if (PROP_DEFS[kind]) throw new Error(`foreground kind ${kind} clashes with a town prop`);
+  PROP_DEFS[kind] = def;
+}
 
 export interface MapObject {
   kind: string;
@@ -294,7 +344,7 @@ for (let y = 0; y < TOWN_H; y++) {
 // 2. Streets
 // =========================================================================================
 
-const SQ = { cx: 48, cy: 48, r: 11.5 };
+const SQ = { cx: 48, cy: 48, r: 9.5 };
 
 // Main east-west road and the north/south road (3 wide cobbles).
 for (let x = 2; x < 95; x++) for (let y = 47; y <= 49; y++) put(x, y, get(x, y) === G.water ? G.bridge : G.cobble);
@@ -336,6 +386,11 @@ for (let i = 36; i <= 60; i++) {
 
 // Well courtyard north-west of the square.
 rect(36, 23, 8, 7, G.cobble);
+// Continuous streets frame the square; avoid isolated buildings sitting in lawn wedges.
+rect(36, 32, 9, 16, G.cobble);
+rect(51, 32, 10, 16, G.cobble);
+rect(36, 50, 8, 9, G.cobble);
+rect(53, 50, 8, 9, G.cobble);
 // Smithy yard south-east of the square.
 rect(52, 61, 8, 5, G.gravel);
 // Little park south-west of the square.
@@ -367,11 +422,29 @@ for (const [x, y, w, h] of [
   [24, 17, 6, 1],
 ] as const) {
   rect(x, y, w, h, G.soil);
-  for (let i = x; i < x + w; i++) decal(i, y, ['flowers_red', 'flowers_violet', 'flowers_white'][(i + y) % 3]!);
+  // one gap and one differently planted corner per bed
+  for (let i = x; i < x + w; i++) if (i !== x + 2 && !(y === 17 && i >= 28)) decal(i, y, ['flowers_red', 'flowers_violet', 'flowers_white'][(i + y) % 3]!);
 }
+// Garden's missing corner: the SE hedge end becomes a curved herb bed, a potting shelf and two
+// stepping stones (the fountain axis and the boundary stay formal).
+rect(28, 17, 3, 2, G.grass);
+for (const [x, y] of [
+  [28, 17],
+  [29, 17],
+  [30, 17],
+  [30, 18],
+] as const)
+  put(x, y, G.soil);
+obj('herbs', 28, 17, { frame: 'herbs3' });
+obj('herbs', 29, 17);
+obj('herbs', 30, 17, { frame: 'herbs2' });
+obj('herbs', 30, 18);
+obj('stepstone', 28, 18);
+obj('stepstone', 29, 19);
+obj('pottingshelf', 31, 17);
 obj('fountain', 19, 15);
 obj('bench', 10, 16);
-obj('bench', 26, 16);
+obj('bench', 26, 16, { frame: 'bench_r' });
 obj('oak2', 28, 11);
 obj('bush', 9, 19);
 obj('bushberry', 31, 19);
@@ -386,11 +459,12 @@ for (let y = 11; y <= 20; y++) {
   obj('iron', 56, y);
   obj('iron', 75, y);
 }
-// open the gate at (64,21)
-objects.splice(
-  objects.findIndex((o) => o.kind === 'iron' && o.x === 64 && o.y === 21),
-  1,
-);
+// open the gate at (64,21); the rails beside it become the memorial gate's stone piers
+for (const gx of [63, 64, 65])
+  objects.splice(
+    objects.findIndex((o) => o.kind === 'iron' && o.x === gx && o.y === 21),
+    1,
+  );
 rect(57, 11, 18, 10, G.forest);
 rect(64, 11, 1, 10, G.dirt);
 rect(57, 15, 18, 1, G.dirt);
@@ -399,6 +473,7 @@ for (const gy of [12, 14, 17, 19]) {
     if (gx === 64) continue;
     if (gx >= 67 && gy <= 14) continue; // crypt
     if (gx >= 60 && gx <= 62 && gy <= 14) continue; // angel statue
+    if (gx === 58 && gy >= 17) continue; // mourning yew
     const v = hash2(gx, gy, 9);
     obj(v < 0.4 ? 'grave1' : v < 0.75 ? 'grave2' : 'grave3', gx, gy);
   }
@@ -407,34 +482,78 @@ obj('crypt', 69, 13);
 obj('angel', 61, 13);
 obj('deadtree', 70, 18);
 obj('deadtree', 77, 14);
-obj('lamp', 63, 22);
+obj('lamp', 62, 22); // beside (not in front of) the memorial gate pier
+// Chapel memorial gate: two narrow stone piers + an iron arch over the unchanged 1-tile opening,
+// a mourning yew inside the rails and one tended grave with fresh planting.
+obj('memorialgate', 63, 21);
+extraBlocked.push({ x: 63, y: 21 }, { x: 65, y: 21 });
+obj('yew', 57, 19);
+obj('gravebed', 66, 20);
 
 // --- Well courtyard ----------------------------------------------------------------------
 obj('well', 39, 27);
 obj('bench', 36, 24);
-obj('bench', 42, 24);
-obj('barrel', 43, 28);
+obj('bench', 42, 24, { frame: 'bench_r' });
+obj('barrel', 43, 28, { frame: 'barrel_o' });
 obj('noticeboard', 36, 28);
 
 // --- Square furniture ---------------------------------------------------------------------
-obj('stall_red', 39, 43);
-obj('stall_green', 55, 43);
-obj('stall_blue', 39, 54);
-obj('stall_gold', 55, 54);
-obj('bench', 43, 52);
-obj('bench', 52, 52);
-obj('barrel', 42, 43);
-obj('crates', 58, 54);
+// The heart of the town: a raised round plaza (carved kerb with a stone face on its south half),
+// a clock-face mosaic whose chapter ring lies exactly under the voting circle (protocol
+// circleCentre/circleRadii: centre (776,760) px, rx 104, ry 92; seat 1 stands at XII), a round
+// two-step dais carrying the clock tower, its door and braziers, and the fountain on the south
+// axis between the circle and the bunting-hung south entrance. Flats never overlap each other
+// (kerb ring r 177..190 around (776,776), mosaic band rx 95..115, dais rx <= 86), so their draw
+// order does not matter. Everything that collides stays outside the mosaic band.
+obj('kerb', 38.5, 57.5); // compact 320px artwork, centred on the gathering floor
+obj('mosaic', 45.5, 49.5); // small quiet inlay; voters use the open paving around it
+obj('plazafountain', 53, 38); // north of the gathering, clear of both horseshoe ends
+// Layered foliage frames the receding lanes without fencing their walkable approaches.
+obj('fruittree', 42, 37);
+obj('oak2', 53, 34);
+obj('bushberry', 44, 38);
+obj('bushberry', 52, 38);
+obj('plant', 45, 43);
+obj('plant', 51, 43);
+// fire braziers flanking the clock-tower and chapel doors; banners where the roads enter the square
+obj('brazier', 44, 41);
+obj('brazier', 52, 41);
+obj('brazier', 46, 20);
+obj('brazier', 50, 20);
+for (const [x, y] of [
+  [46, 36],
+  [50, 36],
+  [46, 60],
+  [50, 60],
+  [36, 46],
+  [36, 50],
+  [60, 46],
+  [60, 50],
+] as const)
+  obj('banner', x, y);
+obj('stall_red', 35, 51);
+obj('stall_green', 54, 36);
+obj('stall_blue', 35, 56);
+obj('stall_gold', 57, 58);
+// benches facing the tower from the south arc (either side of the fountain), one under the NE lamps
+obj('bench', 43, 57);
+obj('bench', 52, 57, { frame: 'bench_r' });
+obj('bench', 52, 39);
+obj('barrel', 42, 42);
+obj('crates', 62, 56);
+// archways: stone piers (the spans are foreground, src/foreground.ts)
+for (const p of ARCH_PIERS) obj('archpier', p.x, p.y);
 
 // --- Smithy yard, park, alleys -------------------------------------------------------------
 obj('anvil', 53, 62);
 obj('cart', 56, 63);
 obj('haystack', 52, 64);
-obj('barrel', 59, 62);
+obj('barrel', 59, 62, { frame: 'barrel_o' }); // quench barrel
+obj('sacks', 58, 61 + 4);
 obj('oak', 38, 61);
-obj('bench', 40, 64);
+obj('bench', 40, 64, { frame: 'bench_r' });
 obj('bush', 44, 62);
-obj('crates', 32, 44);
+obj('crates', 32, 44, { frame: 'crates2' }); // tavern stores
 obj('barrel', 32, 43);
 obj('barrel', 19, 37);
 
@@ -447,18 +566,35 @@ obj('willow', 22, 84);
 for (const [x, y] of [
   [10, 75],
   [11, 82],
-  [20, 74],
   [23, 79],
   [14, 83],
+  // crescent outside the mending landing
+  [21, 75],
+  [22, 76],
 ]) {
   obj('reeds', x!, y!);
 }
+// Pond mending place: a short timber landing off the dirt approach, a repair stool, a drying net.
+put(18, 73, G.dirt);
+obj('landing', 19, 75); // reaches over the water
+obj('mendstool', 21, 73);
+obj('dryingnet', 21, 71);
 obj('rock', 9, 80);
 obj('bigrock', 24, 75);
 
 // --- Windmill meadow (south) ------------------------------------------------------------------
 rect(27, 71, 15, 15, G.soil);
-for (let y = 71; y < 86; y++) for (let x = 27; x < 42; x++) decal(x, y, (y & 1) === 0 ? 'wheat' : 'wheat2');
+// a narrow work aisle and two harvested (stubble) patches break the crop rows
+rect(31, 71, 1, 9, G.dirt);
+const harvested = (x: number, y: number) => (x >= 38 && x <= 40 && y >= 71 && y <= 73) || (x >= 27 && x <= 29 && y >= 83 && y <= 85) || (x === 30 && y === 84);
+for (let y = 71; y < 86; y++)
+  for (let x = 27; x < 42; x++) {
+    if (harvested(x, y)) obj('stubble', x, y);
+    else decal(x, y, (y & 1) === 0 ? 'wheat' : 'wheat2');
+  }
+obj('sheaves', 39, 72);
+obj('sheaves', 38, 73);
+obj('sheaves', 28, 84);
 rect(33, 80, 4, 3, G.grass);
 rect(34, 83, 1, 3, G.dirt);
 rect(34, 86, 13, 1, G.dirt);
@@ -486,8 +622,9 @@ rect(57, 80, 24, 1, G.dirt);
 for (const by of [73, 76]) {
   rect(62, by, 9, 2, G.soil);
   for (let x = 62; x < 71; x++) {
+    if (by === 76 && x === 66) continue; // a lifted gap
     decal(x, by, by === 73 ? 'cabbage' : 'carrots');
-    decal(x, by + 1, by === 73 ? 'cabbage' : 'carrots');
+    if (!(by === 73 && x >= 69)) decal(x, by + 1, by === 73 ? 'cabbage' : 'carrots');
   }
 }
 rect(57, 73, 2, 6, G.soil);
@@ -498,8 +635,10 @@ obj('pumpkins', 72, 77);
 obj('pumpkins', 61, 78);
 for (let y = 74; y <= 86; y += 4) for (let x = 73; x <= 79; x += 3) obj('fruittree', x, y + ((x / 3) & 1));
 obj('shed', 58, 86);
+// storage grouped by the shed door
 obj('sacks', 63, 86);
-obj('barrel', 65, 85);
+obj('barrel', 65, 86, { frame: 'barrel_o' });
+obj('crates', 63, 85, { frame: 'crates2' });
 
 // --- Southern town wall and gate ---------------------------------------------------------------
 for (let x = 5; x <= 81; x++) if (x < 46 || x > 50) if (get(x, 90) !== G.water) put(x, 90, G.wall);
@@ -582,13 +721,13 @@ const houseFootprints: { fp: TileRect; doorX: number; style: BuildingStyle }[] =
   { fp: { x: 67, y: 25, w: 5, h: 5 }, doorX: 69, style: S('moss', 'planks', 'side', 'right', '#5b2f4f', true, false, 4) },
   // middle row (doors on the main road, y = 47)
   { fp: { x: 8, y: 41, w: 6, h: 6 }, doorX: 10, style: S('blue', 'plaster', 'cross', 'right', '#7a3a1e', true, true, 5) },
-  { fp: { x: 62, y: 41, w: 6, h: 6 }, doorX: 64, style: S('red', 'timber', 'side', 'left', '#2f4f4f', false, true, 6) },
+  { fp: { x: 56, y: 39, w: 6, h: 8 }, doorX: 58, style: S('red', 'timber', 'side', 'left', '#2f4f4f', false, true, 6) },
   { fp: { x: 71, y: 41, w: 6, h: 6 }, doorX: 73, style: S('slate', 'brick', 'cross', 'none', '#6b5a2f', true, false, 7) },
   // south row (doors on the south lane, y = 66)
   { fp: { x: 7, y: 60, w: 6, h: 6 }, doorX: 9, style: S('thatch', 'timber', 'side', 'right', '#4a2f6b', true, false, 8) },
   { fp: { x: 17, y: 60, w: 5, h: 6 }, doorX: 19, style: S('moss', 'stone', 'side', 'left', '#6b2f2f', false, true, 9) },
-  { fp: { x: 26, y: 59, w: 7, h: 7 }, doorX: 29, style: S('plum', 'plaster', 'cross', 'right', '#2f5a6b', true, true, 10) },
-  { fp: { x: 62, y: 60, w: 6, h: 6 }, doorX: 64, style: S('blue', 'planks', 'side', 'right', '#7a3a1e', true, false, 11) },
+  { fp: { x: 32, y: 59, w: 7, h: 7 }, doorX: 35, style: S('plum', 'plaster', 'cross', 'right', '#2f5a6b', true, true, 10) },
+  { fp: { x: 58, y: 60, w: 6, h: 6 }, doorX: 60, style: S('blue', 'planks', 'side', 'right', '#7a3a1e', true, false, 11) },
   { fp: { x: 71, y: 60, w: 7, h: 6 }, doorX: 74, style: S('red', 'stone', 'cross', 'left', '#3f5a3a', false, true, 12) },
   // east bank (across the river)
   { fp: { x: 89, y: 41, w: 6, h: 6 }, doorX: 91, style: S('slate', 'planks', 'side', 'left', '#5b2f4f', true, true, 13) },
@@ -611,8 +750,10 @@ specs.push(
     kind: 'tavern',
     name: 'The Hanged Lantern',
     houseIndex: null,
-    fp: { x: 21, y: 39, w: 11, h: 8 },
-    doorX: 26,
+    // Leave a full body-width approach beside the western voting arc. At x=31 the
+    // facade pushed legal seat points onto its corner with no safe route clearance.
+    fp: { x: 30, y: 37, w: 11, h: 10 },
+    doorX: 35,
     style: S('red', 'timber', 'cross', 'left', '#6b2f2f', true, true, 20),
     interior: { x: 98, y: 33, w: 18, h: 12 },
   },
@@ -631,7 +772,7 @@ specs.push(
     kind: 'clocktower',
     name: 'The Clocktower',
     houseIndex: null,
-    fp: { x: 46, y: 44, w: 5, h: 5 },
+    fp: { x: 46, y: 39, w: 5, h: 5 },
     doorX: 48,
     style: S('slate', 'stone', 'side', 'none', '#3a2a1e', false, true, 22),
     interior: { x: 133, y: 33, w: 9, h: 10 },
@@ -665,65 +806,141 @@ function furnisher(r: TileRect, mirror: boolean) {
   };
 }
 
+type Place = [kind: string, dx: number, dy: number, frame?: string];
+
+/**
+ * Cottages: three purposeful clusters (rest / work / storage) plus signs of recent use (unmade
+ * bed, a meal or craft left on the table, boots and a coat by the door). Three floor plans,
+ * mirrored per household, with per-house furniture, table items and colours, so no two rooms
+ * match. A 2-tile route runs from the interior door; beds and visit points keep 1 tile clear.
+ */
 function furnishHouse(sp: Spec): { bed: TilePoint; visitPoint: TilePoint } {
   const r = sp.interior;
   const i = sp.houseIndex!;
+  const plan = i % 3;
   const mirror = (i & 1) === 1;
   const f = furnisher(r, mirror);
   const mx = (dx: number) => (mirror ? r.x + r.w - 1 - dx : r.x + dx);
-  // wall decorations (sit on the 2-row wall face)
-  f('fireplace', 5, 1);
-  f('window', 2, 1);
-  f('window', 8, 1);
-  f(i % 3 === 0 ? 'wallshelf' : 'window', 3, 1);
-  // bed in the corner with a nightstand + candle
-  if (i % 4 === 2) f('bedwide', 1, 3);
-  else f('bed', 1, 3, { frame: `bed_${i % 5}` }); // blanket colour varies per cottage
-  f('nightstand', i % 4 === 2 ? 3 : 2, 2);
-  f(['rug_red', 'rug_blue', 'rug_green'][i % 3]!, 4, 6);
-  f(i % 2 === 0 ? 'table' : 'roundtable', 5, 4);
-  f('chair', 4, 4);
-  f('chair', 7, 4);
-  f(i % 3 === 1 ? 'bookshelf' : i % 3 === 2 ? 'loom' : 'wardrobe', 8, 2);
-  f('chest', 9, 6);
-  f('plant', 1, 7);
-  if (i % 2 === 0) f('barrel', 9, 7);
-  f('doormat', Math.floor(r.w / 2), 7);
-  const bedCol = i % 4 === 2 ? 3 : 2;
+  const pick = <T,>(xs: readonly T[], k: number) => xs[k % xs.length]!;
+  const rug = pick(['rug_red', 'rug_blue', 'rug_green'], i);
+  const tableItems = pick(['table_meal', 'table_papers', 'table_craft', 'table_meal', 'table'], i >> 1);
+  const roundItems = pick(['roundtable_meal', 'roundtable_mugs', 'roundtable', 'roundtable_meal'], i >> 1);
+  const tall = (i >> 1) % 2 === 0 ? 'wardrobe' : 'bookshelf';
+  const P: Place[] = [];
+  let bedCol = 2;
+  if (plan === 0) {
+    // hearth & family table; bed in the corner, wardrobe and chest along the far wall
+    P.push(
+      ['fireplace', 5, 1],
+      ['window', 2, 1],
+      ['window', 8, 1],
+      ['bed', 1, 3, `bed_${i % 5}`],
+      ['nightstand', 2, 2],
+      ['blanket', 1, 4],
+      ['woodpile', 7, 2],
+      ['broom', 4, 2],
+      [rug, 4, 6],
+      ['table', 5, 4, tableItems],
+      ['chair', 4, 4],
+      ['chair', 7, 4],
+      [tall, 8, 2],
+      ['chest', 9, 4],
+      i % 2 === 0 ? ['barrel', 9, 5] : ['basket', 9, 5],
+      ['coatstand', 3, 7],
+      ['boots', 4, 7],
+      ['plant', 1, 7],
+    );
+    if (i % 2 === 0) P.push(['wallshelf', 3, 1]);
+  } else if (plan === 1) {
+    // workroom: a craft bench under the window, round table by the hearth, shelves and chest
+    const work = pick(['loom', 'workbench', 'loom', 'workbench_cobbler', 'workbench'], Math.floor(i / 3));
+    P.push(
+      ['fireplace', 6, 1],
+      ['window', 2, 1],
+      ['window', 4, 1],
+      ['bed', 1, 3, `bed_${i % 5}`],
+      ['nightstand', 2, 2],
+      ['basket', 3, 2],
+      [rug, 3, 7],
+      work === 'workbench_cobbler' ? ['workbench', 1, 6, 'workbench_cobbler'] : [work, 1, 6],
+      ['stool', 3, 6],
+      [work === 'loom' ? 'basket' : 'oilcan', 1, 5],
+      ['roundtable', 7, 4, roundItems],
+      ['stool', 6, 4],
+      ['chair', 9, 4],
+      [tall === 'wardrobe' ? 'bookshelf' : 'wardrobe', 8, 2],
+      ['chest', 9, 6],
+      ['books', 9, 5],
+      ['coatstand', 7, 7],
+      ['boots', 6, 7],
+    );
+  } else {
+    // snug: wide bed, table by the fire, storage by the door, a shelf of crockery
+    bedCol = 3;
+    const weaver = sp.id === 'house-2';
+    P.push(
+      ['fireplace', 6, 1],
+      ['window', 2, 1],
+      ['window', 4, 1],
+      ['bedwide', 1, 3, pick(['bedwide', 'bedwide_1', 'bedwide_2'], i >> 1)],
+      ['nightstand', 3, 2],
+      ['blanket', 2, 4],
+      ['woodpile', 5, 2],
+      [rug, 5, 7],
+      ['table', 6, 4, weaver ? 'table_craft' : tableItems],
+      ['chair', 5, 4],
+      ['chair', 8, 4],
+      ['chest', 1, 6],
+      i % 2 === 0 ? ['barrel', 1, 7] : ['basket', 1, 7],
+      ['coatstand', 3, 7],
+      ['boots', 4, 7],
+    );
+    if (weaver) P.push(['loom', 8, 6], ['basket', 9, 5]);
+    else P.push([tall, 8, 2], ['books', 9, 5], ['plant', 9, 7]);
+    if (!weaver && tall === 'bookshelf') P.push(['broom', 9, 6]);
+  }
+  P.push(['doormat', Math.floor(r.w / 2), 7]);
+  for (const [k, dx, dy, frame] of P) f(k, dx, dy, frame ? { frame } : {});
   return { bed: { x: mx(bedCol), y: r.y + 3 }, visitPoint: { x: mx(bedCol + 1), y: r.y + 3 } };
 }
 
+/** Tavern: bar (work), stocked/partly empty shelves and a storage corner, offset tables (some with
+ *  used mugs), a replaced patch of boards beside the bar end. */
 function furnishTavern(r: TileRect) {
   const f = furnisher(r, false);
   f('fireplace', 13, 1);
-  f('window', 3, 1);
   f('window', 9, 1);
-  f('wallshelf', 1, 1);
-  f('wallshelf', 6, 1);
+  f('wallshelf', 7, 1);
+  f('wallshelf', 15, 1, { frame: 'wallshelf_sparse' });
   f('bar', 1, 3);
   f('kegs', 1, 2);
   f('kegs', 4, 2);
   f('stool', 2, 4);
   f('stool', 4, 4);
   f('stool', 6, 4);
-  for (const [x, y] of [
-    [10, 4],
-    [14, 4],
-    [3, 7],
-    [10, 8],
-    [14, 8],
-  ]) {
-    f('roundtable', x!, y!);
-    f('stool', x! - 1, y!);
-    f('stool', x! + 2, y!);
+  f('floorpatch', 7, 3);
+  f('broom', 7, 2);
+  for (const [x, y, frame, seats] of [
+    [10, 4, 'roundtable_mugs', [-1, 2]],
+    [14, 6, 'roundtable_clear', [-1, 2]],
+    [3, 7, 'roundtable_mugs2', [-1, 2]],
+    [11, 8, 'roundtable', [-1]],
+  ] as [number, number, string, number[]][]) {
+    f('roundtable', x, y, { frame });
+    for (const s of seats) f('stool', x + s, y);
   }
   f('rug_red', 6, 9);
-  f('barrel', 16, 9);
+  // storage corner
+  f('barrel', 16, 9, { frame: 'barrel_o' });
   f('barrel', 16, 10);
+  f('crates', 14, 10, { frame: 'crates2' });
   f('barrel', 1, 10);
+  f('sacks', 2, 10);
   f('doormat', Math.floor(r.w / 2), 10);
 }
 
+/** Chapel: altar and aisle kept clear; candle stubs, a maintenance cupboard with folded cloth,
+ *  one repaired pew. */
 function furnishChapel(r: TileRect) {
   const f = furnisher(r, false);
   const mid = Math.floor(r.w / 2);
@@ -735,37 +952,47 @@ function furnishChapel(r: TileRect) {
   f('altar', mid - 1, 3);
   f('candelabra', mid - 3, 3);
   f('candelabra', mid + 3, 3);
+  f('cupboard', 1, 2);
+  f('votive', 11, 4);
+  f('votive', 1, 4); // a second candle niche: warm pools along both walls of the nave at night
   for (let y = 6; y <= 10; y += 2) {
-    f('pew', 1, y);
-    f('pew', mid + 2, y);
+    f('pew', 1, y, y === 8 ? { frame: 'pew_repaired' } : {});
+    f('pew', mid + 2, y, y === 6 ? { frame: 'pew_cloth' } : {});
   }
   f('plant', 1, 12);
   f('plant', r.w - 2, 12);
 }
 
+/** Clock tower: the gear train on timber supports with its axle and rope drum, a maintenance
+ *  bench with an oil can, storage by the wall, a free ladder foot. */
 function furnishClocktower(r: TileRect) {
   const f = furnisher(r, false);
   f('gears', 1, 3);
-  f('bellrope', 6, 2);
   f('ladder', 7, 1);
   f('window', 4, 1);
+  f('workbench', 5, 2);
+  f('oilcan', 3, 4);
   f('chest', 7, 5);
+  f('crates', 1, 6, { frame: 'crates2' });
   f('barrel', 1, 7);
   f('candelabra', 7, 7);
-  f('crates', 1, 6);
 }
 
+/** Shop: mixed stock and a partly empty shelf, counter with ledger + wrapping space, deliveries
+ *  grouped by the storage corner. */
 function furnishShop(r: TileRect) {
   const f = furnisher(r, false);
   f('shopshelf', 1, 2);
-  f('shopshelf', 7, 2);
+  f('shopshelf', 7, 2, { frame: 'shopshelf_sparse' });
   f('window', 4, 1);
   f('window', 5, 1);
   f('counter', 3, 4);
-  f('sacks', 1, 6);
-  f('crates', 8, 6);
-  f('barrel', 9, 4);
   f('candelabra', 1, 4);
+  f('sacks', 1, 6);
+  f('basket', 1, 7);
+  f('barrel', 9, 4);
+  f('parcels', 8, 5);
+  f('crates', 8, 6);
   f('rug_blue', 3, 7);
   f('doormat', Math.floor(r.w / 2), 7);
 }
@@ -877,8 +1104,43 @@ const bushes: [string, number, number][] = [
   ['rock', 88, 69],
 ];
 for (const [k, x, y] of bushes) obj(k, x, y);
-obj('signpost', 45, 50);
+obj('signpost', 52, 60); // fingerpost at the square's south entrance (outside the plaza)
 obj('signpost', 80, 50);
+
+// --- Town structure proposals (docs/art-direction.md) -------------------------------------
+// Bell-founder's corner: a cracked bell on a low timber cradle + plaque on the square's NW
+// outer verge, outside the gathering ring.
+obj('bellcradle', 38, 39);
+obj('plaque', 41, 38);
+// Tavern rain garden (behind the tavern, off the dry front route): rain barrel, a stone runnel
+// draining into a soakaway in the herb bed, and a stepping-stone spur from the north lane.
+rect(26, 35, 3, 3, G.soil);
+obj('rainbarrel', 31, 36);
+obj('runnel', 30, 36);
+obj('runnel', 29, 36);
+obj('runnel', 28, 36, { frame: 'runnel_end' });
+for (const [x, y, fr] of [
+  [26, 35, 'herbs'],
+  [27, 35, 'herbs2'],
+  [28, 35, 'herbs3'],
+  [26, 36, 'herbs2'],
+  [26, 37, 'herbs3'],
+  [27, 37, 'herbs'],
+  [28, 37, 'herbs2'],
+] as const)
+  obj('herbs', x, y, fr === 'herbs' ? {} : { frame: fr });
+for (let y = 32; y <= 35; y++) obj('stepstone', 29, y);
+// Bridge address: a gravel recess on the west approach of the main bridge with a water-level
+// post and a compact noticeboard under a teal-slated cap (off the through-route).
+for (const [x, y] of [
+  [81, 50],
+  [82, 50],
+  [81, 51],
+  [82, 51],
+] as const)
+  if (get(x, y) !== G.water) put(x, y, G.gravel);
+obj('kiosk', 81, 50);
+obj('levelpost', 83, 51);
 
 // Streetlights (also exported in TownLayout.streetlights).
 const streetlights: TilePoint[] = [
@@ -928,23 +1190,92 @@ const streetlights: TilePoint[] = [
 ];
 for (const p of streetlights) obj('lamp', p.x, p.y);
 
-// Grass decals (flowers / tufts), placed on designed bands rather than everywhere.
-for (let y = 8; y < 92; y++)
-  for (let x = 4; x < 94; x++) {
-    if (get(x, y) !== G.grass) continue;
-    const h = hash2(x, y, 11);
-    if (h < 0.06) decal(x, y, 'tuft');
-    else if (h < 0.075) decal(x, y, 'tuft2');
-    else if (h < 0.085) decal(x, y, ['flowers_red', 'flowers_violet', 'flowers_white', 'flowers_yellow'][Math.floor(hash2(x, y, 12) * 4)]!);
-    else if (h < 0.09) decal(x, y, 'mushrooms');
+// Grass detail (tufts, flowers, mushrooms) in patches near walls, trees, fences and plot edges;
+// open lawns, doorsteps and the gathering square stay quiet. Flowers in one patch share a colour.
+{
+  const feature = new Uint8Array(MAP_W * MAP_H);
+  const mark = (x: number, y: number) => {
+    if (inMap(x, y)) feature[y * MAP_W + x] = 1;
+  };
+  for (const sp of specs) for (let y = sp.fp.y; y < sp.fp.y + sp.fp.h; y++) for (let x = sp.fp.x; x < sp.fp.x + sp.fp.w; x++) mark(x, y);
+  for (let y = 0; y < TOWN_H; y++) for (let x = 0; x < TOWN_W; x++) if ('wh^T'.includes(get(x, y))) mark(x, y);
+  const NATURE = new Set(['oak', 'oak2', 'pine', 'pinetall', 'deadtree', 'willow', 'fruittree', 'bush', 'bushberry', 'rock', 'bigrock', 'stump', 'fence', 'iron', 'yew', 'haystack']);
+  const treeTile = new Uint8Array(MAP_W * MAP_H);
+  for (const o of objects) {
+    const d = PROP_DEFS[o.kind];
+    if (!d?.col || !NATURE.has(o.kind)) continue;
+    for (let j = 0; j < d.col.h; j++)
+      for (let i = 0; i < d.col.w; i++) {
+        mark(o.x + d.col.x + i, o.y + d.col.y + j);
+        if (inMap(o.x + d.col.x + i, o.y + d.col.y + j)) treeTile[(o.y + d.col.y + j) * MAP_W + o.x + d.col.x + i] = o.kind === 'fence' || o.kind === 'iron' ? 0 : 1;
+      }
   }
+  const quiet = (x: number, y: number) => {
+    if (Math.hypot(x - SQ.cx, y - SQ.cy) < SQ.r + 2) return true;
+    return specs.some((sp) => Math.abs(x - sp.doorX) <= 1 && y >= sp.fp.y + sp.fp.h - 1 && y <= sp.fp.y + sp.fp.h + 2);
+  };
+  const near = (x: number, y: number, r: number, m: Uint8Array) => {
+    for (let j = -r; j <= r; j++) for (let i = -r; i <= r; i++) if (inMap(x + i, y + j) && m[(y + j) * MAP_W + x + i]) return true;
+    return false;
+  };
+  const FLOWERS = ['flowers_red', 'flowers_violet', 'flowers_white', 'flowers_yellow'];
+  for (let y = 8; y < 92; y++)
+    for (let x = 4; x < 94; x++) {
+      if (get(x, y) !== G.grass || quiet(x, y)) continue;
+      const patch = (hash2(x >> 2, y >> 2, 21) + hash2((x + 2) >> 2, (y + 1) >> 2, 22)) / 2;
+      const d = near(x, y, 1, feature) ? 1 : near(x, y, 2, feature) ? 2 : 3;
+      let p = d === 1 ? 0.42 : d === 2 ? 0.2 : 0.025;
+      p *= patch < 0.42 ? 1.5 : 0.25;
+      const h = hash2(x, y, 11);
+      if (h >= p) continue;
+      if (d <= 2 && near(x, y, 1, treeTile) && hash2(x, y, 24) < 0.18) decal(x, y, 'mushrooms');
+      else if (patch < 0.3 && d <= 2 && hash2(x, y, 25) < 0.55) decal(x, y, FLOWERS[Math.floor(hash2(x >> 3, y >> 3, 23) * 4)]!);
+      else decal(x, y, hash2(x, y, 26) < 0.7 ? 'tuft' : 'tuft2');
+    }
+}
 for (let y = 8; y < 92; y++)
   for (let x = 2; x < 94; x++) {
     const c = get(x, y);
-    if (c === G.cobble && hash2(x, y, 13) < 0.05) decal(x, y, 'crack');
+    if (c === G.cobble && hash2(x, y, 13) < 0.03) decal(x, y, 'crack');
     if (c === G.forest && hash2(x, y, 14) < 0.12) decal(x, y, 'leaves');
-    if (c === G.dirt && hash2(x, y, 15) < 0.07) decal(x, y, 'pebbles');
+    if (c === G.dirt && hash2(x, y, 15) < 0.04) decal(x, y, 'pebbles');
   }
+
+// High-use prop variants, chosen deterministically so neighbours differ (frames derived in
+// scripts/props-extra.ts): second canopy silhouettes for oaks and pines.
+for (const o of objects) {
+  if (o.frame) continue;
+  if ((o.kind === 'oak' || o.kind === 'oak2' || o.kind === 'pine' || o.kind === 'pinetall') && hash2(o.x, o.y, 31) < 0.45) o.frame = `${o.kind}_b`;
+}
+
+/** Where feet wear the ground: doorsteps, gates, path junctions and turns (used by the ground
+ *  renderer for compacted earth / polished stones). Tile coordinates + radius in tiles. */
+export const WEAR_POINTS: { x: number; y: number; r: number }[] = [
+  ...specs.map((sp) => ({ x: sp.doorX, y: sp.fp.y + sp.fp.h, r: sp.kind === 'house' ? 1.1 : 1.6 })),
+  // gates
+  { x: 14, y: 20, r: 1.2 },
+  { x: 64, y: 21, r: 1.3 },
+  { x: 60, y: 71, r: 1.2 },
+  { x: 48, y: 90, r: 1.6 },
+  // footpaths and alleys joining the lanes
+  { x: 14, y: 30.5, r: 1.4 },
+  { x: 64, y: 30.5, r: 1.4 },
+  { x: 18, y: 67.5, r: 1.3 },
+  { x: 60, y: 67.5, r: 1.3 },
+  { x: 34, y: 86, r: 1.3 },
+  { x: 17.5, y: 31.5, r: 1.3 },
+  { x: 34, y: 31.5, r: 1.1 },
+  { x: 69, y: 31.5, r: 1.1 },
+  { x: 79.5, y: 31.5, r: 1.3 },
+  { x: 14.5, y: 65.5, r: 1.3 },
+  { x: 24, y: 65.5, r: 1.1 },
+  { x: 35, y: 65.5, r: 1.1 },
+  { x: 69, y: 65.5, r: 1.1 },
+  { x: 79, y: 65.5, r: 1.1 },
+  // the bridge heads
+  { x: 81.5, y: 48, r: 1.4 },
+  { x: 88, y: 48, r: 1.4 },
+];
 
 // =========================================================================================
 // 6. Collision + export
@@ -976,6 +1307,15 @@ function buildCollision(): number[] {
   return col;
 }
 
+// CMU easter eggs (src/eggs, owned by cmu-eggs): extra object kinds + placements, merged into
+// objects, collision and lights like any other prop.
+for (const [kind, def] of Object.entries(EGG_PROP_DEFS)) {
+  if (PROP_DEFS[kind] && PROP_DEFS[kind] !== def) throw new Error(`egg kind ${kind} clashes with a town prop`);
+  PROP_DEFS[kind] = def;
+}
+for (const e of [...EGG_STRUCTURES, ...EGG_PROPS]) obj(e.kind, e.x, e.y, e.frame ? { frame: e.frame } : {});
+export const EGG_KINDS: ReadonlySet<string> = new Set(Object.keys(EGG_PROP_DEFS));
+
 // Lights from props.
 for (const o of objects) {
   if (o.kind === 'building') continue;
@@ -983,6 +1323,12 @@ for (const o of objects) {
   if (!d.light) continue;
   const b = buildings.find((bd) => o.x >= bd.interior.x && o.y >= bd.interior.y && o.x < bd.interior.x + bd.interior.w && o.y < bd.interior.y + bd.interior.h);
   lights.push({ x: o.x * TS + d.light.dx, y: (o.y + 1) * TS + d.light.dy, r: d.light.r, color: d.light.color, building: b ? b.id : null });
+}
+
+// Lights carried by foreground elements (keystone / bracket lanterns).
+for (const f of FOREGROUND) {
+  const d = FG_PROP_DEFS[f.kind]!;
+  if (d.light) lights.push({ x: f.x + d.light.dx, y: f.y + d.light.dy, r: d.light.r, color: d.light.color, building: null });
 }
 
 // Fence / iron rail auto-connection frames (bit mask N=1 E=2 S=4 W=8).

@@ -1,0 +1,26 @@
+{
+ "model": "gpt-6-astra",
+ "files": [
+  "alive.png",
+  "button.png",
+  "button-hover.png",
+  "button-primary.png",
+  "dead.png",
+  "divider.png",
+  "ghost-vote.png",
+  "ghost-vote-spent.png",
+  "host.png",
+  "locked.png",
+  "muted.png",
+  "nominate.png",
+  "panel.png",
+  "panel-parchment.png",
+  "phase-dawn.png",
+  "phase-day.png",
+  "phase-dusk.png",
+  "phase-night.png",
+  "speaking.png",
+  "storyteller.png",
+  "vote-yes.png"
+ ]
+}

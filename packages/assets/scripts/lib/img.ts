@@ -337,3 +337,37 @@ export function dpick(colors: readonly Color[], v: number, x: number, y: number)
   const t = f - i;
   return col(t > bayer(x, y) ? colors[Math.min(n - 1, i + 1)]! : colors[i]!);
 }
+
+/**
+ * Scale2x (EPX): deterministic 2x pixel-art upscale that rounds diagonal steps using only existing
+ * colours (no blur, no new colours). Used for the density-2 baseline of frames that have no model
+ * redraw yet, so fallbacks read less blocky than a nearest-neighbour doubling.
+ */
+export function scale2x(src: Img): Img {
+  const o = new Img(src.w * 2, src.h * 2);
+  const d = src.data;
+  const same = (x0: number, y0: number, x1: number, y1: number) => {
+    const a = src.inb(x0, y0) ? (y0 * src.w + x0) * 4 : -1;
+    const b = src.inb(x1, y1) ? (y1 * src.w + x1) * 4 : -1;
+    if (a < 0 || b < 0) return a === b;
+    return d[a] === d[b] && d[a + 1] === d[b + 1] && d[a + 2] === d[b + 2] && d[a + 3] === d[b + 3];
+  };
+  for (let y = 0; y < src.h; y++)
+    for (let x = 0; x < src.w; x++) {
+      const P = src.get(x, y);
+      // A up, B right, C left, D down
+      const CA = same(x - 1, y, x, y - 1);
+      const AB = same(x, y - 1, x + 1, y);
+      const DC = same(x, y + 1, x - 1, y);
+      const BD = same(x + 1, y, x, y + 1);
+      const CD = same(x - 1, y, x, y + 1);
+      const AB2 = same(x, y - 1, x + 1, y);
+      const BA = AB2;
+      const AC = CA;
+      o.set(2 * x, 2 * y, CA && !CD && !AB ? src.get(x, y - 1) : P);
+      o.set(2 * x + 1, 2 * y, AB && !AC && !BD ? src.get(x + 1, y) : P);
+      o.set(2 * x, 2 * y + 1, DC && !BD && !AC ? src.get(x - 1, y) : P);
+      o.set(2 * x + 1, 2 * y + 1, BD && !BA && !DC ? src.get(x, y + 1) : P);
+    }
+  return o;
+}

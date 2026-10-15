@@ -1,0 +1,454 @@
+{
+  "generatedBy": "packages/assets/eggs/scripts/build.ts",
+  "model": "gpt-6-astra",
+  "frames": {
+    "egg_camp": {
+      "frame": "egg_camp",
+      "w": 32,
+      "h": 24,
+      "source": "ai",
+      "job": "eggs-props",
+      "iou": 0.827,
+      "colours": 8,
+      "glows": []
+    },
+    "egg_chonk": {
+      "frame": "egg_chonk",
+      "w": 32,
+      "h": 40,
+      "source": "ai",
+      "job": "eggs-creatures",
+      "iou": 0.913,
+      "colours": 12
+    },
+    "egg_cilantro_0": {
+      "frame": "egg_cilantro_0",
+      "w": 24,
+      "h": 48,
+      "source": "ai",
+      "job": "eggs-mascots",
+      "iou": 0.901,
+      "colours": 12
+    },
+    "egg_cilantro_1": {
+      "frame": "egg_cilantro_1",
+      "w": 24,
+      "h": 48,
+      "source": "ai",
+      "job": "eggs-mascots",
+      "iou": 0.834,
+      "colours": 12
+    },
+    "egg_cow_0": {
+      "frame": "egg_cow_0",
+      "w": 28,
+      "h": 22,
+      "source": "ai",
+      "job": "eggs-creatures",
+      "iou": 0.925,
+      "colours": 12
+    },
+    "egg_cow_1": {
+      "frame": "egg_cow_1",
+      "w": 28,
+      "h": 22,
+      "source": "ai",
+      "job": "eggs-creatures",
+      "iou": 0.897,
+      "colours": 12
+    },
+    "egg_fence": {
+      "frame": "egg_fence",
+      "w": 64,
+      "h": 32,
+      "source": "ai",
+      "job": "eggs-props",
+      "iou": 0.97,
+      "colours": 10
+    },
+    "egg_fence_1": {
+      "frame": "egg_fence_1",
+      "w": 64,
+      "h": 32,
+      "source": "ai",
+      "job": "eggs-props",
+      "iou": 0.967,
+      "colours": 10
+    },
+    "egg_fence_2": {
+      "frame": "egg_fence_2",
+      "w": 64,
+      "h": 32,
+      "source": "procedural",
+      "job": "eggs-props",
+      "iou": 0.953,
+      "reason": "bottom edge not grounded (1/2)",
+      "colours": 9
+    },
+    "egg_fence_3": {
+      "frame": "egg_fence_3",
+      "w": 64,
+      "h": 32,
+      "source": "ai",
+      "job": "eggs-props",
+      "iou": 0.969,
+      "colours": 10
+    },
+    "egg_fox_0": {
+      "frame": "egg_fox_0",
+      "w": 32,
+      "h": 24,
+      "source": "ai",
+      "job": "eggs-mascots",
+      "iou": 0.835,
+      "colours": 12
+    },
+    "egg_fox_1": {
+      "frame": "egg_fox_1",
+      "w": 32,
+      "h": 24,
+      "source": "ai",
+      "job": "eggs-mascots",
+      "iou": 0.9,
+      "colours": 12
+    },
+    "egg_frog_blue_0": {
+      "frame": "egg_frog_blue_0",
+      "w": 14,
+      "h": 12,
+      "source": "ai",
+      "job": "eggs-creatures",
+      "iou": 0.864,
+      "colours": 12
+    },
+    "egg_frog_blue_1": {
+      "frame": "egg_frog_blue_1",
+      "w": 14,
+      "h": 12,
+      "source": "ai",
+      "job": "eggs-creatures",
+      "iou": 0.807,
+      "colours": 12
+    },
+    "egg_frog_green_0": {
+      "frame": "egg_frog_green_0",
+      "w": 14,
+      "h": 12,
+      "source": "ai",
+      "job": "eggs-creatures",
+      "iou": 0.872,
+      "colours": 10
+    },
+    "egg_frog_green_1": {
+      "frame": "egg_frog_green_1",
+      "w": 14,
+      "h": 12,
+      "source": "ai",
+      "job": "eggs-creatures",
+      "iou": 0.844,
+      "colours": 12
+    },
+    "egg_greenting_0": {
+      "frame": "egg_greenting_0",
+      "w": 16,
+      "h": 16,
+      "source": "ai",
+      "job": "eggs-mascots",
+      "iou": 0.98,
+      "colours": 6
+    },
+    "egg_greenting_1": {
+      "frame": "egg_greenting_1",
+      "w": 16,
+      "h": 16,
+      "source": "ai",
+      "job": "eggs-mascots",
+      "iou": 0.969,
+      "colours": 7
+    },
+    "egg_hamerschlag": {
+      "frame": "egg_hamerschlag",
+      "w": 64,
+      "h": 160,
+      "source": "ai",
+      "job": "eggs-weanworks",
+      "iou": 0.969,
+      "colours": 16,
+      "glows": []
+    },
+    "egg_hatch": {
+      "frame": "egg_hatch",
+      "w": 16,
+      "h": 16,
+      "source": "ai",
+      "job": "eggs-props",
+      "iou": 0.989,
+      "colours": 8
+    },
+    "egg_honk_0": {
+      "frame": "egg_honk_0",
+      "w": 20,
+      "h": 20,
+      "source": "ai",
+      "job": "eggs-creatures",
+      "iou": 0.872,
+      "colours": 12
+    },
+    "egg_honk_1": {
+      "frame": "egg_honk_1",
+      "w": 20,
+      "h": 20,
+      "source": "ai",
+      "job": "eggs-creatures",
+      "iou": 0.867,
+      "colours": 12
+    },
+    "egg_honk_2": {
+      "frame": "egg_honk_2",
+      "w": 20,
+      "h": 20,
+      "source": "ai",
+      "job": "eggs-creatures",
+      "iou": 0.883,
+      "colours": 12
+    },
+    "egg_opal_0": {
+      "frame": "egg_opal_0",
+      "w": 24,
+      "h": 14,
+      "source": "ai",
+      "job": "eggs-mascots",
+      "iou": 0.877,
+      "colours": 12
+    },
+    "egg_opal_1": {
+      "frame": "egg_opal_1",
+      "w": 24,
+      "h": 14,
+      "source": "ai",
+      "job": "eggs-mascots",
+      "iou": 0.841,
+      "colours": 12
+    },
+    "egg_panda_0": {
+      "frame": "egg_panda_0",
+      "w": 16,
+      "h": 18,
+      "source": "ai",
+      "job": "eggs-mascots",
+      "iou": 0.832,
+      "colours": 12
+    },
+    "egg_panda_1": {
+      "frame": "egg_panda_1",
+      "w": 16,
+      "h": 18,
+      "source": "ai",
+      "job": "eggs-mascots",
+      "iou": 0.856,
+      "colours": 12
+    },
+    "egg_polly_0_0": {
+      "frame": "egg_polly_0_0",
+      "w": 16,
+      "h": 20,
+      "source": "ai",
+      "job": "eggs-mascots",
+      "iou": 0.806,
+      "colours": 12
+    },
+    "egg_polly_0_1": {
+      "frame": "egg_polly_0_1",
+      "w": 16,
+      "h": 20,
+      "source": "ai",
+      "job": "eggs-mascots",
+      "iou": 0.811,
+      "colours": 12
+    },
+    "egg_polly_1_0": {
+      "frame": "egg_polly_1_0",
+      "w": 16,
+      "h": 20,
+      "source": "ai",
+      "job": "eggs-mascots",
+      "iou": 0.873,
+      "colours": 12
+    },
+    "egg_polly_1_1": {
+      "frame": "egg_polly_1_1",
+      "w": 16,
+      "h": 20,
+      "source": "ai",
+      "job": "eggs-mascots",
+      "iou": 0.838,
+      "colours": 12
+    },
+    "egg_polly_2_0": {
+      "frame": "egg_polly_2_0",
+      "w": 16,
+      "h": 20,
+      "source": "ai",
+      "job": "eggs-mascots",
+      "iou": 0.878,
+      "colours": 12
+    },
+    "egg_polly_2_1": {
+      "frame": "egg_polly_2_1",
+      "w": 16,
+      "h": 20,
+      "source": "ai",
+      "job": "eggs-mascots",
+      "iou": 0.869,
+      "colours": 12
+    },
+    "egg_requin_0": {
+      "frame": "egg_requin_0",
+      "w": 20,
+      "h": 16,
+      "source": "ai",
+      "job": "eggs-mascots",
+      "iou": 0.761,
+      "colours": 12
+    },
+    "egg_requin_1": {
+      "frame": "egg_requin_1",
+      "w": 20,
+      "h": 16,
+      "source": "ai",
+      "job": "eggs-mascots",
+      "iou": 0.746,
+      "colours": 12
+    },
+    "egg_requin_grin": {
+      "frame": "egg_requin_grin",
+      "w": 24,
+      "h": 16,
+      "source": "ai",
+      "job": "eggs-mascots",
+      "iou": 0.877,
+      "colours": 12
+    },
+    "egg_scotty_0": {
+      "frame": "egg_scotty_0",
+      "w": 18,
+      "h": 16,
+      "source": "ai",
+      "job": "eggs-creatures",
+      "iou": 0.892,
+      "colours": 12
+    },
+    "egg_scotty_1": {
+      "frame": "egg_scotty_1",
+      "w": 18,
+      "h": 16,
+      "source": "ai",
+      "job": "eggs-creatures",
+      "iou": 0.862,
+      "colours": 12
+    },
+    "egg_scotty_2": {
+      "frame": "egg_scotty_2",
+      "w": 18,
+      "h": 16,
+      "source": "ai",
+      "job": "eggs-creatures",
+      "iou": 0.794,
+      "colours": 12
+    },
+    "egg_sky": {
+      "frame": "egg_sky",
+      "w": 48,
+      "h": 112,
+      "source": "ai",
+      "job": "eggs-props",
+      "iou": 0.818,
+      "colours": 8
+    },
+    "egg_theo_0": {
+      "frame": "egg_theo_0",
+      "w": 16,
+      "h": 12,
+      "source": "ai",
+      "job": "eggs-mascots",
+      "iou": 0.869,
+      "colours": 12
+    },
+    "egg_theo_1": {
+      "frame": "egg_theo_1",
+      "w": 16,
+      "h": 12,
+      "source": "ai",
+      "job": "eggs-mascots",
+      "iou": 0.87,
+      "colours": 11
+    },
+    "egg_wean": {
+      "frame": "egg_wean",
+      "w": 64,
+      "h": 160,
+      "source": "ai",
+      "job": "eggs-weanworks",
+      "iou": 0.967,
+      "colours": 16,
+      "glows": [
+        [
+          38,
+          47
+        ],
+        [
+          39,
+          57
+        ],
+        [
+          8,
+          58
+        ],
+        [
+          54,
+          69
+        ],
+        [
+          59,
+          69
+        ],
+        [
+          39,
+          80
+        ],
+        [
+          15,
+          90
+        ],
+        [
+          8,
+          101
+        ],
+        [
+          15,
+          101
+        ],
+        [
+          23,
+          101
+        ],
+        [
+          24,
+          112
+        ],
+        [
+          38,
+          122
+        ],
+        [
+          8,
+          123
+        ],
+        [
+          16,
+          134
+        ]
+      ]
+    }
+  }
+}

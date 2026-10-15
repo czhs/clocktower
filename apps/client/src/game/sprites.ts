@@ -20,10 +20,20 @@ export const CHARACTERS_URL = charactersUrl;
 
 export type SpriteKind = { kind: 'player'; cosmetics: Cosmetics; ghost: boolean } | { kind: 'storyteller' };
 
-/** Ordered sheet keys to composite for an appearance. */
+/** Is this premade character present in the generated atlas? */
+export const hasPreset = (id: string | null | undefined): id is string => !!id && !!CHAR.sheets[`preset/${id}`];
+
+/**
+ * Ordered sheet keys to composite for an appearance. Precedence: a premade preset (if it exists
+ * in the atlas) -> the layered cosmetics ("advanced customization").
+ */
 export function layerKeys(s: SpriteKind): string[] {
   if (s.kind === 'storyteller') return ['storyteller'];
   const c = s.cosmetics;
+  if (hasPreset(c.preset)) {
+    const k = s.ghost ? `preset/${c.preset}/ghost` : `preset/${c.preset}`;
+    if (CHAR.sheets[k]) return [k];
+  }
   if (s.ghost) return [`ghost/${c.ghost}`];
   const keys = [`body/${c.skin}`, `outfit/${c.outfit}/${c.palette}`];
   if (c.hair !== 'bald') keys.push(`hair/${c.hair}/${c.hairColor}`);
