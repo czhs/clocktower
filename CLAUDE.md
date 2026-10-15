@@ -20,7 +20,11 @@ Status: `docs/progress.md`. Executed tests: `docs/test-results.md`.
 - Ports on hshi-u1: **3000 = production (Funnel), 3001 = dev service** — never bind these in tests.
   Ad-hoc test servers: lead 3300-3309, rules 3310-3319, world-art 3320-3329, lobby-auth 3330-3339,
   voice 3340-3349, qa-deploy 3350-3399. Always bind 127.0.0.1.
-- Never touch unrelated services on hshi-u1 (ollama, cups, etc.). No sudo — ask the user.
+- Runtime (since 2026-10-15): services are SYSTEM units `clocktower-{prod,dev,tunnel}.service` running as the
+  unprivileged `clocktower` user from `/srv/clocktower` (sandboxed; see docs/security.md). Deploy only via
+  `scripts/deploy-hshi-u1.sh`; the admin may only restart/stop these units via a narrow sudoers rule.
+  `~/clocktower/work/*` sandboxes are for builds/tests only. Logs: `journalctl -u clocktower-prod -f`.
+- Never touch unrelated services on hshi-u1 (ollama, cups, minecraft/playit, etc.). No other sudo — ask the user.
 
 ## Commands (run via scripts/remote.sh)
 

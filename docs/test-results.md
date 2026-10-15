@@ -98,3 +98,19 @@ User stored prod credentials via `ssh -t hshi-u1 '~/clocktower/bin/set-livekit.s
 |---|---|
 | `LIVEKIT_ROOM_PREFIX=livecheck tsx packages/voice/scripts/livekit-live-check.ts` (prod creds, isolated prefix) | ❌ 7/8: "token for room A is accepted" — script bug: `/rtc/v1/validate` answers a VALID token with 400 `join_request is required` and the script only fell back on 404 (probe: `/rtc/validate` → 200 success) |
 | same after fixing endpoint order | ✅ 8/8: valid token accepted; token edited to room B → 401; wrong-secret token → 401; signalling join OK; participant listed in A only; `removeParticipant` disconnects (ws 1006) |
+
+## 2026-10-15 — host hardening applied (lead)
+
+User ran `ssh -t hshi-u1 'sudo bash ~/clocktower/hardening/deploy/secure/setup-dedicated-user.sh --apply'` (dry run reviewed first).
+
+| Check | Result |
+|---|---|
+| prod/dev/tunnel process identity (`/proc/<pid>/status`) | ✅ uid/gid 998 `clocktower`, Groups 998 only (no sudo/adm/lxd), CapEff 0, NoNewPrivs 1, Seccomp 2 |
+| `systemd-analyze security` prod/dev/tunnel | ✅ 1.5 OK each (was 9.6 UNSAFE for the user unit) |
+| `systemctl show clocktower-prod` | ✅ ProtectHome=yes, ProtectSystem=strict, RW only /srv/clocktower/data/prod, other env data/backups/env/tunnel creds inaccessible, MemoryMax 1.5G, CPU 300%, TasksMax 256 |
+| /home/hshi 0750 hshi:hshi, ~/.ssh 0700 | ✅ uid 998 has no access even without the sandbox |
+| listening ports | ✅ 3000/3001/20241 on 127.0.0.1 only |
+| `sudo -n -l` as admin | ✅ NOPASSWD only for restart/stop/reset-failed of the 3 units + 2 backup units |
+| public `https://clocktower.chrisshi.com/healthz` | ✅ |
+| `scripts/deploy-hshi-u1.sh dev` (system mode) | ❌ first: sudo rule mismatch (`clocktower-dev` vs `clocktower-dev.service`) → fixed; ✅ 0d72569 healthy |
+| `scripts/deploy-hshi-u1.sh prod 0d72569` | ✅ sandboxed pre-deploy backup ran (integrity ok), prod healthy, dev PID unchanged; admin cannot list /srv/clocktower/backups/prod (by design) |

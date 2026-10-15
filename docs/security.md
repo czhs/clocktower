@@ -16,7 +16,7 @@ No Docker; a dedicated user + systemd sandbox + careful tunnel config.
 | Secrets | env files 0600, `~/.cloudflared/*` 0600; nothing secret tracked in git or present in git history (`git log -p` scan); `.gitignore` covers `.env.*`, `*.db`, data/logs. |
 | Disk/logs | journald already 4.0 GB (system default cap); root fs 84% used (108 GB free). |
 
-## Hardening (pending owner approval — requires sudo once)
+## Hardening (APPLIED 2026-10-15; verified — see docs/test-results.md)
 
 `deploy/secure/setup-dedicated-user.sh` (dry run works without sudo; `--apply` with sudo):
 
