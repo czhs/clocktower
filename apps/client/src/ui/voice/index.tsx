@@ -4,17 +4,56 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { AccountView } from '@ct/protocol';
 import type { RoomConnection } from '../../net/room';
 import { useStore } from '../../net/store';
-import { keyLabel, VoiceClient, type VoiceClientState } from '../../voice/VoiceClient';
+import { browserKind, keyLabel, VoiceClient, type BrowserKind, type VoiceClientState } from '../../voice/VoiceClient';
 import './voice.css';
 
 const ANNOUNCE_KEEPALIVE_MS = 30_000;
 
-function zoneLabel(s: VoiceClientState): { title: string; hint: string } {
+function zoneLabel(s: VoiceClientState, night: boolean): { title: string; hint: string } {
   if (!s.zone) return { title: 'No voice area', hint: 'Walk into town to talk.' };
-  if (s.zone === 'square') return { title: 'Town square', hint: 'Everyone in the square hears you.' };
-  if (s.zone === 'street') return { title: 'Streets', hint: 'Only people nearby hear you.' };
-  if (s.zone.startsWith('bld:house-')) return { title: 'A cottage', hint: 'Private: only this room hears you.' };
-  return { title: 'Indoors', hint: 'Private: only this room hears you.' };
+  if (s.zone === 'square') return { title: 'Town square', hint: 'Square — everyone here hears you.' };
+  if (s.zone === 'street') return { title: 'Streets', hint: 'Street — only people near you hear you.' };
+  if (s.zone.startsWith('bld:house-') && night) return { title: 'Your home', hint: 'Home at night — private. Only the Storyteller can visit.' };
+  if (s.zone.startsWith('bld:house-')) return { title: 'A cottage', hint: 'Inside — private: only people in this room hear you.' };
+  return { title: 'Indoors', hint: 'Inside — private: only people in this room hear you.' };
+}
+
+/** One short line: who hears me right now. */
+function heardByLine(s: VoiceClientState, names: Map<string, string>): string {
+  if (s.link !== 'connected') return '';
+  const n = s.heardBy.map((p) => names.get(p) ?? 'someone');
+  if (n.length === 0) return s.mode === 'proximity' ? 'Nobody is close enough to hear you.' : 'Nobody else is here.';
+  const shown = n.slice(0, 3).join(', ');
+  return `Heard by: ${shown}${n.length > 3 ? ` (+${n.length - 3})` : ''}`;
+}
+
+const RECOVERY: Record<BrowserKind, string> = {
+  chrome: 'Click the microphone (or lock) icon at the left of the address bar, set Microphone to Allow, then press Retry.',
+  edge: 'Click the lock icon at the left of the address bar, set Microphone to Allow, then press Retry.',
+  firefox: 'Click the crossed-out microphone icon in the address bar, remove the block, then press Retry.',
+  safari: 'In the Safari menu choose Settings for This Website…, set Microphone to Allow, then press Retry.',
+  other: "Allow the microphone for this site in your browser's site settings, then press Retry.",
+};
+
+function MicIcon({ off }: { off: boolean }) {
+  return (
+    <svg class="ctv-micicon" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
+      <rect x="5.5" y="1.5" width="5" height="8.5" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.4" />
+      <path d="M3.5 7.5a4.5 4.5 0 0 0 9 0M8 12v2.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
+      {off && <path d="M2.5 2.5l11 11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />}
+    </svg>
+  );
+}
+
+/** Own mic state, unmistakable: ON AIR / MUTED / HOLD V / LISTENING. */
+function micBadge(s: VoiceClientState): { cls: string; text: string; off: boolean } {
+  if (!s.enabled) return { cls: 'off', text: 'Voice off', off: true };
+  if (s.mic !== 'ready') return { cls: 'listen', text: 'Listening only', off: true };
+  if (s.deafened) return { cls: 'muted', text: 'Deafened', off: true };
+  if (s.muted) return { cls: 'muted', text: 'Muted', off: true };
+  if (s.transmitting) return { cls: 'live', text: 'On air', off: false };
+  if (s.inputMode === 'ptt') return { cls: 'idle', text: `Hold ${keyLabel(s.pttKey)}`, off: true };
+  return { cls: 'idle', text: 'Mic idle', off: true };
 }
 
 function linkDot(s: VoiceClientState): string {
@@ -31,6 +70,8 @@ export function VoicePanel({ conn }: { conn: RoomConnection; account: AccountVie
   useEffect(() => () => void client.dispose(), [client]);
   const s = useStore(client.state);
   const lobby = useStore(conn.lobbyView);
+  const game = useStore(conn.gameView);
+  const night = game?.phase === 'first_night' || game?.phase === 'night' || game?.phase === 'dawn';
   const [open, setOpen] = useState(true);
   const [debug, setDebug] = useState(false);
   const [binding, setBinding] = useState(false);
@@ -39,6 +80,8 @@ export function VoicePanel({ conn }: { conn: RoomConnection; account: AccountVie
   const names = useMemo(() => new Map((lobby?.members ?? []).map((m) => [m.pid, m.displayName])), [lobby]);
   const me = lobby?.members.find((m) => m.pid === lobby.youPid);
   const isStoryteller = me?.role === 'storyteller';
+  const stPid = lobby?.members.find((m) => m.role === 'storyteller')?.pid ?? null;
+  const browser = useMemo(() => browserKind(), []);
 
   // Rebind push-to-talk: capture the next key press.
   useEffect(() => {
@@ -67,16 +110,42 @@ export function VoicePanel({ conn }: { conn: RoomConnection; account: AccountVie
     if (!isStoryteller) setAnnouncing(false);
   }, [isStoryteller]);
 
-  const z = zoneLabel(s);
+  const z = zoneLabel(s, night);
   const unavailable = s.availability === 'not_configured' || s.availability === 'quota_exhausted' || s.availability === 'provider_error';
   const announceHeard = s.participants.some((p) => p.announce && p.speaking);
+  const badge = micBadge(s);
+  const inHouse = !!s.zone?.startsWith('bld:house-') && s.link === 'connected';
+  // Night/house visit: an unmistakable "private with the Storyteller" banner.
+  const privateWith = !inHouse
+    ? null
+    : isStoryteller
+      ? s.participants.filter((p) => !p.announce).map((p) => names.get(p.pid) ?? 'a player')
+      : stPid && s.participants.some((p) => p.pid === stPid && !p.announce)
+        ? ['the Storyteller']
+        : null;
+  const privateLine = privateWith && privateWith.length ? `Private conversation with ${privateWith.join(', ')}` : null;
+  const heard = heardByLine(s, names);
+  const notice = s.notice && (
+    <div class={`ctv-notice ctv-notice-${s.notice.kind}`} role="status" aria-live="polite">
+      <span>{s.notice.text}</span>
+      <button class="ctv-icon" onClick={() => client.dismissNotice()} title="Dismiss" aria-label="Dismiss">
+        ×
+      </button>
+    </div>
+  );
 
   if (!open) {
     return (
       <div class="ctv ctv-collapsed">
-        <button class="ctv-pill" onClick={() => setOpen(true)} title="Open voice panel">
+        {notice}
+        {privateLine && <div class="ctv-private ctv-private-small">🕯 {privateLine}</div>}
+        <button class="ctv-pill" onClick={() => setOpen(true)} title={heard || 'Open voice panel'}>
           <span class={`ctv-dot ctv-dot-${linkDot(s)}`} /> Voice
-          {s.transmitting && <span class="ctv-live">● on air</span>}
+          {s.enabled && (
+            <span class={`ctv-mic ctv-mic-${badge.cls}`}>
+              <MicIcon off={badge.off} /> {badge.text}
+            </span>
+          )}
         </button>
       </div>
     );
@@ -89,6 +158,11 @@ export function VoicePanel({ conn }: { conn: RoomConnection; account: AccountVie
         <span class="ctv-title">Voice</span>
         {s.enabled && s.zone && <span class={`ctv-zone ctv-zone-${s.mode ?? 'none'}`}>{z.title}</span>}
         <span class="ctv-spacer" />
+        {s.enabled && (
+          <span class={`ctv-mic ctv-mic-${badge.cls}`} aria-label={`Microphone: ${badge.text}`}>
+            <MicIcon off={badge.off} /> {badge.text}
+          </span>
+        )}
         <button class="ctv-icon" onClick={() => setDebug((d) => !d)} title="Voice debug overlay" aria-pressed={debug}>
           ⚙
         </button>
@@ -97,6 +171,8 @@ export function VoicePanel({ conn }: { conn: RoomConnection; account: AccountVie
         </button>
       </div>
 
+      {notice}
+      {privateLine && <div class="ctv-private">🕯 {privateLine}</div>}
       {unavailable && <p class="ctv-note ctv-warn">{s.availabilityMessage ?? 'Voice is unavailable. Text chat continues.'}</p>}
 
       {!s.enabled ? (
@@ -104,25 +180,32 @@ export function VoicePanel({ conn }: { conn: RoomConnection; account: AccountVie
           <button class="primary ctv-enable" onClick={() => void client.enable()} disabled={s.availability === 'not_configured'}>
             Enable voice
           </button>
-          <p class="ctv-note">Your browser will ask for the microphone. You can play without it.</p>
+          <p class="ctv-note">
+            Talk to whoever is near you in town. Your browser will ask to use the microphone — you can also play without
+            one and just listen.
+          </p>
         </div>
       ) : (
         <div class="ctv-body">
-          {s.zone && <p class="ctv-note">{z.hint}</p>}
+          {s.zone && <p class="ctv-note ctv-where">{z.hint}</p>}
+          {heard && <p class={`ctv-note ctv-heard ${s.heardBy.length ? '' : 'ctv-heard-none'}`}>{heard}</p>}
           {s.announce.room && !s.announce.canPublish && (
             <p class={`ctv-note ctv-announce ${announceHeard ? 'speaking' : ''}`}>The Storyteller is addressing the town.</p>
           )}
           {s.playbackBlocked && (
-            <button class="ctv-wide" onClick={() => void client.allowAudio()}>
-              Click to allow audio playback
+            <button class="ctv-wide ctv-attention" onClick={() => void client.allowAudio()}>
+              Your browser paused voice audio — click here (or anywhere) to hear others
             </button>
           )}
           {s.micError && (
             <div class="ctv-note ctv-warn">
-              {s.micError}{' '}
-              <button class="ctv-small" onClick={() => void client.retryMic()}>
-                Retry
-              </button>
+              {s.micError}
+              {s.micFailure === 'denied' && <span class="ctv-steps"> {RECOVERY[browser]}</span>}{' '}
+              {s.micFailure !== 'notfound' && s.micFailure !== 'insecure' && (
+                <button class="ctv-small" onClick={() => void client.retryMic()}>
+                  Retry
+                </button>
+              )}
             </div>
           )}
           {s.link === 'error' && (
@@ -133,7 +216,7 @@ export function VoicePanel({ conn }: { conn: RoomConnection; account: AccountVie
               </button>
             </div>
           )}
-          {s.link === 'reconnecting' && <p class="ctv-note">Reconnecting voice…</p>}
+          {s.link === 'reconnecting' && <p class="ctv-note">{s.lastError ?? 'Reconnecting voice… (no need to reload)'}</p>}
 
           <div class="ctv-row">
             <div class="ctv-seg" role="group" aria-label="Microphone mode">
@@ -188,7 +271,6 @@ export function VoicePanel({ conn }: { conn: RoomConnection; account: AccountVie
           )}
 
           <ul class="ctv-people">
-            {s.participants.length === 0 && s.link === 'connected' && <li class="ctv-note">Nobody else can hear you here.</li>}
             {s.participants.map((p) => (
               <li class={`${p.speaking ? 'speaking' : ''} ${p.gain < 0.02 && s.mode === 'proximity' ? 'faint' : ''}`}>
                 <span class="ctv-ring" />
@@ -235,11 +317,11 @@ function VoiceDebug({ client, names }: { client: VoiceClient; names: Map<string,
         announce: {info.announceRoom ?? '—'} ({info.announceState})
       </div>
       <div>
-        mic muted: {String(info.micMuted)} · audio ctx: {info.audioContext}
+        mic muted: {String(info.micMuted)} · audio ctx: {info.audioContext} · net: {info.quality}
       </div>
       {info.gains.map((g) => (
         <div>
-          {names.get(g.pid) ?? g.pid}: gain {g.gain.toFixed(2)} → vol {g.applied.toFixed(2)}
+          {names.get(g.pid) ?? g.pid}: gain {g.gain.toFixed(2)} → vol {g.applied.toFixed(2)} · net {g.quality}
         </div>
       ))}
     </div>

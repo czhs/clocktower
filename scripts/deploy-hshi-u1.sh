@@ -30,7 +30,7 @@ if [[ -z $REF ]]; then
 fi
 # Games live in memory: restarting prod mid-game ends them for everyone. Refuse unless forced.
 if [[ $ENVNAME == prod && "${CT_FORCE_DEPLOY:-}" != 1 ]]; then
-  ACTIVE=$(ssh -o BatchMode=yes "$HOST" "curl -fsS --max-time 3 http://127.0.0.1:3000/healthz" 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("activeGames",0))' 2>/dev/null || echo 0)
+  ACTIVE=$(ssh -o BatchMode=yes "$HOST" "curl -fsS --max-time 3 http://127.0.0.1:3000/internal/active-games" 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("activeGames",0))' 2>/dev/null || echo 0)
   if [[ ${ACTIVE:-0} -gt 0 ]]; then
     echo "refusing prod deploy: $ACTIVE game(s) in progress would be lost. Wait, or set CT_FORCE_DEPLOY=1." >&2
     exit 1

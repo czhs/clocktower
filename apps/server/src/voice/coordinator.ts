@@ -14,7 +14,6 @@ import {
   audibleRadiusPx,
   distancePx,
   heartbeatCreditMs,
-  isPrivateZone,
   mintVoiceToken,
   modeOfZone,
   monthKeyUtc,
@@ -201,9 +200,12 @@ export function createVoiceCoordinator(host: RoomHost, deps: VoiceDeps): VoiceCo
     );
   };
 
-  const scheduleAudit = (room: string, zone: AcousticZoneId, now: number) => {
-    if (!deps.roomService || !configured || !isPrivateZone(zone)) return;
-    audits.set(room, now + tune.auditWindowMs);
+  // Every room a member was revoked from is audited, not only private ones: a modified client that
+  // keeps (or re-joins with) its square/street token could otherwise stay connected to the square
+  // from inside a building or through the night (two such clients could talk at night).
+  const scheduleAudit = (room: string, _zone: AcousticZoneId, now: number) => {
+    if (!deps.roomService || !configured) return;
+    audits.set(room, Math.max(audits.get(room) ?? 0, now + tune.auditWindowMs));
   };
 
   const authorizedFor = (identity: string, room: string): boolean => {
@@ -229,6 +231,8 @@ export function createVoiceCoordinator(host: RoomHost, deps: VoiceDeps): VoiceCo
               if (!authorizedFor(p.identity, room)) {
                 host.log.info('voice: removing unauthorized participant', { room, pid: p.identity });
                 removeFromRoom(room, p.identity);
+                // A connected intruder receives LiveKit refresh tokens and may re-join: keep watching.
+                audits.set(room, Math.max(audits.get(room) ?? 0, host.now() + tune.auditWindowMs));
               }
             }
           })

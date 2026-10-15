@@ -5,7 +5,7 @@ import type { VoiceUsageView } from '@ct/protocol';
 import { buildUsageView, livekitHttpUrl, MemoryVoiceUsageStore, RoomServiceClient, type VoiceUsageStore } from '@ct/voice';
 import type { RoomHost, VoiceModule } from '../rooms/modules.js';
 import { getServices, type Services } from '../services.js';
-import { createVoiceCoordinator, type LivekitSettings, type VoiceCoordinator, type VoiceDeps, type VoiceRoomService } from './coordinator.js';
+import { createVoiceCoordinator, DEFAULT_TUNING, type LivekitSettings, type VoiceCoordinator, type VoiceDeps, type VoiceRoomService, type VoiceTuning } from './coordinator.js';
 
 export { createVoiceCoordinator, DEFAULT_TUNING } from './coordinator.js';
 export type { LivekitSettings, VoiceCoordinator, VoiceDeps, VoiceRoomService, VoiceTuning } from './coordinator.js';
@@ -69,6 +69,16 @@ export function voiceUsageView(now = Date.now()): VoiceUsageView {
   });
 }
 
+/**
+ * TEST-ONLY knob: VOICE_TOKEN_TTL_SEC (30..600) shortens LiveKit join-token lifetime so expiry /
+ * refresh can be exercised against the real LiveKit in minutes. Unset in dev/prod.
+ */
+function envTuning(): Partial<VoiceTuning> | null {
+  const ttl = Number(process.env.VOICE_TOKEN_TTL_SEC ?? '');
+  if (!Number.isInteger(ttl) || ttl < 30 || ttl > 600) return null;
+  return { tokenTtlSec: ttl, refreshBeforeMs: Math.min(DEFAULT_TUNING.refreshBeforeMs, (ttl * 1000) / 2), auditWindowMs: ttl * 1000 + 10 * 60_000 };
+}
+
 export function createVoiceModule(host: RoomHost, overrides: Partial<VoiceDeps> = {}): VoiceModule & VoiceCoordinator {
   const services = tryServices();
   const livekit = overrides.livekit ?? services?.config.livekit ?? NOT_CONFIGURED;
@@ -79,7 +89,7 @@ export function createVoiceModule(host: RoomHost, overrides: Partial<VoiceDeps> 
     usage: overrides.usage ?? getVoiceUsageStore(services),
     roomService: overrides.roomService !== undefined ? overrides.roomService : roomServiceFor(livekit),
     layout: overrides.layout ?? townLayout,
-    ...(overrides.tuning ? { tuning: overrides.tuning } : {}),
+    ...(overrides.tuning ? { tuning: overrides.tuning } : envTuning() ? { tuning: envTuning()! } : {}),
     ...(overrides.mint ? { mint: overrides.mint } : {}),
   };
   const c = createVoiceCoordinator(host, deps);

@@ -70,6 +70,37 @@
   border-top: 1px solid var(--border); padding: 6px 8px; font-family: var(--mono); font-size: 10.5px;
   color: #b7c9a8; background: #0b0a0fcc; max-height: 160px; overflow-y: auto; word-break: break-all;
 }
+/* own mic state badge (header + collapsed pill) */
+.ctv-mic {
+  display: inline-flex; align-items: center; gap: 3px; font-size: 10.5px; letter-spacing: 0.04em;
+  padding: 1px 6px; border-radius: 8px; border: 1px solid var(--border); color: var(--muted); white-space: nowrap;
+}
+.ctv-micicon { flex: none; }
+.ctv-mic-live { color: #fff; background: #b8402e; border-color: #e0604a; box-shadow: 0 0 6px #d0543f88; }
+.ctv-mic-muted { color: #ffb4a8; border-color: #d0543f; background: #3a1714; font-weight: 600; }
+.ctv-mic-idle { color: var(--text); }
+.ctv-collapsed .ctv-pill .ctv-mic { margin-left: 2px; }
+.ctv-where { color: var(--text); }
+.ctv-heard { color: var(--accent); font-size: 11.5px; transition: color 200ms; }
+.ctv-heard-none { color: var(--muted); }
+/* private conversation (night visit) */
+.ctv-private {
+  margin: 6px 8px 0; padding: 5px 8px; border-radius: 5px; font-size: 12px; color: #e6d6ff;
+  border: 1px solid #8a6fb0; background: linear-gradient(#3a2a5288, #22183488); box-shadow: 0 0 10px #8a6fb044;
+}
+.ctv-private-small { margin: 0 0 6px; font-size: 11.5px; }
+/* transient notices */
+.ctv-notice {
+  display: flex; align-items: flex-start; gap: 4px; margin: 6px 8px 0; padding: 5px 4px 5px 8px; border-radius: 5px;
+  font-size: 12px; line-height: 1.35; border: 1px solid var(--border); background: #1b1724ee; animation: ctv-in 160ms ease-out;
+}
+.ctv-notice span { flex: 1; }
+.ctv-notice-warn { border-color: #d0543f; color: #ffd2c8; background: #2c1512ee; }
+.ctv-collapsed .ctv-notice { margin: 0 0 6px; max-width: 260px; }
+.ctv-collapsed { display: flex; flex-direction: column; align-items: flex-end; }
+.ctv-steps { display: block; margin-top: 3px; color: var(--text); }
+.ctv-attention { border-color: var(--accent); animation: ctv-pulse 1.6s infinite; }
+@keyframes ctv-in { from { opacity: 0; transform: translateY(4px); } }
 @keyframes ctv-pulse { 50% { opacity: 0.45; } }
 @media (max-width: 640px) {
   .ctv { width: 200px; right: 6px; bottom: 6px; }

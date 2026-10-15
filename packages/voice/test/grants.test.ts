@@ -100,20 +100,24 @@ describe('tokens', () => {
 });
 
 describe('attenuation', () => {
-  it('full volume within 3 tiles, silent at 10 tiles, monotonic and smooth between', () => {
+  it('full volume within 2 tiles, silent at 10 tiles, monotonic and smooth between', () => {
     expect(attenuationGain(0)).toBe(1);
-    expect(attenuationGain(3 * 16)).toBe(1);
+    expect(attenuationGain(2 * 16)).toBe(1);
     expect(attenuationGain(10 * 16)).toBe(0);
     expect(attenuationGain(500)).toBe(0);
     expect(attenuationGain(Number.NaN)).toBe(0);
     let prev = 1;
-    for (let d = 48; d <= 160; d += 1) {
+    for (let d = 32; d <= 160; d += 1) {
       const g = attenuationGain(d);
       expect(g).toBeLessThanOrEqual(prev + 1e-12);
       expect(prev - g).toBeLessThan(0.03); // no jumps (<3% per pixel)
       prev = g;
     }
-    expect(attenuationGain(104)).toBeCloseTo(0.5, 5);
+    // tuned falloff (live measurements 2026-10-15): separate conversations from ~6-8 tiles
+    expect(attenuationGain(4 * 16)).toBeCloseTo(0.729, 2); // -2.7 dB
+    expect(attenuationGain(6 * 16)).toBeCloseTo(0.25, 5); // -12 dB
+    expect(attenuationGain(8 * 16)).toBeLessThan(0.025); // ~-33 dB
+    expect(attenuationGain(104, { falloffExponent: 1, fullVolumeTiles: 3 })).toBeCloseTo(0.5, 5); // previous curve
   });
 
   it('smoothGain converges without overshoot and is frame-rate independent', () => {

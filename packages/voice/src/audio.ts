@@ -8,6 +8,7 @@ export interface AttenuationOptions {
   tileSize?: number;
   fullVolumeTiles?: number;
   silentTiles?: number;
+  falloffExponent?: number;
 }
 
 export function audibleRadiusPx(opts: AttenuationOptions = {}): number {
@@ -20,7 +21,7 @@ export function distancePx(a: { x: number; y: number }, b: { x: number; y: numbe
 
 /**
  * Gain in [0,1] for a speaker `distPx` away: 1 within fullVolumeTiles, raised-cosine falloff
- * (zero slope at both ends -> no audible kink) to exactly 0 at silentTiles.
+ * (zero slope at both ends -> no audible kink) raised to `falloffExponent`, exactly 0 at silentTiles.
  */
 export function attenuationGain(distPx: number, opts: AttenuationOptions = {}): number {
   const ts = opts.tileSize ?? TILE_SIZE;
@@ -30,7 +31,7 @@ export function attenuationGain(distPx: number, opts: AttenuationOptions = {}): 
   if (distPx <= full) return 1;
   if (distPx >= silent) return 0;
   const t = (distPx - full) / (silent - full);
-  return 0.5 * (1 + Math.cos(Math.PI * t));
+  return Math.pow(0.5 * (1 + Math.cos(Math.PI * t)), opts.falloffExponent ?? VOICE_DEFAULTS.falloffExponent);
 }
 
 /**

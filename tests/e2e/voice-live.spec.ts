@@ -337,11 +337,17 @@ async function enableVoice(p: P, timeout = 20_000) {
   await p.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
 }
 
+/** Close contexts in parallel with a hard timeout: a hung teardown keeps LiveKit participants
+ * connected and burns the shared participant-minute quota (a 10-client run once hung ~10 min). */
 async function closeAll(ps: P[]) {
-  for (const p of ps) {
-    lkConnected(p.name, false);
-    await p.ctx.close().catch(() => undefined);
-  }
+  await Promise.all(
+    ps.map(async (p) => {
+      lkConnected(p.name, false);
+      // leave the LiveKit rooms first (navigating away disconnects), then close
+      await Promise.race([p.page.goto('about:blank').catch(() => undefined), new Promise((r) => setTimeout(r, 5000))]);
+      await Promise.race([p.ctx.close().catch(() => undefined), new Promise((r) => setTimeout(r, 10_000))]);
+    }),
+  );
 }
 
 const svc = ENABLED ? new RoomServiceClient(livekitHttpUrl(LK.url), LK.key, LK.secret) : (null as unknown as RoomServiceClient);
@@ -1403,6 +1409,7 @@ test('voice load (SIMULATED mic)', async ({ browser }) => {
   test.skip(!(N >= 2 && N <= 15), 'set VOICE_LOAD_N=2..15');
   test.setTimeout(900_000);
   const ps: P[] = [];
+  const cdpSessions: { detach(): Promise<void> }[] = [];
   const results: Record<string, unknown> = {};
   try {
     const host = await newPlayer(browser, `Load0 ${SUFFIX}`, { viewport: { width: 800, height: 600 } });
@@ -1419,19 +1426,21 @@ test('voice load (SIMULATED mic)', async ({ browser }) => {
     }
     note('load: MemAvailable MB while joining', memLog);
     const tJoin = Date.now();
-    for (let i = 0; i < ps.length; i += 5) await Promise.all(ps.slice(i, i + 5).map((p) => enableVoice(p, 60_000)));
+    await Promise.all(ps.map((p) => enableVoice(p, 90_000)));
     if (memAvailMB() < 1000) throw new Error(`aborting: host MemAvailable ${memAvailMB()} MB`);
     note(`load: ${N} enabled`, { ms: Date.now() - tJoin });
     for (const p of ps) await openMic(p);
     for (const p of ps) await p.page.locator('.ctv-icon[title="Voice debug overlay"]').click();
     const square = roomOf(lobby, 'square');
     await expect.poll(async () => (await lkList(square)).filter((x) => x.tracks[0] && !x.tracks[0].muted).length, { timeout: 60_000 }).toBe(N);
-    await ps[0]!.page.waitForTimeout(10_000);
+    await ps[0]!.page.waitForTimeout(5_000);
     const cdp = await browser.newBrowserCDPSession();
+    cdpSessions.push(cdp);
     const proc = async () => ((await cdp.send('SystemInfo.getProcessInfo' as any)) as any).processInfo as { type: string; id: number; cpuTime: number }[];
     const p0 = await proc();
     const sessions = await Promise.all(ps.map(async (p) => {
       const s = await p.ctx.newCDPSession(p.page);
+      cdpSessions.push(s);
       await s.send('Performance.enable');
       return s;
     }));
@@ -1457,7 +1466,7 @@ test('voice load (SIMULATED mic)', async ({ browser }) => {
         res([...max.values()].filter((v) => v > 0.01).length);
       }, 3000);
     }))));
-    await ps[0]!.page.waitForTimeout(Math.max(0, 20_000 - (Date.now() - t0)));
+    await ps[0]!.page.waitForTimeout(Math.max(0, 15_000 - (Date.now() - t0)));
     const m1 = await Promise.all(sessions.map((s) => s.send('Performance.getMetrics')));
     const wall = (Date.now() - t0) / 1000;
     const p1 = await proc();
@@ -1501,9 +1510,10 @@ test('voice load (SIMULATED mic)', async ({ browser }) => {
       expect(r.audibleRemotes3s, `${r.name} hears everyone`).toBe(N - 1);
     }
   } finally {
+    saveEvidence(`voice-load-${N}.json`, { results });
+    await Promise.all(cdpSessions.map((c) => Promise.race([c.detach().catch(() => undefined), new Promise((r) => setTimeout(r, 3000))])));
     await closeAll(ps);
     note('participant-minutes used (browser connected time)', usedMinutes());
-    saveEvidence(`voice-load-${N}.json`, { results });
   }
 });
 

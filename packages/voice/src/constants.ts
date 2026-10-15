@@ -7,9 +7,15 @@ export const VOICE_DEFAULTS = {
   /** square <-> street changes must be stable this long before they are committed. */
   zoneDebounceMs: 600,
   /** Street attenuation: full volume closer than this many tiles… */
-  fullVolumeTiles: 3,
+  fullVolumeTiles: 2,
   /** …smooth falloff to silence at this many tiles (also the street "audible radius"). */
   silentTiles: 10,
+  /**
+   * Falloff shape: gain = raisedCosine(t) ^ exponent. 2 (tuned 2026-10-15 from live measurements)
+   * gives ~-12 dB at 6 tiles and ~-33 dB at 8 tiles, so a group 6+ tiles away is background murmur
+   * and groups 8+ tiles apart are effectively separate conversations; 1 was -4 dB at 6 tiles.
+   */
+  falloffExponent: 2,
   /** Client gain smoothing time constant (ms). */
   gainSmoothingMs: 150,
   /** LiveKit join-token lifetime (seconds). Only gates the initial connect. */

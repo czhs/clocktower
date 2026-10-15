@@ -132,9 +132,18 @@ export async function startAppServer(config: AppConfig, log: Logger, options: Ap
   });
   app.use(express.json({ limit: '32kb' }));
   app.get('/healthz', (_req, res) => {
-    // activeGames lets the deploy script refuse to restart prod mid-game (games live in memory).
+    res.json({ ok: true, env: config.env, version });
+  });
+  // Host-only: lets the deploy script refuse to restart prod mid-game (games live in memory).
+  // Requests through the tunnel carry X-Forwarded-For (req.ip = the real client), so they get 404.
+  app.get('/internal/active-games', (req, res) => {
+    const loopback = req.ip === '127.0.0.1' || req.ip === '::1' || req.ip === '::ffff:127.0.0.1';
+    if (!loopback || req.headers['x-forwarded-for'] || req.headers['cf-connecting-ip']) {
+      res.status(404).json({ error: 'not_found', message: 'No such route' });
+      return;
+    }
     const activeGames = services.directory.list().filter((l) => l.phase !== 'waiting' && l.phase !== 'finished').length;
-    res.json({ ok: true, env: config.env, version, activeGames });
+    res.json({ activeGames });
   });
 
   registerHttpRoutes(app, services);
@@ -142,7 +151,7 @@ export async function startAppServer(config: AppConfig, log: Logger, options: Ap
   // Static SPA. Unknown non-API GETs fall back to index.html so /lobby/<id> share links work.
   if (clientDist && existsSync(clientDist)) {
     app.use(express.static(clientDist, { index: false, maxAge: '1h' }));
-    app.get(/^(?!\/(api|healthz|matchmake)\b).*/, (_req, res) => {
+    app.get(/^(?!\/(api|healthz|matchmake|internal)\b).*/, (_req, res) => {
       res.setHeader('Cache-Control', 'no-cache');
       res.sendFile(path.join(clientDist, 'index.html'));
     });
