@@ -6,7 +6,7 @@ import type { DoorSpec } from '../buildings.js';
 import { doorAssembly } from '../buildings.js';
 import { LX, LY } from '../lib/draw.js';
 import { type Color, dpick, hash, Img, vnoise } from '../lib/img.js';
-import { briar, finish, hangLantern, P } from './lib-houses-b.js';
+import { briar, finish, P } from './lib-houses-b.js';
 import type { HouseArt } from './types.js';
 
 const STALK = ['#4a4038', '#6a5e50', '#8c806c', '#aea28a', '#cac0a4', '#e2dabe'];
@@ -50,12 +50,25 @@ const art: HouseArt = (b, _style, seed) => {
   const DW = 9;
   const DH = 19;
   const dx0 = 15;
-  const spec: DoorSpec = { w: DW, h: DH, arched: true, kind: 'planks', hinge: 'left', paint: '#4e7a3e', wreath: false, seed };
+  const spec: DoorSpec = { w: DW, h: DH, arched: true, kind: 'planks', hinge: 'left', paint: '#3e6a34', wreath: false, seed };
   const T = (i: number, j: number): [number, number] => {
     const x = dx0 + i;
     return [x, ground(x) - 3 - (DH - 1 - j)];
   };
   const d = doorAssembly(img, T, spec, 1, seed);
+  // a dark timber frame hugging the round door so it pops off the pale stalk
+  {
+    const inMask = (x: number, y: number) => x >= 0 && y >= 0 && x < W && y < H && d.mask[y * W + x] === 1;
+    for (let y = 0; y < H; y++)
+      for (let x = 0; x < W; x++) {
+        if (inMask(x, y)) continue;
+        let near = false;
+        for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1]] as const) if (inMask(x + ox, y + oy)) near = true;
+        if (!near) continue;
+        if (inMask(x, y + 1) || inMask(x, y + 2)) img.set(x, y, dpick(TRIM, x < dx0 + DW / 2 ? 0.75 : 0.45, x, y));
+        else if (!inMask(x, y - 1)) img.set(x, y, dpick(TRIM, x < dx0 + DW / 2 ? 0.6 : 0.3, x, y));
+      }
+  }
   // a flat round stepping stone
   img.ellipse(dx0 + DW / 2, ground(dx0 + 4) - 1, 7, 2.2, (x, y, nx, ny) => dpick(P.dstone, 0.85 - ny * 0.35 - nx * 0.1, x, y));
   for (let i = 0; i < DW; i++) {
@@ -100,7 +113,7 @@ const art: HouseArt = (b, _style, seed) => {
     const nx = (x + 0.5 - ccx) / 32;
     const ny = Math.max(-1, Math.min(1, (y + 0.5 - cyC) / ryC));
     const nz = Math.sqrt(Math.max(0, 1 - nx * nx - ny * ny));
-    return 0.5 + (nx * LX + ny * LY) * 0.5 + nz * 0.22 - 0.08;
+    return 0.46 + (nx * LX + ny * LY) * 0.5 + nz * 0.2 - 0.08;
   };
   for (let x = 0; x < W; x++) {
     const t = top(x);
@@ -175,7 +188,23 @@ const art: HouseArt = (b, _style, seed) => {
     chim = { x: px + 3, y: py - 18 };
   }
   // the door lantern, hung from the cap's rim on a long cord
-  windows.push(hangLantern(img, 12, Math.ceil(rim(12)) + 1, 12, '#ffd27a'));
+  {
+    const lx = 11;
+    const ly = Math.ceil(rim(lx)) + 1;
+    img.vline(lx, ly, ly + 8, P.iron[2]!);
+    const t = ly + 9;
+    img.hline(lx - 1, lx + 1, t, P.iron[3]!);
+    img.hline(lx - 2, lx + 2, t + 1, P.iron[1]!);
+    img.rect(lx - 2, t + 2, 5, 4, '#ffd27a');
+    img.vline(lx - 2, t + 2, t + 5, P.iron[1]!);
+    img.vline(lx + 2, t + 2, t + 5, P.iron[1]!);
+    img.set(lx - 1, t + 2, '#fff0c0');
+    img.set(lx, t + 3, '#fff0c0');
+    img.vline(lx + 1, t + 3, t + 5, '#eda040');
+    img.hline(lx - 2, lx + 2, t + 6, P.iron[1]!);
+    img.set(lx, t + 7, P.iron[2]!);
+    windows.push({ x: lx, y: t + 3 });
+  }
 
   // garden: a rose briar bush at the right foot, little toadstools by the step
   briar(img, 50, 96, 14, 16, seed + 9, 0.9, (x, y) => (x - 57) * (x - 57) / 49 + (y - 106) * (y - 106) / 64 < 1 && y <= H - 2);

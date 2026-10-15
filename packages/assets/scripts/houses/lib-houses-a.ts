@@ -12,11 +12,11 @@ export type Pt = { x: number; y: number };
 export const PURPLE_SLATE = ['#140d20', '#1f152d', '#2b1e3d', '#3a2850', '#4b3464', '#5f437a', '#775892'];
 export const RUBBLE = ['#1d1a20', '#29252b', '#363137', '#454045', '#565055', '#6a6366', '#807878'];
 export const WARM_RUBBLE = ['#1f1a1c', '#2d2626', '#3c3330', '#4d423c', '#5f5249', '#736457', '#887766'];
-export const ASHLAR = ['#2e2b33', '#433f48', '#5a5560', '#726c77', '#8b8590', '#a49ea6', '#bcb6ba'];
-export const WITCH_ROOF = ['#0c1614', '#13211e', '#1b2e29', '#253c34', '#314b40', '#405c4c', '#526e58'];
+export const ASHLAR = ['#2a2730', '#3d3943', '#524d58', '#67626c', '#7d7781', '#948e96', '#aea8ac'];
+export const WITCH_ROOF = ['#0b1218', '#111c24', '#182a32', '#21383f', '#2d4a4e', '#3d5e5e', '#527470'];
 export const RED_TILE = ['#240e10', '#371616', '#4e1f1b', '#672b22', '#80392b', '#9a4b36', '#b25f44'];
 export const DARK_SLATE = ['#0f0e18', '#171624', '#201f31', '#2b2a40', '#373750', '#454662', '#565876'];
-export const TURF = ['#101a10', '#172614', '#21341a', '#2d4420', '#3c5626', '#4e6a2e', '#647e38'];
+export const TURF = ['#141c10', '#1e2a14', '#2a3a1a', '#384c20', '#4a6026', '#5e742e', '#788a3a'];
 export const LOGS = ['#22150d', '#341f12', '#4a2d19', '#613c22', '#7a4e2e', '#94643c'];
 export const OCHRE_STONE = ['#2e2420', '#45372e', '#5e4c3e', '#78624f', '#927a62', '#ab9478'];
 export const CREAM = ['#5a5248', '#736a5c', '#8e8470', '#a89c84', '#bfb398', '#d2c7aa'];
@@ -437,6 +437,54 @@ export function edgeLine(img: Img, x0: number, y0: number, x1: number, y1: numbe
     const x = x0 + ((x1 - x0) * t) / n;
     const y = y0 + ((y1 - y0) * t) / n;
     for (let q = 0; q < k; q++) img.set(x, y + q, pal[q === 0 ? pal.length - 2 : 1]!);
+  }
+}
+
+/**
+ * Drystone wall of rounded fieldstones (river cobbles): each stone a soft rounded block shaded from
+ * the upper left, varied grey / brown / mossy tints, dark earthy gaps.
+ */
+export function fieldstone(img: Img, x0: number, y0: number, w: number, h: number, seed: number, opts: { rh?: number; gap?: Color; shadeX?: (i: number) => number } = {}) {
+  const rh = opts.rh ?? 5;
+  const gap = opts.gap ?? '#17110e';
+  const tints: (readonly Color[])[] = [
+    ['#2a2622', '#3e3932', '#565048', '#6e675c', '#878070', '#9e9684'],
+    ['#2a221e', '#40332a', '#584638', '#715a48', '#8a705a', '#a2886e'],
+    ['#24221e', '#363630', '#4a4a40', '#5e5e50', '#747262', '#8a8874'],
+    ['#1e2418', '#2c3622', '#3c4a2c', '#4e5e38', '#627244', '#768650'],
+  ];
+  for (let j = 0; j < h; j++) {
+    const row = Math.floor(j / rh);
+    const ly = j - row * rh;
+    // stone boundaries along the row (deterministic widths 4..8)
+    let sx = -Math.floor(hash(row, 7, seed) * 5);
+    let k = 0;
+    const bounds: number[] = [];
+    while (sx < w + 8) {
+      bounds.push(sx);
+      sx += 4 + Math.floor(hash(row, k++, seed + 1) * 5);
+    }
+    for (let i = 0; i < w; i++) {
+      let b = 0;
+      while (b + 1 < bounds.length && bounds[b + 1]! <= i) b++;
+      const a0 = bounds[b]!;
+      const a1 = bounds[b + 1] ?? a0 + 6;
+      const sw = a1 - a0;
+      const u = (i - a0 + 0.5) / sw * 2 - 1; // -1..1
+      const v = (ly + 0.5) / rh * 2 - 1;
+      const inside = Math.pow(Math.abs(u), 3) + Math.pow(Math.abs(v), 3) < 0.78;
+      const x = x0 + i;
+      const y = y0 + j;
+      if (!inside) {
+        img.set(x, y, gap);
+        continue;
+      }
+      const t = hash(b, row, seed + 3);
+      const pal = tints[t < 0.4 ? 0 : t < 0.7 ? 1 : t < 0.88 ? 2 : 3]!;
+      let val = 0.55 - u * 0.25 - v * 0.3 + (hash(b, row, seed + 4) - 0.5) * 0.25 + (opts.shadeX ? opts.shadeX(i) : 0);
+      val += (hash(x, y, seed + 5) - 0.5) * 0.1;
+      img.set(x, y, dp(pal, val, x, y));
+    }
   }
 }
 

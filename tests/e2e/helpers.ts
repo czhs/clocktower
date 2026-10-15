@@ -849,3 +849,29 @@ export function voiceZone(p: Player): string | null {
 export function zonesGranted(p: Player, since = 0): string[] {
   return p.tap.received('voice:grant', since).filter((g: any) => g.purpose === 'zone').map((g: any) => g.zone);
 }
+
+/**
+ * Tap a cottage whose door is locked for us: we walk to its door, nothing is sent to the server
+ * (no world:useDoor), we stay outdoors and the door prompt explains it. Returns the prompt text.
+ */
+export async function tapLockedCottage(p: Player, pid: string, buildingId: string, opts: { touch?: boolean } = {}): Promise<string> {
+  const t0 = Date.now();
+  for (let attempt = 1; attempt <= 6; attempt++) {
+    const me = await settle(p, pid, 900, 60_000);
+    const plan = await planCottageTap(p, me, buildingId);
+    if (!plan) throw new Error(`${p.name}: nothing to tap toward ${buildingId}`);
+    await press(p, plan.sx, plan.sy, !!opts.touch);
+    if (plan.kind === 'ground') {
+      await p.page.waitForTimeout(1500);
+      continue;
+    }
+    const prompt = p.page.locator('.ct-game-prompt.locked');
+    await expect(prompt).toBeVisible({ timeout: 60_000 });
+    const text = ((await prompt.textContent()) ?? '').trim();
+    await p.page.waitForTimeout(800);
+    expect(p.tap.sent('world:useDoor', t0).length, `${p.name}: no door request for a locked cottage`).toBe(0);
+    expect(selfEntity(p, pid)?.location, `${p.name}: still outdoors`).toBe('outdoors');
+    return text;
+  }
+  throw new Error(`${p.name}: could not reach ${buildingId} by tapping`);
+}

@@ -25,21 +25,21 @@ export const P = {
   sage: ['#38443c', '#4c5a4c', '#62705e', '#7c8a74', '#98a48c', '#b4bca4'],
   ochre: ['#4a3418', '#664a20', '#86642c', '#a6803a', '#c09a4e', '#d8b46a'],
   cream: ['#4e4638', '#6c6250', '#8c826a', '#ada284', '#c9bf9e', '#e2d9b8'],
-  capRed: ['#1e060c', '#360c16', '#52141e', '#6e1e26', '#8a2c2e', '#a43e36', '#bc5a44'],
-  spot: ['#6e6250', '#988a72', '#bfb294', '#ddd2b2', '#f2ead0'],
+  capRed: ['#1c060e', '#320a18', '#4c1220', '#661a28', '#80262e', '#983634', '#b0503e'],
+  spot: ['#6a5c4c', '#908268', '#b4a688', '#d0c4a2', '#e6dcbe'],
   gill: ['#3a2a28', '#5a4238', '#7a5e4c', '#9a7e64'],
   logs: ['#1e130c', '#2e1e12', '#43301c', '#5a4228', '#745636', '#8e6c46'],
   endGrain: ['#4a3420', '#7a5c38', '#a8885a', '#ccb07c'],
   chink: ['#5a5244', '#7a7060', '#958a76'],
   shakes: ['#1c140e', '#2a1e14', '#3c2a1a', '#523a22', '#6a4c2c', '#846238'],
-  river: ['#26232c', '#36323c', '#48434e', '#5c5662', '#726b76', '#8a828c'],
-  copper: ['#0e1a1a', '#142824', '#1c3a32', '#285044', '#366858', '#4c846e', '#6aa088'],
+  river: ['#2a262e', '#3c3640', '#524a52', '#6a6064', '#847a78', '#a0948a'],
+  copper: ['#0e1818', '#132522', '#1a352e', '#244a3e', '#30604e', '#427a62', '#5c947a'],
   verdigris: ['#1c3a32', '#2c5a4a', '#428066', '#64a488', '#94c8aa'],
   bronze: ['#2a1a0c', '#4a2e14', '#6e4820', '#94662e', '#bc8a40', '#e0b460'],
   greyStone: ['#22202a', '#2e2b36', '#3c3844', '#4c4754', '#5e5866', '#736c7a'],
   plum: ['#1c1220', '#271a2e', '#33233c', '#402d4c', '#4f395e', '#604872'],
   redTile: ['#260f12', '#3a1618', '#521e1c', '#6a2a24', '#82382e', '#9a4a3a', '#b05e44'],
-  tealSlate: ['#101c22', '#162730', '#1d343e', '#26444e', '#325660', '#426a72', '#5a8486'],
+  tealSlate: ['#0f1824', '#152232', '#1c2d42', '#253a54', '#304a68', '#3e5c7c', '#527292'],
   beam: ['#1a110c', '#271a12', '#36241a', '#462f22', '#5a3e2c'],
   darkGreen: ['#0e1a14', '#16261c', '#203626', '#2c4830'],
   rose: ['#5a1420', '#8a2030', '#b83444', '#de5a64', '#f08a88'],
@@ -188,14 +188,14 @@ export function logWall(img: Img, x0: number, y0: number, w: number, h: number, 
 }
 
 /** Round river-stone masonry (fieldstone chimney). */
-export function fieldstone(img: Img, x0: number, y0: number, w: number, h: number, seed: number, shade: (i: number, j: number) => number = () => 0) {
+export function fieldstone(img: Img, x0: number, y0: number, w: number, h: number, seed: number, shade: (i: number, j: number) => number = () => 0, cw = 5, chh = 4) {
   for (let j = 0; j < h; j++)
     for (let i = 0; i < w; i++) {
       const x = x0 + i;
       const y = y0 + j;
       // Worley-ish cells: nearest of jittered points on a 5x4 grid
-      const cx = Math.floor(i / 5);
-      const cy = Math.floor(j / 4);
+      const cx = Math.floor(i / cw);
+      const cy = Math.floor(j / chh);
       let best = 9;
       let second = 9;
       let id = 0;
@@ -203,9 +203,9 @@ export function fieldstone(img: Img, x0: number, y0: number, w: number, h: numbe
         for (let dx = -1; dx <= 1; dx++) {
           const gx = cx + dx;
           const gy = cy + dy;
-          const off = gy % 2 ? 2.5 : 0;
-          const px = gx * 5 + off + hash(gx, gy, seed) * 3;
-          const py = gy * 4 + hash(gx, gy, seed + 1) * 2.5;
+          const off = gy % 2 ? cw / 2 : 0;
+          const px = gx * cw + off + hash(gx, gy, seed) * (cw * 0.6);
+          const py = gy * chh + hash(gx, gy, seed + 1) * (chh * 0.6);
           const d = Math.hypot((i - px) / 1.15, j - py);
           if (d < best) {
             second = best;
@@ -213,12 +213,12 @@ export function fieldstone(img: Img, x0: number, y0: number, w: number, h: numbe
             id = hash(gx, gy, seed + 2) * 1000;
           } else if (d < second) second = d;
         }
-      if (second - best < 0.9) {
+      if (second - best < 0.7) {
         img.set(x, y, '#141118');
         continue;
       }
       const tone = (id % 7) / 7;
-      let v = 0.35 + tone * 0.35 - best * 0.06 + shade(i, j);
+      let v = 0.5 + tone * 0.32 - best * 0.07 + shade(i, j);
       const tint = id % 3 === 0 ? '#5e5244' : id % 3 === 1 ? '#4a4e58' : null;
       const c = dpick(P.river, v, x, y);
       img.set(x, y, tint ? mix(c, tint, 0.25) : c);

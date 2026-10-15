@@ -1,11 +1,11 @@
 // house-10 — The Old Cobbler's House: the cobbler lives in an enormous old boot (east-facing).
 // The camera sees the boot in profile — heel and laced shaft on the left, the toe pointing at the
-// lane — with a shingled witch-hat roof capping the shaft (crooked stovepipe), a shop window of
+// lane — with a mossy little roof and dormer capping the shaft (crooked stovepipe), a shop window of
 // tiny shoes under a striped awning, and the front door set into the turned-up toe.
 import type { HouseArt } from './types.js';
-import { BRASS, GLASS, IRON, paintWindow, place, ROOFS, wallLantern } from '../buildings.js';
+import { BRASS, dormer, GLASS, IRON, paintWindow, place, roof, wallLantern } from '../buildings.js';
 import { dpick, hash, Img, mix, vnoise } from '../lib/img.js';
-import { finish, groundLine, roundWindow, sideDoor, type Pt } from './lib-houses-c.js';
+import { finish, groundLine, sideDoor, type Pt } from './lib-houses-c.js';
 
 const LEATHER = ['#241014', '#3c1a18', '#58281e', '#763a26', '#955230', '#b26c3e', '#cc8a52'];
 const TAN = ['#3a2416', '#5a3a20', '#7e5630', '#a27442', '#c29458', '#dcb478'];
@@ -191,28 +191,12 @@ const art: HouseArt = (b, style, seed) => {
   wallLantern(img, 46, 67, true);
   windows.push({ x: 47, y: 63 });
 
-  // --- witch-hat shingle roof capping the shaft, a crooked stovepipe and a little round dormer
-  const pal = ROOFS[style.roof] ?? ROOFS.plum!;
-  const cx = 19;
-  for (let y = 1; y <= 28; y++) {
-    const hw = y <= 23 ? 1 + 17 * Math.pow((y - 1) / 22, 0.95) : 18 * Math.sqrt(Math.max(0, 1 - ((y - 23) / 5.5) ** 2));
-    for (let x = Math.round(cx - hw); x <= Math.round(cx + hw); x++) {
-      const u = (x + 0.5 - (cx - hw)) / (2 * hw + 0.001);
-      const dx = x + 0.5 - cx;
-      const course = y + (dx * dx) / 60; // rows curve around the cone
-      const r = Math.floor(course) % 3;
-      let v = 0.9 - u * 0.62;
-      if (r === 2 && (x + Math.floor(course / 3)) % 3 !== 0) v -= 0.25;
-      else if (r === 0) v += 0.08;
-      if (y > 23) v -= 0.25; // underside of the flared eave
-      if (y === 28 || (y > 23 && Math.abs(dx) > hw - 1.5)) v = 0.02;
-      img.set(x, y, dpick(pal, v, x, y));
-    }
-  }
-  // a thin moss ridge of light on the lit side
-  for (let y = 4; y < 22; y += 1) img.set(Math.round(cx - (1 + 17 * Math.pow((y - 1) / 22, 0.95))) + 1, y, pal[5]!);
-  windows.push(roundWindow(img, 13.5, 16.5, 2.4, ['#1a110c', '#36241a', '#5a3e2a'], GLASS));
-  // stovepipe: up through the hat, a kink, a little cap
+  // --- a little mossy hipped roof capping the shaft, a dormer, a crooked stovepipe
+  const rs = { ...style, roof: 'moss' as const };
+  roof(img, rs, 0, 38, 3, 25, 9, seed + 5);
+  img.blendRect(4, 26, 30, 2, '#05030a', 0.4);
+  windows.push(dormer(img, rs, 14, 6, seed));
+  // stovepipe: up through the roof, a kink, a little cap
   const pipe = ['#2a2632', '#4a4452', '#6a6474', '#8a8496'];
   for (let y = 6; y <= 14; y++) for (let i = 0; i < 3; i++) img.set(24 + i, y, pipe[i === 0 ? 3 : i === 1 ? 2 : 1]!);
   for (let k = 0; k < 4; k++) for (let i = 0; i < 3; i++) img.set(24 + Math.ceil(k / 2) + i, 5 - k, pipe[i === 0 ? 3 : i === 1 ? 2 : 1]!);

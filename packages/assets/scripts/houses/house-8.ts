@@ -25,7 +25,7 @@ const art: HouseArt = (b, _style, seed) => {
     w.sideTex(tex, 0, 0.0);
   }
   // --- front wall: logs, with the plinth
-  logWall(img, SW, wallTop, W - SW, wallH - 2, seed, LH, 0);
+  logWall(img, SW, wallTop, W - SW, wallH - 2, seed, LH, 0.05);
   for (let x = SW; x < W; x++) {
     img.set(x, H - 2, dpick(P.stone, 0.6, x, H - 2));
     img.set(x, H - 1, dpick(P.stone, 0.3, x, H - 1));
@@ -45,21 +45,17 @@ const art: HouseArt = (b, _style, seed) => {
     logEnd(W - 2.2, y, 2.6);
   }
 
-  // --- front window with plank shutters and a window box
-  const wx = SW + 12;
-  {
-    const win = glassWindow(9, 9, { bars: true, seed });
-    put(img, win, (i, j) => [wx - 5 + i, wallTop + 6 + j]);
-    windows.push({ x: wx, y: wallTop + 10 });
-    for (const sx of [wx - 9, wx + 6])
-      for (let j = 0; j < 11; j++)
-        for (let i = 0; i < 4; i++) img.set(sx + i, wallTop + 6 + j, dpick(['#3a1a14', '#55261a', '#6e3422', '#8a4630'], 0.55 + (i === 0 ? 0.2 : i === 3 ? -0.3 : 0) + (j === 2 || j === 8 ? -0.35 : 0), sx + i, wallTop + 6 + j));
-    // window box with herbs and marigolds
-    img.rect(wx - 6, wallTop + 17, 13, 3, BOARD[2]!);
-    img.hline(wx - 6, wx + 6, wallTop + 17, BOARD[4]!);
-    for (let i = 0; i < 13; i++) {
-      img.set(wx - 6 + i, wallTop + 16, i % 2 ? P.leaf[3]! : P.leaf[2]!);
-      if (hash(i, 7, seed) < 0.55) img.set(wx - 6 + i, wallTop + 15 - (i % 2), ['#e8a030', '#f0c040', '#c05a2a'][i % 3]!);
+  // --- two small shuttered windows either side of the chimney breast
+  for (const wx of [SW + 7, W - 7]) {
+    const win = glassWindow(5, 7, { bars: true, seed: seed + wx });
+    put(img, win, (i, j) => [wx - 3 + i, wallTop + 7 + j]);
+    windows.push({ x: wx, y: wallTop + 11 });
+    // window box with marigolds
+    img.rect(wx - 4, wallTop + 16, 8, 2, BOARD[2]!);
+    img.hline(wx - 4, wx + 3, wallTop + 16, BOARD[4]!);
+    for (let i = 0; i < 8; i++) {
+      img.set(wx - 4 + i, wallTop + 15, i % 2 ? P.leaf[3]! : P.leaf[2]!);
+      if (hash(i, wx, seed) < 0.55) img.set(wx - 4 + i, wallTop + 14 - (i % 2), ['#e8a030', '#f0c040', '#c05a2a'][i % 3]!);
     }
   }
 
@@ -89,11 +85,11 @@ const art: HouseArt = (b, _style, seed) => {
   const gh = 24;
   const cx = SW + Math.floor((W - SW) / 2);
   const apex: V2 = [cx - 0.5, wallTop - gh];
-  const moss = (x: number, y: number) => vnoise(x, y, 5, seed + 9) > 0.64;
+  const moss = (x: number, y: number) => vnoise(x, y, 4, seed + 9) > 0.7;
   slope(img, [W + 1, wallTop + 2], apex, R, P.shakes, (ux, ly) => shakes(ux, ly, seed, 4, 4), -0.12, { moss, eaveRows: 2.5 });
   slope(img, [SW - 3, wallTop + 2], apex, R, P.shakes, (ux, ly) => shakes(ux, ly, seed + 1, 4, 4), 0.04, { moss, eaveRows: 2.5 });
   for (let x = 0; x < SW; x++) for (let j = 0; j <= 3; j++) img.blend(x, w.base(x) - wallH + 1 + j, '#05030a', 0.45);
-  doorHood(img, T, spec, 'pent', P.shakes);
+  doorHood(img, T, spec, 'pent', [...P.shakes]);
   // gable: vertical board and batten
   texPoly(
     img,
@@ -115,28 +111,6 @@ const art: HouseArt = (b, _style, seed) => {
     },
   );
   img.blendRect(SW + 1, wallTop, W - SW - 2, 2, '#05030a', 0.4);
-  // small gable window + a pair of antlers above it
-  {
-    const gx = cx - 7;
-    const gy = wallTop - 13;
-    const win = glassWindow(5, 5, { bars: true, seed: seed + 3 });
-    put(img, win, (i, j) => [gx - 3 + i, gy + j]);
-    windows.push({ x: gx, y: gy + 3 });
-    const ay = gy - 3;
-    const A = '#d8c8a8';
-    const A2 = '#a8987a';
-    img.rect(gx - 1, ay, 2, 2, P.beam[3]!);
-    for (const s of [-1, 1]) {
-      const ox = s < 0 ? gx - 1 : gx;
-      img.set(ox + s * 1, ay, A);
-      img.set(ox + s * 2, ay - 1, A);
-      img.set(ox + s * 3, ay - 2, A);
-      img.set(ox + s * 3, ay - 3, A2);
-      img.set(ox + s * 2, ay - 3, A2);
-      img.set(ox + s * 4, ay - 3, A);
-      img.set(ox + s * 4, ay - 4, A2);
-    }
-  }
   // thick verge: the roof's slab edge along both gable sides
   barge(img, [apex[0] + 0.5, apex[1] - 1], [SW - 3, wallTop + 3], P.shakes, 5, 0.05);
   barge(img, [apex[0] + 0.5, apex[1] - 1], [W, wallTop + 3], P.shakes, 5, -0.12);
@@ -152,16 +126,16 @@ const art: HouseArt = (b, _style, seed) => {
   // --- the great fieldstone chimney up the outside of the gable end
   let chim: { x: number; y: number } | null = null;
   {
-    const top = 14;
-    const shoulder1 = wallTop + 4;
-    const shoulder2 = wallTop - 16;
-    const span = (y: number): [number, number] => (y >= shoulder1 ? [W - 15, W - 1] : y >= shoulder2 ? [W - 13, W - 2] : [W - 12, W - 4]);
+    const top = 27;
+    const shoulder1 = wallTop + 5;
+    const shoulder2 = wallTop - 12;
+    const span = (y: number): [number, number] => (y >= shoulder1 ? [cx - 9, cx + 7] : y >= shoulder2 ? [cx - 7, cx + 5] : [cx - 5, cx + 3]);
     const stoneImg = new Img(W, H);
-    fieldstone(stoneImg, W - 16, top, 16, H - top, seed + 21, (i) => (i < 4 ? 0.12 : i > 11 ? -0.18 : 0));
+    fieldstone(stoneImg, cx - 9, top, 17, H - top, seed + 21, (i) => (i < 5 ? 0.16 : i > 12 ? -0.16 : 0.04), 5, 4);
     for (let y = top; y < H; y++) {
       const [a, z] = span(y);
       for (let x = a; x <= z; x++) {
-        let c = stoneImg.get(x, y);
+        let c = mix(stoneImg.get(x, y), '#7a6048', 0.3);
         if (x === a) c = mix(c, '#fff1cc', 0.12);
         if (x === z) c = mix(c, '#0b0714', 0.25);
         img.set(x, y, c);

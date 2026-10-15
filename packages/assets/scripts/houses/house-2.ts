@@ -4,7 +4,7 @@
 // of cloth bolts and spools, skeins of dyed yarn hanging under the jetty, and a spool sign hanging
 // off the corner (the sprite overhangs 8 px to the right for it).
 import { TS } from '../../src/layout.js';
-import { chimney, hangingSign, paintWindow, roof, wallTexture, WALLS, type DoorSpec } from '../buildings.js';
+import { chimney, hangingSign, roof, wallTexture, WALLS, type DoorSpec } from '../buildings.js';
 import { stonework } from '../lib/draw.js';
 import { hash, Img, mix } from '../lib/img.js';
 import { BEAM, CREAM, dp, finish, flowerBox, frontDoor, GLASS, IRON, OCHRE_STONE, RED_TILE, skein, type Pt } from './lib-houses-a.js';
@@ -99,22 +99,38 @@ const art: HouseArt = (b, style, seed) => {
   const tb = (x: number, y: number, w: number, h: number) => {
     for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) img.set(x + i, y + j, dp(BEAM, 0.6 + (i === 0 || j === 0 ? 0.3 : 0) + (hash(x + i, y + j, 5) - 0.5) * 0.3, x + i, y + j));
   };
-  // posts, rails, and curved braces
-  for (const px of [0, 20, 58, BW - 2]) tb(px, upTop, 2, jettyY - upTop);
-  tb(0, upTop, BW, 2);
-  tb(0, 67, 20, 2);
-  tb(60, 67, BW - 60, 2);
-  for (const [x0, flip] of [
-    [2, false],
-    [60, true],
-  ] as const)
-    for (let k = 0; k < 11; k++) {
-      const x = flip ? x0 + 17 - k : x0 + k;
-      const y = jettyY - 1 - k;
-      if (y < 69) continue;
-      img.set(x, y, BEAM[2]!);
-      img.set(x + (flip ? -1 : 1), y, BEAM[1]!);
+  // the weaver's long window: a ribbon of lights right across the upper floor (light for the loom)
+  const rwTop = 58;
+  const rwH = 8;
+  for (let x = 2; x < BW - 2; x++)
+    for (let j = 0; j < rwH; j++) {
+      const y = rwTop + j;
+      img.set(x, y, (x - 2) % 5 === 4 ? BEAM[1]! : dp(GLASS, 0.9 - j / 16 - (hash(Math.floor(x / 5), j, seed) < 0.12 ? 0.25 : 0), x, y));
     }
+  for (const wx of [12, 40, 68]) windows.push({ x: wx, y: rwTop + 4 });
+  tb(0, rwTop - 2, BW, 2); // head rail
+  tb(0, rwTop + rwH, BW, 2); // sill rail
+  // posts, and St Andrew's crosses in the panels below the long window
+  for (const px of [0, 20, 38, 58, BW - 2]) {
+    tb(px, upTop, 2, rwTop - upTop);
+    tb(px, rwTop + rwH, 2, jettyY - rwTop - rwH);
+  }
+  for (const [a0, a1] of [
+    [2, 20],
+    [22, 38],
+    [40, 58],
+    [60, BW - 2],
+  ] as const) {
+    const y0 = rwTop + rwH + 2;
+    const y1 = jettyY - 1;
+    img.line(a0, y0, a1 - 1, y1, BEAM[1]!);
+    img.line(a0, y1, a1 - 1, y0, BEAM[1]!);
+    img.line(a0 + 1, y0, a1, y1, BEAM[2]!);
+    img.line(a0 + 1, y1, a1, y0, BEAM[2]!);
+  }
+  // flower boxes along the sill rail
+  flowerBox(img, 4, rwTop + rwH + 2, 14, seed + 1);
+  flowerBox(img, 62, rwTop + rwH + 2, 14, seed + 2);
   // jetty beam + projecting joist ends + brackets
   for (let x = 0; x < BW; x++) {
     img.set(x, jettyY, BEAM[3]!);
@@ -133,13 +149,6 @@ const art: HouseArt = (b, style, seed) => {
     }
   }
   img.blendRect(3, jettyY + 4, BW - 6, 3, '#05030a', 0.4);
-  // upper windows with flower boxes
-  for (const wx of [10, 69]) {
-    const win = paintWindow(st, 8, 9, true, seed + wx);
-    for (let j = 0; j < win.h; j++) for (let i = 0; i < win.w; i++) if (win.get(i, j)[3]) img.set(wx - Math.floor(win.w / 2) + i, 57 + j, win.get(i, j));
-    windows.push({ x: wx, y: 62 });
-    flowerBox(img, wx - 6, 69, 12, seed + wx);
-  }
   // hanging lantern (chain from the jetty) left of the door
   {
     const lx = 29;

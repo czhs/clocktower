@@ -1,11 +1,11 @@
-// house-4 — Mossbank: a low log cottage buried under a deep rounded turf roof (grass, wildflowers,
-// toadstools) with an eyebrow window peeping out of it and a stubby fieldstone chimney. A round-
+// house-4 — Mossbank: a low drystone blackhouse of rounded fieldstones under a deep hipped turf roof
+// (long grass, wildflowers, toadstools, a rowan sapling) with an eyebrow window peeping out of it and a stubby fieldstone chimney. A round-
 // topped red door, tall sunflowers, a raised bed of cabbages and straw beehive skeps on a bench.
 import { TS } from '../../src/layout.js';
 import { paintWindow, wallLantern, type DoorSpec } from '../buildings.js';
 import { stonework } from '../lib/draw.js';
-import { hash, Img, mix, vnoise } from '../lib/img.js';
-import { BEAM, cabbage, dp, finish, flowerBox, frontDoor, LOGS, roundWindow, RUBBLE, skep, sunflower, TURF, type Pt } from './lib-houses-a.js';
+import { hash, Img, vnoise } from '../lib/img.js';
+import { BEAM, cabbage, dp, fieldstone, finish, flowerBox, frontDoor, LOGS, roundWindow, RUBBLE, skep, sunflower, TURF, type Pt } from './lib-houses-a.js';
 import type { HouseArt } from './types.js';
 
 const SOD = ['#1a100a', '#2a1a10', '#3c2816', '#50361e'];
@@ -19,28 +19,15 @@ const art: HouseArt = (b, style, seed) => {
   const doorBottom = H - 4;
   const wallTop = 54;
 
-  // --- log walls: horizontal logs with round ends at the corners
-  for (let y = wallTop; y < H - 4; y++) {
-    const row = Math.floor((y - wallTop) / 4);
-    const ly = (y - wallTop) % 4;
-    for (let x = 4; x < W - 4; x++) {
-      let v = 0.55 + (ly === 0 ? 0.25 : ly === 3 ? -0.4 : ly === 2 ? -0.12 : 0.05) + (vnoise(x, row * 7, 6, seed) - 0.5) * 0.3;
-      if (x < 8) v += 0.1;
-      if (x > W - 10) v -= 0.18;
-      if (hash(x, row, seed) < 0.04) v -= 0.25; // knots and checks
-      img.set(x, y, dp(LOGS, v, x, y));
-    }
-    // log ends
-    if (ly === 0)
-      for (const ex of [3, W - 5]) {
-        const right = ex > cx;
-        img.ellipse(ex + 1, y + 2, 2.4, 2.1, (x, yy, nx, ny) => {
-          const d = Math.sqrt(nx * nx + ny * ny);
-          if (d > 0.82) return mix(LOGS[1]!, '#000000', 0.2);
-          return dp(['#5a3a1c', '#8a6236', '#b08a52', '#cfae74'], (d < 0.4 ? 0.85 : 0.6) - nx * 0.3 - ny * 0.2 - (right ? 0.25 : 0), x, yy);
-        });
-      }
-  }
+  // --- drystone walls of rounded fieldstones (a turf-roofed blackhouse), timber lintels
+  fieldstone(img, 3, wallTop, W - 6, H - 4 - wallTop, seed, { rh: 5, shadeX: (i) => (i < 4 ? 0.12 : i > W - 12 ? -0.22 : 0) });
+  // big rounded corner stones
+  for (let y = wallTop + 2; y < H - 6; y += 7)
+    for (const [ex, right] of [
+      [4, false],
+      [W - 6, true],
+    ] as const)
+      img.ellipse(ex + 1, y + 2, 3.2, 2.8, (x, yy, nx, ny) => dp(['#2a2622', '#3e3932', '#565048', '#6e675c', '#878070', '#9e9684'], 0.62 - nx * 0.3 - ny * 0.35 - (right ? 0.25 : 0), x, yy));
   stonework(img, 2, H - 4, W - 4, 4, RUBBLE, '#141118', { rh: 4, sw: 6, seed: seed + 2 });
 
   // windows with green shutters and flower boxes
@@ -49,6 +36,10 @@ const art: HouseArt = (b, style, seed) => {
     const win = paintWindow(st, 8, 8, true, seed + wx);
     for (let j = 0; j < win.h; j++) for (let i = 0; i < win.w; i++) if (win.get(i, j)[3]) img.set(wx - Math.floor(win.w / 2) + i, 64 + j, win.get(i, j));
     windows.push({ x: wx, y: 68 });
+    for (let i = -7; i <= 7; i++) {
+      img.set(wx + i, 62, BEAM[3]!);
+      img.set(wx + i, 63, BEAM[1]!);
+    }
     flowerBox(img, wx - 6, 75, 12, seed + wx, ['#e8c030', '#e8e0d0', '#c060a0', '#e8a030']);
   }
 
@@ -58,44 +49,52 @@ const art: HouseArt = (b, style, seed) => {
   wallLantern(img, dx0 - 6, doorBottom - 20 + 9, false);
   windows.push({ x: dx0 - 5, y: doorBottom - 20 + 6 });
 
-  // --- the turf roof: a fat, rounded loaf of grass lit from the upper left
-  const rcx = 40;
-  const rcy = 50;
-  const rx = 41;
-  const ry = 44;
-  const bottomEdge = (x: number) => wallTop + 5 + Math.round(2 * Math.sin(x * 0.9 + seed) + (hash(x, 3, seed) < 0.3 ? 1 : 0));
-  for (let y = 4; y < wallTop + 9; y++)
+  // --- the turf roof: a hipped roof grown over with thick grass, held at the eave by a log
+  const ridge = 15;
+  const eaveY = wallTop + 4;
+  const halfAt = (y: number) => {
+    const f = Math.max(0, Math.min(1, (y - ridge) / (eaveY - ridge)));
+    return 22 + 19 * Math.pow(f, 0.7);
+  };
+  for (let y = ridge - 3; y <= eaveY; y++) {
+    const hw = halfAt(y);
     for (let x = 0; x < W; x++) {
-      const nx = (x + 0.5 - rcx) / rx;
-      const ny = (y + 0.5 - rcy) / ry;
-      const lumpy = (vnoise(x, y, 3, seed + 1) - 0.5) * 0.08;
-      if (Math.pow(Math.abs(nx), 2.6) + Math.pow(Math.abs(Math.min(0, ny)), 2.2) > 1 + lumpy) continue;
-      const be = bottomEdge(x);
-      if (y > be) continue;
-      // sod edge: the cut turf shows a band of dark soil above the grass fringe
-      if (y >= be - 2 && Math.abs(nx) < 0.97) {
-        img.set(x, y, y === be ? SOD[0]! : dp(SOD, 0.7 - (y - be + 2) * 0.3, x, y));
-        continue;
-      }
-      const nz = Math.sqrt(Math.max(0, 1 - nx * nx - Math.min(0, ny) * Math.min(0, ny)));
-      let v = 0.58 - nx * 0.32 - Math.min(0, ny) * 0.3 + nz * 0.1 - Math.max(0, (y - 44) / 20) * 0.2;
-      v += (vnoise(x, y, 2.5, seed + 3) - 0.5) * 0.4;
-      if (hash(x, y, seed + 4) < 0.07) v += 0.25;
+      const u = (x + 0.5 - 40) / hw;
+      const edge = 1 + (vnoise(x, y, 2.5, seed + 1) - 0.5) * 0.08;
+      if (Math.abs(u) > edge) continue;
+      // lumpy ridge line with tufts
+      const ridgeHere = ridge + Math.round((vnoise(x, 0, 4, seed + 2) - 0.5) * 3);
+      if (y < ridgeHere && !(hash(x, 1, seed) < 0.3 && y >= ridgeHere - 2)) continue;
+      const f = (y - ridge) / (eaveY - ridge);
+      // hip ends: the left one catches the light, the right one is in shadow
+      const hipW = 22 * (1 - Math.pow(Math.max(0, f), 0.7) * 0.25);
+      const lHip = x + 0.5 < 40 - hw + hipW * (1 - f) + 3;
+      const rHip = x + 0.5 > 40 + hw - hipW * (1 - f) - 3;
+      let v = 0.72 - f * 0.38 + (lHip ? 0.1 : 0) - (rHip ? 0.24 : 0);
+      v += (vnoise(x * 2.2, y * 0.6, 2, seed + 3) - 0.5) * 0.45; // grass blades
+      if (hash(x, y, seed + 4) < 0.06) v += 0.22;
+      if (y < ridgeHere + 2) v += 0.12;
       img.set(x, y, dp(TURF, v, x, y));
     }
-  // grass fringe hanging over the sod edge
-  for (let x = 1; x < W - 1; x++) {
-    const be = bottomEdge(x);
-    if (hash(x, 5, seed) < 0.55) img.set(x, be + 1, dp(TURF, 0.35, x, be + 1));
-    if (hash(x, 6, seed) < 0.25) img.set(x, be + 2, TURF[1]!);
-    img.blend(x, be + 2, '#05030a', 0.35);
-    img.blend(x, be + 3, '#05030a', 0.25);
   }
+  // the turf-retaining log along the eave, with round log ends
+  for (let x = 0; x < W; x++) {
+    img.set(x, eaveY + 1, dp(LOGS, 0.85 - (x > W - 10 ? 0.25 : 0), x, eaveY + 1));
+    img.set(x, eaveY + 2, dp(LOGS, 0.55, x, eaveY + 2));
+    img.set(x, eaveY + 3, dp(LOGS, 0.2, x, eaveY + 3));
+    // grass hanging over it
+    if (hash(x, 5, seed) < 0.5) img.set(x, eaveY + 1, dp(TURF, 0.4, x, eaveY + 1));
+    if (hash(x, 6, seed) < 0.18) img.set(x, eaveY + 2, TURF[2]!);
+    img.blend(x, eaveY + 4, '#05030a', 0.45);
+    img.blend(x, eaveY + 5, '#05030a', 0.3);
+  }
+  for (const ex of [1, W - 2])
+    img.ellipse(ex, eaveY + 2, 2, 2, (x, y, nx, ny) => dp(['#5a3a1c', '#8a6236', '#b08a52', '#cfae74'], (Math.hypot(nx, ny) < 0.5 ? 0.85 : 0.55) - nx * 0.3 - (ex > 40 ? 0.25 : 0), x, y));
   // wildflowers
   for (let k = 0; k < 70; k++) {
     const x = Math.floor(hash(k, 1, seed) * W);
-    const y = 8 + Math.floor(hash(k, 2, seed) * (wallTop - 8));
-    if (img.alpha(x, y) === 0 || img.alpha(x, y - 1) === 0 || y > bottomEdge(x) - 4) continue;
+    const y = ridge + 2 + Math.floor(hash(k, 2, seed) * (eaveY - ridge - 4));
+    if (img.alpha(x, y) === 0 || img.alpha(x, y - 1) === 0 || y > eaveY - 3) continue;
     const c = ['#e8c030', '#f0ead8', '#c060a0', '#e8e0d0', '#8a7ad0'][k % 5]!;
     img.set(x, y, c);
     if (k % 3 === 0) img.set(x, y + 1, TURF[2]!);
@@ -120,7 +119,7 @@ const art: HouseArt = (b, style, seed) => {
   for (const [mx, my, big] of [
     [14, 30, true],
     [19, 33, false],
-    [66, 18, false],
+    [58, 21, false],
   ] as const) {
     const r = big ? 2.6 : 1.8;
     img.vline(mx, my - 1, my + 1, '#e8dcc0');

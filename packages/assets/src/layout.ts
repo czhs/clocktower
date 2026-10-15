@@ -336,21 +336,21 @@ function S(
 const houseRoom = (i: number): TileRect => ({ x: TOWN_W + 2 + (i % 5) * 12, y: 1 + Math.floor(i / 5) * 11, w: 11, h: 9 });
 
 const HOUSE_NAMES = [
-  'Thornwick Cottage',
-  'Ashgrove Cottage',
+  'Stargazer’s Tower',
+  'Wychwood Cottage',
   'The Weaver’s House',
-  'Ravenscroft Cottage',
+  'Ravenscroft',
   'Mossbank Cottage',
-  'Elderhollow',
-  'Candlewick Cottage',
-  'Briarfield House',
-  'Hearthstone Cottage',
-  'Gloamend Cottage',
-  'Old Cobbler’s House',
-  'Fernlea Cottage',
-  'Rookery Cottage',
-  'Riverbend Cottage',
-  'Millrace Cottage',
+  'Elderhollow Apothecary',
+  'The Lantern-maker’s',
+  'Toadstool Hollow',
+  'Hearthstone Cabin',
+  'Gloamend Clockworks',
+  'The Old Boot',
+  'Fernlea Oak',
+  'Rookery House',
+  'Riverbend Boathouse',
+  'Millrace Mill',
 ];
 
 /**
@@ -488,9 +488,7 @@ obj('bench', TOWN_W - 11, 21);
 // the fountain (ambient water sound) between the market stall and the upper-right cottage
 obj('fountain', TOWN_W - 12, 12);
 // beside the cottages
-obj('barrel', 12, 8);
 obj('bush', 19, 8);
-obj('crates', TOWN_W - 16, 8);
 obj('bush', 2, 26);
 obj('bushberry', TOWN_W - 3, 26);
 obj('barrel', 19, 33);

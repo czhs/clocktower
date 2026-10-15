@@ -3,7 +3,7 @@
 // lean-to (woodpile) hugs its left side and a half-timbered wing with the chimney sits on its right.
 // The tallest silhouette at the left end of the top row, framing the square with Ravenscroft.
 import { TS } from '../../src/layout.js';
-import { chimney, paintWindow, ROOFS, timberFrame, wallLantern, wallTexture, woodpile, type DoorSpec } from '../buildings.js';
+import { chimney, paintWindow, roof, ROOFS, timberFrame, wallLantern, wallTexture, woodpile, type DoorSpec } from '../buildings.js';
 import { stonework } from '../lib/draw.js';
 import { hash, Img } from '../lib/img.js';
 import { BEAM, BRASS, cone, cylinder, dp, finish, flowerBox, frontDoor, GLASS, IRON, LEAF, PURPLE_SLATE, roundWindow, WARM_RUBBLE as RUBBLE, type Pt } from './lib-houses-a.js';
@@ -38,17 +38,8 @@ const art: HouseArt = (b, style, seed) => {
   const wx0 = cx + r - 4;
   wallTexture(img, wx0, 80, W - 2 - wx0, H - 4 - 80, 'plaster', seed + 4);
   timberFrame(img, wx0, 80, W - 2 - wx0, H - 4 - 80, [{ x: 64, w: 14 }], seed + 4);
-  {
-    const pal = ROOFS.slate!;
-    for (let y = 64; y <= 81; y++)
-      for (let x = wx0 - 2; x <= W - 1 - Math.max(0, Math.round((70 - y) * 0.6)); x++) {
-        const ly = y - 64;
-        const v = 0.78 - ly * 0.03 + ((x + (Math.floor(ly / 4) % 2) * 3) % 6 === 0 ? -0.2 : 0) + (ly % 4 === 3 ? -0.3 : 0) + (x > W - 6 ? -0.2 : 0);
-        img.set(x, y, dp(pal, v, x, y));
-      }
-    for (let x = wx0 - 2; x < W; x++) img.set(x, 81, pal[0]!);
-    img.blendRect(wx0, 82, W - 2 - wx0, 2, '#05030a', 0.45);
-  }
+  roof(img, { ...style, roof: 'slate' }, wx0 - 4, W - 1, 64, 81, 7, seed + 8);
+  img.blendRect(wx0, 82, W - 2 - wx0, 2, '#05030a', 0.45);
   {
     const w = paintWindow({ ...style, shutters: '#2f4f63' }, 8, 8, true, seed + 5);
     for (let j = 0; j < w.h; j++) for (let i = 0; i < w.w; i++) if (w.get(i, j)[3]) img.set(65 + i, 88 + j, w.get(i, j));
@@ -142,11 +133,13 @@ const art: HouseArt = (b, style, seed) => {
     img.set(lx + 2, ly + 3, GLASS[2]!);
     img.vline(lx + 4, ly + 3, ly + 6, BEAM[1]!);
     for (let j = 0; j < 6; j++)
-      for (let i = -1; i <= 8; i++) {
-        const half = 5 - j;
-        if (Math.abs(i + 0.5 - 4) > half) continue;
+      for (let i = -2; i <= 9; i++) {
+        const half = j + 0.6;
+        const dxm = Math.abs(i + 0.5 - 4);
+        if (dxm > half) continue;
         const left = i + 0.5 < 4;
-        img.set(lx + i, ly - 5 + j + 1, dp(PURPLE_SLATE, (left ? 0.9 : 0.45) + (Math.abs(i + 0.5 - 4) > half - 1 ? -0.25 : 0), lx + i, ly - 4 + j));
+        const y = ly - 5 + j;
+        img.set(lx + i, y, dp(PURPLE_SLATE, (left ? 0.92 : 0.42) + (j === 5 ? -0.3 : 0) + (dxm < 0.6 ? 0.1 : 0), lx + i, y));
       }
     img.hline(lx - 1, lx + 8, ly + 1, PURPLE_SLATE[0]!);
     img.blendRect(lx, ly + 8, 8, 2, '#05030a', 0.45);

@@ -2,7 +2,7 @@
 // nothing from ../buildings.js may be touched at module top level here (import cycle) — only
 // inside functions.
 import { cutDoor, doorAssembly, DSTONE, type BuildingSprite, type DoorKind, type DoorOut, type DoorSpec, type Tf } from '../buildings.js';
-import { bayer, type Color, dpick, hash, Img, mix, vnoise } from '../lib/img.js';
+import { type Color, dpick, Img } from '../lib/img.js';
 
 export type Pt = { x: number; y: number };
 
@@ -89,11 +89,6 @@ export function glassRect(img: Img, x: number, y: number, w: number, h: number, 
   for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) img.set(x + i, y + j, dpick(glass, 0.88 - j / (h * 1.7) - Math.abs(i + 0.5 - w / 2) / (w * 2.4), x + i, y + j));
 }
 
-/** Simple dithered value fill helper. */
-export function shade(pal: readonly Color[], v: number, x: number, y: number) {
-  return dpick(pal, v, x, y);
-}
-
 /** Tiny hanging lantern (on a chain) with a warm pane, bottom at (x, y). Returns the glow point. */
 export function hangLantern(img: Img, x: number, y: number, chain: number, iron: readonly Color[], glass: readonly Color[]): Pt {
   img.vline(x, y - 5 - chain, y - 6, iron[2]!);
@@ -106,4 +101,3 @@ export function hangLantern(img: Img, x: number, y: number, chain: number, iron:
   return { x, y: y - 4 };
 }
 
-export { bayer, hash, mix, vnoise };

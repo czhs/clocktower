@@ -3,7 +3,7 @@
 // further each floor, under a steep tiled gable with a rook weathervane; a leaded oriel bay
 // window, a leaning chimney and the rooks themselves on the ridge. Door in the stone side wall.
 import type { HouseArt } from './types.js';
-import { BEAM, BRASS, GLASS, IRON, paintWindow, ROOFS, STONE, wallLantern, WALLS } from '../buildings.js';
+import { BRASS, GLASS, IRON, paintWindow, ROOFS, STONE, wallLantern, WALLS } from '../buildings.js';
 import { stonework } from '../lib/draw.js';
 import { type Color, dpick, hash, Img, mix, vnoise } from '../lib/img.js';
 import { finish, groundLine, rise, shearPlace, sideDoor, type Pt } from './lib-houses-c.js';
@@ -128,8 +128,8 @@ const art: HouseArt = (b, style, seed) => {
 
   // --- the front door in the stone side wall, lamp beyond it
   const base0 = groundLine(H, G0.x1 + 1);
-  const { d } = sideDoor(img, { x0: G0.x1 + 6, base: base0, paint: '#7a2a2a', seed, kind: 'panel', arched: true, h: 19 });
-  const lx = G0.x1 + 19;
+  const { d } = sideDoor(img, { x0: G0.x1 + 8, base: base0, paint: '#7a2a2a', seed, kind: 'panel', arched: true, h: 19 });
+  const lx = G0.x1 + 20;
   wallLantern(img, lx, base0(lx) - 12, true);
   windows.push({ x: lx + 1, y: base0(lx) - 15 });
 
@@ -151,12 +151,10 @@ const art: HouseArt = (b, style, seed) => {
       [gr + 1 + 22, eaveY + 1 - 11],
     ];
     img.poly(poly, (x, y) => {
-      const lyy = y - (ay + (x - ax) * ((eaveY - ay) / (gr - ax)));
       const k = y + Math.floor((x - gr) / 2); // courses parallel to the eave
       let v = 0.42 + (y - ay) * -0.006 + (k % 4 === 3 ? -0.25 : 0) + (k % 4 === 0 ? 0.06 : 0);
       if ((x + (Math.floor(k / 4) % 2) * 3) % 6 === 0 && k % 4 !== 3) v -= 0.15;
       if (x > ax + 16 + (y - (ay - 8)) * 1.6) v -= 0.12; // hip face
-      void lyy;
       return dpick(pal, v + (hash(x, y, seed) - 0.5) * 0.1, x, y);
     });
     // eave line along the side wall
@@ -249,7 +247,6 @@ const art: HouseArt = (b, style, seed) => {
     chim = { x: cx + 4 + lean, y: top - 2 };
   }
   rook(ax + 5, ay - 11, false);
-  rook(chim.x - 6, chim.y - 9, true);
   // ivy up the lit corner of the stone floor
   for (let y = 74; y < H - 1; y++)
     for (let x = G0.x0; x < G0.x0 + 7; x++) {
@@ -257,7 +254,6 @@ const art: HouseArt = (b, style, seed) => {
       if (n < 0.45 + (x - G0.x0) / 12 + (H - y) / 90) continue;
       img.set(x, y, dpick(['#122016', '#1c3220', '#28482a', '#3a6232', '#567e3e'], 0.3 + n * 0.6, x, y));
     }
-  void BEAM;
 
   return finish(img, d, windows, chim);
 };

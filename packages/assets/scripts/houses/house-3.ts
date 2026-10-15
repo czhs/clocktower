@@ -16,7 +16,7 @@ const art: HouseArt = (b, _style, seed) => {
   const windows: Pt[] = [];
   const cx = (b.door.x - b.footprint.x) * TS + 8; // 40
   const doorBottom = H - 4;
-  const MORTAR = '#24212a';
+  const MORTAR = '#3a3640';
   const ash = (x: number, y: number, w: number, h: number, s: number, shade?: (i: number, j: number) => number) =>
     stonework(img, x, y, w, h, ASHLAR, MORTAR, { rh: 5, sw: 10, seed: s, shade: shade ?? ((i) => (i < 3 ? 0.12 : i > w - 4 ? -0.18 : 0)) });
 

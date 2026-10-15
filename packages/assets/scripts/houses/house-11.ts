@@ -3,9 +3,9 @@
 // round window and a lantern; a plank stair winds up the trunk to a little gabled cabin perched
 // in the crown, wrapped in leaves and strung with lanterns. Ferns and toadstools at the roots.
 import type { HouseArt } from './types.js';
-import { GLASS, IRON, paintWindow, place, ROOFS, wallLantern, WALLS } from '../buildings.js';
+import { GLASS, paintWindow, place, ROOFS, wallLantern, WALLS } from '../buildings.js';
 import { canopy } from '../lib/draw.js';
-import { dpick, hash, Img, mix, vnoise } from '../lib/img.js';
+import { dpick, hash, Img, vnoise } from '../lib/img.js';
 import { finish, groundLine, hangLantern, roundWindow, sideDoor, type Pt } from './lib-houses-c.js';
 
 const BARK = ['#181214', '#261c1c', '#382a24', '#4c3a2c', '#624e38', '#7c6648', '#96805a'];
@@ -251,8 +251,6 @@ const art: HouseArt = (b, style, seed) => {
   shroom(28, 110, true);
   shroom(32, 110, false);
   shroom(40, 109, false);
-  void IRON;
-  void mix;
 
   return finish(img, d, windows, chim);
 };

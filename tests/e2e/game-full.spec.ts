@@ -1,28 +1,52 @@
 // e2e: a COMPLETE game of Blood on the Clocktower (Trouble Brewing) in 6 real browsers — 1 Storyteller
-// + 5 players — driven through the UI the way people would on a game night:
-//   1 sign up (villager pick) -> create lobby (ST seat) -> share link -> join -> Ready -> Start
+// + 5 players — driven through the UI the way people would on a game night (v2 one-screen town:
+// automatic doors, tap-a-cottage, fixed room view with a Leave button, Storyteller click-to-teleport):
+//   1 sign up (character pick from the v2 roster) -> create lobby (ST seat) -> share link -> join ->
+//     Ready -> Start; every player keeps a distinct character
 //   2 random setup; roles stay secret until the first night, then each player sees their own card
-//   3 bedtime bell -> one player walks home with the real keyboard, the ST holds / shortens / restarts
-//     the countdown, everyone else is escorted; night falls only once everyone is home
-//   4 first night: own home only; the ST works the night order, visits two players (fast travel),
-//     sends info + a prompt that the player answers; the other three see/hear nothing of it
-//   5 dawn -> day: nobody is moved; two players walk out of their houses with the keyboard
+//   3 bedtime bell -> one player taps their cottage (walks there, goes in), another walks home with the
+//     real keyboard and walks INTO the doorway (no E key); the ST holds / shortens / restarts the
+//     countdown, everyone else is escorted; night falls only once everyone is home
+//   4 first night: own home only; the ST clicks a cottage on the map (teleport_self = a visit) and
+//     sends info, leaves with the room's Leave button, visits a second player from the night order
+//     and prompts them; the other three see/hear nothing of it
+//   5 dawn -> day: nobody is moved; one player leaves home with the Leave button, one with an arrow
+//     key; a private conversation: a player taps a neighbour's cottage and goes in — the two inside
+//     share that cottage's voice zone, a third player outside stays in the square zone (decoded
+//     voice:grant frames) and sees neither of them
 //   6 gather -> walk (ST "walk to seat") / force seats -> nomination -> clock-hand vote -> raised hands
 //     -> "your vote counted" -> execution -> the executed player is a ghost with a ghost vote
 //   7 second day: the ghost vote is used; a second ghost-vote attempt is refused (UI + modified client)
-//   8 ST overrides from the panel: undo a wrong kill, teleport, door tags setting, door lock,
-//     freeze/unfreeze, force phase
+//   8 ST overrides from the panel: undo a wrong kill, teleport into a cottage, door tags setting, door
+//     lock (Leave button disabled + a modified client's door request refused), freeze/unfreeze, force phase
 //   9 executing the Demon -> pending result -> ST Confirm -> endgame reveal everywhere -> Play again
 //     -> the lobby resets cleanly
 // Every UI assertion is paired with protocol truth from decoded WebSocket frames (FrameTap): what each
 // browser was actually SENT. Message-level driving is used ONLY for the modified-client ghost vote in
-// step 7 (the UI correctly offers no button for it). Screenshots: tests/e2e/artifacts/game-*.png; step
+// step 7 and the modified-client door request in 8d (the UI correctly offers no way to do either). Screenshots: tests/e2e/artifacts/game-*.png; step
 // log with pass/fail + notes: tests/e2e/artifacts/game-full-steps.json.
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test, type Page } from '@playwright/test';
-import { armConfirm, confirmYes, geo, inject, presetIdByName, selfEntity, signUp, useDoorKey, walkToTile, type GamePlayer } from './helpers';
+import {
+  armConfirm,
+  confirmYes,
+  geo,
+  inject,
+  insidePanel,
+  leaveButton,
+  leaveByButton,
+  leaveByKey,
+  selfEntity,
+  signUp,
+  tapCottage,
+  tapLockedCottage,
+  voiceZone,
+  walkIntoDoor,
+  zonesGranted,
+  type GamePlayer,
+} from './helpers';
 
 const ART = path.join(path.dirname(fileURLToPath(import.meta.url)), 'artifacts');
 const RUN = process.env.GAME_RUN ?? Math.random().toString(36).slice(2, 6);
@@ -105,18 +129,14 @@ test('full game: 1 Storyteller + 5 players, every phase through the real UI', as
   let players: GamePlayer[] = [];
   try {
     // ============================================================== 1. accounts, lobby, ready, start
-    await step('1a 6 accounts signed up through the UI, each picking a villager', 'ui', async () => {
-      st = await signUp(browser, ST_NAME, { villagerIndex: 0, consoleSink, viewport: { width: 1200, height: 760 } });
+    await step('1a 6 accounts signed up through the UI, each picking a character from the roster', 'ui', async () => {
+      st = await signUp(browser, ST_NAME, { characterIndex: 0, consoleSink, viewport: { width: 1200, height: 760 } });
       all.push(st);
-      for (let i = 0; i < NAMES.length; i++) all.push(await signUp(browser, NAMES[i]!, { viewport: { width: 720, height: 450 }, villagerIndex: i + 1, consoleSink }));
+      // villagers 2,5,8,11 and a CMU mascot (index 14): all distinct
+      for (let i = 0; i < NAMES.length; i++) all.push(await signUp(browser, NAMES[i]!, { viewport: { width: 720, height: 450 }, characterIndex: [2, 5, 8, 11, 14][i]!, consoleSink }));
       players = all.slice(1);
-      for (const p of all) {
-        if (!p.villager) {
-          note('no villager gallery on the sign-up form');
-          continue;
-        }
-        expect(p.presetId, `${p.name}: picked villager saved on the account`).toBe(await presetIdByName(p.villager));
-      }
+      for (const p of all) expect(p.presetId, `${p.name}: picked character saved on the account`).toBe(p.character);
+      expect(new Set(players.map((p) => p.character)).size, 'five different characters').toBe(5);
     });
 
     const shareUrl = await step('1b ST creates a lobby taking the Storyteller seat; share link shown', 'ui', async () => {
@@ -149,12 +169,14 @@ test('full game: 1 Storyteller + 5 players, every phase through the real UI', as
       }
       await st.tap.until(() => lv(st)?.canStart, 20_000, 'canStart');
       await expect(st.page.getByText('Everyone is ready — start when you like.')).toBeVisible();
-      // the villager each player picked is what the lobby shows (public cosmetics, no account ids)
+      // the character each player picked is what the lobby shows (public cosmetics, no account ids)
       for (const p of all) {
         const m = lv(st).members.find((x: any) => x.displayName === p.name);
-        if (p.presetId) expect(m?.cosmetics?.preset, `${p.name} villager in lobby`).toBe(p.presetId);
+        expect(m?.cosmetics?.preset, `${p.name} character in lobby`).toBe(p.presetId);
         expect(JSON.stringify(lv(p))).not.toContain('accountId');
       }
+      const picks = lv(st).members.filter((m: any) => m.role === 'player').map((m: any) => m.cosmetics.preset);
+      expect(new Set(picks).size, `no duplicate characters (${picks.join(',')})`).toBe(5);
       await shot(st.page, '01-waiting-room');
     });
 
@@ -189,6 +211,8 @@ test('full game: 1 Storyteller + 5 players, every phase through the real UI', as
       return e ? Math.hypot(h.door.x * 16 - e.x, h.door.y * 16 - e.y) : 1e9;
     };
     const walker = [...players].sort((a, b) => doorDist(a) - doorDist(b))[0]!;
+    /** Walks home with the real keyboard and walks into the doorway (automatic door). */
+    const keyWalker = [...players].filter((p) => p !== walker).sort((a, b) => doorDist(a) - doorDist(b))[0]!;
     const homeOf = (p: GamePlayer) => L.buildings.find((b) => b.houseIndex === seatOf(p))!;
     let bellAt = 0;
     await step('3a ST rings the bedtime bell; nobody is moved by the bell; players are told to walk home', 'ui', async () => {
@@ -204,24 +228,43 @@ test('full game: 1 Storyteller + 5 players, every phase through the real UI', as
       await expect(walker.page.locator('.cth-phase')).toContainText('Bedtime — first night');
       await expect(walker.page.locator('.cth-hint')).toContainText(/walk home|Walk home/, { timeout: 15_000 });
       await expect(walker.page.locator('.ct-compass')).toContainText('Go home');
+      await expect(walker.page.locator('.ct-game-caption')).toContainText(/tap your cottage/i, { timeout: 10_000 }).catch(() => note('bedtime caption ("tap your cottage") not seen (it fades after ~4 s)'));
       await walker.page.waitForTimeout(1000);
       for (const p of players) expect(tps(p, bellAt), `${p.name}: moved by the bell`).toEqual([]);
       await shot(walker.page, '02-bedtime-walk-home');
       await shot(st.page, '03-bedtime-st-timer');
     });
 
-    if (!FAST) await step(`3b ${walker.name} walks home with the real keyboard and enters their house (E)`, 'ui', async () => {
+    await step(`3b ${walker.name} taps their cottage on the map: walks there and goes in (automatic door, no teleport)`, 'ui', async () => {
       const pid = pidOf(walker);
       const h = homeOf(walker);
-      await walkToTile(walker, pid, h.door);
-      await useDoorKey(walker, pid, `bld:${h.id}`);
+      const t0 = Date.now();
+      note(`tap log: ${(await tapCottage(walker, pid, h.id)).join(' | ')}`);
       await expect(walker.page.locator('.ct-compass')).toContainText('You are home', { timeout: 15_000 });
+      await expect(insidePanel(walker.page)).toContainText('Your home');
+      await expect(leaveButton(walker.page)).toBeVisible(); // (bedtime: still allowed to step out again)
+      note(`inside panel at bedtime: "${(await insidePanel(walker.page).textContent())?.trim()}"`);
+      const moves = walker.tap.sent('move', t0).length;
+      expect(moves, 'walked there (move frames sent)').toBeGreaterThan(3);
       const bad = tps(walker, bellAt).filter((t: any) => !['door', 'correction'].includes(t.reason));
       expect(bad, 'walker: only door transitions').toEqual([]);
       const corr = tps(walker, bellAt).filter((t: any) => t.reason === 'correction').length;
-      if (corr) note(`${corr} movement corrections while keyboard-walking home`);
+      if (corr) note(`${corr} movement corrections while walking home`);
       await st.tap.until(() => gv(st).stage?.players.find((x: any) => x.seat === seatOf(walker))?.presence === 'home', 15_000, 'ST sees walker home');
+      await shot(walker.page, '02b-bedtime-home-inside');
       expect(gv(st).phase).toBe('bedtime'); // others are not home: no night yet
+    });
+
+    if (!FAST) await step(`3b' ${keyWalker.name} walks home with the real keyboard and walks into the doorway (no E key)`, 'ui', async () => {
+      const pid = pidOf(keyWalker);
+      const h = homeOf(keyWalker);
+      const t0 = Date.now();
+      await walkIntoDoor(keyWalker, pid, h.id);
+      await expect(keyWalker.page.locator('.ct-compass')).toContainText('You are home', { timeout: 15_000 });
+      expect(keyWalker.tap.sent('world:useDoor', t0).map((d: any) => d.buildingId), 'one automatic door request for home').toContain(h.id);
+      const bad = tps(keyWalker, bellAt).filter((t: any) => !['door', 'correction'].includes(t.reason));
+      expect(bad, 'keyboard walker: only door transitions').toEqual([]);
+      await st.tap.until(() => gv(st).stage?.players.find((x: any) => x.seat === seatOf(keyWalker))?.presence === 'home', 15_000, 'ST sees keyboard walker home');
     });
 
     await step('3c ST shortens the countdown (Tools: 10 s), restarts and resumes it; at 0 the others are escorted (no teleport); night falls only when all are home', 'ui', async () => {
@@ -233,7 +276,7 @@ test('full game: 1 Storyteller + 5 players, every phase through the real UI', as
       await st.page.getByRole('button', { name: '↻ Restart' }).click();
       await st.page.getByRole('button', { name: '▶ Resume' }).click();
       await st.tap.until(() => gv(st).phaseEndsAt && gv(st).phaseEndsAt - Date.now() < 12_000 && !gv(st).timerHeld, 10_000, '10 s countdown running');
-      const others = players.filter((p) => p !== walker);
+      const others = players.filter((p) => p !== walker && (FAST || p !== keyWalker));
       await st.tap.until(() => gv(st).bedtimeOvertime === true || gv(st).phase === 'first_night', 30_000, 'overtime');
       for (const p of others) await p.tap.until(() => p.tap.last('world:snapshot')?.you?.mode === 'auto' || gv(p).phase === 'first_night', 15_000, 'escorted');
       await expect(others[0]!.page.locator('.cth-hint')).toContainText(/walks you home|walking you home/, { timeout: 10_000 }).catch(() => note('escort hint not seen on screen (may have faded)'));
@@ -299,11 +342,15 @@ test('full game: 1 Storyteller + 5 players, every phase through the real UI', as
       }
     };
 
-    await step(`4b ST works the night order: visits ${A.name} (fast travel) and sends info`, 'ui', async () => {
+    await step(`4b ST clicks ${A.name}'s cottage on the map (click-to-teleport = a visit, with a poof) and sends info from the night order`, 'ui', async () => {
       await st.page.locator('.cts-tabs').getByRole('button', { name: 'Night order' }).click();
       visitAt = Date.now();
-      await visit(infoStep, A);
+      note(`ST tap log: ${(await tapCottage(st, stPid, homeOf(A).id, { storyteller: true })).join(' | ')}`);
+      const tp = st.tap.received('world:teleport', visitAt).filter((t: any) => t.location === `bld:${homeOf(A).id}`);
+      expect(tp.at(-1)?.reason, 'the ST arrives by a Storyteller teleport').toBe('storyteller');
       await st.tap.until(() => gv(st).visitingSeat === seatOf(A), 15_000, 'visiting A');
+      await expect(insidePanel(st.page)).toContainText(A.name, { timeout: 15_000 });
+      await shot(st.page, '06b-night-st-inside-visit');
       await A.tap.until(() => gv(A).storytellerVisitingYou === true, 15_000, 'A: visited');
       await A.tap.until(() => A.tap.received('world:snapshot', visitAt).some((s: any) => s.entities.some((e: any) => e.id === stPid)), 15_000, 'A sees the ST');
       await expect(A.page.locator('.cth-hint')).toContainText(/Storyteller is visiting you|Private visit/, { timeout: 10_000 });
@@ -326,7 +373,10 @@ test('full game: 1 Storyteller + 5 players, every phase through the real UI', as
       await A.page.locator('.cth-card-head').click();
     });
 
-    await step(`4c ST visits ${B.name} and prompts them; the player answers in their HUD`, 'ui', async () => {
+    await step(`4c ST leaves ${A.name}'s home with the room's Leave button, visits ${B.name} from the night order and prompts them; the player answers in their HUD`, 'ui', async () => {
+      await leaveByButton(st, stPid);
+      await st.tap.until(() => gv(st).visitingSeat === null, 10_000, 'visit over after Leave');
+      await A.tap.until(() => gv(A).storytellerVisitingYou === false, 15_000, 'A no longer visited');
       await visit(promptStep, B);
       await st.tap.until(() => gv(st).visitingSeat === seatOf(B), 15_000, 'visiting B');
       await A.tap.until(() => gv(A).storytellerVisitingYou === false, 15_000, 'A no longer visited');
@@ -384,7 +434,7 @@ test('full game: 1 Storyteller + 5 players, every phase through the real UI', as
     // ============================================================== 5. day 1: walk out
     let dawnAt = 0;
     const outWalkers = [walker, unvisited.find((p) => p !== walker) ?? A];
-    await step('5 day breaks: nobody is moved; two players walk out of their houses with the keyboard', 'ui', async () => {
+    await step('5 day breaks: nobody is moved; one player leaves home with the Leave button, another with an arrow key', 'ui', async () => {
       dawnAt = Date.now();
       await st.page.locator('.cts-now-btn').click();
       const armed = st.page.locator('.cts-confirm');
@@ -392,19 +442,53 @@ test('full game: 1 Storyteller + 5 players, every phase through the real UI', as
       for (const p of all) await p.tap.until(() => gv(p)?.phase === 'day', 15_000, 'day');
       await players[0]!.page.waitForTimeout(1500);
       for (const p of players) expect(tps(p, dawnAt), `${p.name}: moved at dawn/day`).toEqual([]);
-      if (FAST) note('GAME_FAST: keyboard walk-out skipped');
-      else await Promise.all(
-        outWalkers.map(async (p) => {
-          const pid = pidOf(p);
-          const h = homeOf(p);
-          const t0 = Date.now();
-          await walkToTile(p, pid, h.interiorDoor);
-          await useDoorKey(p, pid, 'outdoors');
-          const bad = tps(p, t0).filter((t: any) => !['door', 'correction'].includes(t.reason));
-          expect(bad, `${p.name}: walked out without a teleport`).toEqual([]);
-        }),
-      );
+      // inside: a fixed room view, no walking; the panel says where you are and who is with you
+      for (const p of outWalkers) {
+        await expect(insidePanel(p.page)).toContainText('Your home', { timeout: 15_000 });
+        await expect(leaveButton(p.page)).toHaveText('Leave');
+        await expect(leaveButton(p.page)).toBeEnabled();
+      }
+      await shot(outWalkers[0]!.page, '08b-day1-inside-home');
+      const t0 = Date.now();
+      await leaveByButton(outWalkers[0]!, pidOf(outWalkers[0]!));
+      await leaveByKey(outWalkers[1]!, pidOf(outWalkers[1]!), 'ArrowDown');
+      for (const p of outWalkers) {
+        const bad = tps(p, t0).filter((t: any) => !['door', 'correction'].includes(t.reason));
+        expect(bad, `${p.name}: walked out through the door`).toEqual([]);
+        await p.tap.until(() => voiceZone(p) === 'square', 15_000, 'square voice zone outdoors');
+      }
       await shot(outWalkers[0]!.page, '09-day1-walked-out');
+    });
+
+    // a private conversation by day: a player taps a neighbour's cottage; the two inside share its
+    // voice zone; a third player outdoors stays in the square and sees neither of them
+    const host = players.find((p) => !outWalkers.includes(p) && selfEntity(p, pidOf(p))?.location === `bld:${homeOf(p).id}`) ?? players.find((p) => !outWalkers.includes(p))!;
+    const [guest, outsider] = outWalkers as [GamePlayer, GamePlayer];
+    await step(`5b private talk: ${guest.name} taps ${host.name}'s cottage and goes in; both share its voice zone; ${outsider.name} (outdoors) does not`, 'ui', async () => {
+      const zone = `bld:${homeOf(host).id}`;
+      const t0 = Date.now();
+      await host.tap.until(() => voiceZone(host) === zone, 15_000, `${host.name} in ${zone} (home)`);
+      note(`guest tap log: ${(await tapCottage(guest, pidOf(guest), homeOf(host).id)).join(' | ')}`);
+      await expect(insidePanel(guest.page)).toContainText(`${host.name}’s home`, { timeout: 15_000 });
+      await expect(insidePanel(guest.page)).toContainText(host.name);
+      await expect(insidePanel(host.page)).toContainText(guest.name, { timeout: 15_000 });
+      await expect(insidePanel(host.page)).toContainText(/only you two can hear each other/);
+      await guest.tap.until(() => voiceZone(guest) === zone, 15_000, `${guest.name} granted ${zone}`);
+      expect(voiceZone(host), `${host.name} still in ${zone}`).toBe(zone);
+      // the outsider: square zone, never granted the cottage's room, never sees the two inside
+      await outsider.page.waitForTimeout(1500);
+      expect(selfEntity(outsider, pidOf(outsider))?.location).toBe('outdoors');
+      expect(voiceZone(outsider), `${outsider.name} zone`).toBe('square');
+      expect(zonesGranted(outsider, t0), `${outsider.name} never granted ${zone}`).not.toContain(zone);
+      const seen = new Set(outsider.tap.received('world:snapshot', Date.now() - 1000).flatMap((sn: any) => sn.entities.map((e: any) => e.id)));
+      expect(seen.has(pidOf(guest)) || seen.has(pidOf(host)), `${outsider.name} sees nobody inside the cottage`).toBe(false);
+      const tags = outsider.tap.last('world:snapshot')?.doorTags?.[homeOf(host).id] ?? [];
+      note(`${outsider.name} door board for ${homeOf(host).id}: ${JSON.stringify(tags.map?.((t: any) => t.name) ?? tags)}`);
+      await shot(guest.page, '09b-day1-private-talk-inside');
+      await shot(outsider.page, '09c-day1-outside-boards');
+      await leaveByButton(guest, pidOf(guest));
+      await guest.tap.until(() => voiceZone(guest) === 'square', 15_000, 'guest back in the square zone');
+      await expect(insidePanel(host.page)).toContainText('Nobody else is here', { timeout: 15_000 });
     });
 
     // ============================================================== 6. gather, nominate, vote, execute
@@ -587,8 +671,9 @@ test('full game: 1 Storyteller + 5 players, every phase through the real UI', as
     });
 
     const mover = target;
-    const tavern = L.buildings.find((b) => b.kind === 'tavern') ?? L.buildings.find((b) => b.houseIndex === null)!;
-    await step(`8b ST teleports ${mover.name} into ${tavern.name} (only they get the teleport)`, 'ui', async () => {
+    // v2: no tavern any more; the ST puts the mover into the ghost's cottage
+    const tavern = homeOf(ghost);
+    await step(`8b ST teleports ${mover.name} into ${tavern.name} (${ghost.name}'s cottage; only they get the teleport)`, 'ui', async () => {
       const since = Date.now();
       await st.page.locator('.cts-tabs').getByRole('button', { name: 'Stage' }).click();
       await st.page.getByRole('button', { name: new RegExp(`^${esc(`${seatOf(mover) + 1}. ${mover.name}`)}`) }).locator('circle').first().click();
@@ -599,7 +684,8 @@ test('full game: 1 Storyteller + 5 players, every phase through the real UI', as
       const t = await mover.tap.until(() => tps(mover, since).find((x: any) => x.reason === 'storyteller'), 10_000, 'teleported');
       expect(t.location).toBe(`bld:${tavern.id}`);
       for (const p of players.filter((x) => x !== mover)) expect(tps(p, since)).toEqual([]);
-      await shot(mover.page, '17-teleported-into-tavern');
+      await expect(insidePanel(mover.page)).toContainText(`${ghost.name}’s home`, { timeout: 15_000 });
+      await shot(mover.page, '17-teleported-into-cottage');
     });
 
     await step('8c door tags setting: by day everyone sees who is inside the tavern; the ST switches it off and on', 'ui', async () => {
@@ -619,34 +705,41 @@ test('full game: 1 Storyteller + 5 players, every phase through the real UI', as
       for (const p of players) await p.tap.until(() => tagged(p), 10_000, 'door tags back');
     });
 
-    await step(`8d door lock: ST locks ${tavern.name}; ${mover.name} cannot leave (friendly message); "Default" lets them out`, 'ui', async () => {
+    await step(`8d door lock: ST locks ${tavern.name}; ${mover.name}'s Leave button says it is locked, an arrow key explains it, a modified client's door request is refused; "Default" lets them out`, 'ui+message', async () => {
       await st.page.locator('.cts-doors summary').click();
       const row = st.page.locator('.cts-doors li', { hasText: tavern.name });
       await row.getByRole('button', { name: '🔒 Locked' }).click();
       await mover.tap.until(() => mover.tap.last('world:snapshot')?.doors?.[tavern.id] === true, 10_000, 'lock public');
       const pid = pidOf(mover);
-      await walkToTile(mover, pid, tavern.interiorDoor);
-      const prompt = await mover.page.locator('.ct-game-prompt').textContent().catch(() => '');
-      if (!/locked|barred/i.test(prompt ?? '')) bugs.push(`8d door locked by the ST by day: the door prompt still offers "${prompt?.trim()}" (the prompt is not refreshed / ignores the ST override)`);
+      const btn = leaveButton(mover.page);
+      await expect(btn).toBeDisabled({ timeout: 10_000 });
+      await expect(btn).toContainText(/locked/i);
+      note(`locked Leave button: "${(await btn.textContent())?.trim()}"`);
+      // a movement key inside tries to leave: refused locally with a message, nothing sent
       const t0 = Date.now();
-      for (let k = 0; k < 3 && !mover.tap.received('error', t0).some((e: any) => e.for === 'world:useDoor'); k++) {
-        await mover.page.keyboard.press('KeyE');
-        await mover.tap.until(() => mover.tap.received('error', t0).find((e: any) => e.for === 'world:useDoor'), 4000, 'locked-door refusal').catch(() => undefined);
-      }
-      const err = mover.tap.received('error', t0).find((e: any) => e.for === 'world:useDoor');
-      if (err) {
-        expect(err.message).toMatch(/locked/i);
-        await expect(mover.page.locator('.ct-toast')).toContainText(/locked/i, { timeout: 5000 }).catch(() => bugs.push('8d: "The door is locked." error frame arrived but no toast was shown'));
-      } else {
-        const sent = mover.tap.sent('world:useDoor', t0).length;
-        if (sent) bugs.push(`8d locked door by day: the client sent world:useDoor (${sent}x) but the server answered nothing (no error, no move) — the player gets no feedback`);
-        else note(`E at the locked door sent no world:useDoor (prompt "${prompt?.trim()}")`);
-      }
+      await mover.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+      await mover.page.keyboard.press('ArrowDown');
+      await expect(insidePanel(mover.page).locator('.ct-inside-note')).toContainText(/locked/i, { timeout: 5000 }).catch(() => note('no "locked" note in the inside panel after an arrow key'));
+      await mover.page.waitForTimeout(1000);
+      expect(mover.tap.sent('world:useDoor', t0).length, 'no door request for a locked door').toBe(0);
+      // a modified client asks anyway: the server refuses politely
+      expect(await inject(mover.page, 'world:useDoor', { buildingId: tavern.id }), 'frame injected').toBe(true);
+      const err = await mover.tap.until(() => mover.tap.received('error', t0).find((e: any) => e.for === 'world:useDoor'), 10_000, 'locked-door refusal');
+      expect(err.message).toMatch(/locked/i);
+      await expect(mover.page.locator('.ct-toast')).toContainText(/locked/i, { timeout: 5000 }).catch(() => bugs.push('8d: "The door is locked." error frame arrived but no toast was shown'));
       expect(selfEntity(mover, pid)?.location).toBe(`bld:${tavern.id}`);
       await shot(mover.page, '18-door-locked');
+      // someone outside taps the locked cottage: walks to the door, is told it is locked, stays out
+      const knocker = alive2.find((p) => p !== mover && p !== ghost && selfEntity(p, pidOf(p))?.location === 'outdoors');
+      if (knocker) {
+        const msg = await tapLockedCottage(knocker, pidOf(knocker), tavern.id);
+        note(`${knocker.name} tapped the locked cottage: "${msg}"`);
+        expect(msg).toMatch(/locked/i);
+        await shot(knocker.page, '18b-locked-door-outside');
+      } else note('nobody outdoors to knock on the locked door');
       await row.getByRole('button', { name: 'Default' }).click();
       await mover.tap.until(() => !mover.tap.last('world:snapshot')?.doors?.[tavern.id], 10_000, 'lock lifted');
-      await useDoorKey(mover, pid, 'outdoors');
+      await leaveByButton(mover, pid);
     });
 
     await step('8e ❄ Freeze all: movement is paused with a message; Unfreeze all restores it', 'ui', async () => {
@@ -667,7 +760,8 @@ test('full game: 1 Storyteller + 5 players, every phase through the real UI', as
       await expect(mover.page.locator('.cth-hint')).not.toContainText(/paused your movement/, { timeout: 15_000 }).catch(() => note('"paused" hint still showing after unfreeze'));
       // can walk again: try each direction until one moves us
       let moved = 0;
-      for (const k of ['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight']) {
+      // (away from the cottage door first: walking into a doorway would go in)
+      for (const k of ['ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowUp']) {
         const a = selfEntity(mover, pid)!;
         await mover.page.keyboard.down(k);
         await mover.page.waitForTimeout(1500);

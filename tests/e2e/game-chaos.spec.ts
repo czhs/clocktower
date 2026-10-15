@@ -10,12 +10,12 @@
 // Every case must end in a sane state with a friendly message: no stuck UI, no raw errors, no page
 // errors. Each case is "soft": a failure is recorded as a bug and the game goes on.
 // Message-level driving: only the "walk out at night" door request (the UI correctly refuses to send
-// it). Step log + bugs: tests/e2e/artifacts/game-chaos-<run>.json; screenshots game-chaos-*.png.
+// it). v2: inside a cottage there is no walking — the room's Leave button / an arrow key leaves. Step log + bugs: tests/e2e/artifacts/game-chaos-<run>.json; screenshots game-chaos-*.png.
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test, type Page } from '@playwright/test';
-import { armConfirm, FrameTap, geo, inject, selfEntity, signUp, walkToTile, watchConsole, type GamePlayer } from './helpers';
+import { armConfirm, FrameTap, geo, inject, insidePanel, leaveButton, selfEntity, signUp, watchConsole, type GamePlayer } from './helpers';
 
 const ART = path.join(path.dirname(fileURLToPath(import.meta.url)), 'artifacts');
 const RUN = process.env.GAME_RUN ?? Math.random().toString(36).slice(2, 6);
@@ -81,7 +81,7 @@ test('chaos: unexpected orders, refreshes, duplicate tabs and races during a rea
   try {
     const st = await signUp(browser, `ChaosST ${suffix}`, { consoleSink, viewport: { width: 1200, height: 760 } });
     all.push(st);
-    for (const [i, n] of NAMES.entries()) all.push(await signUp(browser, n, { viewport: { width: 720, height: 450 }, villagerIndex: i + 2, consoleSink }));
+    for (const [i, n] of NAMES.entries()) all.push(await signUp(browser, n, { viewport: { width: 720, height: 450 }, characterIndex: [3, 6, 9, 12, 16][i]!, consoleSink }));
     const players = all.slice(1);
     const [P1, P2, P3, P4, P5] = players as [GamePlayer, GamePlayer, GamePlayer, GamePlayer, GamePlayer];
     await st.page.getByRole('button', { name: /create lobby/i }).first().click();
@@ -167,6 +167,8 @@ test('chaos: unexpected orders, refreshes, duplicate tabs and races during a rea
       await st.page.getByRole('button', { name: '❚❚ Hold' }).click();
       await expect(P2.page.locator('.cth-hint')).toContainText(/not your house|Not your house/, { timeout: 10_000 });
       await expect(P2.page.locator('.ct-compass')).toContainText('Leave this building');
+      await expect(insidePanel(P2.page)).toContainText(`${P3.name}’s home`);
+      await expect(leaveButton(P2.page)).toBeEnabled(); // the way out is one tap away
       note(`hint: "${(await P2.page.locator('.cth-hint').textContent())?.trim()}"`);
       await shot(P2.page, 'B1-wrong-house');
     });
@@ -205,14 +207,18 @@ test('chaos: unexpected orders, refreshes, duplicate tabs and races during a rea
     });
 
     // ------------------------------------------------------------------------------- night
-    await chaos(`N1 ${P1.name} tries to walk out at night: the door is barred (prompt) and a forced request is refused politely`, async (note) => {
+    await chaos(`N1 ${P1.name} tries to walk out at night: Leave is disabled ("stay home"), an arrow key explains it, a forced request is refused politely`, async (note) => {
       const pid = pidOf(P1);
-      await walkToTile(P1, pid, home(P1).interiorDoor);
-      const prompt = (await P1.page.locator('.ct-game-prompt').textContent().catch(() => '')) ?? '';
-      note(`door prompt: "${prompt.trim()}"`);
-      expect(prompt).toMatch(/barred|locked/i);
-      await P1.page.keyboard.press('KeyE');
-      await P1.page.waitForTimeout(800);
+      const btn = leaveButton(P1.page);
+      await expect(btn).toBeDisabled({ timeout: 15_000 });
+      note(`Leave button at night: "${(await btn.textContent())?.trim()}"`);
+      await expect(btn).toContainText(/stay home|until morning/i);
+      const tKey = Date.now();
+      await P1.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+      await P1.page.keyboard.press('ArrowDown');
+      await P1.page.waitForTimeout(1200);
+      expect(P1.tap.sent('world:useDoor', tKey).length, 'the UI sends no door request at night').toBe(0);
+      expect(selfEntity(P1, pid)?.location).toBe(`bld:${home(P1).id}`);
       const t0 = Date.now();
       expect(await inject(P1.page, 'world:useDoor', { buildingId: home(P1).id })).toBe(true);
       const err = await P1.tap.until(() => P1.tap.received('error', t0).find((e: any) => e.for === 'world:useDoor'), 10_000, 'refused');

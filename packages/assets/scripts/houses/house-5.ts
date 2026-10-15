@@ -68,20 +68,45 @@ const art: HouseArt = (b, _style, seed) => {
         const v = 0.42 - j * 0.015 + (cheek ? -0.2 : 0) + (j % 4 === 3 ? 0.12 : 0);
         img.set(x, y, dpick(['#1a0c0a', '#3a1c10', '#6e3a18', '#a8601e', '#d89038'], v, x, y));
       }
-    for (const sj of [4, 8, 12]) for (let i = -sw; i < fw + sw; i++) img.set(x0 + i, top + sj, mix(P.beam[2]!, '#000000', i < 0 || i >= fw ? 0.3 : 0));
-    // bottles standing on each shelf
-    for (const [k, sj] of [4, 8, 12].entries())
-      for (let i = -sw + 1; i < fw + sw - 1; ) {
-        const tall = 2 + Math.floor(hash(i, sj, seed + 9) * 2);
-        const wide = hash(i, sj, seed + 4) < 0.35 ? 2 : 1;
-        const c = BOTTLES[Math.floor(hash(i + k * 7, sj, seed) * BOTTLES.length)]!;
-        for (let q = 0; q < wide; q++)
-          for (let t = 1; t <= tall; t++) img.set(x0 + i + q, top + sj - t, t === tall && wide === 1 ? mix(c, '#000', 0.2) : t === tall - 1 && q === 0 ? mix(c, '#fff6e0', 0.45) : c);
-        if (wide === 1) img.set(x0 + i, top + sj - tall - 1, '#c8b890'); // cork
-        i += wide + (hash(i, sj, seed + 2) < 0.3 ? 2 : 1);
+    for (const sj of [6, 12]) for (let i = -sw; i < fw + sw; i++) img.set(x0 + i, top + sj, mix(P.beam[3]!, '#000000', i < 0 || i >= fw ? 0.3 : 0));
+    // bottles and flasks standing on each shelf: round flasks, tall bottles, little vials
+    for (const [k, sj] of [6, 12].entries()) {
+      let i = -sw + 1 + k;
+      let n = 0;
+      while (i < fw + sw - 2) {
+        const c = BOTTLES[(n * 2 + k * 3 + seed) % BOTTLES.length]!;
+        const hi = mix(c, '#fff6e0', 0.5);
+        const lo = mix(c, '#0b0714', 0.3);
+        const kind = (n + k) % 3;
+        const x = x0 + i;
+        const y = top + sj - 1; // standing row
+        if (kind === 0) {
+          // round flask: 3x3 body, 1px neck, cork
+          img.rect(x, y - 2, 3, 3, c);
+          img.set(x, y - 2, hi);
+          img.vline(x + 2, y - 1, y, lo);
+          img.set(x + 1, y - 3, c);
+          img.set(x + 1, y - 4, '#c8b890');
+          i += 4;
+        } else if (kind === 1) {
+          // tall bottle
+          img.rect(x, y - 3, 2, 4, c);
+          img.vline(x, y - 3, y - 1, hi);
+          img.set(x + 1, y - 4, c);
+          img.set(x + 1, y - 5, '#c8b890');
+          i += 3;
+        } else {
+          // squat jar with a paper lid
+          img.rect(x, y - 1, 2, 2, c);
+          img.set(x, y - 1, hi);
+          img.hline(x, x + 1, y - 2, '#e8dcc0');
+          i += 3;
+        }
+        n++;
       }
+    }
     // mullions + frame
-    for (const i of [-sw - 1, -1, 4, 9, fw, fw + sw]) for (let j = -1; j <= gh; j++) img.set(x0 + i, top + j, i === -sw - 1 || i === fw + sw ? TIMBER[1]! : TIMBER[2]!);
+    for (const i of [-sw - 1, -1, fw, fw + sw]) for (let j = -1; j <= gh; j++) img.set(x0 + i, top + j, i === -sw - 1 || i === fw + sw ? TIMBER[1]! : TIMBER[2]!);
     for (let i = -sw - 1; i <= fw + sw; i++) img.set(x0 + i, top + gh, TIMBER[3]!);
     // the lead-capped hood of the bay
     for (let j = 0; j < 4; j++)
