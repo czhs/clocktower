@@ -39,6 +39,9 @@ import type { GameModule, GameOutcome, RoomHost } from '../rooms/modules.js';
 import { attachRecorder, GameRecorder, type RecordTrigger } from '../records/index.js';
 // (auto-st, v2.1) The town clock (every game) + the automatic Storyteller (storytellerMode 'auto').
 import { AUTO_DEFAULTS, type AutoTimings, type DayClockView, type StorytellerMode } from '@ct/protocol';
+// (v2.2) storylines + the Storyteller's pre-game settings ('prepare', waiting room)
+import { CHARACTER_INFO, DEFAULT_BEDTIME_SECONDS, DEFAULT_ST_SETTINGS, storylineById, storylineProblem, type StPrepareView, type StorylineId } from '@ct/protocol';
+import { addFalseInfoSuggestions } from './falseInfo.js';
 import { BedtimeMirror, DayClock, autoClockOptions, createAutoStoryteller, relabelForAuto, type AutoCapableGame, type AutoClockOptions, type AutoPort, type AutoStoryteller } from '../auto/index.js';
 
 export interface GameModuleOptions {
@@ -93,8 +96,77 @@ const PUBLIC_SEAT_COMMANDS = new Set<StCommand['type']>([
   'freeze',
 ]);
 
+/**
+ * (v2.2) The Storyteller's pre-game settings per lobby. Lobby-scoped (the game module is re-created
+ * for every rematch, the lobby id is not), so they survive rematches. Bounded: oldest lobbies drop.
+ */
+const PREPARED = new Map<string, StPrepareView>();
+const PREPARED_MAX = 2000;
+
 export function createGameModule(host: RoomHost, opts: GameModuleOptions = {}): AutoCapableGame {
   const opts0 = opts;
+  /** (v2.2) automatic games: the host's storyline (null = random). */
+  let autoStoryline: StorylineId | null = null;
+  const defaultPrepare = (): StPrepareView => ({
+    deal: 'manual',
+    storyline: null,
+    bedtimeSeconds: opts.bedtimeSeconds ?? DEFAULT_BEDTIME_SECONDS,
+    settings: { ...DEFAULT_ST_SETTINGS },
+  });
+  const prepared = (): StPrepareView => PREPARED.get(host.lobbyId) ?? defaultPrepare();
+
+  /** (v2.2) StCommand 'prepare': waiting room (or after the game ended), human games only. */
+  function prepareCommand(pid: string, cmd: Extract<StCommand, { type: 'prepare' }>) {
+    const err = (code: 'invalid' | 'phase', message: string) => {
+      logStCommand(cmd, false, code);
+      host.send(pid, 'error', { code, message, for: 'st:command' });
+    };
+    if (state && state.phase !== 'finished') return err('phase', 'The game has started: deal and change settings in the Storyteller panel');
+    if (mode === 'auto') return err('invalid', 'Automatic games have no Storyteller');
+    const p = cmd.prepare;
+    const next: StPrepareView = { ...prepared(), settings: { ...prepared().settings } };
+    if (p.deal !== undefined) next.deal = p.deal;
+    if (p.storyline !== undefined) next.storyline = p.storyline;
+    if (p.bedtimeSeconds !== undefined) next.bedtimeSeconds = p.bedtimeSeconds;
+    if (p.settings?.doorTags !== undefined) next.settings.doorTags = p.settings.doorTags;
+    if (p.settings?.voteSeconds !== undefined) next.settings.voteSeconds = p.settings.voteSeconds;
+    if (p.settings?.pamphlets !== undefined) next.settings.pamphlets = p.settings.pamphlets;
+    if (next.deal === 'storyline' && !next.storyline) return err('invalid', 'Pick a storyline first');
+    PREPARED.delete(host.lobbyId);
+    PREPARED.set(host.lobbyId, next);
+    if (PREPARED.size > PREPARED_MAX) PREPARED.delete(PREPARED.keys().next().value!);
+    logStCommand(cmd, true);
+    host.markLobbyDirty();
+  }
+
+  /** (v2.2) At game start (human games): apply the prepared settings, then deal if asked to. */
+  function applyPrepared() {
+    const s = state!;
+    const p = PREPARED.get(host.lobbyId);
+    if (!p) return;
+    s.bedtimeSeconds = p.bedtimeSeconds;
+    s.settings = { ...s.settings, ...p.settings };
+    s.voteStepMs = Math.round(p.settings.voteSeconds * 1000);
+  }
+  function dealPrepared() {
+    const s = state!;
+    const p = PREPARED.get(host.lobbyId);
+    if (!p || p.deal === 'manual') return;
+    let cmd: StCommand = { type: 'random_setup' };
+    if (p.deal === 'storyline') {
+      const def = p.storyline ? storylineById(p.storyline) : undefined;
+      const problem = def ? storylineProblem(def, s.players.length, CHARACTER_INFO) : 'no storyline chosen';
+      if (!def || problem) {
+        noteStoryteller(s, host.now(), `Prepared storyline not dealt (${problem}): deal the characters yourself`);
+        return;
+      }
+      cmd = { type: 'deal_preset', storyline: def.id };
+    }
+    const before = snap(s);
+    const r = applyStCommand(s, cmd, { now: host.now() });
+    logStCommand(cmd, r.ok, r.ok ? undefined : r.code, 'prepared deal');
+    if (r.ok) commit(before, r.effects, { kind: 'st', cmd });
+  }
   // (auto-st, v2.1) town clock + automatic games. Human games: the Storyteller's 'day_clock' prop.
   let mode: StorytellerMode = 'human';
   let autoTimings: AutoTimings = { ...AUTO_DEFAULTS };
@@ -453,11 +525,13 @@ export function createGameModule(host: RoomHost, opts: GameModuleOptions = {}): 
 
   const mod: AutoCapableGame = {
     // (auto-st) storytellerMode + timings: the room calls this before start().
-    configureMode(m, timings) {
+    configureMode(m, timings, extras) {
       if (state) return;
       mode = m;
       autoTimings = { ...timings };
+      autoStoryline = extras?.storyline ?? null; // (v2.2)
     },
+    prepareView: () => ({ ...prepared(), settings: { ...prepared().settings } }), // (v2.2)
     storytellerMode: () => mode,
     handleClock(pid, type, payload) {
       if (!state) return host.send(pid, 'error', { code: 'phase', message: 'No game in progress', for: type });
@@ -500,6 +574,7 @@ export function createGameModule(host: RoomHost, opts: GameModuleOptions = {}): 
         ...(opts.bedtimeSeconds !== undefined ? { bedtimeSeconds: opts.bedtimeSeconds } : {}),
       });
       for (const x of seats) setPlayerConnected(state, x.seat, host.member(x.pid)?.connected ?? true);
+      if (stPid) applyPrepared(); // (v2.2) the Storyteller's pre-game settings (baseline, before the recorder)
       if (stPid) setStorytellerConnected(state, host.member(storytellerPid)?.connected ?? true, host.now());
       recorder = new GameRecorder(state, host.now(), stPid); // (records)
       attachRecorder(mod, recorder);
@@ -509,11 +584,13 @@ export function createGameModule(host: RoomHost, opts: GameModuleOptions = {}): 
       host.markGameDirty();
       host.markLobbyDirty();
       host.log.info('game started', { lobbyId: host.lobbyId, players: seats.length, mode });
+      if (stPid) dealPrepared(); // (v2.2) one-click start: the prepared deal (random / storyline)
+      syncWorld(); // (v2.2) prepared settings (door tags) reach the world even without a deal
       if (mode === 'auto') {
         // (auto-st) fate's RNG is separate from the engine's; both seeds go into the record.
         const fateSeed = opts.fateSeed ?? (Math.imul(seed ^ 0x9e3779b9, 0x85ebca6b) >>> 0);
-        auto = createAutoStoryteller(autoPort, autoClockOptions(autoTimings, opts.auto), fateSeed);
-        autoPort.note('fate', 'Fate rolls the dice: an automatic game begins.', { decision: 'seeds', engineSeed: seed, fateSeed, timings: { ...autoTimings } });
+        auto = createAutoStoryteller(autoPort, autoClockOptions(autoTimings, { storyline: autoStoryline, ...opts.auto }), fateSeed);
+        autoPort.note('fate', 'Fate rolls the dice: an automatic game begins.', { decision: 'seeds', engineSeed: seed, fateSeed, timings: { ...autoTimings }, storyline: autoStoryline });
         auto.start();
       }
     },
@@ -551,6 +628,7 @@ export function createGameModule(host: RoomHost, opts: GameModuleOptions = {}): 
         host.markGameDirty();
         return;
       }
+      if (cmd.type === 'prepare') return prepareCommand(pid, cmd); // (v2.2) waiting room
       if (!s) return host.send(pid, 'error', { code: 'phase', message: 'No game in progress', for: 'st:command' });
       if (cmd.type === 'day_clock') return dayClockCommand(pid, cmd); // (auto-st) the town clock prop
       if (STAGE_COMMANDS.has(cmd.type)) {
@@ -577,6 +655,7 @@ export function createGameModule(host: RoomHost, opts: GameModuleOptions = {}): 
       if (!s) return null;
       if (pid === stPid && pid === host.storytellerPid()) {
         const v = projectForStoryteller(s);
+        addFalseInfoSuggestions(s, v); // (st-qol) "Use false info" for drunk / poisoned info steps
         const w = world();
         if (w) v.stage = w.stageView();
         v.clock = clockView(); // (auto-st)

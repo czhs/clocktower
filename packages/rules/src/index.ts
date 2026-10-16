@@ -33,6 +33,8 @@ export {
   type SetupCounts,
   type Assignment,
 } from './setup.js';
+export { storylineBag, dealBag, presetAssignment, type BagDealOptions } from './presets.js';
 export { ROLES, FIRST_NIGHT_ORDER, OTHER_NIGHT_ORDER, type RoleDef } from './roles.js';
 export { finishVoteNow, minVotes } from './day.js';
 export { mulberry32, impaired, actingRole } from './util.js';
+export { commandLabel } from './labels.js';

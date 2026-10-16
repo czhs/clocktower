@@ -47,6 +47,8 @@ export interface SocialActions {
   clear(scope: 'mine' | 'all'): void;
   /** Close the radial / disarm the dock mode. */
   cancel(): void;
+  /** (v2.2) Nick Song's 'nick-face' emote (the server refuses it for anyone else). */
+  nickFace?(): void;
 }
 let actions: SocialActions | null = null;
 export const socialActions = {

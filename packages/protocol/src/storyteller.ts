@@ -14,6 +14,7 @@ import {
   type PublicPlayerView,
 } from './game.js';
 import type { LocationId } from './world.js';
+import { STORYLINE_IDS, type StorylineId } from './storylines.js';
 
 // ---------------------------------------------------------------------------------------
 // Storyteller contracts. Co-owned by rules-storyteller (additive changes; log them in
@@ -95,6 +96,11 @@ export interface NightStepView {
   suggestedInfo?: InfoSpecInput;
   /** (additive) Registration ambiguity / adjudication notes (Spy, Recluse, Mayor bounce...). */
   notes?: string[];
+  /**
+   * (additive, st-qol) Drunk / poisoned info character: a ready-made plausible FALSE info (differs
+   * from the truth when possible), stable between views. Advisory; the ST may send anything.
+   */
+  falseInfo?: InfoSpecInput;
 }
 
 export interface StorytellerGameView {
@@ -125,6 +131,8 @@ export interface StorytellerGameView {
   pendingDeaths?: number[];
   /** (additive) Whether undo_last has a snapshot to restore. */
   canUndo?: boolean;
+  /** (additive, st-qol) What undo_last would revert, e.g. "kill Alice" (null when unknown / nothing). */
+  undoLabel?: string | null;
   /** (additive) Setup distribution for this player count (Baron already applied when assigned). */
   setupCounts?: { townsfolk: number; outsiders: number; minions: number; demons: number };
   /** (additive) True once characters are assigned (setup phase). */
@@ -150,6 +158,31 @@ export interface StorytellerGameView {
   /** (additive, gameplay) Physical presence of every player (from the world module). */
   stage?: StageView | null;  /** (additive, gameplay) Storyteller settings (generic toggles; see `set_setting`). */
   settings?: StSettings;
+  /** (additive, v2.2) How the current characters were dealt (null = not dealt yet). Storyteller-only. */
+  deal?: DealInfo | null;
+}
+
+/** (additive, v2.2) How characters were dealt: random_setup / deal_preset / deal_bag / assign_characters. */
+export interface DealInfo {
+  method: 'random' | 'storyline' | 'bag' | 'manual';
+  /** method 'storyline': which one. */
+  storyline?: StorylineId;
+}
+
+/** (additive, v2.2) How the Storyteller deals when the game starts (prepared in the waiting room). */
+export const PREPARE_DEALS = ['manual', 'random', 'storyline'] as const;
+export type PrepareDeal = (typeof PREPARE_DEALS)[number];
+
+/**
+ * (additive, v2.2) Pre-game Storyteller settings, prepared in the waiting room ('prepare' command)
+ * and applied when the game starts. Sent ONLY to the seated Storyteller (LobbyRoomView.stPrepare).
+ */
+export interface StPrepareView {
+  /** 'manual' = deal in the game yourself; 'random' / 'storyline' = dealt automatically at start. */
+  deal: PrepareDeal;
+  storyline: StorylineId | null;
+  bedtimeSeconds: number;
+  settings: StSettings;
 }
 
 /** (additive, gameplay) Storyteller settings. Add new toggles here (optional in StSettingsPatch). */
@@ -228,8 +261,35 @@ export const StSelfTarget = z.discriminatedUnion('kind', [
 export type StSelfTarget = z.infer<typeof StSelfTarget>;
 
 /** All ST actions, sent as C2S 'st:command'. Server rejects unless sender is the lobby's ST. */
+/** (additive, v2.2) A partial StPrepareView (every key optional). */
+export const StPreparePatch = z
+  .object({
+    deal: z.enum(PREPARE_DEALS).optional(),
+    storyline: z.enum(STORYLINE_IDS).nullable().optional(),
+    bedtimeSeconds: z.number().int().min(10).max(300).optional(),
+    settings: StSettingsPatch.optional(),
+  })
+  .strict();
+export type StPreparePatch = z.infer<typeof StPreparePatch>;
+
 export const StCommand = z.discriminatedUnion('type', [
   z.object({ type: z.literal('random_setup') }),
+  /** (additive, v2.2) Deal a preset storyline: the server builds a legal bag for this player count and shuffles it onto the seats. */
+  z.object({ type: z.literal('deal_preset'), storyline: z.enum(STORYLINE_IDS), seed: z.number().int().min(0).max(0xffffffff).optional() }),
+  /**
+   * (additive, v2.2) Deal the Storyteller's own bag of characters: the server SHUFFLES it onto the seats.
+   * Size must equal the player count; standard distribution unless allowNonstandard.
+   */
+  z.object({
+    type: z.literal('deal_bag'),
+    characters: z.array(CharacterIdSchema).min(5).max(15),
+    drunkBelieves: CharacterIdSchema.optional(),
+    demonBluffs: z.array(CharacterIdSchema).max(3).optional(),
+    allowNonstandard: z.boolean().optional(),
+    seed: z.number().int().min(0).max(0xffffffff).optional(),
+  }),
+  /** (additive, v2.2) Waiting room only: pre-game Storyteller settings (applied when the game starts). */
+  z.object({ type: z.literal('prepare'), prepare: StPreparePatch }),
   z.object({
     type: z.literal('assign_characters'),
     assignments: z.array(z.object({ seat: Seat, character: CharacterIdSchema })).min(5).max(15),

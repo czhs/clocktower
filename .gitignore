@@ -13,6 +13,6 @@ test-results/
 playwright-report/
 .DS_Store
 .install-stamp
-pnpm-lock.yaml.remote
+pnpm-lock.yaml.remote*
 # raw gpt-6-sol outputs for the landing screen (never shipped)
 apps/client/landing-staging/

@@ -28,7 +28,10 @@ import type { VoiceGrant, VoiceRevoke } from '@ct/protocol';
 import { attenuationGain, distancePx, smoothGain, VOICE_DEFAULTS } from '@ct/voice/shared';
 import { localPlayer, remoteEntities } from '../net/localPlayer';
 import { CULL_INITIAL, cullStep, LOSS_WINDOW_EMPTY, lossStep, RED_LOSS_THRESHOLD, roundGain, sameParticipants, type CullState, type LossWindow, type SenderSample } from './policy';
-import { keyLabel, savePrefs, voiceActivity, voicePresence, type LinkState, type VoiceClientState, type VoiceDebugInfo, type VoiceHost, type VoiceParticipantView } from './VoiceClient';
+import { SpeakingHold } from './speaking';
+import { attachMousePtt } from './ptt';
+import { DeviceWatch } from './deviceWatch';
+import { keyLabel, voiceActivity, voicePresence, type LinkState, type VoiceClientState, type VoiceDebugInfo, type VoiceHost, type VoiceParticipantView } from './VoiceClient';
 
 const GAIN_TICK_MS = 50;
 const UI_REFRESH_MS = 200;
@@ -56,6 +59,8 @@ export class VoiceEngine {
   private gains = new Map<string, number>();
   private applied = new Map<string, number>();
   private speakers = new Set<string>();
+  /** `speakers` (+ '@self' from the local VAD) with a ~300 ms hang time: no flicker between words. */
+  private speakingHold = new SpeakingHold();
   /** Street subscription culling per identity (zone room only). */
   private cull = new Map<string, CullState>();
   /** LiveKit connection quality per identity ('' = local) — debug overlay only. */
@@ -87,6 +92,8 @@ export class VoiceEngine {
   private redPending = false;
   private lossPrev: SenderSample | null = null;
   private lossWin: LossWindow = LOSS_WINDOW_EMPTY;
+  /** Audio devices: follows default mic/speaker, recovers lost mics, wakes the AudioContext. */
+  private readonly devices: DeviceWatch;
 
   constructor(
     private readonly host: VoiceHost,
@@ -117,10 +124,19 @@ export class VoiceEngine {
     window.addEventListener('pointerdown', gesture, true);
     window.addEventListener('keydown', gesture, true);
     window.addEventListener('online', online);
-    // A microphone plugged in / out: recover without a reload.
-    const devchange = () => void this.onDeviceChange();
-    navigator.mediaDevices?.addEventListener?.('devicechange', devchange);
-    this.offs.push(() => navigator.mediaDevices?.removeEventListener?.('devicechange', devchange));
+    // Microphone / speaker plugged in or out, system default changed (AirPods, lid closed),
+    // sleep/wake: handled by DeviceWatch (devicechange, visibility, AudioContext watchdog).
+    this.devices = this.makeDeviceWatch();
+    this.offs.push(() => this.devices.dispose());
+    // Push-to-talk on a mouse button (middle / back / forward) + release on a hidden tab.
+    this.offs.push(
+      attachMousePtt({
+        code: () => this.state.get().pttKey,
+        active: () => this.state.get().inputMode === 'ptt',
+        held: () => this.state.get().pttHeld,
+        set: (held) => this.setPtt(held),
+      }),
+    );
     this.offs.push(() => {
       window.removeEventListener('keydown', down);
       window.removeEventListener('keyup', up);
@@ -159,7 +175,8 @@ export class VoiceEngine {
     this.gainTimer = setInterval(() => this.tickGains(), GAIN_TICK_MS);
     this.heartbeatTimer = setInterval(() => this.sendStatus(true), VOICE_DEFAULTS.heartbeatMs);
     this.lossTimer = setInterval(() => void this.checkLoss(), LOSS_CHECK_MS);
-    const micP = this.acquireMic();
+    this.devices.start();
+    const micP = this.acquireMic().then(() => this.devices.reconcile('start'));
     if (this.zoneGrant) void this.connectZone(this.zoneGrant);
     if (this.announceGrant) void this.connectAnnounce(this.announceGrant);
     await micP;
@@ -169,7 +186,12 @@ export class VoiceEngine {
   // User actions (prefs / state already updated by VoiceClient)
 
   async retryMic(): Promise<void> {
-    await this.acquireMic();
+    if (!this.mic) {
+      await this.acquireMic();
+      await this.devices.reconcile('retry');
+      return;
+    }
+    await this.devices.userChanged(true); // re-open a dead / silent mic in place
   }
 
   /** Resume playback after the browser blocked autoplay (call from a click). */
@@ -202,18 +224,20 @@ export class VoiceEngine {
     this.refreshParticipants(true);
   }
 
-  async deviceChanged(deviceId: string) {
+  /** Microphone picked in the panel (prefs.deviceId already saved; '' = system default). */
+  async deviceChanged(_deviceId: string) {
     if (!this.mic) {
       await this.acquireMic();
+      await this.devices.reconcile('user');
       return;
     }
-    try {
-      await this.mic.setDeviceId(deviceId);
-      this.setupVad();
-      await this.republishAnnounceTrack();
-    } catch (e) {
-      this.notify(`Could not switch to that microphone (${(e as Error)?.message ?? e}). Pick another one.`, 'warn');
-    }
+    // restartTrack in place (DeviceWatch): keeps the publication, DTX/RED and mute / PTT state.
+    await this.devices.userChanged();
+  }
+
+  /** Speaker picked in the panel (prefs.outputId already saved). */
+  async outputChanged() {
+    await this.devices.userChanged();
   }
 
   // ---------------------------------------------------------------------------------------
@@ -239,10 +263,13 @@ export class VoiceEngine {
       }
       this.mic = track;
       track.on(TrackEvent.Ended, () => this.onMicEnded(track));
+      // Re-opened on another device (DeviceWatch, or LiveKit itself on unmute / Safari default
+      // switch): the VAD and announcement clones still point at the old capture.
+      track.on(TrackEvent.Restarted, () => void this.onMicRestarted(track));
       await track.mute(); // applyTransmit decides
-      this.patch({ mic: 'ready', micError: null, micFailure: null });
+      this.patch({ mic: 'ready', micError: null, micFailure: null, micSilent: false, micLabel: track.mediaStreamTrack.label || null });
       this.setupVad();
-      await this.refreshDevices();
+      await this.devices.refresh(); // labels are readable now that permission is granted
       if (this.zoneRoom?.state === ConnectionState.Connected && this.zoneGrant?.canPublish) await this.publishMic(this.zoneRoom);
       if (this.announceRoom?.state === ConnectionState.Connected && this.announceGrant?.canPublish) await this.republishAnnounceTrack();
       await this.applyTransmit();
@@ -273,35 +300,55 @@ export class VoiceEngine {
       .catch(() => undefined);
   }
 
-  /** The microphone was unplugged / revoked while in use. */
+  // -- audio devices (logic in ./deviceWatch.ts + ./devices.ts) -----------------------------
+
+  private makeDeviceWatch(): DeviceWatch {
+    const self = this;
+    return new DeviceWatch({
+      state: this.state,
+      prefs: this.prefs,
+      get audioCtx() {
+        return self.audioCtx;
+      },
+      mic: () => this.mic,
+      acquireMic: () => this.acquireMic(),
+      dropMic: (t) => this.dropMic(t),
+      updatePlayback: () => this.updatePlayback(),
+      notify: (text, kind, ms) => this.notify(text, kind, ms),
+    });
+  }
+
+  /** The microphone was unplugged / revoked / failed while in use: try another one in place first. */
   private onMicEnded(track: LocalAudioTrack) {
     if (this.mic !== track || this.disposed) return;
     this.teardownVad();
-    for (const r of [this.zoneRoom]) if (r) void r.localParticipant.unpublishTrack(track, false).catch(() => undefined);
-    this.mic = null;
-    track.stop();
-    this.patch({ mic: 'unavailable', micFailure: 'ended', micError: 'Your microphone was disconnected. Plug it back in or choose another one — you can still listen.', transmitting: false });
-    this.notify('Microphone disconnected — others can no longer hear you.', 'warn', 8000);
-    void this.onDeviceChange();
+    void this.devices.micEnded(track);
   }
 
-  private async onDeviceChange() {
-    if (!this.state.get().enabled || this.disposed) return;
-    await this.refreshDevices();
-    const s = this.state.get();
-    if (!this.mic && (s.micFailure === 'notfound' || s.micFailure === 'ended') && s.devices.length > 0) {
-      await this.acquireMic();
-      if (this.mic) this.notify('Microphone found — voice is back on.');
-      return;
+  /** No microphone could be re-opened: give it up (inline error + "Retry mic"; devicechange retries). */
+  private dropMic(track: LocalAudioTrack) {
+    if (this.mic !== track || this.disposed) return;
+    this.teardownVad();
+    for (const r of [this.zoneRoom]) if (r) void r.localParticipant.unpublishTrack(track, false).catch(() => undefined);
+    if (this.announceTrack) {
+      const old = this.announceTrack;
+      this.announceTrack = null;
+      void this.announceRoom?.localParticipant.unpublishTrack(old, true).catch(() => undefined);
+      old.stop();
     }
-    // The chosen device vanished: fall back to the default one.
-    if (this.mic && s.deviceId && !s.devices.some((d) => d.deviceId === s.deviceId) && s.devices.length > 0) {
-      this.prefs.deviceId = null;
-      savePrefs(this.prefs);
-      this.patch({ deviceId: null });
-      await this.deviceChanged('');
-      this.notify('Your selected microphone was unplugged — switched to the default microphone.', 'warn');
-    }
+    this.mic = null;
+    track.stop();
+    this.patch({ mic: 'unavailable', micFailure: 'ended', micError: 'Your microphone was disconnected. Plug it back in or choose another one — you can still listen.', transmitting: false, micLabel: null, micSilent: false });
+    this.notify('Microphone disconnected — others can no longer hear you.', 'warn', 8000);
+    this.devices.schedule('dropped');
+  }
+
+  /** The mic track now captures from another device (same publication, DTX/RED, mute state). */
+  private async onMicRestarted(track: LocalAudioTrack) {
+    if (this.mic !== track || this.disposed) return;
+    this.setupVad();
+    if (this.announceTrack) await this.republishAnnounceTrack();
+    await this.applyTransmit();
   }
 
   // -- local voice-activity detection (talking-while-muted hint, own speaking ring, ducking) --
@@ -338,12 +385,21 @@ export class VoiceEngine {
     const v = this.vad;
     if (!v || v.track.readyState !== 'live') {
       this.vadLevel = 0;
+      this.devices.noteLevel(0, dt, false);
       return;
     }
     v.an.getFloatTimeDomainData(v.buf);
     let sum = 0;
-    for (const x of v.buf) sum += x * x;
+    let peak = 0;
+    for (const x of v.buf) {
+      sum += x * x;
+      const a = x < 0 ? -x : x;
+      if (a > peak) peak = a;
+    }
     const rms = Math.sqrt(sum / v.buf.length);
+    // Dead-input detector (exact digital silence, e.g. MacBook mic with the lid closed). Only
+    // meaningful while the context runs (a suspended analyser reads zeros too).
+    this.devices.noteLevel(peak, dt, this.audioCtx?.state === 'running' && this.mic?.mediaStreamTrack.readyState === 'live');
     this.vadLevel = rms;
     const voiced = rms > 0.02;
     this.vadVoicedMs = voiced ? Math.min(3000, this.vadVoicedMs + dt) : Math.max(0, this.vadVoicedMs - dt * 0.5);
@@ -359,15 +415,6 @@ export class VoiceEngine {
         this.lastMutedHint = now;
         this.notify(s.muted ? "You're muted — nobody can hear you. Press Unmute to talk." : s.deafened ? "You're deafened (and muted). Press Undeafen to talk." : `You're not transmitting — hold ${keyLabel(s.pttKey)} to talk, or switch to Open mic.`, 'warn', 5000);
       }
-    }
-  }
-
-  private async refreshDevices() {
-    try {
-      const list = await Room.getLocalDevices('audioinput', false);
-      this.patch({ devices: list.map((d, i) => ({ deviceId: d.deviceId, label: d.label || `Microphone ${i + 1}` })) });
-    } catch {
-      /* ignore */
     }
   }
 
@@ -395,6 +442,12 @@ export class VoiceEngine {
     if (e.code !== this.state.get().pttKey) return;
     if (down && (e.repeat || isTypingTarget(e.target))) return;
     this.setPtt(down);
+  }
+
+  /** On-screen hold-to-talk button (touch): same as holding the push-to-talk key. */
+  holdPtt(held: boolean) {
+    if (held && this.state.get().inputMode !== 'ptt') return;
+    this.setPtt(held);
   }
 
   private setPtt(held: boolean) {
@@ -619,7 +672,7 @@ export class VoiceEngine {
       .on(RoomEvent.AudioPlaybackStatusChanged, () => {
         if (isCurrent()) this.updatePlayback();
       })
-      .on(RoomEvent.MediaDevicesChanged, () => void this.refreshDevices())
+      .on(RoomEvent.MediaDevicesChanged, () => this.devices.schedule('devicechange'))
       .on(RoomEvent.Disconnected, (reason?: DisconnectReason) => {
         if (!isCurrent()) return;
         this.detachAll(room);
@@ -854,11 +907,18 @@ export class VoiceEngine {
     return out;
   }
 
+  /** Debounced speaking ids (remote identities, 'a:'-prefixed announcers, '@self'). */
+  private heldSpeakers(now: number): ReadonlySet<string> {
+    const raw = this.state.get().localSpeaking ? [...this.speakers, '@self'] : this.speakers;
+    return this.speakingHold.update(raw, now);
+  }
+
   private refreshParticipants(force: boolean) {
     const now = performance.now();
     if (!force && now - this.lastUi < UI_REFRESH_MS) return;
     this.lastUi = now;
     const proximity = this.state.get().mode === 'proximity';
+    const held = this.heldSpeakers(now);
     const list: VoiceParticipantView[] = [];
     /** Unrounded gains for the in-world speaking rings. */
     const rawGain = new Map<string, number>();
@@ -872,7 +932,7 @@ export class VoiceEngine {
         rawGain.set(p.identity, gain);
         list.push({
           pid: p.identity,
-          speaking: this.speakers.has(p.identity),
+          speaking: held.has(p.identity),
           gain: roundGain(gain),
           volume: this.userVolume(p.identity),
           micMuted: !pub || pub.isMuted,
@@ -884,7 +944,7 @@ export class VoiceEngine {
     if (ann) {
       for (const p of ann.remoteParticipants.values()) {
         if (p.trackPublications.size === 0) continue; // listeners
-        const speaking = this.speakers.has(`a:${p.identity}`);
+        const speaking = held.has(`a:${p.identity}`);
         const existing = list.find((x) => x.pid === p.identity);
         if (existing) {
           existing.announce = true;
@@ -902,9 +962,11 @@ export class VoiceEngine {
     const sameList = sameParticipants(prev.participants, list);
     if (!sameList || !sameHeard) this.patch({ ...(sameList ? {} : { participants: list }), ...(sameHeard ? {} : { heardBy }) });
     const s = this.state.get();
-    const speaking = list.filter((x) => x.speaking && (!proximity || (rawGain.get(x.pid) ?? 1) > 0.05)).map((x) => x.pid);
+    // In-world indicators: only people this client actually hears (not deafened, mic not muted, my
+    // volume for them > 0, in the street loud enough — which also excludes culled talkers).
+    const speaking = s.deafened ? [] : list.filter((x) => x.speaking && (x.announce || !x.micMuted) && x.volume > 0 && (!proximity || x.announce || (rawGain.get(x.pid) ?? 1) > 0.05)).map((x) => x.pid);
     const selfPid = this.zoneRoom?.localParticipant.identity || null;
-    if (s.localSpeaking && selfPid) speaking.push(selfPid);
+    if (s.transmitting && held.has('@self') && selfPid) speaking.push(selfPid);
     const presence = { speaking, selfPid, selfMuted: s.enabled && (s.muted || s.deafened), selfTransmitting: s.transmitting, heardBy: s.heardBy };
     const key = JSON.stringify(presence);
     if (key !== this.lastPresenceKey) {
@@ -962,6 +1024,10 @@ export class VoiceEngine {
     if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
     if (this.lossTimer) clearInterval(this.lossTimer);
     this.clearReconnect();
+    // No stale talking rings in town after voice goes away (lobby switch / leave).
+    this.speakingHold.clear();
+    voicePresence.set({ speaking: [], selfPid: null, selfMuted: false, selfTransmitting: false, heardBy: [] });
+    this.lastPresenceKey = '';
     const rooms = [this.zoneRoom, this.announceRoom];
     this.zoneRoom = null;
     this.announceRoom = null;

@@ -28,12 +28,16 @@
 // emoter can see there — the point is then snapped to the target's server position) and delivered
 // ONLY to members who can currently see the emoter (incl. the emoter). Nobody else learns of it.
 //
+// 'nick-face' (v2.2): Nick Song's head becomes a 😝 for a moment. Only the player whose lobby character
+// is 'nicksong' may send it ('invalid' otherwise); same rate limit and same viewer rule as pointing.
+//
 // Errors go to the sender only and are identical for "no such pin" and "not your pin".
 import { townLayout } from '@ct/assets';
 import {
   homeBuilding,
   locationAt,
   MAX_PINS_PER_MEMBER,
+  NICK_FACE_CHARACTER,
   type C2SParsed,
   type EmoteEvent,
   type GamePhase,
@@ -175,6 +179,7 @@ export function createSocialModule(host: RoomHost, opts: SocialOptions = {}): So
   function emote(pid: string, msg: C2SParsed<'social:emote'>) {
     const type = 'social:emote';
     if (!emoteLimiter.take(`${pid}:`, host.now())) return fail(pid, type, 'rate_limited', 'Easy there: one point at a time.');
+    if (msg.kind === 'nick-face') return nickFace(pid);
     const here = gestureLocation(pid);
     if (!here) return fail(pid, type, 'forbidden', "You can't point at anything right now.");
     let point: { x: number; y: number } | null;
@@ -188,6 +193,20 @@ export function createSocialModule(host: RoomHost, opts: SocialOptions = {}): So
     } else point = placePoint(here, msg.x, msg.y);
     if (!point) return fail(pid, type, 'invalid', 'Point at something in town.');
     const ev: EmoteEvent = { pid, kind: msg.kind, x: point.x, y: point.y, ...(target !== undefined ? { target } : {}), at: host.now() };
+    for (const m of host.members()) if (canSee(m.pid, pid)) host.send(m.pid, 'social:emote', ev);
+  }
+
+  /**
+   * 'nick-face' (v2.2): only a PLAYER whose lobby character is NICK_FACE_CHARACTER may send it (the
+   * Storyteller never, whatever their preset). No target, no point: the event carries the emoter's own
+   * position and goes, like every emote, only to members who can currently see the emoter.
+   */
+  function nickFace(pid: string) {
+    const type = 'social:emote';
+    if (isST(pid) || host.member(pid)?.cosmetics.preset !== NICK_FACE_CHARACTER) return fail(pid, type, 'invalid', 'Only Nick Song can pull that face.');
+    const p = host.world.positionOf(pid);
+    if (loc(pid) === null || !p) return fail(pid, type, 'forbidden', "You can't do that right now.");
+    const ev: EmoteEvent = { pid, kind: 'nick-face', x: Math.round(p.x * 10) / 10, y: Math.round(p.y * 10) / 10, at: host.now() };
     for (const m of host.members()) if (canSee(m.pid, pid)) host.send(m.pid, 'social:emote', ev);
   }
 

@@ -202,7 +202,7 @@ test('v2 phones: join, pick a character, tap into a cottage, Leave (portrait + l
     notes.push(`P portrait taps own cottage ${hp.id}: ${(await tapCottage(P, pPid, hp.id, { touch: true })).join(' | ')}`);
     await expect(insidePanel(P.page)).toBeVisible({ timeout: 15_000 });
     await expect(insidePanel(P.page)).toContainText('Your home');
-    await expect(P.page.locator('.ct-touch-stick')).toHaveCount(0); // no joystick inside
+    await expect(P.page.locator('.ct-touch-stick')).toBeVisible(); // v2.2: the joystick walks you around inside too
     const fitP = await panelFits(P.page, 'portrait inside');
     notes.push(`portrait panel ${JSON.stringify(fitP)}`);
     await shot(P.page, 'phone-portrait-inside');

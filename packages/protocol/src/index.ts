@@ -8,8 +8,10 @@ export * from './auth.js';
 export * from './lobby.js';
 export * from './world.js';
 export * from './snapshotCodec.js'; // (v2.2, WP4) compact world snapshots ('world:snap2')
+export * from './lobbyWords.js'; // (v2.2) simple-word lobby ids / names (zod-free)
 export * from './game.js';
 export * from './storyteller.js';
+export * from './storylines.js'; // (v2.2, rules-storyteller) preset setups (zod-free)
 export * from './voice.js';
 export * from './chat.js';
 export * from './social.js';

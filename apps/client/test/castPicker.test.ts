@@ -31,8 +31,9 @@ function stubCanvas() {
 }
 
 describe('roster picker helpers', () => {
-  it('the roster is 13 villagers + 13 course mascots, mascots carry a course', () => {
-    expect(PLAYABLE.filter((c) => c.kind === 'villager')).toHaveLength(13);
+  it('the roster is 14 villagers (v2.2: + Nick Song) + 13 course mascots, mascots carry a course', () => {
+    expect(PLAYABLE.filter((c) => c.kind === 'villager')).toHaveLength(14);
+    expect(PLAYABLE_IDS.has('nicksong')).toBe(true);
     const mascots = PLAYABLE.filter((c) => c.kind === 'mascot');
     expect(mascots).toHaveLength(13);
     for (const m of mascots) expect(m.course).toBeTruthy();

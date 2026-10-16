@@ -130,4 +130,21 @@ CREATE TABLE notebooks (
 CREATE INDEX notebooks_account_idx ON notebooks (account_id, updated_at);
 `,
   },
+  {
+    id: 5,
+    name: 'account_stats',
+    // (v2.2 stats) The home-screen record: the roster character (avatar) each player used, so the
+    // "favourite town character" is one indexed GROUP BY (backfilled from the game records), and
+    // an index for "games I told" over match_records (finished + abandoned) for the recent list.
+    sql: `
+ALTER TABLE match_players ADD COLUMN avatar_id TEXT;
+UPDATE match_players SET avatar_id = (
+  SELECT json_extract(s.value, '$.avatarId')
+  FROM match_records mr, json_each(mr.record_json, '$.seats') s
+  WHERE mr.match_id = match_players.match_id AND json_extract(s.value, '$.accountId') = match_players.account_id
+  LIMIT 1
+);
+CREATE INDEX match_records_storyteller_idx ON match_records (storyteller_account_id, ended_at);
+`,
+  },
 ];

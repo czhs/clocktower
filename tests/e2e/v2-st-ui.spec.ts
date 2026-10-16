@@ -161,8 +161,15 @@ test('v2 Storyteller script panel: setup → first night visits → day → nomi
   for (; visits < 12; visits++) {
     const next = page.locator('.cts-nextvisit');
     if (!(await next.count())) break;
-    const label = ((await next.textContent()) ?? '').replace(/^▶ Next visit: /, '').trim();
-    await next.click();
+    const label = ((await next.textContent({ timeout: 5_000 }).catch(() => null)) ?? '').replace(/^▶ Next visit: /, '').trim();
+    // The button can vanish between count() and click() while the panel re-renders after a visit
+    // (e.g. the last open visit just completed): re-check instead of waiting 30 s for it.
+    const clicked = await next.click({ timeout: 8_000 }).then(() => true, () => false);
+    if (!clicked) {
+      await page.waitForTimeout(1500);
+      if (!(await next.count())) break;
+      await next.click();
+    }
     const here = page.locator('.cts-visit.here');
     await expect(here).toBeVisible({ timeout: 15_000 });
     await expect(here).toContainText('you are here');

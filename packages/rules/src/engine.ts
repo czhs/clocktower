@@ -23,6 +23,7 @@ import {
 } from './day.js';
 import { buildNightQueue, findStep, openStepFor, resolveStep } from './night.js';
 import { ROLES } from './roles.js';
+import { commandLabel } from './labels.js';
 import {
   applyAssignment,
   completeAssignment,
@@ -30,6 +31,7 @@ import {
   validateAssignment,
   type Assignment,
 } from './setup.js';
+import { dealBag, presetAssignment } from './presets.js';
 import {
   RuleError,
   type CommandResult,
@@ -55,6 +57,7 @@ import {
   sound,
   typeOf,
   who,
+  mulberry32,
   type Op,
 } from './util.js';
 
@@ -521,7 +524,37 @@ function assign(s: GameState, op: Op, cmd: Extract<StCommand, { type: 'assign_ch
   if (v.warnings.length && !cmd.allowNonstandard) throw new RuleError('invalid', `${v.warnings.join('; ')} (set allowNonstandard to accept)`);
   for (const w of v.warnings) alert(s, op, w);
   applyAssignment(s, full);
+  s.deal = { method: 'manual' };
   log(s, op, 'Characters assigned manually');
+}
+
+/** (v2.2) A seed gives a reproducible deal; otherwise the game's RNG. */
+function dealRng(s: GameState, seed: number | undefined): Rng {
+  return seed === undefined ? s.rng : mulberry32(seed);
+}
+
+function dealPreset(s: GameState, op: Op, cmd: Extract<StCommand, { type: 'deal_preset' }>): void {
+  const { def, assignment } = presetAssignment(s.players.map((p) => p.seat), cmd.storyline, dealRng(s, cmd.seed));
+  applyAssignment(s, assignment);
+  s.deal = { method: 'storyline', storyline: def.id };
+  log(s, op, `Storyline "${def.title}" dealt at random`);
+}
+
+function dealOwnBag(s: GameState, op: Op, cmd: Extract<StCommand, { type: 'deal_bag' }>): void {
+  if (cmd.drunkBelieves !== undefined) {
+    if (!cmd.characters.includes('drunk')) throw new RuleError('invalid', 'There is no Drunk in the bag');
+    if (CHARACTER_INFO[cmd.drunkBelieves].type !== 'townsfolk' || cmd.characters.includes(cmd.drunkBelieves))
+      throw new RuleError('invalid', 'The Drunk must believe in a Townsfolk that is not in the bag');
+  }
+  const { assignment, validation } = dealBag(s.players.map((p) => p.seat), cmd.characters, dealRng(s, cmd.seed), {
+    ...(cmd.drunkBelieves ? { drunkBelieves: cmd.drunkBelieves } : {}),
+    ...(cmd.demonBluffs ? { demonBluffs: cmd.demonBluffs } : {}),
+  });
+  if (validation.warnings.length && !cmd.allowNonstandard) throw new RuleError('invalid', `${validation.warnings.join('; ')} (set allowNonstandard to accept)`);
+  for (const w of validation.warnings) alert(s, op, w);
+  applyAssignment(s, assignment);
+  s.deal = { method: 'bag' };
+  log(s, op, `Your bag of ${cmd.characters.length} characters dealt at random`);
 }
 
 /** While a detected game end awaits the ST, nothing may move the game forward. */
@@ -550,9 +583,20 @@ function stCommand(s: GameState, op: Op, cmd: StCommand): void {
     case 'random_setup': {
       requirePhase(s, 'setup');
       applyAssignment(s, randomAssignment(s.players.map((p) => p.seat), s.rng));
+      s.deal = { method: 'random' };
       log(s, op, 'Random characters assigned');
       return;
     }
+    case 'deal_preset':
+      requirePhase(s, 'setup');
+      dealPreset(s, op, cmd);
+      return;
+    case 'deal_bag':
+      requirePhase(s, 'setup');
+      dealOwnBag(s, op, cmd);
+      return;
+    case 'prepare':
+      throw new RuleError('phase', 'Pre-game settings are set in the waiting room');
     case 'assign_characters':
       requirePhase(s, 'setup');
       assign(s, op, cmd);
@@ -887,7 +931,15 @@ export function applyStCommand(s: GameState, cmd: StCommand, ctx: Ctx): CommandR
   const presenceOnly = cmd.type === 'visit_home' || cmd.type === 'leave_home' || cmd.type === 'set_travel_speed';
   // Confirming a game end is final (the game finishes), so it is not undoable either.
   const final = cmd.type === 'confirm_result' || cmd.type === 'declare_winner';
-  return run(s, ctx.now, (op) => stCommand(s, op, cmd), isUndo || presenceOnly || final ? 'none' : 'push', !isUndo);
+  const push = !(isUndo || presenceOnly || final);
+  // (st-qol) Name what Undo would revert; computed before the command runs (names/steps still exist).
+  const label = push ? commandLabel(s, cmd) : null;
+  const r = run(s, ctx.now, (op) => stCommand(s, op, cmd), push ? 'push' : 'none', !isUndo);
+  if (r.ok && label) {
+    const top = s.history.at(-1);
+    if (top) top.label = label;
+  }
+  return r;
 }
 
 // --------------------------------------------------------------------------- player actions

@@ -206,3 +206,21 @@ Clean `git archive e5d31ef` + the new helpers.ts (sandbox `e2e-head`), build ✅
 | `pnpm test` | ❌ 1/724: `tests/security/leakage.test.ts` lobby summary keys did not allow the new optional `storytellerMode`/`autoTimings` (public lobby settings) — test updated; `vitest run tests/security` ✅ 70/70 |
 | `playwright test … v21-clock` | human test ✅; automatic test ❌ after the host's abort the players' clients kept showing the aborted game (client only dropped a *finished* game's view) — fixed in `net/room.ts` (drop the game view when the lobby goes back to waiting) |
 | `playwright test … v21-clock -g automatic` (×2) | ✅ (2.8 min): create automatic lobby, finder badge, auto deal → day clock, chip + tower dial, +2 min proposal voted through (clock +120 s), phone chip/vote card, host abort → waiting room. Second run after moving HUD toasts below an open clock card (the proposal toast covered the vote card's title) |
+
+## 2026-10-15/16 — v2.2 release gate (lead, hshi-u1, sandbox `lead`, capped remote.sh)
+
+| Command | Result |
+|---|---|
+| `pnpm -r --no-bail run typecheck` (merged tree) | ✅ 7/7 |
+| `pnpm -r --if-present run build` | ✅ |
+| `pnpm test` (1st merged run) | ❌ 1 file: `playtest.refresh` EADDRINUSE 3384 — new `tests/security/hostile-client.test.ts` used the same fixed port → moved to 3391; both pass (18 + 4 expected-fail) |
+| `pnpm test` (final tree) | 1037 passed, 34 expected-fail, 5 skipped; ❌ 2 local-only v2.3 audit files: `web-render` (port 3387 clash in the parallel run; ✅ 2/2 alone) and `ops-restore-drill` (fails in the merged tree; server boots and serves fine by hand — test-harness issue, owned by v2.3/ops; file is git-excluded) |
+| `tests/perf/server-profile.ts --snap2 no/yes` | 13 986 → 1 487 B/s per client (docs/perf-v2.2-results.md) |
+| `tests/perf/client-perf.ts` runtime / load / no-GPU | table in docs/perf-v2.2-results.md |
+| `node scripts/perf/budgets.mjs …` | ✅ 13/13 (`tests/perf/results/2026-10-15-v2.2.json`) |
+| e2e gate run 1 (22:3x, merged snapshot) | lobby ✅ v21-clock ✅ v2-social ✅ v2-phone ✅ v2-look ✅ v2-st-ui ✅ ux-ready ✅ game-chaos ✅; game-full ❌ (helper walked into its own doorway → interiors are walkable now; helpers fixed by world-art, `GAME_RUN=v22fix5` ✅ 7.8 m); ux-walkthrough ❌ (waiting room visible after 10 s on the loaded host → 60 s timeouts) |
+| e2e gate run 2 (23:5x–00:33, final tree) | lobby ✅ v21-clock ✅ v2-social ✅ v2-phone ✅ v2-look ✅ ux-ready ✅ game-full ✅ game-chaos ✅ ux-walkthrough ✅ (8.1 m); v2-st-ui ❌ race ("Next visit" re-rendered between count() and click) → spec made race-tolerant → ✅ (1.2 m) |
+| prod hotfix `scripts/deploy-hshi-u1.sh prod 8fbad32` (own avatar missing after fast reload) | ✅ healthy, verified by the user in a live lobby |
+
+Agents' own runs (feature work, all via `scripts/remote.sh`): see their sections in docs/perf-v2.2-results.md
+and the v2.2 release notes; each feature agent ran typecheck + its unit tests + a browser check under the lock.

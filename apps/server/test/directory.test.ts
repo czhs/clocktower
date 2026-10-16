@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { DirectoryEvent, LobbySummary } from '@ct/protocol';
+import { LOBBY_ID_RE, WORD_LOBBY_ID_RE, type DirectoryEvent, type LobbySummary } from '@ct/protocol';
 import type { AccountRecord } from '@ct/db';
 import { api, createLobby, fakeModules, getTicket, makeAccount, sleep, startTestServer, waitFor, type TestServer } from '../src/rooms/testkit.js';
-import { LobbyDirectory, LOBBY_ID_LENGTH } from '../src/directory/service.js';
+import { LobbyDirectory, LOBBY_ID_LENGTH, LOBBY_ID_WORD_ATTEMPTS, RETIRED_LOBBY_ID_MS } from '../src/directory/service.js';
 import { createTicketService } from '../src/directory/tickets.js';
 
 const PORT = 3332;
@@ -73,7 +73,7 @@ describe('LobbyDirectory (unit, injected room factory)', () => {
     expect(d.size).toBe(4);
     const ids = ok.map((r) => r.value.id);
     expect(new Set(ids).size).toBe(4);
-    for (const id of ids) expect(id).toMatch(new RegExp(`^[A-Za-z0-9_-]{${LOBBY_ID_LENGTH}}$`));
+    for (const id of ids) expect(id).toMatch(WORD_LOBBY_ID_RE);
     const rejected = results.filter((r) => r.status === 'rejected') as PromiseRejectedResult[];
     expect(rejected.every((r) => r.reason.code === 'lobby_limit')).toBe(true);
   });
@@ -101,6 +101,60 @@ describe('LobbyDirectory (unit, injected room factory)', () => {
     const ids = new Set<string>();
     for (let i = 0; i < 300; i++) ids.add((await d.create(acct(`u${i}`), req)).id);
     expect(ids.size).toBe(300);
+  });
+
+  it('(v2.2) simple-word ids: retry on collision with live and recently retired ids, then fall back', async () => {
+    let now = 1_000;
+    const queue: string[] = [];
+    const d = new LobbyDirectory({
+      log: quiet,
+      tickets: createTicketService('k'.repeat(64)),
+      lobbyMaxCount: 50,
+      playerMaxPerLobby: 15,
+      now: () => now,
+      newLobbyId: () => queue.shift() ?? 'amber-fox-lantern',
+      createRoom: async (lobbyId) => ({ roomId: `room-${lobbyId}` }),
+    });
+    expect((await d.create(acct('a'), req)).id).toBe('amber-fox-lantern');
+    // live collision -> next candidate
+    queue.push('amber-fox-lantern', 'amber-fox-lantern', 'brave-owl-candle');
+    expect((await d.create(acct('b'), req)).id).toBe('brave-owl-candle');
+    // a removed id is not reused while it is recently retired ...
+    d.remove('brave-owl-candle');
+    queue.push('brave-owl-candle', 'calm-otter-kite');
+    expect((await d.create(acct('c'), req)).id).toBe('calm-otter-kite');
+    // ... but may come back after the cooldown
+    now += RETIRED_LOBBY_ID_MS + 1;
+    queue.push('brave-owl-candle');
+    expect((await d.create(acct('d'), req)).id).toBe('brave-owl-candle');
+    // every word attempt collides -> random fallback id (old format), still unique and routable
+    const fallback = (await d.create(acct('e'), req)).id;
+    expect(queue).toHaveLength(0);
+    expect(fallback).toMatch(new RegExp(`^[A-Za-z0-9_-]{${LOBBY_ID_LENGTH}}$`));
+    expect(fallback).toMatch(LOBBY_ID_RE);
+    expect(LOBBY_ID_WORD_ATTEMPTS).toBeGreaterThan(8);
+    expect(new Set(d.list().map((l) => l.id)).size).toBe(d.list().length);
+  });
+
+  it('(v2.2) resolveId: exact first (old case-sensitive ids), then case-folded word ids', async () => {
+    const ids = ['AbCdEf-Gh-Ij', 'abcdef-gh-ij', 'amber-fox-lantern', 'JLB7GxxaZK'];
+    const d = new LobbyDirectory({
+      log: quiet,
+      tickets: createTicketService('k'.repeat(64)),
+      lobbyMaxCount: 50,
+      playerMaxPerLobby: 15,
+      newLobbyId: () => ids.shift()!,
+      createRoom: async (lobbyId) => ({ roomId: `room-${lobbyId}` }),
+    });
+    for (let i = 0; i < 4; i++) await d.create(acct(`r${i}`), req);
+    expect(d.resolveId('Amber-Fox-LANTERN')).toBe('amber-fox-lantern');
+    expect(d.resolveId('amber-fox-lantern')).toBe('amber-fox-lantern');
+    expect(d.resolveId('AbCdEf-Gh-Ij')).toBe('AbCdEf-Gh-Ij'); // exact old id wins over its folded twin
+    expect(d.resolveId('ABCDEF-GH-IJ')).toBe('abcdef-gh-ij');
+    expect(d.resolveId('JLB7GxxaZK')).toBe('JLB7GxxaZK');
+    expect(d.resolveId('jlb7gxxazk')).toBe('jlb7gxxazk'); // old random ids stay case-sensitive (-> 404)
+    expect(d.get(d.resolveId('jlb7gxxazk'))).toBeNull();
+    expect(d.resolveId('nope-nope-nope')).toBe('nope-nope-nope');
   });
 
   it('a failed room creation leaves no entry behind', async () => {
@@ -180,6 +234,10 @@ describe('lobby directory HTTP + SSE (real Colyseus rooms)', () => {
       const r = await api(srv, 'POST', '/api/lobbies', { cookie, body });
       expect(r.status, JSON.stringify(body)).toBe(400);
     }
+    for (const body of [{ name: 12345, maxPlayers: 8 }, [{ name: '', maxPlayers: 8 }]]) {
+      const r = await api(srv, 'POST', '/api/lobbies', { cookie, body });
+      expect(r.status, JSON.stringify(body)).toBe(400);
+    }
   });
 
   it('create / list / get / SSE snapshot+upsert+remove+heartbeat, with limits', async () => {
@@ -234,5 +292,34 @@ describe('lobby directory HTTP + SSE (real Colyseus rooms)', () => {
 
     // Slots are free again.
     await createLobby(srv, c.cookie);
+  });
+});
+
+describe('(v2.2) simple-word lobby ids over HTTP (own server)', () => {
+  let words: TestServer;
+  beforeAll(async () => {
+    words = await startTestServer(3336, { moduleFactories: fakeModules().factories, rateLimits: { createLobby: { capacity: 100, refillPerSec: 100 } } });
+  });
+  afterAll(async () => {
+    await words?.close();
+  });
+
+  it('(v2.2) blank name -> simple-words name; word id routes case-insensitively; old-format ids still 404 cleanly', async () => {
+    const { cookie } = await makeAccount(words, 'Wordy');
+    const r = await api<{ lobby: LobbySummary }>(words, 'POST', '/api/lobbies', { cookie, body: { name: '  \u200b ', maxPlayers: 8 } });
+    expect(r.status).toBe(201);
+    const l = r.body.lobby;
+    expect(l.name).toMatch(/^[A-Z][a-z]+ [A-Z][a-z]+$/);
+    expect(l.id).toMatch(WORD_LOBBY_ID_RE);
+    expect((await api(words, 'GET', `/api/lobbies/${l.id}`, { cookie })).body.lobby.id).toBe(l.id);
+    expect((await api(words, 'GET', `/api/lobbies/${l.id.toUpperCase()}`, { cookie })).body.lobby.id).toBe(l.id);
+    const t = await api(words, 'POST', `/api/lobbies/${l.id.replace(/^./, (c) => c.toUpperCase())}/ticket`, { cookie, body: { intent: 'player' } });
+    expect(t.status).toBe(200);
+    expect(t.body.lobbyId).toBe(l.id);
+    expect((await api(words, 'GET', '/api/lobbies/JLB7GxxaZK', { cookie })).status).toBe(404);
+    expect((await api(words, 'GET', '/api/lobbies/a', { cookie })).status).toBe(404);
+    const missing = await api<{ lobby: LobbySummary }>(words, 'POST', '/api/lobbies', { cookie: (await makeAccount(words, 'Noname')).cookie, body: { maxPlayers: 8 } });
+    expect(missing.status).toBe(201);
+    expect(missing.body.lobby.name).toMatch(/^[A-Z][a-z]+ [A-Z][a-z]+$/);
   });
 });

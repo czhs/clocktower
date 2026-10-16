@@ -1,7 +1,9 @@
 // LEAD-OWNED. Code-split components without preact/compat: `lazyComponent(() => import('./X').then(m => m.X))`
 // renders the component once its chunk has loaded (a fallback meanwhile / on failure) and exposes
 // `preload()` for prefetching (on idle, or as soon as a route is known). A failed load (offline, or a
-// chunk replaced by a deploy) is retried on the next mount / preload.
+// chunk replaced by a deploy) is retried on the next mount / preload. With `reloadOnFail`, a failure
+// while the browser is online (most likely a tab older than the last two deploys, whose hashed chunks
+// are gone) reloads the page once to pick up the new build (`reloadForUpdate`).
 import { h, type ComponentType, type VNode } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 
@@ -11,9 +13,30 @@ export interface LazyComponent<P> {
   preload(): Promise<void>;
 }
 
+const RELOAD_KEY = 'ct.chunkReloadAt';
+
+/**
+ * Reload the page to pick up a new build after a lazy chunk failed to load, at most once a minute
+ * (so a genuinely broken chunk or a flaky network can't loop). Returns false when it did not reload
+ * (offline, or already tried recently): the caller then shows its "Reload" fallback instead.
+ */
+export function reloadForUpdate(): boolean {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return false;
+  try {
+    const last = Number(sessionStorage.getItem(RELOAD_KEY) ?? 0);
+    if (Date.now() - last < 60_000) return false;
+    sessionStorage.setItem(RELOAD_KEY, String(Date.now()));
+  } catch {
+    return false; // no storage: can't guard against a loop, so don't auto-reload
+  }
+  location.reload();
+  return true;
+}
+
 export function lazyComponent<P extends object>(
   load: () => Promise<ComponentType<P>>,
   fallback: (failed: boolean) => VNode | null = () => null,
+  opts: { reloadOnFail?: boolean } = {},
 ): LazyComponent<P> {
   let loaded: ComponentType<P> | null = null;
   let pending: Promise<ComponentType<P>> | null = null;
@@ -35,7 +58,11 @@ export function lazyComponent<P extends object>(
       let alive = true;
       get().then(
         (c) => alive && setC(() => c),
-        () => alive && setFailed(true),
+        () => {
+          if (!alive) return;
+          if (opts.reloadOnFail && reloadForUpdate()) return; // keeps showing the loading fallback
+          setFailed(true);
+        },
       );
       return () => {
         alive = false;

@@ -11,6 +11,8 @@ import type { AcousticZoneId, VoiceGrant, VoiceMode, VoiceRevoke, VoiceUnavailab
 import type { RoomConnection } from '../net/room';
 import { createStore, type Store } from '../net/store';
 import type { VoiceEngine } from './VoiceEngine';
+import { shouldAutoMute } from './speaking';
+import { normalizePttCode, parsePtt, pttLabel } from './ptt';
 
 export type MicState = 'off' | 'requesting' | 'ready' | 'denied' | 'unavailable' | 'error';
 /** Why the microphone is not available (drives the recovery instructions in the panel). */
@@ -77,8 +79,25 @@ export interface VoiceClientState {
   deafened: boolean;
   transmitting: boolean;
   localSpeaking: boolean;
+  /** Physical microphones (virtual 'default' entries removed; "System default" is deviceId null). */
   devices: { deviceId: string; label: string }[];
+  /** Saved microphone choice; null = follow the system default. */
   deviceId: string | null;
+  // -- audio devices (voice/deviceWatch.ts) --
+  /** Speakers the browser can route voice to (empty when it cannot choose: Safari, Firefox). */
+  outputs: { deviceId: string; label: string }[];
+  /** Saved speaker choice; null = follow the system default. */
+  outputId: string | null;
+  /** AudioContext.setSinkId exists (Chrome/Edge): a speaker picker makes sense. */
+  outputSupported: boolean;
+  /** The saved speaker is not connected (playing on the system default meanwhile). */
+  outputMissing: boolean;
+  /** Name of the microphone actually captured from (after permission). */
+  micLabel: string | null;
+  /** The saved microphone is not connected: using the system default until it is back. */
+  micFallback: boolean;
+  /** The microphone delivers exact digital silence (MacBook mic with the lid closed, dead device). */
+  micSilent: boolean;
   participants: VoiceParticipantView[];
   announce: { room: string | null; canPublish: boolean; link: LinkState };
   playbackBlocked: boolean;
@@ -86,6 +105,8 @@ export interface VoiceClientState {
   micFailure: MicFailure | null;
   /** pids that currently hear me (room members; in the street only those near enough). */
   heardBy: string[];
+  /** Pref: join big rooms muted (open mic). */
+  crowdMute: boolean;
   /** Transient message for the player (toast). */
   notice: { id: number; text: string; kind: 'info' | 'warn' } | null;
 }
@@ -94,7 +115,11 @@ export interface Prefs {
   inputMode: 'ptt' | 'open';
   pttKey: string;
   deviceId: string | null;
+  /** Speaker (audiooutput) choice; null = system default. */
+  outputId: string | null;
   volumes: Record<string, number>;
+  /** Open mic: join rooms of CROWD_SIZE+ people muted (etiquette for the crowded square). */
+  crowdMute: boolean;
 }
 
 /** What the lazily loaded engine gets from the client. */
@@ -127,16 +152,18 @@ const PREFS_KEY = 'ct.voice.prefs';
 const SESSION_ON_KEY = 'ct.voice.on';
 
 function loadPrefs(): Prefs {
-  const d: Prefs = { inputMode: 'ptt', pttKey: 'KeyV', deviceId: null, volumes: {} };
+  const d: Prefs = { inputMode: 'ptt', pttKey: 'KeyV', deviceId: null, outputId: null, volumes: {}, crowdMute: true };
   try {
     const raw = localStorage.getItem(PREFS_KEY);
     if (!raw) return d;
     const p = JSON.parse(raw) as Partial<Prefs>;
     return {
       inputMode: p.inputMode === 'open' ? 'open' : 'ptt',
-      pttKey: typeof p.pttKey === 'string' && /^[A-Za-z0-9]{1,24}$/.test(p.pttKey) ? p.pttKey : d.pttKey,
-      deviceId: typeof p.deviceId === 'string' ? p.deviceId : null,
+      pttKey: normalizePttCode(p.pttKey), // a KeyboardEvent.code or 'Mouse1' / 'Mouse3' / 'Mouse4' (./ptt)
+      deviceId: typeof p.deviceId === 'string' && p.deviceId && p.deviceId !== 'default' ? p.deviceId : null,
+      outputId: typeof p.outputId === 'string' && p.outputId && p.outputId !== 'default' ? p.outputId : null,
       volumes: p.volumes && typeof p.volumes === 'object' ? p.volumes : {},
+      crowdMute: p.crowdMute !== false,
     };
   } catch {
     return d;
@@ -161,10 +188,9 @@ function sessionFlag(set?: boolean): boolean {
   }
 }
 
+/** Push-to-talk binding label: 'V', 'Space', 'Middle click', 'Mouse 4 (back)' (see ./ptt). */
 export function keyLabel(code: string): string {
-  if (code.startsWith('Key')) return code.slice(3);
-  if (code.startsWith('Digit')) return code.slice(5);
-  return code.replace(/(Left|Right)$/, '');
+  return pttLabel(code);
 }
 
 /** The LiveKit half; a module-level promise so a second VoiceClient (lobby switch) reuses it. */
@@ -210,14 +236,23 @@ export class VoiceClient implements VoiceHost {
       localSpeaking: false,
       devices: [],
       deviceId: this.prefs.deviceId,
+      outputs: [],
+      outputId: this.prefs.outputId,
+      outputSupported: false,
+      outputMissing: false,
+      micLabel: null,
+      micFallback: false,
+      micSilent: false,
       participants: [],
       announce: { room: null, canPublish: false, link: 'idle' },
       playbackBlocked: false,
       lastError: null,
       micFailure: null,
       heardBy: [],
+      crowdMute: this.prefs.crowdMute,
       notice: null,
     });
+    this.offs.push(this.state.subscribe((st) => this.checkCrowdMute(st)));
     this.offs.push(
       conn.events.on('voice:grant', (g) => this.onGrant(g)),
       conn.events.on('voice:revoke', (r) => this.onRevoke(r)),
@@ -308,12 +343,54 @@ export class VoiceClient implements VoiceHost {
     this.engine?.settingsChanged();
   }
 
+  /** A KeyboardEvent.code, or 'Mouse1' / 'Mouse3' / 'Mouse4' (middle / back / forward). */
   setPttKey(code: string) {
-    if (!/^[A-Za-z0-9]{1,24}$/.test(code)) return;
+    if (!parsePtt(code)) return;
     this.prefs.pttKey = code;
     savePrefs(this.prefs);
     this.patch({ pttKey: code, pttHeld: false });
     this.engine?.settingsChanged();
+  }
+
+  /** On-screen hold-to-talk button (touch screens): same as holding the push-to-talk key. */
+  holdPtt(held: boolean) {
+    this.engine?.holdPtt(held);
+  }
+
+  setCrowdMute(on: boolean) {
+    this.prefs.crowdMute = on;
+    savePrefs(this.prefs);
+    this.patch({ crowdMute: on });
+  }
+
+  /** Room the crowd auto-mute was decided for, and since when that room has been connected. */
+  private crowdRoom: string | null = null;
+  private crowdDecided = false;
+  private crowdSince = 0;
+
+  /**
+   * Etiquette for the crowded square: on an open mic, arriving in a room of CROWD_SIZE+ people
+   * mutes you once (with a notice). Decided within ~2 s of connecting, never later — people
+   * walking in while you talk don't mute you.
+   */
+  private checkCrowdMute(st: VoiceClientState) {
+    if (st.room !== this.crowdRoom) {
+      this.crowdRoom = st.room;
+      this.crowdDecided = false;
+      this.crowdSince = 0;
+    }
+    if (this.crowdDecided || !st.room || st.link !== 'connected') return;
+    const now = Date.now();
+    if (!this.crowdSince) this.crowdSince = now;
+    const count = st.participants.filter((p) => !p.announce).length + 1;
+    const mute = shouldAutoMute({ enabledPref: st.crowdMute, inputMode: st.inputMode, muted: st.muted, count, decided: false });
+    if (mute || now - this.crowdSince > 2000 || st.muted || st.inputMode !== 'open') this.crowdDecided = true;
+    if (!mute) return;
+    queueMicrotask(() => {
+      if (this.disposed || this.state.get().muted) return;
+      this.setMuted(true);
+      this.notify(`${count} people here — you joined muted so the room stays clear. Press Unmute to talk.`, 'info', 8000);
+    });
   }
 
   setMuted(muted: boolean) {
@@ -333,11 +410,22 @@ export class VoiceClient implements VoiceHost {
     this.engine?.volumeChanged(pid);
   }
 
+  /** Microphone choice ('' = follow the system default). Persisted; kept even while unplugged. */
   async setDevice(deviceId: string) {
-    this.prefs.deviceId = deviceId || null;
+    const id = deviceId && deviceId !== 'default' ? deviceId : null;
+    this.prefs.deviceId = id;
     savePrefs(this.prefs);
-    this.patch({ deviceId: deviceId || null });
-    await this.engine?.deviceChanged(deviceId);
+    this.patch({ deviceId: id, micFallback: false });
+    await this.engine?.deviceChanged(id ?? '');
+  }
+
+  /** Speaker choice ('' = follow the system default). Only effective where setSinkId exists. */
+  async setOutput(deviceId: string) {
+    const id = deviceId && deviceId !== 'default' ? deviceId : null;
+    this.prefs.outputId = id;
+    savePrefs(this.prefs);
+    this.patch({ outputId: id });
+    await this.engine?.outputChanged();
   }
 
   /** Manual reconnect button. */

@@ -23,7 +23,7 @@
 // Hold: while no seated player is connected nothing advances (prompt deadlines and the clock are
 // frozen), so an emptied lobby is disposed by the room and recorded as abandoned, not auto-finished.
 import type { ClockStage, DayClockView, PromptSpecInput, StCommand, AutoTimings, PromptView } from '@ct/protocol';
-import { AUTO_DEFAULTS } from '@ct/protocol';
+import { AUTO_DEFAULTS, CHARACTER_INFO, storylineById, storylineProblem, type StorylineId } from '@ct/protocol';
 import { mulberry32, ROLES, type CommandResult, type GameState, type NightStep, type PlayerAction, type PlayerState, type Rng } from '@ct/rules';
 import { DayClock } from './clock.js';
 import { EXTENSION_RULES, ExtensionBallot } from './extensions.js';
@@ -50,6 +50,8 @@ export interface AutoClockOptions {
   extension: typeof EXTENSION_RULES;
   /** Length of one proposed "minute" (60 000; tests shrink it with the other timings). */
   extensionMinuteMs: number;
+  /** (v2.2) The storyline fate deals (host's lobby setting); null/absent = an ordinary random setup. */
+  storyline?: StorylineId | null;
 }
 
 export function autoClockOptions(t: AutoTimings = AUTO_DEFAULTS, over: Partial<AutoClockOptions> = {}): AutoClockOptions {
@@ -135,6 +137,14 @@ export function createAutoStoryteller(port: AutoPort, opts: AutoClockOptions, fa
   const player = (seat: number) => st().players.find((p) => p.seat === seat);
   const fate = (text: string, data: Record<string, unknown> = {}, seats: number[] = []) => port.note('fate', text, data, seats);
   const clockNote = (text: string, data: Record<string, unknown> = {}, seats: number[] = []) => port.note('clock', text, data, seats);
+  /**
+   * (st-qol) A PUBLIC line telling everyone what the automatic Storyteller is doing and why the game
+   * is waiting (players otherwise only see a clock). Only public facts: never roles, targets or
+   * which steps exist tonight.
+   */
+  const explain = (text: string) => {
+    port.command({ type: 'announce', text: text.slice(0, 300) });
+  };
 
   /** Run an engine command; an unexpected refusal is recorded (never thrown into the room). */
   function cmd(c: StCommand): boolean {
@@ -233,6 +243,9 @@ export function createAutoStoryteller(port: AutoPort, opts: AutoClockOptions, fa
     day = null;
     clock.clear();
     ballot.cancel();
+    explain(
+      `The automatic Storyteller wakes players in night order. If a question pops up, answer it at home within ${Math.round(opts.promptTimeoutMs / 1000)} seconds. Dawn comes after at least ${minutes(opts.nightMinMs)}.`,
+    );
     // Everyone who will make a choice tonight is asked at once (answers resolve in night order).
     for (const step of s.nightQueue) {
       if (step.status !== 'pending' || step.seat === null) continue;
@@ -340,6 +353,7 @@ export function createAutoStoryteller(port: AutoPort, opts: AutoClockOptions, fa
     ballot.resetDay(s.dayNumber);
     clock.set('discussion', opts.discussionMs, now);
     clockNote(`The town clock: ${minutes(opts.discussionMs)} of discussion before nominations open.`, { stage: 'discussion', ms: opts.discussionMs });
+    explain(`Day ${s.dayNumber}: ${minutes(opts.discussionMs)} to talk, then ${minutes(opts.nominationsMs)} of nominations. Need more time? Propose it on the town clock.`);
   }
 
   function minutes(ms: number) {
@@ -395,6 +409,8 @@ export function createAutoStoryteller(port: AutoPort, opts: AutoClockOptions, fa
         run.stage = 'closing';
         if (d.nominationsOpen) cmd({ type: 'set_nominations_open', open: false });
         clockNote('The town clock strikes: the day is over.', { stage: 'closing' });
+        const last = !!s.day?.vote || !!s.day?.nominations.some((n) => n.status === 'pending');
+        explain(`The town clock strikes: the day is over.${last ? ' The last vote still runs, then the town goes to bed.' : ''}`);
       }
       port.dirty();
     }
@@ -404,6 +420,8 @@ export function createAutoStoryteller(port: AutoPort, opts: AutoClockOptions, fa
       if (run.pendingId !== pending.id) {
         run.pendingId = pending.id;
         run.pendingSince = now;
+        if (run.stage !== 'closing' && opts.voteDelayMs >= 1000)
+          explain(`${name(player(pending.nomineeSeat))} may speak in their defence: the vote starts in ${minutes(opts.voteDelayMs)}.`);
       }
       if (run.stage === 'closing' || now >= run.pendingSince + opts.voteDelayMs) cmd({ type: 'start_vote', nominationId: pending.id });
     }
@@ -443,7 +461,10 @@ export function createAutoStoryteller(port: AutoPort, opts: AutoClockOptions, fa
           ballot.cancel();
         }
         if (s.bedtimeOvertime) {
-          overtimeSince ??= now;
+          if (overtimeSince === null) {
+            overtimeSince = now;
+            explain(`Time for bed! Night falls within ${minutes(opts.stragglerMs)}: anyone still outside is walked home.`);
+          }
           if (now - overtimeSince >= opts.stragglerMs) {
             const who = s.players.filter((p) => !p.connected).map((p) => p.seat);
             clockNote('The town clock strikes night: whoever is still outside is put to bed.', { forcedNight: true }, who);
@@ -505,10 +526,16 @@ export function createAutoStoryteller(port: AutoPort, opts: AutoClockOptions, fa
       startedAt = port.now();
       installAdjudicator();
       cmd({ type: 'set_bedtime_seconds', seconds: Math.max(10, Math.min(300, Math.round(opts.bedtimeSec))) });
-      cmd({ type: 'random_setup' });
+      // (v2.2) the host's storyline (dealt at random onto the seats); falls back to a random setup
+      // when it does not fit this player count.
+      const story = opts.storyline ? storylineById(opts.storyline) : undefined;
+      const dealt = story && storylineProblem(story, st().players.length, CHARACTER_INFO) === null ? cmd({ type: 'deal_preset', storyline: story.id }) : false;
+      if (!dealt) cmd({ type: 'random_setup' });
       const s = st();
-      fate('Fate dealt the characters at random (a legal Trouble Brewing setup).', {
+      const how = dealt ? `the storyline "${story!.title}"` : story ? `the characters at random ("${story.title}" does not fit ${s.players.length} players)` : 'the characters at random';
+      fate(`Fate dealt ${how} (a legal Trouble Brewing setup).`, {
         decision: 'setup',
+        storyline: dealt ? story!.id : null,
         characters: s.players.map((p) => ({ seat: p.seat, character: p.character, believed: p.believedCharacter })),
         redHerringSeat: s.redHerringSeat,
         demonBluffs: [...s.demonBluffs],

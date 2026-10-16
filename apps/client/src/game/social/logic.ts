@@ -207,7 +207,8 @@ export function evictedByDrop(mine: readonly { id: string; at: number }[], addin
 // ---------------------------------------------------------------------------------------
 // touch: long-press detection
 
-export const LONG_PRESS_MS = 350;
+/** Touch long-press that opens the point / pin pie menu (v2.2: 350 -> 450 ms, fewer accidental opens). */
+export const LONG_PRESS_MS = 450;
 /** CSS px a finger may wander before the press counts as a drag (no tap, no long-press). */
 export const PRESS_SLOP_PX = 12;
 

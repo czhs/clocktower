@@ -46,6 +46,16 @@ No automatic behaviour runs in human games. None is opted in by default, and the
   - A `storyteller` ticket or join intent joins as a player.
   - `lobby:claimStoryteller` and `lobby:transferStoryteller` are refused.
 - `LobbySummary.storytellerMode` is always present. `autoTimings` is present in auto mode.
+- **Storyline (v2.2):** the host may pick a preset storyline for fate to deal (`lobby:settings
+  {autoStoryline: StorylineId | null}`, null = an ordinary random setup; host only, while waiting).
+  See section 3. **The choice is secret by default:** `LobbySummary.autoStoryline` is `'secret'` (or
+  `'random'` when none is picked). Knowing the storyline tells everyone which characters are (likely)
+  in play, which suits only some formats, so the host must opt in with `autoStorylinePublic: true` to
+  show its title in the lobby/finder. The host's own lobby view carries the pick
+  (`LobbyRoomView.autoStorylineChoice`); nobody else's does. The host is a player too and knows the
+  storyline they picked: that is the honest cost of choosing one (pick Random to play blind). If the
+  storyline does not fit the player count at the start, fate deals a random setup and says so in the
+  record.
 - **Start:** the host sends `lobby:start` once 5 or more players are ready and connected. `canStart` is true only for the host.
 - **Abort:** the host sends `lobby:abort` while an automatic game is running. The game is recorded
   as `abandoned` with `abandon.reason = 'aborted_by_host'`. Everyone gets a `game_over`
@@ -59,12 +69,14 @@ That means every Trouble Brewing rule is enforced by `@ct/rules` exactly as in a
 
 | Phase | What happens |
 |---|---|
-| setup | `random_setup` (a legal setup), then the bell after 5 s. The game goes bedtime → first night. Roles are revealed at nightfall. |
+| setup | `deal_preset` with the host's storyline, or `random_setup` (a legal setup), then the bell after 5 s. The game goes bedtime → first night. Roles are revealed at nightfall. |
 | bedtime | The engine's countdown runs for `bedtimeSec`, then the world walks stragglers home. Night falls once everyone is home. If someone is still out 30 s into overtime, the night is forced and they are put to bed. |
 | night | At nightfall, every step that needs a choice prompts its player at once, using their usual prompt UI at home. The prompt reads "Answer within N s, or fate chooses for you". N is ⅔ of `nightSec`, clamped to 15–90 s. Steps then resolve **strictly in night order**. A player who died earlier that night is skipped, except the Ravenkeeper, who is woken when killed. An unanswered prompt gets a random legal answer at its deadline. Minion and Demon info, including bluffs, are given in games of 7 or more players, as Trouble Brewing requires. The night lasts **at least** `nightSec`, so its length reveals nothing. It lasts at most `nightSec` plus the prompt timeouts. |
 | dawn → day | The engine announces the deaths. |
 | day | The clock runs `discussion` for `discussionMin`. Nominations then open, and the clock runs `nominations` for `nominationsMin`. A nomination's vote starts 20 s after it is made (accusation and defence), using the usual clock-hand vote. When the clock ends, nominations close and a pending vote still runs. The player on the block is then executed by the engine: the most votes, at least half the living, ties mean nobody. Bedtime follows. If an execution happens mid-nominations (the Virgin), the day ends within 60 s. |
 | end | A detected game end is confirmed at once (`confirm_result`). |
+
+**Public explanations (st-qol).** So players know what the automatic Storyteller is doing and why the game is waiting, it adds public announcements (public facts only, never roles or choices): at nightfall "wakes players in night order … answer it at home within N seconds … Dawn comes after at least N"; at daybreak "Day N: X to talk, then Y of nominations. Need more time? Propose it on the town clock."; after a nomination "NAME may speak in their defence: the vote starts in 20 seconds."; when the clock ends "The town clock strikes: the day is over." (plus "The last vote still runs" when one is pending); in bedtime overtime "Time for bed! Night falls within 30 seconds …". Test: `apps/server/test/auto.qol.test.ts`.
 
 **Hold:** while no seated player is connected, nothing advances. The clock pauses and the prompt deadlines and stage timers are pushed back. When everyone has left, the room's idle timeout disposes the lobby and records the game as **abandoned** instead of letting the server play it to the end.
 
@@ -119,3 +131,61 @@ Clock events are entries with `data.auto = 'clock'` ("The town clock …"). The 
   - `rate_limited`: cooldown or the per-day count
   - `invalid`: another proposal is open, the daily cap is reached, or the id is stale
   - `forbidden`: a human game or an unseated sender
+
+
+## 3. Storylines: preset setups and dealing modes (v2.2)
+
+A **storyline** is a named Trouble Brewing setup rule (zod-free catalogue + bag builder:
+`packages/protocol/src/storylines.ts`; dealing onto seats: `packages/rules/src/presets.ts`). For N
+players it builds a character bag: a fixed core (always dealt), a preferred pool (tried first, in random
+order), an avoid list (never dealt), filled up to the **standard** counts for N (the Baron adds two
+Outsiders and removes two Townsfolk). The server then **shuffles the bag onto the seats** and draws the
+Drunk's belief (a storyline may prefer some), the Fortune Teller's red herring and three Demon bluffs.
+Every storyline is a standard, legal distribution for every count it supports (tested for every count
+with 60 seeds each in `packages/rules/test/presets.test.ts`); unsupported counts are refused and greyed
+out in the UI. No storyline is nonstandard.
+
+| Storyline | Players | Core | Flavour |
+|---|---|---|---|
+| Beginner's Lantern | 5–12 | Imp | For new groups: no Drunk, Recluse, Spy or Baron; plain-spoken Townsfolk (Washerwoman, Librarian, Investigator, Chef, Empath, Undertaker, Monk, Soldier, Ravenkeeper, Slayer, Virgin) and the Scarlet Woman preferred. |
+| Classic Night | 5–15 | Imp | First-night information roles preferred (Washerwoman, Librarian, Investigator, Chef, Empath, Fortune Teller, Undertaker). |
+| The Poisoned Well | 5–15 | Poisoner, Imp | Information roles the Poisoner can spoil. |
+| A Town of Liars | 6, 8–15 | Spy, Recluse, Imp | Misregistration: Drunk preferred; adds the Baron when the Recluse needs an Outsider slot (so 5 and 7 players cannot fit). |
+| The Saint's Gambit | 5–15 | Saint, Imp | Virgin, Slayer, Mayor, Soldier, Scarlet Woman preferred; adds the Baron when the count has no Outsider slot. |
+| Drunk on the Bell Tower | 5–15 | Drunk, Imp | The Drunk prefers to believe they are the Fortune Teller (then Empath, Undertaker, Chef, Investigator); Baron when needed. |
+| Outsiders at the Gate | 5–15 | Baron, Imp | Always two extra Outsiders (Butler, Recluse, Saint, Drunk). |
+
+### Dealing modes (human Storyteller)
+In the script panel's Setup step ("How do you want to deal?", `apps/client/src/ui/storyteller/deal.tsx`):
+
+| Mode | Command | What the server does |
+|---|---|---|
+| Random | `random_setup` | A random legal setup. |
+| Storyline | `deal_preset {storyline, seed?}` | Builds the storyline's bag for this player count and shuffles it onto the seats. |
+| Pick characters | `deal_bag {characters, drunkBelieves?, demonBluffs?, allowNonstandard?, seed?}` | Shuffles the Storyteller's bag onto the seats. The bag size must equal the player count; the distribution must be standard unless `allowNonstandard` (then an alert). |
+| By hand | `assign_characters` (Setup tab) | Every seat as chosen. |
+
+Only the seated Storyteller may deal, only in the setup phase. A `seed` makes the deal reproducible;
+otherwise the game's RNG is used. Every deal is undoable, and re-dealing in the UI asks first. After a
+deal, the Grimoire shows the result; seats can still be tweaked (Setup tab: Load current Grimoire →
+edit → Assign) and the cast can be re-dealt. `StorytellerGameView.deal {method, storyline?}` says how
+the cast was dealt (Storyteller only). The record's `setup.method` is `random | storyline | bag |
+manual | mixed` with `setup.storyline`, and the timeline gets a Storyteller entry ("The Storyteller
+dealt the storyline "X" at random."). The timeline is Storyteller-only until the final story. Players
+never see any of it: they only see their own character, at nightfall (tests:
+`apps/server/test/deal.presets.test.ts`, `apps/server/test/deal.room.test.ts`).
+
+### Preparing in the waiting room (human games)
+The seated Storyteller can open **Storyteller tools** in the waiting room
+(`apps/client/src/ui/storyteller/prepare.tsx`, a lazy chunk):
+- **Real pre-game settings** (`StCommand 'prepare' {prepare: StPreparePatch}`, accepted only while
+  waiting or after the game has ended, Storyteller only): how to deal at the start (`deal: manual |
+  random | storyline` + `storyline`), `bedtimeSeconds`, and the StSettings `voteSeconds`, `doorTags`,
+  `pamphlets`. They are stored per lobby (they survive rematches) and applied when the game starts:
+  the settings first, then (for `random` / `storyline`) the deal, as an ordinary undoable command. A
+  storyline that does not fit the player count at the start is not dealt (a log line says so). Only
+  the Storyteller's own lobby view carries them (`LobbyRoomView.stPrepare`).
+- **Practice:** the real Storyteller panel over a pretend deal built in the browser from the lobby
+  members' public names (sample townsfolk fill a small lobby; `dealLogic.ts` `practiceView` /
+  `practiceReduce`). Deals and phase changes are simulated; every other button only says what it
+  would do. Nothing is sent, nothing is stored, and a banner says so.

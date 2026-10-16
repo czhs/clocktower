@@ -1,4 +1,4 @@
-import type { CreateLobbyRequest, DirectoryEvent, JoinTicketResponse, LobbySummary } from '@ct/protocol';
+import { normalizeLobbyId, wordLobbyId, type CreateLobbyRequest, type DirectoryEvent, type JoinTicketResponse, type LobbySummary } from '@ct/protocol';
 import type { AccountRecord } from '@ct/db';
 import { randomId } from '../auth/crypto.js';
 import type { Logger } from '../rooms/modules.js';
@@ -11,7 +11,16 @@ export const PER_ACCOUNT_LOBBY_LIMIT = 1;
 export const PER_IP_LOBBY_LIMIT = 2;
 
 const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
+/** Length of the fallback random id (pre-v2.2 format), used only if word ids keep colliding. */
 export const LOBBY_ID_LENGTH = 10;
+/** Word-id attempts before falling back to a random id (~1.5M word ids vs. <= LOBBY_MAX_COUNT live). */
+export const LOBBY_ID_WORD_ATTEMPTS = 64;
+/**
+ * A removed lobby's id is not handed out again for this long, so stale links, reconnect tokens and
+ * per-lobby voice rooms / audits (LiveKit token TTL + refresh) of the old lobby never meet a new one.
+ */
+export const RETIRED_LOBBY_ID_MS = 60 * 60_000;
+const RETIRED_LOBBY_ID_MAX = 10_000;
 
 export class DirectoryError extends Error {
   constructor(
@@ -83,6 +92,8 @@ export interface DirectoryDeps {
   perAccountLimit?: number;
   perIpLimit?: number;
   now?: () => number;
+  /** (v2.2) New-lobby id source; defaults to simple-word ids (`amber-fox-lantern`). Tests inject collisions. */
+  newLobbyId?: () => string;
 }
 
 /**
@@ -95,6 +106,8 @@ export class LobbyDirectory {
   private subscribers = new Set<(e: DirectoryEvent) => void>();
   private mutex = new Mutex();
   private now: () => number;
+  /** Recently removed lobby ids -> removal time (insertion-ordered; see RETIRED_LOBBY_ID_MS). */
+  private retired = new Map<string, number>();
 
   constructor(private deps: DirectoryDeps) {
     this.now = deps.now ?? Date.now;
@@ -119,9 +132,8 @@ export class LobbyDirectory {
       if (ip && [...this.entries.values()].filter((e) => e.creatorIp === ip).length >= ipLimit) {
         throw new DirectoryError(409, 'lobby_limit', `At most ${ipLimit} open lobbies can be created from one network`);
       }
-      let id = randomId(LOBBY_ID_LENGTH);
-      while (this.entries.has(id)) id = randomId(LOBBY_ID_LENGTH);
       const t = this.now();
+      const id = this.freshId(t);
       const init: LobbyInit = {
         lobbyId: id,
         name: req.name,
@@ -204,6 +216,9 @@ export class LobbyDirectory {
 
   remove(lobbyId: string): void {
     if (!this.entries.delete(lobbyId)) return;
+    this.retired.delete(lobbyId);
+    this.retired.set(lobbyId, this.now());
+    if (this.retired.size > RETIRED_LOBBY_ID_MAX) this.retired.delete(this.retired.keys().next().value!);
     this.deps.log.info('lobby removed', { lobbyId });
     this.publish({ type: 'remove', id: lobbyId });
   }
@@ -216,6 +231,34 @@ export class LobbyDirectory {
   get(lobbyId: string): LobbySummary | null {
     const e = this.entries.get(lobbyId);
     return e?.roomId ? e.summary : null;
+  }
+
+  /**
+   * Canonical id of a live lobby for an incoming (URL) id: exact match first (older random ids are
+   * case-sensitive), then the case-folded simple-word form (`Amber-Fox-Lantern`). Unknown -> as given.
+   */
+  resolveId(lobbyId: string): string {
+    if (this.entries.has(lobbyId)) return lobbyId;
+    const n = normalizeLobbyId(lobbyId);
+    return this.entries.has(n) ? n : lobbyId;
+  }
+
+  /** A new id that is unique among live lobbies and not recently retired (called inside the mutex). */
+  private freshId(now: number): string {
+    for (const [id, at] of this.retired) {
+      if (now - at < RETIRED_LOBBY_ID_MS) break;
+      this.retired.delete(id);
+    }
+    const taken = (id: string) => this.entries.has(id) || this.retired.has(id);
+    const next = this.deps.newLobbyId ?? (() => wordLobbyId());
+    for (let i = 0; i < LOBBY_ID_WORD_ATTEMPTS; i++) {
+      const id = next();
+      if (!taken(id)) return id;
+    }
+    this.deps.log.warn('lobby word ids exhausted; using a random id');
+    let id = randomId(LOBBY_ID_LENGTH);
+    while (taken(id)) id = randomId(LOBBY_ID_LENGTH);
+    return id;
   }
 
   subscribe(fn: (e: DirectoryEvent) => void): () => void {

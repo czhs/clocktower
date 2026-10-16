@@ -9,6 +9,7 @@ import {
   type LobbySummary,
   type ScriptId,
   type StorytellerMode,
+  wordLobbyName,
 } from '@ct/protocol';
 import { api, subscribeDirectory } from '../../net/api';
 import { modeOf } from '../clock/logic';
@@ -238,8 +239,10 @@ function LobbyRow({ lobby: l, onJoin }: { lobby: LobbySummary; onJoin: (id: stri
 }
 
 export function CreateLobbyModal({ onClose, onCreated }: { onClose: () => void; onCreated: (l: LobbySummary, takeStoryteller: boolean) => void }) {
-  const [name, setName] = useState('');
-  const [maxPlayers, setMaxPlayers] = useState(10);
+  // (v2.2) prefilled with a simple-words name; ↻ suggests another; left blank -> the suggestion.
+  const [suggested, setSuggested] = useState(wordLobbyName);
+  const [name, setName] = useState(suggested);
+  const [maxPlayers, setMaxPlayers] = useState(MAX_PLAYERS); // a full town by default (15)
   const [script, setScript] = useState<ScriptId>('trouble-brewing');
   const [description, setDescription] = useState('');
   const [takeSt, setTakeSt] = useState(true);
@@ -255,12 +258,13 @@ export function CreateLobbyModal({ onClose, onCreated }: { onClose: () => void; 
 
   const submit = async (e: Event) => {
     e.preventDefault();
-    if (name.trim().length < LOBBY_NAME_MIN) return setError(`Name must be at least ${LOBBY_NAME_MIN} characters`);
+    const finalName = name.trim() || suggested;
+    if (finalName.length < LOBBY_NAME_MIN) return setError(`Name must be at least ${LOBBY_NAME_MIN} characters`);
     setBusy(true);
     setError(null);
     try {
       const st = mode === 'human' && takeSt;
-      const { lobby } = await api.createLobby({ name: name.trim(), maxPlayers, script, description: description.trim(), takeStoryteller: st, ...(mode === 'auto' ? { storytellerMode: 'auto' as const } : {}) });
+      const { lobby } = await api.createLobby({ name: finalName, maxPlayers, script, description: description.trim(), takeStoryteller: st, ...(mode === 'auto' ? { storytellerMode: 'auto' as const } : {}) });
       onCreated(lobby, st);
     } catch (err) {
       setError(errorText(err));
@@ -272,10 +276,33 @@ export function CreateLobbyModal({ onClose, onCreated }: { onClose: () => void; 
     <div class="ct-modal-backdrop" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <form class="panel ct-modal" onSubmit={submit} role="dialog" aria-modal="true" aria-labelledby="ct-create-title">
         <h2 id="ct-create-title">Create lobby</h2>
-        <label class="ct-field">
-          <span>Lobby name</span>
-          <input value={name} maxLength={LOBBY_NAME_MAX} autoFocus onInput={(e) => setName((e.currentTarget as HTMLInputElement).value)} />
-        </label>
+        <div class="ct-field">
+          <label for="ct-create-name">Lobby name</label>
+          <div class="ct-name-row">
+            <input
+              id="ct-create-name"
+              value={name}
+              placeholder={suggested}
+              maxLength={LOBBY_NAME_MAX}
+              autoFocus
+              onFocus={(e) => (e.currentTarget as HTMLInputElement).select()}
+              onInput={(e) => setName((e.currentTarget as HTMLInputElement).value)}
+            />
+            <button
+              type="button"
+              class="ct-reroll"
+              title="Suggest another name"
+              aria-label="Suggest another name"
+              onClick={() => {
+                const next = wordLobbyName();
+                setSuggested(next);
+                setName(next);
+              }}
+            >
+              ↻
+            </button>
+          </div>
+        </div>
         <div class="ct-modal-grid">
           <label class="ct-field">
             <span>Player seats ({MIN_PLAYERS}–{MAX_PLAYERS})</span>

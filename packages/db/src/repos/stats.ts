@@ -1,5 +1,5 @@
 import { and, eq, sql } from 'drizzle-orm';
-import type { RoleHistoryEntry, StatsView } from '@ct/protocol';
+import type { CharacterTally, RecentGame, RoleHistoryEntry, StatsView } from '@ct/protocol';
 import type { Database } from '../database.js';
 import { matchPlayers, matches } from '../schema.js';
 
@@ -9,7 +9,8 @@ export interface MatchStart {
   script: string;
   startedAt: number;
   storytellerAccountId: string | null;
-  players: { accountId: string; seat: number }[];
+  /** `avatarId` (v2.2 stats): the roster character (Cosmetics.preset) used in this match. */
+  players: { accountId: string; seat: number; avatarId?: string | null }[];
 }
 
 export interface MatchResult extends Omit<MatchStart, 'players'> {
@@ -32,6 +33,14 @@ export interface MatchResult extends Omit<MatchStart, 'players'> {
 }
 
 const ROLE_HISTORY_LIMIT = 20;
+const RECENT_LIMIT = 5;
+
+/** The StatsView fields that existed before v2.2 (the rest come from `recordFor`). */
+type StatsViewV1 = Pick<
+  StatsView,
+  | 'matchesPlayed' | 'matchesCompleted' | 'wins' | 'losses' | 'goodWins' | 'evilWins' | 'timesExecuted'
+  | 'timesDied' | 'nominationsMade' | 'ghostVotesUsed' | 'gamesStorytold' | 'roleHistory'
+>;
 
 /**
  * Match statistics. Every per-account number is DERIVED by aggregate queries over
@@ -50,7 +59,7 @@ export function createStatsRepo(database: Database) {
       .run().changes;
     if (!inserted) return false;
     for (const p of m.players) {
-      db.insert(matchPlayers).values({ matchId: m.matchId, accountId: p.accountId, seat: p.seat }).onConflictDoNothing().run();
+      db.insert(matchPlayers).values({ matchId: m.matchId, accountId: p.accountId, seat: p.seat, avatarId: p.avatarId ?? null }).onConflictDoNothing().run();
     }
     return true;
   });
@@ -101,7 +110,9 @@ export function createStatsRepo(database: Database) {
       COALESCE(SUM(mp.executed), 0) AS executed,
       COALESCE(SUM(mp.died), 0) AS died,
       COALESCE(SUM(mp.nominations), 0) AS nominations,
-      COALESCE(SUM(mp.ghost_vote_used), 0) AS ghostVotes
+      COALESCE(SUM(mp.ghost_vote_used), 0) AS ghostVotes,
+      COALESCE(SUM(CASE WHEN m.ended_at IS NOT NULL AND mp.alignment = 'good' THEN 1 ELSE 0 END), 0) AS goodGames,
+      COALESCE(SUM(CASE WHEN m.ended_at IS NOT NULL AND mp.alignment = 'evil' THEN 1 ELSE 0 END), 0) AS evilGames
     FROM match_players mp JOIN matches m ON m.id = mp.match_id
     WHERE mp.account_id = ?`);
   const storytold = sqlite.prepare(
@@ -113,6 +124,128 @@ export function createStatsRepo(database: Database) {
     FROM match_players mp JOIN matches m ON m.id = mp.match_id
     WHERE mp.account_id = ? AND m.ended_at IS NOT NULL AND mp.alignment IS NOT NULL
     ORDER BY m.ended_at DESC LIMIT ?`);
+
+  // (v2.2 stats) home-screen record. Every query is keyed by the account (match_players_account_idx,
+  // matches_storyteller_idx, match_records_storyteller_idx) and returns only this account's rows.
+  const abandoned = sqlite.prepare(`
+    SELECT COUNT(*) AS n FROM match_players mp JOIN match_records mr ON mr.match_id = mp.match_id
+    WHERE mp.account_id = ? AND mr.status = 'abandoned'`);
+  const outcomes = sqlite
+    .prepare(`
+    SELECT mp.won FROM match_players mp JOIN matches m ON m.id = mp.match_id
+    WHERE mp.account_id = ? AND m.ended_at IS NOT NULL AND mp.won IS NOT NULL
+    ORDER BY m.ended_at ASC, m.id ASC`)
+    .pluck();
+  const topCharacters = sqlite.prepare(`
+    SELECT COALESCE(mp.final_character, mp.starting_character) AS character, COUNT(*) AS games,
+           COALESCE(SUM(CASE WHEN mp.won = 1 THEN 1 ELSE 0 END), 0) AS wins
+    FROM match_players mp JOIN matches m ON m.id = mp.match_id
+    WHERE mp.account_id = ? AND m.ended_at IS NOT NULL AND COALESCE(mp.final_character, mp.starting_character) IS NOT NULL
+    GROUP BY character ORDER BY games DESC, wins DESC, MAX(m.ended_at) DESC LIMIT 3`);
+  const favouriteAvatar = sqlite.prepare(`
+    SELECT avatar_id AS avatarId, COUNT(*) AS games FROM match_players
+    WHERE account_id = ? AND avatar_id IS NOT NULL
+    GROUP BY avatar_id ORDER BY games DESC, avatar_id ASC LIMIT 1`);
+  // Recent games: ids first (cheap, indexed), then details for those few rows only. In-progress
+  // games (no end, no record) are left out; legacy finished games without a record are kept.
+  const recentIds = sqlite.prepare(`
+    SELECT matchId, role FROM (
+      SELECT mp.match_id AS matchId, 'player' AS role, COALESCE(m.ended_at, mr.ended_at) AS endedAt
+      FROM match_players mp JOIN matches m ON m.id = mp.match_id LEFT JOIN match_records mr ON mr.match_id = mp.match_id
+      WHERE mp.account_id = @a AND (m.ended_at IS NOT NULL OR mr.match_id IS NOT NULL)
+      UNION ALL
+      SELECT mr.match_id, 'storyteller', mr.ended_at FROM match_records mr WHERE mr.storyteller_account_id = @a
+      UNION ALL
+      SELECT m.id, 'storyteller', m.ended_at FROM matches m
+      WHERE m.storyteller_account_id = @a AND m.ended_at IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM match_records r WHERE r.match_id = m.id)
+    ) ORDER BY endedAt DESC, matchId DESC LIMIT @limit`);
+  const recentDetail = sqlite.prepare(`
+    SELECT COALESCE(m.ended_at, mr.ended_at) AS endedAt, COALESCE(mr.status, 'finished') AS status,
+           COALESCE(m.winner, mr.winner) AS winner, json_extract(mr.record_json, '$.lobby.name') AS lobbyName,
+           COALESCE(mp.final_character, mp.starting_character) AS character, mp.alignment AS alignment,
+           mp.won AS won, mp.avatar_id AS avatarId
+    FROM (SELECT @id AS id) x
+    LEFT JOIN matches m ON m.id = x.id
+    LEFT JOIN match_records mr ON mr.match_id = x.id
+    LEFT JOIN match_players mp ON mp.match_id = x.id AND mp.account_id = @a`);
+  // Abandoned game: no final reveal, so only what the player was told (believed character).
+  const abandonedSeat = sqlite.prepare(`
+    SELECT COALESCE(json_extract(s.value, '$.finalBelievedCharacter'), json_extract(s.value, '$.startingBelievedCharacter')) AS character,
+           COALESCE(json_extract(s.value, '$.finalAlignment'), json_extract(s.value, '$.startingAlignment')) AS alignment,
+           json_extract(s.value, '$.avatarId') AS avatarId
+    FROM match_records mr, json_each(mr.record_json, '$.seats') s
+    WHERE mr.match_id = @id AND json_extract(s.value, '$.accountId') = @a LIMIT 1`);
+
+  const recentGames = (accountId: string): RecentGame[] => {
+    const ids = recentIds.all({ a: accountId, limit: RECENT_LIMIT }) as { matchId: string; role: 'player' | 'storyteller' }[];
+    return ids.map(({ matchId, role }) => {
+      const d = recentDetail.get({ id: matchId, a: accountId }) as {
+        endedAt: number | null;
+        status: string;
+        winner: string | null;
+        lobbyName: string | null;
+        character: string | null;
+        alignment: string | null;
+        won: number | null;
+        avatarId: string | null;
+      };
+      const status: RecentGame['status'] = d.status === 'abandoned' ? 'abandoned' : 'finished';
+      const team = (v: unknown): 'good' | 'evil' | null => (v === 'good' || v === 'evil' ? v : null);
+      const entry: RecentGame = {
+        matchId,
+        endedAt: new Date(d.endedAt ?? 0).toISOString(),
+        lobbyName: typeof d.lobbyName === 'string' ? d.lobbyName : null,
+        as: role,
+        status,
+        character: null,
+        alignment: null,
+        avatarId: null,
+        winner: status === 'finished' ? team(d.winner) : null,
+        result: status === 'abandoned' ? 'abandoned' : role === 'storyteller' ? 'told' : d.won === 1 ? 'won' : 'lost',
+      };
+      if (role === 'player') {
+        entry.avatarId = d.avatarId;
+        if (status === 'finished') {
+          entry.character = d.character;
+          entry.alignment = team(d.alignment);
+        } else {
+          const seat = abandonedSeat.get({ id: matchId, a: accountId }) as { character: unknown; alignment: unknown; avatarId: unknown } | undefined;
+          entry.character = typeof seat?.character === 'string' ? seat.character : null;
+          entry.alignment = entry.character ? team(seat?.alignment) : null;
+          entry.avatarId ??= typeof seat?.avatarId === 'string' ? seat.avatarId : null;
+        }
+      }
+      return entry;
+    });
+  };
+
+  /** (v2.2 stats) The home-screen extras (see StatsView). */
+  const recordFor = (
+    accountId: string,
+    a: Record<string, number> = aggregate.get(accountId) as Record<string, number>,
+  ): Omit<StatsView, keyof StatsViewV1> => {
+    const wins = a.wins ?? 0;
+    const losses = a.losses ?? 0;
+    let current = 0;
+    let best = 0;
+    for (const won of outcomes.all(accountId) as number[]) {
+      current = won === 1 ? current + 1 : 0;
+      best = Math.max(best, current);
+    }
+    const fav = favouriteAvatar.get(accountId) as { avatarId: string; games: number } | undefined;
+    return {
+      gamesAbandoned: (abandoned.get(accountId) as { n: number }).n,
+      winRate: wins + losses > 0 ? wins / (wins + losses) : null,
+      goodGames: a.goodGames ?? 0,
+      evilGames: a.evilGames ?? 0,
+      topCharacters: topCharacters.all(accountId) as CharacterTally[],
+      favouriteAvatar: fav ? { avatarId: fav.avatarId, games: fav.games } : null,
+      currentWinStreak: current,
+      bestWinStreak: best,
+      recentGames: recentGames(accountId),
+    };
+  };
 
   return {
     /** Inserts the match + seated players at game start. Returns false if already recorded. */
@@ -153,6 +286,7 @@ export function createStatsRepo(database: Database) {
         ghostVotesUsed: a.ghostVotes ?? 0,
         gamesStorytold: st.n,
         roleHistory,
+        ...recordFor(accountId, a),
       };
     },
     matchCount(): number {

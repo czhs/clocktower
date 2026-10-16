@@ -1,14 +1,16 @@
 // In-world social layer: pointing emotes + character pins (social-client agent).
 //
-// Gestures (no menus):
+// Gestures:
 //   desktop  right-click            point (at a person if one is under the cursor, else the spot)
+//            right-drag (or hold)   the point / pin pie menu around the pointer (radial.ts): drag
+//                                   toward Point, a pin colour or Remove, release to choose
 //            Q (hold + move = re-aim) point at the cursor
 //            F · middle-click · shift+click   drop a pin (on a person = it follows them)
 //            click one of your pins  remove it (hover shows a small ×; the Storyteller may remove any)
 //            Esc                      cancel an armed dock mode / the radial
 //   touch    tap                      as before (walk / Storyteller teleport) — decided on release
-//            long-press (350 ms)      a tiny radial at the finger: 👉 point · 📍 pin; slide onto one
-//                                     and lift to choose, or lift and tap one; tap elsewhere = close
+//            long-press (450 ms)      the same pie menu at the finger; slide onto a wedge and lift to
+//                                     choose, or lift in the middle and tap one; tap elsewhere = close
 //            tap one of your pins     remove it
 //   dock     👉 / 📍 buttons arm the next tap; swatches pick the pin colour (ui/social/SocialPalette)
 //
@@ -47,11 +49,16 @@ import {
   pinLabel,
   pinTexels,
   pressState,
+  LONG_PRESS_MS,
   reconcileLocal,
+  savePinColor,
   type LocalPin,
   type PressState,
 } from './logic';
 import { socialActions, socialHover, socialInfo, socialMode, socialRadial, type SocialTarget } from './state';
+import { createNickFace } from './nickFace';
+import { createPie, pieMenu } from './radial';
+import type { PieTargetInfo } from './radialLogic';
 
 export interface SocialCtx {
   conn: RoomConnection;
@@ -74,6 +81,8 @@ export interface SocialCtx {
   passTap?(sx: number, sy: number): void;
   /** Optional: canvas px per CSS px (the low render tier draws the canvas smaller; default 1). */
   renderScale?(): number;
+  /** Optional (v2.2 'nick-face'): the avatar sprite drawing this pid, else null. */
+  spriteOf?(pid: string): Phaser.GameObjects.Sprite | null;
 }
 
 export interface SocialLayer {
@@ -135,6 +144,8 @@ interface Press {
   wy: number;
   moved: number;
   state: PressState;
+  /** The long-press has opened the pie menu. */
+  opened?: boolean;
 }
 
 export function createSocialLayer(scene: Phaser.Scene, ctx: SocialCtx): SocialLayer {
@@ -174,6 +185,9 @@ export function createSocialLayer(scene: Phaser.Scene, ctx: SocialCtx): SocialLa
   const gGround = scene.add.graphics().setDepth(DEPTH_GROUND);
   const gUp = scene.add.graphics().setDepth(DEPTH_EMOTE);
   const badge = scene.add.image(0, 0, art.badge()).setDepth(DEPTH_PERSON_PIN + 1).setVisible(false);
+  // Nick Song's 'nick-face' emote: his head becomes a 😝 for NICK_FACE_MS (nickFace.ts)
+  const nick = createNickFace(scene, { art, spriteOf: (pid) => ctx.spriteOf?.(pid) ?? null });
+  offs.push(() => nick.destroy());
 
   // remembered pin colour
   try {
@@ -219,6 +233,15 @@ export function createSocialLayer(scene: Phaser.Scene, ctx: SocialCtx): SocialLa
     conn.send('social:emote', t.pid ? { kind: 'point', x, y, pid: t.pid } : { kind: 'point', x, y });
     lastPoint = { t: now(), x: t.x, y: t.y, pid: t.pid };
     showEmote({ pid, kind: 'point', x, y, ...(t.pid ? { target: t.pid } : {}), at: Date.now() });
+  }
+
+  /** Nick Song's 'nick-face' (the palette shows it only to nicksong; the server re-checks). */
+  function nickFace() {
+    const pid = me();
+    if (!pid || !ready()) return;
+    if (!emoteBucket.take(now())) return;
+    conn.send('social:emote', { kind: 'nick-face' });
+    nick.show(pid);
   }
 
   function myServerPins(): PinView[] {
@@ -279,12 +302,37 @@ export function createSocialLayer(scene: Phaser.Scene, ctx: SocialCtx): SocialLa
       pin(t);
     },
     clear,
+    nickFace,
     cancel: () => {
       closeRadial('cancel');
       if (socialMode.get().mode !== 'idle') socialMode.set((m) => ({ ...m, mode: 'idle' }));
     },
   });
   offs.push(() => socialActions.register(null));
+
+  // v2.2 point / pin pie menu (right-drag; touch long-press): radial.ts + ui/social/PieMenu.tsx
+  const pie = createPie({
+    point,
+    pin: (t, c) => {
+      if (socialMode.get().color !== c) socialMode.set((m) => ({ ...m, color: c }));
+      try {
+        savePinColor(window.localStorage, c);
+      } catch {
+        // storage blocked
+      }
+      pin(t);
+    },
+    unpin,
+    color: () => socialMode.get().color,
+    log: (s) => void (debugSeen.length < 200 && debugSeen.push(s)),
+  });
+  offs.push(() => pie.destroy());
+  /** Who / what is under a press, for the pie's wedges and captions. */
+  function pieInfo(wx: number, wy: number, t: SocialTarget): PieTargetInfo {
+    const hit = pinAt(wx, wy, 4 / cssZoom());
+    const removable = hit && !hit.id.startsWith('~') && canRemove(hit.view) ? { id: hit.id, mine: hit.view.by === me(), byName: nameOf(hit.view.by) } : null;
+    return { name: t.pid ? nameOf(t.pid) : null, self: !!t.pid && t.pid === me(), removable };
+  }
 
   // -------------------------------------------------------------------------------------
   // network
@@ -298,8 +346,10 @@ export function createSocialLayer(scene: Phaser.Scene, ctx: SocialCtx): SocialLa
         snapLoc = loc;
         locSince = now();
         locals = [];
+        pie.close('moved');
         for (const e of emotes.values()) dropEmote(e);
         emotes.clear();
+        nick.clear();
       }
       server = s.pins ?? [];
       dirty = true;
@@ -307,6 +357,10 @@ export function createSocialLayer(scene: Phaser.Scene, ctx: SocialCtx): SocialLa
   );
   offs.push(
     conn.events.on('social:emote', (ev: EmoteEvent) => {
+      if (ev.kind === 'nick-face') {
+        if (ev.pid !== me()) nick.show(ev.pid); // ours was shown the instant we sent it
+        return;
+      }
       if (ev.pid === me()) return; // shown the instant we pointed
       showEmote(ev);
     }),
@@ -345,8 +399,12 @@ export function createSocialLayer(scene: Phaser.Scene, ctx: SocialCtx): SocialLa
     if (p.button === 0 || stagePick.get()) return; // primary: TownScene asks onTap()
     if (!ready()) return;
     const w = worldAt(p.x, p.y);
-    if (p.button === 2) point(targetAt(w.x, w.y));
-    else if (p.button === 1) {
+    if (p.button === 2) {
+      // a quick still click points (as before); a drag / hold opens the pie menu (radial.ts)
+      const t = targetAt(w.x, w.y);
+      const c = clientOf(p);
+      pie.rightPress({ cx: c.x, cy: c.y, target: t, info: pieInfo(w.x, w.y, t) });
+    } else if (p.button === 1) {
       ev?.preventDefault?.(); // no autoscroll
       pin(targetAt(w.x, w.y));
     }
@@ -358,12 +416,8 @@ export function createSocialLayer(scene: Phaser.Scene, ctx: SocialCtx): SocialLa
     if (press && press.id === p.id) {
       press.moved = Math.max(press.moved, Math.hypot(p.x - press.sx, p.y - press.sy));
       if (press.state === 'long') {
-        const r = socialRadial.get();
-        if (r) {
-          const c = clientOf(p);
-          const hot = radialButtonAt(c.x, c.y);
-          if (hot !== r.hot) socialRadial.set({ ...r, hot });
-        }
+        const c = clientOf(p);
+        pie.move(c.x, c.y);
       } else press.state = pressState(press.downAt, now(), press.moved, press.state);
     }
   };
@@ -374,17 +428,9 @@ export function createSocialLayer(scene: Phaser.Scene, ctx: SocialCtx): SocialLa
     press = null;
     const st = pressState(pr.downAt, now(), pr.moved, pr.state);
     if (st === 'long') {
-      const r = socialRadial.get();
+      // the pie menu: a wedge under the finger commits; lifting in the middle leaves it for a tap
       const c = clientOf(p);
-      const hot = radialButtonAt(c.x, c.y);
-      if (r && hot) {
-        closeRadial(`slide:${hot}`);
-        if (hot === 'point') point(r.target);
-        else pin(r.target);
-      } else if (r) {
-        socialRadial.set({ ...r, hot: null });
-        radialAt = now(); // lifted without choosing: the radial waits for a tap a while
-      }
+      pie.release(c.x, c.y);
       return;
     }
     if (st === 'cancelled') return;
@@ -420,12 +466,6 @@ export function createSocialLayer(scene: Phaser.Scene, ctx: SocialCtx): SocialLa
     return { x: r.left + p.x * k, y: r.top + p.y * k };
   }
 
-  function radialButtonAt(cx: number, cy: number): 'point' | 'pin' | null {
-    const el = document.elementFromPoint(cx, cy) as HTMLElement | null;
-    const act = el?.closest?.('[data-social-act]')?.getAttribute('data-social-act');
-    return act === 'point' || act === 'pin' ? act : null;
-  }
-
   function closeRadial(why = '') {
     if (!socialRadial.get()) return;
     if (debugSeen.length < 200) debugSeen.push(`radial-close:${why}`);
@@ -445,8 +485,9 @@ export function createSocialLayer(scene: Phaser.Scene, ctx: SocialCtx): SocialLa
   }
 
   const keyDown = (e: KeyboardEvent) => {
-    if (e.code === 'Escape' && (socialRadial.get() || socialMode.get().mode !== 'idle')) {
+    if (e.code === 'Escape' && (socialRadial.get() || pie.busy() || socialMode.get().mode !== 'idle')) {
       closeRadial('esc');
+      pie.close('esc');
       socialMode.set((m) => ({ ...m, mode: 'idle' }));
       e.stopImmediatePropagation(); // don't also leave the cottage
       return;
@@ -497,6 +538,10 @@ export function createSocialLayer(scene: Phaser.Scene, ctx: SocialCtx): SocialLa
     if (socialRadial.get()) {
       closeRadial(`tap:${touchLike ? 'touch' : 'mouse'}`);
       return true; // a tap elsewhere just closes the radial
+    }
+    if (pie.busy()) {
+      pie.close(`tap:${touchLike ? 'touch' : 'mouse'}`);
+      return true; // a tap / click off the pie menu just closes it
     }
     const mode = socialMode.get().mode;
     if (mode !== 'idle') {
@@ -886,15 +931,17 @@ export function createSocialLayer(scene: Phaser.Scene, ctx: SocialCtx): SocialLa
 
   function update(_dt: number) {
     const t = now();
+    nick.update();
     gGround.clear();
     gUp.clear();
     // long-press progress / radial
     if (press && press.state !== 'cancelled') {
       press.state = pressState(press.downAt, t, press.moved, press.state);
       const age = t - press.downAt;
-      if (press.state === 'long' && !socialRadial.get()) {
-        socialRadial.set({ sx: press.cx, sy: press.cy, target: targetAt(press.wx, press.wy), hot: null });
-        radialAt = t;
+      if (press.state === 'long' && !press.opened) {
+        press.opened = true;
+        const tg = targetAt(press.wx, press.wy);
+        pie.openTouch({ cx: press.cx, cy: press.cy, target: tg, info: pieInfo(press.wx, press.wy, tg) });
         try {
           navigator.vibrate?.(12);
         } catch {
@@ -902,7 +949,7 @@ export function createSocialLayer(scene: Phaser.Scene, ctx: SocialCtx): SocialLa
         }
       } else if (press.state === 'pending' && age > 110) {
         const z = cssZoom();
-        const k = Math.min(1, (age - 110) / (350 - 110));
+        const k = Math.min(1, (age - 110) / (LONG_PRESS_MS - 110));
         const r = 15 / z;
         gUp.lineStyle(4 / z, 0x1a1008, 0.5).beginPath().arc(press.wx, press.wy, r, 0, Math.PI * 2).strokePath();
         gUp.lineStyle(2.5 / z, 0xffd76a, 0.95).beginPath().arc(press.wx, press.wy, r, -Math.PI / 2, -Math.PI / 2 + k * Math.PI * 2).strokePath();
@@ -930,6 +977,7 @@ export function createSocialLayer(scene: Phaser.Scene, ctx: SocialCtx): SocialLa
         seen: () => [...debugSeen],
         hold: (on: boolean) => void (debugHold = on),
         radial: () => socialRadial.get(),
+        pie: () => pieMenu.get(),
         emotes: () =>
           [...emotes.values()].map((e) => ({ pid: e.pid, dir: e.dir, hand: !!e.hand?.visible, alpha: e.hand?.alpha ?? 0, x: e.hand?.x, y: e.hand?.y, depth: e.hand?.depth, tex: e.hand?.texture.key, frame: e.hand?.frame.name, ping: !!e.ping?.visible })),
         pins: () => [...pins.values()].map((p) => ({ id: p.id, color: p.view.color, kind: p.view.target.kind, visible: p.img.visible, x: p.img.x, y: p.img.y, head: p.head, scale: p.img.scaleX })),

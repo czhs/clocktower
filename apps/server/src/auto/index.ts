@@ -5,7 +5,8 @@
 //   configureMode(mode, timings)  before start(): 'human' (default) or 'auto'
 //   handleClock(pid, type, msg)   C2S 'clock:propose' / 'clock:vote' (automatic games)
 //   storytellerMode()             the mode of the current game
-import type { AutoTimings, C2SParsed, StorytellerMode } from '@ct/protocol';
+//   prepareView()                 (v2.2) the Storyteller's pre-game settings (lobby-scoped)
+import type { AutoTimings, C2SParsed, StPrepareView, StorylineId, StorytellerMode } from '@ct/protocol';
 import type { GameModule } from '../rooms/modules.js';
 
 export { DayClock, BedtimeMirror } from './clock.js';
@@ -15,8 +16,16 @@ export * as fate from './fate.js';
 
 export type ClockMsgType = 'clock:propose' | 'clock:vote';
 
+/** (v2.2) Extra per-game settings from the lobby. */
+export interface ModeExtras {
+  /** Automatic games: the storyline fate deals (null/absent = random). */
+  storyline?: StorylineId | null;
+}
+
 export interface AutoCapableGame extends GameModule {
-  configureMode(mode: StorytellerMode, timings: AutoTimings): void;
+  configureMode(mode: StorytellerMode, timings: AutoTimings, extras?: ModeExtras): void;
+  /** (v2.2) The seated Storyteller's pre-game settings (StCommand 'prepare'); sent ONLY to the Storyteller. */
+  prepareView?(): StPrepareView;
   handleClock(pid: string, type: ClockMsgType, payload: C2SParsed<'clock:propose'> | C2SParsed<'clock:vote'>): void;
   storytellerMode(): StorytellerMode;
 }

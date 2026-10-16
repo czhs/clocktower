@@ -151,6 +151,8 @@ export interface GameState {
   settings: import('@ct/protocol').StSettings;
   storytellerConnected: boolean;
   assigned: boolean;
+  /** (v2.2) How the current characters were dealt (Storyteller-only; absent = not dealt yet / older state). */
+  deal?: import('@ct/protocol').DealInfo;
   rolesRevealed: boolean;
   demonBluffs: CharacterId[];
   redHerringSeat: number | null;
@@ -205,6 +207,8 @@ export interface Adjudicator {
  */
 export interface HistoryEntry {
   snap: string;
+  /** (additive, st-qol) Short label of the command this entry reverts ("kill Alice"); ST-only. */
+  label?: string;
   replay: { seat: number; action: import('./engine.js').PlayerAction; now: number }[];
 }
 

@@ -185,3 +185,37 @@ p.cth-ability { padding: 0; }
 .cth-hint.night { border-color: #5d6fa0; color: #c9d6f2; }
 .cth-hint.dead { border-color: var(--border); color: var(--muted); }
 .cth-ok { color: var(--ok); }
+
+/* (qol) dismissable toasts, two-step confirm, vote marks in the Town list, own endgame row */
+.cth-toast { display: flex; align-items: flex-start; gap: 8px; pointer-events: auto; }
+.cth-toast > span { flex: 1; }
+.cth .cth-toast-x { flex: none; padding: 0 4px; min-height: 0; background: none; border: none; color: var(--muted); font-size: 11px; line-height: 1.4; cursor: pointer; }
+.cth .cth-toast-x:hover, .cth .cth-toast-x:focus-visible { color: var(--text); }
+.cth-arm { display: inline-flex; gap: 4px; }
+.cth-vmark { font-size: 12px; min-width: 14px; text-align: center; }
+.cth-vmark.yes { color: var(--accent); font-weight: bold; }
+.cth-vmark.no { color: var(--muted); }
+.cth-vmark.raised { color: #f0d58a; }
+.cth-listvote { margin: 0 0 4px; }
+.cth-outcome { margin: 0 0 6px; font-size: 15px; }
+.cth-outcome.won { color: var(--ok); }
+.cth-outcome.lost { color: var(--danger); }
+.cth-table tr.me td { background: #c9a24a1a; }
+.cth-endgame:focus { outline: none; }
+.cth-endgame:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* (qol) phones: finger-sized targets for the HUD's small buttons */
+@media (pointer: coarse) {
+  .cth .cth-small { min-height: 34px; min-width: 40px; padding: 4px 10px !important; font-size: 12px; }
+  .cth-tabs button { min-height: 38px; }
+  .cth .cth-card-head { min-height: 36px; }
+  .cth-choices button { min-height: 38px; }
+  .cth .cth-toast-x { min-width: 32px; min-height: 28px; }
+  .cth-players li { padding: 4px 2px; }
+}
+
+/* (qol) reduced motion: the global rule shortens animations to ~0 ms, which would make a fading
+   hint vanish at once; keep it visible until its timer removes it instead. */
+@media (prefers-reduced-motion: reduce) {
+  .cth-hint.fade { animation: none; }
+}

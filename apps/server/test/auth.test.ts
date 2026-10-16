@@ -219,6 +219,53 @@ describe('auth HTTP', () => {
     expect(stats.body).toMatchObject({ matchesPlayed: 0, wins: 0, roleHistory: [] });
   });
 
+  it('(v2.2 stats) GET /api/me/stats: auth required, own record only, abandoned games are not wins/losses', async () => {
+    expect((await api(srv, 'GET', '/api/me/stats')).status).toBe(401);
+    expect((await api(srv, 'GET', '/api/me/stats', { cookie: 'ct_session_test=garbage' })).status).toBe(401);
+    const me = await create('Statler');
+    const other = await create('Waldorf');
+    const empty = await api(srv, 'GET', '/api/me/stats', { cookie: me.cookie.pair });
+    expect(empty.status).toBe(200);
+    expect(empty.headers.get('cache-control')).toBe('no-store');
+    expect(empty.body).toMatchObject({ matchesPlayed: 0, winRate: null, recentGames: [], topCharacters: [], favouriteAvatar: null, gamesAbandoned: 0 });
+
+    const ids = { me: me.account.id as string, other: other.account.id as string };
+    const stats = srv.services.stats;
+    const players = (winner: 'good' | 'evil') => [
+      { accountId: ids.me, seat: 0, startingCharacter: 'empath', finalCharacter: 'empath', alignment: 'good' as const, won: winner === 'good', alive: true, executed: false, died: false, nominations: 1, ghostVoteUsed: false },
+      { accountId: ids.other, seat: 1, startingCharacter: 'imp', finalCharacter: 'imp', alignment: 'evil' as const, won: winner === 'evil', alive: false, executed: true, died: true, nominations: 0, ghostVoteUsed: false },
+    ];
+    const base = { lobbyId: 'L-stats', script: 'trouble-brewing', storytellerAccountId: null, reason: 'r' };
+    for (const [i, winner] of (['good', 'evil'] as const).entries()) {
+      const matchId = `st-m${i}`;
+      stats.recordMatchStarted({ ...base, matchId, startedAt: 1000 + i, players: players(winner).map((p) => ({ accountId: p.accountId, seat: p.seat, avatarId: p.seat === 0 ? PLAYABLE[0]!.id : PLAYABLE[1]!.id })) });
+      stats.recordMatchFinished({ ...base, matchId, startedAt: 1000 + i, endedAt: 2000 + i, winner, players: players(winner) });
+    }
+    // Abandoned: the other account told it; I am the Drunk (told I am the Chef).
+    stats.recordMatchStarted({ ...base, matchId: 'st-m2', startedAt: 3000, storytellerAccountId: ids.other, players: [{ accountId: ids.me, seat: 0, avatarId: PLAYABLE[0]!.id }] });
+    srv.services.database.sqlite
+      .prepare(`INSERT INTO match_records (match_id, lobby_id, version, status, started_at, ended_at, winner, player_count, storyteller_account_id, record_json) VALUES ('st-m2', 'L-stats', 1, 'abandoned', 3000, 4000, NULL, 1, ?, ?)`)
+      .run(ids.other, JSON.stringify({ lobby: { name: 'Muppet Theatre' }, storyteller: { accountId: ids.other, displayName: 'Waldorf' }, seats: [{ accountId: ids.me, avatarId: PLAYABLE[0]!.id, finalCharacter: 'drunk', finalAlignment: 'good', finalBelievedCharacter: 'chef' }] }));
+
+    const mine = (await api(srv, 'GET', '/api/me/stats', { cookie: me.cookie.pair })).body;
+    expect(mine).toMatchObject({ wins: 1, losses: 1, winRate: 0.5, gamesAbandoned: 1, goodGames: 2, currentWinStreak: 0, bestWinStreak: 1, favouriteAvatar: { avatarId: PLAYABLE[0]!.id, games: 3 } });
+    expect(mine.topCharacters).toEqual([{ character: 'empath', games: 2, wins: 1 }]);
+    expect(mine.recentGames.map((g: { matchId: string; result: string }) => [g.matchId, g.result])).toEqual([['st-m2', 'abandoned'], ['st-m1', 'lost'], ['st-m0', 'won']]);
+    expect(mine.recentGames[0]).toMatchObject({ lobbyName: 'Muppet Theatre', character: 'chef', as: 'player', winner: null });
+    // Nothing about the other account: no id, no name, no character, no avatar.
+    const text = JSON.stringify(mine);
+    for (const leak of [ids.other, 'Waldorf', 'imp', 'drunk', PLAYABLE[1]!.id]) expect(text).not.toContain(leak);
+
+    const theirs = (await api(srv, 'GET', '/api/me/stats', { cookie: other.cookie.pair })).body;
+    expect(theirs).toMatchObject({ wins: 1, losses: 1, evilGames: 2, currentWinStreak: 1, gamesAbandoned: 0 });
+    expect(theirs.recentGames[0]).toMatchObject({ matchId: 'st-m2', as: 'storyteller', result: 'abandoned', character: null, avatarId: null });
+    expect(JSON.stringify(theirs)).not.toContain(ids.me);
+    expect(JSON.stringify(theirs)).not.toContain('chef');
+    // The account id in the query/body is ignored: the session decides whose record it is.
+    const spoof = (await api(srv, 'GET', `/api/me/stats?accountId=${ids.other}`, { cookie: me.cookie.pair })).body;
+    expect(spoof.recentGames[0].as).toBe('player');
+  });
+
   it('expired sessions are rejected', async () => {
     const { cookie, account } = await create('Hal');
     srv.services.database.sqlite.prepare('UPDATE sessions SET expires_at = 1 WHERE account_id = ?').run(account.id);

@@ -97,3 +97,9 @@
   .ct-toolbar .ct-tb-leave { display: none; }
   .ct-settings-leave { display: block; flex-basis: 100%; }
 }
+
+/* (qol) keyboard shortcut table (Keys tab) */
+.ct-help-keys { width: 100%; border-collapse: collapse; }
+.ct-help-keys td { padding: 5px 6px; border-bottom: 1px solid #66503244; vertical-align: middle; }
+.ct-help-keys kbd { margin-right: 2px; }
+.ct-help-keys td:first-child { white-space: nowrap; width: 1%; padding-right: 14px; }

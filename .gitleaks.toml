@@ -1,0 +1,132 @@
+# gitleaks configuration for Clocktower Town (qa-deploy / security).
+# Used by .github/workflows/security.yml, scripts/hooks/pre-push and manual scans:
+#   gitleaks git --config .gitleaks.toml --redact -v .          # full history
+#   gitleaks git --config .gitleaks.toml --log-opts="A..B" .    # a commit range
+# Extends the upstream default ruleset, adds rules for this project's secret env vars and for
+# private-infrastructure details (tailnet names, Tailscale CGNAT IPs, home-directory paths), and
+# allowlists ONLY the known fake test values, matched exactly.
+
+title = "clocktower-town"
+
+[extend]
+useDefault = true
+
+# ---------------------------------------------------------------- project secrets (env names)
+
+[[rules]]
+id = "ct-session-secret"
+description = "SESSION_SECRET / TICKET_SECRET / PASSPHRASE_PEPPER with a literal value"
+regex = '''(?i)\b(?:SESSION_SECRET|TICKET_SECRET|PASSPHRASE_PEPPER)\b["']?[ \t]*[:=][ \t]*["'`]?([A-Za-z0-9+/_\-=]{16,})'''
+secretGroup = 1
+keywords = ["session_secret", "ticket_secret", "passphrase_pepper"]
+tags = ["clocktower", "secret"]
+
+[[rules]]
+id = "ct-livekit-api-secret"
+description = "LIVEKIT_API_SECRET with a literal value"
+regex = '''(?i)\bLIVEKIT_API_SECRET\b["']?[ \t]*[:=][ \t]*["'`]?([A-Za-z0-9+/_\-=]{20,})'''
+secretGroup = 1
+keywords = ["livekit_api_secret"]
+tags = ["clocktower", "secret", "livekit"]
+
+[[rules]]
+id = "ct-livekit-api-key"
+description = "LIVEKIT_API_KEY with a literal value (LiveKit Cloud keys start with API)"
+regex = '''(?i)\bLIVEKIT_API_KEY\b["']?[ \t]*[:=][ \t]*["'`]?(API[A-Za-z0-9]{8,})'''
+secretGroup = 1
+keywords = ["livekit_api_key"]
+tags = ["clocktower", "secret", "livekit"]
+
+[[rules]]
+id = "ct-cloudflared-tunnel-token"
+description = "cloudflared tunnel run token (base64 JSON with AccountTag/TunnelSecret)"
+regex = '''\b(eyJhIjoi[A-Za-z0-9+/_\-]{60,}={0,2})'''
+secretGroup = 1
+keywords = ["eyjhijoi"]
+tags = ["clocktower", "secret", "cloudflare"]
+
+[[rules]]
+id = "ct-cloudflared-credentials-json"
+description = "cloudflared tunnel credentials JSON (TunnelSecret field)"
+regex = '''"TunnelSecret"[ \t]*:[ \t]*"([A-Za-z0-9+/=]{30,})"'''
+secretGroup = 1
+keywords = ["tunnelsecret"]
+tags = ["clocktower", "secret", "cloudflare"]
+
+[[rules]]
+id = "ct-cloudflared-cert-pem"
+description = "cloudflared account cert.pem (ARGO TUNNEL TOKEN block)"
+regex = '''-----BEGIN ARGO TUNNEL TOKEN-----'''
+keywords = ["argo tunnel token"]
+tags = ["clocktower", "secret", "cloudflare"]
+
+[[rules]]
+id = "ct-admin-account-ids"
+description = "ADMIN_ACCOUNT_IDS with real values (who is admin should stay in the host env file)"
+regex = '''(?i)\bADMIN_ACCOUNT_IDS\b["']?[ \t]*(?:=[ \t]*["']?|:[ \t]*["'`])([A-Za-z0-9_\-]{6,}(?:,[A-Za-z0-9_\-]+)*)'''
+secretGroup = 1
+keywords = ["admin_account_ids"]
+tags = ["clocktower", "secret"]
+
+# ---------------------------------------------------------------- private infrastructure
+
+[[rules]]
+id = "ct-tailnet-hostname"
+description = "Tailscale MagicDNS name (<host>.<tailnet>.ts.net) — identifies the private tailnet"
+regex = '''\b([a-z0-9][a-z0-9\-]*\.tail[0-9a-f]{4,}\.ts\.net)\b'''
+secretGroup = 1
+keywords = [".ts.net"]
+tags = ["clocktower", "infra"]
+
+[[rules]]
+id = "ct-tailscale-cgnat-ip"
+description = "IPv4 in 100.64.0.0/10 (Tailscale / CGNAT address of a private node)"
+regex = '''\b(100\.(?:6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.(?:25[0-5]|2[0-4][0-9]|1?[0-9]?[0-9])\.(?:25[0-5]|2[0-4][0-9]|1?[0-9]?[0-9]))\b'''
+secretGroup = 1
+keywords = ["100."]
+tags = ["clocktower", "infra"]
+
+[[rules]]
+id = "ct-home-path"
+description = "Absolute home-directory path naming a real local user (/home/<user>, /Users/<user>)"
+regex = '''(?:^|[\s"'`=(:])(/(?:home|Users)/([a-z_][a-z0-9_\-]{1,31}))(?:/|\b)'''
+# secretGroup 2 (the user name): the upstream default global allowlist suppresses secrets that
+# look like absolute /home/... paths, so the whole path cannot be the reported secret.
+secretGroup = 2
+keywords = ["/home/", "/users/"]
+tags = ["clocktower", "infra"]
+  # Placeholder user names used in docs/examples are fine.
+  [[rules.allowlists]]
+  regexTarget = "match"
+  regexes = ['''/(?:home|Users)/(?:<[^>]*>|user|USER|username|runner|node|ubuntu|clocktower|admin|you|me|example)\b''']
+
+# ---------------------------------------------------------------- allowlist (exact fake values)
+
+[[allowlists]]
+description = "Known fake test credentials (exact values) and generated/third-party files"
+condition = "OR"
+stopwords = []
+regexTarget = "secret"
+regexes = [
+  '''^APIe2efakekey$''',
+  '''^APIqafakekey$''',
+  '''^APIperffake$''',
+  '''^perfkey$''',
+  '''^playtestkey$''',
+  '''^worldauditkey$''',
+  '''^perf-secret-0123456789abcdef0123456789abcdef$''',
+  '''^playtest-secret-0123456789abcdef0123456789$''',
+  '''^world-audit-secret-0123456789abcdef0123$''',
+  '''^leak-secret-leak-secret-0123456789$''',
+  '''^voice-test-secret-voice-test-secret-0123456789$''',
+  '''^fake-secret-fake-secret-fake-secret-0123456789$''',
+  '''^other-secret-other-secret-other-secret-xx$''',
+  '''^qa-fake-livekit-secret-0123456789abcdef0123456789$''',
+  '''^change-me-64-hex-chars$''',
+]
+paths = [
+  '''(^|/)pnpm-lock\.yaml$''',
+  '''(^|/)\.gitleaks\.toml$''',
+  '''(^|/)scripts/secret-scan\.sh$''',
+  '''\.(png|webp|jpg|jpeg|gif|ico|woff2?|ttf|otf|mp3|ogg|wav)$''',
+]

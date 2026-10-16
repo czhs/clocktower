@@ -3,7 +3,8 @@
 Browser-based gothic pixel-art social-deduction town (Trouble Brewing rules, human Storyteller,
 multiple passwordless lobbies, LiveKit proximity/private voice). Authoritative spec:
 `docs/spec/CLOCKTOWER_TOWN_SPEC.md`. Architecture and contracts: `docs/architecture.md`.
-**Product vision (read first): `docs/vision.md`.** Status: `docs/progress.md`. Executed tests: `docs/test-results.md`.
+**New here? Start with `docs/HANDOFF.md`** (rules, map, current state). **Product vision: `docs/vision.md`.**
+**The GitHub repo is public:** never pull from GitHub, work on a local branch, push only through the secret scan. Status: `docs/progress.md`. Executed tests: `docs/test-results.md`.
 
 ## Where things run (non-negotiable)
 

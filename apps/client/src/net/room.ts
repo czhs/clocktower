@@ -227,20 +227,52 @@ export class RoomConnection {
 
   private async retry(attempt: number): Promise<void> {
     if (this.closedByUser) return;
+    this.retryTimer = null;
+    this.retryAttempt = attempt;
+    if (!this.wakeListening) {
+      // Network back / tab back in front (phone woke up): retry now instead of after the backoff.
+      this.wakeListening = true;
+      window.addEventListener('online', this.retryNow);
+      document.addEventListener('visibilitychange', this.retryNow);
+    }
     try {
       await this.connect();
+      this.stopWakeListening();
     } catch (e) {
+      if (this.closedByUser) return;
       // 404 = the lobby is gone; 403/409 = we no longer hold a seat (lobby started without us,
       // kicked, …). Retrying cannot help, so stop and say so instead of spinning for a minute.
       const gone = e instanceof ApiFailure && [403, 404, 409].includes(e.status);
-      if (gone || attempt >= 10) {
+      // Offline (airplane mode, subway, network switch): failures don't count towards giving up;
+      // the 'online' event retries at once.
+      const offline = !gone && navigator.onLine === false;
+      if (gone || (!offline && attempt >= 10)) {
+        this.stopWakeListening();
         sessionStorage.removeItem(RECONNECT_KEY(this.lobbyId));
         this.status.set('closed');
         this.events.emit('closed', { code: gone ? CLIENT_CLOSE.lobbyGone : CLIENT_CLOSE.gaveUp });
         return;
       }
-      setTimeout(() => void this.retry(attempt + 1), Math.min(8000, 500 * 2 ** attempt));
+      const next = offline ? attempt : attempt + 1;
+      this.retryTimer = setTimeout(() => void this.retry(next), offline ? 5000 : Math.min(8000, 500 * 2 ** attempt));
     }
+  }
+
+  private retryTimer: ReturnType<typeof setTimeout> | null = null;
+  private retryAttempt = 1;
+  private wakeListening = false;
+  /** Skip the backoff wait (only while one is pending: never starts a second retry chain). */
+  private retryNow = () => {
+    if (!this.retryTimer || this.closedByUser || document.visibilityState !== 'visible' || navigator.onLine === false) return;
+    clearTimeout(this.retryTimer);
+    this.retryTimer = null;
+    void this.retry(this.retryAttempt);
+  };
+  private stopWakeListening() {
+    if (!this.wakeListening) return;
+    this.wakeListening = false;
+    window.removeEventListener('online', this.retryNow);
+    document.removeEventListener('visibilitychange', this.retryNow);
   }
 
   /** Messages sent while (re)connecting; flushed on attach. Movement is dropped (stale by then). */
@@ -259,6 +291,9 @@ export class RoomConnection {
   async leave(): Promise<void> {
     this.closedByUser = true;
     this.stopSnapHold();
+    if (this.retryTimer) clearTimeout(this.retryTimer);
+    this.retryTimer = null;
+    this.stopWakeListening();
     if (this.feedTimer) clearInterval(this.feedTimer);
     this.feedTimer = null;
     document.removeEventListener('visibilitychange', this.onVisible);

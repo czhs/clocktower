@@ -27,6 +27,8 @@ export interface SocialSheet {
     fps?: Record<string, number>;
     point?: { sequence?: number[]; vectors?: Record<string, [number, number]>; offset?: number };
     icons?: string[];
+    /** The 'nick-face' emote: hide avatar frame rows above cropY; nick_face's anchor goes at feet + neck. */
+    nickFace?: { cropY?: number; neck?: Pt };
   };
 }
 
@@ -76,6 +78,8 @@ export interface SocialArt {
   drop(): (Piece & { anim: string }) | null;
   badge(): string;
   shadow(): Piece;
+  /** Nick Song's 😝 head (null until the sheet is loaded): anchor = the neck. */
+  nickFace(): (Piece & { cropY: number; neck: Pt }) | null;
   destroy(): void;
 }
 
@@ -237,6 +241,12 @@ export function createSocialArt(scene: Phaser.Scene, onChange: () => void): Soci
       return { key: SHEET, frame: 'pin_drop_0', ...anchor('pin_drop', f, { x: f.w / 2, y: f.h - 2 }), w: f.w, h: f.h, anim: 'social#drop' };
     },
     badge: () => patternTexture(scene, 'social-badge', BADGE, BADGE_PAL),
+    nickFace() {
+      const f = ART_JSON?.frames.nick_face;
+      if (!f || !has('nick_face')) return null;
+      const nf = M?.nickFace ?? {};
+      return { key: SHEET, frame: 'nick_face', ...anchor('nick_face', f, { x: f.w / 2, y: f.h - 1 }), w: f.w, h: f.h, cropY: nf.cropY ?? 24, neck: nf.neck ?? { x: 0, y: -13 } };
+    },
     shadow() {
       const f = ART_JSON?.frames.pin_shadow;
       if (has('pin_shadow') && f) return { key: SHEET, frame: 'pin_shadow', ...anchor('pin_shadow', f, { x: f.w / 2, y: f.h / 2 }), w: f.w, h: f.h };

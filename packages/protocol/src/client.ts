@@ -40,6 +40,8 @@ export type * from './messages.js';
 // zod-free modules: re-exported as they are.
 export * from './constants.js';
 export * from './snapshotCodec.js'; // (v2.2, WP4) world:snap2 decoder
+export * from './lobbyWords.js'; // (v2.2) simple-word lobby ids / names
+export * from './storylines.js'; // (v2.2, rules-storyteller) preset setups (storylines)
 
 // ------------------------------------------------------------------------------- text.ts
 
@@ -255,12 +257,16 @@ export const DEFAULT_ST_SETTINGS: StSettings = { doorTags: true, voteSeconds: 3,
 
 export const FORCE_PHASES = ['setup', 'first_night', 'day', 'gather', 'bedtime', 'night', 'dawn'] as const;
 
+export const PREPARE_DEALS = ['manual', 'random', 'storyline'] as const;
+
 // ----------------------------------------------------------------------------- social.ts
 
 export const PIN_COLORS = ['gold', 'crimson', 'violet', 'teal', 'green', 'orange', 'white', 'black'] as const;
 export const MAX_PINS_PER_MEMBER = 6;
 export const EMOTE_POINT_MS = 3500;
-export const EMOTES = ['point'] as const;
+export const NICK_FACE_MS = 3000;
+export const NICK_FACE_CHARACTER = 'nicksong';
+export const EMOTES = ['point', 'nick-face'] as const;
 
 // ------------------------------------------------------------------------------ clock.ts
 

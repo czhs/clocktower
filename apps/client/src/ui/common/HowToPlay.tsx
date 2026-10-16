@@ -1,6 +1,8 @@
 import type { ComponentType } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { IntroTourProps } from '../intro/IntroTour';
+import { shortcutAllowed, storedPttCode } from '../hud/logic';
+import { pttLabel } from '../../voice/ptt';
 import './help.css';
 
 // "How to play": a short, dismissible guide reachable from the home header, the waiting room and
@@ -35,8 +37,21 @@ export function HowToPlayHost({ autoOpen = false, touch = false }: { autoOpen?: 
   const [Tour, setTour] = useState<ComponentType<IntroTourProps> | null>(null);
   useEffect(() => {
     const on = () => setOpen(true);
+    // (qol) "?" opens this guide from anywhere (not while typing or under another dialog).
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== '?' || e.ctrlKey || e.metaKey || e.altKey) return;
+      const modalOpen = !!document.querySelector('[aria-modal="true"]');
+      // (Shift is part of "?" on most layouts, so only Ctrl/Cmd/Alt rule it out)
+      if (!shortcutAllowed({ key: e.key, code: e.code, repeat: e.repeat }, document.activeElement as HTMLElement | null, { modalOpen, pttCode: null })) return;
+      e.preventDefault();
+      setOpen(true);
+    };
     window.addEventListener('ct:help', on);
-    return () => window.removeEventListener('ct:help', on);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('ct:help', on);
+      window.removeEventListener('keydown', onKey);
+    };
   }, []);
   const watchTour = () => {
     markSeen();
@@ -66,8 +81,9 @@ export function HowToPlayHost({ autoOpen = false, touch = false }: { autoOpen?: 
   );
 }
 
-const TABS = ['Basics', 'Day & votes', 'Night', 'Voice'] as const;
+const TABS = ['Basics', 'Day & votes', 'Night', 'Voice', 'Keys'] as const;
 type Tab = (typeof TABS)[number];
+
 
 export function HowToPlay({ onClose, touch, onTour }: { onClose: () => void; touch?: boolean; onTour?: () => void }) {
   const [tab, setTab] = useState<Tab>('Basics');
@@ -100,7 +116,7 @@ export function HowToPlay({ onClose, touch, onTour }: { onClose: () => void; tou
           </button>
         </header>
         <nav class="ct-help-tabs" role="tablist">
-          {TABS.map((t) => (
+          {TABS.filter((t) => !(touch && t === 'Keys')).map((t) => (
             <button key={t} role="tab" aria-selected={tab === t} class={tab === t ? 'on' : ''} onClick={() => setTab(t)}>
               {t}
             </button>
@@ -126,17 +142,22 @@ export function HowToPlay({ onClose, touch, onTour }: { onClose: () => void; tou
               <li>
                 <b>The Storyteller</b> (hooded figure) runs the game: they know every character, wake you at night and announce deaths at dawn.
               </li>
+              <li>
+                <b>Telling the story?</b> In the waiting room, <span class="ct-help-chip">☾ Storyteller tools</span> lets you choose how to deal the
+                characters (at random, a preset storyline, your own pick of characters, or seat by seat), set the timers, and practise the
+                Storyteller panel on a pretend deal. Players see none of it.
+              </li>
             </ul>
           )}
           {tab === 'Day & votes' && (
             <ul>
               <li>Gather in the town square, compare stories, whisper in houses — anything goes.</li>
               <li>
-                When the Storyteller opens nominations, press <b>Nominate</b> next to a name in your Town list. Each player may nominate once and be
-                nominated once per day.
+                When the Storyteller opens nominations, press <b>Nominate</b> next to a name in your Town list (top-left card), then <b>Confirm</b>. Each player may nominate once
+                and be nominated once per day.
               </li>
               <li>
-                During a vote the clock hand sweeps round the circle: press <b>Raise hand</b> before it reaches you to vote yes.
+                During a vote the clock hand sweeps round the circle: press <b>Raise hand</b> before it reaches you to vote yes. Your Town list shows whose hands are up (✋) and who voted (✓).
               </li>
               <li>The player with the most votes (at least half the living) is executed at the end of the day.</li>
               <li>
@@ -155,6 +176,81 @@ export function HowToPlay({ onClose, touch, onTour }: { onClose: () => void; tou
               <li>At dawn deaths are announced and the day begins again.</li>
             </ul>
           )}
+          {tab === 'Keys' && (
+            <table class="ct-help-keys">
+              <tbody>
+                <tr>
+                  <td>
+                    <kbd>W</kbd>
+                    <kbd>A</kbd>
+                    <kbd>S</kbd>
+                    <kbd>D</kbd> / arrows
+                  </td>
+                  <td>Walk (or click a place)</td>
+                </tr>
+                <tr>
+                  <td>
+                    <kbd>E</kbd> / <kbd>Space</kbd>
+                  </td>
+                  <td>Use a door</td>
+                </tr>
+                <tr>
+                  <td>
+                    <kbd>Esc</kbd>
+                  </td>
+                  <td>Leave a building · close a panel</td>
+                </tr>
+                <tr>
+                  <td>
+                    <kbd>Enter</kbd>
+                  </td>
+                  <td>Chat</td>
+                </tr>
+                <tr>
+                  <td>
+                    <kbd>{pttLabel(storedPttCode() ?? 'KeyV')}</kbd> (hold)
+                  </td>
+                  <td>Push-to-talk (change it in the Voice panel)</td>
+                </tr>
+                <tr>
+                  <td>
+                    <kbd>C</kbd>
+                  </td>
+                  <td>Your character card, Town list and notes</td>
+                </tr>
+                <tr>
+                  <td>
+                    <kbd>H</kbd>
+                  </td>
+                  <td>Raise / lower your hand during a vote</td>
+                </tr>
+                <tr>
+                  <td>
+                    <kbd>N</kbd>
+                  </td>
+                  <td>Your private notebook</td>
+                </tr>
+                <tr>
+                  <td>
+                    <kbd>Q</kbd> (hold) / right-click
+                  </td>
+                  <td>Point at someone or something</td>
+                </tr>
+                <tr>
+                  <td>
+                    <kbd>F</kbd>
+                  </td>
+                  <td>Drop a pin under the cursor</td>
+                </tr>
+                <tr>
+                  <td>
+                    <kbd>?</kbd>
+                  </td>
+                  <td>This guide</td>
+                </tr>
+              </tbody>
+            </table>
+          )}
           {tab === 'Voice' && (
             <ul>
               <li>
@@ -170,7 +266,7 @@ export function HowToPlay({ onClose, touch, onTour }: { onClose: () => void; tou
         </div>
         <footer class="ct-help-foot">
           <span class="muted ct-small">
-            Reopen any time with the ? button.
+            Reopen any time with the ? button{touch ? '' : ' or the ? key'}.
             {onTour && (
               <>
                 {' '}

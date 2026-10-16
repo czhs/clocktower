@@ -43,6 +43,52 @@ export interface StatsView {
   ghostVotesUsed: number;
   gamesStorytold: number;
   roleHistory: RoleHistoryEntry[];
+  // (v2.2 stats, additive) the home-screen record. Only ever the signed-in account's own data:
+  // nothing here names or identifies another player.
+  /** Games you played (as a player) that were abandoned; never counted as a win or a loss. */
+  gamesAbandoned: number;
+  /** wins / (wins + losses) in 0..1; null before your first finished game. */
+  winRate: number | null;
+  /** Finished games you ended on the good / evil team. */
+  goodGames: number;
+  evilGames: number;
+  /** Your most-played characters in finished games (most games first, at most 3). */
+  topCharacters: CharacterTally[];
+  /** The roster (town) character you used most, over every game you played. */
+  favouriteAvatar: { avatarId: string; games: number } | null;
+  /** Consecutive wins ending with your latest finished game (0 if it was a loss). */
+  currentWinStreak: number;
+  bestWinStreak: number;
+  /** Your last games (played or told, finished or abandoned), newest first, at most 5. */
+  recentGames: RecentGame[];
+}
+
+export interface CharacterTally {
+  character: string;
+  games: number;
+  wins: number;
+}
+
+export interface RecentGame {
+  matchId: string;
+  /** ISO time the game ended (or was abandoned). */
+  endedAt: string;
+  /** The lobby's name at game start (user text: render escaped). */
+  lobbyName: string | null;
+  as: 'player' | 'storyteller';
+  status: 'finished' | 'abandoned';
+  /**
+   * Your character at the end (player games only). For an abandoned game (no final reveal) this is
+   * the character you were TOLD you are (a Drunk sees their Townsfolk), never Grimoire secrets.
+   */
+  character: string | null;
+  alignment: 'good' | 'evil' | null;
+  /** Your roster character in that game. */
+  avatarId: string | null;
+  /** The winning team (finished games only). */
+  winner: 'good' | 'evil' | null;
+  /** 'won' / 'lost' (player, finished), 'told' (Storyteller, finished), 'abandoned'. */
+  result: 'won' | 'lost' | 'told' | 'abandoned';
 }
 
 export interface AccountView {

@@ -1,0 +1,56 @@
+/* v2.2 point / pin pie menu (PieMenu.tsx). Gothic panel ink + iron keyline, gold for the picked wedge. */
+.ctp-pie {
+  position: fixed; z-index: 61; width: 0; height: 0; pointer-events: none;
+  user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: none;
+}
+.ctp-ring { position: absolute; overflow: visible; animation: ctp-pop 130ms ease-out both; transform-origin: 50% 50%; }
+.ctp-back { fill: #13111acc; stroke: #000a; stroke-width: 2; }
+.ctp-wedge {
+  fill: #2a2736f0; stroke: #626979; stroke-width: 1.5; stroke-linejoin: round;
+  transition: fill 70ms linear, stroke 70ms linear;
+}
+.ctp-wedge.hot { fill: #4a3520; stroke: #ffe08a; stroke-width: 2.5; }
+.ctp-wedge.danger { fill: #3a1c22f0; }
+.ctp-wedge.danger.hot { fill: #6a1e28; stroke: #ff9a8a; }
+.ctp-sticky .ctp-wedge { pointer-events: visiblePainted; cursor: pointer; }
+.ctp-sticky .ctp-wedge:hover { fill: #4a3520; stroke: var(--accent, #d5b56a); }
+.ctp-sticky .ctp-wedge.danger:hover { fill: #6a1e28; }
+.ctp-hub { fill: #17151f; stroke: #454250; stroke-width: 1.5; }
+.ctp-hub.idle { stroke: var(--accent, #d5b56a); stroke-dasharray: 2 3; }
+.ctp-current { fill: #ffe08a; stroke: #1a1008; stroke-width: 1; }
+
+.ctp-icon {
+  position: absolute; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; gap: 1px;
+  color: #e4d8ba; line-height: 1; transition: transform 70ms ease-out; animation: ctp-fade 130ms ease-out both;
+}
+.ctp-icon.hot { transform: translate(-50%, -50%) scale(1.18); }
+.ctp-icon small {
+  font-family: var(--font, sans-serif); font-size: 11px; font-weight: 700; letter-spacing: 0.02em;
+  text-shadow: 0 1px 0 #000, 0 0 3px #000;
+}
+.ctp-sprite { display: inline-block; flex: none; background-repeat: no-repeat; image-rendering: pixelated; filter: drop-shadow(0 1px 0 #000a); }
+.ctp-emoji { font-size: 20px; }
+.ctp-dot { display: inline-block; width: 16px; height: 16px; border-radius: 50%; border: 3px solid; }
+.ctp-remove { font-size: 17px; font-weight: 700; color: #ff9a8a; text-shadow: 0 1px 0 #000; }
+
+.ctp-press {
+  position: absolute; width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%;
+  background: #ffd76a; box-shadow: 0 0 0 2px #1a1008aa, 0 0 8px #ffd76a;
+}
+.ctp-caption {
+  position: absolute; left: 0; transform: translateX(-50%); white-space: nowrap; max-width: calc(100vw - 16px);
+  overflow: hidden; text-overflow: ellipsis; padding: 4px 10px; border-radius: var(--radius, 4px);
+  background: var(--panel, #211f2cf5); border: 1px solid var(--accent, #d5b56a); color: var(--text, #e4d8ba);
+  font-family: var(--font-display, serif); font-size: 15px; line-height: 1.2; box-shadow: 0 4px 12px #000a;
+}
+
+/* touch: bigger glyphs and caption */
+.ctp-touch .ctp-icon small { font-size: 12px; }
+.ctp-touch .ctp-caption { font-size: 16px; padding: 5px 12px; }
+
+@keyframes ctp-pop { from { opacity: 0; transform: scale(0.7); } }
+@keyframes ctp-fade { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .ctp-ring, .ctp-icon { animation: none; }
+  .ctp-wedge, .ctp-icon { transition: none; }
+}

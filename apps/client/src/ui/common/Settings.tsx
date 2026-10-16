@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { getAmbientVolume, getSfxVolume, setAmbientVolume, setSfxVolume } from '../../game/audio';
 import { FX_QUALITY_KEY, readQualityPref, type FxQualityPref } from '../../game/fx/quality';
+import { readTalkOutlineMode, saveTalkOutlineMode, type TalkOutlineMode } from '../../game/fx/talkingPref';
 import { openHelp } from './HowToPlay';
 
 // Small settings popover behind the gear button: ambient sound volume (separate from voice),
-// sound-effects volume, graphics quality, how-to-play and "show tips again". All per-browser
+// sound-effects volume, graphics quality, talking outlines, how-to-play and "show tips again". All per-browser
 // preferences; the sound engine (game/audio.ts) persists its own volumes.
 
 function save(key: string, v: string) {
@@ -77,6 +78,7 @@ function SettingsPanel({ onClose, onLeave, leaveLabel }: { onClose: () => void; 
   const [vol, setVol] = useState(getAmbientVolume);
   const [sfx, setSfx] = useState(getSfxVolume);
   const [quality, setQuality] = useState<FxQualityPref>(readQualityPref);
+  const [outline, setOutline] = useState<TalkOutlineMode>(readTalkOutlineMode);
   const [tipsReset, setTipsReset] = useState(false);
   return (
     <div class="ct-settings-panel panel" role="dialog" aria-label="Settings">
@@ -117,6 +119,32 @@ function SettingsPanel({ onClose, onLeave, leaveLabel }: { onClose: () => void; 
           ))}
         </div>
         <small class="muted">Lower it if the town feels sluggish. Auto adjusts by itself.</small>
+      </div>
+      {/* v2.2 voice: who is talking is outlined in town (game/fx/talking.ts) */}
+      <div class="ct-settings-row" role="radiogroup" aria-label="Talking outlines">
+        <span>Talking outlines</span>
+        <div class="ct-seg">
+          {(
+            [
+              ['behind', 'Behind buildings'],
+              ['top', 'Always on top'],
+            ] as const
+          ).map(([v, label]) => (
+            <button
+              key={v}
+              role="radio"
+              aria-checked={outline === v}
+              class={outline === v ? 'on' : ''}
+              onClick={() => {
+                setOutline(v);
+                saveTalkOutlineMode(v);
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <small class="muted">Who is speaking gets an outline. On top: also visible through buildings.</small>
       </div>
       <div class="ct-settings-actions">
         <button

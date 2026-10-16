@@ -60,6 +60,10 @@ export interface HumanSpec {
   over?: (img: Off, d: HDir, p: HPose) => void;
   /** Hands hidden (holding a prop): positions handled by the prop. */
   hands?: (d: HDir, p: HPose) => [number, number][] | null;
+  /** Custom hair (replaces `hairStyle`'s drawing; same layer + outline). `t` = head top (v1 y). */
+  hairDraw?: (img: Off, d: HDir, p: HPose, t: number) => void;
+  /** Face overrides drawn over the default eyes/mouth (smirk, eyelids...). `t` = head top. */
+  face?: (img: Off, d: HDir, t: number, skin: Ramp) => void;
 }
 
 // ---------------------------------------------------------------------------------------
@@ -124,6 +128,7 @@ function drawBody(img: Off, d: HDir, p: HPose, s: HumanSpec, top: number) {
     img.set(15, top + 5, r.d1); // ear
     img.set(15, top + 6, r.d2);
   }
+  s.face?.(img, d, top, r);
   for (const [hx, hy] of s.hands?.(d, p) ?? defaultHands(d, p)) {
     img.rect(hx, hy, 2, 2, r.b);
     img.set(hx + 1, hy + 1, r.d1);
@@ -371,7 +376,8 @@ export function drawHuman(s: HumanSpec, dir: DrawnDir, f: FrameIndex): Img {
   layers.push(
     layer((o) => {
       const sub = new Off();
-      if (s.hairStyle !== 'bald') drawHair(sub, d, p, s, t);
+      if (s.hairDraw) s.hairDraw(sub, d, p, t);
+      else if (s.hairStyle !== 'bald') drawHair(sub, d, p, s, t);
       for (let y = 0; y < 40; y++)
         for (let x = 0; x < 32; x++) {
           const c = sub.get(x, y);

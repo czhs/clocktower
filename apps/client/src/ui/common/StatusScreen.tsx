@@ -62,12 +62,24 @@ export function lobbyErrorCopy(code: string | undefined, fallback: string): { ic
       return {
         icon: '⇄',
         title: 'Opened somewhere else',
-        message: 'This account joined the lobby from another tab or device, so this one was disconnected.',
+        message: 'This account joined the lobby from another tab or device. Only one can be connected at a time.',
       };
     case 'lobby_closed':
       return { icon: '⌂', title: 'Lobby closed', message: 'This lobby was closed.' };
     case 'connection_lost':
-      return { icon: '⚠', title: 'Connection lost', message: 'We could not reach the server. Your seat is kept for a while — reload to try again.' };
+      return {
+        icon: '⚠',
+        title: 'Connection lost',
+        message: 'Lost connection to the lobby and could not reconnect. Your seat is kept for a while: check your internet connection, then try again.',
+      };
+    case 'lobby_gone':
+      return {
+        icon: '⌂',
+        title: 'Lobby no longer exists',
+        message: 'The server may have restarted, and a game in progress could not be recovered. Your account and stats are safe.',
+      };
+    case 'unauthenticated':
+      return { icon: '⚿', title: 'Signed out', message: 'Your session has ended. Reload and sign in with your passphrase to join.' };
     default:
       return { icon: '⚠', title: 'Could not join', message: fallback };
   }

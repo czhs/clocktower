@@ -76,9 +76,20 @@ function lsSet(key: string, value: string): void {
   }
 }
 
-function StPanel({ view, conn }: { view: StorytellerGameView; conn: RoomConnection }) {
+/**
+ * (v2.2) Practice mode (waiting room, prepare.tsx): the real panel over a locally built fake view.
+ * Commands go to `send` (a local reducer); nothing reaches the server or any player.
+ */
+export interface PracticeMode {
+  send: Send;
+  note: string | null;
+  onExit: () => void;
+}
+
+export function StPanel({ view, conn, practice }: { view: StorytellerGameView; conn: RoomConnection; practice?: PracticeMode }) {
   const [open, setOpenState] = useState(() => lsGet(LS_COLLAPSED) !== '1');
-  const [dock, setDockState] = useState<Dock>(() => (lsGet(LS_DOCK) === 'right' ? 'right' : 'left'));
+  const [dockState, setDockState] = useState<Dock>(() => (lsGet(LS_DOCK) === 'right' ? 'right' : 'left'));
+  const dock: Dock = practice ? 'right' : dockState; // (v2.2) practice: keep the waiting room (left) visible
   const setOpen = (v: boolean) => {
     setOpenState(v);
     lsSet(LS_COLLAPSED, v ? '0' : '1');
@@ -116,14 +127,17 @@ function StPanel({ view, conn }: { view: StorytellerGameView; conn: RoomConnecti
   const [composer, setComposer] = useState<ComposerState>({ seat: null, mode: 'info', prompt: EMPTY_PROMPT, info: EMPTY_INFO });
   const send: Send = (c) => {
     setError(null);
-    conn.send('st:command', c);
+    if (practice) practice.send(c); // (v2.2) never sent
+    else conn.send('st:command', c);
   };
   useEffect(
     () =>
-      conn.events.on('error', (e) => {
-        if (e.for === 'st:command') setError(friendlyError(e.message, true));
-      }),
-    [conn],
+      practice
+        ? undefined
+        : conn.events.on('error', (e) => {
+            if (e.for === 'st:command') setError(friendlyError(e.message, true));
+          }),
+    [conn, !!practice],
   );
   // Follow the phase: setup -> grimoire; night -> checklist; day -> day controls.
   useEffect(() => {
@@ -173,15 +187,21 @@ function StPanel({ view, conn }: { view: StorytellerGameView; conn: RoomConnecti
 
   const offline = view.players.filter((x) => !x.connected);
   return (
-    <aside class={`cts dock-${dock} ${tools ? 'cts-mode-tools' : 'cts-mode-script'}${reducedMotion() ? ' cts-still' : ''}`} aria-label="Storyteller">
+    <aside class={`cts dock-${dock} ${tools ? 'cts-mode-tools' : 'cts-mode-script'}${reducedMotion() ? ' cts-still' : ''}${practice ? ' cts-practice' : ''}`} aria-label={practice ? 'Storyteller (practice)' : 'Storyteller'}>
       <header class="cts-head">
         <span class="cts-title">Storyteller</span>
         <span class="cts-head-phase">{phaseTitle(view.phase, view.dayNumber)}</span>
         {view.phaseEndsAt !== null && <Countdown endsAt={view.phaseEndsAt} />}
         {view.timerHeld ? <span class="cts-chip">held</span> : view.timerPaused && <span class="cts-chip">paused (you were away)</span>}
         <span class="cts-spacer" />
-        <button class="cts-undo" disabled={!view.canUndo} onClick={() => send({ type: 'undo_last' })} title={view.canUndo ? 'Undo the last game action' : 'Nothing to undo'}>
+        <button
+          class="cts-undo"
+          disabled={!view.canUndo}
+          onClick={() => send({ type: 'undo_last' })}
+          title={view.canUndo ? `Undo: ${view.undoLabel ?? 'the last game action'}` : 'Nothing to undo'}
+        >
           ↶ Undo
+          {view.canUndo && view.undoLabel && <span class="cts-undo-what"> {view.undoLabel}</span>}
         </button>
         <button class="cts-icon" onClick={toggleDock} title={`Dock on the ${dock === 'left' ? 'right' : 'left'}`} aria-label="Move the panel to the other side">
           ⇆
@@ -190,6 +210,17 @@ function StPanel({ view, conn }: { view: StorytellerGameView; conn: RoomConnecti
           ▁
         </button>
       </header>
+      {practice && (
+        <div class="cts-practice-banner" role="status">
+          <span>
+            <b>Practice</b> — nothing here is sent to players. A pretend deal of your lobby, only on your screen.
+          </span>
+          {practice.note && <span class="cts-practice-note">{practice.note}</span>}
+          <button class="cts-link" onClick={practice.onExit}>
+            Exit practice
+          </button>
+        </div>
+      )}
       <PhaseStageBar view={view} send={send} />
       {tools && view.visitingSeat !== null && (
         <div class="cts-visitbar">
@@ -865,7 +896,13 @@ function NightStep({ step, view, send, openComposer }: { step: NightStepView; vi
   const [infoText, setInfoText] = useState(step.suggestedInfo?.text ?? '');
   // Follow a fresh engine suggestion (e.g. after a status change) unless the ST is editing.
   const sugText = step.suggestedInfo?.text ?? '';
-  useEffect(() => setInfoText(sugText), [sugText]);
+  // (st-qol) Drunk / poisoned: start from the server's ready-made false info instead of the truth.
+  const [useFalse, setUseFalse] = useState(false);
+  useEffect(() => {
+    setInfoText(sugText);
+    setUseFalse(false);
+  }, [sugText]);
+  const infoBase = useFalse && step.falseInfo ? step.falseInfo : step.suggestedInfo;
   const finished = step.status === 'resolved' || step.status === 'skipped';
   const visited = step.status === 'visiting' || step.status === 'prompted' || step.status === 'answered' || step.status === 'resolved';
   const g = step.seat === null ? undefined : view.grimoire.find((x) => x.seat === step.seat);
@@ -920,13 +957,28 @@ function NightStep({ step, view, send, openComposer }: { step: NightStepView; vi
           onSubmit={(e) => {
             e.preventDefault();
             const text = infoText.trim();
-            if (text) send({ type: 'send_info', seat: step.seat!, info: { ...step.suggestedInfo!, text: text.slice(0, 500), stepId: step.id } });
+            if (text) send({ type: 'send_info', seat: step.seat!, info: { ...(infoBase ?? step.suggestedInfo!), text: text.slice(0, 500), stepId: step.id } });
           }}
         >
           <input class="cts-grow" value={infoText} maxLength={500} onInput={(e) => setInfoText((e.currentTarget as HTMLInputElement).value)} title="Edit before sending" />
           <button type="submit" class="primary" disabled={!infoText.trim()}>
             Send info
           </button>
+          {step.falseInfo && (
+            <button
+              type="button"
+              class={useFalse ? 'on' : ''}
+              aria-pressed={useFalse}
+              onClick={() => {
+                const next = !useFalse;
+                setUseFalse(next);
+                setInfoText(next ? step.falseInfo!.text : sugText);
+              }}
+              title="They are drunk or poisoned: switch between the true info and a plausible false one"
+            >
+              {useFalse ? 'false info ✓' : 'use false info'}
+            </button>
+          )}
           <small class="muted">{only(view.players, step.seat)}</small>
         </form>
       )}

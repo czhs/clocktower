@@ -8,6 +8,7 @@ import {
   type LobbyRoomView,
   type MemberView,
   type StorytellerMode,
+  WORD_LOBBY_ID_RE,
 } from '@ct/protocol';
 import { useStore } from '../../net/store';
 import type { RoomConnection } from '../../net/room';
@@ -17,6 +18,8 @@ import { CharacterPicker, characterOf, takenBy } from './CharacterPicker';
 import { copyText, SCRIPT_LABEL, shareUrl } from './finder';
 import { MODE_COPY, modeOf, timingsOf, timingsSummary } from '../clock/logic';
 import { AutoTimingsEditor, useTimingsDraft } from './ModeSettings';
+import { StPrepareButton } from '../storyteller/prepareSlot'; // (v2.2) the Storyteller's tools before the game
+import { AutoStorylineSetting } from '../storyteller/autoStoryline'; // (v2.2) automatic games: storyline
 import '../auth/auth.css';
 import './lobby.css';
 
@@ -92,7 +95,7 @@ export function WaitingRoom({ conn, onLeave }: { conn: RoomConnection; account: 
             {players.length}/{view.lobby.maxPlayers} players · {readyCount} ready
             {!collapsed && <> · {SCRIPT_LABEL[view.lobby.script]}</>}
             {auto && <> · Automatic</>}
-            {status === 'reconnecting' && <span class="ct-error"> · reconnecting…</span>}
+            {status === 'reconnecting' && <span class="ct-error"> · {navigator.onLine === false ? 'offline, waiting for network…' : 'reconnecting…'}</span>}
           </div>
         </div>
         <button class="ct-waiting-leave" onClick={onLeave}>
@@ -107,11 +110,13 @@ export function WaitingRoom({ conn, onLeave }: { conn: RoomConnection; account: 
             Start game
           </button>
         )}
+        {isSt && !auto && <StPrepareButton conn={conn} /> /* (v2.2, rules-storyteller) prepare + practice */}
         {!st && !isSt && !auto && (
           <button onClick={() => conn.send('lobby:claimStoryteller', {})} title="Run the game as the Storyteller (not counted as a player)">
             Be the Storyteller
           </button>
         )}
+        {players.length < MIN_PLAYERS && <InviteButton lobbyId={view.lobby.id} lobbyName={view.lobby.name} />}
         {notReady.length > 0 && players.length >= MIN_PLAYERS && (isSt || isHost || me?.ready) ? (
           <p class="ct-waiting-status muted ct-small" aria-live="polite">
             Waiting for {listNames(notReady.map((m) => m.displayName))} to press Ready
@@ -268,17 +273,24 @@ function ShareLink({ lobbyId }: { lobbyId: string }) {
   const url = shareUrl(lobbyId);
   const [copied, setCopied] = useState(false);
   return (
-    <div class="ct-share">
-      <input readOnly value={url} aria-label="Share link" onFocus={(e) => (e.currentTarget as HTMLInputElement).select()} />
-      <button
-        onClick={async () => {
-          setCopied(await copyText(url));
-          setTimeout(() => setCopied(false), 2000);
-        }}
-      >
-        {copied ? 'Copied' : 'Copy link'}
-      </button>
-    </div>
+    <>
+      {WORD_LOBBY_ID_RE.test(lobbyId) && (
+        <p class="ct-share-code muted" title="Friends can also type this after /lobby/ in the address bar">
+          Lobby code <strong>{lobbyId}</strong>
+        </p>
+      )}
+      <div class="ct-share">
+        <input readOnly value={url} aria-label="Share link" onFocus={(e) => (e.currentTarget as HTMLInputElement).select()} />
+        <button
+          onClick={async () => {
+            setCopied(await copyText(url));
+            setTimeout(() => setCopied(false), 2000);
+          }}
+        >
+          {copied ? 'Copied' : 'Copy link'}
+        </button>
+      </div>
+    </>
   );
 }
 
@@ -376,6 +388,7 @@ function GameMode({ view, conn, isHost, st, auto }: { view: LobbyRoomView; conn:
         <div class="ct-auto-box">
           <p class="ct-small">No Storyteller: the town clock on the tower paces the day, and night choices come to you at home. Anyone can ask the town for more time.</p>
           {isHost ? <AutoTimingsEditor value={value} onStep={step} /> : <p class="muted ct-small">{timingsSummary(value)}</p>}
+          <AutoStorylineSetting view={view} conn={conn} isHost={isHost} /> {/* (v2.2) the storyline fate deals */}
         </div>
       )}
     </>
@@ -510,5 +523,45 @@ function LobbyCharacter({
         <button onClick={() => setOpen(false)}>Done</button>
       </div>
     </div>
+  );
+}
+
+/**
+ * "Invite friends" in the always-visible action row while the lobby is short of players (the share
+ * link itself sits in the details, which start collapsed on phones). Phones get the system share
+ * sheet (Messages, WhatsApp, …); elsewhere, or if sharing is unavailable, the link is copied.
+ */
+function InviteButton({ lobbyId, lobbyName }: { lobbyId: string; lobbyName: string }) {
+  const [done, setDone] = useState<string | null>(null);
+  useEffect(() => {
+    if (!done) return;
+    const t = setTimeout(() => setDone(null), 2500);
+    return () => clearTimeout(t);
+  }, [done]);
+  const invite = async () => {
+    const url = shareUrl(lobbyId);
+    const nav = navigator as Navigator & { share?: (d: { title?: string; text?: string; url?: string }) => Promise<void> };
+    const coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+    if (coarse && typeof nav.share === 'function') {
+      try {
+        await nav.share({ title: 'Clocktower Town', text: `Join "${lobbyName}" in Clocktower Town`, url });
+        return;
+      } catch (e) {
+        if ((e as { name?: string })?.name === 'AbortError') return; // the player closed the sheet
+      }
+    }
+    setDone((await copyText(url)) ? 'Link copied: send it to your friends' : 'Copy failed: open the lobby details to copy the link');
+  };
+  return (
+    <>
+      <button class="ct-invite" onClick={() => void invite()} title="Share this lobby's link">
+        Invite friends
+      </button>
+      {done && (
+        <p class="ct-waiting-status ct-ok ct-small" role="status">
+          {done}
+        </p>
+      )}
+    </>
   );
 }

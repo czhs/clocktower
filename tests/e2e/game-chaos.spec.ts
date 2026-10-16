@@ -10,12 +10,12 @@
 // Every case must end in a sane state with a friendly message: no stuck UI, no raw errors, no page
 // errors. Each case is "soft": a failure is recorded as a bug and the game goes on.
 // Message-level driving: only the "walk out at night" door request (the UI correctly refuses to send
-// it). v2: inside a cottage there is no walking — the room's Leave button / an arrow key leaves. Step log + bugs: tests/e2e/artifacts/game-chaos-<run>.json; screenshots game-chaos-*.png.
+// it). v2.2: inside a cottage you walk around the room; the Leave button / walking down through the doorway leaves. Step log + bugs: tests/e2e/artifacts/game-chaos-<run>.json; screenshots game-chaos-*.png.
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test, type Page } from '@playwright/test';
-import { armConfirm, FrameTap, geo, inject, insidePanel, leaveButton, selfEntity, signUp, storytellerToolsMode, watchConsole, type GamePlayer } from './helpers';
+import { armConfirm, FrameTap, geo, inject, insidePanel, leaveButton, selfEntity, signUp, storytellerToolsMode, walkToInteriorDoor, watchConsole, type GamePlayer } from './helpers';
 
 const ART = path.join(path.dirname(fileURLToPath(import.meta.url)), 'artifacts');
 const RUN = process.env.GAME_RUN ?? Math.random().toString(36).slice(2, 6);
@@ -215,9 +215,14 @@ test('chaos: unexpected orders, refreshes, duplicate tabs and races during a rea
       await expect(btn).toBeDisabled({ timeout: 15_000 });
       note(`Leave button at night: "${(await btn.textContent())?.trim()}"`);
       await expect(btn).toContainText(/stay home|until morning/i);
+      // v2.2: P1 may walk about at home; DOWN on the interior door spot is the way out (refused locally)
+      await walkToInteriorDoor(P1, pid);
+      expect(selfEntity(P1, pid)?.location).toBe(`bld:${home(P1).id}`);
       const tKey = Date.now();
       await P1.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
-      await P1.page.keyboard.press('ArrowDown');
+      await P1.page.keyboard.down('ArrowDown'); // v2.2: a HELD push into the doorway walks out
+      await P1.page.waitForTimeout(500);
+      await P1.page.keyboard.up('ArrowDown');
       await P1.page.waitForTimeout(1200);
       expect(P1.tap.sent('world:useDoor', tKey).length, 'the UI sends no door request at night').toBe(0);
       expect(selfEntity(P1, pid)?.location).toBe(`bld:${home(P1).id}`);
@@ -291,7 +296,12 @@ test('chaos: unexpected orders, refreshes, duplicate tabs and races during a rea
       const b1 = P1.page.locator('.cth-players li', { hasText: P4.name }).getByRole('button', { name: 'Nominate' });
       const b2 = P2.page.locator('.cth-players li', { hasText: P5.name }).getByRole('button', { name: 'Nominate' });
       await Promise.all([b1.waitFor(), b2.waitFor()]);
+      // (qol) Nominate arms a Confirm button; arm both first, then confirm both at the same moment.
       await Promise.all([b1.evaluate((el) => (el as HTMLButtonElement).click()), b2.evaluate((el) => (el as HTMLButtonElement).click())]);
+      const c1 = P1.page.locator('.cth-players li', { hasText: P4.name }).getByRole('button', { name: /^Confirm nominating/ });
+      const c2 = P2.page.locator('.cth-players li', { hasText: P5.name }).getByRole('button', { name: /^Confirm nominating/ });
+      await Promise.all([c1.waitFor(), c2.waitFor()]);
+      await Promise.all([c1.evaluate((el) => (el as HTMLButtonElement).click()), c2.evaluate((el) => (el as HTMLButtonElement).click())]);
       await st.tap.until(() => gv(st).day.nominations.length >= 1, 10_000, 'a nomination');
       await st.page.waitForTimeout(2000);
       const noms = gv(st).day.nominations;

@@ -47,6 +47,7 @@ import {
   type ServerErrorMsg,
   type AutoTimings,
   type StorytellerMode,
+  type StorylineId, // (v2.2)
 } from '@ct/protocol';
 import { isAutoCapable } from '../auto/index.js'; // (auto-st) automatic games + the town clock
 import { getServices, type Services } from '../services.js';
@@ -161,7 +162,7 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
   private services!: Services;
   private log!: Logger;
   lobbyId = '';
-  private settings!: { name: string; description: string; script: ScriptId; maxPlayers: number; storytellerMode: StorytellerMode; autoTimings: AutoTimings };
+  private settings!: { name: string; description: string; script: ScriptId; maxPlayers: number; storytellerMode: StorytellerMode; autoTimings: AutoTimings; autoStoryline: StorylineId | null; autoStorylinePublic: boolean };
   private createdAt = 0;
   private creatorAccountId = '';
   private creatorName = '';
@@ -221,6 +222,8 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
       maxPlayers: init.maxPlayers,
       storytellerMode: init.storytellerMode ?? 'human', // (auto-st)
       autoTimings: { ...AUTO_DEFAULTS },
+      autoStoryline: null, // (v2.2) automatic games: the storyline fate deals (null = random)
+      autoStorylinePublic: false,
     };
     this.createdAt = init.createdAt;
     this.creatorAccountId = init.creatorAccountId;
@@ -678,6 +681,8 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
           for (const [k, v] of Object.entries(s.autoTimings)) if (typeof v === 'number') t[k as keyof AutoTimings] = v;
           this.settings.autoTimings = t;
         }
+        if (s.autoStoryline !== undefined) this.settings.autoStoryline = s.autoStoryline; // (v2.2)
+        if (s.autoStorylinePublic !== undefined) this.settings.autoStorylinePublic = s.autoStorylinePublic;
         this.lobbyDirty = true;
         return;
       }
@@ -732,7 +737,8 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
         // After the game ends the ST may still announce / move around; the rules module rejects
         // everything that would change the (final, already recorded) result.
         // (v2) Exception: the Storyteller may click-to-teleport themselves around town while waiting.
-        if (this.status === 'waiting' && (msg as C2SParsed<'st:command'>).type !== 'teleport_self') return this.sendError(seat, { code: 'phase', message: 'No game in progress', for: type });
+        // (v2.2) and prepare the coming game ('prepare': pre-game settings; checks in the game module).
+        if (this.status === 'waiting' && !['teleport_self', 'prepare'].includes((msg as C2SParsed<'st:command'>).type)) return this.sendError(seat, { code: 'phase', message: 'No game in progress', for: type });
         this.game.handleStoryteller(m.pid, msg as C2SParsed<'st:command'>);
         return;
       }
@@ -781,7 +787,7 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
     const blockers = this.startBlockers();
     if (blockers.length) return this.sendError(seat, { code: 'phase', message: blockers.join('; '), for: 'lobby:start' });
     if (auto && !isAutoCapable(this.game)) return this.sendError(seat, { code: 'internal', message: 'Automatic games are not available', for: 'lobby:start' });
-    if (isAutoCapable(this.game)) this.game.configureMode(this.settings.storytellerMode, this.settings.autoTimings);
+    if (isAutoCapable(this.game)) this.game.configureMode(this.settings.storytellerMode, this.settings.autoTimings, { storyline: this.settings.autoStoryline });
 
     const st = auto ? null : this.storytellerSeat()!;
     const players = shuffle(this.playerSeats());
@@ -809,7 +815,7 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
         script: this.settings.script,
         startedAt: this.matchStartedAt,
         storytellerAccountId: st?.member.accountId ?? null,
-        players: players.map((s) => ({ accountId: s.member.accountId, seat: s.member.seat! })),
+        players: players.map((s) => ({ accountId: s.member.accountId, seat: s.member.seat!, avatarId: s.member.cosmetics.preset ?? null })), // (v2.2 stats) avatarId
       });
     } catch (e) {
       this.log.error('recording match start failed', { err: errMsg(e) });
@@ -1228,6 +1234,9 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
           canStart: (this.isAuto() ? s.member.isHost : s.member.role === 'storyteller') && blockers.length === 0, // (auto-st) auto: the host
           startBlockers: blockers,
         };
+        // (v2.2) private extras: the seated Storyteller's pre-game settings; the auto host's storyline pick.
+        if (s.member.role === 'storyteller' && !this.isAuto() && isAutoCapable(this.game) && this.game.prepareView) view.stPrepare = this.game.prepareView();
+        if (this.isAuto() && s.member.isHost) view.autoStorylineChoice = this.settings.autoStoryline;
         this.sendTo(s, 'lobby:view', view);
       }
     }
@@ -1387,6 +1396,8 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
       updatedAt: Date.now(),
       storytellerMode: this.settings.storytellerMode, // (auto-st)
       ...(this.isAuto() ? { autoTimings: { ...this.settings.autoTimings } } : {}),
+      // (v2.2) the storyline is secret unless the host announces it (it reveals the characters in play)
+      ...(this.isAuto() ? { autoStoryline: this.settings.autoStoryline === null ? 'random' : this.settings.autoStorylinePublic ? this.settings.autoStoryline : 'secret' } : {}),
     };
   }
 }

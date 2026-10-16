@@ -11,7 +11,9 @@ import { captureLogger, fakeModules, testConfig } from '../src/rooms/testkit.js'
 
 const PORT = 3376; // perf-wp6 range 3376-3377
 const BASE = `http://127.0.0.1:${PORT}`;
-const INDEX = '<!doctype html><title>Clocktower Town</title><div id="app"></div>';
+const INDEX = '<!doctype html><title>Clocktower Town</title><meta property="og:image" content="%PUBLIC_ORIGIN%/og-image.jpg" /><div id="app"></div>';
+/** index.html as served: the link-preview placeholder filled with APP_PUBLIC_ORIGIN (v2.2). */
+const servedIndex = () => INDEX.replaceAll('%PUBLIC_ORIGIN%', testConfig(PORT).publicOrigin);
 const BROWSER_NAV = 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8';
 const IMMUTABLE = 'public, max-age=31536000, immutable';
 const PUBLIC_FILE = 'public, max-age=86400, stale-while-revalidate=604800';
@@ -96,7 +98,10 @@ describe('SPA fallback only for navigations', () => {
       expect(r.status, url).toBe(200);
       expect(r.headers.get('content-type'), url).toMatch(/text\/html/);
       expect(r.headers.get('cache-control'), url).toBe('no-cache');
-      expect(await r.text(), url).toBe(INDEX);
+      const body = await r.text();
+      expect(body, url).toBe(servedIndex());
+      expect(body, url).not.toContain('%PUBLIC_ORIGIN%');
+      expect(body, url).toMatch(/content="https?:\/\/[^"]+\/og-image\.jpg"/);
     }
     const head = await get('/lobby/AbCd1234', { Accept: BROWSER_NAV }, 'HEAD');
     expect(head.status).toBe(200);

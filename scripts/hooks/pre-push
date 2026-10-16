@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# git pre-push hook (qa-deploy): refuse to push commits that add secrets or private-infra details.
+# Install with scripts/install-hooks.sh. Runs on the editing Mac: bash + git only, no node.
+# Uses gitleaks (with .gitleaks.toml) when installed, else scripts/secret-scan.sh.
+# Bypass for a reviewed false positive only: CT_SKIP_SECRET_SCAN=1 git push …  (then fix the
+# allowlist in .gitleaks.toml and scripts/secret-scan.sh).
+set -uo pipefail
+[[ ${CT_SKIP_SECRET_SCAN:-} == 1 ]] && { echo "pre-push: secret scan SKIPPED (CT_SKIP_SECRET_SCAN=1)" >&2; exit 0; }
+
+ROOT=$(git rev-parse --show-toplevel) || exit 1
+ZERO=0000000000000000000000000000000000000000
+remote="${1:-origin}"
+STATUS=0
+
+# stdin: <local ref> <local sha> <remote ref> <remote sha>
+while read -r lref lsha rref rsha; do
+  [[ -z ${lsha:-} || $lsha == "$ZERO" ]] && continue # branch deletion
+  if [[ $rsha == "$ZERO" ]]; then
+    # New branch: scan the commits not already on any remote-tracking ref of this remote.
+    base=$(git rev-list "$lsha" --not --remotes="$remote" 2>/dev/null | tail -n 1)
+    if [[ -z $base ]]; then continue; fi
+    if git rev-parse --verify --quiet "${base}^" >/dev/null; then range="${base}^..${lsha}"; else range="$lsha"; fi
+  else
+    if git cat-file -e "${rsha}^{commit}" 2>/dev/null; then range="${rsha}..${lsha}"
+    else range="$lsha --not --remotes=$remote"; fi # remote tip unknown locally (force push)
+  fi
+  echo "pre-push: scanning $lref ($range)" >&2
+  if command -v gitleaks >/dev/null 2>&1; then
+    # shellcheck disable=SC2086
+    gitleaks git --config "$ROOT/.gitleaks.toml" --redact --no-banner -v --log-opts="$range" "$ROOT" || STATUS=1
+  else
+    if [[ $range == *" --not "* ]]; then
+      # secret-scan.sh takes A..B; approximate with the oldest unpushed commit's parent.
+      first=$(git rev-list $range | tail -n 1); range="${first}^..${lsha}"
+      git rev-parse --verify --quiet "${first}^" >/dev/null || range="$lsha"
+    fi
+    if [[ $range == *..* ]]; then
+      bash "$ROOT/scripts/secret-scan.sh" --range "$range" || STATUS=1
+    else
+      bash "$ROOT/scripts/secret-scan.sh" --history || STATUS=1 # root commit: scan everything
+    fi
+  fi
+done
+
+if [[ $STATUS -ne 0 ]]; then
+  echo "pre-push: BLOCKED — the commits above add a secret or private host detail." >&2
+  echo "  Remove it (amend/rebase before pushing; the repo is public)." >&2
+fi
+exit $STATUS

@@ -485,6 +485,10 @@ export async function walkToTile(p: Player, pid: string, to: { x: number; y: num
     await p.page.waitForTimeout(300);
     const pos = selfEntity(p, pid);
     if (!pos) continue;
+    // A door took us somewhere else (v2.2: e.g. the last push onto a cottage's doorstep already went
+    // INTO the doorway, or a push down on an interior door spot walked out). Walking on toward a
+    // waypoint in the old location could never succeed: stop and let the caller decide.
+    if (pos.location !== me.location) return;
     trail.push(`${Math.round(pos.x)},${Math.round(pos.y)}`);
     const wp = pts[i]!;
     const dx = wp.x - pos.x;
@@ -579,9 +583,10 @@ export async function holdFrames(page: Page, codes: string[], frames: number): P
 // ---------------------------------------------------------------------------- v2: doors, taps, camera
 //
 // v2 one-screen town: doors are automatic (walk INTO a doorway), a tap/click on a cottage walks
-// there and goes in (client-side path), inside there is no walking (fixed room view + "Inside …"
-// panel with a Leave button; any arrow/WASD key also leaves). The Storyteller's click teleports
-// (st:command teleport_self).
+// there and goes in (client-side path). v2.2: inside you walk around the room like outdoors (arrow
+// keys / joystick / tap); you leave with the "Inside …" panel's Leave button (from anywhere) or by
+// walking DOWN through the doorway below the interior door spot (or tapping it). The Storyteller's
+// click outdoors teleports (st:command teleport_self); inside a room the Storyteller walks too.
 //
 // Tapping needs canvas coordinates. The client exposes an opt-in, production-safe camera hook
 // (TownScene.ts: localStorage 'ct.debug.camera' = '1' -> window.__ctCamera { worldToScreen(x, y) ->
@@ -782,7 +787,18 @@ export async function tapCottage(p: Player, pid: string, buildingId: string, opt
     const me = await settle(p, pid, 900, 60_000);
     if (me.location === want) return log;
     if (me.location !== 'outdoors') throw new Error(`${p.name}: tapCottage(${buildingId}) while inside ${me.location}`);
-    const plan = await planCottageTap(p, me, buildingId);
+    let plan = await planCottageTap(p, me, buildingId);
+    if (!plan && opts.storyteller) {
+      // a cottage at the town's edge can sit under the docked Storyteller panel (the camera cannot
+      // scroll past the town): dock the panel on the other side once and look again
+      const dock = p.page.getByRole('button', { name: 'Move the panel to the other side' });
+      if (await dock.count()) {
+        await dock.first().click();
+        await p.page.waitForTimeout(500);
+        log.push('  (docked the Storyteller panel on the other side)');
+        plan = await planCottageTap(p, me, buildingId);
+      }
+    }
     if (!plan) throw new Error(`${p.name}: no visible spot to tap toward ${buildingId} from ${Math.round(me.x)},${Math.round(me.y)} (log ${log.join(' | ')})`);
     const since = Date.now();
     await press(p, plan.sx, plan.sy, !!opts.touch);
@@ -850,11 +866,32 @@ export async function leaveByButton(p: Player, pid: string, opts: { touch?: bool
   await expect(insidePanel(p.page)).toHaveCount(0, { timeout: 10_000 });
 }
 
-/** Leave a cottage by pressing a movement key (v2: any arrow/WASD key inside walks you out). */
-export async function leaveByKey(p: Player, pid: string, key = 'ArrowDown'): Promise<void> {
+/** (v2.2) Inside a cottage: walk (real arrow keys) to the interior door spot just above the doorway. No-op outdoors. */
+export async function walkToInteriorDoor(p: Player, pid: string): Promise<void> {
   await p.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  const loc = selfEntity(p, pid)?.location;
+  if (!loc || loc === 'outdoors') return;
+  const g = await geo();
+  const b = g.L.buildings.find((x) => `bld:${x.id}` === loc);
+  if (!b) return;
+  const me = selfEntity(p, pid)!;
+  const door = g.tileCenterPx(g.L, b.interiorDoor);
+  if (Math.hypot(me.x - door.x, me.y - door.y) > 8)
+    await walkToTile(p, pid, b.interiorDoor, 120_000); // (may walk out on arrival: pushing DOWN on the door spot)
+}
+
+/**
+ * Leave a cottage by walking out (v2.2 walkable interiors): real arrow keys to the interior door spot
+ * (just above the doorway), then hold DOWN into the doorway until the server has us outdoors.
+ * `key` other than ArrowDown/KeyS cannot walk out (kept for the old signature).
+ */
+export async function leaveByKey(p: Player, pid: string, key = 'ArrowDown'): Promise<void> {
+  await walkToInteriorDoor(p, pid);
+  if (selfEntity(p, pid)?.location === 'outdoors') return;
   for (let k = 0; k < 3; k++) {
-    await p.page.keyboard.press(key);
+    await p.page.keyboard.down(key);
+    await p.page.waitForTimeout(800); // a HELD push (>= EXIT_HOLD_MS, several frames even on a slow box)
+    await p.page.keyboard.up(key);
     const ok = await expect
       .poll(() => selfEntity(p, pid)?.location, { timeout: 8000 })
       .toBe('outdoors')
@@ -867,6 +904,19 @@ export async function leaveByKey(p: Player, pid: string, key = 'ArrowDown'): Pro
   throw new Error(`${p.name}: ${key} inside did not walk us out (at ${selfEntity(p, pid)?.location})`);
 }
 
+/** Nudge (single game frames) until within 4 px of `to` on one axis; stops early on a location change. */
+async function alignOn(p: Player, pid: string, to: { x: number; y: number }, axis: 'x' | 'y'): Promise<void> {
+  const loc0 = selfEntity(p, pid)?.location;
+  for (let n = 0; n < 16; n++) {
+    const me = selfEntity(p, pid);
+    if (!me || me.location !== loc0) return;
+    const d = axis === 'x' ? to.x - me.x : to.y - me.y;
+    if (Math.abs(d) <= 4) return;
+    await holdFrames(p.page, [axis === 'x' ? (d > 0 ? 'ArrowRight' : 'ArrowLeft') : d > 0 ? 'ArrowDown' : 'ArrowUp'], 1);
+    await p.page.waitForTimeout(250);
+  }
+}
+
 /**
  * Keyboard + automatic door: walk (real arrow keys) onto the cottage's door tile, then keep pushing
  * toward the door until the server has us inside. No E key in v2.
@@ -875,12 +925,19 @@ export async function walkIntoDoor(p: Player, pid: string, buildingId: string, b
   const g = await geo();
   const b = g.L.buildings.find((x) => x.id === buildingId)!;
   await walkToTile(p, pid, b.door, budgetMs);
+  const want0 = `bld:${buildingId}`;
+  if (selfEntity(p, pid)?.location === want0) return; // the final step onto the doorstep already went in
   const f = b.footprint;
   // TownScene.setupDoors: inward = up for a door below the footprint, left/right for side doors
   const key = b.door.y >= f.y + f.h ? 'ArrowUp' : b.door.x >= f.x + f.w ? 'ArrowLeft' : b.door.x < f.x ? 'ArrowRight' : 'ArrowUp';
   const want = `bld:${buildingId}`;
   const t0 = Date.now();
+  const door = g.tileCenterPx(g.L, b.door);
   for (let k = 0; k < 8; k++) {
+    // walkToTile may stop up to ~18 px off (overshoot damping); the door only opens within 11 px of
+    // the doorstep and pushing past the footprint edge is blocked: line up across the push first
+    await alignOn(p, pid, door, key === 'ArrowUp' ? 'x' : 'y');
+    if (selfEntity(p, pid)?.location === want) return;
     await p.page.keyboard.down(key);
     await p.page.waitForTimeout(500);
     await p.page.keyboard.up(key);
@@ -894,7 +951,6 @@ export async function walkIntoDoor(p: Player, pid: string, buildingId: string, b
     if (ok) return;
     // drifted off the doorstep: step back onto it
     const me = selfEntity(p, pid);
-    const door = g.tileCenterPx(g.L, b.door);
     if (me && Math.hypot(me.x - door.x, me.y - door.y) > 9) await walkToTile(p, pid, b.door, 120_000);
   }
   const errs = p.tap.received('error', t0).filter((e: any) => e.for === 'world:useDoor');

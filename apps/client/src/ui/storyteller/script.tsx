@@ -17,6 +17,7 @@ import { CastPortrait } from '../common/castPortrait';
 import { charName, Countdown, nameOf } from '../hud/shared';
 import { BedtimeTimer, ClockButton, ConfirmButton, deathEffects, EVERYONE, noExecutionEffects, only, type Send } from './stage';
 import { StClockControl } from '../clock/StClock'; // (v2.1, clock-client) the town clock on the tower
+import { DealChooser, dealSummary } from './deal'; // (v2.2) dealing modes
 
 /** Character (cast) id for a seat's portrait, or null (silhouette). */
 export type CastOf = (seat: number) => string | null;
@@ -484,17 +485,16 @@ function SetupScript({ view, send, castOf, openTools }: { view: StorytellerGameV
   return (
     <section class="cts-sec-block" aria-label="Setup">
       <h3 class="cts-script-h">{view.charactersAssigned ? 'The cast is dealt' : 'Deal the characters'}</h3>
-      <div class="cts-bigrow">
-        <button class={`cts-big${view.charactersAssigned ? '' : ' primary'}`} onClick={() => send({ type: 'random_setup' })}>
-          {view.charactersAssigned ? '↻ Deal again (random)' : '🎲 Random setup'}
-        </button>
-        <button class="cts-big" onClick={() => openTools('setup')}>
-          Assign by hand…
-        </button>
-      </div>
+      {/* (v2.2) Random · Storyline · Pick characters · By hand (deal.tsx) */}
+      <DealChooser view={view} send={send} openHand={() => openTools('setup')} />
       {view.charactersAssigned && (
         <>
-          <p class="muted cts-script-note">Bluffs: {view.demonBluffs.map(charName).join(', ') || '—'}</p>
+          <p class="muted cts-script-note">
+            {dealSummary(view) && <>{dealSummary(view)} · </>}Bluffs: {view.demonBluffs.map(charName).join(', ') || '—'} ·{' '}
+            <button class="cts-link" onClick={() => openTools('setup')} title="Change single seats: Load current Grimoire → edit → Assign">
+              tweak seats…
+            </button>
+          </p>
           <CueButton view={view} send={send} cue="bedtime" primary>
             ♫ Ring the bell → first night
           </CueButton>
@@ -589,6 +589,7 @@ function TonightsVisits({ view, send, castOf, openTools }: { view: StorytellerGa
           <p class="cts-script-note cts-ok">✓ Every visit is done.</p>
         ))
       )}
+      <TonightGlance view={view} />
       {!visits.length && <p class="muted cts-script-note">Nobody wakes tonight.</p>}
       {group.length > 0 && (
         <ul class="cts-novisit" aria-label="No visit needed">
@@ -661,9 +662,21 @@ function VisitRow(props: {
   const fin = FINISHED(step);
   const open = here && !fin;
   const [infoText, setInfoText] = useState(step.suggestedInfo?.text ?? '');
+  // Which suggestion the text box started from: the truth, or (drunk / poisoned) the false one.
+  const [useFalse, setUseFalse] = useState(false);
   const sug = step.suggestedInfo?.text ?? '';
-  useEffect(() => setInfoText(sug), [sug]);
+  useEffect(() => {
+    setInfoText(sug);
+    setUseFalse(false);
+  }, [sug]);
+  const base = useFalse && step.falseInfo ? step.falseInfo : step.suggestedInfo;
   const [target, setTarget] = useState<number | ''>('');
+  // Choices the player could make themselves (the server refuses e.g. a Monk protecting themself).
+  const targetOptions = view.players.filter(
+    (p) =>
+      (step.prompt?.allowSelf !== false || p.seat !== seat) &&
+      (step.prompt?.allowDead !== false || view.grimoire.find((x) => x.seat === p.seat)?.alive !== false),
+  );
   const needsTarget = TARGET_STEPS.includes(step.character) && g?.character !== 'drunk';
   const hasTarget = target !== '' || (step.response?.seats?.length ?? 0) > 0;
   const role = roleName(step);
@@ -735,7 +748,7 @@ function VisitRow(props: {
                 e.preventDefault();
                 const text = infoText.trim();
                 if (!text) return;
-                send({ type: 'send_info', seat, info: { ...step.suggestedInfo!, text: text.slice(0, 500), stepId: step.id } });
+                send({ type: 'send_info', seat, info: { ...(base ?? step.suggestedInfo!), text: text.slice(0, 500), stepId: step.id } });
                 props.onTold();
               }}
             >
@@ -746,6 +759,16 @@ function VisitRow(props: {
               <button type="submit" class={told ? '' : 'primary'} disabled={!infoText.trim()}>
                 {told ? 'Tell again' : 'Tell them'}
               </button>
+              {step.falseInfo && (
+                <span class="cts-falsepick" role="group" aria-label="Which info to tell">
+                  <button type="button" class={useFalse ? '' : 'on'} aria-pressed={!useFalse} onClick={() => { setUseFalse(false); setInfoText(step.suggestedInfo?.text ?? ''); }} title="The engine's truthful info">
+                    true info
+                  </button>
+                  <button type="button" class={useFalse ? 'on' : ''} aria-pressed={useFalse} onClick={() => { setUseFalse(true); setInfoText(step.falseInfo!.text); }} title="A plausible false answer (they are drunk or poisoned)">
+                    false info
+                  </button>
+                </span>
+              )}
             </form>
           )}
           {told && <div class="cts-ok cts-script-note">✓ told</div>}
@@ -753,7 +776,7 @@ function VisitRow(props: {
             {needsTarget && (
               <select value={target} title="Choose on their behalf" onChange={(e) => { const v = (e.currentTarget as HTMLSelectElement).value; setTarget(v === '' ? '' : Number(v)); }}>
                 <option value="">{step.response?.seats?.length ? '(their answer)' : 'choose for them…'}</option>
-                {view.players.map((p) => (
+                {targetOptions.map((p) => (
                   <option key={p.seat} value={p.seat}>
                     {p.seat + 1}. {p.name}
                   </option>
@@ -778,6 +801,33 @@ function VisitRow(props: {
         </div>
       )}
     </li>
+  );
+}
+
+/**
+ * Tonight at a glance: who is poisoned / drunk / protected, the Fortune Teller's red herring and who
+ * dies at dawn — the things a Storyteller otherwise keeps in their head. Only lines that apply.
+ */
+export function TonightGlance({ view }: { view: StorytellerGameView }) {
+  const g = view.grimoire;
+  const who = (f: (e: GrimoireEntry) => boolean) => g.filter(f).map((e) => e.name);
+  const ft = g.some((e) => e.alive && e.character === 'fortune_teller');
+  const rows = [
+    { k: 'poisoned', icon: '🧪', label: 'poisoned', who: who((e) => e.alive && e.poisoned), tone: 'warn' },
+    { k: 'drunk', icon: '🍺', label: 'drunk', who: who((e) => e.alive && (e.drunk || e.character === 'drunk')), tone: 'warn' },
+    { k: 'protected', icon: '🛡', label: 'protected', who: who((e) => e.alive && e.protectedTonight), tone: '' },
+    { k: 'herring', icon: '🐟', label: 'red herring', who: ft ? who((e) => !!e.isRedHerring) : [], tone: '' },
+    { k: 'dies', icon: '⚰', label: 'dies at dawn', who: (view.pendingDeaths ?? []).map((s) => name(view, s)), tone: 'bad' },
+  ].filter((r) => r.who.length);
+  if (!rows.length) return null;
+  return (
+    <ul class="cts-glance" aria-label="Tonight at a glance">
+      {rows.map((r) => (
+        <li key={r.k} class={`cts-glance-${r.k} ${r.tone}`} data-glance={r.k}>
+          <span aria-hidden="true">{r.icon}</span> <span class="muted">{r.label}:</span> {list(r.who)}
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -940,6 +990,19 @@ function DayScript({ view, send, castOf, openTools }: { view: StorytellerGameVie
 
 // ---- seats at a glance
 
+/** Tooltip words for a seat's markers (the icons are aria-hidden). */
+function seatFlags(p: StorytellerGameView['players'][number], g: GrimoireEntry | undefined): string {
+  const out: string[] = [];
+  if (g?.poisoned) out.push('poisoned');
+  if (g?.drunk) out.push('drunk');
+  if (g?.protectedTonight) out.push('protected tonight');
+  if (g?.isRedHerring) out.push('red herring');
+  if (g?.abilityUsed) out.push('ability used');
+  if (p.nominatedToday) out.push('has nominated today');
+  if (p.wasNominatedToday) out.push('was nominated today');
+  return out.length ? ` — ${out.join(', ')}` : '';
+}
+
 function SeatGrid({ view, castOf, openTools }: { view: StorytellerGameView; castOf: CastOf; openTools: OpenTools }) {
   const voting = view.day?.nominations.find((n) => n.status === 'voting');
   const block = view.day && view.day.executedSeat === null ? view.day.onTheBlock : null;
@@ -956,7 +1019,7 @@ function SeatGrid({ view, castOf, openTools }: { view: StorytellerGameView; cast
               <button
                 class={`cts-seatcell ${state} ${p.connected ? '' : 'off'}`}
                 onClick={() => openTools('stage', p.seat)}
-                title={`${p.seat + 1}. ${p.name}${g ? ` — ${charName(g.character)} (${g.alignment})` : ''} — ${state === 'alive' ? 'alive' : state === 'ghost' ? 'dead, ghost vote left' : 'dead, ghost vote spent'}${p.connected ? '' : ' — offline'}. Click for actions.`}
+                title={`${p.seat + 1}. ${p.name}${g ? ` — ${charName(g.character)} (${g.alignment})` : ''} — ${state === 'alive' ? 'alive' : state === 'ghost' ? 'dead, ghost vote left' : 'dead, ghost vote spent'}${seatFlags(p, g)}${p.connected ? '' : ' — offline'}. Click for actions.`}
               >
                 <Portrait seat={p.seat} view={view} castOf={castOf} size={26} />
                 <span class="cts-seatcell-t">
@@ -966,12 +1029,17 @@ function SeatGrid({ view, castOf, openTools }: { view: StorytellerGameView; cast
                   <span class="cts-seatcell-s">
                     {state === 'alive' ? <span class="cts-ok">alive</span> : state === 'ghost' ? <span class="cts-ghost">👻 vote</span> : <span class="cts-dead">☠ spent</span>}
                     {g && <span class={`cts-${g.alignment}`}> · {charName(g.character)}</span>}
+                    {g && g.character !== g.believedCharacter && <span class="muted"> (thinks {charName(g.believedCharacter)})</span>}
                   </span>
                 </span>
                 <span class="cts-seatcell-m" aria-hidden="true">
+                  {g?.poisoned ? '🧪' : ''}
+                  {g?.drunk ? '🍺' : ''}
+                  {g?.protectedTonight && view.phase !== 'day' ? '🛡' : ''}
                   {block?.seat === p.seat ? '⚖' : ''}
                   {vote === true ? '✋' : ''}
                   {p.nominatedToday ? '☝' : ''}
+                  {p.wasNominatedToday ? '🎯' : ''}
                 </span>
               </button>
             </li>

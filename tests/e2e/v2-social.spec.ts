@@ -7,7 +7,8 @@
 //   Ada drops pins in several colours on a spot / on Bram / on Dov (F, middle-click, shift+click);
 //   Bram adds one on Dov (a fan of two) -> Bram's snapshots carry them, Cleo's carry none.
 //   Ada removes one of her pins by clicking it; hover shows the tooltip.
-//   Phone 390x844 (Esme): long-press -> radial -> slide to Pin / tap Point; a short tap still walks.
+//   Phone 390x844 (Esme): long-press -> pie menu (v2.2 radial) -> slide to a pin wedge / lift + tap Point;
+//   a short tap still walks. (Desktop right-drag pie: tests/e2e/tmp-v22-radial.spec.ts while it exists.)
 //   The Storyteller clears all pins from the dock.
 //
 // Run on hshi-u1 against a throwaway server (build, then e.g. PORT=3355 HOST=127.0.0.1 NODE_ENV=test
@@ -26,6 +27,17 @@ import { canvasBox, FrameTap, inject, installSocketTap, outdoorCamera } from './
 const OUT = path.resolve('docs/screenshots');
 const errors: string[] = [];
 type Drawn = { seen: string[]; emotes: { pid: string; dir: string | null; hand: boolean; alpha: number; ping: boolean }[]; pins: { id: string; color: string; kind: string; visible: boolean; scale: number }[] };
+/** Centre of the open pie menu + a point `r` px out toward wedge `key` (v2.2 radial). */
+const pieToward = (page: Page, key: string, r = 72): Promise<{ x: number; y: number }> =>
+  page.evaluate(
+    ([k, rr]) => {
+      const m = (window as any).__ctSocial?.pie();
+      const i = m.items.findIndex((it: { key: string }) => it.key === k);
+      const a = -Math.PI / 2 + (i * 2 * Math.PI) / m.items.length;
+      return { x: m.x + Math.cos(a) * (rr as number), y: m.y + Math.sin(a) * (rr as number) };
+    },
+    [key, r] as const,
+  );
 const hold = (page: Page, on: boolean) => page.evaluate((v) => (window as any).__ctSocial?.hold(v), on);
 const drawn = (page: Page): Promise<Drawn> =>
   page.evaluate(() => {
@@ -247,12 +259,12 @@ test('v2 social: point + pins, desktop and phone', async ({ browser }) => {
   let ps2 = await toScreen(phoneAcc, { x: a2.x, y: a2.y - 14 });
   const t5 = Date.now();
   await touch('touchStart', ps2.x, ps2.y);
-  await pp.waitForTimeout(520);
-  await expect(pp.locator('[data-social-act="point"]')).toBeVisible();
+  await pp.waitForTimeout(650);
+  await expect(pp.locator('[data-pie-key="point"]')).toBeVisible();
   await shot(pp, 'radial-phone');
   await touch('touchEnd', ps2.x, ps2.y);
   await hold(pp, true);
-  await pp.locator('[data-social-act="point"]').tap();
+  await pp.locator('[data-pie-key="point"]').tap();
   await expect.poll(() => handOf(pp, pid.Esme!), { timeout: 3000, intervals: [50] }).toBe(true);
   await pp.screenshot({ path: path.join(OUT, 'v2-social-point-phone.png') });
   await hold(pp, false);
@@ -263,16 +275,16 @@ test('v2 social: point + pins, desktop and phone', async ({ browser }) => {
   const e2 = where(phoneAcc, 'Esme')!;
   ps2 = await toScreen(phoneAcc, { x: e2.x + 30, y: e2.y + 40 });
   await touch('touchStart', ps2.x, ps2.y);
-  await pp.waitForTimeout(500);
-  const pinBtn = await pp.locator('[data-social-act="pin"]').boundingBox();
-  expect(pinBtn).not.toBeNull();
+  await pp.waitForTimeout(650);
+  await expect(pp.locator('.ctp-pie .ctp-ring')).toBeVisible();
+  const pinAt = await pieToward(pp, 'pin:gold');
   await touch('touchMove', ps2.x + 6, ps2.y - 10);
-  await touch('touchMove', pinBtn!.x + pinBtn!.width / 2, pinBtn!.y + pinBtn!.height / 2);
+  await touch('touchMove', pinAt.x, pinAt.y);
   await pp.waitForTimeout(80);
-  await touch('touchEnd', pinBtn!.x + pinBtn!.width / 2, pinBtn!.y + pinBtn!.height / 2);
+  await touch('touchEnd', pinAt.x, pinAt.y);
   await phoneAcc.tap.until(() => phoneAcc.tap.sent('social:pin', t5)[0], 5000, 'phone pin');
   await phoneAcc.tap.until(() => pinsOf(phoneAcc).some((p) => p.by === pid.Esme), 5000, 'phone pin arrives');
-  await expect(pp.locator('.cts-radial')).toHaveCount(0);
+  await expect(pp.locator('.ctp-pie')).toHaveCount(0);
   // a short tap still walks
   const t6 = Date.now();
   const walkTo = await toScreen(phoneAcc, { x: e2.x - 40, y: e2.y + 10 });
@@ -295,7 +307,7 @@ test('v2 social: point + pins, desktop and phone', async ({ browser }) => {
   expect(errors, errors.join('\n')).toEqual([]);
 });
 
-// Quick phone-only check (waiting room, no game): long-press radial, slide-to-pin, tap-to-point, a short tap walks.
+// Quick phone-only check (waiting room, no game): long-press pie menu, slide-to-pin, tap-to-point, a short tap walks.
 test('v2 social: phone long-press (quick)', async ({ browser }) => {
   test.setTimeout(240_000);
   const st = await account(browser, 'Teller2');
@@ -320,23 +332,24 @@ test('v2 social: phone long-press (quick)', async ({ browser }) => {
   const t0 = Date.now();
   let p = await toScreen(acc, { x: me.x + 30, y: me.y + 30 });
   await touch('touchStart', p.x, p.y);
-  await pp.waitForTimeout(600);
-  await expect(pp.locator('[data-social-act="point"]')).toBeVisible();
+  await pp.waitForTimeout(650);
+  await expect(pp.locator('[data-pie-key="point"]')).toBeVisible();
   await touch('touchEnd', p.x, p.y);
   await pp.waitForTimeout(400);
   const dbg = await pp.evaluate(() => (window as any).__ctSocial?.seen());
-  expect(await pp.locator('[data-social-act="point"]').count(), `radial stays open after lifting (log: ${JSON.stringify(dbg)})`).toBe(1);
-  await pp.locator('[data-social-act="point"]').tap();
+  expect(await pp.locator('[data-pie-key="point"]').count(), `pie stays open after lifting (log: ${JSON.stringify(dbg)})`).toBe(1);
+  await pp.locator('[data-pie-key="point"]').tap();
   await acc.tap.until(() => acc.tap.sent('social:emote', t0)[0], 5000, 'phone point');
   // slide to pin
   p = await toScreen(acc, { x: me.x - 30, y: me.y + 40 });
   await touch('touchStart', p.x, p.y);
-  await pp.waitForTimeout(600);
-  const b = (await pp.locator('[data-social-act="pin"]').boundingBox())!;
+  await pp.waitForTimeout(650);
+  await expect(pp.locator('.ctp-pie .ctp-ring')).toBeVisible();
+  const b = await pieToward(pp, 'pin:gold');
   await touch('touchMove', p.x + 4, p.y - 8);
-  await touch('touchMove', b.x + b.width / 2, b.y + b.height / 2);
+  await touch('touchMove', b.x, b.y);
   await pp.waitForTimeout(60);
-  await touch('touchEnd', b.x + b.width / 2, b.y + b.height / 2);
+  await touch('touchEnd', b.x, b.y);
   await acc.tap.until(() => acc.tap.sent('social:pin', t0)[0], 5000, 'phone pin');
   await acc.tap.until(() => pinsOf(acc).length === 1, 5000, 'pin arrives');
   await pp.waitForTimeout(600);

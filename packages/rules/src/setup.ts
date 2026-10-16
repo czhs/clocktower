@@ -1,4 +1,4 @@
-import { CHARACTER_IDS, CHARACTER_INFO, type CharacterId } from '@ct/protocol';
+import { CHARACTER_IDS, CHARACTER_INFO, TB_DISTRIBUTION, type CharacterId } from '@ct/protocol';
 import { RuleError, type GameState, type Rng } from './types.js';
 import { pick, shuffle, typeOf } from './util.js';
 
@@ -9,20 +9,8 @@ export interface SetupCounts {
   demons: number;
 }
 
-/** Trouble Brewing base distribution by player count (before the Baron's modification). */
-export const SETUP_TABLE: Readonly<Record<number, SetupCounts>> = {
-  5: { townsfolk: 3, outsiders: 0, minions: 1, demons: 1 },
-  6: { townsfolk: 3, outsiders: 1, minions: 1, demons: 1 },
-  7: { townsfolk: 5, outsiders: 0, minions: 1, demons: 1 },
-  8: { townsfolk: 5, outsiders: 1, minions: 1, demons: 1 },
-  9: { townsfolk: 5, outsiders: 2, minions: 1, demons: 1 },
-  10: { townsfolk: 7, outsiders: 0, minions: 2, demons: 1 },
-  11: { townsfolk: 7, outsiders: 1, minions: 2, demons: 1 },
-  12: { townsfolk: 7, outsiders: 2, minions: 2, demons: 1 },
-  13: { townsfolk: 9, outsiders: 0, minions: 3, demons: 1 },
-  14: { townsfolk: 9, outsiders: 1, minions: 3, demons: 1 },
-  15: { townsfolk: 9, outsiders: 2, minions: 3, demons: 1 },
-};
+/** Trouble Brewing base distribution by player count (before the Baron's modification). (v2.2: the table now lives in @ct/protocol storylines.ts so the client can use it.) */
+export const SETUP_TABLE: Readonly<Record<number, SetupCounts>> = TB_DISTRIBUTION;
 
 /** Distribution for `n` players; the Baron adds two Outsiders and removes two Townsfolk. */
 export function setupCounts(n: number, withBaron = false): SetupCounts {
@@ -64,12 +52,12 @@ function goodNotInPlay(inPlayChars: readonly CharacterId[], exclude: readonly Ch
   );
 }
 
-function pickDrunkBelief(rng: Rng, chars: readonly CharacterId[]): CharacterId {
+export function pickDrunkBelief(rng: Rng, chars: readonly CharacterId[]): CharacterId {
   const options = ALL_OF('townsfolk').filter((c) => !chars.includes(c));
   return pick(rng, options);
 }
 
-function pickRedHerring(rng: Rng, bySeat: Map<number, CharacterId>): number | null {
+export function pickRedHerring(rng: Rng, bySeat: Map<number, CharacterId>): number | null {
   const good = [...bySeat.entries()].filter(([, c]) => CHARACTER_INFO[c].alignment === 'good').map(([s]) => s);
   return good.length ? pick(rng, good) : null;
 }
@@ -80,7 +68,7 @@ function pickBluffs(rng: Rng, chars: readonly CharacterId[], exclude: readonly C
   return [...townsfolk, ...outsiders].slice(0, 3);
 }
 
-function needsRedHerring(bySeat: Map<number, CharacterId>, drunkBelieves: CharacterId | null): boolean {
+export function needsRedHerring(bySeat: Map<number, CharacterId>, drunkBelieves: CharacterId | null): boolean {
   return [...bySeat.values()].includes('fortune_teller') || drunkBelieves === 'fortune_teller';
 }
 

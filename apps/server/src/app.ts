@@ -3,7 +3,7 @@
 // so tests exercise the same HTTP stack as production.
 import http from 'node:http';
 import path from 'node:path';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import express from 'express';
 import { Server, matchMaker } from '@colyseus/core';
 import { WebSocketTransport } from '@colyseus/ws-transport';
@@ -163,6 +163,10 @@ export async function startAppServer(config: AppConfig, log: Logger, options: Ap
     const root = path.resolve(clientDist); // serve-static hands setHeaders absolute paths
     const assetsDir = path.join(root, 'assets') + path.sep;
     const indexHtml = path.join(root, 'index.html');
+    // Link previews (Open Graph / Twitter card) need absolute URLs, so index.html carries a
+    // %PUBLIC_ORIGIN% placeholder that is filled from APP_PUBLIC_ORIGIN when served (no host is
+    // baked into the client build). Read once; a deploy restarts the server.
+    const indexBody = readFileSync(indexHtml, 'utf8').replaceAll('%PUBLIC_ORIGIN%', config.publicOrigin);
     app.use(
       express.static(root, {
         index: false,
@@ -182,7 +186,7 @@ export async function startAppServer(config: AppConfig, log: Logger, options: Ap
       const navigation = !path.posix.extname(req.path) && !req.path.startsWith('/assets/') && req.accepts('html') === 'html';
       if (navigation) {
         res.setHeader('Cache-Control', 'no-cache');
-        res.sendFile(indexHtml);
+        res.type('html').send(indexBody);
         return;
       }
       res.setHeader('Cache-Control', 'no-store');

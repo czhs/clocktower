@@ -11,7 +11,7 @@
 // apps/server/test/records.test.ts so a wording change in the engine fails loudly).
 // CONTRACT-REQUEST (rules-storyteller): a structured `lastDeathCause` / `becameImpBecause` on
 // PlayerState would let us drop the log parsing.
-import { CHARACTER_INFO, type CharacterId, type GamePhase, type StCommand, type StoryActor, type StoryEntry, type StoryEntryKind } from '@ct/protocol';
+import { CHARACTER_INFO, storylineById, type CharacterId, type GamePhase, type StCommand, type StoryActor, type StoryEntry, type StoryEntryKind } from '@ct/protocol';
 import type { GameState, PlayerAction, PlayerState } from '@ct/rules';
 import type {
   ActionRecord,
@@ -208,6 +208,8 @@ export class GameRecorder {
   /** When the engine detected the (latest) pending result. */
   private detectedAt: number | null = null;
   setupMethod: SetupRecord['method'] | null = null;
+  /** (v2.2) The storyline of the last deal (kept through hand tweaks: method 'mixed'). */
+  setupStoryline: string | null = null;
 
   private shadow: Shadow;
   private activeNoms = new Map<string, NominationRecord>();
@@ -316,7 +318,12 @@ export class GameRecorder {
         if (this.undoStack.length > ENGINE_HISTORY_LIMIT) this.undoStack.splice(0, this.undoStack.length - ENGINE_HISTORY_LIMIT);
       }
       if (trigger.cmd.type === 'random_setup') this.setupMethod = this.setupMethod === 'manual' ? 'mixed' : 'random';
-      if (trigger.cmd.type === 'assign_characters') this.setupMethod = this.setupMethod === 'random' ? 'mixed' : 'manual';
+      if (trigger.cmd.type === 'assign_characters') this.setupMethod = this.setupMethod && this.setupMethod !== 'manual' ? 'mixed' : 'manual';
+      // (v2.2) a storyline / own bag shuffled onto the seats replaces every seat: a fresh deal
+      if (trigger.cmd.type === 'deal_preset') this.setupMethod = 'storyline';
+      if (trigger.cmd.type === 'deal_bag') this.setupMethod = 'bag';
+      if (trigger.cmd.type === 'deal_preset') this.setupStoryline = trigger.cmd.storyline;
+      else if (trigger.cmd.type === 'deal_bag' || trigger.cmd.type === 'random_setup') this.setupStoryline = null;
     } else if (trigger.kind === 'player') {
       this.actions.push({ at: now, day: before.day, night: before.night, phase: before.phase, seat: trigger.seat, action: { ...(trigger.action as { type: string } & Record<string, unknown>) } });
     }
@@ -925,6 +932,7 @@ export class GameRecorder {
     this.setup = {
       at: ctx.at,
       method: this.setupMethod ?? 'manual',
+      storyline: this.setupStoryline, // (v2.2)
       characters: s.players.map((p) => ({ seat: p.seat, character: p.character, alignment: p.alignment, believedCharacter: p.believedCharacter })),
       demonBluffs: [...s.demonBluffs],
       redHerringSeat: s.redHerringSeat,
@@ -1005,6 +1013,15 @@ export class GameRecorder {
         return;
       case 'set_vote':
         this.push(ctx, 'vote_changed', [null, cmd.seat], { command: cmd.type, nominationId: cmd.nominationId, seat: cmd.seat, vote: cmd.vote }, `The Storyteller recorded ${this.name(cmd.seat)}'s vote as ${cmd.vote ? 'yes' : 'no'}.`);
+        return;
+      // (v2.2) how the characters were dealt (timeline: Storyteller-only until the final story)
+      case 'deal_preset': {
+        const title = storylineById(cmd.storyline)?.title ?? cmd.storyline;
+        say({ storyline: cmd.storyline }, `The Storyteller dealt the storyline "${title}" at random.`);
+        return;
+      }
+      case 'deal_bag':
+        say({ characters: [...cmd.characters] }, `The Storyteller dealt their own bag of ${cmd.characters.length} characters at random: ${list(cmd.characters.map(cname))}.`);
         return;
       case 'set_setting':
         say({ settings: cmd.settings }, `The Storyteller changed settings: ${Object.entries(cmd.settings).map(([k, v]) => `${k} = ${String(v)}`).join(', ')}.`);

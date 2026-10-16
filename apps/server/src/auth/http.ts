@@ -4,7 +4,7 @@ import { CreateAccountRequest, SignInRequest, UpdateProfileRequest, type ApiErro
 import { isAllowedPreset } from './presets.js';
 import type { AccountRecord } from '@ct/db';
 import type { Services } from '../services.js';
-import type { RateLimiter } from './rateLimit.js';
+import { RateLimiter } from './rateLimit.js';
 
 // ---------------------------------------------------------------------------------------
 // Shared HTTP helpers (used by auth, directory and admin routers).
@@ -273,7 +273,10 @@ export function authRouter(services: Services): express.Router {
     }),
   );
 
-  r.get('/me/stats', auth, (_req, res) => {
+  // (v2.2 stats) The signed-in account's own record only (the id comes from the session, never
+  // from the request). Light per-account limit: the home screen fetches it on open/return.
+  const statsLimiter = new RateLimiter({ capacity: 20, refillPerSec: 0.5 });
+  r.get('/me/stats', auth, rateLimit(statsLimiter, (_req, res) => currentAccount(res).id), (_req, res) => {
     res.json(services.stats.statsFor(currentAccount(res).id));
   });
 

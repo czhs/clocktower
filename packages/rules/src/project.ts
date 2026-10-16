@@ -222,6 +222,7 @@ export function projectForStoryteller(s: GameState): StorytellerGameView {
     bedtimeSeconds: s.bedtimeSeconds,
     pendingDeaths: s.players.filter((p) => p.publicAlive && !p.alive).map((p) => p.seat),
     canUndo: s.history.length > 0 && s.phase !== 'finished',
+    undoLabel: s.history.length > 0 && s.phase !== 'finished' ? (s.history.at(-1)!.label ?? null) : null,
     setupCounts: { townsfolk: counts.townsfolk, outsiders: counts.outsiders, minions: counts.minions, demons: counts.demons },
     charactersAssigned: s.assigned,
     timerPaused: s.bedtimePausedRemainingMs !== null,
@@ -233,5 +234,6 @@ export function projectForStoryteller(s: GameState): StorytellerGameView {
     bedtimeFirstNight: s.phase === 'bedtime' && s.bedtimeFirst,
     stage: null,
     settings: { ...s.settings },
+    deal: s.assigned && s.deal ? { ...s.deal } : null, // (v2.2)
   };
 }

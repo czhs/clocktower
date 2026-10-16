@@ -77,3 +77,45 @@ tap-to-go, house interiors as private voice rooms, square = one voice room, came
 Storyteller stage-script panel + click-to-teleport, pointing + character pins, private notebooks,
 full game records with play-by-play, Story/pamphlets, admin console. Release notes: docs/RELEASE-v2.md.
 The pre-pivot art-overhaul WIP is preserved on branch `wip/art-overhaul`.
+
+## Roadmap (user, 2026-10-15)
+
+1. **v2.2** — perf WP1–WP7 + features (chat bubbles, talking outline, audio devices, mouse push-to-talk,
+   nicksong, right-drag pie menu, walkable interiors, account stats, word lobby ids, door-board tokens +
+   house name callouts, preset storylines + Storyteller prep in the waiting room, link previews, QoL).
+   Release: commit on branch `work/v2.2-v2.3` → dev → e2e gate → prod (no game running).
+2. **v2.3** — security hardening (audits in `docs/security-v2.3/`, fixes, `docs/security-v2.3.md`).
+   Fixes are **deployed before they are pushed** (the repo is public and `/healthz` shows the commit).
+3. **v2.4** — a fresh performance sweep after v2.3: re-run the WP7 budgets (`scripts/perf/budgets.mjs`)
+   and the full measurement set in `docs/perf-plan-v2.2.md` §5 against the v2.2 baseline
+   (`tests/perf/results/2026-10-15-v2.2.json`), profile the new v2.2/v2.3 features (bubbles, talking
+   outline, interiors, pie menu, board tokens, voice reconciler, connection budgets), and pick up the
+   v2.2 leftovers: HUD DOM churn while walking (12–18 mutations/s vs target ≤ 5), entry CSS (22 KiB br vs
+   ≤ 15), cast-sheet GPU memory (16.4 MiB vs ≤ 8), LiveKit downlink cap for big rooms ("N loudest").
+
+## v2.2 status (2026-10-15, lead) — current state for the next agent
+
+- **Branch:** all work is on the LOCAL branch `work/v2.2-v2.3` (GitHub `main` has moved and has an
+  open external PR; never pull/fetch/merge from GitHub). Pushed as a branch, not to `main`.
+- **Prod:** hotfix `8fbad32` (= 766a8bd v2.1-pre + own-avatar fix, branch `hotfix/v2.0.1`).
+  v2.2 goes to dev first, then prod when no game is running.
+- **Shipped in v2.2:** see docs/RELEASE-v2.md "v2.2.0" (perf WP1–WP7 in docs/perf-v2.2-results.md).
+- **v2.3 security audit (done, fixes NOT started):** findings live only in the local, git-excluded
+  `docs/security-v2.3/` (+ 9 local `tests/security/*` files, `.github/`, `SECURITY.md`, see
+  `.git/info/exclude`). They describe unfixed vulnerabilities: do not commit or push them until the
+  v2.3 fixes are deployed. Next step = phase B: resume each area's fixes (ids REPO-/HOST-/AUTH-/SEC-/
+  WEB-/VOICE-/OPS-), deploy, then publish `docs/security-v2.3.md`.
+- **Known open items:** `tests/security/ops-restore-drill.test.ts` fails in the merged tree (server
+  restart sequence in the test harness; the server itself starts fine) — v2.3/ops; the docked
+  Storyteller panel can cover the leftmost cottage at 1200×760 (ST must move the panel); the restored
+  lobby-finder doesn't show an automatic game's storyline yet; real-hardware checks pending (AirPods,
+  mouse side buttons, LiveKit talking outline).
+- **Waiting on the user** (do not do these yourself): GitHub settings (collaborator `isaac9000` has
+  write access, no branch protection, secret scanning / push protection / private vuln reporting /
+  Dependabot off; PR #1 unreviewed); copy `/srv/clocktower/env/prod.env` into a password manager
+  (the passphrase pepper is not backed up); LiveKit billing / spend cap; Cloudflare dashboard rules
+  (WAF, auth rate limit, cache rules, Browser Cache TTL); sudo items (separate service users, egress
+  firewall, LimitCORE=0, journald limits, build user, admin out of `lxd`, prod `CPUWeight`);
+  history rewrite (recommended: no).
+- **Host etiquette:** hshi-u1 is also prod. All agent commands go through `scripts/remote.sh`
+  (capped `ctwork.slice`: 6 cores / 7 GiB, nice 19); browsers only under `~/clocktower/browser.lock`.

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { MAX_PLAYERS, MIN_PLAYERS } from './constants.js';
 import { Cosmetics } from './cosmetics.js';
 import { LobbyDescription, LobbyName } from './text.js';
+import { STORYLINE_IDS } from './storylines.js';
 
 // Lobby directory (all require a signed-in session):
 //   GET  /api/lobbies                      -> { lobbies: LobbySummary[] }
@@ -40,6 +41,12 @@ export interface LobbySummary {
   storytellerMode?: import('./clock.js').StorytellerMode;
   /** (v2.1, auto-st) Automatic-game timings (present when storytellerMode is 'auto'). */
   autoTimings?: import('./clock.js').AutoTimings;
+  /**
+   * (v2.2) Automatic games: the storyline fate deals. 'random' = an ordinary random setup; 'secret'
+   * = the host picked a storyline but has not announced it; a StorylineId = announced by the host.
+   * Absent in human games (the Storyteller's choice is never public).
+   */
+  autoStoryline?: 'random' | 'secret' | import('./storylines.js').StorylineId;
 }
 
 export type DirectoryEvent =
@@ -100,6 +107,10 @@ export interface LobbyRoomView {
   youPid: string;
   canStart: boolean;
   startBlockers: string[];
+  /** (v2.2) ONLY in the seated Storyteller's own view: their pre-game settings ('prepare'). */
+  stPrepare?: import('./storyteller.js').StPrepareView;
+  /** (v2.2) ONLY in the host's own view of an automatic lobby: the storyline they picked (null = random). */
+  autoStorylineChoice?: import('./storylines.js').StorylineId | null;
 }
 
 // Lobby C2S payloads
@@ -116,5 +127,9 @@ export const LobbySettingsMsg = z.object({
     .object({ discussionMin: z.number().min(1).max(30), nominationsMin: z.number().min(1).max(20), bedtimeSec: z.number().int().min(15).max(180), nightSec: z.number().int().min(20).max(300) })
     .partial()
     .optional(),
+  /** (v2.2) automatic games: the storyline fate deals (null = random). Host only, waiting phase only. */
+  autoStoryline: z.enum(STORYLINE_IDS).nullable().optional(),
+  /** (v2.2) automatic games: announce the chosen storyline in the public lobby summary (default false). */
+  autoStorylinePublic: z.boolean().optional(),
 });
 export const EmptyMsg = z.object({}).strict();

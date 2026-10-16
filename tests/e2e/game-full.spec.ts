@@ -1,6 +1,6 @@
 // e2e: a COMPLETE game of Blood on the Clocktower (Trouble Brewing) in 6 real browsers — 1 Storyteller
 // + 5 players — driven through the UI the way people would on a game night (v2 one-screen town:
-// automatic doors, tap-a-cottage, fixed room view with a Leave button, Storyteller click-to-teleport):
+// automatic doors, tap-a-cottage, walkable rooms with a Leave button, Storyteller click-to-teleport):
 //   1 sign up (character pick from the v2 roster) -> create lobby (ST seat) -> share link -> join ->
 //     Ready -> Start; every player keeps a distinct character
 //   2 random setup; roles stay secret until the first night, then each player sees their own card
@@ -48,6 +48,7 @@ import {
   walkIntoDoor,
   zonesGranted,
   type GamePlayer,
+  walkToInteriorDoor,
 } from './helpers';
 
 const ART = path.join(path.dirname(fileURLToPath(import.meta.url)), 'artifacts');
@@ -119,7 +120,7 @@ const tps = (p: GamePlayer, since: number) => p.tap.received('world:teleport', s
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /** Storyteller-only keys that must never appear in a player's game:view before the game is over. */
-const FORBIDDEN = ['"grimoire"', '"nightQueue"', '"demonBluffs"', '"visitingSeat"', '"believedCharacter"', '"stage"', '"presence"', '"timerHeld"', '"pendingResult"', '"isRedHerring"', '"accountId"'];
+const FORBIDDEN = ['"grimoire"', '"nightQueue"', '"demonBluffs"', '"visitingSeat"', '"believedCharacter"', '"stage":{' /* the ST stage view; the PUBLIC town clock (v2.1) has "stage":"discussion" */, '"presence"', '"timerHeld"', '"pendingResult"', '"isRedHerring"', '"accountId"'];
 
 test.use({ actionTimeout: 120_000 });
 
@@ -488,7 +489,7 @@ test('full game: 1 Storyteller + 5 players, every phase through the real UI', as
       for (const p of all) await p.tap.until(() => gv(p)?.phase === 'day', 15_000, 'day');
       await players[0]!.page.waitForTimeout(1500);
       for (const p of players) expect(tps(p, dawnAt), `${p.name}: moved at dawn/day`).toEqual([]);
-      // inside: a fixed room view, no walking; the panel says where you are and who is with you
+      // inside (v2.2: a walkable room): the panel says where you are and who is with you
       for (const p of outWalkers) {
         await expect(insidePanel(p.page)).toContainText('Your home', { timeout: 15_000 });
         await expect(leaveButton(p.page)).toHaveText('Leave');
@@ -787,10 +788,13 @@ test('full game: 1 Storyteller + 5 players, every phase through the real UI', as
       await expect(btn).toBeDisabled({ timeout: 10_000 });
       await expect(btn).toContainText(/locked/i);
       note(`locked Leave button: "${(await btn.textContent())?.trim()}"`);
-      // a movement key inside tries to leave: refused locally with a message, nothing sent
+      // walking out through the doorway (v2.2: DOWN on the interior door spot) is refused locally with a message, nothing sent
+      await walkToInteriorDoor(mover, pid);
       const t0 = Date.now();
       await mover.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
-      await mover.page.keyboard.press('ArrowDown');
+      await mover.page.keyboard.down('ArrowDown'); // v2.2: a HELD push into the doorway walks out
+      await mover.page.waitForTimeout(500);
+      await mover.page.keyboard.up('ArrowDown');
       await expect(insidePanel(mover.page).locator('.ct-inside-note')).toContainText(/locked/i, { timeout: 5000 }).catch(() => note('no "locked" note in the inside panel after an arrow key'));
       await mover.page.waitForTimeout(1000);
       expect(mover.tap.sent('world:useDoor', t0).length, 'no door request for a locked door').toBe(0);
@@ -955,6 +959,7 @@ async function nominateFromHud(p: GamePlayer, nomineeName: string) {
   if (!(await p.page.locator('.cth-tabs').count())) await head.click();
   await p.page.locator('.cth-tabs').getByRole('button', { name: 'Town' }).click();
   await p.page.locator('.cth-players li', { hasText: nomineeName }).getByRole('button', { name: 'Nominate' }).click();
+  await p.page.locator('.cth-players li', { hasText: nomineeName }).getByRole('button', { name: /^Confirm nominating/ }).click(); // (qol) two-step
   await p.tap.until(() => p.tap.last('game:view')?.day?.nominations?.some((n: any) => n.status === 'pending' || n.status === 'voting'), 10_000, 'my nomination');
   await head.click(); // collapse again
 }

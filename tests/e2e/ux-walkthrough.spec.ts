@@ -235,9 +235,9 @@ test('ux walkthrough', async ({ browser }) => {
     const lobbyId = lobbyPath.split('/').pop()!;
 
     // ------------------------------------------------------------- waiting room
-    await expect(st.page.getByRole('dialog', { name: 'Waiting room' })).toBeVisible();
+    await expect(st.page.getByRole('dialog', { name: 'Waiting room' })).toBeVisible({ timeout: 60_000 });
     await ph.page.goto(lobbyPath);
-    await expect(ph.page.getByRole('dialog', { name: 'Waiting room' })).toBeVisible();
+    await expect(ph.page.getByRole('dialog', { name: 'Waiting room' })).toBeVisible({ timeout: 60_000 });
     await snap(ph.page, '06-waiting-m390-collapsed', 1200);
     const openChat = ph.page.getByRole('button', { name: /^Open chat/ });
     if (await openChat.count()) await openChat.click();
@@ -349,7 +349,7 @@ test('ux walkthrough', async ({ browser }) => {
       await snap(ph.page, '11-day-m390-chat-open', 300);
       await ph.page.getByRole('button', { name: 'Minimise chat' }).click();
     }
-    // v2: players wake up inside their cottage (fixed room view + "Inside …" panel); Leave walks out
+    // v2: players wake up inside their cottage (walkable room + "Inside …" panel); Leave walks out
     // and the home compass shows.
     const inside = deep.page.locator('.ct-inside');
     if (await inside.count()) {
@@ -362,7 +362,7 @@ test('ux walkthrough', async ({ browser }) => {
     await deep.page.keyboard.up('ArrowDown');
     await snapSizes(deep.page, '11-day-player-outdoors', 600);
 
-    // Phone: leave the cottage with the Leave button (no joystick inside), then walk with the stick.
+    // Phone: leave the cottage with the Leave button (v2.2: the joystick also works inside), then walk with the stick.
     const phInside = ph.page.locator('.ct-inside');
     if (await phInside.count()) {
       await snap(ph.page, '11-day-m390-inside', 300);
@@ -444,7 +444,8 @@ test('ux walkthrough', async ({ browser }) => {
     const r = await host2.page.request.post('/api/lobbies', { data: { name: `Tiny ${suffix}`, maxPlayers: 5, script: 'trouble-brewing', description: '', takeStoryteller: false } });
     const tiny = ((await r.json()) as { lobby: { id: string } }).lobby.id;
     await host2.page.goto(`/lobby/${tiny}`);
-    await expect(host2.page.getByRole('dialog', { name: 'Waiting room' })).toBeVisible();
+    // (joining + the lazily loaded lobby chunk can take > 10 s on the shared host)
+    await expect(host2.page.getByRole('dialog', { name: 'Waiting room' })).toBeVisible({ timeout: 60_000 });
     for (const p of players.slice(1)) {
       await p.page.goto(`/lobby/${tiny}`);
       // ("Joining lobby…" can take > 10 s on the shared host)

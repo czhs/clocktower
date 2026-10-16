@@ -5,13 +5,14 @@
 //   camera     zoomed so the whole town square always fits on screen (everyone in the square sees
 //              everyone else in it) but never the whole town: it rests on the square while you're
 //              in it and follows you toward the cottages at the edge. Inside a cottage it shows that
-//              cottage's room instead, with the occupants standing around the hearth
+//              cottage's whole room instead; you walk around in it like outdoors (interior.ts)
 //   doors      automatic: walking INTO a doorway enters (only when you push toward the door);
 //              doors swing open as you approach (local animation only, nobody else sees it);
-//              inside, any movement key or the Leave button walks you back out
+//              inside, walking down through the doorway (or tapping it) or the Leave button walks you out
 //   tap-to-go  tap/click a cottage to walk to its door and go in, or a spot to walk there;
 //              the Storyteller's click teleports instead (with a poof)
-//   boards     a bulletin board by each door: who lives there + who is inside, DAYTIME ONLY
+//   boards     a bulletin board by each door: who is inside as character tokens, DAYTIME ONLY
+//              (gameplay/boardTokens.ts); the owner's name floats over the house (gameplay/houseNames.ts)
 //              (from the server's public door tags); at night every cottage looks the same
 //   ambience   chimney smoke, flickering lamps, fireflies, a few plain townsfolk by day —
 //              all derived from time + the PUBLIC phase only (never from other entities)
@@ -41,9 +42,14 @@ import type { RoomConnection } from '../net/room';
 import { playCue, type Cue } from './audio';
 import { createGameplayLayer, doorTagsStore, stagePick, type DoorBoardView, type GameplayLayer } from './gameplay';
 import { findPath } from './path';
+import { ExitGate, insideReserveCss, interiorRoute, interiorTapTarget, pushesOut, roomArea, touchUi } from './interior';
 import { createSocialLayer, type SocialLayer } from './social';
+import { createSpeechLayer, type SpeechLayer } from './social/bubbles';
 import { noteServerTime, serverNow } from '../net/serverTime';
 import { LOW_TIER_AMBIENCE, TierState } from './fx/tier';
+import { createTalkingLayer, type TalkingLayer } from './fx/talking';
+import { createBoardTokenLayer, type BoardTokenLayer } from './gameplay/boardTokens';
+import { createHouseNameLayer, houseOwners, type HouseLabelInput, type HouseNameLayer } from './gameplay/houseNames';
 
 const L = townLayout;
 const TS = L.tileSize;
@@ -311,6 +317,8 @@ export class TownScene extends Phaser.Scene {
   private myPid: string | null = null;
   private gameplay: GameplayLayer | null = null;
   private social: SocialLayer | null = null;
+  private speech: SpeechLayer | null = null;
+  private talking: TalkingLayer | null = null;
   private ready = false;
   private me = { x: 0, y: 0, facing: 'down' as Facing, moving: false, location: 'outdoors' as LocationId };
   private myDir: Dir8 = 'down';
@@ -338,6 +346,9 @@ export class TownScene extends Phaser.Scene {
   private enterCooldownUntil = 0;
   private boards = new Map<string, { objs: Phaser.GameObjects.GameObject[]; key: string }>();
   private boarded = new Map<string, Phaser.GameObjects.GameObject>();
+  /** (v2.2) character tokens on the door boards + owner name callouts over each house. */
+  private boardTokens: BoardTokenLayer | null = null;
+  private houseNames: HouseNameLayer | null = null;
   private chimneys: { x: number; y: number; next: number }[] = [];
   private fx: Phaser.GameObjects.Particles.ParticleEmitter[] = [];
   private fireflies: { img: Phaser.GameObjects.Image; x: number; y: number; ph: number; sp: number }[] = [];
@@ -447,6 +458,15 @@ export class TownScene extends Phaser.Scene {
     this.lightRT = this.add.renderTexture(0, 0, Math.max(TOWN.w, 400), Math.max(TOWN.h, 400)).setOrigin(0, 0).setDepth(5000).setBlendMode(Phaser.BlendModes.MULTIPLY);
     this.mask = this.add.graphics().setDepth(5300);
     this.setupAmbience();
+    // --- (v2.2) door-board character tokens + house name callouts (before the first refreshBoards)
+    const tokenEnv = { cssZoom: () => this.cssZoom(), textRes: () => this.textRes(), lowTier: () => this.tier.tier === 'low' };
+    this.boardTokens = createBoardTokenLayer(this, tokenEnv);
+    this.houseNames = createHouseNameLayer(this, { ...tokenEnv, night: () => NIGHT.has(this.phase) || this.phase === 'dawn' });
+    this.offs.push(() => {
+      this.boardTokens?.destroy();
+      this.houseNames?.destroy();
+      this.boardTokens = this.houseNames = null;
+    });
     this.fitCamera();
     this.scale.on(Phaser.Scale.Events.RESIZE, () => this.fitCamera());
 
@@ -454,6 +474,9 @@ export class TownScene extends Phaser.Scene {
     const onLobby = (v: LobbyRoomView | null) => {
       this.lobby = v;
       this.myPid = v?.youPid ?? this.myPid;
+      // Our own pid can arrive AFTER the first world:teleport / snapshot (join, reconnect): the
+      // avatar couldn't be created then, so create it now (and drop a "remote" copy of ourselves).
+      if (this.myPid && !this.myAvatar && this.ready) this.adoptSelf();
       this.refreshAppearances();
     };
     const onGame = (g: PlayerGameView | StorytellerGameView | null) => {
@@ -472,6 +495,8 @@ export class TownScene extends Phaser.Scene {
     this.offs.push(conn.events.on('world:teleport', (t) => this.onTeleport(t)));
     this.offs.push(conn.events.on('world:snapshot', (s) => this.onSnapshot(s)));
     this.offs.push(conn.events.on('sound', (s) => playCue(s.cue as Cue)));
+    this.offs.push(conn.lobbyView.subscribe(() => this.refreshBoards()));
+    this.offs.push(this.tier.subscribe(() => this.refreshBoards()));
     this.offs.push(doorTagsStore.subscribe(() => this.refreshBoards()));
     this.bridge.registerLeave?.(() => this.leave());
     this.offs.push(() => this.bridge.registerLeave?.(null));
@@ -486,8 +511,7 @@ export class TownScene extends Phaser.Scene {
         this.route = null;
         this.pendingGo = null;
         if (e.code.startsWith('Arrow')) e.preventDefault();
-        // Inside a cottage nobody walks around: a movement key walks you back out.
-        if (!e.repeat && this.me.location !== 'outdoors') this.leave();
+        // (inside a cottage you walk around; holding DOWN on the door spot walks out: stepLocal / interior.ts)
       }
       if (e.code === 'Escape' && this.me.location !== 'outdoors' && !stagePick.get()) this.leave();
     };
@@ -535,6 +559,7 @@ export class TownScene extends Phaser.Scene {
         return best?.pid ?? null;
       },
       characterOf: (pid) => this.castKey(pid).key.split('/')[0]!,
+      spriteOf: (pid) => (pid === this.myPid ? this.myAvatar : this.avatars.get(pid))?.sprite ?? null, // v2.2 nick-face
       renderScale: () => this.tier.renderScale,
       passTap: (sx, sy) => this.handleTap(sx, sy, false),
       faceToward: (x, y) => {
@@ -546,6 +571,40 @@ export class TownScene extends Phaser.Scene {
     this.offs.push(() => {
       this.social?.destroy();
       this.social = null;
+    });
+    // v2.2 chat speech bubbles: only over avatars drawn right now (see social/bubbles.ts)
+    this.speech = createSpeechLayer(this, {
+      conn,
+      myPid: () => this.myPid,
+      anchorOf: (pid) => {
+        const a = pid === this.myPid ? (this.ready ? this.myAvatar : null) : this.avatars.get(pid);
+        return a && a.sprite.visible && a.label.visible ? a.label : null;
+      },
+      lowTier: () => this.tier.tier === 'low',
+      renderScale: () => this.tier.renderScale,
+    });
+    this.offs.push(() => {
+      this.speech?.destroy();
+      this.speech = null;
+    });
+    // v2.2 voice: who is talking (pixel outline + sound-wave glyph), visible avatars only (fx/talking.ts)
+    this.talking = createTalkingLayer(this, {
+      myPid: () => this.myPid,
+      anchorOf: (pid) => {
+        const a = pid === this.myPid ? (this.ready ? this.myAvatar : null) : this.avatars.get(pid);
+        if (!a || !a.sprite.visible) return null;
+        const l = a.label.visible && a.label.text ? a.label : null;
+        return { x: a.sprite.x, y: a.sprite.y, labelRight: l ? l.x + l.displayWidth / 2 : null, labelMidY: l ? l.y - l.displayHeight / 2 : null };
+      },
+      spriteOf: (pid) => {
+        const a = pid === this.myPid ? (this.ready ? this.myAvatar : null) : this.avatars.get(pid);
+        return a && a.sprite.visible ? a.sprite : null;
+      },
+      tier: () => this.tier.tier,
+    });
+    this.offs.push(() => {
+      this.talking?.destroy();
+      this.talking = null;
     });
     if (import.meta.env.DEV) (window as unknown as { __town?: TownScene }).__town = this;
     // Test hook (production-safe, opt-in per browser): localStorage 'ct.debug.camera' = '1' exposes the
@@ -768,6 +827,19 @@ export class TownScene extends Phaser.Scene {
     }
   }
 
+  /** Name labels at the current zoom (also for avatars created after the last fitCamera: inside a room the zoom is ~2x the outdoor one). */
+  private styleLabel(a: Avatar) {
+    a.setLabelStyle(this.textRes(), this.fontPx(10.5), Math.max(1.5, this.fontPx(10.5) / 4));
+  }
+
+  /** Inside: pushing down on the interior door spot walks out through the doorway (interior.ts). */
+  private exitGate = new ExitGate();
+  private tryWalkOut(vx: number, vy: number) {
+    const b = this.currentBuilding();
+    if (!b || !this.ready || !pushesOut(L, b, this.me, vx, vy)) return this.exitGate.reset();
+    if (this.exitGate.try(performance.now())) this.leave();
+  }
+
   // ---------------------------------------------------------------------------------------
   // tap / click
 
@@ -783,14 +855,25 @@ export class TownScene extends Phaser.Scene {
     const w = this.cameras.main.getWorldPoint(sx, sy);
     if (askSocial && this.social?.onTap(w.x, w.y)) return; // pointing / pinning
     const target = this.tapTarget(w.x, w.y);
-    if (this.amStoryteller() && this.gview?.kind === 'storyteller') {
-      // Storyteller: click-to-teleport (a building = straight inside, like a visit).
-      if (this.me.location !== 'outdoors' && target.enter === null && !this.insideArea(w.x, w.y)) return;
+    const inRoomTap = this.me.location !== 'outdoors' && target.enter === null && this.insideArea(w.x, w.y);
+    if (this.amStoryteller() && this.gview?.kind === 'storyteller' && !inRoomTap) {
+      // Storyteller: click-to-teleport (a building = straight inside, like a visit); inside a room
+      // the Storyteller walks like everyone else (below).
+      if (this.me.location !== 'outdoors' && target.enter === null) return;
       if (target.enter) this.bridge.conn.send('st:command', { type: 'teleport_self', to: { kind: 'building', buildingId: target.enter } });
       else if (this.me.location === 'outdoors') this.bridge.conn.send('st:command', { type: 'teleport_self', to: { kind: 'point', x: Math.round(target.x), y: Math.round(target.y) } });
       return;
     }
-    if (this.me.location !== 'outdoors') return; // inside: the Leave button / a movement key
+    if (this.me.location !== 'outdoors') {
+      // inside: walk to the tapped spot in the room (the doorway = walk there and out)
+      const b = this.currentBuilding();
+      const t = b ? interiorTapTarget(L, b, w.x, w.y) : null;
+      if (b && t && this.gameplay?.wantsLocalInput()) {
+        const pts = interiorRoute(L, b, { x: this.me.x, y: this.me.y }, t);
+        if (pts) this.route = { pts, enter: t.exit ? b.id : null };
+      }
+      return;
+    }
     this.goTo(target);
   }
 
@@ -866,6 +949,16 @@ export class TownScene extends Phaser.Scene {
   // ---------------------------------------------------------------------------------------
   // network
 
+  /** Create our own avatar once our pid is known (see onLobby) at the last placed position. */
+  private adoptSelf() {
+    const ghost = this.myPid ? this.avatars.get(this.myPid) : undefined;
+    if (ghost) {
+      ghost.destroy();
+      this.avatars.delete(this.myPid!);
+    }
+    this.placeMe(this.me.x, this.me.y, this.me.location);
+  }
+
   private placeMe(x: number, y: number, location: LocationId) {
     const prevLoc = this.me.location;
     this.me.x = x;
@@ -874,6 +967,7 @@ export class TownScene extends Phaser.Scene {
     this.me.moving = false;
     if (!this.myAvatar && this.myPid) {
       this.myAvatar = new Avatar(this, this.myPid, x, y);
+      this.styleLabel(this.myAvatar);
       const k = this.castKey(this.myPid);
       this.myAvatar.setAppearance(k.key, k.name, k);
     }
@@ -906,13 +1000,14 @@ export class TownScene extends Phaser.Scene {
     const seen = new Set<string>();
     for (const e of s.entities) {
       if (e.id === this.myPid) {
-        if (!this.ready) this.placeMe(e.x, e.y, e.location);
+        if (!this.ready || !this.myAvatar) this.placeMe(e.x, e.y, e.location);
         continue;
       }
       seen.add(e.id);
       let a = this.avatars.get(e.id);
       if (!a) {
         a = new Avatar(this, e.id, e.x, e.y);
+        this.styleLabel(a);
         const k = this.castKey(e.id);
         a.setAppearance(k.key, k.name, k);
         a.location = e.location;
@@ -991,6 +1086,7 @@ export class TownScene extends Phaser.Scene {
     this.fitCamera();
     for (const b of this.boards.values()) for (const o of b.objs) (o as unknown as Phaser.GameObjects.Components.Visible).setVisible(this.me.location === 'outdoors');
     for (const o of this.boarded.values()) (o as unknown as Phaser.GameObjects.Components.Visible).setVisible(this.me.location === 'outdoors');
+    this.houseNames?.setVisible(this.me.location === 'outdoors');
     this.applyAmbienceVisibility();
     this.refreshInside();
     this.publishLocal(true);
@@ -1000,26 +1096,6 @@ export class TownScene extends Phaser.Scene {
       this.pendingGo = null;
       this.goTo(g);
     }
-  }
-
-  /** Standing spots for the people inside: rows on the open floor in front of the table, facing the room. */
-  private roomSpots(b: BuildingDef, n: number): { x: number; y: number; dir: Dir8 }[] {
-    const r = b.interior;
-    const x0 = (r.x + 1.6) * TS;
-    const x1 = (r.x + r.w - 1.6) * TS;
-    const rows = n <= 7 ? [n] : [Math.ceil(n / 2), Math.floor(n / 2)];
-    const rowY = [(r.y + 7.35) * TS, (r.y + 5.95) * TS];
-    const out: { x: number; y: number; dir: Dir8 }[] = [];
-    rows.forEach((count, ri) => {
-      const span = Math.min(x1 - x0, Math.max(1, count - 1) * (count <= 4 ? 34 : 22));
-      const cx = (x0 + x1) / 2;
-      for (let i = 0; i < count; i++) {
-        const x = count === 1 ? cx : cx - span / 2 + (span * i) / (count - 1) + (ri ? 11 : 0);
-        const off = (x - cx) / Math.max(1, span / 2);
-        out.push({ x: Math.round(x), y: Math.round(rowY[ri]!), dir: off < -0.25 ? 'down-right' : off > 0.25 ? 'down-left' : 'down' });
-      }
-    });
-    return out;
   }
 
   private occupants(): { pid: string; avatar: Avatar }[] {
@@ -1080,14 +1156,34 @@ export class TownScene extends Phaser.Scene {
       }
       const res = this.gview?.players.find((p) => p.seat === b.houseIndex) ?? null;
       const view: DoorBoardView | undefined = tags[b.id];
-      const key = !day || !inUse ? '' : JSON.stringify([res?.name ?? '', view?.shown.map((t) => [t.name, t.ghost]) ?? [], view?.overflow ?? 0, Math.round(this.cameras.main.zoom * 20)]);
+      const key = !day || !inUse ? '' : JSON.stringify([res?.name ?? '', view?.tags.map((t) => [t.pid, t.name, t.ghost, t.preset]) ?? [], view?.overflow ?? 0, Math.round(this.cssZoom() * 20)]);
       const cur = this.boards.get(b.id);
       if (cur && cur.key === key) continue;
+      this.boardTokens?.forget(b.id);
       if (cur) for (const o of cur.objs) o.destroy();
       const objs = key ? this.makeBoard(d, res?.name ?? null, view) : [];
       for (const o of objs) (o as unknown as Phaser.GameObjects.Components.Visible).setVisible(outdoors);
       this.boards.set(b.id, { objs, key });
     }
+    this.refreshHouseNames();
+  }
+
+  /** (v2.2) Owner name callouts: one per lived-in house, from public seats only (see houseNames.ts). */
+  private refreshHouseNames() {
+    if (!this.houseNames) return;
+    const owners = houseOwners(L, this.gview?.players ?? null, this.lobby?.members ?? null);
+    const inputs: HouseLabelInput[] = [];
+    for (const d of this.doors) {
+      const owner = owners[d.b.id];
+      if (!owner) continue;
+      // tail tip just above the doorway (the art's exact door rect when there is one)
+      const door = FX_HOUSES[d.b.id]?.boarded;
+      const x = door ? door.wx + door.w / 2 : d.at.x;
+      const y = door ? door.wy - 1 : d.at.y - TS - 22;
+      inputs.push({ id: d.b.id, x: Math.round(x), y: Math.round(y), houseW: d.b.footprint.w * TS, owner, mine: owner.pid === this.myPid, avoid: this.boardTokens?.rectOf(d.b.id) ?? null });
+    }
+    this.houseNames.update(inputs);
+    this.houseNames.setVisible(this.me.location === 'outdoors');
   }
 
   private makeBoarded(d: DoorObj): Phaser.GameObjects.GameObject {
@@ -1113,8 +1209,11 @@ export class TownScene extends Phaser.Scene {
     return g;
   }
 
-  /** The bulletin board: resident's name, and who's inside (daytime only; readable at any zoom). */
-  private makeBoard(d: DoorObj, resident: string | null, view: DoorBoardView | undefined): Phaser.GameObjects.GameObject[] {
+  /**
+   * The bulletin board (daytime only): who is inside as pinned character tokens (v2.2: no names on
+   * the board — hover / tap a token for the name; the owner's name is the house callout instead).
+   */
+  private makeBoard(d: DoorObj, _resident: string | null, view: DoorBoardView | undefined): Phaser.GameObjects.GameObject[] {
     const objs: Phaser.GameObjects.GameObject[] = [];
     const south = d.inward.y < 0;
     // the board stands beside the door: right of a south door, toward the square for side doors
@@ -1124,46 +1223,12 @@ export class TownScene extends Phaser.Scene {
     const depth = 10 + by + 1;
     const anchor = FX_JSON?.meta?.anchors?.board ?? { x: 11, y: 26 };
     const bf = FX_JSON?.frames.board;
-    if (this.hasFx('board') && bf) objs.push(this.add.image(Math.round(bx), Math.round(by), 'fx', 'board').setOrigin(anchor.x / bf.w, anchor.y / bf.h).setDepth(depth));
-    const inside = view?.shown ?? [];
-    const lines: string[] = [];
-    if (resident) lines.push(resident);
-    const res = this.textRes();
-    const fs = this.fontPx(13);
-    const fsSmall = this.fontPx(12);
-    if (!resident && !inside.length) return objs;
-    const head = this.add
-      .text(Math.round(bx), Math.round(by - (this.hasFx('board') ? 26 : 8)), resident ?? '', {
-        fontFamily: LABEL_FONT,
-        fontSize: `${fsSmall}px`,
-        fontStyle: '700',
-        color: '#efe2c0',
-        stroke: '#140d1c',
-        strokeThickness: Math.max(1, fsSmall / 4),
-        resolution: res,
-      })
-      .setOrigin(0.5, 1)
-      .setDepth(5150)
-      .setAlpha(0.92);
-    objs.push(head);
-    if (inside.length) {
-      const names = inside.map((t) => (t.ghost ? `👻 ${t.name}` : t.name));
-      const txt = names.join('\n') + (view && view.overflow > 0 ? `\n+${view.overflow} more` : '');
-      const card = this.add
-        .text(Math.round(bx), Math.round(head.y - head.height - 1), txt, {
-          fontFamily: LABEL_FONT,
-          fontSize: `${fs}px`,
-          fontStyle: '700',
-          color: '#2a1d16',
-          backgroundColor: '#e8dcb8',
-          align: 'center',
-          padding: { left: fs * 0.45, right: fs * 0.45, top: fs * 0.2, bottom: fs * 0.25 },
-          resolution: res,
-        })
-        .setOrigin(0.5, 1)
-        .setDepth(5150);
-      objs.push(card);
-    }
+    if (view?.shown.length && this.boardTokens) {
+      // occupied: the board grows to hold its tokens (kept clear of the doorway)
+      const dr = FX_HOUSES[d.b.id]?.boarded;
+      const door = dr ? { l: dr.wx, r: dr.wx + dr.w, t: dr.wy, b: dr.wy + dr.h } : { l: d.at.x - 6, r: d.at.x + 6, t: d.at.y - TS - 20, b: d.at.y - TS };
+      objs.push(...this.boardTokens.build(d.b.id, bx, by, depth, view, door));
+    } else if (this.hasFx('board') && bf) objs.push(this.add.image(Math.round(bx), Math.round(by), 'fx', 'board').setOrigin(anchor.x / bf.w, anchor.y / bf.h).setDepth(depth));
     return objs;
   }
 
@@ -1388,14 +1453,14 @@ export class TownScene extends Phaser.Scene {
   private fitCamera() {
     const cam = this.cameras.main;
     const b = this.currentBuilding();
-    const a = b ? { x: (b.interior.x - 0.5) * TS, y: (b.interior.y - 0.5) * TS, w: (b.interior.w + 1) * TS, h: (b.interior.h + 1) * TS } : { ...TOWN };
+    const a = b ? roomArea(L, b) : { ...TOWN };
     this.area = a;
     const w = this.scale.width;
     const h = this.scale.height;
     if (b) {
-      // inside: the whole room, cosy, not huge — above the "Inside … with …" panel at the bottom
+      // inside: the whole (walkable) room, cosy, not huge — above the "Inside … with …" panel at the bottom
       const k = this.tier.renderScale; // the panel is sized in CSS px
-      const reserve = (h / k < 520 ? 92 : 132) * k;
+      const reserve = insideReserveCss(h / k, touchUi()) * k;
       const zoom = Math.min(Math.min(w / a.w, (h - reserve - 8) / a.h) * 0.94, 7);
       cam.setZoom(zoom);
       cam.centerOn(a.x + a.w / 2, a.y + a.h / 2 + reserve / 2 / zoom);
@@ -1427,9 +1492,10 @@ export class TownScene extends Phaser.Scene {
     const dt = Math.min(0.1, deltaMs / 1000);
     if (this.ready && this.myAvatar) this.stepLocal(dt, time);
     this.stepRemotes();
-    this.layoutInterior();
     this.gameplay?.update(dt);
     this.social?.update(dt);
+    this.speech?.update();
+    this.talking?.update();
     this.animateDoors(dt);
     this.stepAmbience(dt, time);
     this.updateCamera(dt);
@@ -1523,25 +1589,14 @@ export class TownScene extends Phaser.Scene {
   private stepLocal(dt: number, now: number) {
     const d = this.gameplay?.drive(dt) ?? null;
     if (d) {
-      if (this.me.location === 'outdoors' || this.currentBuilding() === undefined) {
-        this.me.x = d.x;
-        this.me.y = d.y;
-      } else {
-        this.me.x = d.x;
-        this.me.y = d.y;
-      }
+      this.me.x = d.x;
+      this.me.y = d.y;
       this.me.facing = d.facing;
       this.me.moving = d.moving;
       if (d.moving) this.myDir = fromFacing(d.facing);
-      if (this.me.location === 'outdoors') this.myAvatar!.setPose(d.x, d.y, this.myDir, d.moving);
+      this.myAvatar!.setPose(d.x, d.y, this.myDir, d.moving); // outdoors and inside (walk to bed)
       this.lastSent = { x: d.x, y: d.y, moving: false, facing: d.facing };
       this.route = null;
-      this.publishLocal(false);
-      return;
-    }
-    if (this.me.location !== 'outdoors') {
-      // nobody walks inside a cottage; the room layout places you
-      this.me.moving = false;
       this.publishLocal(false);
       return;
     }
@@ -1557,7 +1612,11 @@ export class TownScene extends Phaser.Scene {
       if (!next) {
         const enter = this.route.enter;
         this.route = null;
-        if (enter) {
+        if (enter && this.currentBuilding()?.id === enter) {
+          // inside: a tap on the doorway walked us to the door spot; now out
+          this.myDir = 'down';
+          this.leave();
+        } else if (enter) {
           const d0 = this.doors.find((x) => x.b.id === enter);
           if (d0) {
             this.myDir = dir8(d0.inward.x, d0.inward.y);
@@ -1599,6 +1658,7 @@ export class TownScene extends Phaser.Scene {
       if (following && !moving) this.route = null; // blocked: give up quietly
       if (!following) this.checkAutoEnter(vx, vy);
     }
+    if (this.me.location !== 'outdoors') this.tryWalkOut(following ? 0 : vx, following ? 0 : vy);
     this.me.moving = moving;
     this.myAvatar!.setPose(this.me.x, this.me.y, this.myDir, moving);
     const changed = Math.abs(this.me.x - this.lastSent.x) > 0.05 || Math.abs(this.me.y - this.lastSent.y) > 0.05 || moving !== this.lastSent.moving || this.me.facing !== this.lastSent.facing;
@@ -1678,19 +1738,6 @@ export class TownScene extends Phaser.Scene {
         e.location = a.location;
       } else remoteEntities.set(a.pid, { x, y, location: a.location });
     }
-  }
-
-  /** Inside a cottage everyone stands in a ring around the rug, facing the middle. */
-  private layoutInterior() {
-    const b = this.currentBuilding();
-    if (!b || !this.myAvatar) return;
-    const occ = this.occupants();
-    const spots = this.roomSpots(b, occ.length);
-    occ.forEach((o, i) => {
-      const p = spots[i]!;
-      o.avatar.setPose(p.x, p.y, p.dir, false);
-      o.avatar.setVisible(true);
-    });
   }
 
   private updatePrompt() {

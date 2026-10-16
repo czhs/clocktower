@@ -142,11 +142,26 @@ export function CharacterPicker({
           )}
         </div>
         <div class="ct-pick-info">
-          <div class="ct-pick-name">
-            {shown ? shown.name : 'Pick a character'}
-            {shown?.course && <span class="ct-pick-chip">{shown.course}</span>}
+          {/* Name + blurb of every character are stacked invisibly in one grid cell, so the stage is
+              always as tall as the longest one and doesn't jump while the mouse sweeps the grid. */}
+          <div class="ct-pick-text">
+            {PLAYABLE.map((c) => (
+              <div key={c.id} class="ct-pick-sizer" aria-hidden="true">
+                <div class="ct-pick-name">
+                  {c.name}
+                  {c.course && <span class="ct-pick-chip">{c.course}</span>}
+                </div>
+                <div class="ct-pick-blurb">{c.blurb}</div>
+              </div>
+            ))}
+            <div class="ct-pick-shown">
+              <div class="ct-pick-name">
+                {shown ? shown.name : 'Pick a character'}
+                {shown?.course && <span class="ct-pick-chip">{shown.course}</span>}
+              </div>
+              <div class="ct-pick-blurb">{shown ? shown.blurb : 'Everyone in a game is a different character.'}</div>
+            </div>
           </div>
-          <div class="ct-pick-blurb">{shown ? shown.blurb : 'Everyone in a game is a different character.'}</div>
           <div class={`ct-pick-state ct-small ${holder ? 'ct-error' : showStatus && status ? (status.tone === 'muted' ? 'muted' : `ct-${status.tone}`) : 'muted'}`} role={status?.tone === 'error' ? 'alert' : undefined}>
             {holder
               ? `Taken by ${holder}`

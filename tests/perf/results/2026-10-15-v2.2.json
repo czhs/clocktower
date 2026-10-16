@@ -1,0 +1,109 @@
+{
+  "at": "2026-10-16T04:19:16.690Z",
+  "rows": [
+    {
+      "name": "entryJsBrKiB",
+      "value": 36.5,
+      "max": 45,
+      "unit": "KiB br",
+      "status": "ok",
+      "why": "JS before sign-in (v2.2: 36.5)"
+    },
+    {
+      "name": "entryCssBrKiB",
+      "value": 22.1,
+      "max": 27,
+      "unit": "KiB br",
+      "status": "ok",
+      "why": "entry CSS (v2.2: 22.1)"
+    },
+    {
+      "name": "lobbyChunkBrKiB",
+      "value": 68.2,
+      "max": 85,
+      "unit": "KiB br",
+      "status": "ok",
+      "why": "LobbyRoute chunk (v2.2: 68.2)"
+    },
+    {
+      "name": "townChunkBrKiB",
+      "value": 284.5,
+      "max": 300,
+      "unit": "KiB br",
+      "status": "ok",
+      "why": "TownGame chunk, Phaser (v2.2: 284.5)"
+    },
+    {
+      "name": "townAtlasKiB",
+      "value": 768.9,
+      "max": 950,
+      "unit": "KiB",
+      "status": "ok",
+      "why": "runtime WebP atlases (v2.2: ≈ 770)"
+    },
+    {
+      "name": "snapshotBytesPerSecPerClient",
+      "value": 1487,
+      "max": 2000,
+      "unit": "B/s",
+      "status": "ok",
+      "why": "S2C per client, day walk (v2.2: 1487)"
+    },
+    {
+      "name": "serverCpuPct16",
+      "value": 4.9,
+      "max": 10,
+      "unit": "% core",
+      "status": "ok",
+      "why": "server CPU, 16 clients walking (v2.2: 4.9)"
+    },
+    {
+      "name": "desktopWalkFrameP95Ms",
+      "value": 16.7,
+      "max": 20,
+      "unit": "ms",
+      "status": "ok",
+      "why": "desktop-walk frame p95 (v2.2: 16.7)"
+    },
+    {
+      "name": "desktopWalkMainPct",
+      "value": 7.5,
+      "max": 10,
+      "unit": "%",
+      "status": "ok",
+      "why": "desktop-walk main thread (v2.2: 7.5)"
+    },
+    {
+      "name": "mobileWalkMainPct",
+      "value": 13.9,
+      "max": 17,
+      "unit": "%",
+      "status": "ok",
+      "why": "phone profile walk main thread (v2.2: 13.9)"
+    },
+    {
+      "name": "mobileWalkDomMutPerSec",
+      "value": 18.4,
+      "max": 25,
+      "unit": "/s",
+      "status": "ok",
+      "why": "HUD churn while walking (v2.2: 18.4)"
+    },
+    {
+      "name": "authScreenMs",
+      "value": 2528,
+      "max": 3500,
+      "unit": "ms",
+      "status": "ok",
+      "why": "Slow-4G phone profile, local uncompressed (v2.2: 2.5 s)"
+    },
+    {
+      "name": "townNetworkIdleMs",
+      "value": 16691,
+      "max": 21000,
+      "unit": "ms",
+      "status": "ok",
+      "why": "Slow-4G phone profile, local uncompressed (v2.2: 16.7 s)"
+    }
+  ]
+}

@@ -13,7 +13,7 @@
 import { describe, expect, it } from 'vitest';
 import { townLayout } from '@ct/assets';
 import type { CharacterId, PlayerGameView, StCommand, StorytellerGameView } from '@ct/protocol';
-import { SnapshotEncoder, tileCenterPx } from '@ct/protocol';
+import { isBlockedPx, SnapshotEncoder, tileCenterPx } from '@ct/protocol';
 import { MemoryVoiceUsageStore } from '@ct/voice';
 import { createGameModule } from '../src/game/index.js';
 import { createVoiceModule } from '../src/voice/index.js';
@@ -112,6 +112,15 @@ async function build(): Promise<Rig> {
 
 const noop: Step = () => undefined;
 
+/** (v2.2 walkable interiors) A player takes a small step inside their own home at night (any free direction). */
+const homeStep =
+  (pid: string, seq: number): Step =>
+  (r) => {
+    const p = r.world.positionOf(pid)!;
+    const to = [[4, 0], [-4, 0], [0, -4], [0, 4]].map(([dx, dy]) => ({ x: p.x + dx!, y: p.y + dy! })).find((q) => !isBlockedPx(townLayout, q.x, q.y))!;
+    r.world.handleMove(pid, { seq, x: to.x, y: to.y, facing: 'left', moving: true });
+  };
+
 async function run(night: Step[]): Promise<Map<string, string[]>> {
   const r = await build();
   r.st({ type: 'assign_characters', assignments: CHARS.map((character, seat) => ({ seat, character })), redHerringSeat: 2, demonBluffs: ['chef', 'mayor', 'saint'] });
@@ -162,9 +171,13 @@ const busyNight: Step[] = [
   (r) => r.st({ type: 'visit_home', seat: 1 }), // a second visit to the same home
   (r) => r.st({ type: 'prompt_player', seat: 1, prompt: { kind: 'acknowledge', title: 'Sleep well.' } }),
   (r) => r.st({ type: 'visit_home', seat: 2 }), // mid-prompt: leaves seat 1 with an open prompt
+  homeStep('p1', 1), // (v2.2) the visited player walks about at home: only the ST (now away) and p1 may see it
+  homeStep('p2', 1), // ... and the player the ST is with right now
   (r) => r.st({ type: 'set_travel_speed', mult: 1 }),
+  homeStep('p3', 1), // a non-visited player walks about at home in both runs (identical, seen by nobody else)
+  homeStep('p3', 2),
 ];
-const quietNight: Step[] = busyNight.map(() => noop);
+const quietNight: Step[] = busyNight.map((s, i) => (i >= busyNight.length - 2 ? s : noop));
 const VISITED = new Set(['p1', 'p2']);
 
 describe('night-visit secrecy with the real modules (world-audit)', () => {
@@ -183,6 +196,9 @@ describe('night-visit secrecy with the real modules (world-audit)', () => {
       expect(busy.get(pid)!.some((m) => m.startsWith('world:snap2') && m.includes('"st"'))).toBe(true);
     }
     expect(quiet.get('p1')!.some((m) => m.includes('"cue":"visit"'))).toBe(false);
+    // (v2.2) the in-house steps were real accepted moves (acked), not corrections
+    for (const s of [quiet, busy]) expect(s.get('p3')!.some((m) => m.startsWith('world:snapshot') && m.includes('"ackSeq":2'))).toBe(true);
+    expect(busy.get('p3')!.some((m) => m.includes('"reason":"correction"'))).toBe(false);
   });
 
   it('nothing a non-visited player receives during the night mentions the storyteller or a house other than their own', async () => {

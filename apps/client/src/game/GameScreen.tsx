@@ -87,7 +87,7 @@ export function GameScreen(props: { conn: RoomConnection; account: AccountView; 
         </div>
       )}
       {inside && <InsidePanel inside={inside} prompt={prompt} onLeave={() => leaveRef.current?.()} />}
-      {touch && status === 'ready' && !inside && <TouchControls />}
+      {touch && status === 'ready' && <TouchControls />}
       {status === 'ready' && <SocialPalette conn={props.conn} touch={touch} />}
       {status === 'ready' && <Notebook conn={props.conn} touch={touch} />}
       {status === 'ready' && <Story conn={props.conn} touch={touch} />}
@@ -187,7 +187,7 @@ function FirstSteps({ touch }: { touch: boolean }) {
             <b>Click a cottage</b> to go in, or walk with <kbd>W</kbd>
             <kbd>A</kbd>
             <kbd>S</kbd>
-            <kbd>D</kbd> — walk into a door to enter · <kbd>Enter</kbd> to chat
+            <kbd>D</kbd> — walk into a door to enter · <kbd>Enter</kbd> to chat · <kbd>?</kbd> all keys
           </>
         )}
         <button class="ct-hint-close" aria-label="Dismiss hint" onClick={() => (markHint(MOVE_HINT_KEY), setDone(true))}>
@@ -219,7 +219,7 @@ function Toolbar({ conn }: { conn: RoomConnection }) {
       )}
       <AbortGame conn={conn} />
       <SettingsButton onLeave={game ? leave : undefined} leaveLabel={finished ? 'Back to lobbies' : 'Leave game'} />
-      <button class="ct-tb-icon" onClick={openHelp} aria-label="How to play" title="How to play">
+      <button class="ct-tb-icon" onClick={openHelp} aria-label="How to play" title="How to play · keyboard shortcuts (?)">
         ?
       </button>
       {/* While waiting, the lobby sheet has its own Leave button. */}
@@ -477,7 +477,7 @@ function InsidePanel({ inside, prompt, onLeave }: { inside: Inside; prompt: Prom
         )}
       </div>
       {prompt?.locked && prompt.text && <div class="ct-inside-note">{prompt.text}</div>}
-      <button class="primary ct-inside-leave" disabled={!inside.canLeave} title={inside.canLeave ? 'Walk back out (or press any arrow key)' : inside.lockedReason} onClick={onLeave}>
+      <button class="primary ct-inside-leave" disabled={!inside.canLeave} title={inside.canLeave ? 'Walk back out (or walk down through the doorway)' : inside.lockedReason} onClick={onLeave}>
         {inside.canLeave ? 'Leave' : inside.lockedReason ?? 'Locked'}
       </button>
     </div>

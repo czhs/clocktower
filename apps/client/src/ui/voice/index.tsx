@@ -6,7 +6,10 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { AccountView } from '@ct/protocol';
 import type { RoomConnection } from '../../net/room';
 import { useStore } from '../../net/store';
-import { browserKind, keyLabel, VoiceClient, type BrowserKind, type VoiceClientState } from '../../voice/VoiceClient';
+import { browserKind, keyLabel, VoiceClient, type BrowserKind, type VoiceClientState, type VoiceParticipantView } from '../../voice/VoiceClient';
+import { crowdLayout, noteActivity, roomCountLabel, type Activity } from '../../voice/speaking';
+import { isPttMouseButton, mouseCode } from '../../voice/ptt';
+import { DeviceSettings } from './DeviceSettings';
 import './voice.css';
 
 const ANNOUNCE_KEEPALIVE_MS = 30_000;
@@ -70,6 +73,8 @@ function linkDot(s: VoiceClientState): string {
 export function VoicePanel({ conn }: { conn: RoomConnection; account: AccountView }) {
   const client = useMemo(() => new VoiceClient(conn), [conn]);
   useEffect(() => () => void client.dispose(), [client]);
+  // DEV only (stripped from builds): lets the town sandbox / visual checks fake voice state.
+  if (import.meta.env.DEV) (window as unknown as { __voiceClient?: VoiceClient }).__voiceClient = client;
   const s = useStore(client.state);
   const lobby = useStore(conn.lobbyView);
   const game = useStore(conn.gameView);
@@ -79,6 +84,11 @@ export function VoicePanel({ conn }: { conn: RoomConnection; account: AccountVie
   const [debug, setDebug] = useState(false);
   const [binding, setBinding] = useState(false);
   const [announcing, setAnnouncing] = useState(false);
+  const [showAll, setShowAll] = useState(false);
+  /** Recent voice activity per pid (panel ordering); updated when the participant list changes. */
+  const activity = useRef(new Map<string, Activity>()).current;
+  /** Volume to restore when un-muting someone locally. */
+  const lastVol = useRef(new Map<string, number>()).current;
 
   const names = useMemo(() => new Map((lobby?.members ?? []).map((m) => [m.pid, m.displayName])), [lobby]);
   const me = lobby?.members.find((m) => m.pid === lobby.youPid);
@@ -86,7 +96,8 @@ export function VoicePanel({ conn }: { conn: RoomConnection; account: AccountVie
   const stPid = lobby?.members.find((m) => m.role === 'storyteller')?.pid ?? null;
   const browser = useMemo(() => browserKind(), []);
 
-  // Rebind push-to-talk: capture the next key press.
+  // Rebind push-to-talk: capture the next key press or middle / side mouse button (Esc cancels;
+  // a left or right click cancels too — those walk and point in town and can't be bound).
   useEffect(() => {
     if (!binding) return;
     const onKey = (e: KeyboardEvent) => {
@@ -95,8 +106,21 @@ export function VoicePanel({ conn }: { conn: RoomConnection; account: AccountVie
       if (e.code !== 'Escape') client.setPttKey(e.code);
       setBinding(false);
     };
+    const onMouse = (e: MouseEvent) => {
+      if (isPttMouseButton(e.button)) {
+        // the release (mouseup / auxclick / back-forward) is then swallowed by the new binding
+        e.preventDefault();
+        e.stopPropagation();
+        client.setPttKey(mouseCode(e.button));
+      }
+      setBinding(false);
+    };
     window.addEventListener('keydown', onKey, { capture: true });
-    return () => window.removeEventListener('keydown', onKey, { capture: true });
+    window.addEventListener('mousedown', onMouse, { capture: true });
+    return () => {
+      window.removeEventListener('keydown', onKey, { capture: true });
+      window.removeEventListener('mousedown', onMouse, { capture: true });
+    };
   }, [binding, client]);
 
   // Storyteller announcement keep-alive (server auto-ends it after ~90 s of silence).
@@ -133,6 +157,45 @@ export function VoicePanel({ conn }: { conn: RoomConnection; account: AccountVie
         : null;
   const privateLine = privateWith && privateWith.length ? `Private conversation with ${privateWith.join(', ')}` : null;
   const heard = heardByLine(s, names);
+  // Big rooms: talkers on top, recent speakers next, the rest as compact chips. Recomputed only when
+  // the participant list object changes (the engine patches it change-only).
+  const crowd = useMemo(() => {
+    noteActivity(activity, s.participants, performance.now());
+    return crowdLayout(s.participants, activity);
+  }, [s.participants, activity]);
+  const roomCount = s.participants.filter((p) => !p.announce).length + 1;
+  const talkers = crowd.talking.map((p) => names.get(p.pid) ?? 'Someone');
+  const toggleLocalMute = (p: VoiceParticipantView) => {
+    if (p.volume > 0) {
+      lastVol.set(p.pid, p.volume);
+      client.setVolume(p.pid, 0);
+    } else client.setVolume(p.pid, lastVol.get(p.pid) || 1);
+  };
+  const row = (p: VoiceParticipantView) => {
+    const name = names.get(p.pid) ?? 'Someone';
+    return (
+      <li key={p.pid} class={`${p.speaking ? 'speaking' : ''} ${p.gain < 0.02 && s.mode === 'proximity' ? 'faint' : ''} ${p.volume === 0 ? 'silenced' : ''}`}>
+        <span class="ctv-ring" />
+        <span class="ctv-name" title={name}>
+          {name}
+          {p.announce && <span class="ctv-tag">herald</span>}
+          {p.micMuted && !p.announce && <span class="ctv-tag">muted</span>}
+        </span>
+        <button class={`ctv-icon ctv-pmute ${p.volume === 0 ? 'on' : ''}`} onClick={() => toggleLocalMute(p)} aria-pressed={p.volume === 0} title={p.volume === 0 ? `Hear ${name} again` : `Silence ${name} (only for you)`} aria-label={p.volume === 0 ? `Restore ${name} for me` : `Silence ${name} for me`}>
+          {p.volume === 0 ? '🔇' : '🔈'}
+        </button>
+        <input
+          type="range"
+          min={0}
+          max={150}
+          step={5}
+          value={Math.round(p.volume * 100)}
+          aria-label={`Volume for ${name}`}
+          onInput={(e) => client.setVolume(p.pid, Number((e.currentTarget as HTMLInputElement).value) / 100)}
+        />
+      </li>
+    );
+  };
   const notice = s.notice && (
     <div class={`ctv-notice ctv-notice-${s.notice.kind}`} role="status" aria-live="polite">
       <span>{s.notice.text}</span>
@@ -158,6 +221,12 @@ export function VoicePanel({ conn }: { conn: RoomConnection; account: AccountVie
           {s.enabled && (
             <span class={`ctv-mic ctv-mic-${badge.cls}`}>
               <MicIcon off={badge.off} /> {badge.text}
+            </span>
+          )}
+          {talkers.length > 0 && (
+            <span class="ctv-pill-talk" aria-label={`Talking: ${talkers.join(', ')}`}>
+              <span class="ctv-wave" aria-hidden="true" /> {talkers[0]}
+              {talkers.length > 1 ? ` +${talkers.length - 1}` : ''}
             </span>
           )}
         </button>
@@ -217,7 +286,7 @@ export function VoicePanel({ conn }: { conn: RoomConnection; account: AccountVie
               {s.micFailure === 'denied' && <span class="ctv-steps"> {RECOVERY[browser]}</span>}{' '}
               {s.micFailure !== 'notfound' && s.micFailure !== 'insecure' && (
                 <button class="ctv-small" onClick={() => void client.retryMic()}>
-                  Retry
+                  Retry mic
                 </button>
               )}
             </div>
@@ -244,8 +313,8 @@ export function VoicePanel({ conn }: { conn: RoomConnection; account: AccountVie
           </div>
           <div class="ctv-row">
             {s.inputMode === 'ptt' && (
-              <button class={`ctv-key ${binding ? 'binding' : ''}`} onClick={() => setBinding(true)} title="Change push-to-talk key">
-                {binding ? 'Press a key…' : `Hold ${keyLabel(s.pttKey)}`}
+              <button class={`ctv-key ${binding ? 'binding' : ''}`} onClick={() => setBinding(true)} title="Change push-to-talk: a key, or the middle / side mouse button">
+                {binding ? 'Press a key or a mouse button (middle/side)… Esc cancels' : `Hold ${keyLabel(s.pttKey)}`}
               </button>
             )}
             <button class={s.muted ? 'on' : ''} onClick={() => client.setMuted(!s.muted)} aria-pressed={s.muted} disabled={s.mic !== 'ready'}>
@@ -255,6 +324,29 @@ export function VoicePanel({ conn }: { conn: RoomConnection; account: AccountVie
               {s.deafened ? 'Undeafen' : 'Deafen'}
             </button>
           </div>
+          {s.inputMode === 'ptt' && s.mic === 'ready' && (
+            <button
+              class={`ctv-wide ctv-hold ${s.pttHeld ? 'on' : ''}`}
+              disabled={s.muted || s.deafened}
+              onPointerDown={(e) => {
+                e.preventDefault();
+                (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+                client.holdPtt(true);
+              }}
+              onPointerUp={() => client.holdPtt(false)}
+              onPointerCancel={() => client.holdPtt(false)}
+              onLostPointerCapture={() => client.holdPtt(false)}
+              onContextMenu={(e) => e.preventDefault()}
+              aria-pressed={s.pttHeld}
+            >
+              {s.pttHeld ? 'Talking… release to stop' : 'Hold here to talk'}
+            </button>
+          )}
+          {s.inputMode === 'open' && (
+            <label class="ctv-check" title={`On an open mic, arriving in a room of 8 or more people mutes you once.`}>
+              <input type="checkbox" checked={s.crowdMute} onChange={(e) => client.setCrowdMute((e.currentTarget as HTMLInputElement).checked)} /> Join busy rooms muted
+            </label>
+          )}
           <div class={`ctv-tx ${s.transmitting ? 'live' : ''} ${s.localSpeaking ? 'speaking' : ''}`}>
             {s.mic !== 'ready'
               ? s.mic === 'requesting'
@@ -270,41 +362,38 @@ export function VoicePanel({ conn }: { conn: RoomConnection; account: AccountVie
                       ? `Hold ${keyLabel(s.pttKey)} to talk`
                       : 'Mic idle'}
           </div>
-          {s.devices.length > 0 && (
-            <select class="ctv-device" value={s.deviceId ?? ''} onChange={(e) => void client.setDevice((e.currentTarget as HTMLSelectElement).value)} aria-label="Microphone">
-              <option value="">Default microphone</option>
-              {s.devices.map((d) => (
-                <option value={d.deviceId}>{d.label}</option>
-              ))}
-            </select>
-          )}
+          <DeviceSettings client={client} s={s} />
           {isStoryteller && (
             <button class={`ctv-wide ${announcing ? 'on' : ''}`} onClick={() => setAnnouncing((a) => !a)} disabled={unavailable}>
               {announcing ? 'End announcement' : 'Announce to the whole town'}
             </button>
           )}
 
-          <ul class="ctv-people">
-            {s.participants.map((p) => (
-              <li class={`${p.speaking ? 'speaking' : ''} ${p.gain < 0.02 && s.mode === 'proximity' ? 'faint' : ''}`}>
-                <span class="ctv-ring" />
-                <span class="ctv-name" title={p.pid}>
-                  {names.get(p.pid) ?? 'Someone'}
-                  {p.announce && <span class="ctv-tag">herald</span>}
-                  {p.micMuted && !p.announce && <span class="ctv-tag">muted</span>}
-                </span>
-                <input
-                  type="range"
-                  min={0}
-                  max={150}
-                  step={5}
-                  value={Math.round(p.volume * 100)}
-                  aria-label={`Volume for ${names.get(p.pid) ?? 'participant'}`}
-                  onInput={(e) => client.setVolume(p.pid, Number((e.currentTarget as HTMLInputElement).value) / 100)}
-                />
-              </li>
-            ))}
+          {s.link === 'connected' && s.zone && (
+            <div class="ctv-count" aria-live="polite">
+              {roomCountLabel(roomCount, s.zone)}
+              {talkers.length > 0 && <span class="ctv-count-talk"> · {talkers.length} talking</span>}
+            </div>
+          )}
+          <ul class="ctv-people" aria-label="People in voice">
+            {crowd.talking.map(row)}
+            {crowd.rows.map(row)}
+            {showAll && crowd.overflow.map(row)}
           </ul>
+          {crowd.overflow.length > 0 && !showAll && (
+            <div class="ctv-chips">
+              {crowd.overflow.map((p) => (
+                <span key={p.pid} class={`ctv-chip ${p.gain < 0.02 && s.mode === 'proximity' ? 'faint' : ''} ${p.volume === 0 ? 'silenced' : ''}`} title={names.get(p.pid) ?? 'Someone'}>
+                  {names.get(p.pid) ?? 'Someone'}
+                </span>
+              ))}
+            </div>
+          )}
+          {crowd.overflow.length > 0 && (
+            <button class="ctv-small ctv-more" onClick={() => setShowAll((v) => !v)} aria-expanded={showAll}>
+              {showAll ? 'Show fewer' : `+${crowd.overflow.length} more — volume & mute`}
+            </button>
+          )}
         </div>
       )}
       {debug && <VoiceDebug client={client} names={names} />}

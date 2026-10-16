@@ -9,10 +9,17 @@
 //
 // Doors (v2 one-screen town): ENTERING needs the player outdoors within DOOR_RANGE_PX of the
 // building's outdoor door tile (the client sends 'world:useDoor' when it walks into the doorway; the
-// tile sits below the footprint for 'south' cottages and beside it for 'east'/'west' ones). EXITING
-// works from anywhere inside (interiors are a fixed view, nobody walks in them: "Leave" button).
-// Server-driven walks likewise leave a building at once (no interior leg) and enter straight to
-// their destination inside.
+// tile sits below the footprint for 'south' cottages and beside it for 'east'/'west' ones). Entering
+// puts you on the building's interior door spot (just above the doorway in the room's bottom wall).
+// EXITING works from anywhere inside: the HUD's "Leave" button, or (client side) walking down
+// through the doorway / tapping it — both are the same 'world:useDoor'.
+//
+// Interiors (v2.2) are small walkable rooms in the same coordinate space: walls, the doorway and the
+// furniture (bed, hearth, table, …) are in layout.collision, so handleMove validates moves inside
+// exactly like outdoors (speed + burst budget, swept collision, same-location rule, corrections) and
+// a move can never cross into another location (only doors change location). Server-driven walks
+// still leave a building at once (no interior leg) and enter straight to their destination inside
+// (the bed for escorts); within one location (e.g. home -> bed at nightfall) they path-find (path.ts).
 //
 // Door access for players (the Storyteller may always use any door):
 //   waiting / setup / day / bedtime / finished -> may enter and exit any building
@@ -373,7 +380,7 @@ export function createWorldModule(host: RoomHost, opts: WorldOptions = {}): Worl
       w.door = null;
       return true;
     }
-    // Leave the current building first (at once: nobody walks inside interiors in v2), then walk
+    // Leave the current building first (at once: no interior leg to the doorway), then walk
     // outdoors to the destination's door.
     if (here !== 'outdoors') {
       const b = buildingById.get(here.slice(4));
@@ -422,7 +429,7 @@ export function createWorldModule(host: RoomHost, opts: WorldOptions = {}): Worl
       if (!next) {
         if (w.door) {
           const b = buildingById.get(w.door.building)!;
-          // Entering: straight to the destination inside (interiors are a fixed view, no walking).
+          // Entering: straight to the destination inside (the bed / visit spot; no interior leg).
           const p = w.door.exit ? tileCenterPx(layout, b.door) : w.dest.location === `bld:${b.id}` ? { x: w.dest.x, y: w.dest.y } : placeAt(b, 'door');
           w.door = null;
           teleport(e, p.x, p.y, 'door', undefined, true);
@@ -645,7 +652,7 @@ export function createWorldModule(host: RoomHost, opts: WorldOptions = {}): Worl
       if (e.frozen) return host.send(pid, 'error', { code: 'forbidden', message: 'The Storyteller has paused your movement.', for: 'world:useDoor' });
       const inside = e.location === `bld:${b.id}`;
       if (inside) {
-        // v2: leaving works from anywhere inside (fixed interior view + "Leave" button).
+        // Leaving works from anywhere inside ("Leave" button, or walking out through the doorway).
         if (!canExit(pid, b)) return host.send(pid, 'error', { code: 'phase', message: doorLocks.get(b.id) ? 'The door is locked.' : 'You must stay home until morning.', for: 'world:useDoor' });
         const p = tileCenterPx(layout, b.door);
         teleport(e, p.x, p.y, 'door');
