@@ -387,7 +387,7 @@ function doorOf(h: { facing: Facing3 }, fp: TileRect): TilePoint {
   return { x: h.facing === 'east' ? fp.x + fp.w : fp.x - 1, y: fp.y + fp.h - 1 };
 }
 
-// --- Interiors (pixel rooms, shown as a fixed "inside" view; nobody walks around in them) ------
+// --- Interiors (walkable pixel rooms, with furniture collision and a south-facing doorway) ---
 
 function paintRoom(r: TileRect, floor: string) {
   rect(r.x, r.y, r.w, r.h, G.iwall);

@@ -10,7 +10,8 @@
 // Every case must end in a sane state with a friendly message: no stuck UI, no raw errors, no page
 // errors. Each case is "soft": a failure is recorded as a bug and the game goes on.
 // Message-level driving: only the "walk out at night" door request (the UI correctly refuses to send
-// it). v2: inside a cottage there is no walking — the room's Leave button / an arrow key leaves. Step log + bugs: tests/e2e/artifacts/game-chaos-<run>.json; screenshots game-chaos-*.png.
+// it). Inside cottages, movement keys walk; Leave / Escape exits. Step log + bugs:
+// tests/e2e/artifacts/game-chaos-<run>.json; screenshots game-chaos-*.png.
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -209,7 +210,7 @@ test('chaos: unexpected orders, refreshes, duplicate tabs and races during a rea
     });
 
     // ------------------------------------------------------------------------------- night
-    await chaos(`N1 ${P1.name} tries to walk out at night: Leave is disabled ("stay home"), an arrow key explains it, a forced request is refused politely`, async (note) => {
+    await chaos(`N1 ${P1.name} tries to leave at night: Leave is disabled ("stay home"), Escape explains it, a forced request is refused politely`, async (note) => {
       const pid = pidOf(P1);
       const btn = leaveButton(P1.page);
       await expect(btn).toBeDisabled({ timeout: 15_000 });
@@ -217,7 +218,7 @@ test('chaos: unexpected orders, refreshes, duplicate tabs and races during a rea
       await expect(btn).toContainText(/stay home|until morning/i);
       const tKey = Date.now();
       await P1.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
-      await P1.page.keyboard.press('ArrowDown');
+      await P1.page.keyboard.press('Escape');
       await P1.page.waitForTimeout(1200);
       expect(P1.tap.sent('world:useDoor', tKey).length, 'the UI sends no door request at night').toBe(0);
       expect(selfEntity(P1, pid)?.location).toBe(`bld:${home(P1).id}`);

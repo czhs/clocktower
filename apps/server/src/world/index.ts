@@ -10,7 +10,7 @@
 // Doors (v2 one-screen town): ENTERING needs the player outdoors within DOOR_RANGE_PX of the
 // building's outdoor door tile (the client sends 'world:useDoor' when it walks into the doorway; the
 // tile sits below the footprint for 'south' cottages and beside it for 'east'/'west' ones). EXITING
-// works from anywhere inside (interiors are a fixed view, nobody walks in them: "Leave" button).
+// works from anywhere inside for the "Leave" shortcut; clients also walk to the interior doorway.
 // Server-driven walks likewise leave a building at once (no interior leg) and enter straight to
 // their destination inside.
 //
@@ -373,7 +373,7 @@ export function createWorldModule(host: RoomHost, opts: WorldOptions = {}): Worl
       w.door = null;
       return true;
     }
-    // Leave the current building first (at once: nobody walks inside interiors in v2), then walk
+    // Leave the current building first (using the same shortcut as Leave), then walk
     // outdoors to the destination's door.
     if (here !== 'outdoors') {
       const b = buildingById.get(here.slice(4));
@@ -422,7 +422,7 @@ export function createWorldModule(host: RoomHost, opts: WorldOptions = {}): Worl
       if (!next) {
         if (w.door) {
           const b = buildingById.get(w.door.building)!;
-          // Entering: straight to the destination inside (interiors are a fixed view, no walking).
+          // A server-directed journey enters at its requested interior destination.
           const p = w.door.exit ? tileCenterPx(layout, b.door) : w.dest.location === `bld:${b.id}` ? { x: w.dest.x, y: w.dest.y } : placeAt(b, 'door');
           w.door = null;
           teleport(e, p.x, p.y, 'door', undefined, true);
@@ -645,7 +645,7 @@ export function createWorldModule(host: RoomHost, opts: WorldOptions = {}): Worl
       if (e.frozen) return host.send(pid, 'error', { code: 'forbidden', message: 'The Storyteller has paused your movement.', for: 'world:useDoor' });
       const inside = e.location === `bld:${b.id}`;
       if (inside) {
-        // v2: leaving works from anywhere inside (fixed interior view + "Leave" button).
+        // The Leave shortcut works from anywhere inside; locks still apply.
         if (!canExit(pid, b)) return host.send(pid, 'error', { code: 'phase', message: doorLocks.get(b.id) ? 'The door is locked.' : 'You must stay home until morning.', for: 'world:useDoor' });
         const p = tileCenterPx(layout, b.door);
         teleport(e, p.x, p.y, 'door');

@@ -4,7 +4,7 @@ import { useStore } from '../../net/store';
 import type { RoomConnection } from '../../net/room';
 import './chat.css';
 
-// Text chat. Waiting room: whole lobby. In game: the server delivers a message only to members who
+// Text chat. In every phase the server delivers a message only to members who
 // could hear the sender's voice (same acoustic zone), so the panel says so. Docked bottom-left on
 // desktop (voice panel is bottom-right); on phones it starts collapsed to a button and opens as a
 // bottom sheet. Text is escaped by Preact. Enter focuses the input; Escape leaves it.
@@ -168,14 +168,14 @@ export function ChatPanel({ conn }: { conn: RoomConnection; account: AccountView
   return (
     <section ref={rootRef} class={`ct-chat${inGame ? ' ct-chat-ingame' : ''}`} aria-label="Chat">
       <header class="ct-chat-head">
-        <span>{inGame ? 'Nearby chat' : 'Lobby chat'}</span>
+        <span>Nearby chat</span>
         <button class="ct-chat-min" onClick={() => ((userOpened.current = false), setOpen(false))} aria-label="Minimise chat" title="Minimise chat">
           –
         </button>
       </header>
-      {inGame && <div class="ct-chat-note">Only people who can hear you will see your messages.</div>}
+      <div class="ct-chat-note">Only people in your area see your messages. Inside a cottage, chat stays in that room.</div>
       <div class="ct-chat-list" ref={listRef} role="log" aria-live="polite">
-        {messages.length === 0 && <div class="ct-chat-empty">{inGame ? 'Nothing said nearby yet.' : 'No messages yet — say hello.'}</div>}
+        {messages.length === 0 && <div class="ct-chat-empty">Nothing said nearby yet.</div>}
         {messages.map((m) => (
           <div key={m.id} class={`ct-chat-msg ct-chat-${m.scope} ${m.fromPid && m.fromPid === lobby?.youPid ? 'ct-chat-mine' : ''}`}>
             <span class="ct-chat-meta">
@@ -196,7 +196,7 @@ export function ChatPanel({ conn }: { conn: RoomConnection; account: AccountView
           ref={inputRef}
           value={text}
           maxLength={CHAT_MAX}
-          placeholder={inGame ? 'Say something nearby…' : 'Message the lobby…'}
+          placeholder="Say something nearby…"
           aria-label="Chat message"
           enterKeyHint="send"
           autoComplete="off"

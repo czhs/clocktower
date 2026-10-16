@@ -1,0 +1,28 @@
+# Local preview only. Code is built into the image; rebuild after editing with:
+#   docker compose up --build -d
+services:
+  app:
+    build: .
+    init: true
+    ports:
+      - "127.0.0.1:${CT_LOCAL_PORT:-3002}:3000"
+    environment:
+      APP_ENV: development
+      APP_PUBLIC_ORIGIN: "http://localhost:${CT_LOCAL_PORT:-3002}"
+      COOKIE_SECURE: "false"
+      DATABASE_URL: file:./data/local/clocktower.db
+      LIVEKIT_URL: "${CT_LOCAL_LIVEKIT_URL:-}"
+      LIVEKIT_API_KEY: "${CT_LOCAL_LIVEKIT_API_KEY:-}"
+      LIVEKIT_API_SECRET: "${CT_LOCAL_LIVEKIT_API_SECRET:-}"
+      LIVEKIT_ROOM_PREFIX: local
+      CT_VERSION: local-preview
+    volumes:
+      - local-data:/app/data/local
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      start_period: 15s
+      retries: 3
+volumes:
+  local-data:

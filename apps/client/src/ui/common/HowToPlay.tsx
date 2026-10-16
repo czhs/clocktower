@@ -88,8 +88,8 @@ export function HowToPlay({ onClose, touch, onTour }: { onClose: () => void; tou
       (prevFocus.current as HTMLElement | null)?.focus?.();
     };
   }, []);
-  const move = touch ? 'Drag the joystick (bottom-left)' : 'WASD or the arrow keys';
-  const use = touch ? 'tap the door button' : 'press E or Space';
+  const move = touch ? 'Tap the floor, or drag the joystick outdoors' : 'WASD, arrow keys, or click the floor';
+  const use = 'walk in, or tap the cottage';
   return (
     <div class="ct-help-backdrop" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div class="ct-help panel" role="dialog" aria-modal="true" aria-labelledby="ct-help-title">
@@ -112,6 +112,7 @@ export function HowToPlay({ onClose, touch, onTour }: { onClose: () => void; tou
               <li>
                 <b>Move:</b> {move}. <b>Doors:</b> walk up to one and {use}.
               </li>
+              <li>Inside, you can walk around the furniture. Walk into the doorway, use Leave, or press Escape to exit.</li>
               <li>
                 <b>Your home:</b> once the game starts you get a cottage. The <span class="ct-help-chip">⌂ Home</span> compass at the bottom of the
                 screen points the way.
@@ -147,7 +148,7 @@ export function HowToPlay({ onClose, touch, onTour }: { onClose: () => void; tou
           {tab === 'Night' && (
             <ul>
               <li>When the bell tolls, walk home before the countdown ends (you are carried home if late).</li>
-              <li>At night everyone is locked inside. You cannot see the town or who the Storyteller visits.</li>
+              <li>At night you can walk around your home, but its door is locked. You cannot see the town or who the Storyteller visits.</li>
               <li>
                 If your character acts at night the Storyteller will walk into your home and show you a prompt — choose, then wait for them to
                 leave.

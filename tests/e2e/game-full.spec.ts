@@ -497,7 +497,7 @@ test('full game: 1 Storyteller + 5 players, every phase through the real UI', as
       await shot(outWalkers[0]!.page, '08b-day1-inside-home');
       const t0 = Date.now();
       await leaveByButton(outWalkers[0]!, pidOf(outWalkers[0]!));
-      await leaveByKey(outWalkers[1]!, pidOf(outWalkers[1]!), 'ArrowDown');
+      await leaveByKey(outWalkers[1]!, pidOf(outWalkers[1]!));
       for (const p of outWalkers) {
         const bad = tps(p, t0).filter((t: any) => !['door', 'correction'].includes(t.reason));
         expect(bad, `${p.name}: walked out through the door`).toEqual([]);
@@ -518,7 +518,7 @@ test('full game: 1 Storyteller + 5 players, every phase through the real UI', as
       await expect(insidePanel(guest.page)).toContainText(`${host.name}’s home`, { timeout: 15_000 });
       await expect(insidePanel(guest.page)).toContainText(host.name);
       await expect(insidePanel(host.page)).toContainText(guest.name, { timeout: 15_000 });
-      await expect(insidePanel(host.page)).toContainText(/only you two can hear each other/);
+      await expect(insidePanel(host.page)).toContainText(/voice and text stay in this room/);
       await guest.tap.until(() => voiceZone(guest) === zone, 15_000, `${guest.name} granted ${zone}`);
       expect(voiceZone(host), `${host.name} still in ${zone}`).toBe(zone);
       // the outsider: square zone, never granted the cottage's room, never sees the two inside
@@ -777,7 +777,7 @@ test('full game: 1 Storyteller + 5 players, every phase through the real UI', as
       for (const p of players) await p.tap.until(() => tagged(p), 10_000, 'door tags back');
     });
 
-    await step(`8d door lock: ST locks ${tavern.name}; ${mover.name}'s Leave button says it is locked, an arrow key explains it, a modified client's door request is refused; "Default" lets them out`, 'ui+message', async () => {
+    await step(`8d door lock: ST locks ${tavern.name}; ${mover.name}'s Leave button says it is locked, Escape explains it, a modified client's door request is refused; "Default" lets them out`, 'ui+message', async () => {
       await st.page.locator('.cts-doors summary').click();
       const row = st.page.locator('.cts-doors li', { hasText: tavern.name });
       await row.getByRole('button', { name: '🔒 Locked' }).click();
@@ -787,11 +787,11 @@ test('full game: 1 Storyteller + 5 players, every phase through the real UI', as
       await expect(btn).toBeDisabled({ timeout: 10_000 });
       await expect(btn).toContainText(/locked/i);
       note(`locked Leave button: "${(await btn.textContent())?.trim()}"`);
-      // a movement key inside tries to leave: refused locally with a message, nothing sent
+      // Escape tries to leave: refused locally with a message, nothing sent
       const t0 = Date.now();
       await mover.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
-      await mover.page.keyboard.press('ArrowDown');
-      await expect(insidePanel(mover.page).locator('.ct-inside-note')).toContainText(/locked/i, { timeout: 5000 }).catch(() => note('no "locked" note in the inside panel after an arrow key'));
+      await mover.page.keyboard.press('Escape');
+      await expect(insidePanel(mover.page).locator('.ct-inside-note').filter({ hasText: /locked/i })).toBeVisible({ timeout: 5000 });
       await mover.page.waitForTimeout(1000);
       expect(mover.tap.sent('world:useDoor', t0).length, 'no door request for a locked door').toBe(0);
       // a modified client asks anyway: the server refuses politely

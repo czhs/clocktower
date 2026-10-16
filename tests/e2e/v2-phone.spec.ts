@@ -230,7 +230,7 @@ test('v2 phones: join, pick a character, tap into a cottage, Leave (portrait + l
     notes.push(`P re-enters: ${(await tapCottage(P, pPid, hp.id, { touch: true })).join(' | ')}`);
     await expect(insidePanel(Q.page)).toContainText(P.name, { timeout: 15_000 });
     await expect(insidePanel(P.page)).toContainText(Q.name, { timeout: 15_000 });
-    await expect(insidePanel(P.page)).toContainText(/only you two can hear each other/);
+    await expect(insidePanel(P.page)).toContainText(/voice and text stay in this room/);
     const zone = `bld:${hp.id}`;
     const outside = fillers.find((f) => selfEntity(f, pidOf(f))?.location === 'outdoors') ?? fillers[0]!;
     await P.tap.until(() => voiceZone(P) === zone, 15_000, `P voice zone ${zone}`);
