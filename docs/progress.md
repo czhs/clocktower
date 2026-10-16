@@ -69,3 +69,11 @@ chaos suite. Art/town overhaul is proceeding in a separate session (see docs/art
 for the hooks it must carry over). Open (low): slow first load / no loading indicator on weak
 machines; rematch waiting room list below the fold at 720×450; dead-Imp HUD chip noise in reveal;
 real-microphone, real-Safari/iOS and 10–15-person tests need humans.
+
+## v2 (2026-10-15)
+One-screen Town-of-Salem-style town in the v1 procedural pixel style (Opus art fleet: 26-character
+8-direction roster + ghosts, 15 hand-designed houses, terrain/interiors, ambient FX), automatic doors,
+tap-to-go, house interiors as private voice rooms, square = one voice room, camera framing the square,
+Storyteller stage-script panel + click-to-teleport, pointing + character pins, private notebooks,
+full game records with play-by-play, Story/pamphlets, admin console. Release notes: docs/RELEASE-v2.md.
+The pre-pivot art-overhaul WIP is preserved on branch `wip/art-overhaul`.

@@ -15,53 +15,60 @@ export const CARDS: TourCard[] = [
   {
     id: 'town',
     clip: 'town',
-    title: 'A town to wander',
-    lines: ['Every villager you meet is one of your friends.', 'Walk the lanes, find the square, gather under the clock tower.'],
+    title: 'One square, fifteen cottages',
+    lines: ['Every character you meet is one of your friends.', 'Out on the square, everyone hears everyone.'],
     glyph: '⌂',
-  },
-  {
-    id: 'talk',
-    clip: 'talk',
-    title: 'Talk to whoever is near',
-    lines: ['The square hears everyone.', 'Step into a side street and only the friend beside you can hear.'],
-    glyph: '❝',
   },
   {
     id: 'inside',
     clip: 'inside',
-    title: 'Step inside for a private word',
-    lines: ['Behind a closed door, only the people in the room can hear you.', 'The door shows who is inside.'],
+    title: 'Tap a cottage for a private word',
+    lines: ['Doors open by themselves: tap a cottage, or just walk in.', 'Inside, only the people in the room can hear each other.'],
     glyph: '🚪',
+  },
+  {
+    id: 'point',
+    clip: 'point',
+    title: 'Point, and pin your suspects',
+    lines: ['Right-click (or long-press) to point at someone.', 'Press F to pin a person or a spot with your face on it.'],
+    glyph: '☝',
+  },
+  {
+    id: 'notebook',
+    clip: 'notebook',
+    title: 'Keep a private notebook',
+    lines: ['Press N for a note and a trust mark on every player.', 'Nobody else can read it, not even the Storyteller.'],
+    glyph: '✎',
   },
   {
     id: 'night',
     clip: 'night',
-    title: 'At night, walk home and wait…',
-    lines: ['When the bell tolls, head to your cottage.', 'Night falls once everyone is in.'],
+    title: 'At the bell, walk home',
+    lines: ['When the bell tolls, tap your cottage to head home.', 'Night falls once everyone is in.'],
     glyph: '☾',
   },
   {
     id: 'visit',
     clip: 'visit',
     title: 'The Storyteller visits in secret',
-    lines: ['If your character wakes at night, the Storyteller comes to your door.', 'Nobody else sees the visit or your answer.'],
+    lines: ['If your character wakes at night, the Storyteller appears in your home.', 'Nobody else sees the visit or your answer.'],
     glyph: '🕯',
   },
   {
     id: 'vote',
     clip: 'vote',
     title: 'Gather, nominate, vote',
-    lines: ['Raise your hand before the clock hand reaches you.', 'Even the dead keep talking, and keep one ghost vote.'],
+    lines: ['Raise your hand before the clock hand reaches you.', 'The dead keep talking; a halo means their ghost vote is unspent.'],
     glyph: '✋',
   },
   {
     id: 'storyteller',
     clip: 'storyteller',
     title: 'The Storyteller runs the show',
-    lines: ['A human Storyteller guides every game.', 'Their panel tracks who to visit, who is ready and every vote.'],
+    lines: ['A human Storyteller guides every game from a simple script.', 'One click to cross the square, one more to visit a home.'],
     glyph: '✦',
   },
 ];
 
 /** Opened from a lobby invite: keep it short, the game is waiting. */
-export const INVITED_CARDS = ['town', 'talk', 'visit', 'vote'];
+export const INVITED_CARDS = ['town', 'inside', 'visit', 'vote'];

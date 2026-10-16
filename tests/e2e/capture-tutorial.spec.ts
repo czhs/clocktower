@@ -1,13 +1,17 @@
-// Tour footage capture (tutorial teammate). Plays one scripted game against a private test server
+// Tour footage capture (tutorial teammate). Plays one scripted v2 game against a private test server
 // and records short clips of REAL gameplay for the pre-sign-in tour (apps/client/src/ui/intro).
 //
 //   CT_AGENT=tutorial scripts/remote.sh pnpm capture:tutorial
 //   CT_AGENT=tutorial scripts/pull.sh apps/client/public/tutorial
 //
 // Cast: the Storyteller and two players ("Ada", "Bram") are real browsers (3 contexts, GPU WebGL);
-// five more villagers are protocol bots (tests/support/bot.ts) that walk with valid moves, chat,
-// nominate and raise hands. Every frame is the real client rendering real server state: the script
-// only stages WHERE things happen (Storyteller teleports between scenes, which are cut out).
+// seven more villagers are protocol bots (tests/support/bot.ts) that the Storyteller's own stage
+// command walks around (walk_to: server-driven walking at normal speed, in and out of doors), and that
+// nominate and raise hands. Ada and Bram play with the real client: Ada walks with the keyboard, taps
+// cottages to go in, presses Leave, right-clicks to point, F to pin, N for her notebook, answers the
+// Storyteller's prompt; the Storyteller rings the bell from the stage-script panel, clicks the map to
+// teleport and "Go" to visit. Every frame is the real client rendering real server state; the script
+// only stages WHERE things start (Storyteller teleports between scenes, which are cut out).
 //
 // Recording: CDP screencast (JPEG frames + timestamps) per camera page, written under
 // test-results/tutorial-raw/. Encoding (ffmpeg): each clip = 1-3 timed segments with short fades ->
@@ -16,8 +20,8 @@
 // replaying the game. ffmpeg: $CT_FFMPEG, else `ffmpeg` on PATH, else the static npm build in
 // ~/clocktower/audio-scratch (docs/audio.md).
 //
-// The game script is layout-agnostic (positions come from townLayout: square, clock tower, homes,
-// tavern), so the same command re-records the footage after the art/town overhaul.
+// The script is layout-driven (positions come from townLayout / PLAZA: the square, the homes), so the
+// same command re-records the footage after art or layout changes.
 import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
@@ -25,10 +29,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test, type CDPSession, type Page } from '@playwright/test';
-import { FrameTap, geo, inject, installSocketTap, signUp, type GamePlayer } from './helpers';
+import { canvasBox, geo, inject, leaveByButton, outdoorCamera, selfEntity, signUp, tapCottage, type GamePlayer } from './helpers';
 import { Bot } from '../support/bot.js';
 import { fakeClientIp } from '../support/ip.js';
-import { segmentSafe } from '../../apps/server/src/world/path.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const RAW = path.join(ROOT, 'test-results/tutorial-raw');
@@ -41,10 +44,9 @@ const FPS = 24;
 const WEBM_MAX = Number(process.env.CT_TUTORIAL_WEBM_MAX ?? 330_000);
 const MP4_MAX = Number(process.env.CT_TUTORIAL_MP4_MAX ?? 400_000);
 const PLAYER_VP = { width: OUT_W, height: OUT_H };
-/** Storyteller: a tall window, so the panel shows its tab content; the clip pans a 480x270 window
- * over the panel, pixel-doubled to 960x540 (the CDP screencast delivers CSS-pixel frames). */
-const ST_VP = { width: 1180, height: 1060 };
-const ST_DPR = 1;
+/** The Storyteller: 16:9 but larger, so the stage-script panel leaves most of the town visible; the
+ * clip is scaled down to 960x540. */
+const ST_VP = { width: 1280, height: 720 };
 
 test.skip(!process.env.CT_CAPTURE_TUTORIAL, 'footage capture: run with `pnpm capture:tutorial` (sets CT_CAPTURE_TUTORIAL=1)');
 
@@ -57,6 +59,8 @@ interface Segment {
   crop?: { x: number; y0: number; y1: number; w: number; h: number };
 }
 const clips: Record<string, Segment[]> = {};
+/** Absolute capture time (s) of the poster frame per clip (optional; else ~40% into the first segment). */
+const posters: Record<string, number> = {};
 const log: string[] = [];
 const say = (s: string) => {
   const line = `[capture ${new Date().toISOString().slice(11, 19)}] ${s}`;
@@ -123,6 +127,16 @@ const lv = (p: GamePlayer) => p.tap.last('lobby:view');
 const pidOf = (p: GamePlayer): string => lv(p)?.youPid;
 const seatOf = (p: GamePlayer): number => gv(p)?.you?.seat;
 const botSeat = (b: Bot): number => (b.gameView as { you?: { seat: number } } | undefined)?.you?.seat ?? -1;
+const locOf = (p: GamePlayer): string | undefined => selfEntity(p, pidOf(p))?.location;
+
+/** First-visit hints, the tour and the How to play dialog stay closed in the footage; the camera test hook is on. */
+const QUIET = () => {
+  try {
+    for (const k of ['ct.intro.seen.v1', 'ct.intro.seen', 'ct.hint.move.v1', 'ct.hint.social.v1', 'ct.help.seen.v1', 'ct.debug.camera']) localStorage.setItem(k, '1');
+  } catch {
+    /* storage blocked */
+  }
+};
 
 /** The page's own avatar: the newest of (a move it sent = its local prediction) / a teleport / a snapshot. */
 function posOf(p: GamePlayer): (Pt & { location: string }) | null {
@@ -151,8 +165,9 @@ const KEYS = { left: 'ArrowLeft', right: 'ArrowRight', up: 'ArrowUp', down: 'Arr
 /**
  * Walk a browser player with the real keyboard, smoothly: keys stay held and only change when the
  * direction to the next waypoint (server A*, string-pulled) changes, so the avatar never stutters.
+ * Outdoors only (v2: a movement key inside a cottage walks you out).
  */
-async function kbWalk(p: GamePlayer, goal: Pt, budgetMs = 45_000, tol = 7): Promise<boolean> {
+async function kbWalk(p: GamePlayer, goal: Pt, budgetMs = 30_000, tol = 7): Promise<boolean> {
   const g = await geo();
   await p.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
   const start = posOf(p);
@@ -184,9 +199,10 @@ async function kbWalk(p: GamePlayer, goal: Pt, budgetMs = 45_000, tol = 7): Prom
   const OCT: string[][] = [[KEYS.right], [KEYS.right, KEYS.down], [KEYS.down], [KEYS.left, KEYS.down], [KEYS.left], [KEYS.left, KEYS.up], [KEYS.up], [KEYS.right, KEYS.up]];
   try {
     while (i < pts.length && Date.now() < until) {
-      await sleep(20);
+      await sleep(15);
       const c = posOf(p);
       if (!c) continue;
+      if (c.location !== start.location) break; // walked through a door by accident
       if (Math.hypot(c.x - last.x, c.y - last.y) > 0.5) {
         lastMoveAt = Date.now();
         last = c;
@@ -199,13 +215,13 @@ async function kbWalk(p: GamePlayer, goal: Pt, budgetMs = 45_000, tol = 7): Prom
       const sy = wp.y - prev.y;
       const segLen = Math.max(1, Math.hypot(sx, sy));
       const u = ((c.x - prev.x) * sx + (c.y - prev.y) * sy) / (segLen * segLen);
-      if (d <= (final ? tol : 8) || (!final && u >= 1)) {
+      if (d <= (final ? tol : 10) || (!final && u >= 1)) {
         prev = wp;
         i++;
         continue;
       }
       if (final && u >= 1.05 && d <= tol * 2) break;
-      if (Date.now() - lastMoveAt > 1500 && replans < 8) {
+      if (Date.now() - lastMoveAt > 1200 && replans < 8) {
         replans++;
         await set([]);
         const re = g.findPath(g.L, c, goal, c.location as never);
@@ -214,14 +230,14 @@ async function kbWalk(p: GamePlayer, goal: Pt, budgetMs = 45_000, tol = 7): Prom
         continue;
       }
       // short look-ahead: any cross-track error of a couple of px turns into a diagonal back onto the line
-      const look = final && d < 18 ? 1 : Math.min(1, Math.max(0, u) + 7 / segLen);
+      const look = final && d < 24 ? 1 : Math.min(1, Math.max(0, u) + 10 / segLen);
       const tx = prev.x + sx * look;
       const ty = prev.y + sy * look;
       const ang = Math.atan2(ty - c.y, tx - c.x);
       let oct = (((Math.round(ang / (Math.PI / 4)) % 8) + 8) % 8) as number;
       // pinned on a corner for a moment: slide along it (the next diagonal either way)
       const pinned = Date.now() - lastMoveAt;
-      if (pinned > 300) oct = (oct + (Math.floor(pinned / 300) % 2 ? 1 : 7)) % 8;
+      if (pinned > 250) oct = (oct + (Math.floor(pinned / 250) % 2 ? 1 : 7)) % 8;
       await set(OCT[oct]!);
     }
   } finally {
@@ -230,106 +246,55 @@ async function kbWalk(p: GamePlayer, goal: Pt, budgetMs = 45_000, tol = 7): Prom
   const end = posOf(p);
   const ok = !!end && Math.hypot(end.x - goal.x, end.y - goal.y) < 20;
   if (!ok) {
-    const since = Date.now() - budgetMs - 1000;
     say(
       `${p.name}: walk to ${Math.round(goal.x)},${Math.round(goal.y)} ended at ${Math.round(end?.x ?? -1)},${Math.round(end?.y ?? -1)} ${end?.location} ` +
-        `(from ${Math.round(start.x)},${Math.round(start.y)} ${start.location}; waypoint ${i}/${pts.length}; replans ${replans}; moves sent ${p.tap.sent('move', since).length}; ` +
-        `you=${JSON.stringify(p.tap.last('world:snapshot')?.you ?? null)}; phase ${gv(p)?.phase}; focus ${await p.page.evaluate(() => document.activeElement?.tagName + '.' + document.activeElement?.className)})`,
+        `(from ${Math.round(start.x)},${Math.round(start.y)} ${start.location}; waypoint ${i}/${pts.length}; replans ${replans}; phase ${gv(p)?.phase})`,
     );
     await p.page.screenshot({ path: path.join(RAW, `walk-${p.name}-${Date.now()}.png`) }).catch(() => undefined);
   }
   return ok;
 }
 
-/** Turn in place (a bare tap is a one-frame step; that is fine). */
+/** Turn in place outdoors (a bare tap is a one-frame step; that is fine). */
 async function face(p: GamePlayer, dir: keyof typeof KEYS) {
+  if (locOf(p) !== 'outdoors') return;
   await p.page.keyboard.down(KEYS[dir]);
-  await sleep(40);
+  await sleep(30);
   await p.page.keyboard.up(KEYS[dir]);
 }
-
-/** Press E until the server moves us through the door. */
-async function useDoor(p: GamePlayer, expectLocation: string, timeoutMs = 12_000): Promise<boolean> {
-  const t0 = Date.now();
-  while (Date.now() - t0 < timeoutMs) {
-    await p.page.keyboard.press('KeyE');
-    for (let k = 0; k < 15; k++) {
-      await sleep(100);
-      if (posOf(p)?.location === expectLocation) return true;
-    }
-  }
-  return false;
-}
-
-// Bots: valid move frames at walking speed along the server's own paths.
-function syncBot(b: Bot) {
-  const s = b.latest['world:snapshot'] as { entities?: { id: string; x: number; y: number; location: string }[] } | undefined;
-  const e = s?.entities?.find((x) => x.id === b.pid);
-  if (e) {
-    b.pos = { x: e.x, y: e.y };
-    b.location = e.location;
-  }
-}
-function botMove(b: Bot, x: number, y: number, facing: string, moving: boolean) {
-  const anyB = b as unknown as { seq: number };
-  try {
-    b.send('move', { seq: anyB.seq++, x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10, facing, moving });
-  } catch {
-    /* socket closing */
-  }
-}
-async function botWalk(b: Bot, goal: Pt, speed = 0.92, finalFacing?: string): Promise<boolean> {
-  const g = await geo();
-  syncBot(b);
-  if (!b.pos) return false;
-  const pts = g.findPath(g.L, b.pos, goal, b.location as never);
-  if (!pts) return false;
-  let facing = 'down';
-  const dt = 0.05;
-  for (const wp of pts) {
-    for (;;) {
-      if (!b.room || !b.pos) return false;
-      const dx: number = wp.x - b.pos.x;
-      const dy: number = wp.y - b.pos.y;
-      const d = Math.hypot(dx, dy);
-      const step = 72 * speed * dt;
-      if (d > 0.01) facing = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : dy > 0 ? 'down' : 'up';
-      if (d <= step) {
-        b.pos = { x: wp.x, y: wp.y };
-        botMove(b, wp.x, wp.y, facing, true);
-        await sleep(dt * 1000);
-        break;
-      }
-      b.pos = { x: b.pos.x + (dx / d) * step, y: b.pos.y + (dy / d) * step };
-      botMove(b, b.pos.x, b.pos.y, facing, true);
-      await sleep(dt * 1000);
-    }
-  }
-  botMove(b, b.pos!.x, b.pos!.y, finalFacing ?? facing, false);
-  return true;
-}
-function botFace(b: Bot, facing: string) {
-  syncBot(b);
-  if (b.pos) botMove(b, b.pos.x, b.pos.y, facing, false);
-}
-async function botDoor(b: Bot, buildingId: string, expect: string): Promise<boolean> {
-  for (let k = 0; k < 6; k++) {
-    try {
-      b.send('world:useDoor', { buildingId });
-    } catch {
-      return false;
-    }
-    await sleep(700);
-    syncBot(b);
-    if (b.location === expect) return true;
-  }
-  return false;
-}
-/** Facing from a to b. */
-function facingTo(a: Pt, b: Pt): string {
+const faceToward = (a: Pt, b: Pt): keyof typeof KEYS => {
   const dx = b.x - a.x;
   const dy = b.y - a.y;
   return Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : dy > 0 ? 'down' : 'up';
+};
+
+/** Page coordinates of a world point on this browser's screen (the client's opt-in camera hook,
+ * localStorage ct.debug.camera; fallback: helpers.outdoorCamera), and whether the canvas gets a click there. */
+async function screenOf(p: GamePlayer, w: Pt): Promise<Pt & { ok: boolean }> {
+  let pt = await p.page.evaluate(([x, y]) => (window as unknown as { __ctCamera?: { worldToScreen(x: number, y: number): { x: number; y: number } } }).__ctCamera?.worldToScreen(x!, y!) ?? null, [w.x, w.y]);
+  if (!pt) {
+    const box = await canvasBox(p.page);
+    const me = selfEntity(p, pidOf(p));
+    if (!me) throw new Error(`${p.name}: no own entity`);
+    const cam = await outdoorCamera(box, me);
+    pt = { x: box.x + (w.x - cam.cx) * cam.zoom + box.w / 2, y: box.y + (w.y - cam.cy) * cam.zoom + box.h / 2 };
+  }
+  const ok = await p.page.evaluate(([sx, sy]) => {
+    const el = document.elementFromPoint(sx!, sy!);
+    return !!el && el.tagName === 'CANVAS' && !!el.closest('.ct-game-canvas');
+  }, [pt.x, pt.y]);
+  return { ...pt, ok };
+}
+
+/** A 1.5x close-up (640x360 window of the 960x540 frame) centred on these world points. */
+async function zoomOn(p: GamePlayer, pts: Pt[]): Promise<Segment['crop']> {
+  const c = { x: pts.reduce((a, q) => a + q.x, 0) / pts.length, y: pts.reduce((a, q) => a + q.y, 0) / pts.length };
+  const s = await screenOf(p, c);
+  const w = 640;
+  const h = 360;
+  const x = Math.max(0, Math.min(OUT_W - w, s.x - w / 2));
+  const y = Math.max(0, Math.min(OUT_H - h, s.y - h / 2));
+  return { x, y0: y, y1: y, w, h };
 }
 
 // ------------------------------------------------------------------------------------ the script
@@ -340,72 +305,45 @@ test('record the pre-sign-in tour footage', async ({ browser, baseURL }) => {
   mkdirSync(OUT, { recursive: true });
   if (!ENCODE_ONLY) await play(browser, baseURL!);
   else {
-    const saved = JSON.parse(readFileSync(path.join(RAW, 'clips.json'), 'utf8')) as { clips: Record<string, Segment[]> };
+    const saved = JSON.parse(readFileSync(path.join(RAW, 'clips.json'), 'utf8')) as { clips: Record<string, Segment[]>; posters?: Record<string, number> };
     Object.assign(clips, saved.clips);
+    Object.assign(posters, saved.posters ?? {});
   }
   const results = encodeAll();
   writeFileSync(path.join(RAW, 'capture-log.txt'), log.join('\n'));
-  expect(Object.keys(results).length, 'clips encoded').toBeGreaterThanOrEqual(5);
+  expect(Object.keys(results).length, 'clips encoded').toBeGreaterThanOrEqual(6);
 });
 
 async function play(browser: import('@playwright/test').Browser, base: string) {
   const g = await geo();
   const L = g.L;
+  const P = g.PLAZA;
   const free = (x: number, y: number, loc = 'outdoors') => !g.isBlockedPx(L, x, y) && g.locationAt(L, x, y) === loc;
   const nearFree = (p: Pt, r = 40, loc = 'outdoors'): Pt | null => {
     for (let rad = 0; rad <= r; rad += 3)
       for (let a = 0; a < 360; a += rad ? 20 : 360) {
         const x = p.x + Math.cos((a * Math.PI) / 180) * rad;
         const y = p.y + Math.sin((a * Math.PI) / 180) * rad;
-        if (free(x, y, loc)) return { x, y };
+        // the body box is ~12 px wide: keep a little room around the feet
+        if (free(x, y, loc) && free(x - 7, y, loc) && free(x + 7, y, loc) && free(x, y - 6, loc)) return { x: Math.round(x), y: Math.round(y) };
       }
     return null;
   };
-  const pathLen = (pts: Pt[] | null, from: Pt) => (pts ? pts.reduce((acc, p, i) => acc + Math.hypot(p.x - (i ? pts[i - 1]!.x : from.x), p.y - (i ? pts[i - 1]!.y : from.y)), 0) : Infinity);
-  /** An outdoor start point ~`len` px of walking from `dest`, on a nearly straight path, outside `avoid`. */
-  /** A straight corridor (body box + 4 px either side) from a to b. */
-  const corridor = (a: Pt, b: Pt) => {
-    const d = Math.max(1, Math.hypot(b.x - a.x, b.y - a.y));
-    const nx = (-(b.y - a.y) / d) * 4;
-    const ny = ((b.x - a.x) / d) * 4;
-    return [0, 1, -1].every((k) => segmentSafe(L, a.x + nx * k, a.y + ny * k, b.x + nx * k, b.y + ny * k));
-  };
-  const approach = (dest: Pt, len: number, avoid?: { cx: number; cy: number; r: number }): Pt => {
-    // Best: a straight walk along one of the 8 key directions (no corners, no zigzag).
-    for (const f of [1, 0.9, 1.1, 0.8, 0.7, 1.2])
-      for (let a = 0; a < 360; a += 45) {
-        const c = { x: dest.x - Math.cos((a * Math.PI) / 180) * len * f, y: dest.y - Math.sin((a * Math.PI) / 180) * len * f };
-        if (!free(c.x, c.y) || (avoid && Math.hypot(c.x - avoid.cx, c.y - avoid.cy) < avoid.r)) continue;
-        if (corridor(c, dest)) return c;
-      }
-    let best: { p: Pt; score: number } | null = null;
-    for (let a = 0; a < 360; a += 10) {
-      for (const f of [0.85, 0.95, 1.05]) {
-        const c = nearFree({ x: dest.x + Math.cos((a * Math.PI) / 180) * len * f, y: dest.y + Math.sin((a * Math.PI) / 180) * len * f }, 24);
-        if (!c) continue;
-        if (avoid && Math.hypot(c.x - avoid.cx, c.y - avoid.cy) < avoid.r) continue;
-        const pts = g.findPath(L, c, dest, 'outdoors');
-        const l = pathLen(pts, c);
-        if (!Number.isFinite(l)) continue;
-        const straight = l / Math.max(1, Math.hypot(dest.x - c.x, dest.y - c.y));
-        const score = Math.abs(l - len) + 300 * (straight - 1);
-        if (!best || score < best.score) best = { p: c, score };
-      }
-    }
-    if (!best) throw new Error(`no approach to ${dest.x},${dest.y}`);
-    return best.p;
-  };
-
-  const sq = L.square;
-  const tower = L.buildings.find((b) => b.kind === 'clocktower');
-  const tavern = L.buildings.find((b) => b.kind === 'tavern') ?? L.buildings.find((b) => b.houseIndex === null && b.kind !== 'clocktower')!;
+  /** A point on the square: angle (rad, 0 = right, y down) and fraction of the radius. */
+  const onSquare = (ang: number, f: number): Pt => nearFree({ x: P.cx + Math.cos(ang) * P.rx * f, y: P.cy + Math.sin(ang) * P.ry * f }) ?? { x: P.cx, y: P.cy + 20 };
   const tileC = (t: Pt) => g.tileCenterPx(L, t);
-  say(`town ${L.widthTiles}x${L.heightTiles}, square r=${sq.r} at ${sq.cx},${sq.cy}; tower ${tower?.id ?? '-'}; tavern ${tavern.id}`);
+  const homeOf = (seat: number) => L.buildings.find((b) => b.houseIndex === seat)!;
+  say(`town ${L.widthTiles}x${L.heightTiles}, plaza r=${P.rx} at ${P.cx},${P.cy}; ${L.buildings.length} buildings`);
 
   // ---------------------------------------------------------------- cast
-  const st = await signUpHiDpi(browser, 'Mira', ST_VP, ST_DPR);
-  const A = await signUp(browser, 'Ada', { viewport: PLAYER_VP, villagerIndex: 3 });
-  const B = await signUp(browser, 'Bram', { viewport: PLAYER_VP, villagerIndex: 6 });
+  const st = await signUp(browser, 'Mira', { viewport: ST_VP, characterIndex: 20 });
+  const A = await signUp(browser, 'Ada', { viewport: PLAYER_VP, characterIndex: 2 });
+  const B = await signUp(browser, 'Bram', { viewport: PLAYER_VP, characterIndex: 3 });
+  for (const p of [st, A, B]) {
+    await p.ctx.addInitScript(QUIET);
+    await p.page.evaluate(QUIET);
+  }
+  say(`Ada is ${A.character}, Bram is ${B.character}`);
   const renderer = await A.page.evaluate(() => {
     const c = document.createElement('canvas');
     const gl = c.getContext('webgl');
@@ -417,19 +355,20 @@ async function play(browser: import('@playwright/test').Browser, base: string) {
   if (/swiftshader|llvmpipe|software/i.test(renderer) && !process.env.CT_TUTORIAL_ALLOW_SOFTWARE)
     throw new Error(`software WebGL (${renderer}): footage would be ~1 fps. Run on hshi-u1 (RTX 3060) or set CT_TUTORIAL_ALLOW_SOFTWARE=1`);
 
-  await st.page.getByRole('button', { name: /create lobby/i }).first().click();
-  const dialog = st.page.getByRole('dialog', { name: 'Create lobby' });
-  await dialog.getByLabel('Lobby name').fill('Ravenswood Bluff');
-  await dialog.getByLabel(/storyteller seat/i).check();
-  await dialog.getByRole('button', { name: 'Create', exact: true }).click();
-  await st.page.waitForURL(/\/lobby\/[A-Za-z0-9_-]{4,32}$/);
-  const lobbyId = new URL(st.page.url()).pathname.split('/').pop()!;
+  const lr = await st.page.request.post('/api/lobbies', { data: { name: 'Ravenswood Bluff', maxPlayers: 15, takeStoryteller: true } });
+  expect(lr.status(), await lr.text()).toBeLessThan(300);
+  const lobbyId = ((await lr.json()) as { lobby: { id: string } }).lobby.id;
+  await st.page.goto(`/lobby/${lobbyId}`);
   for (const p of [A, B]) {
     await p.page.goto(`/lobby/${lobbyId}`);
-    await p.page.getByRole('button', { name: "I'm ready" }).click({ timeout: 60_000 });
+    await expect(p.page.getByRole('button', { name: "I'm ready" })).toBeEnabled({ timeout: 60_000 });
+    await p.page.getByRole('button', { name: "I'm ready" }).click();
   }
   const wsUrl = base.replace(/^http/, 'ws');
-  const BOT_NAMES = ['Cora', 'Dov', 'Esme', 'Finn', 'Gwen'];
+  const BOT_NAMES = ['Cora', 'Dov', 'Esme', 'Finn', 'Gwen', 'Hugo', 'Iris'];
+  const LOOKS = ['rabbit', 'frog', 'moth', 'polly', 'goat', 'clarabelle', 'mushroom', 'mole', 'requin', 'theo-rem', 'snail'];
+  const playable = new Set(g.playable.map((c) => c.id));
+  const looks = LOOKS.filter((id) => playable.has(id) && id !== A.character && id !== B.character);
   const bots: Bot[] = [];
   for (const [i, n] of BOT_NAMES.entries()) {
     const b = new Bot(n, base, wsUrl, { record: false, headers: { 'X-Forwarded-For': fakeClientIp() } });
@@ -437,20 +376,23 @@ async function play(browser: import('@playwright/test').Browser, base: string) {
     await b.signUp();
     await b.join(lobbyId);
     await b.waitFor('lobby:view', () => true, 10_000).catch(() => undefined);
-    const preset = g.presets[(i * 2 + 1) % g.presets.length]?.id ?? null;
-    if (preset) b.send('lobby:cosmetics', { cosmetics: { skin: 'fair', hair: 'short', hairColor: 'brown', outfit: 'peasant', palette: 'forest', accessory: 'none', ghost: 'wisp', preset } });
+    const preset = looks[i % looks.length] ?? null;
+    b.send('lobby:cosmetics', { cosmetics: { skin: 'fair', hair: 'short', hairColor: 'brown', outfit: 'peasant', palette: 'forest', accessory: 'none', ghost: 'wisp', preset } });
     b.send('lobby:ready', { ready: true });
     bots.push(b);
   }
   const byName = (n: string) => bots.find((b) => b.name === n)!;
-  await st.tap.until(() => lv(st)?.canStart, 30_000, 'canStart');
+  await expect(st.page.getByRole('button', { name: 'Start game' })).toBeEnabled({ timeout: 30_000 });
   await st.page.getByRole('button', { name: 'Start game' }).click();
   await st.tap.until(() => gv(st)?.kind === 'storyteller', 30_000, 'game started');
   for (const p of [A, B]) await p.tap.until(() => typeof seatOf(p) === 'number', 20_000, 'seat');
   for (const b of bots) await expect.poll(() => botSeat(b), { timeout: 20_000 }).toBeGreaterThanOrEqual(0);
   const seatA = seatOf(A);
   const seatB = seatOf(B);
-  const cast = ['washerwoman', 'chef', 'monk', 'poisoner', 'imp'];
+  const pidA = pidOf(A);
+  const pidB = pidOf(B);
+  const pidST = pidOf(st);
+  const cast = ['washerwoman', 'chef', 'monk', 'butler', 'saint', 'poisoner', 'imp'];
   const assignments = [
     { seat: seatA, character: 'fortune_teller' },
     { seat: seatB, character: 'empath' },
@@ -458,14 +400,21 @@ async function play(browser: import('@playwright/test').Browser, base: string) {
   ];
   await inject(st.page, 'st:command', { type: 'assign_characters', assignments, demonBluffs: ['virgin', 'slayer', 'mayor'], redHerringSeat: botSeat(byName('Dov')) });
   await st.tap.until(() => gv(st)?.charactersAssigned, 15_000, 'characters assigned');
-  const homeOf = (seat: number) => L.buildings.find((b) => b.houseIndex === seat)!;
   const cmd = (c: Record<string, unknown>) => inject(st.page, 'st:command', c);
   const teleport = async (seats: number[], p: Pt) => cmd({ type: 'teleport', who: seats, to: { kind: 'point', x: Math.round(p.x), y: Math.round(p.y) } });
-  say(`seats: Ada ${seatA + 1}, Bram ${seatB + 1}, ${bots.map((b) => `${b.name} ${botSeat(b) + 1}`).join(', ')}`);
+  const walkTo = async (seats: number[], to: Record<string, unknown>) => cmd({ type: 'walk_to', who: seats, to });
+  const walkBot = (b: Bot, p: Pt) => walkTo([botSeat(b)], { kind: 'point', x: Math.round(p.x), y: Math.round(p.y) });
+  const stTo = async (p: Pt) => cmd({ type: 'teleport_self', to: { kind: 'point', x: Math.round(p.x), y: Math.round(p.y) } });
+  const homeA = homeOf(seatA);
+  const homeB = homeOf(seatB);
+  say(`seats: Ada ${seatA + 1} (${homeA.name}), Bram ${seatB + 1} (${homeB.name}), ${bots.map((b) => `${b.name} ${botSeat(b) + 1}`).join(', ')}`);
 
   const camA = new Cam('ada', A.page);
   const camB = new Cam('bram', B.page);
   const camST = new Cam('storyteller', st.page);
+  const stopCams = async () => {
+    for (const c of [camA, camB, camST]) await c.stop().catch(() => undefined);
+  };
   const only = process.env.CT_TUTORIAL_SCENES?.split(',').filter(Boolean);
   const scene = async (name: string, fn: () => Promise<void>) => {
     if (only && !only.includes(name)) return say(`scene ${name}: skipped (CT_TUTORIAL_SCENES)`);
@@ -475,340 +424,344 @@ async function play(browser: import('@playwright/test').Browser, base: string) {
       say(`scene ${name}: ok (${Math.round((Date.now() - t0) / 1000)} s)`);
     } catch (e) {
       say(`scene ${name}: FAILED ${(e as Error).message.split('\n')[0]}`);
+      await stopCams();
       await A.page.screenshot({ path: path.join(RAW, `fail-${name}-ada.png`) }).catch(() => undefined);
       await st.page.screenshot({ path: path.join(RAW, `fail-${name}-st.png`) }).catch(() => undefined);
     }
   };
 
+  // Ada's side of the square: from the middle toward her own door.
+  const doorA = tileC(homeA.door);
+  const toA = Math.atan2(doorA.y - P.cy, doorA.x - P.cx);
+  const tower = L.buildings.find((b) => b.kind === 'clocktower');
+  /** Where the Storyteller waits by day: by the clock tower, out of the way. */
+  const stSpot = nearFree(tower ? { x: tileC(tower.door).x + 34, y: tileC(tower.door).y + 14 } : { x: P.cx, y: P.cy - P.ry * 0.9 }, 40) ?? onSquare(-Math.PI / 2, 0.85);
+
   let wandering = false;
   try {
-    // ============================================================ (d) bedtime -> walk home -> night
+    // ============================================================ (night) the bell -> walk home -> night falls
     await scene('night', async () => {
-      const home = homeOf(seatA);
-      const door = tileC(home.door);
-      // Ada starts a few seconds' walk from her door (staged by the Storyteller before the bell).
-      const startA = approach(door, 330);
+      // Everyone is out on the square before the first night (staged off camera): Ada across the
+      // square from her cottage, friends chatting in small groups.
+      const startA = onSquare(toA + Math.PI, 0.3);
       await teleport([seatA], startA);
-      // two neighbours are out too, so the bell sends a few people hurrying home
-      const nb = ['Cora', 'Dov'].map(byName);
-      for (const [k, b] of nb.entries()) {
-        const p = nearFree({ x: startA.x + (k ? -40 : 46), y: startA.y + (k ? 30 : -26) }, 30);
-        if (p) await teleport([botSeat(b)], p);
-      }
-      await sleep(2500);
+      await teleport([seatB], nearFree({ x: startA.x - 26, y: startA.y + 14 }, 20) ?? startA);
+      for (const [i, b] of bots.entries()) await teleport([botSeat(b)], onSquare(toA + Math.PI / 2 + (i * Math.PI * 1.9) / bots.length, 0.42 + (i % 3) * 0.16));
+      await stTo(stSpot);
+      await sleep(3500); // teleport notices fade
       await camA.start();
-      await sleep(600);
+      await sleep(1100);
       const bellAt = now();
-      await expect(st.page.locator('.cts-now-btn')).toContainText(/bell/i);
-      await st.page.locator('.cts-now-btn').click();
+      await st.page.locator('.cts-cue[data-cue="bedtime"]').click();
       await A.tap.until(() => gv(A)?.phase === 'bedtime', 15_000, 'bedtime');
       await cmd({ type: 'bedtime_timer', action: 'pause' });
-      // the bots head home too
-      const botsHome = bots.map(async (b) => {
-        const h = homeOf(botSeat(b));
-        if (await botWalk(b, tileC(h.door))) await botDoor(b, h.id, `bld:${h.id}`);
-      });
-      await sleep(1200);
-      const walkFrom = now();
-      await kbWalk(A, door);
-      await useDoor(A, `bld:${home.id}`);
-      await sleep(1300);
-      addSegment('night', 'ada', Math.max(bellAt + 0.4, walkFrom - 1.0), now());
-      // the Storyteller shortens the countdown; Bram is walked home; night falls when all are in
-      await cmd({ type: 'set_bedtime_seconds', seconds: 10 });
-      await cmd({ type: 'bedtime_timer', action: 'restart' });
-      await cmd({ type: 'bedtime_timer', action: 'resume' });
-      await Promise.race([Promise.all(botsHome), sleep(60_000)]);
-      await A.tap.until(() => gv(A)?.phase === 'first_night', 240_000, 'first night');
-      const nightAt = now();
-      await sleep(2600);
-      addSegment('night', 'ada', nightAt - 0.6, now());
-      await camA.stop();
-    });
-
-    // ============================================================ (e) night visit + (h) ST panel
-    await scene('visit', async () => {
-      if (gv(st)?.phase !== 'first_night') throw new Error(`phase ${gv(st)?.phase}`);
-      await A.tap.until(() => gv(A)?.you?.role, 15_000, 'role');
-      await sleep(1500);
-      const queue = () => (gv(st).nightQueue ?? []) as { id: string; seat: number | null; status: string; prompt?: unknown }[];
-      const step = queue().find((s) => s.seat === seatA);
-      // the Stage controls fold away so the tab content (night order, seat circle, Grimoire) has room
-      const fold = st.page.locator('.cts-stage-head .cts-icon[aria-expanded="true"]');
-      if (await fold.count()) await fold.first().click();
-      await st.page.locator('.cts-tabs').getByRole('button', { name: 'Night order' }).click();
-      /** A 480x270 window over the panel that pans from its top down to `focus`. */
-      const pan = async (focus: string | import('@playwright/test').Locator) => {
-        const box = (await st.page.locator('.cts').first().boundingBox())!;
-        const loc = typeof focus === 'string' ? st.page.locator(focus).first() : focus;
-        const f = await loc.boundingBox().catch(() => null);
-        const w = 480;
-        const h = 270;
-        const x = Math.max(0, box.x - 24);
-        const y0 = Math.max(0, box.y - 6);
-        const y1 = f ? Math.max(y0, Math.min(f.y + Math.min(f.height, h - 20) / 2 - h / 2, box.y + box.height - h + 6)) : y0;
-        return { x: x * ST_DPR, y0: y0 * ST_DPR, y1: y1 * ST_DPR, w: w * ST_DPR, h: h * ST_DPR };
-      };
-      const row = () => st.page.locator('.cts-steps > li').nth(queue().findIndex((s) => s.id === step?.id));
-      if (step) await row().scrollIntoViewIfNeeded().catch(() => undefined);
-      await camA.start();
-      await camST.start();
-      await sleep(1200);
-      const t0 = now();
-      if (step) await row().getByRole('button', { name: 'Visit', exact: true }).click();
-      else await cmd({ type: 'visit_home', seat: seatA });
-      await A.tap.until(() => gv(A)?.storytellerVisitingYou === true, 15_000, 'visited');
-      const visitedAt = now();
-      await sleep(2600);
-      if (step?.prompt) await row().getByRole('button', { name: /^(Re-)?[Pp]rompt$/ }).click();
-      else
-        await cmd({
-          type: 'prompt_player',
-          seat: seatA,
-          prompt: { kind: 'choose_players', title: 'Fortune Teller: choose 2 players', body: 'Is one of them the Demon?', minTargets: 2, maxTargets: 2, allowSelf: true },
-        });
-      const pr = await A.tap.until(() => gv(A)?.prompts?.[0], 15_000, 'prompt');
-      const card = A.page.getByRole('dialog', { name: pr.title });
-      await expect(card).toBeVisible();
-      await sleep(1400);
-      const choices = card.locator('.cth-choices button');
-      await choices.nth(1).click();
+      // everyone heads home at once (server-walked), Ada taps her own cottage; Iris dawdles, so
+      // night cannot fall before the Storyteller's camera is rolling
+      const late = byName('Iris');
+      for (const b of bots) if (b !== late) await walkTo([botSeat(b)], { kind: 'home' });
+      await walkTo([seatB], { kind: 'home' });
       await sleep(500);
-      await choices.nth(3).click();
-      await sleep(600);
-      await card.getByRole('button', { name: 'Confirm' }).click();
-      await sleep(1500);
-      addSegment('visit', 'ada', visitedAt - 1.6, now());
+      say(`Ada taps her cottage: ${(await tapCottage(A, pidA, homeA.id, { timeoutMs: 40_000 })).join(' | ')}`);
+      await sleep(1700); // "You are home — safe for the night"
+      addSegment('night', 'ada', bellAt - 0.4, now());
       await camA.stop();
-      // (h) the Storyteller's view of the same moment, then a short pan over the panel
-      addSegment('storyteller', 'storyteller', t0 - 0.6, visitedAt + 2.4, await pan(step ? row() : '.cts-steps'));
-      await st.page.locator('.cts-tabs').getByRole('button', { name: 'Stage' }).click();
-      await sleep(250);
-      const s1 = now();
-      await sleep(2600);
-      addSegment('storyteller', 'storyteller', s1, now(), await pan('.cts-circle'));
-      await st.page.locator('.cts-tabs').getByRole('button', { name: 'Grimoire' }).click();
-      await sleep(250);
-      const s2 = now();
-      await sleep(2600);
-      addSegment('storyteller', 'storyteller', s2, now(), await pan('.cts-grim'));
+      // the Storyteller watches night fall over the square (panel folded away)
+      await st.page.getByRole('button', { name: 'Collapse the panel' }).click();
+      await stTo(onSquare(Math.PI / 2, 0.2));
+      await sleep(1500);
+      await camST.start();
+      await sleep(600);
+      await walkTo([botSeat(late)], { kind: 'home' });
+      await cmd({ type: 'bedtime_timer', action: 'resume' });
+      const fell = await st.tap.until(() => gv(st)?.phase === 'first_night', 45_000, 'night falls (everyone home)').catch(() => null);
+      if (!fell) {
+        say('night did not fall by itself: the Storyteller forces it');
+        await cmd({ type: 'force_phase', to: 'first_night' });
+        await st.tap.until(() => gv(st)?.phase === 'first_night', 15_000, 'first night (forced)');
+      }
+      const nightAt = now();
+      await sleep(3600);
+      addSegment('night', 'storyteller', nightAt - 0.8, now());
+      posters.night = nightAt + 2.5;
       await camST.stop();
-      // finish the night off camera
-      await cmd({ type: 'leave_home' });
-      for (const s of queue()) if (!['resolved', 'skipped'].includes(s.status)) await cmd({ type: 'skip_step', stepId: s.id });
-      await sleep(800);
-      await cmd({ type: 'advance_phase', to: 'dawn' });
-      await st.tap.until(() => gv(st).phase === 'dawn', 15_000, 'dawn');
-      await cmd({ type: 'advance_phase', to: 'day' });
-      await A.tap.until(() => gv(A)?.phase === 'day', 15_000, 'day');
+      await st.page.locator('.cts-slim-open').click();
     });
-    if (gv(st)?.phase !== 'day') {
-      await cmd({ type: 'force_phase', to: 'day' });
-      await A.tap.until(() => gv(A)?.phase === 'day', 15_000, 'day (forced)');
+    if (gv(st)?.phase !== 'first_night') {
+      await cmd({ type: 'force_phase', to: 'first_night' });
+      await st.tap.until(() => gv(st)?.phase === 'first_night', 15_000, 'first night (forced)');
     }
 
-    // ============================================================ (a) a town to wander
-    const groupAt = nearFree({ x: sq.cx - sq.r * 0.42, y: sq.cy + sq.r * 0.32 }) ?? nearFree({ x: sq.cx, y: sq.cy + sq.r * 0.4 })!;
-    const meetA = nearFree({ x: groupAt.x + 34, y: groupAt.y + 6 })!;
+    // ============================================================ (visit + storyteller) the night visit
+    await scene('visit', async () => {
+      await A.tap.until(() => gv(A)?.you?.role, 15_000, 'role');
+      await A.tap.until(() => locOf(A) === `bld:${homeA.id}`, 15_000, 'Ada at home');
+      if (await st.page.locator('.cts-slim-open').count()) await st.page.locator('.cts-slim-open').click();
+      await expect(st.page.locator('.cts-visits')).toBeVisible({ timeout: 15_000 });
+      // Ada's own row (other rows may mention her, e.g. the Washerwoman's info)
+      const row = st.page.locator('.cts-visits > li').filter({ has: st.page.locator('.cts-visit-name', { hasText: /^Ada$/ }) }).first();
+      await expect(row).toBeVisible();
+      await row.scrollIntoViewIfNeeded();
+      await sleep(1200);
+      await camST.start();
+      await camA.start();
+      await sleep(1200);
+      // 1. the Storyteller clicks the map: poof, they are across the square
+      const me = selfEntity(st, pidST)!;
+      const want = [0.55, 0.4, 0.7].map((f) => nearFree({ x: P.cx + (doorA.x - P.cx) * f, y: P.cy + (doorA.y - P.cy) * f }, 24)).filter(Boolean) as Pt[];
+      let clicked = false;
+      const c0 = now();
+      for (const w of want) {
+        if (Math.hypot(w.x - me.x, w.y - me.y) < 40) continue;
+        const s = await screenOf(st, w);
+        if (!s.ok) continue;
+        const since = Date.now();
+        await st.page.mouse.click(s.x, s.y);
+        await st.tap.until(() => st.tap.sent('st:command', since).some((c: { type: string }) => c.type === 'teleport_self'), 5_000, 'click-to-teleport').catch(() => undefined);
+        clicked = true;
+        break;
+      }
+      if (!clicked) say('storyteller: no clickable spot for the click-to-teleport shot');
+      await sleep(1900);
+      addSegment('storyteller', 'storyteller', c0 - 1.0, now());
+      // 2. "Go" on Ada's visit: poof, inside her cottage
+      const g0 = now();
+      await row.locator('.cts-go').click();
+      await A.tap.until(() => gv(A)?.storytellerVisitingYou === true || (selfEntity(A, pidST)?.location === `bld:${homeA.id}`), 15_000, 'visited');
+      const visitedAt = now();
+      await sleep(1500);
+      const here = st.page.locator('.cts-visit.here').first();
+      await here.getByRole('button', { name: /^Ask:/ }).click({ timeout: 10_000 });
+      const pr = await A.tap.until(() => gv(A)?.prompts?.[0], 15_000, 'prompt');
+      await sleep(600);
+      addSegment('storyteller', 'storyteller', g0 - 0.8, now());
+      posters.storyteller = visitedAt + 1.3;
+      const card = A.page.getByRole('dialog', { name: pr.title });
+      await expect(card).toBeVisible();
+      await sleep(1300);
+      const choices = card.locator('.cth-choices button');
+      await choices.nth(1).click();
+      await sleep(450);
+      await choices.nth(4).click();
+      await sleep(500);
+      await card.getByRole('button', { name: 'Confirm' }).click();
+      const answeredAt = now();
+      await expect(here.locator('.cts-resp')).toBeVisible({ timeout: 10_000 });
+      await sleep(700);
+      const tell = here.locator('.cts-tell button[type=submit]');
+      if (await tell.count()) await tell.click();
+      await sleep(2000);
+      addSegment('visit', 'ada', visitedAt - 1.3, now());
+      posters.visit = visitedAt + 2.2;
+      addSegment('storyteller', 'storyteller', answeredAt - 0.3, now() - 0.4);
+      await camA.stop();
+      await camST.stop();
+      // finish the night off camera
+      const done = here.locator('.cts-done');
+      if (await done.count()) await done.click().catch(() => undefined);
+      await cmd({ type: 'leave_home' });
+      const queue = (gv(st).nightQueue ?? []) as { id: string; status: string }[];
+      for (const s of queue) if (!['resolved', 'skipped'].includes(s.status)) await cmd({ type: 'skip_step', stepId: s.id });
+      await sleep(800);
+    });
+    for (const to of ['dawn', 'day'] as const) {
+      await cmd({ type: 'force_phase', to });
+      await st.tap.until(() => gv(st)?.phase === to, 15_000, to);
+      await sleep(600);
+    }
+    await A.tap.until(() => gv(A)?.phase === 'day', 15_000, 'day');
+    await stTo(stSpot);
+    await sleep(7000); // the dawn announcement fades
+
+    // ============================================================ (town) morning: out of the cottages, onto the square
+    const groupAt = onSquare(toA, 0.08);
+    const perp = toA + Math.PI / 2;
+    const ux = Math.cos(toA);
+    const uy = Math.sin(toA);
+    const groupSpots = [
+      nearFree({ x: groupAt.x + Math.cos(perp) * 30, y: groupAt.y + Math.sin(perp) * 30 }, 16),
+      nearFree({ x: groupAt.x - Math.cos(perp) * 30, y: groupAt.y - Math.sin(perp) * 30 }, 16),
+      nearFree({ x: groupAt.x - ux * 30, y: groupAt.y - uy * 30 }, 16),
+    ].map((p) => p ?? groupAt);
+    const meetA = nearFree({ x: groupAt.x + ux * 36, y: groupAt.y + uy * 36 }, 20) ?? groupAt;
+    const meetB = nearFree({ x: meetA.x + Math.cos(perp) * 28, y: meetA.y + Math.sin(perp) * 28 }, 20) ?? meetA;
     const group = ['Cora', 'Dov', 'Esme'].map(byName);
-    const ring = [
-      { x: groupAt.x - 18, y: groupAt.y - 14 },
-      { x: groupAt.x + 4, y: groupAt.y - 22 },
-      { x: groupAt.x - 22, y: groupAt.y + 12 },
-    ].map((p) => nearFree(p, 16) ?? groupAt);
-    wandering = true;
-    const wander = async (b: Bot, pts: Pt[]) => {
-      for (let k = 0; wandering; k++) {
-        await botWalk(b, pts[k % pts.length]!, 0.8);
-        await sleep(600 + Math.random() * 1200);
+    const others = ['Finn', 'Gwen', 'Hugo', 'Iris'].map(byName);
+    const roam = (k: number) => onSquare(toA + Math.PI + (k * 1.3) + Math.random() * 0.6, 0.35 + Math.random() * 0.45);
+    const wander = async (b: Bot, k: number) => {
+      for (let n = 0; wandering; n++) {
+        await walkBot(b, roam(k + n));
+        await sleep(3500 + Math.random() * 3000);
       }
     };
     await scene('town', async () => {
-      // everyone out of their homes, staged around the square (off camera)
-      for (const [i, b] of group.entries()) await teleport([botSeat(b)], ring[i]!);
-      const loopPts = [0, 1, 2, 3].map((k) => nearFree({ x: sq.cx + Math.cos(k * 1.7) * sq.r * 0.55, y: sq.cy + Math.sin(k * 1.7) * sq.r * 0.5 }) ?? { x: sq.cx, y: sq.cy + 30 });
-      await teleport([botSeat(byName('Finn'))], loopPts[0]!);
-      await teleport([botSeat(byName('Gwen'))], loopPts[2]!);
-      const startA = approach(meetA, 470, { cx: sq.cx, cy: sq.cy, r: sq.r * 0.9 });
-      const dl = Math.max(1, Math.hypot(meetA.x - startA.x, meetA.y - startA.y));
-      const dir = { x: (meetA.x - startA.x) / dl, y: (meetA.y - startA.y) / dl };
-      // Bram walks the same straight line a step behind Ada and stops just short of her
-      const startB = { x: startA.x - dir.x * 24, y: startA.y - dir.y * 24 };
-      const goalB = { x: meetA.x - dir.x * 22, y: meetA.y - dir.y * 22 };
-      await teleport([seatA], startA);
-      await teleport([seatB], free(startB.x, startB.y) ? startB : startA);
+      if (locOf(A) !== `bld:${homeA.id}`) await cmd({ type: 'teleport', who: [seatA], to: { kind: 'home' } });
       await sleep(1500);
-      for (const [i, b] of group.entries()) {
-        syncBot(b);
-        await botWalk(b, ring[i]!, 0.9, facingTo(ring[i]!, groupAt));
-      }
-      void wander(byName('Finn'), loopPts);
-      void wander(byName('Gwen'), [loopPts[2]!, loopPts[3]!, loopPts[0]!, loopPts[1]!]);
-      await sleep(3500); // teleport hints fade
       await camA.start();
-      await sleep(400);
-      const t0 = now();
-      const walkB = (async () => {
-        await sleep(350);
-        await kbWalk(B, free(goalB.x, goalB.y) ? goalB : meetA, 12_000);
-        await face(B, 'left');
-      })();
-      await kbWalk(A, meetA, 20_000);
-      await face(A, 'left');
       await sleep(900);
-      const t1 = now();
-      addSegment('town', 'ada', Math.max(t0, t1 - 7.4), t1);
-      await walkB;
-    });
-
-    // ============================================================ (b) the square hears everyone; a pair in the street
-    await scene('talk', async () => {
-      await A.page.locator('.ct-chat-toggle').click().catch(() => undefined);
-      await A.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
-      await sleep(1200);
-      if (!camA.on) await camA.start();
       const t0 = now();
-      const lines: [string, string][] = [
-        ['Cora', 'I learned that one of Dov and Finn is the Chef.'],
-        ['Dov', "That's me! And I got a 0: no evil pairs."],
-        ['Esme', 'Bram has been very quiet this morning…'],
-      ];
-      await sleep(700);
-      for (const [n, text] of lines) {
-        byName(n).send('chat:send', { text });
-        await sleep(1300);
-      }
-      await sleep(700);
-      addSegment('talk', 'ada', t0, now());
-      // a word in private: Ada and Bram step into a side street (cut)
-      const street = approach(meetA, 300, { cx: sq.cx, cy: sq.cy, r: sq.r + 90 });
-      await teleport([seatA], street);
-      await teleport([seatB], { x: street.x + 22, y: street.y });
+      // Ada steps out first; then the town wakes around her: everyone comes out of their cottage
+      // and onto the square
+      await leaveByButton(A, pidA);
+      await sleep(300);
+      for (const [i, b] of group.entries()) await walkBot(b, groupSpots[i]!);
+      await walkTo([seatB], { kind: 'point', x: meetB.x, y: meetB.y });
+      for (const [k, b] of others.entries()) await walkBot(b, roam(k * 2));
+      await sleep(500);
+      await kbWalk(A, meetA, 15_000);
+      await face(A, faceToward(meetA, groupAt));
       await sleep(2200);
-      await face(A, 'right');
-      await sleep(900);
-      const t1 = now();
-      await sleep(400);
-      byName('Cora').send('chat:send', { text: 'Where did Ada and Bram go?' }); // the square: Ada cannot hear it
-      await inject(B.page, 'chat:send', { text: 'Psst, Ada. I think Cora is lying.' });
-      await sleep(1600);
-      await inject(A.page, 'chat:send', { text: 'Tavern. Now.' });
-      await sleep(1600);
-      addSegment('talk', 'ada', t1, now());
+      addSegment('town', 'ada', t0, now());
+      posters.town = now() - 0.6;
+      wandering = true;
+      void wander(byName('Finn'), 0);
+      void wander(byName('Gwen'), 3);
+      await camA.stop();
     });
 
-    // ============================================================ (c) step inside for a private word
+    // ============================================================ (inside) tap a cottage: a private room for two
     await scene('inside', async () => {
-      const door = tileC(tavern.door);
-      const startA = approach(door, 230);
-      await teleport([seatA], startA);
-      const startB = nearFree({ x: (startA.x + door.x * 2) / 3, y: (startA.y + door.y * 2) / 3 }) ?? startA;
-      await teleport([seatB], startB);
-      await sleep(2500);
-      if (!camA.on) await camA.start();
+      if (locOf(A) !== 'outdoors' || locOf(B) !== 'outdoors') throw new Error(`Ada ${locOf(A)}, Bram ${locOf(B)}`);
+      await sleep(1200);
+      await camA.start();
+      await sleep(700);
       const t0 = now();
-      const inside = tileC(tavern.interiorDoor);
-      const inLoc = `bld:${tavern.id}`;
-      const room = (dx: number, dy: number) => nearFree({ x: inside.x + dx, y: inside.y + dy }, 14, inLoc);
-      const spotB = [room(-26, -36), room(26, -36), room(0, -44)].find(Boolean) ?? inside;
-      const spotA = [room(16, -18), room(-16, -18), room(0, -22)].find((p) => p && Math.hypot(p.x - spotB.x, p.y - spotB.y) > 14) ?? inside;
-      say(`tavern: Bram -> ${Math.round(spotB.x)},${Math.round(spotB.y)}, Ada -> ${Math.round(spotA.x)},${Math.round(spotA.y)} (door ${Math.round(inside.x)},${Math.round(inside.y)})`);
-      const inB = (async () => {
-        await kbWalk(B, door);
-        await useDoor(B, `bld:${tavern.id}`);
-        await sleep(300);
-        await kbWalk(B, spotB, 6_000);
-        await face(B, spotA.x > spotB.x ? 'right' : 'left');
-      })();
-      await sleep(600);
-      await kbWalk(A, door);
+      // Bram taps his own cottage and walks in; Ada follows a moment later
+      const inB = tapCottage(B, pidB, homeB.id, { timeoutMs: 40_000 });
+      await sleep(1300);
+      say(`Ada taps ${homeB.name}: ${(await tapCottage(A, pidA, homeB.id, { timeoutMs: 40_000 })).join(' | ')}`);
       await inB;
-      await sleep(900); // the door tag shows who is inside
-      await useDoor(A, `bld:${tavern.id}`);
-      await sleep(250);
-      await kbWalk(A, spotA, 6_000);
-      await face(A, spotB.x > spotA.x ? 'right' : 'left');
-      await sleep(400);
-      await inject(B.page, 'chat:send', { text: 'In here, nobody outside can hear us.' });
-      await sleep(2000);
-      addSegment('inside', 'ada', Math.max(t0, now() - 8.5), now());
+      const inAt = now();
+      await expect(A.page.locator('.ct-inside')).toContainText(/only you two can hear each other/, { timeout: 10_000 });
+      await sleep(2600);
+      addSegment('inside', 'ada', Math.max(t0, inAt - 5.6), now());
+      posters.inside = now() - 0.8;
+      await camA.stop();
     });
 
-    // ============================================================ (f) gather, nominate, vote + (g) ghost
+    // ============================================================ (point) point at people, pin them
+    await scene('point', async () => {
+      // the group on the square (staged off camera): Ada, Bram, Dov and Esme near each other
+      const c = onSquare(toA + Math.PI, 0.12);
+      const spots = { A: c, B: nearFree({ x: c.x - 40, y: c.y + 22 }, 16)!, Dov: nearFree({ x: c.x + 64, y: c.y - 6 }, 16)!, Esme: nearFree({ x: c.x + 26, y: c.y - 58 }, 16)!, Cora: nearFree({ x: c.x - 22, y: c.y - 52 }, 16)! };
+      await teleport([seatA], spots.A);
+      await teleport([seatB], spots.B);
+      for (const n of ['Dov', 'Esme', 'Cora'] as const) await teleport([botSeat(byName(n))], spots[n]);
+      await sleep(3800);
+      await face(A, 'right');
+      await camA.start();
+      await sleep(900);
+      const t0 = now();
+      const ent = (n: string) => (A.tap.last('world:snapshot')?.entities ?? []).find((e: { id: string }) => e.id === byName(n).pid) as Pt | undefined;
+      // right-click Dov: Ada points at him
+      const dov = ent('Dov') ?? spots.Dov;
+      let s = await screenOf(A, { x: dov.x, y: dov.y - 14 });
+      await A.page.mouse.click(s.x, s.y, { button: 'right' });
+      await sleep(1700);
+      // F over Esme: a pin with Ada's face
+      const esme = ent('Esme') ?? spots.Esme;
+      s = await screenOf(A, { x: esme.x, y: esme.y - 14 });
+      await A.page.mouse.move(s.x, s.y);
+      await A.page.keyboard.press('KeyF');
+      await sleep(1100);
+      // and one on Dov
+      s = await screenOf(A, { x: dov.x, y: dov.y - 14 });
+      await A.page.mouse.move(s.x, s.y);
+      await A.page.keyboard.press('KeyF');
+      await sleep(900);
+      // Bram pins Esme as well: two pins, two faces
+      const esmeB = (B.tap.last('world:snapshot')?.entities ?? []).find((e: { id: string }) => e.id === byName('Esme').pid) as Pt | undefined;
+      const sb = await screenOf(B, { x: (esmeB ?? esme).x, y: (esmeB ?? esme).y - 14 });
+      await B.page.mouse.move(sb.x, sb.y);
+      await B.page.keyboard.press('KeyF');
+      await A.page.mouse.move(8, 8);
+      await sleep(1800);
+      addSegment('point', 'ada', t0 - 0.2, now(), await zoomOn(A, [spots.A, dov, esme, spots.B]));
+      posters.point = now() - 0.5;
+      await camA.stop();
+    });
+
+    // ============================================================ (notebook) a private notebook
+    await scene('notebook', async () => {
+      await A.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+      await sleep(600);
+      await camA.start();
+      await sleep(800);
+      const t0 = now();
+      await A.page.keyboard.press('KeyN');
+      const nb = A.page.locator('.ctn');
+      await expect(nb.locator('.ctn-body')).toBeVisible({ timeout: 15_000 });
+      await sleep(900);
+      await nb.getByRole('group', { name: 'Trust marker for Cora' }).getByRole('button', { name: 'Trust' }).click();
+      await sleep(500);
+      const note = nb.getByLabel('Note about Dov');
+      await note.click();
+      await A.page.keyboard.type('Says Chef: 0 pairs. Believe him?', { delay: 38 });
+      await sleep(500);
+      await nb.getByRole('group', { name: 'Trust marker for Esme' }).getByRole('button', { name: 'Suspect' }).click();
+      await sleep(400);
+      await nb.getByLabel('Note about Esme').click();
+      await A.page.keyboard.type('Quiet. Pinned her.', { delay: 38 });
+      await sleep(1600);
+      addSegment('notebook', 'ada', t0 - 0.2, now());
+      posters.notebook = now() - 0.6;
+      await camA.stop();
+      await nb.getByRole('button', { name: 'Close notebook' }).click();
+    });
+
+    // ============================================================ (vote) gather, nominate, vote; a ghost with a halo
     await scene('vote', async () => {
       wandering = false;
-      await cmd({ type: 'set_setting', settings: { voteSeconds: 1.2 } });
-      await cmd({ type: 'gather', on: true });
-      await sleep(800);
+      await cmd({ type: 'set_setting', settings: { voteSeconds: 0.7 } });
+      await st.page.getByRole('button', { name: /Gather the circle/ }).click({ timeout: 5_000 }).catch(() => cmd({ type: 'gather', on: true }));
+      await st.tap.until(() => gv(st)?.gathering, 10_000, 'gathered');
+      await sleep(600);
       await cmd({ type: 'teleport', who: 'all', to: { kind: 'seat' } });
       await cmd({ type: 'set_nominations_open', open: true });
-      await A.page.locator('.ct-chat-min').click().catch(() => undefined);
-      await sleep(3500);
-      if (!camA.on) await camA.start();
+      await sleep(3800);
+      await camA.start();
       await camB.start();
+      await sleep(500);
       const t0 = now();
       byName('Cora').send('game:nominate', { nomineeSeat: seatB });
-      const nom = await A.tap.until(() => gv(A)?.day?.nominations?.[0], 10_000, 'nomination');
+      let nom = await A.tap.until(() => gv(A)?.day?.nominations?.[0], 6_000, 'nomination').catch(() => null);
+      if (!nom) {
+        await cmd({ type: 'create_nomination', nominatorSeat: botSeat(byName('Cora')), nomineeSeat: seatB });
+        nom = await A.tap.until(() => gv(A)?.day?.nominations?.[0], 10_000, 'nomination (ST)');
+      }
       await sleep(1300);
       await A.page.getByRole('button', { name: /^Raise hand/ }).first().click({ timeout: 10_000 });
-      for (const n of ['Cora', 'Dov', 'Esme']) byName(n).send('game:vote', { nominationId: nom.id, vote: true });
+      for (const n of ['Cora', 'Dov', 'Esme', 'Hugo']) byName(n).send('game:vote', { nominationId: nom.id, vote: true });
       await sleep(1300);
       addSegment('vote', 'ada', t0 - 0.3, now());
       await cmd({ type: 'start_vote', nominationId: nom.id });
+      const v0 = now();
       await A.page.getByText(/your vote counted/i).first().waitFor({ timeout: 30_000 });
       const counted = now();
       await st.tap.until(() => gv(st).day?.nominations?.[0]?.status === 'tallied', 30_000, 'tallied');
-      await sleep(1200);
-      addSegment('vote', 'ada', Math.max(counted - 3.0, t0 + 3), now());
+      await sleep(1300);
+      addSegment('vote', 'ada', Math.max(v0 + 0.3, counted - 2.6), now());
+      posters.vote = counted - 1.0;
       await camA.stop();
-      // (g) Bram is executed: a ghost who still talks and keeps one ghost vote
+      // Bram is executed: a ghost with a halo (his ghost vote, still unspent)
       const ex = now();
       await cmd({ type: 'execute', seat: seatB });
-      await B.tap.until(() => gv(B)?.you?.alive === false, 15_000, 'Bram dead');
-      await sleep(3200);
-      addSegment('vote', 'bram', ex - 0.3, now());
-      await cmd({ type: 'set_nominations_open', open: true });
-      byName('Dov').send('game:nominate', { nomineeSeat: botSeat(byName('Gwen')) });
-      let nom2 = await B.tap.until(() => gv(B)?.day?.nominations?.[1], 3_000, 'nomination 2').catch(() => null);
-      if (!nom2) {
-        say(`Dov's nomination was refused (${JSON.stringify(byName('Dov').latest['error'] ?? null)}); the Storyteller records it`);
-        await cmd({ type: 'create_nomination', nominatorSeat: botSeat(byName('Dov')), nomineeSeat: botSeat(byName('Gwen')) });
-        nom2 = await B.tap.until(() => gv(B)?.day?.nominations?.[1], 10_000, 'nomination 2 (ST)');
+      const dead = await B.tap.until(() => gv(B)?.you?.alive === false, 8_000, 'Bram dead').catch(() => null);
+      if (!dead) {
+        await cmd({ type: 'force_execute', seat: seatB });
+        await B.tap.until(() => gv(B)?.you?.alive === false, 15_000, 'Bram dead (forced)');
       }
-      await sleep(1000);
-      const r0 = now();
-      await B.page.getByRole('button', { name: /Raise hand/ }).first().click({ timeout: 10_000 });
-      await cmd({ type: 'start_vote', nominationId: nom2.id });
-      await B.page.getByText(/your vote counted/i).first().waitFor({ timeout: 30_000 });
-      await sleep(1600);
-      addSegment('ghost', 'bram', r0 - 0.8, now());
+      await sleep(3300);
+      const bram = selfEntity(B, pidB);
+      addSegment('vote', 'bram', ex - 0.2, now(), bram ? await zoomOn(B, [{ x: bram.x, y: bram.y + 45 }]) : undefined);
       await camB.stop();
     });
   } finally {
     wandering = false;
-    for (const c of [camA, camB, camST]) await c.stop().catch(() => undefined);
-    writeFileSync(path.join(RAW, 'clips.json'), JSON.stringify({ renderer, clips }, null, 2));
+    await stopCams();
+    writeFileSync(path.join(RAW, 'clips.json'), JSON.stringify({ renderer, clips, posters }, null, 2));
     for (const b of bots) await b.leave().catch(() => undefined);
     for (const p of [st, A, B]) await p.ctx.close().catch(() => undefined);
   }
-}
-
-/** helpers.signUp with a device pixel ratio (the Storyteller camera records at 2x). */
-async function signUpHiDpi(browser: import('@playwright/test').Browser, name: string, viewport: { width: number; height: number }, dpr: number): Promise<GamePlayer> {
-  const ctx = await browser.newContext({ viewport, deviceScaleFactor: dpr, extraHTTPHeaders: { 'X-Forwarded-For': fakeClientIp() } });
-  await installSocketTap(ctx);
-  const page = await ctx.newPage();
-  page.on('dialog', (d) => void d.accept());
-  const tap = new FrameTap(name, page);
-  await page.goto('/');
-  await page.getByRole('button', { name: 'Create account' }).click();
-  await page.getByLabel('Display name').fill(name);
-  await page.getByRole('button', { name: 'Create account' }).click();
-  await expect(page.getByLabel('Your passphrase')).toBeVisible();
-  await page.getByLabel('I have saved my passphrase somewhere safe').check();
-  await page.getByRole('button', { name: 'Enter the town' }).click();
-  await expect(page.getByRole('heading', { name: 'Lobby finder' })).toBeVisible();
-  return { name, ctx, page, tap, villager: null, presetId: null, console: [] };
 }
 
 // ------------------------------------------------------------------------------------ encoding
@@ -835,11 +788,12 @@ interface ClipResult {
   captureFps: number;
 }
 
-/** Which raw clips make each tour clip (the vote card ends on the ghost). */
+/** Which raw clips make each tour clip (in tour order). */
 const OUTPUT: Record<string, string[]> = {
   town: ['town'],
-  talk: ['talk'],
   inside: ['inside'],
+  point: ['point'],
+  notebook: ['notebook'],
   night: ['night'],
   visit: ['visit'],
   vote: ['vote'],
@@ -847,7 +801,7 @@ const OUTPUT: Record<string, string[]> = {
 };
 /** Cap per tour clip (seconds) after trimming. */
 const MAX_LEN = 8.5;
-const MAX_LEN_BY_CLIP: Record<string, number> = { night: 9.5 };
+const MAX_LEN_BY_CLIP: Record<string, number> = { night: 9.5, visit: 9.5, vote: 9.5, storyteller: 9.5, notebook: 9.5 };
 
 function encodeAll(): Record<string, ClipResult> {
   const bin = findFfmpeg();
@@ -904,7 +858,7 @@ function encodeAll(): Record<string, ClipResult> {
         const out = path.join(work, `${id}-${k}.mp4`);
         ff(bin, [
           '-f', 'concat', '-safe', '0', '-i', list,
-          '-vf', `fps=${FPS},${cropFilter(s, dur)}scale=${OUT_W}:${OUT_H}:flags=${s.crop ? 'neighbor' : 'lanczos'},fade=t=in:st=0:d=${fd},fade=t=out:st=${(dur - fd).toFixed(3)}:d=${fd},format=yuv420p`,
+          '-vf', `fps=${FPS},${cropFilter(s, dur)}scale=${OUT_W}:${OUT_H}:flags=${s.crop && OUT_W % s.crop.w === 0 ? 'neighbor' : 'lanczos'},fade=t=in:st=0:d=${fd},fade=t=out:st=${(dur - fd).toFixed(3)}:d=${fd},format=yuv420p`,
           '-t', dur.toFixed(3), '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '8', '-an', out,
         ]);
         segFiles.push(out);
@@ -927,11 +881,22 @@ function encodeAll(): Record<string, ClipResult> {
         ff(bin, ['-i', joined, '-c:v', 'libx264', '-preset', 'slow', '-tune', 'animation', '-crf', String(crf), '-profile:v', 'high', '-level', '4.0', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-an', mp4]);
         if (statSync(mp4).size <= MP4_MAX) break;
       }
-      // poster: a frame ~40% in (first segment middle)
+      // poster: the moment the script marked (posters[id]), else ~40% in (first segment middle)
       const posterExt = hasWebp ? 'webp' : 'jpg';
       for (const old of ['webp', 'jpg']) rmSync(path.join(OUT, `${id}.${old}`), { force: true });
       const poster = path.join(OUT, `${id}.${posterExt}`);
-      const at = Math.min(duration * 0.4, Math.max(0.5, (segs[0]!.to - segs[0]!.from) / 2));
+      let at = Math.min(duration * 0.4, Math.max(0.5, (segs[0]!.to - segs[0]!.from) / 2));
+      const mark = posters[id];
+      if (mark !== undefined) {
+        let acc = 0;
+        for (const s of segs) {
+          if (mark >= s.from && mark <= s.to) {
+            at = Math.min(duration - 0.3, Math.max(0.3, acc + mark - s.from));
+            break;
+          }
+          acc += s.to - s.from;
+        }
+      }
       ff(bin, ['-ss', at.toFixed(2), '-i', joined, '-frames:v', '1', ...(hasWebp ? ['-c:v', 'libwebp', '-quality', '72'] : ['-q:v', '6']), poster]);
       // verification frames (not shipped): beginning, middle, end
       const vdir = path.join(RAW, 'verify');

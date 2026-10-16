@@ -1,9 +1,9 @@
 {
   "version": 1,
-  "generatedAt": "2026-10-15T16:28:12.326Z",
+  "generatedAt": "2026-10-16T00:15:51.632Z",
   "renderer": "ANGLE (NVIDIA, Vulkan 1.4.312 (NVIDIA NVIDIA GeForce RTX 3060 (0x000024C7)), NVIDIA)",
   "fps": 24,
-  "totalBytes": 4210814,
+  "totalBytes": 4974402,
   "clips": {
     "town": {
       "webm": "town.webm",
@@ -11,27 +11,13 @@
       "poster": "town.webp",
       "width": 960,
       "height": 540,
-      "duration": 7.4,
+      "duration": 4.7,
       "bytes": {
-        "webm": 272527,
-        "mp4": 276991,
-        "poster": 63980
+        "webm": 258588,
+        "mp4": 319551,
+        "poster": 129464
       },
-      "captureFps": 60.3
-    },
-    "talk": {
-      "webm": "talk.webm",
-      "mp4": "talk.mp4",
-      "poster": "talk.webp",
-      "width": 960,
-      "height": 540,
-      "duration": 8.5,
-      "bytes": {
-        "webm": 281840,
-        "mp4": 373546,
-        "poster": 71336
-      },
-      "captureFps": 60.2
+      "captureFps": 59.5
     },
     "inside": {
       "webm": "inside.webm",
@@ -39,13 +25,41 @@
       "poster": "inside.webp",
       "width": 960,
       "height": 540,
-      "duration": 8,
+      "duration": 7.2,
       "bytes": {
-        "webm": 289833,
-        "mp4": 294660,
-        "poster": 69688
+        "webm": 307678,
+        "mp4": 276097,
+        "poster": 22184
       },
-      "captureFps": 60.3
+      "captureFps": 59.1
+    },
+    "point": {
+      "webm": "point.webm",
+      "mp4": "point.mp4",
+      "poster": "point.webp",
+      "width": 960,
+      "height": 540,
+      "duration": 5.8,
+      "bytes": {
+        "webm": 291596,
+        "mp4": 277373,
+        "poster": 94264
+      },
+      "captureFps": 60.2
+    },
+    "notebook": {
+      "webm": "notebook.webm",
+      "mp4": "notebook.mp4",
+      "poster": "notebook.webp",
+      "width": 960,
+      "height": 540,
+      "duration": 6.9,
+      "bytes": {
+        "webm": 315281,
+        "mp4": 358920,
+        "poster": 97190
+      },
+      "captureFps": 60
     },
     "night": {
       "webm": "night.webm",
@@ -55,11 +69,11 @@
       "height": 540,
       "duration": 9.5,
       "bytes": {
-        "webm": 294690,
-        "mp4": 338294,
-        "poster": 45860
+        "webm": 283440,
+        "mp4": 324531,
+        "poster": 42214
       },
-      "captureFps": 60.2
+      "captureFps": 58.4
     },
     "visit": {
       "webm": "visit.webm",
@@ -67,13 +81,13 @@
       "poster": "visit.webp",
       "width": 960,
       "height": 540,
-      "duration": 8.5,
+      "duration": 8.9,
       "bytes": {
-        "webm": 78248,
-        "mp4": 96600,
-        "poster": 13438
+        "webm": 109836,
+        "mp4": 121547,
+        "poster": 28132
       },
-      "captureFps": 58.6
+      "captureFps": 60.1
     },
     "vote": {
       "webm": "vote.webm",
@@ -81,13 +95,13 @@
       "poster": "vote.webp",
       "width": 960,
       "height": 540,
-      "duration": 8.5,
+      "duration": 9.5,
       "bytes": {
-        "webm": 291638,
-        "mp4": 340299,
-        "poster": 74016
+        "webm": 312521,
+        "mp4": 317516,
+        "poster": 122686
       },
-      "captureFps": 59.9
+      "captureFps": 59.4
     },
     "storyteller": {
       "webm": "storyteller.webm",
@@ -95,13 +109,13 @@
       "poster": "storyteller.webp",
       "width": 960,
       "height": 540,
-      "duration": 8.3,
+      "duration": 9,
       "bytes": {
-        "webm": 275592,
-        "mp4": 344854,
-        "poster": 22884
+        "webm": 247386,
+        "mp4": 285895,
+        "poster": 30512
       },
-      "captureFps": 60.3
+      "captureFps": 60
     }
   }
 }

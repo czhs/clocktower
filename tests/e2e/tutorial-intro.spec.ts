@@ -78,7 +78,7 @@ test.describe('pre-sign-in tour', () => {
     await openFromHelp(page);
     const t = tour(page);
     await expect(t).toBeVisible();
-    await expect(t.locator('#ct-intro-title')).toHaveText('A town to wander');
+    await expect(t.locator('#ct-intro-title')).toHaveText('One square, fifteen cottages');
     await expectClipPlays(page);
     // only the current clip + the next one's metadata are requested, never the whole set
     const clipsAsked = new Set(w.media.filter((m) => /\.(webm|mp4)/.test(m.url)).map((m) => new URL(m.url).pathname.replace(/\.(webm|mp4)$/, '')));
@@ -87,14 +87,14 @@ test.describe('pre-sign-in tour', () => {
     await page.screenshot({ path: path.join(SHOTS, 'tutorial-desktop-1.png') });
     // keyboard
     await page.keyboard.press('ArrowRight');
-    await expect(t.locator('#ct-intro-title')).toHaveText('Talk to whoever is near');
+    await expect(t.locator('#ct-intro-title')).toHaveText('Tap a cottage for a private word');
     await expectClipPlays(page);
     await page.keyboard.press('ArrowRight');
     await page.keyboard.press('ArrowRight');
     await page.keyboard.press('ArrowLeft');
-    await expect(t.locator('#ct-intro-title')).toHaveText('Step inside for a private word');
+    await expect(t.locator('#ct-intro-title')).toHaveText('Point, and pin your suspects');
     // dots
-    await t.getByRole('button', { name: /^Card 5 of 7/ }).click();
+    await t.getByRole('button', { name: /^Card 6 of 8/ }).click();
     await expect(t.locator('#ct-intro-title')).toHaveText('The Storyteller visits in secret');
     await expectClipPlays(page);
     await page.waitForTimeout(1500);
@@ -105,9 +105,9 @@ test.describe('pre-sign-in tour', () => {
     await page.mouse.down();
     await page.mouse.move(box.x + box.width * 0.8, box.y + box.height / 2, { steps: 6 });
     await page.mouse.up();
-    await expect(t.locator('#ct-intro-title')).toHaveText('At night, walk home and wait…');
+    await expect(t.locator('#ct-intro-title')).toHaveText('At the bell, walk home');
     // the last card offers to start
-    await t.getByRole('button', { name: /^Card 7 of 7/ }).click();
+    await t.getByRole('button', { name: /^Card 8 of 8/ }).click();
     await expect(t.getByRole('button', { name: 'Start playing' })).toBeVisible();
     await expectClipPlays(page);
     await page.waitForTimeout(1500);
@@ -178,8 +178,8 @@ test.describe('pre-sign-in tour', () => {
       },
       { x0: box.x + box.width * 0.85, x1: box.x + box.width * 0.15, y: box.y + box.height / 2 },
     );
-    await expect(t.locator('#ct-intro-title')).toHaveText('Talk to whoever is near');
-    await t.getByRole('button', { name: /^Card 6 of 7/ }).click();
+    await expect(t.locator('#ct-intro-title')).toHaveText('Tap a cottage for a private word');
+    await t.getByRole('button', { name: /^Card 7 of 8/ }).click();
     await expectClipPlays(page);
     await page.waitForTimeout(1500);
     await page.screenshot({ path: path.join(SHOTS, 'tutorial-phone-vote.png') });
@@ -211,7 +211,7 @@ test.describe('pre-sign-in tour', () => {
     const t = tour(page);
     await expect(t.locator('img.ct-intro-poster')).toBeVisible();
     await expect(t.locator('video.ct-intro-media')).toHaveCount(0);
-    await expect(t.locator('#ct-intro-title')).toHaveText('A town to wander');
+    await expect(t.locator('#ct-intro-title')).toHaveText('One square, fifteen cottages');
     await page.screenshot({ path: path.join(SHOTS, 'tutorial-reduced-motion.png') });
     await t.getByRole('button', { name: /Play the clip/ }).click();
     await expectClipPlays(page);
