@@ -140,7 +140,7 @@
   .ct-hint { display: none; }
   .ct-waiting { max-height: calc(100dvh - 16px); width: min(400px, 56vw); }
   /* the open chat moves to the right of the waiting-room sheet / HUD column so it never covers it */
-  .ct-chat { left: auto; right: calc(12px + var(--safe-right, 0px)); width: min(320px, 38vw); max-height: calc(100dvh - 90px); }
+  .ct-game .ct-chat { left: auto; right: calc(12px + var(--safe-right, 0px)); width: min(320px, 38vw); max-height: calc(100dvh - 90px); }
 }
 @media (max-height: 520px) {
   .ct-inside { padding: 6px 12px 8px; gap: 4px; flex-direction: row; flex-wrap: wrap; justify-content: center; max-width: calc(100vw - 24px); }

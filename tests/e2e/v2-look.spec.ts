@@ -53,8 +53,9 @@ test('v2 look: day, inside, bedtime, night, phone', async ({ browser }) => {
 
   const names = ['Ada', 'Bram', 'Cleo', 'Dov', 'Esme', 'Finn', 'Gus'];
   const players = [];
-  for (const n of names) {
-    const p = await account(browser, n);
+  for (const [i, n] of names.entries()) {
+    // only the first three players are photographed: keep the rest light for the shared test host
+    const p = await account(browser, n, i < 3 ? undefined : { width: 480, height: 320 });
     await p.page.goto(`/lobby/${id}`);
     await expect(p.page.getByRole('button', { name: "I'm ready" })).toBeEnabled({ timeout: 30_000 });
     await p.page.getByRole('button', { name: "I'm ready" }).click();
