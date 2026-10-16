@@ -513,7 +513,7 @@ export class TownScene extends Phaser.Scene {
     });
     if (import.meta.env.DEV) (window as unknown as { __town?: TownScene }).__town = this;
     // Test hook (production-safe, opt-in per browser): localStorage 'ct.debug.camera' = '1' exposes the
-    // camera so e2e tests can tap world points without re-implementing the camera maths.
+    // camera and public sign text so e2e tests can inspect the rendered town.
     let camHook = false;
     try {
       camHook = localStorage.getItem('ct.debug.camera') === '1';
@@ -529,6 +529,12 @@ export class TownScene extends Phaser.Scene {
         },
         view: () => ({ ...this.cameras.main.worldView, zoom: this.cameras.main.zoom }),
         me: () => ({ ...this.me }),
+        doorBoards: () => Object.fromEntries([...this.boards].map(([id, board]) => [
+          id,
+          board.objs
+            .filter((o): o is Phaser.GameObjects.Text => o instanceof Phaser.GameObjects.Text)
+            .map((o) => ({ text: o.text, visible: o.visible, bounds: { ...o.getBounds() } })),
+        ])),
       };
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.cleanup());
     this.events.once(Phaser.Scenes.Events.DESTROY, () => this.cleanup());
@@ -1021,7 +1027,7 @@ export class TownScene extends Phaser.Scene {
       }
       const res = this.gview?.players.find((p) => p.seat === b.houseIndex) ?? null;
       const view: DoorBoardView | undefined = tags[b.id];
-      const key = !day || !inUse ? '' : JSON.stringify([res?.name ?? '', view?.shown.map((t) => [t.name, t.ghost]) ?? [], view?.overflow ?? 0, Math.round(this.cameras.main.zoom * 20)]);
+      const key = !day || !inUse ? '' : JSON.stringify([res?.name ?? '', view?.tags.map((t) => [t.pid, t.name, t.ghost]) ?? [], Math.round(this.cameras.main.zoom * 20)]);
       const cur = this.boards.get(b.id);
       if (cur && cur.key === key) continue;
       if (cur) for (const o of cur.objs) o.destroy();
@@ -1066,9 +1072,8 @@ export class TownScene extends Phaser.Scene {
     const anchor = FX_JSON?.meta?.anchors?.board ?? { x: 11, y: 26 };
     const bf = FX_JSON?.frames.board;
     if (this.hasFx('board') && bf) objs.push(this.add.image(Math.round(bx), Math.round(by), 'fx', 'board').setOrigin(anchor.x / bf.w, anchor.y / bf.h).setDepth(depth));
-    const inside = view?.shown ?? [];
-    const lines: string[] = [];
-    if (resident) lines.push(resident);
+    // Text boards show the full public roster; shown/overflow are only for portrait icons.
+    const inside = view?.tags ?? [];
     const res = this.textRes();
     const fs = this.fontPx(13);
     const fsSmall = this.fontPx(12);
@@ -1089,19 +1094,22 @@ export class TownScene extends Phaser.Scene {
     objs.push(head);
     if (inside.length) {
       const names = inside.map((t) => (t.ghost ? `👻 ${t.name}` : t.name));
-      const txt = names.join('\n') + (view && view.overflow > 0 ? `\n+${view.overflow} more` : '');
+      const txt = names.join('\n');
       const card = this.add
-        .text(Math.round(bx), Math.round(head.y - head.height - 1), txt, {
+        // Hang the parchment down from the sign: growing upward clips the earlier names
+        // above the viewport on the northern houses, leaving only the bottom of the list.
+        .text(Math.round(bx), Math.round(head.y + 1), txt, {
           fontFamily: LABEL_FONT,
           fontSize: `${fs}px`,
           fontStyle: '700',
           color: '#2a1d16',
           backgroundColor: '#e8dcb8',
           align: 'center',
+          lineSpacing: fs * 0.25,
           padding: { left: fs * 0.45, right: fs * 0.45, top: fs * 0.2, bottom: fs * 0.25 },
           resolution: res,
         })
-        .setOrigin(0.5, 1)
+        .setOrigin(0.5, 0)
         .setDepth(5150);
       objs.push(card);
     }

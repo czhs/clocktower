@@ -2,6 +2,26 @@
 
 All commands run on **hshi-u1** via `scripts/remote.sh` unless stated otherwise.
 
+## 2026-10-16 — full house-sign occupant lists
+
+Run on the editing Mac for the user's local preview, using Node 24.22.0 and pnpm 10.34.7 via
+`npm exec --offline --cache /private/tmp/clocktower-npm-cache --yes --package=node@24 --package=pnpm@10.34.7 -- …`.
+Browser checks use a throwaway server/database on `127.0.0.1:3398` and
+`PLAYWRIGHT_BROWSERS_PATH=/private/tmp/clocktower-browsers CT_E2E_NO_BUILD=1 E2E_VOICE=0`.
+
+| Executed command | Result |
+|---|---|
+| `pnpm --filter @ct/client build` | Passed before and after the change; existing Zod annotation and VoiceClient import warnings remain. Rebuilt the assets served by the local preview. |
+| `pnpm --filter @ct/client typecheck` | Passed. |
+| `pnpm exec tsc -p tests/tsconfig.json --noEmit` | Passed. |
+| `pnpm exec playwright test -c tests/e2e/playwright.config.ts door-boards.spec.ts` | Before the fix, failed on the fifth guest: the sign displayed `+1 more` instead of their name. After the fix, five-guest coverage passed; full-lobby coverage with fourteen guests and an outdoor reader also passed. Tests cover Wychwood, Weaver's House, Ravenscroft, successive arrivals, real door leave/re-entry, clearing empty houses, readable line heights, phone bounds, hidden Storyteller visits, the door-tag setting, and hiding signs at night. Desktop and phone screenshots inspected. |
+| `curl --fail --silent http://127.0.0.1:3002/healthz` | Passed: development / local-preview / ok. |
+| `git diff --check` | Passed. |
+
+The server already supplies every occupant. The text boards now use that full list instead of the
+four-portrait subset, refresh for changes anywhere in the roster, and hang names downward from the
+sign instead of growing upward over the roof. Existing server privacy rules are unchanged.
+
 ## 2026-10-16 — local preview, room chat, walkable cottages, and doorway regression
 
 Run on the editing Mac for the user's explicitly requested local preview. The documented SSH alias
