@@ -152,3 +152,7 @@
   /* the full-height waiting sheet sits above the joystick (collapse it to walk) */
   .ct-game .ct-waiting { z-index: 28; }
 }
+@media (max-height: 460px) {
+  /* short landscape: while the waiting-room sheet is open it owns the left side (tap the map to walk) */
+  .ct-game:has(.ct-waiting-body) .ct-touch-stick { display: none; }
+}
