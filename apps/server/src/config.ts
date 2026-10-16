@@ -40,6 +40,8 @@ const Env = z.object({
   /** epoch ms (or ISO date): every session created before it is deleted at start-up (global sign-out). */
   OPS_SESSIONS_NOT_BEFORE: z.string().optional(),
   CLIENT_DIST: z.string().default(''),
+  /** Optional folder of standalone static demos, each served at /<name>/ (e.g. /v3-art-demo/). */
+  DEMOS_DIR: z.string().default(''),
 });
 
 export type AppConfig = ReturnType<typeof loadConfig>;
@@ -86,6 +88,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     logDir: e.LOG_DIR,
     signupPerHour: e.HOST_SIGNUP_PER_HOUR ?? (e.APP_ENV === 'test' ? 0 : 100),
     clientDist: e.CLIENT_DIST,
+    demosDir: e.DEMOS_DIR,
     // (v2.3 OPS-2, sec-ops) env overrides for the runtime ops switches (moderation/ops.ts).
     ops: {
       signupMode: e.OPS_SIGNUP_MODE,

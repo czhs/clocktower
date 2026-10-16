@@ -123,6 +123,38 @@ export async function startAppServer(config: AppConfig, log: Logger, options: Ap
 
   registerHttpRoutes(app, services);
 
+  // Standalone static demos (e.g. the pixel3d art demo at /v3-art-demo/), synced into DEMOS_DIR
+  // separately from releases (ported from deploy/v3-art-demo f1bad49). Only allow-listed names are
+  // served; they get their own CSP (WebGL demo, module scripts from 'self', inline styles for its UI;
+  // it replaces the app CSP set above for these paths only) and are always revalidated.
+  const DEMOS = ['v3-art-demo'];
+  const DEMO_CSP = [
+    "default-src 'self'",
+    "script-src 'self'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob:",
+    "media-src 'self' blob:",
+    "font-src 'self' data:",
+    "connect-src 'self'",
+    "worker-src 'self' blob:",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'none'",
+    "frame-ancestors 'none'",
+  ].join('; ');
+  if (config.demosDir) {
+    for (const name of DEMOS) {
+      const dir = path.resolve(config.demosDir, name);
+      app.use(`/${name}`, (_req, res, next) => {
+        if (!existsSync(dir)) return next();
+        res.setHeader('Content-Security-Policy', DEMO_CSP);
+        res.setHeader('Cache-Control', 'no-cache');
+        next();
+      });
+      app.use(`/${name}`, express.static(dir, { index: 'index.html', redirect: true, cacheControl: false, dotfiles: 'ignore' }));
+    }
+  }
+
   // Static SPA (v2.2 WP6). Cache policy:
   // - /assets/* are Vite's content-hashed outputs: immutable for a year (Cloudflare keeps the
   //   longer origin TTL). The deploy keeps the previous release's assets for one more release so
