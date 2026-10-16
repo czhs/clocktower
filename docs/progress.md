@@ -122,3 +122,24 @@ The pre-pivot art-overhaul WIP is preserved on branch `wip/art-overhaul`.
   history rewrite (recommended: no).
 - **Host etiquette:** The host is also prod. All agent commands go through `scripts/remote.sh`
   (capped `ctwork.slice`: 6 cores / 7 GiB, nice 19); browsers only under `~/clocktower/browser.lock`.
+
+## v2.3 status (2026-10-16, lead) — current state for the next agent
+
+- **Live:** prod and dev run v2.3 (`689b3f6` = v2.3 `fd73c81` + the `/v3-art-demo/` DEMOS_DIR route
+  ported from another session's `deploy/v3-art-demo`). Branch `work/v2.2-v2.3`; GitHub `main` is
+  unified with Isaac's work (merge `54e2581`).
+- **What shipped:** docs/RELEASE-v2.md "v2.3.0"; public security summary docs/security-v2.3.md; gate in
+  docs/test-results.md. Per-area audit notes (with host specifics and the admin run-books) are kept
+  LOCAL on the maintainer's machine in `docs/security-v2.3/` (git-excluded) — ask the maintainer.
+- **Owner actions still open (sudo / dashboards — never do these yourself):** run the host isolation
+  installer (`deploy/secure/v2.3/apply.sh`, dry run first, then `--apply`, then
+  `scripts/verify-sandbox.sh`) and the ops installer (`deploy/secure/v2.3/ops/apply.sh`); GitHub
+  settings (secret scanning, push protection, private vulnerability reporting, Dependabot, a ruleset
+  on main that still lets the owner and Isaac push); Cloudflare (WAF, auth rate limit, cache rules,
+  Browser Cache TTL "Respect existing headers"); LiveKit spend cap if a card is on file; env-file
+  escrow (done by the owner 2026-10-16) and an optional off-host backup.
+- **Known flake:** game-full once timed out clicking the ST "Grimoire" tab on the visit-from-Grimoire
+  path (not reproduced on re-run).
+- **Several Claude sessions deploy to this host.** Always base prod deploys on the newest release
+  branch (`work/v2.2-v2.3` or later) and check `git log` / the releases dir before deploying.
+- **Next:** v2.4 = performance sweep (see "Roadmap").
