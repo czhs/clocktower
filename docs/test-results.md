@@ -185,3 +185,15 @@ What changed in the suites: `helpers.ts` (v2 sign-up picker "Choose your charact
 Game-full v2 coverage (decoded frames + UI): tap own cottage at bedtime (walk + `world:useDoor`, only door/correction teleports); keyboard walk INTO the doorway (no E); escorts; ST click-to-teleport visit with `storyteller` teleport reason; unvisited players see no ST entity / cue / flag; Leave button and arrow-key leave at dawn; **private talk**: guest taps host's cottage, both granted `bld:<house>` zone, outsider stays `square`, never granted it, sees neither entity, and the door board (doorTags) lists both; votes/ghost vote/undo; ST teleport into a cottage; door lock → Leave disabled "… is locked by the Storyteller", arrow key sends nothing, injected door request refused with toast; an outdoors player tapping the locked cottage walks to it and gets the message, stays out; freeze; force night; endgame; rematch; no ST-only keys in any player frame.
 
 Bugs found (details in the e2e report): B1 roster picker greys out the Storyteller's character (client `takenBy` ≠ server rule); B2 script panel says "✓ Every visit is done." while a visit is still open (1/2 done); B3 phone landscape: joystick overlaps the Chat button, lobby chat covers the movement hint, waiting-room picker clipped; B4 inside panel covers the occupants on short screens (720×450, 844×390) and the bedtime "You are home" compass; occupants' name labels overlap; B5 engine "Game end detected … Confirm" alert still shown after the result was confirmed; B6 Story labels the pre-first-night bedtime "Day 0". Screenshots: `docs/screenshots/v2-e2e-*.png`; step logs `tests/e2e/artifacts/game-full-steps-v2{b,d,f}.json`, `game-chaos-v2{c,e}.json`.
+
+### 2026-10-15 (later) — e2e helpers on the camera hook; runs on e5d31ef (e2e agent)
+
+`tests/e2e/helpers.ts` now taps through the client's opt-in camera hook (`localStorage ct.debug.camera = '1'` set by `installSocketTap` → `window.__ctCamera.worldToScreen / view`); `outdoorCamera` remains only as a fallback (updated to the v2.1 SQUARE_VIEW maths); `settle` waits for `view()` to stop moving. `v2-social.spec.ts` `toScreen` switched to the hook too. `pnpm exec tsc -p tests/tsconfig.json --noEmit` ✅ (0 errors).
+
+Clean `git archive e5d31ef` + the new helpers.ts (sandbox `e2e-head`), build ✅:
+
+| Suite | Result |
+|---|---|
+| `v2-phone` | ❌ landscape: the open lobby chat (`.ct-chat-list` / chat input) intercepted the tap on "Change character…" in the waiting-room sheet (real bug; lead fixed in 9fd63ec — not re-run here at the lead's request) |
+| `game-full` GAME_RUN=h1 | ✅ (12.3 min); every tap resolved through the hook (0 "no camera hook" fallbacks in `game-full-steps-h1.json`) |
+| `lobby` | ✅ 6/6 — the roster test now passes (B1 fixed: the Storyteller's character is no longer shown as taken) |

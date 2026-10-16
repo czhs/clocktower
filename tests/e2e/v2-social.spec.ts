@@ -78,8 +78,17 @@ const ents = (a: Acc): Ent[] => a.tap.last('world:snapshot')?.entities ?? [];
 const pinsOf = (a: Acc): any[] => a.tap.last('world:snapshot')?.pins ?? [];
 const youPid = (a: Acc): string => a.tap.last('lobby:view')?.youPid ?? a.pid;
 
-/** Page coords of a world point on this account's (outdoor) screen. */
+/** Page coords of a world point on this account's (outdoor) screen: the client's opt-in camera hook
+ * (window.__ctCamera, enabled by installSocketTap); helpers.outdoorCamera only if the build has none. */
 async function toScreen(a: Acc, w: { x: number; y: number }) {
+  const viaHook = await a.page.evaluate(
+    ([x, y]) => {
+      const cam = (window as unknown as { __ctCamera?: { worldToScreen(x: number, y: number): { x: number; y: number }; view(): { zoom: number } } }).__ctCamera;
+      return cam ? { ...cam.worldToScreen(x!, y!), zoom: cam.view().zoom } : null;
+    },
+    [w.x, w.y],
+  );
+  if (viaHook) return viaHook;
   const box = await canvasBox(a.page);
   const me = ents(a).find((e) => e.id === youPid(a))!;
   const cam = await outdoorCamera({ w: box.w, h: box.h }, me);
@@ -137,7 +146,7 @@ test('v2 social: point + pins, desktop and phone', async ({ browser }) => {
     const e = (await drawn(page)).emotes.find((x) => x.pid === who);
     return !!e && e.hand && e.alpha >= 0.95;
   };
-  await expect.poll(() => handOf(ada.page, pid.Ada), { timeout: 3000, intervals: [50] }).toBe(true);
+  await expect.poll(() => handOf(ada.page, pid.Ada!), { timeout: 3000, intervals: [50] }).toBe(true);
   await ada.page.screenshot({ path: path.join(OUT, 'v2-social-point-desktop.png') });
   const sentPoint = await ada.tap.until(() => ada.tap.sent('social:emote', t1)[0], 5000, 'Ada sent a point');
   expect(sentPoint).toMatchObject({ kind: 'point', pid: pid.Bram });
@@ -148,7 +157,7 @@ test('v2 social: point + pins, desktop and phone', async ({ browser }) => {
   await ada.page.mouse.move(bs.x, bs.y);
   await ada.page.keyboard.press('KeyQ');
   await bram.tap.until(() => bram.tap.received('social:emote', t1).filter((e) => e.pid === pid.Ada).length >= 2, 5000, 'second point (Q)');
-  await expect.poll(() => handOf(bram.page, pid.Ada), { timeout: 3000, intervals: [50] }).toBe(true);
+  await expect.poll(() => handOf(bram.page, pid.Ada!), { timeout: 3000, intervals: [50] }).toBe(true);
   await bram.page.screenshot({ path: path.join(OUT, 'v2-social-point-seen-by-target.png') });
   await hold(ada.page, false);
   await hold(bram.page, false);

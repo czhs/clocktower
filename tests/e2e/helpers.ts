@@ -187,6 +187,12 @@ export function roomFrame(type: string, payload: unknown): number[] {
 
 /** Remember every same-host WebSocket the page opens (window.__e2e.inject sends on the newest open one). */
 export async function installSocketTap(ctx: BrowserContext): Promise<void> {
+  // opt-in camera test hook (window.__ctCamera, see CAMERA_HOOK_KEY)
+  await ctx.addInitScript(() => {
+    try {
+      localStorage.setItem('ct.debug.camera', '1');
+    } catch {}
+  });
   await ctx.addInitScript(() => {
     const W = window as unknown as { __e2e?: { sockets: WebSocket[]; log: string[]; inject(b: number[]): boolean } };
     const Orig = window.WebSocket;
@@ -571,17 +577,22 @@ export async function holdFrames(page: Page, codes: string[], frames: number): P
 // panel with a Leave button; any arrow/WASD key also leaves). The Storyteller's click teleports
 // (st:command teleport_self).
 //
-// Tapping needs canvas coordinates. The production build exposes no camera hook (window.__town is
-// DEV only), so the camera is recomputed here exactly as TownScene.fitCamera/updateCamera do it:
-//   zoom   = max(0.2, min(w, h) / (2 * max(PLAZA.rx, PLAZA.ry) + 2 * VIEW_MARGIN))
-//   centre = the square's centre while you stand in it, else leaning 0.85 toward you, clamped to
-//            the town, rounded to whole screen px
-// (TownScene.ts lines ~1145-1225; VIEW_MARGIN = 40). Every tap is then verified by its effect (the
-// right building entered / the right frame sent), so a drift in that math fails loudly, not silently.
-
-const VIEW_MARGIN = 40;
+// Tapping needs canvas coordinates. The client exposes an opt-in, production-safe camera hook
+// (TownScene.ts: localStorage 'ct.debug.camera' = '1' -> window.__ctCamera { worldToScreen(x, y) ->
+// page CSS px, view() -> { x, y, width, height, zoom } (world px), me() }); installSocketTap turns it
+// on for every test context. `outdoorCamera` below is only the fallback for a build without the hook
+// (it mirrors TownScene.fitCamera/updateCamera as of v2.1). Every tap is still verified by its effect
+// (the right building entered / the right frame sent).
 
 export type Loc = { x: number; y: number; location: string };
+
+/** Camera hook flag: set in every context that installs the socket tap (see installSocketTap). */
+export const CAMERA_HOOK_KEY = 'ct.debug.camera';
+
+/** The town camera's current world view, from the client hook (null if the build has none). */
+export async function cameraView(page: Page): Promise<{ x: number; y: number; width: number; height: number; zoom: number } | null> {
+  return page.evaluate(() => (window as unknown as { __ctCamera?: { view(): { x: number; y: number; width: number; height: number; zoom: number } } }).__ctCamera?.view() ?? null);
+}
 
 /** The canvas host (.ct-game-canvas) box in page CSS px; Phaser's camera size = its client size. */
 export async function canvasBox(page: Page): Promise<{ x: number; y: number; w: number; h: number }> {
@@ -592,21 +603,25 @@ export async function canvasBox(page: Page): Promise<{ x: number; y: number; w: 
   return b;
 }
 
-/** Outdoor camera (zoom + centre in world px) for a canvas of w x h with the local player at `me`. */
+/**
+ * FALLBACK ONLY (no camera hook): outdoor camera (zoom + centre in world px) for a canvas of w x h with
+ * the local player at `me`, as TownScene v2.1 computes it: zoom = min(w / SQUARE_VIEW.w, h / SQUARE_VIEW.h),
+ * resting on SQUARE_VIEW's centre in the square, leaning 0.85 toward the player near the edge.
+ */
 export async function outdoorCamera(size: { w: number; h: number }, me: { x: number; y: number }): Promise<{ zoom: number; cx: number; cy: number }> {
   const { L, PLAZA } = await geo();
   const TS = L.tileSize;
   const TOWN = { x: L.townBounds.x * TS, y: L.townBounds.y * TS, w: L.townBounds.w * TS, h: L.townBounds.h * TS };
-  const need = Math.max(PLAZA.rx, PLAZA.ry) * 2 + VIEW_MARGIN * 2;
-  const zoom = Math.max(0.2, Math.min(size.w, size.h) / need);
+  const SQUARE_VIEW = { x: PLAZA.cx - 200, y: 56, w: 400, h: PLAZA.cy + PLAZA.ry + 18 - 56 };
+  const zoom = Math.max(0.2, Math.min(size.w / SQUARE_VIEW.w, size.h / SQUARE_VIEW.h));
   const vw = size.w / zoom;
   const vh = size.h / zoom;
-  let tx = PLAZA.cx;
-  let ty = PLAZA.cy;
+  let tx = SQUARE_VIEW.x + SQUARE_VIEW.w / 2;
+  let ty = SQUARE_VIEW.y + SQUARE_VIEW.h / 2;
   const inSquare = Math.hypot((me.x - PLAZA.cx) / PLAZA.rx, (me.y - 8 - PLAZA.cy) / PLAZA.ry) <= 1.08;
   if (!inSquare) {
-    tx = PLAZA.cx + (me.x - PLAZA.cx) * 0.85;
-    ty = PLAZA.cy + (me.y - 10 - PLAZA.cy) * 0.85;
+    tx = tx + (me.x - tx) * 0.85;
+    ty = ty + (me.y - 10 - ty) * 0.85;
   }
   const clamp = (c: number, lo: number, sz: number, view: number) => (sz <= view ? lo + sz / 2 : Math.min(Math.max(c, lo + view / 2), lo + sz - view / 2));
   tx = clamp(tx, TOWN.x, TOWN.w, vw);
@@ -627,10 +642,26 @@ export async function tapTargetAt(x: number, y: number): Promise<string | null> 
   return null;
 }
 
-/** Screen points (page CSS px) of world points, for the current camera; keeps only points on the canvas that the canvas itself receives (not covered by HUD panels). */
-async function hittable(page: Page, box: { x: number; y: number; w: number; h: number }, cam: { zoom: number; cx: number; cy: number }, world: { x: number; y: number }[]): Promise<{ sx: number; sy: number; wx: number; wy: number }[]> {
+/**
+ * Screen points (page CSS px) of world points for the current camera (the client hook's
+ * worldToScreen; fallback: the mirrored maths). Keeps only points on the canvas that the canvas
+ * itself receives (not covered by HUD panels).
+ */
+async function hittable(page: Page, me: Loc, world: { x: number; y: number }[]): Promise<{ sx: number; sy: number; wx: number; wy: number }[]> {
+  if (!world.length) return [];
+  const box = await canvasBox(page);
+  const viaHook = await page.evaluate((ws) => {
+    const cam = (window as unknown as { __ctCamera?: { worldToScreen(x: number, y: number): { x: number; y: number } } }).__ctCamera;
+    return cam ? ws.map((w) => cam.worldToScreen(w.x, w.y)) : null;
+  }, world);
+  let screen: { x: number; y: number }[];
+  if (viaHook) screen = viaHook;
+  else {
+    const cam = await outdoorCamera(box, me);
+    screen = world.map((w) => ({ x: box.x + (w.x - cam.cx) * cam.zoom + box.w / 2, y: box.y + (w.y - cam.cy) * cam.zoom + box.h / 2 }));
+  }
   const pts = world
-    .map((w) => ({ wx: w.x, wy: w.y, sx: box.x + (w.x - cam.cx) * cam.zoom + box.w / 2, sy: box.y + (w.y - cam.cy) * cam.zoom + box.h / 2 }))
+    .map((w, i) => ({ wx: w.x, wy: w.y, sx: screen[i]!.x, sy: screen[i]!.y }))
     .filter((p) => p.sx >= box.x + 4 && p.sy >= box.y + 4 && p.sx <= box.x + box.w - 4 && p.sy <= box.y + box.h - 4);
   if (!pts.length) return [];
   const ok = await page.evaluate(
@@ -657,7 +688,16 @@ export async function settle(p: Player, pid: string, ms = 1200, timeoutMs = 60_0
       last = cur;
       since = Date.now();
     } else if (Date.now() - since >= ms) {
-      await p.page.waitForTimeout(900); // camera lerp
+      // camera lerp: with the hook, wait until the view stops moving; else a fixed pause
+      let v0 = await cameraView(p.page);
+      if (!v0) await p.page.waitForTimeout(900);
+      else
+        for (let k = 0; k < 20; k++) {
+          await p.page.waitForTimeout(250);
+          const v1 = await cameraView(p.page);
+          if (!v1 || !v0 || (Math.abs(v1.x - v0.x) < 0.5 && Math.abs(v1.y - v0.y) < 0.5 && v1.zoom === v0.zoom)) break;
+          v0 = v1;
+        }
       return cur;
     }
   }
@@ -681,8 +721,6 @@ export async function planCottageTap(p: Player, me: Loc, buildingId: string): Pr
   const TS = L.tileSize;
   const b = L.buildings.find((x) => x.id === buildingId);
   if (!b) throw new Error(`no building ${buildingId}`);
-  const box = await canvasBox(p.page);
-  const cam = await outdoorCamera(box, me);
   const f = b.footprint;
   const door = g.tileCenterPx(L, b.door);
   // candidates: a grid over the sprite rect + the doorstep, nearest the doorstep first
@@ -691,22 +729,26 @@ export async function planCottageTap(p: Player, me: Loc, buildingId: string): Pr
   const mine: { x: number; y: number }[] = [];
   for (const c of cand) if ((await tapTargetAt(c.x, c.y)) === buildingId) mine.push(c);
   mine.sort((a, c) => Math.hypot(a.x - door.x, a.y - door.y) - Math.hypot(c.x - door.x, c.y - door.y));
-  const hit = await hittable(p.page, box, cam, mine);
+  const hit = await hittable(p.page, me, mine);
   if (hit.length) return { kind: 'building', ...hit[0]! };
   // off screen or covered: the reachable, visible ground spot closest to the door
   const ground: { x: number; y: number }[] = [];
-  const vw = box.w / cam.zoom;
-  const vh = box.h / cam.zoom;
+  const hv = await cameraView(p.page);
+  const view = hv ?? (await (async () => {
+    const box = await canvasBox(p.page);
+    const c = await outdoorCamera(box, me);
+    return { x: c.cx - box.w / c.zoom / 2, y: c.cy - box.h / c.zoom / 2, width: box.w / c.zoom, height: box.h / c.zoom, zoom: c.zoom };
+  })());
   for (let sy = 0.06; sy < 0.95; sy += 0.06)
     for (let sx = 0.06; sx < 0.95; sx += 0.06) {
-      const x = cam.cx - vw / 2 + vw * sx;
-      const y = cam.cy - vh / 2 + vh * sy;
+      const x = view.x + view.width * sx;
+      const y = view.y + view.height * sy;
       if (x < 4 || y < 4 || x > L.townBounds.w * TS - 4 || y > L.townBounds.h * TS - 4) continue;
       if (g.isBlockedPx(L, x, y + 6) || g.locationAt(L, x, y) !== 'outdoors' || (await tapTargetAt(x, y)) !== null) continue;
       ground.push({ x, y });
     }
   ground.sort((a, c) => Math.hypot(a.x - door.x, a.y - door.y) - Math.hypot(c.x - door.x, c.y - door.y));
-  const visible = await hittable(p.page, box, cam, ground.slice(0, 40));
+  const visible = await hittable(p.page, me, ground.slice(0, 40));
   for (const v of visible) {
     // must actually bring us closer and be reachable outdoors
     if (Math.hypot(v.wx - door.x, v.wy - door.y) >= Math.hypot(me.x - door.x, me.y - door.y) - 8) break;
@@ -738,7 +780,7 @@ export async function tapCottage(p: Player, pid: string, buildingId: string, opt
     if (!plan) throw new Error(`${p.name}: no visible spot to tap toward ${buildingId} from ${Math.round(me.x)},${Math.round(me.y)} (log ${log.join(' | ')})`);
     const since = Date.now();
     await press(p, plan.sx, plan.sy, !!opts.touch);
-    log.push(`#${attempt} ${plan.kind}@screen ${Math.round(plan.sx)},${Math.round(plan.sy)} world ${Math.round(plan.wx)},${Math.round(plan.wy)} from ${Math.round(me.x)},${Math.round(me.y)}`);
+    log.push(`#${attempt} ${plan.kind}@screen ${Math.round(plan.sx)},${Math.round(plan.sy)} world ${Math.round(plan.wx)},${Math.round(plan.wy)} from ${Math.round(me.x)},${Math.round(me.y)}${(await cameraView(p.page)) ? '' : ' [no camera hook: fallback maths]'}`);
     if (plan.kind === 'ground') {
       // a walk (or the ST's teleport) toward it; then look again
       await expect
