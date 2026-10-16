@@ -14,12 +14,12 @@ const GEN = join(dirname(fileURLToPath(import.meta.url)), '..', 'generated');
 const json = <T>(n: string) => JSON.parse(readFileSync(join(GEN, n), 'utf8')) as T;
 
 describe('Nick Song', () => {
-  it('is a playable villager; the roster is 27 (14 villagers + 13 mascots)', () => {
+  it('is a playable villager; the roster is 28 (15 villagers incl. v2.2.1 brianbi + 13 mascots)', () => {
     expect(castById('nicksong')).toMatchObject({ id: 'nicksong', name: 'Nick Song', kind: 'villager' });
     expect(NICK_FACE_CHARACTER).toBe('nicksong');
     expect(PLAYABLE_IDS.has('nicksong')).toBe(true);
-    expect(PLAYABLE).toHaveLength(27);
-    expect(PLAYABLE.filter((c) => c.kind === 'villager')).toHaveLength(14);
+    expect(PLAYABLE).toHaveLength(28);
+    expect(PLAYABLE.filter((c) => c.kind === 'villager')).toHaveLength(15);
     expect(new Set(CAST.map((c) => c.id)).size).toBe(CAST.length);
   });
 

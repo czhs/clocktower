@@ -14,6 +14,7 @@ import { Img } from './lib/img.js';
 import { drawProps } from './props.js';
 import { buildCast } from './cast/index.js';
 import { buildPortraits } from './cast/portraits.js';
+import { buildCastHd } from './cast/hd.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const OUT = join(here, '..', 'generated');
@@ -154,6 +155,12 @@ write('characters.json', JSON.stringify(charManifest, null, 0));
   const portraits = buildPortraits(cast.img, cast.manifest as { sheets: Record<string, { x: number; y: number }> });
   await writeAtlas('cast-portraits', portraits.img);
   write('cast-portraits.json', JSON.stringify(portraits.manifest, null, 0));
+  // photo-real ("hd") cast members' full-resolution sheet (scripts/cast/hd.ts), same WebP + PNG pair
+  const hd = buildCastHd();
+  if (hd) {
+    await writeAtlas('cast-hd', hd.img);
+    write('cast-hd.json', JSON.stringify(hd.manifest, null, 0));
+  }
 }
 
 // --- social (social-art agent) ---

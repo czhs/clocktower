@@ -7,13 +7,13 @@ import { fileURLToPath } from 'node:url';
 import { PNG } from 'pngjs';
 import { describe, expect, it } from 'vitest';
 import { CAST_DIRS, CAST_FH, CAST_FRAMES, CAST_FW, PLAYABLE_IDS } from '../src/cast.js';
-import { atlasFormat, castUrl, portraitsUrl, terrainUrl, WEBP_LOSSLESS_PROBE } from '../src/runtime.js';
+import { atlasFormat, castHdUrl, castUrl, portraitsUrl, terrainUrl, WEBP_LOSSLESS_PROBE } from '../src/runtime.js';
 import { sheetCols } from '../scripts/cast/sheet.js';
 import { decodeWebP, losslessWebP, optimisedPNG } from '../scripts/lib/encode.js';
 import { Img } from '../scripts/lib/img.js';
 
 const GEN = join(dirname(fileURLToPath(import.meta.url)), '..', 'generated');
-const ATLASES = ['cast', 'cast-portraits', 'terrain', 'decor', 'objects', 'lights', 'square-props', 'social'];
+const ATLASES = ['cast', 'cast-hd', 'cast-portraits', 'terrain', 'decor', 'objects', 'lights', 'square-props', 'social'];
 const png = (name: string) => PNG.sync.read(readFileSync(join(GEN, `${name}.png`)));
 
 describe('runtime atlases: WebP lossless == PNG', () => {
@@ -46,7 +46,7 @@ describe('runtime atlases: WebP lossless == PNG', () => {
 
   it('outside a browser the runtime URLs stay on the PNG fallback', async () => {
     expect(await atlasFormat).toBe('png');
-    for (const u of [castUrl, portraitsUrl, terrainUrl]) expect(u).toMatch(/\.png(\?|$)/);
+    for (const u of [castUrl, castHdUrl, portraitsUrl, terrainUrl]) expect(u).toMatch(/\.png(\?|$)/);
   });
 });
 

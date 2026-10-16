@@ -35,6 +35,8 @@ export interface SpeechCtx {
 export interface SpeechLayer {
   update(): void;
   destroy(): void;
+  /** Test/debug only (allocates): the bubbles drawn right now, oldest first, with their world-px boxes. */
+  shown(): { pid: string; text: string; alpha: number; x: number; y: number; w: number; h: number }[];
 }
 
 // Above the name labels (5200) and the night layer (5000), below the letterbox mask (5300).
@@ -193,6 +195,11 @@ export function createSpeechLayer(scene: Phaser.Scene, ctx: SpeechCtx): SpeechLa
 
   return {
     update,
+    shown: () =>
+      book.list.slice(0, shown).map((b, i) => {
+        const s = slots[i]!;
+        return { pid: b.pid, text: b.text, alpha: s.alpha, x: s.g.x, y: s.g.y, w: s.w, h: s.h };
+      }),
     destroy() {
       off();
       book.clear();

@@ -435,12 +435,16 @@ export interface BoardTokenLayer {
   rectOf(buildingId: string): { x: number; y: number; w: number; h: number } | null;
   /** Forget a board's hover targets (call before destroying its objects). */
   forget(buildingId: string): void;
+  /** Test/debug only: what a board shows (token labels in order, the "+N" badge, world rect, drawn). */
+  inspect(buildingId: string): { tokens: string[]; badge: string | null; rect: { x: number; y: number; w: number; h: number }; visible: boolean } | null;
   destroy(): void;
 }
 
 export function createBoardTokenLayer(scene: Phaser.Scene, env: BoardTokenEnv): BoardTokenLayer {
   const hits = new Map<string, Hit[]>();
   const rects = new Map<string, { x: number; y: number; w: number; h: number }>();
+  /** "+N" badge per board and how many token hits precede it (for `inspect`). */
+  const badges = new Map<string, { text: string; n: number }>();
   let tip: Phaser.GameObjects.Text | null = null;
   let tipFor: Hit | null = null;
   let tipTimer: Phaser.Time.TimerEvent | null = null;
@@ -497,6 +501,7 @@ export function createBoardTokenLayer(scene: Phaser.Scene, env: BoardTokenEnv): 
       const objs: Phaser.GameObjects.GameObject[] = [];
       const list: Hit[] = [];
       hits.set(buildingId, list);
+      badges.delete(buildingId);
       const shown = view.shown;
       if (!shown.length) return objs;
       // the board, grown so its parchment face holds the grid, foot on the art's anchor — within
@@ -561,14 +566,24 @@ export function createBoardTokenLayer(scene: Phaser.Scene, env: BoardTokenEnv): 
           .setOrigin(1, 1)
           .setDepth(depth + 0.02);
         objs.push(label);
+        badges.set(buildingId, { text: grid.badge.text, n: list.length });
         const rest = view.tags.slice(view.shown.length).map(tokenLabel);
         list.push({ x: bxp - label.width / 2, y: byp - label.height / 2, r: fs * 0.8, text: rest.join(', '), obj: label as unknown as Phaser.GameObjects.Image });
       }
       return objs;
     },
     rectOf: (buildingId) => rects.get(buildingId) ?? null,
+    inspect(buildingId) {
+      const list = hits.get(buildingId);
+      const rect = rects.get(buildingId);
+      if (!list || !rect) return null;
+      const badge = badges.get(buildingId) ?? null;
+      const tokens = (badge ? list.slice(0, badge.n) : list).filter((h) => h.obj.active);
+      return { tokens: tokens.map((h) => h.text), badge: badge?.text ?? null, rect: { ...rect }, visible: tokens.some((h) => h.obj.visible) };
+    },
     forget(buildingId) {
       rects.delete(buildingId);
+      badges.delete(buildingId);
       if (tipFor && hits.get(buildingId)?.includes(tipFor)) hideTip();
       hits.delete(buildingId);
     },

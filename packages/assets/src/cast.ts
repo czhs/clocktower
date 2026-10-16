@@ -14,6 +14,11 @@ export interface CastMember {
   course?: string;
   /** Carries a light: a warm glow is drawn around them at dusk/night. */
   lantern?: boolean;
+  /**
+   * Photo-real, not pixel art: art/<id>.png (8 directions × 5 poses at CAST_HD_SCALE) goes into
+   * generated/cast-hd.png, which the town and portraits draw smoothed; cast.png gets a downscale.
+   */
+  hd?: boolean;
 }
 
 export const CAST: readonly CastMember[] = [
@@ -32,6 +37,7 @@ export const CAST: readonly CastMember[] = [
   { id: 'toad', name: 'Toadley', blurb: 'Merchant of fine goods and finer excuses.', kind: 'villager' },
   { id: 'green-hood', name: 'Wisp', blurb: 'A small wanderer in a green hood. Eyes like lanterns.', kind: 'villager' },
   { id: 'nicksong', name: 'Nick Song', blurb: 'Shaggy hair, sly smirk, never looks up from his phone. Suspiciously pleased.', kind: 'villager' },
+  { id: 'brianbi', name: 'brianbi', blurb: 'Lost his right shoe somewhere in town. Will not say where.', kind: 'villager', hd: true },
   // CMU course mascots
   { id: 'honk', name: 'Honk', blurb: 'A grey goose with contracts to check.', kind: 'mascot', course: '15-122' },
   { id: 'chonk', name: 'Chonk', blurb: 'A goose the size of a person. Nobody argues.', kind: 'mascot', course: '15-122' },
@@ -66,3 +72,5 @@ export const CAST_ANCHOR = { x: 16, y: 38 } as const;
 export const CAST_DIRS = ['down', 'down-right', 'right', 'up-right', 'up', 'up-left', 'left', 'down-left'] as const;
 export type CastDir = (typeof CAST_DIRS)[number];
 export const CAST_FRAMES = ['idle', 'walk1', 'walk2', 'walk3', 'walk4'] as const;
+/** HD sheets (generated/cast-hd.*) are this many times the 32x40 frame; same anchor, scaled. */
+export const CAST_HD_SCALE = 5;

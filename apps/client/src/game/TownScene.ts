@@ -20,7 +20,7 @@ import * as Phaser from 'phaser';
 import { castById, PLAYABLE, PLAZA, townLayout, townMap } from '@ct/assets';
 import objectsAtlas from '@ct/assets/generated/objects.json';
 import castJson from '@ct/assets/generated/cast.json';
-import { castUrl, decorUrl, lightsUrl, objectsUrl, squarePropsUrl, terrainUrl, townJsonUrl } from '@ct/assets/runtime';
+import { castHdUrl, castUrl, decorUrl, lightsUrl, objectsUrl, squarePropsUrl, terrainUrl, townJsonUrl } from '@ct/assets/runtime';
 import {
   isBlockedPx,
   locationAt,
@@ -41,12 +41,14 @@ import { localPlayer, remoteEntities } from '../net/localPlayer';
 import type { RoomConnection } from '../net/room';
 import { playCue, type Cue } from './audio';
 import { createGameplayLayer, doorTagsStore, stagePick, type DoorBoardView, type GameplayLayer } from './gameplay';
-import { findPath } from './path';
+import { findPath, nearestFree, segmentClear } from './path';
+import { createNpcRoamer, stepNpcRoamer, type NpcPoint, type NpcRoamer } from './npcRoaming';
 import { ExitGate, insideReserveCss, interiorRoute, interiorTapTarget, pushesOut, roomArea, touchUi } from './interior';
 import { createSocialLayer, type SocialLayer } from './social';
 import { createSpeechLayer, type SpeechLayer } from './social/bubbles';
 import { noteServerTime, serverNow } from '../net/serverTime';
 import { LOW_TIER_AMBIENCE, TierState } from './fx/tier';
+import { reducedMotion } from './fx/motion';
 import { createTalkingLayer, type TalkingLayer } from './fx/talking';
 import { createBoardTokenLayer, type BoardTokenLayer } from './gameplay/boardTokens';
 import { createHouseNameLayer, houseOwners, type HouseLabelInput, type HouseNameLayer } from './gameplay/houseNames';
@@ -58,6 +60,12 @@ const MOVE_HZ = 15;
 const INTERP_DELAY_MS = 110;
 /** Within this distance of a door tile, pushing toward the door enters (px). */
 const DOOR_TRIGGER = 11;
+/**
+ * (v2.2.1, Isaac's doors.spec) A STRAIGHT push (within ~25° of the door's inward direction) also
+ * enters from up to this far, so an approach 10 px off-centre still goes in; still inside the server's
+ * DOOR_RANGE_PX (22). Diagonal walks past a doorway keep the tight DOOR_TRIGGER (no accidental entry).
+ */
+const DOOR_TRIGGER_STRAIGHT = 20;
 /** Doors swing open for you within this distance (px). */
 const DOOR_OPEN_RANGE = 34;
 /** The square's preset view (world px): the whole circle plus the clock tower's face above it. */
@@ -82,6 +90,19 @@ interface CastManifest {
   sheets: Record<string, { x: number; y: number }>;
 }
 const CAST = castJson as unknown as CastManifest;
+// Photo-real cast members (CastMember.hd, e.g. brianbi) also have authored full-resolution walking
+// frames in generated/cast-hd.* (WebP/PNG via @ct/assets/runtime), drawn with smooth filtering and
+// scaled down to the 32x40 world size; cast.png carries a downscale for everything else.
+interface CastHdManifest {
+  scale: number;
+  directions: readonly Dir8[];
+  frameWidth: number;
+  frameHeight: number;
+  rows: Record<string, number>;
+  frames: readonly string[];
+  walkFps: number;
+}
+const CAST_HD = Object.values(import.meta.glob('../../../../packages/assets/generated/cast-hd.json', { eager: true, import: 'default' }) as Record<string, CastHdManifest>)[0];
 type Dir8 = 'down' | 'down-right' | 'right' | 'up-right' | 'up' | 'up-left' | 'left' | 'down-left';
 const DIR8: readonly Dir8[] = ['right', 'down-right', 'down', 'down-left', 'left', 'up-left', 'up', 'up-right'];
 const fromFacing = (f: Facing): Dir8 => f;
@@ -230,6 +251,9 @@ class Avatar {
   hasLantern = false;
   isST = false;
   ghost = false;
+  /** Drawn from the cast-hd texture (see CAST_HD). */
+  hd = false;
+  private still = false;
   /** Label colour / style currently drawn (each Text change is a canvas redraw + texture upload). */
   private labelColor = '#efe6cf';
   private labelStyle = '';
@@ -268,7 +292,15 @@ class Avatar {
     this.label.setStyle({ resolution, fontSize: `${fontPx}px`, stroke: '#0b0812', strokeThickness });
   }
   setPose(x: number, y: number, dir: Dir8, moving: boolean) {
-    this.sprite.setPosition(Math.round(x), Math.round(y));
+    if (this.hd) {
+      // smooth art: sub-pixel positions; HD ghosts hover gently (still under reduced motion)
+      const still = reducedMotion();
+      if (still !== this.still) {
+        this.still = still;
+        this.play();
+      }
+      this.sprite.setPosition(x, y + (this.ghost ? -3 - (still ? 0 : Math.sin((this.scene.time.now / 1000) * 2.2)) : 0));
+    } else this.sprite.setPosition(Math.round(x), Math.round(y));
     // setDepth always queues a full display-list depth sort, even for the same value
     const depth = 10 + y;
     if (this.sprite.depth !== depth) this.sprite.setDepth(depth);
@@ -283,6 +315,18 @@ class Avatar {
   }
   play(force = false) {
     if (!this.key) return;
+    if (CAST_HD?.rows[this.key] !== undefined && this.scene.textures.exists('cast-hd')) {
+      const anim = `${this.key}#hd-${this.moving && !this.ghost && !this.still ? 'walk' : 'idle'}-${this.dir}`;
+      if (!this.hd) this.sprite.setScale(1 / CAST_HD.scale);
+      if (force || !this.hd || this.sprite.anims.currentAnim?.key !== anim) this.sprite.play(anim, !force);
+      this.hd = true;
+      return;
+    }
+    if (this.hd) {
+      this.hd = false;
+      this.sprite.setScale(1);
+      this.sprite.setTexture('cast');
+    }
     const anim = `${this.key}#${this.moving && !this.ghost ? 'walk' : 'idle'}-${this.dir}`;
     if (!this.scene.anims.exists(anim)) return;
     if (force || this.sprite.anims.currentAnim?.key !== anim) this.sprite.play(anim, !force);
@@ -298,14 +342,9 @@ class Avatar {
 }
 
 /** Plain background townsfolk (client-only; never collide, no names, daytime only). */
-interface Npc {
+interface Npc extends NpcRoamer {
   id: string;
   sprite: Phaser.GameObjects.Sprite;
-  route: { x: number; y: number; wait: number }[];
-  i: number;
-  x: number;
-  y: number;
-  waitUntil: number;
   dir: Dir8;
 }
 
@@ -353,6 +392,10 @@ export class TownScene extends Phaser.Scene {
   private fx: Phaser.GameObjects.Particles.ParticleEmitter[] = [];
   private fireflies: { img: Phaser.GameObjects.Image; x: number; y: number; ph: number; sp: number }[] = [];
   private npcs: Npc[] = [];
+  /** Per-frame scratch for the townsfolk step (no allocations in stepAmbience). */
+  private npcBrianbis: NpcPoint[] = [];
+  private npcDelta: NpcPoint = { x: 0, y: 0 };
+  private npcClear = (from: NpcPoint, to: NpcPoint) => locationAt(L, to.x, to.y) === 'outdoors' && segmentClear(L, from.x, from.y, to.x, to.y);
   private pigeons: { s: Phaser.GameObjects.Sprite; home: { x: number; y: number }; away: number; ph: number }[] = [];
   private doorGlows: { img: Phaser.GameObjects.Image; d: DoorObj }[] = [];
   private lastPromptKey = '';
@@ -395,6 +438,7 @@ export class TownScene extends Phaser.Scene {
     this.load.image('decor', decorUrl);
     this.load.image('objects', objectsUrl);
     this.load.image('cast', castUrl);
+    if (CAST_HD) this.load.image('cast-hd', castHdUrl);
     this.load.spritesheet('lights', lightsUrl, { frameWidth: 128, frameHeight: 128 });
     this.load.tilemapTiledJSON('town', townJsonUrl);
     if (FX_PNG && FX_JSON) this.load.image('fx', FX_PNG);
@@ -625,6 +669,29 @@ export class TownScene extends Phaser.Scene {
         },
         view: () => ({ ...this.cameras.main.worldView, zoom: this.cssZoom() }),
         me: () => ({ ...this.me }),
+        /** One drawn avatar (texture / frame / size), or null while hidden. */
+        avatar: (pid: string) => {
+          const a = pid === this.myPid ? this.myAvatar : this.avatars.get(pid);
+          return a?.sprite.visible ? { texture: a.sprite.texture.key, frame: a.sprite.frame.name, width: a.sprite.displayWidth, height: a.sprite.displayHeight, x: a.sprite.x, y: a.sprite.y } : null;
+        },
+        /** Chat speech bubbles drawn right now (social/bubbles.ts), with CSS-px screen boxes. */
+        bubbles: () => {
+          const cam = this.cameras.main;
+          const r = this.game.canvas.getBoundingClientRect();
+          const z = cam.zoom * (r.width / this.scale.width);
+          return (this.speech?.shown() ?? []).map((b) => ({ pid: b.pid, text: b.text, alpha: b.alpha, box: { x: r.left + (b.x - cam.worldView.x) * z, y: r.top + (b.y - cam.worldView.y) * z, width: b.w * z, height: b.h * z } }));
+        },
+        /** Door boards that show occupant tokens right now (gameplay/boardTokens.ts), by building id. */
+        doorBoards: () => {
+          const out: Record<string, unknown> = {};
+          for (const d of this.doors) {
+            const v = this.boardTokens?.inspect(d.b.id);
+            if (v && this.boards.get(d.b.id)?.key) out[d.b.id] = v;
+          }
+          return out;
+        },
+        /** The visible townsfolk and whether they are shying away from a Brianbi. */
+        npcs: () => this.npcs.filter((n) => n.sprite.visible).map((n) => ({ id: n.id, x: n.x, y: n.y, home: { ...n.home }, avoiding: n.avoiding })),
       };
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.cleanup());
     this.events.once(Phaser.Scenes.Events.DESTROY, () => this.cleanup());
@@ -683,6 +750,25 @@ export class TownScene extends Phaser.Scene {
           repeat: -1,
         });
       });
+    }
+    if (CAST_HD && this.textures.exists('cast-hd')) {
+      const hd = this.textures.get('cast-hd');
+      // not pixel art: smooth filtering, unlike the rest of the (pixelArt: true) game
+      hd.setFilter(Phaser.Textures.FilterMode.LINEAR);
+      for (const [key, r] of Object.entries(CAST_HD.rows)) {
+        const ghost = key.includes('/ghost');
+        CAST_HD.directions.forEach((dir, c) => {
+          for (let f = 0; f < (ghost ? 1 : CAST_HD.frames.length); f++)
+            hd.add(`${key}|${dir}|${f}`, 0, c * CAST_HD.frameWidth, (r + f) * CAST_HD.frameHeight, CAST_HD.frameWidth, CAST_HD.frameHeight);
+          for (const action of ['idle', 'walk'])
+            this.anims.create({
+              key: `${key}#hd-${action}-${dir}`,
+              frames: (action === 'walk' && !ghost ? [1, 2, 3, 4] : [0]).map((f) => ({ key: 'cast-hd', frame: `${key}|${dir}|${f}` })),
+              frameRate: CAST_HD.walkFps,
+              repeat: -1,
+            });
+        });
+      }
     }
   }
 
@@ -784,6 +870,9 @@ export class TownScene extends Phaser.Scene {
     }
     this.enterCooldownUntil = now + 900;
     this.route = null;
+    // Moves go out at 15 Hz: flush the feet position first so the server does not judge the door
+    // range from the previous one, still a step away from the doorstep (Isaac, PR #2).
+    this.sendMove(now, false);
     this.bridge.conn.send('world:useDoor', { buildingId: b.id });
   }
 
@@ -816,8 +905,10 @@ export class TownScene extends Phaser.Scene {
     if (this.me.location !== 'outdoors' || (vx === 0 && vy === 0)) return;
     const len = Math.hypot(vx, vy);
     for (const d of this.doors) {
-      if (Math.hypot(this.me.x - d.at.x, this.me.y - d.at.y) > DOOR_TRIGGER) continue;
-      if ((vx * d.inward.x + vy * d.inward.y) / len < 0.6) continue;
+      const dist = Math.hypot(this.me.x - d.at.x, this.me.y - d.at.y);
+      if (dist > DOOR_TRIGGER_STRAIGHT) continue;
+      const toward = (vx * d.inward.x + vy * d.inward.y) / len;
+      if (toward < (dist > DOOR_TRIGGER ? 0.9 : 0.6)) continue;
       if (!this.houseInUse(d.b) && !this.amStoryteller()) {
         this.flashPrompt('Nobody lives here', true);
         return;
@@ -979,6 +1070,9 @@ export class TownScene extends Phaser.Scene {
   }
 
   onTeleport(t: WorldTeleport) {
+    // A reloaded / rejoined scene starts at seq 0, but the server keeps the last movement sequence
+    // it accepted: adopt it, or our moves are dropped as stale until the counter catches up (cafb858).
+    this.seq = Math.max(this.seq, t.seq);
     if (t.reason === 'correction' && t.seq <= this.fenceSeq) return;
     this.fenceSeq = this.seq;
     this.lastSent = { x: t.x, y: t.y, moving: false, facing: this.me.facing };
@@ -995,6 +1089,8 @@ export class TownScene extends Phaser.Scene {
   }
 
   onSnapshot(s: WorldSnapshot) {
+    // The spawn teleport can arrive before this scene exists; snapshots carry ackSeq too (cafb858).
+    this.seq = Math.max(this.seq, s.ackSeq);
     noteServerTime(s.t);
     const now = performance.now();
     const seen = new Set<string>();
@@ -1245,13 +1341,14 @@ export class TownScene extends Phaser.Scene {
       img.setDepth(4050).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0);
       this.fireflies.push({ img, x, y, ph: i * 1.7, sp: 0.6 + (i % 5) * 0.12 });
     }
-    // Townsfolk: plain background people with small daily loops.
-    const T = (x: number, y: number, wait = 0) => ({ x: x * TS + 8, y: y * TS + 14, wait });
-    const routes: Record<string, { x: number; y: number; wait: number }[]> = {
-      'npc-sweeper': [T(16, 12, 3), T(13, 15, 2), T(13, 23, 3), T(16, 26, 2), T(28, 26, 3), T(31, 23, 2), T(31, 15, 3), T(28, 12, 2)],
-      'npc-vendor': [T(10, 17, 6), T(12, 17, 2), T(10, 17, 5), T(8, 17, 2)],
-      'npc-elder': [T(10, 21, 12), T(12, 21, 1), T(15, 23, 4), T(12, 22, 1)],
-      'npc-porter': [T(4, 34, 2), T(22, 34, 1), T(40, 34, 3), T(22, 34, 1)],
+    // Townsfolk: plain background people wandering near a fixed home spot (npcRoaming.ts); they
+    // shy away from a visible Brianbi but can never be chased out of their home radius.
+    const T = (x: number, y: number) => ({ x: x * TS + 8, y: y * TS + 14 });
+    const homes: Record<string, NpcPoint> = {
+      'npc-sweeper': T(16, 12),
+      'npc-vendor': T(10, 17),
+      'npc-elder': T(10, 21),
+      'npc-porter': T(22, 34),
     };
     // pigeons by the fountain and a cat asleep on the east bench (cosmetic, local only)
     const fountain = townMap.objects.find((o) => o.kind === 'fountain');
@@ -1269,11 +1366,12 @@ export class TownScene extends Phaser.Scene {
       const bench = townMap.objects.filter((o) => o.kind === 'bench').sort((a, b) => b.x - a.x)[0];
       if (bench) this.add.image(bench.x * TS + 22, bench.y * TS + 6, 'fx', 'cat_sleep').setOrigin(0.5, 1).setDepth(10 + bench.y * TS + 17);
     }
-    for (const [id, route] of Object.entries(routes)) {
+    for (const [id, home] of Object.entries(homes)) {
       if (!CAST.sheets[id]) continue;
-      const p = route[0]!;
+      const p = nearestFree(L, home, 40, (x, y) => locationAt(L, x, y) === 'outdoors');
+      if (!p) continue;
       const sprite = this.add.sprite(p.x, p.y, 'cast').setOrigin(CAST.anchor.x / CAST.frameWidth, CAST.anchor.y / CAST.frameHeight).setAlpha(0.96);
-      this.npcs.push({ id, sprite, route, i: 0, x: p.x, y: p.y, waitUntil: 0, dir: 'down' });
+      this.npcs.push({ id, sprite, ...createNpcRoamer(p, this.npcs.length), dir: 'down' });
     }
   }
 
@@ -1346,32 +1444,24 @@ export class TownScene extends Phaser.Scene {
       }
       p.s.setVisible(outdoors && DAYLIKE.has(this.phase));
     }
-    // townsfolk: daytime only, gentle loops, never in anyone's way
+    // townsfolk: daytime only, wandering near home. They react only to Brianbi avatars already
+    // drawn outdoors (hidden / indoor / night players can never move an NPC or reveal themselves).
     const day = DAYLIKE.has(this.phase);
     const folk = this.ambienceCount('townsfolk');
+    const brianbis = this.npcBrianbis;
+    brianbis.length = 0;
+    if (day && outdoors && this.ready) {
+      for (const a of this.avatars.values()) if (a.key === 'brianbi' && a.location === 'outdoors' && a.sprite.visible) brianbis.push(a.sprite);
+      const m = this.myAvatar;
+      if (m && m.key === 'brianbi' && m.sprite.visible) brianbis.push(m.sprite);
+    }
     for (let i = 0; i < this.npcs.length; i++) {
       const n = this.npcs[i]!;
       n.sprite.setVisible(day && outdoors && i < folk);
       if (!day || i >= folk) continue;
-      const tgt = n.route[(n.i + 1) % n.route.length]!;
-      let moving = false;
-      if (now >= n.waitUntil) {
-        const dx = tgt.x - n.x;
-        const dy = tgt.y - n.y;
-        const d = Math.hypot(dx, dy);
-        const step = 32 * dt;
-        if (d <= step) {
-          n.x = tgt.x;
-          n.y = tgt.y;
-          n.i = (n.i + 1) % n.route.length;
-          n.waitUntil = now + tgt.wait * 1000;
-        } else {
-          n.x += (dx / d) * step;
-          n.y += (dy / d) * step;
-          n.dir = dir8(dx, dy);
-          moving = true;
-        }
-      }
+      const delta = stepNpcRoamer(n, dt, now, brianbis, this.npcClear, this.npcDelta);
+      const moving = Math.hypot(delta.x, delta.y) > 0.01;
+      if (moving) n.dir = dir8(delta.x, delta.y);
       n.sprite.setPosition(Math.round(n.x), Math.round(n.y));
       if (n.sprite.depth !== 10 + n.y) n.sprite.setDepth(10 + n.y);
       const anim = `${n.id}#${moving ? 'walk' : 'idle'}-${moving ? n.dir : n.dir === 'up' ? 'down' : n.dir}`;
@@ -1609,7 +1699,11 @@ export class TownScene extends Phaser.Scene {
     let following = false;
     if (vx === 0 && vy === 0 && this.route) {
       const next = this.route.pts[0];
-      if (!next) {
+      // A door at the end of the route waits out the anti-bounce cooldown (a tap right after
+      // leaving would otherwise be dropped silently; Isaac's doors.spec), then goes through.
+      if (!next && this.route.enter && performance.now() < this.enterCooldownUntil) {
+        // hold position until the cooldown ends
+      } else if (!next) {
         const enter = this.route.enter;
         this.route = null;
         if (enter && this.currentBuilding()?.id === enter) {
@@ -1662,15 +1756,17 @@ export class TownScene extends Phaser.Scene {
     this.me.moving = moving;
     this.myAvatar!.setPose(this.me.x, this.me.y, this.myDir, moving);
     const changed = Math.abs(this.me.x - this.lastSent.x) > 0.05 || Math.abs(this.me.y - this.lastSent.y) > 0.05 || moving !== this.lastSent.moving || this.me.facing !== this.lastSent.facing;
-    if (changed && now - this.lastSentAt >= 1000 / MOVE_HZ) {
-      this.seq++;
-      const x = Math.round(this.me.x * 100) / 100;
-      const y = Math.round(this.me.y * 100) / 100;
-      this.bridge.conn.send('move', { seq: this.seq, x, y, facing: this.me.facing, moving });
-      this.lastSent = { x: this.me.x, y: this.me.y, moving, facing: this.me.facing };
-      this.lastSentAt = now;
-    }
+    if (changed && now - this.lastSentAt >= 1000 / MOVE_HZ) this.sendMove(now, moving);
     this.publishLocal(false);
+  }
+
+  private sendMove(now: number, moving: boolean) {
+    this.seq++;
+    const x = Math.round(this.me.x * 100) / 100;
+    const y = Math.round(this.me.y * 100) / 100;
+    this.bridge.conn.send('move', { seq: this.seq, x, y, facing: this.me.facing, moving });
+    this.lastSent = { x: this.me.x, y: this.me.y, moving, facing: this.me.facing };
+    this.lastSentAt = now;
   }
 
   private lastLocalPublish = { x: NaN, y: NaN, loc: '', at: -Infinity };

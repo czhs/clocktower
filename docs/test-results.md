@@ -2,6 +2,164 @@
 
 All commands run on **hshi-u1** via `scripts/remote.sh` unless stated otherwise.
 
+## 2026-10-16 — v2.2.1 merge of Isaac's GitHub `main` into v2.2 (integration teammate, hshi-u1, sandbox `merge-isaac`, capped remote.sh)
+
+All commands via `CT_AGENT=merge-isaac scripts/remote.sh …`; browsers under `flock ~/clocktower/browser.lock`, `CT_E2E_NO_BUILD=1`, `-c tests/e2e/playwright.config.ts`.
+
+| Executed command | Result |
+|---|---|
+| `pnpm assets:generate` (+ `scripts/pull.sh packages/assets/generated`) | All atlases regenerated (cast/cast-portraits/social/cast-hd changed; terrain/decor/objects/lights/square-props byte-identical). |
+| `pnpm -r run typecheck` | Passed (twice: mid-merge and final tree). |
+| `pnpm test` (first) | 1037 passed; failed: `nicksong.test.ts` roster count 27 → 28 (updated) and git-excluded local `tests/security/host-safety.test.ts` (no free port). |
+| `pnpm exec vitest run packages/assets packages/protocol/test/snapshotCodec.test.ts apps/client/test/castPicker.test.ts apps/client/test/npcRoaming.test.ts` | 82 passed, 3 skipped (atlas-encoding incl. cast-hd WebP == PNG, hdCast, nicksong, new ackSeq codec test, castPicker, npcRoaming). |
+| `pnpm test` (final tree) | 101 files passed, 1 skipped; 2 failed = the git-excluded local v2.3 files `tests/security/host-safety.test.ts` and `tests/security/web-render.test.ts` (expected). |
+| `pnpm -r --if-present run build` | Passed (client rebuilt 3× after TownScene fixes). |
+| `playwright test hd-cast doors door-reconnect door-boards chat-bubbles` (first) | 3 passed; chat-bubbles failed (voice panel covers Leave at a 390 px desktop window → spec resizes back first); doors failed at −10 px approach (trigger) → fixed. |
+| `playwright test doors.spec chat-bubbles` | chat-bubbles passed; doors failed on the tap-during-cooldown check → route now waits out the cooldown. |
+| `playwright test doors.spec` | 1 passed. |
+| `playwright test hd-cast doors.spec door-reconnect door-boards chat-bubbles lobby.spec v2-social v2-phone` | **14 passed (7.9m).** |
+| `GAME_RUN=merge1 playwright test game-full` | Failed step 5 (leaveByKey: ArrowDown did not walk out of house-3); not reproduced in later runs. |
+| `GAME_RUN=merge2 playwright test game-chaos` | **1 passed (4.6m).** |
+| `GAME_RUN=merge3 playwright test game-full` | Step 5 passed; failed 8a (ST "↶ Undo" covered by the toolbar ⚙ button; not reproduced later). |
+| `GAME_RUN=merge4 playwright test game-full` | Failed 3b': the keyboard walker entered a neighbour's cottage passing its door diagonally (20 px door trigger) → wide trigger now only for straight pushes. |
+| `playwright test doors.spec door-reconnect` (final build) | **2 passed.** |
+| `GAME_RUN=merge5 playwright test game-full` (final build) | **1 passed (7.4m).** |
+| `GAME_RUN=merge6 playwright test game-chaos` (final build) | **1 passed (4.7m).** |
+| `playwright test hd-cast door-boards chat-bubbles lobby.spec v2-phone v2-social` (final build) | 11 passed; v2-social desktop+phone failed once (pie "Point" gone before the tap). |
+| `playwright test v2-social` (rerun) | **2 passed.** |
+| `bash scripts/secret-scan.sh` (Mac) | Removed a home path from Isaac's test-results row; 5 remaining findings all pre-exist on HEAD (bootstrap.sh / progress.md tailnet name, test-results CGNAT IP + home path, cloudflared example home path). |
+
+## 2026-10-16 — playable Brianbi and bounded NPC avoidance
+
+Run on the editing Mac for the requested local preview, using Node 24.22.0 / pnpm 10.34.7:
+`npm exec --offline --cache /private/tmp/clocktower-npm-cache --yes --package=node@24 --package=pnpm@10.34.7 -- …`.
+Browser checks used `PLAYWRIGHT_BROWSERS_PATH=/private/tmp/clocktower-browsers CT_E2E_NO_BUILD=1 E2E_VOICE=0`
+and the isolated server/database at `127.0.0.1:3398`.
+
+| Executed command / check | Result |
+|---|---|
+| `node --import tsx packages/assets/scripts/hd/import-brianbi.ts` | Initial validation rejected a source row boundary that would clip a figure. Changed packing to use transparent gutters; rerun passed with 40 complete frames. |
+| `node --import tsx packages/assets/scripts/generate.ts` | Passed; regenerated the small and HD character sheets, ghost variants, and social portraits. |
+| `pnpm typecheck` | Passed across all seven packages, including the final NPC changes. |
+| `pnpm build` and subsequent `pnpm --filter @ct/client build` | Passed; final client build served by the local preview. |
+| `pnpm exec vitest run packages/assets/test/hdCast.test.ts apps/client/test/castPicker.test.ts` | 10 passed. Checks frame padding, distinct poses, atlas/manifest correspondence, and roster helpers. |
+| `pnpm exec vitest run apps/client/test/npcRoaming.test.ts apps/client/test/castPicker.test.ts packages/assets/test/hdCast.test.ts` | 15 passed. Includes 3 minutes of simulated continuous chasing, return to home, blocked paths, and walkable escape routes around all four actual NPC homes. |
+| `pnpm exec tsc -p tests/tsconfig.json --noEmit` | Passed, including the final browser-test changes. |
+| `pnpm exec playwright test -c tests/e2e/playwright.config.ts hd-cast.spec.ts` | First repair run passed (14.8s test time). Final run with NPC behavior and portrait changes passed (17.4s / 19.0s total). Real picker; correct torso click target; advancing walk frames; idle on release; down-right animation; live reduced-motion toggle; sweeper avoidance; all NPCs within their fixed 48px home radii; cottage entry/exit at 2/3 scale; HD ghost; no page errors. |
+| Manual Chrome preview at `http://localhost:3002` | Initially reproduced rejection of Brianbi by the old server process started before the roster change. Restarted only the local preview with the rebuilt server and existing DB. Brianbi selection then saved successfully and was visibly rendered in the new playground. Refreshed the final client with NPC behavior. |
+| `curl -s http://127.0.0.1:3002/healthz` | Passed: development / local-preview / ok. |
+| `git diff --check` | Passed. |
+
+Visual checks: inspected all eight directions and five poses in `packages/assets/art/brianbi.png`,
+plus in-game indoor and ghost screenshots. The built-in imagegen source and selected prompt set
+are retained in `packages/assets/art/`. NPCs react only to visible, living, outdoor Brianbi
+avatars during daytime phases; they remain client-local cosmetic townsfolk. The artwork retains
+the original photoreal style and asymmetric footwear, using a short four-frame walk cycle.
+
+## 2026-10-16 — Brianbi visual/integration review
+
+Reviewed the uncommitted HD character on the editing Mac using the existing Node 24 / pnpm wrapper
+and isolated Playwright server. No model or game-code edits made during this review.
+
+| Executed command | Result |
+|---|---|
+| `pnpm --filter @ct/client typecheck` | Passed. |
+| `pnpm vitest run apps/client/test/castPicker.test.ts --maxWorkers=1` | 8 passed. |
+| `pnpm exec playwright test -c tests/e2e/playwright.config.ts hd-cast.spec.ts` (existing built client, voice disabled) | Passed, 21.7s test time. Picker, town, walking, indoor and ghost screenshots inspected. |
+| Temporary `brianbi-review-probe.spec.ts` via the same Playwright config, output `/private/tmp/clocktower-brianbi-review` | Passed as an observational probe. Right-clicking 18 world pixels above Brianbi's feet selected another player instead of Brianbi; clicking 2 pixels above his feet selected Brianbi. Confirms the HD texture scale is incorrectly reused for character hitboxes. Temporary spec removed after execution. |
+
+Review findings: the down-right image faces left; several source-sheet crops clip hair; HD social
+hitboxes and head attachments use texture scale (0.2) instead of world character scale (1); walking
+has only a bob/sway on one pose per direction. These are not covered by the existing HD smoke test.
+
+## 2026-10-16 — door rejection after refreshing
+
+Run on the editing Mac using the Node 24 / pnpm wrapper and isolated browser-test settings below.
+The production change restores the client's movement sequence from server teleports and snapshot
+acknowledgements. A refreshed scene previously restarted at zero while the server retained the old
+counter, silently ignoring movement and rejecting doors at the client's apparent position.
+
+| Executed command | Result |
+|---|---|
+| `pnpm exec playwright test -c tests/e2e/playwright.config.ts door-reconnect.spec.ts` (before fix) | Reproduced: after a reload with a retained movement sequence, the character walked to Wychwood but stayed outdoors. The captured browser trace shows the exact `Too far from the door.` alert. |
+| `pnpm --filter @ct/client build` | Passed; rebuilt the local preview assets. Existing Zod annotation and VoiceClient import warnings remain. |
+| `pnpm --filter @ct/client typecheck` | Passed. |
+| `pnpm exec tsc -p tests/tsconfig.json --noEmit` | Passed. |
+| `pnpm exec playwright test -c tests/e2e/playwright.config.ts door-reconnect.spec.ts doors.spec.ts` | Reload regression passed (9.5s): click and keyboard entry after separate reloads, first movement sequence newer than the retained server sequence, no door errors. Existing offset fixture failed before entry because its 10px keyboard positioning overshot to 16.5px at 30fps, exceeding its 16px setup assertion. Allowed up to 18px in that assertion; production door ranges unchanged. |
+| `pnpm exec playwright test -c tests/e2e/playwright.config.ts doors.spec.ts` | Passed (28.1s): centered and both off-center approaches at Wychwood, Weaver's House, and Ravenscroft; immediate re-entry tap; no door errors. |
+| `curl --fail --silent http://127.0.0.1:3002/healthz` | Passed: development / local-preview / ok. |
+| `git diff --check` | Passed. |
+
+## 2026-10-16 — full house-sign occupant lists
+
+Run on the editing Mac for the user's local preview, using Node 24.22.0 and pnpm 10.34.7 via
+`npm exec --offline --cache /private/tmp/clocktower-npm-cache --yes --package=node@24 --package=pnpm@10.34.7 -- …`.
+Browser checks use a throwaway server/database on `127.0.0.1:3398` and
+`PLAYWRIGHT_BROWSERS_PATH=/private/tmp/clocktower-browsers CT_E2E_NO_BUILD=1 E2E_VOICE=0`.
+
+| Executed command | Result |
+|---|---|
+| `pnpm --filter @ct/client build` | Passed before and after the change; existing Zod annotation and VoiceClient import warnings remain. Rebuilt the assets served by the local preview. |
+| `pnpm --filter @ct/client typecheck` | Passed. |
+| `pnpm exec tsc -p tests/tsconfig.json --noEmit` | Passed. |
+| `pnpm exec playwright test -c tests/e2e/playwright.config.ts door-boards.spec.ts` | Before the fix, failed on the fifth guest: the sign displayed `+1 more` instead of their name. After the fix, five-guest coverage passed; full-lobby coverage with fourteen guests and an outdoor reader also passed. Tests cover Wychwood, Weaver's House, Ravenscroft, successive arrivals, real door leave/re-entry, clearing empty houses, readable line heights, phone bounds, hidden Storyteller visits, the door-tag setting, and hiding signs at night. Desktop and phone screenshots inspected. |
+| `curl --fail --silent http://127.0.0.1:3002/healthz` | Passed: development / local-preview / ok. |
+| `git diff --check` | Passed. |
+
+The server already supplies every occupant. The text boards now use that full list instead of the
+four-portrait subset, refresh for changes anywhere in the roster, and hang names downward from the
+sign instead of growing upward over the roof. Existing server privacy rules are unchanged.
+
+## 2026-10-16 — photo-real roster character `brianbi`
+
+Run on the editing Mac (hshi-u1 still does not resolve; user approved local runs). Same Node 24.22.0 /
+pnpm 10.34.7 `npm exec --offline …` wrapper and Playwright env as the entry below. Art: the user's
+turnaround sheet, right shoe removed with `codex exec -m gpt-6-sol` image edits (raw inputs/outputs in
+gitignored `packages/assets/ai/staging/brianbi/`), cut out with `packages/assets/scripts/hd/brianbi_cutout.py`
+(Pillow/numpy/scipy in a throwaway venv) into `packages/assets/art/brianbi.png`.
+
+| Executed command | Result |
+|---|---|
+| `pnpm assets:generate` | Passed. Changed only cast.png/json, social.png/json; new cast-hd.png (455 KiB) / cast-hd.json. |
+| `pnpm typecheck` | Passed all workspace packages. |
+| `pnpm exec tsc -p tests/tsconfig.json --noEmit` | Passed. |
+| `pnpm vitest run packages/assets apps/server/test/{auth,room,records.game,playtest.persistence,world.room}.test.ts --maxWorkers=1` | 79 passed, 3 skipped (pre-existing `ambient.test.ts` skips). |
+| `pnpm test --maxWorkers=2` | 647 passed, 7 skipped, 2 failed: `castPicker.test.ts` roster count (13 → 14 villagers; test updated, rerun: client tests 59/59 passed) and `review-probes` SR-1, which reads `/proc/<pid>/status` and cannot run on macOS (unrelated; not rerun on Linux). |
+| `pnpm build` | Passed. |
+| `pnpm exec playwright test … hd-cast` | First run: picker/town/walk/indoor steps passed, then a raw Leave click during the door cooldown failed; switched to `leaveByButton`. Rerun **1 passed (12.6s)**: picked via the real picker, HD sheet fetched, town/walking/indoors/ghost screenshots inspected, no page errors. |
+
+## 2026-10-16 — local preview, room chat, walkable cottages, and doorway regression
+
+Run on the editing Mac for the user's explicitly requested local preview. The documented SSH alias
+and full hostname for hshi-u1 did not resolve. Native preview: `127.0.0.1:3002`, isolated `data/local`;
+browser tests: throwaway server/database on `127.0.0.1:3398`. No shared deployment.
+
+Commands below use Node 24.22.0 and pnpm 10.34.7 via
+`npm exec --offline --cache /private/tmp/clocktower-npm-cache --yes --package=node@24 --package=pnpm@10.34.7 -- …`.
+Playwright commands set `PLAYWRIGHT_BROWSERS_PATH=/private/tmp/clocktower-browsers CT_E2E_NO_BUILD=1 E2E_VOICE=0`
+and use `-c tests/e2e/playwright.config.ts`. Local socket/browser runs required sandbox escalation.
+
+| Executed command | Result |
+|---|---|
+| `pnpm typecheck` | Passed all workspace packages. |
+| `pnpm --filter @ct/client typecheck` | Passed after indoor scaling, bubble stacking, and door changes. |
+| `pnpm exec tsc -p tests/tsconfig.json --noEmit` | Initial new-test import of `@ct/assets` failed root resolution; switched to the existing source-relative convention. Subsequent runs passed. |
+| `pnpm build` | Passed, including repeated rebuilds to update the local preview. Existing Zod annotation and mixed static/dynamic VoiceClient import warnings remain. |
+| `pnpm vitest run apps/server/test/room.test.ts apps/server/test/world.test.ts apps/server/test/world.stage.test.ts packages/assets/test/navigation.test.ts --maxWorkers=2` | 69 tests passed. Room suite could not bind port 3331 inside the sandbox; its 20 tests were skipped in this attempt. |
+| `pnpm vitest run apps/server/test/room.test.ts --maxWorkers=1` (escalated) | 20 passed: includes waiting/day/finished chat audience isolation and existing spam limits. Total targeted unit/integration checks: 89 passed. |
+| `pnpm exec playwright test … chat-bubbles` | Initial run lacked Chromium; installed into the temporary browser directory. Next run reached phone walking but hit an ambiguous Leave locator; scoped it to the cottage. A later run passed stacking/walking and failed a test assumption: forcing the first night yields `first_night`, not `night`; fixed the expectation. Subsequent runs passed. |
+| `pnpm exec playwright test … chat-bubbles.spec.ts doors.spec.ts` | Chat test passed in both combined runs: independent five-second expiry, newest-three cap, escaped text, private waiting/night/finished chat, Storyteller replies, departure cleanup, keyboard and phone floor-tap walking, bubble bounds, no page errors. Door fixture failures described below. |
+| `pnpm exec playwright test … doors.spec.ts` (initial iterations) | Reproduced the original trigger failure: feet 12px off-centre against the wall, still outdoors. Test setup then exposed seat-dependent stage-teleport offsets and the fountain blocking a straight approach to Ravenscroft. Switched to leaving onto the doorstep and moving sideways. A 30fps frame overshot the requested 10px offset to 15px; that also exposed the intermediate 16px trigger missing at the wall. Final trigger uses 20px, within the unchanged 22px server range. |
+| `pnpm exec playwright test … chat-bubbles.spec.ts doors.spec.ts` (final build) | **2 passed, 52.5s.** Door coverage: Wychwood, Weaver’s House, Ravenscroft, centered and both off-center approaches, immediate leave/re-enter tap during cooldown, no door errors. Chat coverage above passed again, with desktop/phone screenshots inspected. |
+| Collision probe via `pnpm exec tsx -e …`, then `node --import tsx --input-type=module -e …` | First attempt blocked by the sandbox's IPC restriction; loader form succeeded. Confirmed the fountain collision south of Ravenscroft, while the immediate doorstep is clear. |
+| `docker compose config --quiet` | Passed. Docker image/runtime not tested: CLI exists, Docker Desktop/daemon is unavailable on this Mac. Native preview runs successfully. |
+| `curl --fail --silent http://127.0.0.1:3002/healthz` | Passed: development / local-preview / ok. |
+| `git diff --check` | Passed. |
+
+Existing chat/point/pin token-bucket limits were deliberately retained at the user's request.
+The broader full-game/chaos/phone suites had their changed indoor controls/text expectations updated;
+those full suites were not rerun in this session. LiveKit audio was not exercised.
+
 ## 2026-10-14 — M0 (lead)
 
 | Command | Result |

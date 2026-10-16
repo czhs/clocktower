@@ -100,6 +100,10 @@ The pre-pivot art-overhaul WIP is preserved on branch `wip/art-overhaul`.
 - **Prod:** hotfix `8fbad32` (= 766a8bd v2.1-pre + own-avatar fix, branch `hotfix/v2.0.1`).
   v2.2 goes to dev first, then prod when no game is running.
 - **Shipped in v2.2:** see docs/RELEASE-v2.md "v2.2.0" (perf WP1–WP7 in docs/perf-v2.2-results.md).
+- **v2.2.1 (2026-10-16, merge staged):** GitHub `main` (Isaac's PR #2 + #3) merged into this branch
+  for one unified history: brianbi + HD cast pipeline, NPC avoidance, chat private in every phase,
+  movement-seq/door fixes, Docker/local preview. Duplicates kept from v2.2 (bubbles, walkable
+  interiors, door-board tokens). See docs/RELEASE-v2.md "v2.2.1" and the architecture change log.
 - **v2.3 security audit (done, fixes NOT started):** findings live only in the local, git-excluded
   `docs/security-v2.3/` (+ 9 local `tests/security/*` files, `.github/`, `SECURITY.md`, see
   `.git/info/exclude`). They describe unfixed vulnerabilities: do not commit or push them until the
@@ -110,8 +114,8 @@ The pre-pivot art-overhaul WIP is preserved on branch `wip/art-overhaul`.
   Storyteller panel can cover the leftmost cottage at 1200×760 (ST must move the panel); the restored
   lobby-finder doesn't show an automatic game's storyline yet; real-hardware checks pending (AirPods,
   mouse side buttons, LiveKit talking outline).
-- **Waiting on the user** (do not do these yourself): GitHub settings (collaborator `isaac9000` has
-  write access, no branch protection, secret scanning / push protection / private vuln reporting /
+- **Waiting on the user** (do not do these yourself): GitHub settings (`isaac9000` = Isaac, the user's friend and a trusted co-developer with write
+  access — keep him; still security-review his PRs before merging/running them; no branch protection, secret scanning / push protection / private vuln reporting /
   Dependabot off; PR #1 unreviewed); copy `/srv/clocktower/env/prod.env` into a password manager
   (the passphrase pepper is not backed up); LiveKit billing / spend cap; Cloudflare dashboard rules
   (WAF, auth rate limit, cache rules, Browser Cache TTL); sudo items (separate service users, egress

@@ -25,7 +25,7 @@ import './lobby.css';
 
 // Waiting room: a compact, collapsible sheet over the town (top-left on desktop, where the HUD
 // lives once the game starts; a top sheet on phones) so players can walk around while they wait.
-// The header + primary action (Ready / Start) are always visible; details scroll. (Lobby chat is
+// The header + primary action (Ready / Start) are always visible; details scroll. (Nearby chat is
 // ChatPanel, docked bottom-left; this sheet stops above it via --ct-chat-h.)
 const narrow = () => typeof matchMedia === 'function' && matchMedia('(max-width: 640px)').matches;
 

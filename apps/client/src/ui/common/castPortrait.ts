@@ -15,12 +15,12 @@
 // The manifest is looked up with import.meta.glob; the image URLs (WebP or PNG) come from @ct/assets/runtime.
 import { h } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { atlasFormat, castUrl, portraitsUrl } from '@ct/assets/runtime';
+import { atlasFormat, castHdUrl, castUrl, portraitsUrl } from '@ct/assets/runtime';
 import portraitStrip from '@ct/assets/generated/cast-portraits.json';
 // CONTRACT-REQUEST(lobby-ui -> lead/world-art): export the cast roster from '@ct/assets' (src/index.ts)
 // so clients can `import { CAST, PLAYABLE, castById } from '@ct/assets'`; until then the source is
 // imported directly (it has no imports of its own).
-import { CAST_DIRS, CAST_FH, CAST_FRAMES, CAST_FW, castById, type CastDir } from '../../../../../packages/assets/src/cast';
+import { CAST_DIRS, CAST_FH, CAST_FRAMES, CAST_FW, CAST_HD_SCALE, castById, type CastDir } from '../../../../../packages/assets/src/cast';
 import { reducedMotion } from '../../game/fx/motion';
 
 export interface CastManifest {
@@ -45,6 +45,21 @@ const MANIFESTS = import.meta.glob('../../../../../packages/assets/generated/cas
 const MANIFEST: CastManifest | null = Object.values(MANIFESTS)[0] ?? null;
 const STRIP = portraitStrip as PortraitStrip;
 const STRIP_ROW = CAST_DIRS.indexOf(STRIP.dir as CastDir);
+
+// Photo-real members (CastMember.hd) also have high-res animation rows in cast-hd.* (WebP or PNG via
+// @ct/assets/runtime, like every atlas); they are drawn from it smoothed (not pixel-crisp), cropped
+// with the same frame-local boxes x CAST_HD_SCALE. Only loaded when such a portrait is drawn.
+const HD_MANIFEST = (Object.values(import.meta.glob('../../../../../packages/assets/generated/cast-hd.json', { eager: true, import: 'default' }))[0] ?? null) as {
+  rows: Record<string, number>;
+} | null;
+let hdSheet: HTMLImageElement | null = null;
+let hdPromise: Promise<HTMLImageElement | null> | null = null;
+function loadHdSheet(): Promise<HTMLImageElement | null> {
+  if (hdPromise) return hdPromise;
+  if (!HD_MANIFEST || typeof Image === 'undefined') return (hdPromise = Promise.resolve(null));
+  return (hdPromise = loadImage(() => castHdUrl).then((img) => (hdSheet = img)));
+}
+const isHd = (key: string): boolean => HD_MANIFEST?.rows[key] !== undefined;
 
 /** The cast manifest, or null when this build has no generated cast art. */
 export const castManifest = (): CastManifest | null => MANIFEST;
@@ -143,9 +158,15 @@ function frameBounds(img: HTMLImageElement, sx: number, sy: number, cacheKey: st
 }
 
 /** Source rectangle (frame-local) for a crop of a sprite whose opaque bounds are `b`. */
-function cropRect(b: Box, crop: CastCrop): Box {
+function cropRect(b: Box, crop: CastCrop, hd = false): Box {
   if (crop === 'frame') return { x: 0, y: 0, w: CAST_FW, h: CAST_FH };
   if (crop === 'fit') return { ...b };
+  // Human proportions have a much smaller head than the chibi cast. Keep face badges
+  // on the head/shoulders, centered on the HD sheet's aligned head, not the swinging arms.
+  if (hd) {
+    const side = Math.max(8, Math.round(b.h * 0.28));
+    return pad({ x: (CAST_FW - side) / 2, y: b.y, w: side, h: side }, 1);
+  }
   // bust: a square from the top of the sprite, as wide as it is (heads are the widest part of
   // most of the cast), at most ~60% of its height so tall characters still show a face.
   const side = Math.max(10, Math.min(b.w, Math.round(b.h * 0.62)));
@@ -165,7 +186,7 @@ function hueOf(id: string): number {
 export const castScale = (fit: number): number => (fit >= 3 ? Math.floor(fit) : fit >= 2 ? Math.floor(fit * 2) / 2 : fit);
 
 /** Size the canvas for `opts` and return the target rect for a `cw` x `ch` source. */
-function layout(canvas: HTMLCanvasElement, cw: number, ch: number, opts: CastPortraitOpts): { k: number; dx: number; dy: number } {
+function layout(canvas: HTMLCanvasElement, cw: number, ch: number, opts: CastPortraitOpts, exact = false): { k: number; dx: number; dy: number } {
   if (!opts.size) {
     canvas.width = cw;
     canvas.height = ch;
@@ -178,7 +199,7 @@ function layout(canvas: HTMLCanvasElement, cw: number, ch: number, opts: CastPor
   // Whole-number scales from 3x up; 2x-3x in half steps (2.5x doubles every other pixel, an even
   // pattern that still reads as pixel art); below 2x the exact fit, so small boxes on 1x screens
   // aren't stuck at 1x and neighbouring portraits come out the same size.
-  const k = castScale(Math.min(S / cw, S / ch));
+  const k = exact ? Math.min(S / cw, S / ch) : castScale(Math.min(S / cw, S / ch));
   const dx = Math.round((S - cw * k) / 2);
   // Standing sprites sit on the bottom edge; busts are centred.
   const dy = opts.crop === 'bust' ? Math.round((S - ch * k) / 2) : Math.round(S - ch * k);
@@ -254,6 +275,7 @@ export async function drawCastPortrait(canvas: HTMLCanvasElement, id: string, op
   if (!q) return false;
   if (placeholder) await loadFor(q);
   if (!source(q) && placeholder) return false;
+  if (isHd(q.key) || isHd(id)) await loadHdSheet();
   return paint(canvas, id, opts);
 }
 
@@ -266,20 +288,39 @@ function paint(canvas: HTMLCanvasElement, id: string, opts: CastPortraitOpts): b
   }
   const { img, sx, sy } = src0;
   const crop = opts.crop ?? 'fit';
-  // Crop from the idle frame's bounds so walk frames don't make the box breathe.
-  const bounds = frameBounds(img, src0.ix, src0.iy, `${q.key}|${q.r}`);
-  const src = cropRect(bounds, crop);
-  const { k, dx, dy } = layout(canvas, src.w, src.h, { ...opts, crop });
+  const { key, r, f } = q;
+  // Crop from the idle frame's bounds so walk frames don't make the box breathe; photo-real members
+  // swing their arms/feet much wider, so they use a fixed union of all their poses instead.
+  const n = isHd(key) && !opts.ghost && (img === sheet || inStrip({ key, r, f: CAST_FRAMES.length - 1 })) ? CAST_FRAMES.length : 1;
+  let bounds = frameBounds(img, src0.ix, src0.iy, `${key}|${r}`);
+  for (let i = 1; i < n; i++) {
+    const b = frameBounds(img, src0.ix + i * CAST_FW, src0.iy, `${key}|${r}|${i}`);
+    const x0 = Math.min(bounds.x, b.x);
+    const y0 = Math.min(bounds.y, b.y);
+    bounds = { x: x0, y: y0, w: Math.max(bounds.x + bounds.w, b.x + b.w) - x0, h: Math.max(bounds.y + bounds.h, b.y + b.h) - y0 };
+  }
+  const src = cropRect(bounds, crop, isHd(key));
+  const hdKey = isHd(key) ? key : isHd(id) ? id : null;
+  const hd = hdKey !== null && hdSheet ? hdSheet : null;
+  const { k, dx, dy } = layout(canvas, src.w, src.h, { ...opts, crop }, !!hd);
   const g = canvas.getContext('2d');
   if (!g) return false;
   g.clearRect(0, 0, canvas.width, canvas.height);
-  g.imageSmoothingEnabled = false;
+  g.imageSmoothingEnabled = !!hd;
+  if (hd) g.imageSmoothingQuality = 'high';
   // Clip the source to the frame cell so neighbouring frames never bleed into a padded crop.
   const cx0 = Math.max(0, src.x);
   const cy0 = Math.max(0, src.y);
   const cx1 = Math.min(CAST_FW, src.x + src.w);
   const cy1 = Math.min(CAST_FH, src.y + src.h);
   if (cx1 <= cx0 || cy1 <= cy0) return true;
+  if (hd) {
+    const K = CAST_HD_SCALE;
+    const hx = r * CAST_FW * K;
+    const hy = (HD_MANIFEST!.rows[hdKey!]! + (hdKey!.includes('/ghost') ? 0 : f)) * CAST_FH * K;
+    g.drawImage(hd, hx + cx0 * K, hy + cy0 * K, (cx1 - cx0) * K, (cy1 - cy0) * K, dx + (cx0 - src.x) * k, dy + (cy0 - src.y) * k, (cx1 - cx0) * k, (cy1 - cy0) * k);
+    return true;
+  }
   g.drawImage(img, sx + cx0, sy + cy0, cx1 - cx0, cy1 - cy0, dx + (cx0 - src.x) * k, dy + (cy0 - src.y) * k, (cx1 - cx0) * k, (cy1 - cy0) * k);
   return true;
 }
@@ -341,7 +382,7 @@ export function CastPortrait({
   return h('canvas', {
     ref,
     class: `ct-cast-portrait${real ? '' : ' is-fallback'}${cls ? ` ${cls}` : ''}`,
-    style: { width: `${size}px`, height: `${size}px`, imageRendering: 'pixelated', display: 'block', flex: 'none' },
+    style: { width: `${size}px`, height: `${size}px`, imageRendering: isHd(id) ? 'auto' : 'pixelated', display: 'block', flex: 'none' },
     'data-cast': id,
     ...(label ? { role: 'img', 'aria-label': label } : { 'aria-hidden': 'true' }),
   });

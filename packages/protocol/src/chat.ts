@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import { ChatText } from './text.js';
 
-// Text chat follows the same audibility rules as voice: in-game messages are delivered only to
-// members in the sender's acoustic zone (server-computed). 'lobby' scope is used while waiting.
+// Text chat follows voice in EVERY phase: only members in the sender's server-computed acoustic
+// zone receive it. Waiting/finished cottages are private too. 'lobby' remains a legacy scope.
 
 export const ChatSendMsg = z.object({ text: ChatText });
 

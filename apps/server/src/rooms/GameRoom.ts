@@ -880,20 +880,16 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
 
   private handleChat(seat: Seat, text: string) {
     const m = seat.member;
-    const inGame = this.status === 'in_game';
     const msg: ChatMessage = {
       id: randomId(10),
       fromPid: m.pid,
       fromName: this.label(m.pid),
       text,
-      scope: inGame ? (m.role === 'storyteller' ? 'storyteller' : 'zone') : 'lobby',
+      scope: m.role === 'storyteller' ? 'storyteller' : 'zone',
       at: Date.now(),
     };
-    if (!inGame) {
-      for (const s of this.seats.values()) this.sendTo(s, 'chat:message', msg);
-      return;
-    }
-    // In game: exactly the voice audience (server-computed acoustic zone) plus the sender.
+    // Every phase, including waiting and finished: exactly the voice area plus the sender.
+    // Cottages are private rooms before/after a match too; there is no lobby-wide bypass.
     const audience = new Set(this.voice.audienceOf(m.pid));
     audience.add(m.pid);
     for (const pid of audience) {

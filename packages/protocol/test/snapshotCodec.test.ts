@@ -142,6 +142,18 @@ describe('snapshot codec (world:snap2)', () => {
     expect(enc.encode(snap(166, 2, ents))).toEqual([SNAP_DELTA, 166, 2]);
   });
 
+  it('a reloaded client (fresh decoder) learns the server ackSeq from its first frame and from keepalives', () => {
+    // (v2.2.1, Isaac's cafb858) TownScene adopts max(seq, snapshot.ackSeq) after a reload, so the
+    // decoded snap2 snapshot must carry the server's last accepted move seq, not 0.
+    const enc = new SnapshotEncoder();
+    const ents = [ent('me', 10, 10)];
+    const dec = new SnapshotDecoder();
+    expect(dec.decode(wire(enc.encode(snap(0, 1000, ents)))!)!.ackSeq).toBe(1000);
+    const ka = wire(enc.encode(snap(83, 1001, ents)))!;
+    expect(ka).toEqual([SNAP_DELTA, 83, 1001]);
+    expect(dec.decode(ka)!.ackSeq).toBe(1001);
+  });
+
   it('omitted-because-unchanged is never confused with removed', () => {
     const enc = new SnapshotEncoder();
     const dec = new SnapshotDecoder();

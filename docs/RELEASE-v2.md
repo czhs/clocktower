@@ -143,3 +143,19 @@ Typecheck clean; `pnpm test` 1037 passed; all 10 e2e suites pass (lobby, v21-clo
 v2-st-ui, ux-ready, game-full, game-chaos, ux-walkthrough) on hshi-u1 — see docs/test-results.md.
 Not verified with real hardware yet: AirPods/lid-close switching, mouse side-button push-to-talk,
 real LiveKit voice with the talking outline (dev has no LiveKit credentials).
+
+# v2.2.1 — merged with Isaac's work
+
+Thanks to Isaac (GitHub `isaac9000`) for PRs #2 and #3, merged into one history with v2.2.
+- **brianbi**, a photo-real playable villager with authored 8-direction walking poses, drawn smoothly
+  from a high-resolution sheet in town, in portraits and as a ghost (now 28 characters to pick from).
+- **Townsfolk react:** the background townsfolk wander near their spot and shuffle away from Brianbi.
+- **Chat is private everywhere:** waiting-room and post-game chat now reach only the people near you
+  (the square, or the cottage you are in), exactly like voice and in-game chat.
+- **Doors:** walking into a doorway slightly off-centre still goes in; tapping a cottage right after
+  leaving it goes back in instead of doing nothing; after a page reload, walking and doors work at once
+  (the client resumes the server's movement count).
+- **Local preview:** `docker compose up --build -d` or `pnpm preview:local` (see README.md) runs a private
+  copy on your own computer.
+- Kept from v2.2 where both releases built the same thing: chat bubbles, walkable cottages and the
+  door-board character tokens (Isaac's versions of these were folded into v2.2's).
