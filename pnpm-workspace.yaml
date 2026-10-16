@@ -1,7 +1,36 @@
 packages:
   - "apps/*"
   - "packages/*"
+
+# Only these dependencies may run install/postinstall scripts (pnpm 10 default-deny). With
+# strictDepBuilds, a NEW dependency that wants to run a build script fails the install instead of
+# being silently skipped, so it gets reviewed (security v2.3, REPO-06).
 onlyBuiltDependencies:
   - better-sqlite3
   - esbuild
   - msgpackr-extract
+strictDepBuilds: true
+
+# Supply-chain hardening (REPO-06): never resolve a version published less than 3 days ago
+# (compromised-release window), and refuse git/tarball/URL dependencies anywhere in the graph.
+minimumReleaseAge: 4320
+blockExoticSubdeps: true
+
+overrides:
+  # REPO-05: @colyseus/core declares @pm2/io as a peer and dynamic-imports it at matchmaker start,
+  # which installs require-in-the-middle/shimmer hooks in the prod process. We don't run under
+  # PM2; Colyseus catches the failed import. "-" removes the package from the graph.
+  "@pm2/io": "-"
+
+auditConfig:
+  # REPO-04 triage (docs/security-v2.3/01-repo-supply-chain.md). Revisit on every Colyseus upgrade.
+  ignoreGhsas:
+    # nanoid 2.1.11 via @colyseus/core: only called as generateId(9) with a constant size, never
+    # with user input or a custom alphabet; nanoid >=3 breaks Colyseus' CJS default import.
+    - GHSA-28wg-ghj8-5hjv
+    - GHSA-2v37-7h3g-55p8
+    - GHSA-xwg4-73v4-xw9w
+    - GHSA-mwcw-c2x4-8c55
+    # esbuild 0.18.20 via drizzle-kit (dev-only migration tooling): the dev-server CORS issue needs
+    # `esbuild serve`, which drizzle-kit never starts; not installed in any runtime path we use.
+    - GHSA-67mh-4wv8-2f99

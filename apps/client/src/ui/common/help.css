@@ -67,35 +67,12 @@
   .ct-toolbar .ct-tb-label { display: none; }
 }
 
-/* Settings popover (gear in the toolbar). */
-.ct-settings { position: relative; }
-.ct-settings-panel {
-  position: absolute; top: calc(100% + 6px); right: 0; width: min(300px, calc(100vw - 24px)); z-index: 65;
-  display: flex; flex-direction: column; gap: 14px; padding: 14px 16px; box-shadow: 0 10px 30px #000c; font-size: 15px;
-}
-.ct-settings-row { display: flex; flex-direction: column; gap: 6px; }
-.ct-settings-row > span { color: var(--text); }
-.ct-settings-row small { font-size: 0.875rem; line-height: 1.3; }
-.ct-settings-row input[type='range'] { width: 100%; accent-color: var(--accent); padding: 0; background: none; border: none; }
-.ct-seg { display: flex; }
-.ct-seg button { flex: 1; border-radius: 0; padding: 5px 4px; font-size: 14px; min-height: 32px; }
-.ct-seg button:first-child { border-radius: var(--radius) 0 0 var(--radius); }
-.ct-seg button:last-child { border-radius: 0 var(--radius) var(--radius) 0; }
-.ct-seg button + button { border-left-width: 0; }
-.ct-seg button.on { background: var(--accent-deep); border-color: var(--accent); color: #f6ecd2; }
-.ct-settings-actions { display: flex; gap: 8px; flex-wrap: wrap; }
-.ct-settings-actions button { flex: 1; font-size: 14px; }
+/* ⚙ Settings is a dialog now: ui/common/Settings.css (lazy chunk). */
 @media (max-width: 640px) {
   /* While waiting on a phone the lobby sheet owns the top: park the toolbar above the chat button. */
   .ct-toolbar-waiting { top: auto; bottom: calc(216px + var(--safe-bottom)); right: calc(12px + var(--safe-right)); }
-  .ct-toolbar-waiting .ct-settings-panel { top: auto; bottom: calc(100% + 6px); }
-}
-.ct-settings-panel button { box-shadow: none; }
-.ct-settings-leave { display: none; }
-@media (max-width: 640px) {
-  /* Phones: Leave lives in the settings popover so the toolbar stays narrow beside the HUD. */
+  /* Phones: Leave lives in the settings dialog footer so the toolbar stays narrow beside the HUD. */
   .ct-toolbar .ct-tb-leave { display: none; }
-  .ct-settings-leave { display: block; flex-basis: 100%; }
 }
 
 /* (qol) keyboard shortcut table (Keys tab) */

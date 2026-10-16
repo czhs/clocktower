@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Deploy an exact git commit to the dev or prod service on hshi-u1.
+# Deploy an exact git commit to the dev or prod service on the host (CT_HOST from ops.local.env).
 #
 #   scripts/deploy-hshi-u1.sh dev  [<commit>]   # default commit: HEAD
 #   scripts/deploy-hshi-u1.sh prod [<commit>]
 #
 # - Packages the commit with `git archive` on the editing machine (never the working tree), copies
-#   it to hshi-u1 and runs deploy/bin/install-release.sh there (install --frozen-lockfile, build,
-#   migrations for that env only, switch, restart ONLY that env's unit, /healthz version check,
+#   it to the host and runs deploy/bin/install-release.sh there (install --frozen-lockfile, build,
+#   migrations for that env only, switch, restart ONLY that env's unit, /internal/version check (loopback-only),
 #   automatic rollback on failure). Nothing is built or executed locally.
 # - prod refuses to deploy the implicit HEAD when tracked files have uncommitted changes (so what
 #   you tested is what ships). Passing an explicit commit is always exact, regardless of the tree.
@@ -15,7 +15,9 @@
 #   new live tree for one more release, so tabs opened before the deploy can still lazy-load their
 #   old chunks (see carry_assets below).
 set -euo pipefail
-HOST="${CT_HOST:-hshi-u1}"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+. "$ROOT/scripts/lib/ops-env.sh"; ct_load_ops_env "$ROOT"
+HOST="$(ct_require_host)"
 
 # carry_assets snapshot|merge|discard <dev|prod> <sha> -- runs ON the host (sent with `declare -f`).
 # Vite names every file in apps/client/dist/assets by content hash and the server marks them
@@ -130,6 +132,6 @@ echo "[deploy] $ENVNAME exit=$STATUS in $(( $(date +%s) - START ))s"
 if [[ $STATUS -eq 0 ]]; then remote_carry_assets merge; else remote_carry_assets discard; fi
 if [[ $STATUS -eq 0 ]]; then
   PORT=$([[ $ENVNAME == prod ]] && echo 3000 || echo 3001)
-  ssh -o BatchMode=yes "$HOST" "(systemctl is-active clocktower-$ENVNAME 2>/dev/null | grep -qx active && echo 'active (system unit)') || systemctl --user is-active clocktower-$ENVNAME; curl -fsS http://127.0.0.1:$PORT/healthz; echo"
+  ssh -o BatchMode=yes "$HOST" "(systemctl is-active clocktower-$ENVNAME 2>/dev/null | grep -qx active && echo 'active (system unit)') || systemctl --user is-active clocktower-$ENVNAME; curl -fsS http://127.0.0.1:$PORT/internal/version 2>/dev/null || curl -fsS http://127.0.0.1:$PORT/healthz; echo"
 fi
 exit $STATUS

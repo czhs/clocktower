@@ -6,8 +6,15 @@ function scrypt(password: string, salt: Buffer, keylen: number, opts: ScryptOpti
   );
 }
 
-/** scrypt cost. N=2^15, r=8, p=1 ≈ 32 MiB / ~60-100 ms per hash on hshi-u1. */
-export const DEFAULT_SCRYPT_N = 1 << 15;
+/**
+ * scrypt cost for NEW verifiers. (v2.3 AUTH-2) N=2^12, r=8, p=1 ≈ 4 MiB / ~8-10 ms per hash (was
+ * 2^15 ≈ 32 MiB / 60-100 ms). Passphrases are 6 CSPRNG words (≈77.5 bits) and the lookup is a
+ * peppered HMAC, so slow hashing buys nothing against offline guessing (2^77 hashes even at GPU
+ * speed is out of reach), while the 8x cheaper hash makes sign-in floods far less effective.
+ * Older `scrypt$32768$…` verifiers still verify (the format is self-describing) and are re-hashed
+ * at this cost on the next successful sign-in.
+ */
+export const DEFAULT_SCRYPT_N = 1 << 12;
 const SCRYPT_R = 8;
 const SCRYPT_P = 1;
 const KEYLEN = 32;
@@ -35,6 +42,13 @@ export async function checkVerifier(normalized: string, saltHex: string, verifie
   if (!Number.isInteger(n) || !Number.isInteger(r) || !Number.isInteger(p) || expected.length !== KEYLEN) return false;
   const key = await scrypt(normalized, Buffer.from(saltHex, 'hex'), KEYLEN, { N: n, r, p, maxmem: 256 * n * r });
   return timingSafeEqual(key, expected);
+}
+
+/** The scrypt N of a stored verifier (null if malformed). */
+export function verifierCost(verifier: string): number | null {
+  const parts = verifier.split('$');
+  const n = Number(parts[1]);
+  return parts.length === 5 && parts[0] === 'scrypt' && Number.isInteger(n) ? n : null;
 }
 
 /** 32 random bytes, base64url. Only its SHA-256 is persisted. */

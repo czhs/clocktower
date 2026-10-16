@@ -145,8 +145,18 @@ describe('social: pins basics', () => {
     r.social.handle('p0', 'social:pin', { target: { kind: 'place', x: -10, y: 40 }, color: 'gold' });
     expect(r.pins('p0')[0]!.target).toEqual({ kind: 'place', x: 0, y: 40 });
     r.enter('p1', 1);
-    r.social.handle('p1', 'social:pin', { target: { kind: 'place', x: 12, y: 30 }, color: 'green' });
-    expect(r.social.allPins().find((p) => p.by === 'p1')).toMatchObject({ location: `bld:${H(1)}`, target: { kind: 'place', x: 12, y: 30 } });
+    // (v2.2 walkable interiors, security v2.3 SEC-8) interior points are world coordinates inside that
+    // room: inside = kept, a small overshoot = clamped into the room, anything else = refused.
+    const room = L.buildings.find((b) => b.id === H(1))!.interior;
+    const ts = L.tileSize;
+    const [cx, cy] = [(room.x + room.w / 2) * ts, (room.y + room.h / 2) * ts];
+    r.social.handle('p1', 'social:pin', { target: { kind: 'place', x: cx, y: cy }, color: 'green' });
+    expect(r.social.allPins().find((p) => p.by === 'p1')).toMatchObject({ location: `bld:${H(1)}`, target: { kind: 'place', x: cx, y: cy } });
+    r.social.handle('p1', 'social:pin', { target: { kind: 'place', x: room.x * ts - 10, y: cy }, color: 'teal' });
+    expect(r.social.allPins().find((p) => p.color === 'teal')).toMatchObject({ target: { kind: 'place', x: room.x * ts, y: cy } });
+    r.social.handle('p1', 'social:pin', { target: { kind: 'place', x: 12, y: 30 }, color: 'violet' });
+    expect(r.errors('p1').at(-1)).toMatchObject({ code: 'invalid', for: 'social:pin' });
+    expect(r.social.allPins().find((p) => p.color === 'violet')).toBeUndefined();
   });
 });
 
@@ -272,6 +282,12 @@ describe('social: pin visibility (secrecy)', () => {
 
     r.exit('st');
     r.phase('dawn');
+    // (security v2.3, SEC-3) dawn counts as night for pins: the Storyteller still in a cottage at dawn
+    // leaves no trace for the next day's visitors either.
+    r.enter('st', 2);
+    r.pinHere('st', 'violet');
+    expect(r.pins('st').map((p) => p.color)).toContain('violet');
+    r.exit('st');
     r.phase('day');
     // Night pins are gone (they would tell daytime visitors of home 0 that the ST was there); the
     // daytime pins survive.
@@ -291,7 +307,7 @@ describe('social: pin visibility (secrecy)', () => {
     expect(r.emotes('p2')).toEqual([]);
     expect(r.emotes('p3')).toEqual([]);
     // Inside: only the people in that cottage (+ the Storyteller).
-    r.point('p2', 20, 20);
+    r.point('p2', r.pos('p2').x, r.pos('p2').y); // (SEC-8) interior points are room coordinates
     for (const v of ['p2', 'p3', 'st']) expect(r.emotes(v).at(-1)!.pid, v).toBe('p2');
     expect(r.emotes('p0').map((e) => e.pid)).toEqual(['p0']);
     expect(r.emotes('p1').map((e) => e.pid)).toEqual(['p0']);
@@ -307,8 +323,8 @@ describe('social: pin visibility (secrecy)', () => {
     r.start();
     r.phase('first_night');
     r.enter('st', 2);
-    r.point('st', 30, 30);
-    r.point('p1', 30, 30); // a player alone at home
+    r.point('st', r.pos('st').x, r.pos('st').y);
+    r.point('p1', r.pos('p1').x, r.pos('p1').y); // a player alone at home
     expect(r.emotes('p2').map((e) => e.pid)).toEqual(['st']);
     expect(r.emotes('st').map((e) => e.pid)).toEqual(['st', 'p1']);
     expect(r.emotes('p1').map((e) => e.pid)).toEqual(['p1']);

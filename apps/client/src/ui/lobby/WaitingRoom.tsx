@@ -20,6 +20,7 @@ import { MODE_COPY, modeOf, timingsOf, timingsSummary } from '../clock/logic';
 import { AutoTimingsEditor, useTimingsDraft } from './ModeSettings';
 import { StPrepareButton } from '../storyteller/prepareSlot'; // (v2.2) the Storyteller's tools before the game
 import { AutoStorylineSetting } from '../storyteller/autoStoryline'; // (v2.2) automatic games: storyline
+import { ChatFilterSetting, MemberModTools, MutedBadge, RemovedList } from './moderation'; // (v2.3 OPS-6)
 import '../auth/auth.css';
 import './lobby.css';
 
@@ -174,6 +175,8 @@ export function WaitingRoom({ conn, onLeave }: { conn: RoomConnection; account: 
             ))}
             {players.length === 0 && <li class="muted ct-small">No players yet — share the link above.</li>}
           </ul>
+          <RemovedList view={view} conn={conn} />
+          <ChatFilterSetting view={view} conn={conn} isHost={isHost} />
           {view.startBlockers.length > 1 && (
             <ul class="ct-blockers">
               {view.startBlockers.map((b) => (
@@ -317,8 +320,9 @@ function MemberRow({ m, view, me, conn }: { m: MemberView; view: LobbyRoomView; 
         )}
         {m.role === 'player' && (m.ready ? <span class="ct-badge ct-badge-ready">Ready</span> : <span class="ct-badge ct-badge-wait">Not ready</span>)}
         {!m.connected && <span class="ct-badge ct-badge-away">reconnecting</span>}
+        <MutedBadge m={m} />
       </span>
-      {conn && (canTransferSt || hostTools) && (
+      {conn && !you && (
         <span class="ct-member-tools">
           {canTransferSt && (
             <button class="ct-link" onClick={() => conn.send('lobby:transferStoryteller', { pid: m.pid })}>
@@ -340,6 +344,7 @@ function MemberRow({ m, view, me, conn }: { m: MemberView; view: LobbyRoomView; 
               </button>
             </>
           )}
+          <MemberModTools m={m} view={view} me={me} conn={conn} />
         </span>
       )}
     </div>

@@ -85,6 +85,9 @@ regex = '''\b(100\.(?:6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.(?:25[0-5]|2[0-4][0
 secretGroup = 1
 keywords = ["100."]
 tags = ["clocktower", "infra"]
+# the generic range in firewall rules (deploy/secure/v2.3) is not a node address
+[[rules.allowlists]]
+regexes = ['''^100\.64\.0\.0$''']
 
 [[rules]]
 id = "ct-home-path"

@@ -4,6 +4,7 @@ import { api } from '../../net/api';
 import { CharacterPicker, characterOf } from './CharacterPicker';
 import { LobbyFinder } from './LobbyFinder';
 import { StatsPanel } from './StatsPanel'; // (v2.2 stats)
+import { AccountPanel } from './AccountPanel'; // (v2.3 AUTH-5/6)
 import { HowToPlayHost, openHelp } from '../common/HowToPlay';
 import { signOutAll } from '../common/http';
 import { errorText, goTo } from './finder';
@@ -29,6 +30,7 @@ export function HomeScreen({
       <div class="ct-home-grid">
         <aside class="ct-home-side">
           <AppearancePanel account={account} onAccountChange={onAccountChange} />
+          <AccountPanel account={account} onDeleted={onSignedOut} />
         </aside>
         <main class="ct-home-main">
           <LobbyFinder onJoin={onJoin} />

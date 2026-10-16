@@ -69,11 +69,11 @@ describe('@ct/db', () => {
     expect(r.database.sqlite.pragma('journal_mode', { simple: true })).toBe('wal');
     expect(r.database.sqlite.pragma('foreign_keys', { simple: true })).toBe(1);
     const applied = r.database.sqlite.prepare('SELECT id FROM _migrations').all();
-    expect(applied).toEqual([{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }, { id: 5 }]);
+    expect(applied).toEqual([{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }, { id: 5 }, { id: 6 }]); // 6 = v2.3 OPS moderation
     r.database.close();
     // Re-opening does not re-apply migrations.
     const again = repos(url);
-    expect(again.database.sqlite.prepare('SELECT COUNT(*) AS n FROM _migrations').get()).toEqual({ n: 5 });
+    expect(again.database.sqlite.prepare('SELECT COUNT(*) AS n FROM _migrations').get()).toEqual({ n: 6 });
   });
 
   it('accounts: insert, find, unique lookup, profile update, credentials lookup', () => {
@@ -257,7 +257,7 @@ describe('@ct/db', () => {
     old.sqlite
       .prepare(`INSERT INTO match_records (match_id, lobby_id, version, status, started_at, ended_at, player_count, record_json) VALUES ('mx', 'l', 1, 'abandoned', 1, 2, 2, ?)`)
       .run(JSON.stringify({ seats: [seatJson('a', { avatarId: 'frog' }), seatJson('b', { avatarId: 'crow' })] }));
-    expect(runMigrations(old.sqlite)).toEqual([5]);
+    expect(runMigrations(old.sqlite)).toEqual([5, 6]); // 6 = v2.3 OPS moderation (additive)
     expect(old.sqlite.prepare('SELECT account_id AS a, avatar_id AS v FROM match_players ORDER BY account_id').all()).toEqual([
       { a: 'a', v: 'frog' },
       { a: 'b', v: 'crow' },

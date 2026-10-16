@@ -12,7 +12,7 @@ import { sleep, suiteServer } from '../support/suite.js';
 
 const LK_SECRET = 'qa-fake-livekit-secret-0123456789abcdef0123456789';
 const { server, features } = await suiteServer({
-  env: { LIVEKIT_URL: 'wss://qa-fake.livekit.invalid', LIVEKIT_API_KEY: 'APIqafakekey', LIVEKIT_API_SECRET: LK_SECRET },
+  env: { LIVEKIT_URL: 'wss://qa-fake.livekit.invalid', LIVEKIT_API_KEY: 'APIqafakekey', LIVEKIT_API_SECRET: LK_SECRET, VOICE_TEST_AUTO_OPT_IN: '1' },
 });
 const all: Bot[] = [];
 afterAll(async () => {

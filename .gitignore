@@ -16,3 +16,28 @@ playwright-report/
 pnpm-lock.yaml.remote*
 # raw gpt-6-sol outputs for the landing screen (never shipped)
 apps/client/landing-staging/
+# --- secrets / keys / certs (security v2.3, REPO-07) ---
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+id_rsa*
+id_ed25519*
+deploy/cloudflared/*.json
+# --- databases / journals / backups / logs ---
+*.sqlite
+*.sqlite3
+*.db-journal
+*.bak
+*.backup
+backups/
+*.log
+# --- private operator settings (never commit host names, IPs, user names, paths) ---
+ops.local.env
+*.local.env
+ops/*.local.md
+CLAUDE.local.md
+.claude/settings.local.json
+.envrc
+.npmrc.local

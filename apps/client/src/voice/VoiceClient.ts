@@ -465,6 +465,43 @@ export class VoiceClient implements VoiceHost {
 
   private onUnavailable(u: VoiceUnavailable) {
     this.patch({ availability: u.reason, availabilityMessage: u.message });
+    // (v2.3 VOICE-7) the server switched our voice off after a long time without activity.
+    if (u.reason === 'idle') {
+      void this.disable().then(() => this.patch({ availability: u.reason, availabilityMessage: u.message }));
+      this.notify(u.message, 'info', 12_000);
+    }
+  }
+
+  /**
+   * Turn voice off in this tab (LiveKit disconnected, microphone released, no auto re-enable after a
+   * reload). "Enable voice" turns it back on.
+   */
+  async disable(): Promise<void> {
+    sessionFlag(false);
+    const engine = this.engine;
+    this.engine = null;
+    this.zoneGrant = null;
+    this.announceGrant = null;
+    await engine?.dispose();
+    if (this.disposed) return;
+    this.patch({
+      enabled: false,
+      loading: false,
+      link: 'idle',
+      zone: null,
+      room: null,
+      mode: null,
+      canPublish: false,
+      mic: 'off',
+      micError: null,
+      pttHeld: false,
+      transmitting: false,
+      localSpeaking: false,
+      participants: [],
+      announce: { room: null, canPublish: false, link: 'idle' },
+      playbackBlocked: false,
+      heardBy: [],
+    });
   }
 
   /** Debug overlay snapshot. */

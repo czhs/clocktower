@@ -99,7 +99,7 @@ describe('auth HTTP', () => {
     const row = sqlite.prepare('SELECT * FROM sessions WHERE account_id = ?').get(account.id) as { token_hash: string };
     expect(row.token_hash).toBe(createHash('sha256').update(token).digest('hex'));
     const acc = sqlite.prepare('SELECT * FROM accounts WHERE id = ?').get(account.id) as Record<string, string>;
-    expect(acc.passphrase_verifier).toMatch(/^scrypt\$32768\$8\$1\$[0-9a-f]{64}$/);
+    expect(acc.passphrase_verifier).toMatch(/^scrypt\$4096\$8\$1\$[0-9a-f]{64}$/); // v2.3 AUTH-2: N=2^12 for new verifiers
     expect(acc.passphrase_lookup).toMatch(/^[0-9a-f]{64}$/);
     // sign in once so the sign-in path is also covered by the log scan
     await api(srv, 'POST', '/api/auth/signin', { body: { passphrase }, headers: freshIp() });

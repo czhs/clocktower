@@ -9,10 +9,12 @@ import { useStore } from '../../net/store';
 import { browserKind, keyLabel, VoiceClient, type BrowserKind, type VoiceClientState, type VoiceParticipantView } from '../../voice/VoiceClient';
 import { crowdLayout, noteActivity, roomCountLabel, type Activity } from '../../voice/speaking';
 import { isPttMouseButton, mouseCode } from '../../voice/ptt';
+import { announceBar, shouldClearAnnounce } from '../../voice/announce';
 import { DeviceSettings } from './DeviceSettings';
+import { registerVoiceClient } from '../../voice/active';
+import { openSettings } from '../common/Settings';
 import './voice.css';
 
-const ANNOUNCE_KEEPALIVE_MS = 30_000;
 
 function zoneLabel(s: VoiceClientState, night: boolean): { title: string; hint: string } {
   if (!s.zone) return { title: 'No voice area', hint: 'Walk into town to talk.' };
@@ -63,7 +65,7 @@ function micBadge(s: VoiceClientState): { cls: string; text: string; off: boolea
 
 function linkDot(s: VoiceClientState): string {
   if (!s.enabled) return 'off';
-  if (s.availability === 'not_configured' || s.availability === 'quota_exhausted') return 'bad';
+  if (s.availability === 'not_configured' || s.availability === 'quota_exhausted' || s.availability === 'disabled' || s.availability === 'busy') return 'bad';
   if (s.link === 'connected') return s.transmitting ? 'live' : 'ok';
   if (s.link === 'connecting' || s.link === 'reconnecting') return 'wait';
   if (s.link === 'error') return 'bad';
@@ -73,6 +75,7 @@ function linkDot(s: VoiceClientState): string {
 export function VoicePanel({ conn }: { conn: RoomConnection; account: AccountView }) {
   const client = useMemo(() => new VoiceClient(conn), [conn]);
   useEffect(() => () => void client.dispose(), [client]);
+  useEffect(() => registerVoiceClient(client), [client]); // (v2.3) ⚙ Settings → Audio & voice edits the same client
   // DEV only (stripped from builds): lets the town sandbox / visual checks fake voice state.
   if (import.meta.env.DEV) (window as unknown as { __voiceClient?: VoiceClient }).__voiceClient = client;
   const s = useStore(client.state);
@@ -123,16 +126,50 @@ export function VoicePanel({ conn }: { conn: RoomConnection; account: AccountVie
     };
   }, [binding, client]);
 
-  // Storyteller announcement keep-alive (server auto-ends it after ~90 s of silence).
+  // Storyteller announcement: one request, no keep-alive (v2.3). The server ends it by itself (90 s
+  // without talking, a few minutes at most, nightfall, a home visit); we then drop our request, and
+  // switching it off tells the server the ST saw it end (it refuses a restart until then).
   useEffect(() => {
     if (!announcing || !isStoryteller) return;
     conn.send('voice:announce', { active: true });
-    const t = setInterval(() => conn.send('voice:announce', { active: true }), ANNOUNCE_KEEPALIVE_MS);
     return () => {
-      clearInterval(t);
       conn.send('voice:announce', { active: false });
     };
   }, [announcing, isStoryteller, conn]);
+  const announceLive = isStoryteller && !!s.announce.room && s.announce.canPublish;
+  const announceSeen = useRef({ wasLive: false, at: 0 });
+  useEffect(() => {
+    if (!announcing) {
+      announceSeen.current = { wasLive: false, at: 0 };
+      return;
+    }
+    if (!announceSeen.current.at) announceSeen.current.at = Date.now();
+    const check = () => {
+      const r = announceSeen.current;
+      if (shouldClearAnnounce({ requested: true, wasLive: r.wasLive, live: announceLive, requestedAt: r.at, now: Date.now() })) setAnnouncing(false);
+      else if (announceLive) r.wasLive = true;
+    };
+    check();
+    const t = setInterval(check, 1000);
+    return () => clearInterval(t);
+  }, [announcing, announceLive]);
+  const bar = announceBar({ isStoryteller, requested: announcing, room: s.announce.room, canPublish: s.announce.canPublish });
+  const announceWarning =
+    bar === 'off' ? null : (
+      <div class={`ctv-announce-bar ctv-announce-${bar}`} role="alert">
+        <span class="ctv-announce-dot" aria-hidden="true">●</span>
+        <span>{bar === 'live' ? 'You are announcing to the whole town' : 'Starting the announcement…'}</span>
+        <button
+          class="ctv-announce-stop"
+          onClick={() => {
+            if (announcing) setAnnouncing(false);
+            else conn.send('voice:announce', { active: false }); // live without a local request (re-mounted panel)
+          }}
+        >
+          Stop
+        </button>
+      </div>
+    );
   useEffect(() => {
     if (!isStoryteller) setAnnouncing(false);
   }, [isStoryteller]);
@@ -143,7 +180,8 @@ export function VoicePanel({ conn }: { conn: RoomConnection; account: AccountVie
   }, [s.availability]);
 
   const z = zoneLabel(s, night);
-  const unavailable = s.availability === 'not_configured' || s.availability === 'quota_exhausted' || s.availability === 'provider_error';
+  // (v2.3) 'disabled' = host kill switch, 'busy' = capacity cap (both reconnect by themselves), 'idle' = voice was switched off.
+  const unavailable = ['not_configured', 'quota_exhausted', 'provider_error', 'disabled', 'busy', 'idle'].includes(s.availability);
   const announceHeard = s.participants.some((p) => p.announce && p.speaking);
   const badge = micBadge(s);
   const inHouse = !!s.zone?.startsWith('bld:house-') && s.link === 'connected';
@@ -208,6 +246,7 @@ export function VoicePanel({ conn }: { conn: RoomConnection; account: AccountVie
   if (!open) {
     return (
       <div class="ctv ctv-collapsed">
+        {announceWarning}
         {notice}
         {privateLine && <div class="ctv-private ctv-private-small">🕯 {privateLine}</div>}
         <button class="ctv-pill" onClick={() => setOpen(true)} title={s.availability === 'not_configured' ? 'Voice is not set up on this server; text chat works.' : heard || 'Open voice panel'}>
@@ -254,6 +293,7 @@ export function VoicePanel({ conn }: { conn: RoomConnection; account: AccountVie
         </button>
       </div>
 
+      {announceWarning}
       {notice}
       {privateLine && <div class="ctv-private">🕯 {privateLine}</div>}
       {unavailable && <p class="ctv-note ctv-warn">{s.availabilityMessage ?? 'Voice is unavailable. Text chat continues.'}</p>}
@@ -363,9 +403,21 @@ export function VoicePanel({ conn }: { conn: RoomConnection; account: AccountVie
                       : 'Mic idle'}
           </div>
           <DeviceSettings client={client} s={s} />
+          <button class="ctv-small ctv-more" onClick={() => openSettings('audio')} title="Push-to-talk key, busy-room mute, devices and sound volumes">
+            Voice &amp; sound settings…
+          </button>
           {isStoryteller && (
-            <button class={`ctv-wide ${announcing ? 'on' : ''}`} onClick={() => setAnnouncing((a) => !a)} disabled={unavailable}>
-              {announcing ? 'End announcement' : 'Announce to the whole town'}
+            <button
+              class={`ctv-wide ${announcing || announceLive ? 'on' : ''}`}
+              onClick={() => {
+                if (announcing) setAnnouncing(false);
+                else if (announceLive) conn.send('voice:announce', { active: false });
+                else setAnnouncing(true);
+              }}
+              disabled={unavailable || (night && !announcing && !announceLive)}
+              title={night ? 'Announcements are not available at night (they would follow you into home visits).' : 'Everyone hears you until you stop (ends by itself after 90 s of silence or a few minutes).'}
+            >
+              {announcing || announceLive ? 'End announcement' : 'Announce to the whole town'}
             </button>
           )}
 

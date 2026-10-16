@@ -17,8 +17,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-export const TEST_PORT_MIN = 3350;
-export const TEST_PORT_MAX = 3389;
+// Random ports for suite servers: a block NO test hardcodes (fixed ports live in 3310-3399), so a
+// random pick can never collide with another file's fixed port in the parallel `pnpm test` run.
+export const TEST_PORT_MIN = 3400;
+export const TEST_PORT_MAX = 3449;
 
 export interface TestServer {
   url: string;
@@ -91,7 +93,7 @@ async function launch(port: number, opts: StartOptions): Promise<TestServer> {
   const mode = opts.mode ?? (process.env.CT_TEST_SERVER === 'dist' ? 'dist' : 'source');
   const ownDir = !opts.dataDir;
   const dataDir = opts.dataDir ?? mkdtempSync(path.join(os.tmpdir(), 'ct-test-'));
-  // Unique per launch: /healthz must echo it, so a port race can never make us talk to another
+  // Unique per launch: /internal/version must echo it, so a port race can never make us talk to another
   // test file's server.
   const nonce = `test-${randomBytes(6).toString('hex')}`;
   const env: Record<string, string> = {
@@ -115,6 +117,8 @@ async function launch(port: number, opts: StartOptions): Promise<TestServer> {
     LIVEKIT_API_SECRET: '',
     LIVEKIT_ROOM_PREFIX: 'test',
     LOG_DIR: path.join(dataDir, 'logs'),
+    // (v2.3 sec-host) optional per-socket budget peak tracing for sizing HOST-11 (see guard/socketBudget.ts)
+    ...(process.env.CT_SOCKET_BUDGET_TRACE ? { CT_SOCKET_BUDGET_TRACE: process.env.CT_SOCKET_BUDGET_TRACE } : {}),
     ...opts.env,
     CT_VERSION: nonce,
   };
@@ -151,7 +155,8 @@ async function launch(port: number, opts: StartOptions): Promise<TestServer> {
   let ready = false;
   while (Date.now() < deadline && exited === null) {
     try {
-      const res = await fetch(`${url}/healthz`, { signal: AbortSignal.timeout(1000) });
+      // v2.3 HOST-07: the exact version is on the loopback-only /internal/version (public /healthz is {ok:true}).
+      const res = await fetch(`${url}/internal/version`, { signal: AbortSignal.timeout(1000) });
       if (res.ok && ((await res.json()) as { version?: string }).version === nonce) {
         ready = true;
         break;

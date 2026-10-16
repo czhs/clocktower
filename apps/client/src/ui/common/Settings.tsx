@@ -1,19 +1,30 @@
-import { useEffect, useRef, useState } from 'preact/hooks';
-import { getAmbientVolume, getSfxVolume, setAmbientVolume, setSfxVolume } from '../../game/audio';
-import { FX_QUALITY_KEY, readQualityPref, type FxQualityPref } from '../../game/fx/quality';
-import { readTalkOutlineMode, saveTalkOutlineMode, type TalkOutlineMode } from '../../game/fx/talkingPref';
-import { openHelp } from './HowToPlay';
+import { render, type ComponentChildren } from 'preact';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { getAmbientVolume, setAmbientVolume } from '../../game/audio';
+import type { RoomConnection } from '../../net/room';
+import { lazyComponent, whenIdle } from './lazy';
 
-// Small settings popover behind the gear button: ambient sound volume (separate from voice),
-// sound-effects volume, graphics quality, talking outlines, how-to-play and "show tips again". All per-browser
-// preferences; the sound engine (game/audio.ts) persists its own volumes.
+// (v2.3) ⚙ Settings: every per-browser player preference in one dialog, grouped into sections —
+// Audio & voice · Graphics · Chat & social · Controls · Privacy & safety · About. This module is the
+// small always-loaded part (gear button, openSettings(), the section list); the dialog itself
+// (./SettingsDialog.tsx + Settings.css) is its own chunk, prefetched on idle. Preferences and their
+// single stores: ./prefs.ts. Nothing here is sent to the server.
 
-function save(key: string, v: string) {
-  try {
-    localStorage.setItem(key, v);
-  } catch {
-    // ignore
-  }
+export type SettingsSection = 'audio' | 'graphics' | 'chat' | 'controls' | 'privacy' | 'about';
+export const SECTIONS: { id: SettingsSection; label: string; glyph: string }[] = [
+  { id: 'audio', label: 'Audio & voice', glyph: '♪' },
+  { id: 'graphics', label: 'Graphics', glyph: '◐' },
+  { id: 'chat', label: 'Chat & social', glyph: '✉' },
+  { id: 'controls', label: 'Controls', glyph: '⌨' },
+  { id: 'privacy', label: 'Privacy & safety', glyph: '◈' },
+  { id: 'about', label: 'About', glyph: 'ℹ' },
+];
+const SETTINGS_EVENT = 'ct:settings';
+const TAB_KEY = 'ct.settings.tab';
+
+/** Open ⚙ Settings (at a section) from anywhere a SettingsButton is mounted, e.g. the voice panel. */
+export function openSettings(section?: SettingsSection) {
+  window.dispatchEvent(new CustomEvent(SETTINGS_EVENT, { detail: section }));
 }
 
 /** Re-apply the persisted ambience volume (the sound engine stores it in 'ct.ambientVolume'). */
@@ -21,166 +32,94 @@ export function applyAmbientVolume() {
   setAmbientVolume(getAmbientVolume());
 }
 
-const QUALITY: { v: FxQualityPref; label: string }[] = [
-  { v: 'auto', label: 'Auto' },
-  { v: 'low', label: 'Low' },
-  { v: 'medium', label: 'Medium' },
-  { v: 'high', label: 'High' },
-];
-
-function VolumeRow({ label, hint, value, onChange }: { label: string; hint: string; value: number; onChange: (v: number) => void }) {
-  return (
-    <label class="ct-settings-row">
-      <span>
-        {label} <small class="muted">{Math.round(value * 100)}%</small>
-      </span>
-      <input
-        type="range"
-        min={0}
-        max={100}
-        step={5}
-        value={Math.round(value * 100)}
-        aria-label={`${label} volume`}
-        onInput={(e) => onChange(Number((e.currentTarget as HTMLInputElement).value) / 100)}
-      />
-      <small class="muted">{hint}</small>
-    </label>
-  );
+export const isSection = (v: unknown): v is SettingsSection => SECTIONS.some((s) => s.id === v);
+function lastTab(): SettingsSection {
+  try {
+    const v = localStorage.getItem(TAB_KEY);
+    return isSection(v) ? v : 'audio';
+  } catch {
+    return 'audio';
+  }
+}
+export function rememberTab(t: SettingsSection) {
+  try {
+    localStorage.setItem(TAB_KEY, t);
+  } catch {
+    // per-viewer convenience only
+  }
 }
 
-const HINT_KEYS = ['ct.hint.move.v1', 'ct.help.seen.v1'];
+export interface SettingsDialogProps {
+  conn?: RoomConnection;
+  start: SettingsSection;
+  onClose: () => void;
+  onLeave?: () => void;
+  leaveLabel?: string;
+}
 
-export function SettingsButton({ onLeave, leaveLabel }: { onLeave?: () => void; leaveLabel?: string } = {}) {
-  const [open, setOpen] = useState(false);
-  const root = useRef<HTMLDivElement>(null);
+const SettingsDialog = lazyComponent<SettingsDialogProps>(
+  () => import('./SettingsDialog').then((m) => m.SettingsDialog),
+  (failed) =>
+    failed ? (
+      <div class="ct-help-backdrop">
+        <div class="panel" role="alert">
+          Settings could not be loaded. Check your connection and try again.
+        </div>
+      </div>
+    ) : null,
+  { reloadOnFail: false },
+);
+
+/** Render into <body>: the toolbar's button styling and stacking context must not apply. */
+function BodyPortal({ children }: { children: ComponentChildren }) {
+  const host = useMemo(() => document.createElement('div'), []);
   useEffect(() => {
-    if (!open) return;
-    const away = (e: PointerEvent) => root.current && !root.current.contains(e.target as Node) && setOpen(false);
-    const esc = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
-    window.addEventListener('pointerdown', away);
-    window.addEventListener('keydown', esc);
+    document.body.appendChild(host);
     return () => {
-      window.removeEventListener('pointerdown', away);
-      window.removeEventListener('keydown', esc);
+      render(null, host);
+      host.remove();
     };
-  }, [open]);
+  }, [host]);
+  useEffect(() => {
+    render(<>{children}</>, host);
+  });
+  return null;
+}
+
+export function SettingsButton({ conn, onLeave, leaveLabel }: { conn?: RoomConnection; onLeave?: () => void; leaveLabel?: string } = {}) {
+  const [open, setOpen] = useState<SettingsSection | null>(null);
+  const btn = useRef<HTMLButtonElement>(null);
+  useEffect(() => whenIdle(() => void SettingsDialog.preload()), []);
+  useEffect(() => {
+    const on = (e: Event) => {
+      const d = (e as CustomEvent<unknown>).detail;
+      setOpen(isSection(d) ? d : lastTab());
+    };
+    window.addEventListener(SETTINGS_EVENT, on);
+    return () => window.removeEventListener(SETTINGS_EVENT, on);
+  }, []);
+  const close = () => {
+    setOpen(null);
+    btn.current?.focus();
+  };
   return (
-    <div class="ct-settings" ref={root}>
-      <button class="ct-tb-icon" aria-label="Settings" title="Settings" aria-expanded={open} aria-haspopup="dialog" onClick={() => setOpen((o) => !o)}>
+    <>
+      <button
+        ref={btn}
+        class="ct-tb-icon"
+        aria-label="Settings"
+        title="Settings"
+        aria-expanded={!!open}
+        aria-haspopup="dialog"
+        onClick={() => (open ? close() : setOpen(lastTab()))}
+      >
         ⚙
       </button>
-      {open && <SettingsPanel onClose={() => setOpen(false)} onLeave={onLeave} leaveLabel={leaveLabel} />}
-    </div>
-  );
-}
-
-function SettingsPanel({ onClose, onLeave, leaveLabel }: { onClose: () => void; onLeave?: () => void; leaveLabel?: string }) {
-  const [vol, setVol] = useState(getAmbientVolume);
-  const [sfx, setSfx] = useState(getSfxVolume);
-  const [quality, setQuality] = useState<FxQualityPref>(readQualityPref);
-  const [outline, setOutline] = useState<TalkOutlineMode>(readTalkOutlineMode);
-  const [tipsReset, setTipsReset] = useState(false);
-  return (
-    <div class="ct-settings-panel panel" role="dialog" aria-label="Settings">
-      <VolumeRow
-        label="Town ambience"
-        hint="Wind, birds, the fountain — kept under voice chat."
-        value={vol}
-        onChange={(v) => {
-          setVol(v);
-          setAmbientVolume(v);
-        }}
-      />
-      <VolumeRow
-        label="Sound effects"
-        hint="Footsteps, doors, bells and votes. Voice volume is in the Voice panel."
-        value={sfx}
-        onChange={(v) => {
-          setSfx(v);
-          setSfxVolume(v);
-        }}
-      />
-      <div class="ct-settings-row" role="radiogroup" aria-label="Graphics quality">
-        <span>Graphics</span>
-        <div class="ct-seg">
-          {QUALITY.map((q) => (
-            <button
-              key={q.v}
-              role="radio"
-              aria-checked={quality === q.v}
-              class={quality === q.v ? 'on' : ''}
-              onClick={() => {
-                setQuality(q.v);
-                save(FX_QUALITY_KEY, q.v);
-              }}
-            >
-              {q.label}
-            </button>
-          ))}
-        </div>
-        <small class="muted">Lower it if the town feels sluggish. Auto adjusts by itself.</small>
-      </div>
-      {/* v2.2 voice: who is talking is outlined in town (game/fx/talking.ts) */}
-      <div class="ct-settings-row" role="radiogroup" aria-label="Talking outlines">
-        <span>Talking outlines</span>
-        <div class="ct-seg">
-          {(
-            [
-              ['behind', 'Behind buildings'],
-              ['top', 'Always on top'],
-            ] as const
-          ).map(([v, label]) => (
-            <button
-              key={v}
-              role="radio"
-              aria-checked={outline === v}
-              class={outline === v ? 'on' : ''}
-              onClick={() => {
-                setOutline(v);
-                saveTalkOutlineMode(v);
-              }}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        <small class="muted">Who is speaking gets an outline. On top: also visible through buildings.</small>
-      </div>
-      <div class="ct-settings-actions">
-        <button
-          onClick={() => {
-            onClose();
-            openHelp();
-          }}
-        >
-          How to play
-        </button>
-        <button
-          disabled={tipsReset}
-          onClick={() => {
-            for (const k of HINT_KEYS)
-              try {
-                localStorage.removeItem(k);
-              } catch {
-                // ignore
-              }
-            setTipsReset(true);
-          }}
-        >
-          {tipsReset ? 'Tips will show again' : 'Show tips again'}
-        </button>
-        {onLeave && (
-          <button
-            class="ct-settings-leave"
-            onClick={() => {
-              onClose();
-              onLeave();
-            }}
-          >
-            {leaveLabel ?? 'Leave'}
-          </button>
-        )}
-      </div>
-    </div>
+      {open && (
+        <BodyPortal>
+          <SettingsDialog conn={conn} start={open} onClose={close} onLeave={onLeave} leaveLabel={leaveLabel} />
+        </BodyPortal>
+      )}
+    </>
   );
 }

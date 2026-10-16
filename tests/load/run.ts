@@ -111,7 +111,7 @@ async function main() {
     log(`started ${dist ? 'dist' : 'source'} test server ${baseUrl} pid ${serverPid}`);
   }
   const wsUrl = baseUrl.replace(/^http/, 'ws');
-  const health = await (await fetch(`${baseUrl}/healthz`)).json();
+  const health = await (await fetch(`${baseUrl}/internal/version`)).json().catch(() => ({ ok: 'unknown (non-local target)' }));
   log('target', baseUrl, JSON.stringify(health));
 
   // Accounts + lobbies.

@@ -188,6 +188,8 @@ const ACTION_LABEL: Record<string, string> = {
   'account.signout_all': 'signed out (all devices)',
   'account.delete': 'deleted',
   'lobby.close': 'closed the lobby',
+  'game.view': 'viewed the full record of game', // (v2.3 AUTH-8)
+  'game.download': 'downloaded the full record of game',
 };
 
 function detailText(e: AdminAuditView): string | null {

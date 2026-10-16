@@ -1,6 +1,6 @@
 # systemd --user unit (lead-owned): public ingress for PRODUCTION ONLY via Cloudflare Tunnel.
-#   https://clocktower.chrisshi.com  ->  outbound tunnel from hshi-u1  ->  http://127.0.0.1:3000
-# No inbound ports are opened on hshi-u1; the dev service (127.0.0.1:3001) is never referenced.
+#   https://clocktower.chrisshi.com  ->  outbound tunnel from the host  ->  http://127.0.0.1:3000
+# No inbound ports are opened on the host; the dev service (127.0.0.1:3001) is never referenced.
 # Tunnel config + credentials live in ~/.cloudflared/ (chmod 600, never committed); see
 # deploy/cloudflared/clocktower.yml.example and docs/deployment.md.
 [Unit]

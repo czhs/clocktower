@@ -11,6 +11,11 @@ import type { AppConfig } from './config.js';
 import type { Logger } from './rooms/modules.js';
 import { createServices, registerHttpRoutes, type ServiceOptions, type Services } from './services.js';
 import { GameRoom } from './rooms/GameRoom.js';
+import { securityHeaders } from './securityHeaders.js';
+import { registerInternalRoutes } from './guard/internal.js';
+import { installSocketBudget, type RawSocketServer } from './guard/socketBudget.js';
+import { getHostLimits, onHostLimitsChange, type HostLimits } from './guard/hostLimits.js';
+import { staticQueryGuard } from './cost/staticQuery.js';
 
 export interface RunningServer {
   port: number;
@@ -28,20 +33,6 @@ export interface AppServerOptions extends ServiceOptions {
   greet?: boolean;
 }
 
-const CSP = [
-  "default-src 'self'",
-  "script-src 'self'",
-  "style-src 'self'",
-  "img-src 'self' data: blob:",
-  "media-src 'self' blob:",
-  "font-src 'self'",
-  "connect-src 'self' wss://*.livekit.cloud https://*.livekit.cloud",
-  "worker-src 'self' blob:",
-  "object-src 'none'",
-  "base-uri 'none'",
-  "form-action 'self'",
-  "frame-ancestors 'none'",
-].join('; ');
 
 /**
  * SR-1: Colyseus reads /matchmake request bodies into memory without a size limit (and before
@@ -118,32 +109,16 @@ export async function startAppServer(config: AppConfig, log: Logger, options: Ap
   app.disable('x-powered-by');
   // Funnel / SSH forwarding terminate on loopback; trust only loopback proxies.
   app.set('trust proxy', 'loopback');
-  const https = config.publicOrigin.startsWith('https://');
-  app.use((_req, res, next) => {
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('Referrer-Policy', 'same-origin');
-    res.setHeader('X-Frame-Options', 'DENY');
-    // SR-7: strict CSP (verified against the built client incl. Phaser + Colyseus; LiveKit
-    // signalling/API on *.livekit.cloud). Fonts/images must be self-hosted.
-    res.setHeader('Content-Security-Policy', CSP);
-    res.setHeader('Permissions-Policy', 'camera=(), geolocation=(), payment=(), microphone=(self)');
-    if (https) res.setHeader('Strict-Transport-Security', 'max-age=31536000');
-    next();
-  });
+  // SR-7 + v2.3 WEB-2/3/4: CSP (LiveKit pinned to LIVEKIT_URL), COOP/CORP, Permissions-Policy, HSTS.
+  // Trusted Types (WEB-2): verified by tests/security/web-tt.test.ts against the built client.
+  app.use(securityHeaders({ publicOrigin: config.publicOrigin, livekitUrl: config.livekit.url, trustedTypes: () => services.settings.get<boolean>('web.trustedTypes') })); // (v2.3 sec-ops) live admin setting
   app.use(express.json({ limit: '32kb' }));
-  app.get('/healthz', (_req, res) => {
-    res.json({ ok: true, env: config.env, version });
-  });
-  // Host-only: lets the deploy script refuse to restart prod mid-game (games live in memory).
-  // Requests through the tunnel carry X-Forwarded-For (req.ip = the real client), so they get 404.
-  app.get('/internal/active-games', (req, res) => {
-    const loopback = req.ip === '127.0.0.1' || req.ip === '::1' || req.ip === '::ffff:127.0.0.1';
-    if (!loopback || req.headers['x-forwarded-for'] || req.headers['cf-connecting-ip']) {
-      res.status(404).json({ error: 'not_found', message: 'No such route' });
-      return;
-    }
-    const activeGames = services.directory.list().filter((l) => l.phase !== 'waiting' && l.phase !== 'finished').length;
-    res.json({ activeGames });
+  // v2.3 HOST-07: public /healthz is `{ok:true}` only; the exact version and the deploy guard's
+  // active-game count are on loopback-only /internal/* routes (404 through the tunnel).
+  registerInternalRoutes(app, {
+    env: config.env,
+    version,
+    activeGames: () => services.directory.list().filter((l) => l.phase !== 'waiting' && l.phase !== 'finished').length,
   });
 
   registerHttpRoutes(app, services);
@@ -167,6 +142,7 @@ export async function startAppServer(config: AppConfig, log: Logger, options: Ap
     // %PUBLIC_ORIGIN% placeholder that is filled from APP_PUBLIC_ORIGIN when served (no host is
     // baked into the client build). Read once; a deploy restarts the server.
     const indexBody = readFileSync(indexHtml, 'utf8').replaceAll('%PUBLIC_ORIGIN%', config.publicOrigin);
+    app.use(staticQueryGuard(root)); // (v2.3 VOICE-12) no cache-busting query strings on static files
     app.use(
       express.static(root, {
         index: false,
@@ -197,19 +173,32 @@ export async function startAppServer(config: AppConfig, log: Logger, options: Ap
   }
 
   const server = http.createServer(app);
+  // v2.3 HOST-09: tighter than Node's defaults (60 s / 300 s). WS upgrades and SSE responses are not
+  // subject to requestTimeout (it bounds receiving the request only).
+  // Live settings (guard/hostLimits.ts): re-applied on change; timeouts affect new connections.
+  const applyHttpLimits = (l: HostLimits) => {
+    server.headersTimeout = l.httpHeadersTimeoutMs;
+    server.requestTimeout = l.httpRequestTimeoutMs;
+    server.maxConnections = l.httpMaxConnections;
+  };
+  applyHttpLimits(getHostLimits());
+  const offHttpLimits = onHostLimitsChange(applyHttpLimits);
+  const transport = new WebSocketTransport({
+    server,
+    pingInterval: 5000,
+    pingMaxRetries: 3,
+    // (v2, notebook — CONTRACT-REQUEST for lead review) was 4096: one 'notebook:save' frame carries a
+    // whole private notebook (NOTEBOOK_MAX_BYTES = 20 KiB of JSON + msgpack framing). Every message
+    // is still Zod-capped per field and token-bucket rate-limited per pid.
+    maxPayload: 24 * 1024,
+    // (No verifyClient pre-check: rejecting at the HTTP upgrade breaks colyseus.js's reconnect
+    // retry after a network drop. Seat reservations are still enforced by the transport, and the
+    // rate-limited logger below absorbs the log noise from junk upgrades — SR-4.)
+  });
+  // v2.3 HOST-11: per-socket frame/byte budget, metered before Colyseus decodes anything.
+  installSocketBudget((transport as unknown as { wss: RawSocketServer }).wss, log);
   const gameServer = new Server({
-    transport: new WebSocketTransport({
-      server,
-      pingInterval: 5000,
-      pingMaxRetries: 3,
-      // (v2, notebook — CONTRACT-REQUEST for lead review) was 4096: one 'notebook:save' frame carries a
-      // whole private notebook (NOTEBOOK_MAX_BYTES = 20 KiB of JSON + msgpack framing). Every message
-      // is still Zod-capped per field and token-bucket rate-limited per pid.
-      maxPayload: 24 * 1024,
-      // (No verifyClient pre-check: rejecting at the HTTP upgrade breaks colyseus.js's reconnect
-      // retry after a network drop. Seat reservations are still enforced by the transport, and the
-      // rate-limited logger below absorbs the log noise from junk upgrades — SR-4.)
-    }),
+    transport,
     greet,
     logger: colyseusLogger(log),
   });
@@ -228,6 +217,7 @@ export async function startAppServer(config: AppConfig, log: Logger, options: Ap
     services,
     gameServer,
     async close() {
+      offHttpLimits();
       await gameServer.gracefullyShutdown(false).catch(() => undefined);
       await services.close();
     },

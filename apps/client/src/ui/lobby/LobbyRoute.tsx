@@ -59,7 +59,9 @@ export function LobbyRoute({ id, intent, account }: { id: string; intent: 'playe
       });
     const offClosed = c.events.on('closed', ({ code }) => {
       const reason =
-        code === CLOSE_CODES.kicked
+        code === CLOSE_CODES.signedOut // (v2.3 AUTH-1)
+          ? 'signed_out'
+          : code === CLOSE_CODES.kicked
           ? 'kicked'
           : code === CLOSE_CODES.replaced
             ? 'replaced'
@@ -87,7 +89,7 @@ export function LobbyRoute({ id, intent, account }: { id: string; intent: 'playe
     const actions =
       error.code === 'replaced'
         ? [{ label: 'Play in this tab', primary: true, onClick: () => location.reload() }, home]
-        : error.code === 'unauthenticated'
+        : error.code === 'unauthenticated' || error.code === 'signed_out'
           ? [{ label: 'Sign in again', primary: true, onClick: () => location.reload() }]
           : ['kicked', 'lobby_closed', 'lobby_gone', 'not_found', 'lobby_full', 'lobby_started'].includes(error.code ?? '')
             ? [{ ...home, primary: true }]

@@ -183,6 +183,8 @@ export interface GameState {
    * games: the engine then only raises alerts and the Storyteller decides. Not part of snapshots.
    */
   adjudicator?: Adjudicator;
+  /** (st-qol, automatic games) Extra public sentence appended to the bedtime bell announcement. */
+  bedtimeNote?: string;
   /** Undo entries (newest last; not part of snapshots). */
   history: HistoryEntry[];
 }

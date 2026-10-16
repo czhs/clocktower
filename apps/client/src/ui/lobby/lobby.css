@@ -286,3 +286,18 @@ button.ct-ready-on { border-color: #3d6b3a; color: #bfe0b9; }
 @media (prefers-reduced-motion: no-preference) { .ct-rec-shimmer { animation: ct-rec-shimmer 1.4s ease-in-out infinite; } }
 @keyframes ct-rec-shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
 @media (max-width: 420px) { .ct-rec-tiles { grid-template-columns: repeat(2, 1fr); } .ct-rec-value { font-size: 1.45rem; } }
+
+/* (v2.3 AUTH-5/6) home-screen Account section */
+.ct-account-panel .ct-row { gap: 8px; flex-wrap: wrap; align-items: center; }
+.ct-account-delete { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.ct-account-delete label { display: flex; flex-direction: column; gap: 4px; }
+.ct-account-delete label:has(input[type='checkbox']) { flex-direction: row; align-items: center; gap: 6px; }
+
+/* (v2.3 OPS-6) moderation: report dialog, removed list, chat filter, in-game "People" button */
+.ct-report-form { display: flex; flex-direction: column; gap: 10px; }
+.ct-report-form label { display: flex; flex-direction: column; gap: 4px; }
+.ct-report-form textarea { resize: vertical; }
+.ct-modal .ct-actions { flex-direction: row; justify-content: flex-end; }
+.ct-modal .ct-actions > button { width: auto; }
+.ct-removed { margin: 6px 0; }
+.ct-chat-filter { display: flex; align-items: center; gap: 8px; margin: 6px 0; }

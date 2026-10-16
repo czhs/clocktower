@@ -37,6 +37,7 @@ import type {
   VisitRecord,
 } from './types.js';
 import type { Pamphlet } from '@ct/protocol';
+import { DEFAULT_HOST_LIMITS, getHostLimits } from '../guard/hostLimits.js';
 
 export type RecordTrigger =
   | { kind: 'st'; cmd: StCommand }
@@ -82,6 +83,8 @@ const NOT_UNDOABLE = new Set<string>([
   'day_clock', // (auto-st) the town clock prop is not on the engine's undo history
 ]);
 const ENGINE_HISTORY_LIMIT = 30;
+/** v2.3 HOST-04: max entries per high-volume record list (see GameRecorder.enforceCaps). */
+export const RECORD_LIST_MAX = DEFAULT_HOST_LIMITS.recordListMax;
 const NIGHTISH: GamePhase[] = ['first_night', 'night', 'dawn'];
 
 interface PShadow {
@@ -267,6 +270,44 @@ export class GameRecorder {
     return { seat, pid: this.player(seat)?.pid ?? '' };
   }
 
+  /**
+   * (v2.3 security, sec-host — HOST-04) Bound memory and the saved record: a hostile Storyteller (10
+   * commands/s) or players could otherwise grow the high-volume lists without limit for as long as a
+   * game runs, and the whole record is written to SQLite at the end. Over RECORD_LIST_MAX a list keeps
+   * its first and last halves (setup + the end of the game) and drops the middle, once noted in
+   * `warnings`. Undo bookkeeping for commands that can no longer be undone is pruned too.
+   */
+  enforceCaps(): void {
+    const max = getHostLimits().recordListMax; // live setting; default RECORD_LIST_MAX
+    const lists: [string, unknown[]][] = [
+      ['timeline', this.timeline],
+      ['publicItems', this.publicItems],
+      ['statusChanges', this.statusChanges],
+      ['commands', this.commands],
+      ['actions', this.actions],
+      ['connections', this.connections],
+      ['log', this.log],
+      ['info', this.info],
+      ['announcements', this.announcements],
+      ['visits', this.visits],
+    ];
+    for (const [name, arr] of lists) {
+      if (arr.length <= max) continue;
+      const drop = arr.length - max;
+      arr.splice(Math.floor(max / 2), drop);
+      this.droppedEntries += drop;
+      if (!this.cappedLists.has(name)) {
+        this.cappedLists.add(name);
+        if (this.warnings.length < 50) this.warnings.push(`record list '${name}' exceeded ${max} entries; middle entries were dropped`);
+      }
+    }
+    const oldest = this.undoStack[0]?.seq ?? this.cmdSeq + 1;
+    if (this.byCmd.size > ENGINE_HISTORY_LIMIT * 2) for (const k of this.byCmd.keys()) if (k < oldest) this.byCmd.delete(k);
+  }
+  /** Entries dropped by enforceCaps (for tests / diagnostics). */
+  droppedEntries = 0;
+  private cappedLists = new Set<string>();
+
   // ------------------------------------------------------------------------------ output helpers
 
   private tag<T extends Undoable>(x: T, seq: number | null): T {
@@ -301,6 +342,7 @@ export class GameRecorder {
   /** Call after every committed change to the GameState. */
   observe(s: GameState, now: number, trigger: RecordTrigger): void {
     this.state = s;
+    this.enforceCaps(); // v2.3 HOST-04
     const prev = this.shadow;
     const before = this.shadowCtx(now);
     const after = this.ctxOf(s, now);
@@ -444,7 +486,7 @@ export class GameRecorder {
     if (s.phase !== prev.phase || s.dayNumber !== prev.day || s.nightNumber !== prev.night) this.phaseChange(s, prev, after, via, isUndo);
 
     this.shadow = shadowOf(s);
-    const sig = `${this.timeline.length}:${this.publicItems.length}:${this.cmdSeq}:${this.undoStack.length}:${this.pamphlets.length}:${s.phase}`;
+    const sig = `${this.droppedEntries}:${this.timeline.length}:${this.publicItems.length}:${this.cmdSeq}:${this.undoStack.length}:${this.pamphlets.length}:${s.phase}`;
     if (sig !== this.sig) {
       this.sig = sig;
       this.rev++;

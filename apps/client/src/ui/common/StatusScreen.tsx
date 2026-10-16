@@ -78,6 +78,13 @@ export function lobbyErrorCopy(code: string | undefined, fallback: string): { ic
         title: 'Lobby no longer exists',
         message: 'The server may have restarted, and a game in progress could not be recovered. Your account and stats are safe.',
       };
+    case 'signed_out': // (v2.3 AUTH-1) the session was revoked while connected
+      return {
+        icon: '⚿',
+        title: 'You were signed out',
+        message:
+          'This account was signed out (on this or another device, or its passphrase was changed). In a game in progress your seat is kept: sign in again with your passphrase to return.',
+      };
     case 'unauthenticated':
       return { icon: '⚿', title: 'Signed out', message: 'Your session has ended. Reload and sign in with your passphrase to join.' };
     default:

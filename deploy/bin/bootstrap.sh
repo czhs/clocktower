@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs ON hshi-u1 (invoked by scripts/setup-hshi-u1.sh). Idempotent.
+# Runs ON the host (invoked by scripts/setup-hshi-u1.sh, which passes CT_PUBLIC_HOST). Idempotent.
 #  - creates ~/clocktower/{dev,releases,env,data/{dev,prod},logs/{dev,prod},backups/prod,bin}
 #  - creates env/{dev,prod}.env (chmod 600) with secrets generated HERE via openssl; existing
 #    files are never overwritten — only missing keys are appended. Secret values are never printed.
@@ -8,7 +8,7 @@
 set -euo pipefail
 CT="$HOME/clocktower"
 STAGE="${1:-$CT/.deploy-staging}"
-PUBLIC_HOST="${CT_PUBLIC_HOST:-hshi-u1.tailf28040.ts.net}"
+PUBLIC_HOST="${CT_PUBLIC_HOST:?CT_PUBLIC_HOST (public hostname of prod) is required}"
 
 umask 077
 mkdir -p "$CT"/{releases,env,bin,incoming} "$CT"/data/{dev,prod} "$CT"/logs/{dev,prod} "$CT"/backups/prod

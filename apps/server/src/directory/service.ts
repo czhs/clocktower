@@ -56,6 +56,8 @@ export interface LobbyRoomHandle {
   summary(): LobbySummary;
   /** Admin action: disconnect everyone and dispose the room (the room then calls remove()). */
   close?(): void;
+  /** (v2.3 AUTH-1) The account's sessions (or the one session `sid`) were revoked: drop its connection. */
+  revokeAccount?(accountId: string, sid?: string): void;
 }
 
 interface Entry {
@@ -274,7 +276,7 @@ export class LobbyDirectory {
    * Issues a join ticket after advisory checks (the room re-checks everything atomically in
    * onJoin). Existing members may always obtain a ticket — that is how a seat is restored.
    */
-  issueTicket(account: AccountRecord, lobbyId: string, intent: JoinIntent): JoinTicketResponse {
+  issueTicket(account: AccountRecord, lobbyId: string, intent: JoinIntent, sid?: string): JoinTicketResponse {
     const e = this.entries.get(lobbyId);
     if (!e || !e.roomId) throw new DirectoryError(404, 'not_found', 'Lobby not found');
     const h = e.handle;
@@ -289,8 +291,31 @@ export class LobbyDirectory {
       if (intent === 'storyteller' && !auto && !s.storytellerSeatOpen) throw new DirectoryError(409, 'conflict', 'The Storyteller seat is taken');
       if ((intent === 'player' || auto) && s.playerCount >= s.maxPlayers) throw new DirectoryError(409, 'lobby_full', 'This lobby is full');
     }
-    const t = this.deps.tickets.issue({ accountId: account.id, lobbyId, intent });
+    const t = this.deps.tickets.issue({ accountId: account.id, lobbyId, intent, sid });
     return { lobbyId, roomId: e.roomId, ticket: t.ticket, expiresAt: t.expiresAt };
+  }
+
+  /** (v2.3 AUTH-6) Name of a live lobby the account holds a seat in (null = none). */
+  lobbyOfAccount(accountId: string): { id: string; name: string } | null {
+    for (const e of this.entries.values()) {
+      try {
+        if (e.handle?.isMember(accountId)) return { id: e.id, name: e.summary.name };
+      } catch {
+        // a room mid-dispose: not a member
+      }
+    }
+    return null;
+  }
+
+  /** (v2.3 AUTH-1) Revoked sessions: every lobby room drops the account's connection (or that session's). */
+  revokeAccount(accountId: string, sid?: string): void {
+    for (const e of this.entries.values()) {
+      try {
+        e.handle?.revokeAccount?.(accountId, sid);
+      } catch (err) {
+        this.deps.log.warn('revoke in lobby failed', { lobbyId: e.id, err: err instanceof Error ? err.message : String(err) });
+      }
+    }
   }
 
   /** Admin: close a lobby (everyone is disconnected; the room disposes and removes itself). */

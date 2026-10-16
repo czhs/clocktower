@@ -35,6 +35,7 @@ export type * from './clock.js';
 export type * from './story.js';
 export type * from './notebook.js';
 export type * from './admin.js';
+export type * from './moderation.js'; // (v2.3, sec-ops)
 export type * from './messages.js';
 
 // zod-free modules: re-exported as they are.
@@ -42,6 +43,8 @@ export * from './constants.js';
 export * from './snapshotCodec.js'; // (v2.2, WP4) world:snap2 decoder
 export * from './lobbyWords.js'; // (v2.2) simple-word lobby ids / names
 export * from './storylines.js'; // (v2.2, rules-storyteller) preset setups (storylines)
+export * from './textSafety.js'; // (v2.3, sec-web) name skeletons, invisible chars, mark caps
+export * from './moderationShared.js'; // (v2.3, sec-ops) chat filter modes, report reasons
 
 // ------------------------------------------------------------------------------- text.ts
 
@@ -49,8 +52,13 @@ export function cleanText(input: string): string {
   return input
     .normalize('NFC')
     .replace(/[\p{Cc}\p{Cf}\u2028\u2029]/gu, ' ')
+    // (v2.3 WEB-7) blank-looking letters (Hangul filler, Braille blank, ...): textSafety INVISIBLE_CHARS, inlined
+    // so this function's source stays identical in the client entry (client-entry test)
+    .replace(/[\u115F\u1160\u3164\uFFA0\u2800\u17B4\u17B5\u180E\u034F\u{1D159}\u{1D173}-\u{1D17A}]/gu, ' ')
     .replace(/\s+/g, ' ')
-    .trim();
+    .trim()
+    .replace(/^\p{M}+/u, '') // (v2.3 WEB-6) no orphan marks at the start
+    .replace(/(\p{M}{3})\p{M}+/gu, '$1'); // (v2.3 WEB-6) Zalgo stacks: at most 3 marks per character
 }
 
 // -------------------------------------------------------------------------- cosmetics.ts
@@ -334,5 +342,11 @@ export const CLOSE_CODES = {
   replaced: 4102, // same account joined from another device (newest connection wins)
   lobbyClosed: 4103,
   unauthorized: 4104,
+  // (v2.3 sec-host HOST-11 / sec-secrecy SEC-7) connection closed for abusive traffic (frame/byte budget
+  // or message-violation score). Terminal: the client must not auto-reconnect.
+  abuse: 4105,
+  // (v2.3 sec-auth AUTH-1) the account's session was revoked (sign out [everywhere], passphrase
+  // rotation, account deletion). Terminal: the client shows "You were signed out".
+  signedOut: 4106,
 } as const;
 export const TERMINAL_CLOSE_CODES: readonly number[] = Object.values(CLOSE_CODES);

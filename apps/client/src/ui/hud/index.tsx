@@ -22,7 +22,7 @@ import { useStore, useStoreSelector } from '../../net/store';
 import { townSays } from '../clock/logic';
 import { charName, CharacterSelect, Countdown, friendlyError, goHome, nameOf, PHASE_LABEL, phaseTitle, seatLabel, VoteClock } from './shared';
 import { homeOf, MoveHint } from './hints';
-import { chooseLine, ownOutcome, shortcutAllowed, storedPttCode, voteMark } from './logic';
+import { chooseLine, ownOutcome, shortcutAllowed, storedPttCode, toastMs, voteMark } from './logic';
 import './hud.css';
 
 export function Hud({ conn }: { conn: RoomConnection; account: AccountView }) {
@@ -67,9 +67,10 @@ function Toasts({ conn }: { conn: RoomConnection }) {
   useEffect(() => {
     let seq = 0;
     const push = (item: { id: string; kind: string; text: string }) => {
-      setItems((x) => [...x.filter((y) => y.id !== item.id).slice(-2), item]);
-      // (qol) refusals linger a little longer: they explain why a tap did nothing
-      setTimeout(() => setItems((x) => x.filter((y) => y.id !== item.id)), item.kind === 'error' ? 9000 : 7000);
+      // (v2.3 chat/ux) the same line twice (auto + engine) shows once; every line is re-readable in the chat panel's Crier tab
+      setItems((x) => (x.some((y) => y.text === item.text) ? x : [...x.filter((y) => y.id !== item.id).slice(-2), item]));
+      // (qol) refusals linger a little longer: they explain why a tap did nothing; long lines get reading time
+      setTimeout(() => setItems((x) => x.filter((y) => y.id !== item.id)), toastMs(item.kind, item.text));
     };
     const offA = conn.events.on('announcement', (a: AnnouncementView) => push({ id: a.id, kind: a.kind, text: a.text }));
     const offE = conn.events.on('error', (e) => {

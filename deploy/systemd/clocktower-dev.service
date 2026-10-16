@@ -1,4 +1,4 @@
-# systemd --user unit for the Clocktower Town dev service on hshi-u1 (installed by
+# systemd --user unit for the Clocktower Town dev service on the host (installed by
 # scripts/setup-hshi-u1.sh into ~/.config/systemd/user/). Binds 127.0.0.1:3001 only.
 # Isolation-critical variables (APP_ENV, HOST, PORT, DATABASE_URL, LIVEKIT_ROOM_PREFIX, LOG_DIR)
 # are pinned on the command line so a mistake in the env file can never make this unit use the

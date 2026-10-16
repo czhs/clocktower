@@ -142,3 +142,48 @@
 .ctv-devrow .ctv-device { flex: 1 1 auto; min-width: 0; }
 .ctv-devhelp { font-size: 11px; }
 .ctv-key.binding { flex-basis: 100%; font-family: inherit; font-size: 11.5px; }
+
+/* (v2.3) Storyteller announcement warning: persistent and unmissable while the whole town hears them. */
+.ctv-announce-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 6px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: #7a1010;
+  color: #fff;
+  font-weight: 700;
+  box-shadow: 0 0 0 2px #ff5a4f;
+}
+.ctv-announce-starting {
+  background: #5a3a10;
+  box-shadow: 0 0 0 2px #e0a040;
+}
+.ctv-announce-dot {
+  color: #ff5a4f;
+  animation: ctv-announce-blink 1s steps(2, start) infinite;
+}
+.ctv-announce-starting .ctv-announce-dot {
+  color: #e0a040;
+}
+.ctv-announce-stop {
+  margin-left: auto;
+  background: #fff;
+  color: #7a1010;
+  font-weight: 700;
+  border: 0;
+  border-radius: 4px;
+  padding: 2px 10px;
+  cursor: pointer;
+}
+@keyframes ctv-announce-blink {
+  to {
+    visibility: hidden;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ctv-announce-dot {
+    animation: none;
+  }
+}

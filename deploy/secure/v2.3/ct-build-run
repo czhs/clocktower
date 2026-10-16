@@ -1,0 +1,50 @@
+#!/bin/bash
+# v2.3 HOST-12 (sec-host): run repository / dependency code as the unprivileged 'ct-build' user in a
+# systemd sandbox, never as the admin account. Installed as root:root 0755 at
+# /usr/local/sbin/ct-build-run; the admin may call it via sudo without a password
+# (/etc/sudoers.d/clocktower-build, installed by deploy/secure/v2.3/apply.sh).
+#
+#     sudo -n /usr/local/sbin/ct-build-run <workspace> <command> [args...]
+#
+# <workspace> is a simple name ([A-Za-z0-9._-], e.g. 'lead', 'release-<sha>'); the command runs with
+# cwd /srv/ct-build/work/<workspace> (created if missing). stdin/stdout/stderr are passed through
+# (so `tar -x`, `rsync --server` and test output work through ssh).
+#
+# Security model: the COMMAND IS UNTRUSTED (postinstall scripts, build plugins, tests). The boundary is
+# the sandbox below, not argument checking: uid ct-build (no sudo, no groups beyond its own), /home and
+# /root invisible, the whole filesystem read-only except /srv/ct-build, no capabilities, no setuid,
+# private /tmp, no LAN / tailnet / link-local (IPAddressDeny), and loopback limited by the nftables
+# guard to DNS + its own test servers (127.0.0.1:3300-3399). Public internet stays open (npm registry,
+# Playwright downloads). Resource caps keep it from starving prod.
+set -euo pipefail
+BUILD_HOME=/srv/ct-build
+NODE_BIN=/srv/clocktower/node/bin
+[[ $# -ge 2 ]] || { echo "usage: ct-build-run <workspace> <command> [args...]" >&2; exit 2; }
+WS=$1; shift
+[[ $WS =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]] || { echo "ct-build-run: bad workspace name" >&2; exit 2; }
+DIR="$BUILD_HOME/work/$WS"
+if [[ ! -d $DIR ]]; then install -d -o ct-build -g ct-build -m 2750 "$DIR"; fi
+[[ $(stat -c %U "$DIR") == ct-build ]] || { echo "ct-build-run: $DIR is not owned by ct-build" >&2; exit 2; }
+
+exec /usr/bin/systemd-run --quiet --pipe --wait --collect \
+  --slice=ctbuild.slice \
+  -p User=ct-build -p Group=ct-build \
+  -p WorkingDirectory="$DIR" \
+  -p Environment=HOME="$BUILD_HOME" \
+  -p Environment=PATH="$NODE_BIN:$BUILD_HOME/.local/bin:/usr/local/bin:/usr/bin:/bin" \
+  -p Environment=npm_config_store_dir="$BUILD_HOME/.pnpm-store" \
+  -p Environment=PLAYWRIGHT_BROWSERS_PATH="$BUILD_HOME/.cache/ms-playwright" \
+  -p Environment=CI=1 \
+  -p UMask=0027 \
+  -p NoNewPrivileges=yes -p CapabilityBoundingSet= -p AmbientCapabilities= \
+  -p ProtectSystem=strict -p ReadWritePaths="$BUILD_HOME" \
+  -p ProtectHome=yes -p PrivateTmp=yes -p PrivateDevices=yes \
+  -p ProtectKernelTunables=yes -p ProtectKernelModules=yes -p ProtectKernelLogs=yes \
+  -p ProtectControlGroups=yes -p ProtectClock=yes -p ProtectHostname=yes \
+  -p RestrictSUIDSGID=yes -p LockPersonality=yes -p RestrictRealtime=yes \
+  -p ProtectProc=invisible -p LimitCORE=0 \
+  -p InaccessiblePaths="-/srv/clocktower/env -/srv/clocktower/data -/srv/clocktower/backups -/srv/clocktower/cloudflared -/run/tailscale -/run/dbus/system_bus_socket -/var/run/dbus/system_bus_socket" \
+  -p IPAddressDeny="10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10 169.254.0.0/16 192.0.0.0/24 198.18.0.0/15 224.0.0.0/4 240.0.0.0/4 fc00::/7 fe80::/10 ff00::/8" \
+  -p MemoryMax=4G -p MemorySwapMax=0 -p CPUQuota=300% -p CPUWeight=10 -p IOWeight=10 -p Nice=19 -p IOSchedulingClass=idle -p TasksMax=4096 \
+  -p RuntimeMaxSec=4h \
+  -- "$@"

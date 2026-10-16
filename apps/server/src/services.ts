@@ -15,11 +15,17 @@ import type { AppConfig } from './config.js';
 import type { GameModule, Logger, ModuleFactory, VoiceModule, WorldModule } from './rooms/modules.js';
 import { createAuthService, type AuthService } from './auth/service.js';
 import { RateLimiter, type BucketSpec } from './auth/rateLimit.js';
-import { authRouter, errorMiddleware, mutationGuard } from './auth/http.js';
+import { authRouter, errorMiddleware, HttpError, mutationGuard } from './auth/http.js';
+import { Revocations } from './auth/revocation.js'; // (v2.3 AUTH-1)
+import { ScryptGate } from './auth/limits.js'; // (v2.3 AUTH-2)
+import { accountRouter } from './auth/account.js'; // (v2.3 AUTH-5/6)
 import { createTicketService, type TicketService } from './directory/tickets.js';
 import { LobbyDirectory } from './directory/service.js';
 import { lobbiesRouter } from './directory/http.js';
 import { adminRouter } from './admin/http.js';
+import { createModeration, type ModerationService } from './moderation/service.js'; // (v2.3 OPS)
+import { moderationGate } from './moderation/gate.js'; // (v2.3 OPS)
+import { createSettings, type SettingsRegistry } from './settings/index.js'; // (v2.3 sec-ops settings registry)
 
 export interface RateLimitConfig {
   /** per client IP */
@@ -66,6 +72,14 @@ export interface Services {
   tickets: TicketService;
   directory: LobbyDirectory;
   limits: { signIn: RateLimiter; createAccount: RateLimiter; createLobby: RateLimiter; ticket: RateLimiter };
+  /** (v2.3 AUTH-1) Session revocations fan out to live rooms and SSE streams. */
+  revocations: Revocations;
+  /** (v2.3 AUTH-2) Global scrypt concurrency gate (sign-up, sign-in, step-up re-authentication). */
+  scryptGate: ScryptGate;
+  /** (v2.3 OPS-1/2/6) suspensions, network blocks, ops switches, lobby moderation, reports. */
+  moderation: ModerationService;
+  /** (v2.3 sec-ops) typed security / limits settings (admin console "Security & limits"). */
+  settings: SettingsRegistry;
   options: ServiceOptions;
   close(): Promise<void>;
 }
@@ -80,12 +94,26 @@ export function getServices(): Services {
 
 export async function createServices(config: AppConfig, log: Logger, options: ServiceOptions = {}): Promise<Services> {
   const repos = openRepositories(config.databasePath);
+  const settings = createSettings(repos.database, config, log); // (v2.3 sec-ops) before anything that reads a knob
   log.info('database ready', { env: config.env });
+  const revocations = new Revocations((e) => log.warn('revocation listener failed', { err: e instanceof Error ? e.message : String(e) }));
+  const scryptGate = new ScryptGate({
+    slots: settings.get<number>('auth.scryptSlots'), // (v2.3 settings; restart)
+    maxQueue: settings.get<number>('auth.scryptQueue'),
+    perRange: settings.get<number>('auth.scryptPerRange'),
+    refuse: (why) =>
+      why === 'range'
+        ? new HttpError(429, 'rate_limited', 'Too many attempts, please wait a moment', 2)
+        : new HttpError(503, 'rate_limited', 'The server is busy, please try again in a moment', 2),
+  });
   const auth = createAuthService({
+    revocations,
+    sessionMaxMs: settings.get<number>('sessions.maxDays') * 86_400_000, // (v2.3 settings; env SESSION_MAX_DAYS wins)
     accounts: repos.accounts,
     sessions: repos.sessions,
     pepper: config.passphrasePepper,
-    sessionTtlMs: config.sessionTtlDays * 86_400_000,
+    sessionTtlMs: settings.get<number>('sessions.idleDays') * 86_400_000, // (v2.3 settings; env SESSION_TTL_DAYS wins)
+    adminIdleMs: settings.get<number>('admin.idleHours') * 3_600_000, // (v2.3 settings)
     adminAccountIds: config.adminAccountIds,
     log,
     scryptN: options.scryptN,
@@ -98,10 +126,19 @@ export async function createServices(config: AppConfig, log: Logger, options: Se
     playerMaxPerLobby: config.playerMaxPerLobby,
     createRoom: options.createRoom ?? (async (lobbyId) => matchMaker.createRoom('game', { lobbyId })),
   });
-  const rl = { ...DEFAULT_RATE_LIMITS, ...options.rateLimits };
+  revocations.subscribe((accountId, sid) => directory.revokeAccount(accountId, sid)); // (v2.3 AUTH-1)
+  const moderation = createModeration({ database: repos.database, config, log, settings }); // (v2.3 OPS)
+  // (v2.3 settings) per-network sign-up / sign-in buckets from the registry (read at start); tests may override.
+  const rl = {
+    ...DEFAULT_RATE_LIMITS,
+    signIn: { capacity: settings.get<number>('auth.signinPerIpBurst'), refillPerSec: settings.get<number>('auth.signinPerIpPerMinute') / 60 },
+    createAccount: { capacity: settings.get<number>('auth.signupPerIpBurst'), refillPerSec: 1 / (settings.get<number>('auth.signupPerIpMinutes') * 60) },
+    ...options.rateLimits,
+  };
   const purge = setInterval(() => {
     try {
       auth.purgeExpired();
+      moderation.purge(); // (v2.3 OPS) expired blocks/suspensions, reports 90 d after resolution
     } catch (e) {
       log.warn('session purge failed', { err: e instanceof Error ? e.message : String(e) });
     }
@@ -126,6 +163,10 @@ export async function createServices(config: AppConfig, log: Logger, options: Se
       ticket: new RateLimiter(rl.ticket),
     },
     options,
+    revocations,
+    scryptGate,
+    moderation,
+    settings,
     close: async () => {
       clearInterval(purge);
       repos.database.close();
@@ -139,7 +180,9 @@ export async function createServices(config: AppConfig, log: Logger, options: Se
 export function registerHttpRoutes(app: Express, services: Services): void {
   const api = express.Router();
   api.use(mutationGuard(services));
+  api.use(moderationGate(services)); // (v2.3 OPS-1/2) network blocks, sign-up mode, maintenance
   api.use(authRouter(services));
+  api.use(accountRouter(services)); // (v2.3 AUTH-5/6) /api/me/export, /api/me/delete
   api.use(lobbiesRouter(services, { heartbeatMs: services.options.sseHeartbeatMs }));
   api.use(adminRouter(services));
   api.use((_req, res) => {

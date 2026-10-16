@@ -24,11 +24,13 @@ export const AuditQuery = z.object({
 });
 
 /** Actions on your own account need an explicit confirmation flag (the UI asks first). */
-export const ConfirmSelfBody = z.object({ confirmSelf: z.boolean().optional() }).strict();
+/** (v2.3 AUTH-8) The acting admin's own passphrase (step-up; optional right after signing in). */
+const StepUp = z.string().min(10).max(256).optional();
+export const ConfirmSelfBody = z.object({ confirmSelf: z.boolean().optional(), passphrase: StepUp }).strict();
 export const RenameBody = z.object({ displayName: DisplayName, confirmSelf: z.boolean().optional() }).strict();
-export const DeleteBody = z.object({ confirm: z.literal('delete') }).strict();
+export const DeleteBody = z.object({ confirm: z.literal('delete'), passphrase: StepUp }).strict();
 export const BulkDeleteBody = z
-  .object({ ids: z.array(AccountId).min(1).max(200), confirm: z.literal('delete') })
+  .object({ ids: z.array(AccountId).min(1).max(200), confirm: z.literal('delete'), passphrase: StepUp })
   .strict();
 export const EmptyBody = z.object({}).strict();
 

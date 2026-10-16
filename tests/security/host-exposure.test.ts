@@ -1,8 +1,10 @@
-// Host-level exposure checks — meaningful only when run ON hshi-u1 (where `pnpm test` runs via
+// Host-level exposure checks — meaningful only when run ON the build/prod host (where `pnpm test` runs via
 // scripts/remote.sh). Verifies the dev service (3001) is loopback-only and never targeted by
 // Tailscale Serve/Funnel, and prod (3000) is loopback-only. Skips elsewhere with a reason.
 import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import os from 'node:os';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 function sh(cmd: string, args: string[]): string | null {
@@ -13,10 +15,22 @@ function sh(cmd: string, args: string[]): string | null {
   }
 }
 
-const onHost = os.platform() === 'linux' && os.hostname() === 'hshi-u1';
+// The host's `hostname` comes from CT_HOST_NAME (env, or the gitignored ops.local.env that
+// scripts/remote.sh syncs into the sandbox); never hardcoded in the repo.
+function hostName(): string {
+  if (process.env.CT_HOST_NAME) return process.env.CT_HOST_NAME;
+  try {
+    const env = readFileSync(path.resolve(__dirname, '../../ops.local.env'), 'utf8');
+    return /^CT_HOST_NAME=([^\s#]+)/m.exec(env)?.[1] ?? '';
+  } catch {
+    return '';
+  }
+}
+const HOST_NAME = hostName();
+const onHost = os.platform() === 'linux' && HOST_NAME !== '' && os.hostname() === HOST_NAME;
 const hasTailscale = onHost && sh('tailscale', ['version']) !== null;
 
-describe.skipIf(!onHost)(`hshi-u1 port exposure${onHost ? '' : ' [SKIPPED — not running on hshi-u1]'}`, () => {
+describe.skipIf(!onHost)(`host port exposure${onHost ? '' : ' [SKIPPED — not on the host named by CT_HOST_NAME]'}`, () => {
   it('dev (3001) and prod (3000) listen on 127.0.0.1 only (if running)', () => {
     for (const port of [3000, 3001]) {
       const out = sh('ss', ['-Hltn', `sport = :${port}`]) ?? '';

@@ -11,7 +11,11 @@ import { DisplayName } from './text.js';
 //   GET  /api/me/stats                           -> StatsView
 // Errors: { error: ApiErrorCode, message: string } with 4xx/5xx status.
 
-export const CreateAccountRequest = z.object({ displayName: DisplayName });
+export const CreateAccountRequest = z.object({
+  displayName: DisplayName,
+  /** (v2.3 OPS-2) Required only while the server's sign-up mode is 'code' (invite code from the host). */
+  inviteCode: z.string().max(128).optional(),
+});
 export type CreateAccountRequest = z.infer<typeof CreateAccountRequest>;
 
 export const SignInRequest = z.object({ passphrase: z.string().min(10).max(256) });
@@ -115,6 +119,14 @@ export type ApiErrorCode =
   | 'lobby_full'
   | 'lobby_started'
   | 'lobby_limit'
+  // (v2.3 OPS-1/2, sec-ops)
+  | 'suspended'
+  | 'blocked'
+  | 'signups_closed'
+  | 'invite_required'
+  | 'maintenance'
+  // (v2.3 AUTH-8, sec-auth) a sensitive admin action needs the admin's passphrase again
+  | 'reauth_required'
   | 'internal';
 
 export interface ApiError {

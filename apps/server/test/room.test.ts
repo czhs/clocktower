@@ -390,7 +390,7 @@ describe('GameRoom lifecycle (real Colyseus, fake gameplay modules)', () => {
     await sleep(300);
     const delivered = L.st.of('chat:message').filter((m) => m.text.startsWith('flood')).length;
     expect(delivered).toBeGreaterThanOrEqual(3);
-    expect(delivered).toBeLessThanOrEqual(5);
+    expect(delivered).toBeLessThanOrEqual(7); // (v2.3) chat:send burst 6
     p.send('ping', {});
     await p.waitMsg('pong');
     // Moves are dispatched to the world module.

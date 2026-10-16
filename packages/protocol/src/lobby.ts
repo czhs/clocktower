@@ -3,6 +3,7 @@ import { MAX_PLAYERS, MIN_PLAYERS } from './constants.js';
 import { Cosmetics } from './cosmetics.js';
 import { LobbyDescription, LobbyName } from './text.js';
 import { STORYLINE_IDS } from './storylines.js';
+import { CHAT_FILTER_MODES } from './moderationShared.js';
 
 // Lobby directory (all require a signed-in session):
 //   GET  /api/lobbies                      -> { lobbies: LobbySummary[] }
@@ -47,6 +48,8 @@ export interface LobbySummary {
    * Absent in human games (the Storyteller's choice is never public).
    */
   autoStoryline?: 'random' | 'secret' | import('./storylines.js').StorylineId;
+  /** (v2.3 OPS-6) The host's chat filter for this lobby (absent = default 'slurs'). */
+  chatFilter?: import('./moderationShared.js').ChatFilterMode;
 }
 
 export type DirectoryEvent =
@@ -99,6 +102,8 @@ export interface MemberView {
   connected: boolean;
   isHost: boolean;
   cosmetics: Cosmetics;
+  /** (v2.3 OPS-6) The host/Storyteller muted this member's chat in this lobby (public moderation act). */
+  muted?: boolean;
 }
 
 export interface LobbyRoomView {
@@ -111,6 +116,8 @@ export interface LobbyRoomView {
   stPrepare?: import('./storyteller.js').StPrepareView;
   /** (v2.2) ONLY in the host's own view of an automatic lobby: the storyline they picked (null = random). */
   autoStorylineChoice?: import('./storylines.js').StorylineId | null;
+  /** (v2.3 OPS-6) ONLY in the host's / seated Storyteller's own view: members removed from this lobby (for unban). */
+  removed?: import('./moderation.js').RemovedMemberView[];
 }
 
 // Lobby C2S payloads
@@ -131,5 +138,7 @@ export const LobbySettingsMsg = z.object({
   autoStoryline: z.enum(STORYLINE_IDS).nullable().optional(),
   /** (v2.2) automatic games: announce the chosen storyline in the public lobby summary (default false). */
   autoStorylinePublic: z.boolean().optional(),
+  /** (v2.3 OPS-6) chat filter (host only, waiting phase only). */
+  chatFilter: z.enum(CHAT_FILTER_MODES).optional(),
 });
 export const EmptyMsg = z.object({}).strict();

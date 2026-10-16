@@ -48,6 +48,8 @@ async function build(): Promise<Rig> {
     roomService: { removeParticipant: async () => undefined, listParticipants: async () => [] },
     usage: new MemoryVoiceUsageStore(),
     monthlyMinutes: 1_000_000,
+    limits: { autoOptIn: true, idleMs: 0, waitingMaxMs: 0 }, // (v2.3 VOICE-4/7) grants for every member, as before
+    roomEpochs: false, // (v2.3 VOICE-9) random room epochs would differ between the two compared runs
   });
   host.setModules({ game, world, voice });
   host.emit({ type: 'member_joined', pid: 'st' });

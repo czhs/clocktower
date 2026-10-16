@@ -175,6 +175,8 @@ export class VoiceEngine {
     this.gainTimer = setInterval(() => this.tickGains(), GAIN_TICK_MS);
     this.heartbeatTimer = setInterval(() => this.sendStatus(true), VOICE_DEFAULTS.heartbeatMs);
     this.lossTimer = setInterval(() => void this.checkLoss(), LOSS_CHECK_MS);
+    // (v2.3 VOICE-4) opt in now: the server mints LiveKit tokens only for members that want voice.
+    this.sendStatus(true);
     this.devices.start();
     const micP = this.acquireMic().then(() => this.devices.reconcile('start'));
     if (this.zoneGrant) void this.connectZone(this.zoneGrant);
@@ -985,7 +987,7 @@ export class VoiceEngine {
     if (!s.enabled) return;
     if (!force && key === this.lastStatusKey) return;
     this.lastStatusKey = key;
-    this.host.conn.send('voice:status', { connected, publishing, ...(room ? { room } : {}) });
+    this.host.conn.send('voice:status', { connected, publishing, ...(room ? { room } : {}), wanted: true });
   }
 
   /** Debug overlay snapshot. */
@@ -1016,7 +1018,7 @@ export class VoiceEngine {
 
   async dispose(): Promise<void> {
     if (this.disposed) return;
-    if (this.state.get().enabled) this.host.conn.send('voice:status', { connected: false, publishing: false });
+    if (this.state.get().enabled) this.host.conn.send('voice:status', { connected: false, publishing: false, wanted: false });
     this.disposed = true;
     for (const off of this.offs) off();
     this.offs = [];

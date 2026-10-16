@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Runs ON hshi-u1 (streamed by scripts/deploy-hshi-u1.sh via `ssh hshi-u1 bash -s`).
+# Runs ON the host (streamed by scripts/deploy-hshi-u1.sh via `ssh <host> bash -s`).
 #   install-release.sh <dev|prod> <sha> <tarball>
 # prod: extract -> ~/clocktower/releases/<sha> (immutable; reused if already built), install, build,
 #       backup DB, atomically switch ~/clocktower/prod symlink, restart ONLY clocktower-prod,
-#       health-check /healthz (version must equal <sha>); on failure roll the symlink back.
-# dev:  extract -> ~/clocktower/dev.new, install (frozen lockfile, falls back to non-frozen),
+#       health-check /internal/version (loopback-only; version must equal <sha>); on failure roll the symlink back.
+# dev:  extract -> ~/clocktower/dev.new, install (frozen lockfile, never falls back),
 #       build, swap into ~/clocktower/dev (old kept until healthy), restart ONLY clocktower-dev.
 set -euo pipefail
 ENVNAME="$1"; SHA="$2"; TARBALL="$3"
@@ -46,15 +46,41 @@ fi
 exec 9>"$LOCKS/.deploy-$ENVNAME.lock"
 flock -n 9 || die "another $ENVNAME deploy is running"
 
+# v2.3 HOST-12: when the build sandbox is installed (deploy/secure/v2.3/apply.sh), dependency
+# install scripts and the build run as the unprivileged 'ct-build' user in a systemd sandbox, never as
+# the admin account. The built tree is then copied (without ownership) into the release dir.
+CT_BUILD_RUN=/usr/local/sbin/ct-build-run
+build_tree_sandboxed() { # $1 = dir (already extracted by the admin; replaced by the sandbox build)
+  local dir="$1" ws="release-$ENVNAME-${SHA:0:12}"
+  log "building as ct-build in the build sandbox (workspace $ws)"
+  sudo -n "$CT_BUILD_RUN" "$ws" find . -mindepth 1 -delete
+  flock "$LOCKS/.pnpm-install.lock" sudo -n "$CT_BUILD_RUN" "$ws" bash -c '
+    set -e; tar -xzf -
+    pnpm install --frozen-lockfile --prefer-offline --reporter=append-only >&2 || { echo "frozen-lockfile install failed: pnpm-lock.yaml is out of date for this commit (no fallback)" >&2; exit 3; }
+    pnpm -r --if-present run build >&2
+    test -f apps/server/dist/server.js' <"$TARBALL" || die "sandboxed install/build failed"
+  find "$dir" -mindepth 1 -delete
+  # no ownership: files become admin:clocktower via the setgid release dir; modes from umask 0027
+  cp -R --preserve=mode,timestamps,links "/srv/ct-build/work/$ws/." "$dir/"
+  chmod -R g+rX,o-rwx "$dir"
+  sudo -n "$CT_BUILD_RUN" "$ws" find . -mindepth 1 -delete || true
+  cd "$dir"
+  printf 'CT_VERSION=%s\n' "$SHA" >.release.env
+  printf '%s\n' "$SHA" >.release-sha
+}
+
 build_tree() { # $1 = dir (already extracted)
   local dir="$1"
-  cd "$dir"
-  log "pnpm install --frozen-lockfile"
-  if ! flock "$LOCKS/.pnpm-install.lock" pnpm install --frozen-lockfile --prefer-offline --reporter=append-only >&2; then
-    [[ $ENVNAME == dev ]] || die "frozen-lockfile install failed (prod never falls back)"
-    log "frozen install failed; dev fallback: pnpm install --no-frozen-lockfile"
-    flock "$LOCKS/.pnpm-install.lock" pnpm install --no-frozen-lockfile --prefer-offline --reporter=append-only >&2
+  if [[ $MODE == system && -x $CT_BUILD_RUN ]] && sudo -n -l "$CT_BUILD_RUN" >/dev/null 2>&1; then
+    build_tree_sandboxed "$dir"; return
   fi
+  cd "$dir"
+  log "pnpm install --frozen-lockfile (as the admin: build sandbox not installed — see deploy/secure/v2.3/apply.sh)"
+  # Never falls back to a non-frozen install (dev included): a deployed tree only ever contains the
+  # exact versions in the committed lockfile (security v2.3, REPO-06). Fix the lockfile and commit.
+  flock "$LOCKS/.pnpm-install.lock" pnpm install --frozen-lockfile --prefer-offline --reporter=append-only >&2 ||
+    die "frozen-lockfile install failed: pnpm-lock.yaml is out of date for this commit (no fallback)"
+
   # Equivalent of the root `pnpm build` (whose unquoted ./packages/* glob is expanded by sh in
   # some trees): build every workspace package that has a build script.
   log "pnpm -r --if-present run build"
@@ -81,10 +107,12 @@ migrate() { # $1 = dir. Runs migrations for THIS env only, if the db package pro
   fi
 }
 
-health() { # health [expected-sha]: wait up to 40s for /healthz to report that version
+health() { # health [expected-sha]: wait up to 40s for the local /internal/version to report that version
+  # (v2.3 HOST-07: public /healthz is {ok:true} only; releases before v2.3 still answer /healthz with the
+  # version, so a rollback to one of them is verified through the fallback.)
   local i body want="${1:-$SHA}"
   for i in $(seq 1 40); do
-    body=$(curl -fsS --max-time 2 "http://127.0.0.1:$PORT/healthz" 2>/dev/null || true)
+    body=$(curl -fsS --max-time 2 "http://127.0.0.1:$PORT/internal/version" 2>/dev/null || curl -fsS --max-time 2 "http://127.0.0.1:$PORT/healthz" 2>/dev/null || true)
     if [[ -n $body ]] && python3 -c 'import json,sys; d=json.loads(sys.argv[1]); sys.exit(0 if d.get("ok") and d.get("version")==sys.argv[2] else 1)' "$body" "$want"; then
       log "healthy: $body"; return 0
     fi
@@ -108,7 +136,14 @@ if [[ $ENVNAME == prod ]]; then
   fi
   PREV=$(readlink "$CT/prod" 2>/dev/null || true)
   if [[ $MODE == system ]]; then
-    log "pre-deploy backup"; sc start clocktower-backup-prod.service >&2 || die "pre-deploy backup failed"
+    # v2.3 OPS-4: the tagged pre-deploy unit keeps its own retention bucket (not the daily ones);
+    # hosts without it (deploy/secure/v2.3/ops/apply.sh not run yet) fall back to the daily unit.
+    log "pre-deploy backup"
+    if systemctl cat clocktower-backup-prod-predeploy.service >/dev/null 2>&1; then
+      sc start clocktower-backup-prod-predeploy.service >&2 || die "pre-deploy backup failed"
+    else
+      sc start clocktower-backup-prod.service >&2 || die "pre-deploy backup failed"
+    fi
   elif [[ -f "$CT/data/prod/clocktower.db" ]]; then
     log "pre-deploy backup"; "$CT/bin/backup-db.sh" prod predeploy >&2
   fi

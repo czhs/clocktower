@@ -1,0 +1,22 @@
+# gitleaks baseline (security v2.3, REPO-03/REPO-08). These findings are private-infrastructure
+# details (tailnet MagicDNS name, Tailscale IP, a home-directory path) in OLD commits that are
+# already public; the user decided against a history rewrite (2026-10-16) and the current tree no
+# longer contains them. They are identifiers, not credentials. Any NEW occurrence still fails.
+# Format: <commit>:<file>:<rule-id>:<line>
+0bf8790db8ea8cd4d7f10d43b76564d43690842e:docs/progress.md:ct-tailnet-hostname:10
+258326bcbaefbf1cc7f50ebbacd1525616ef6797:deploy/cloudflared/clocktower.yml.example:ct-home-path:4
+258326bcbaefbf1cc7f50ebbacd1525616ef6797:docs/test-results.md:ct-tailscale-cgnat-ip:89
+460209174b255da42e117bb9f1c0f80ab2981a21:docs/test-results.md:ct-home-path:111
+61fa442ed829d78f91ed998581ac853526906e1b:docs/deployment.md:ct-tailnet-hostname:122
+61fa442ed829d78f91ed998581ac853526906e1b:docs/deployment.md:ct-tailnet-hostname:136
+61fa442ed829d78f91ed998581ac853526906e1b:docs/deployment.md:ct-tailnet-hostname:152
+61fa442ed829d78f91ed998581ac853526906e1b:docs/deployment.md:ct-tailnet-hostname:156
+61fa442ed829d78f91ed998581ac853526906e1b:docs/deployment.md:ct-tailnet-hostname:198
+61fa442ed829d78f91ed998581ac853526906e1b:docs/deployment.md:ct-tailscale-cgnat-ip:167
+61fa442ed829d78f91ed998581ac853526906e1b:docs/deployment.md:ct-tailscale-cgnat-ip:186
+f2dcfba3a4a896782555453f7b4e7c2e5c7797f1:deploy/bin/bootstrap.sh:ct-tailnet-hostname:11
+f2dcfba3a4a896782555453f7b4e7c2e5c7797f1:scripts/smoke-test.sh:ct-tailnet-hostname:5
+f2dcfba3a4a896782555453f7b4e7c2e5c7797f1:scripts/verify-public-endpoint.sh:ct-tailnet-hostname:18
+f2dcfba3a4a896782555453f7b4e7c2e5c7797f1:scripts/verify-public-endpoint.sh:ct-tailnet-hostname:6
+f2dcfba3a4a896782555453f7b4e7c2e5c7797f1:tests/e2e/playwright.config.ts:ct-tailnet-hostname:6
+43d1c0fac7601611e651e31cab1c26b05c769656:docs/test-results.md:ct-home-path:29

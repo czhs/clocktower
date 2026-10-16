@@ -56,6 +56,9 @@ export const LIVEKIT_TEST_ENV = {
   LIVEKIT_URL: 'ws://127.0.0.1:9',
   LIVEKIT_API_KEY: 'playtestkey',
   LIVEKIT_API_SECRET: 'playtest-secret-0123456789abcdef0123456789',
+  // (v2.3 VOICE-4) bots never press "Enable voice": grant every member as before (test-only knob).
+  VOICE_TEST_AUTO_OPT_IN: '1',
+  VOICE_MAX_CONCURRENT: '0', // many lobbies of one test process share the process-wide voice cap
 };
 
 /** Playtest port range (CLAUDE.md). Other sandboxes may run these files concurrently. */

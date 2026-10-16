@@ -338,7 +338,9 @@ test('ux walkthrough', async ({ browser }) => {
     if (await gear.count()) {
       await gear.click();
       await snap(st.page, '11b-settings-d1440', 300);
-      await gear.click();
+      // (v2.3) Settings is a modal dialog now: Esc closes it (the backdrop covers the gear).
+      await st.page.keyboard.press('Escape');
+      await expect(st.page.getByRole('dialog', { name: 'Settings' })).toHaveCount(0);
     }
     await snapSizes(deep.page, '11-day-player', 800);
     await snap(ph.page, '11-day-m390', 800);
@@ -372,25 +374,43 @@ test('ux walkthrough', async ({ browser }) => {
     }
     const stick = ph.page.locator('.ct-touch-stick');
     if (await stick.count()) {
-      const t0 = Date.now();
       const box = (await stick.boundingBox())!;
       const cx = box.x + box.width / 2;
       const cy = box.y + box.height / 2;
       const cdp = await ph.ctx.newCDPSession(ph.page);
-      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: cx, y: cy }] });
-      for (let i = 1; i <= 6; i++) {
-        await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: cx, y: cy + i * 8 }] });
-        await ph.page.waitForTimeout(40);
+      // Push the stick one way and check the player moved that way. After leaving the cottage the
+      // player stands on its doorstep, which may sit at a map edge (the bottom-row cottages) or face a
+      // wall, so try down, then left, then right until one direction is open; "up" would walk back
+      // into the doorway.
+      const dirs = [
+        { name: 'down', dx: 0, dy: 1 },
+        { name: 'left', dx: -1, dy: 0 },
+        { name: 'right', dx: 1, dy: 0 },
+      ];
+      let moved: { name: string; frames: number; dist: number } | null = null;
+      for (const d of dirs) {
+        const t0 = Date.now();
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: cx, y: cy }] });
+        for (let i = 1; i <= 6; i++) {
+          await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: cx + d.dx * i * 8, y: cy + d.dy * i * 8 }] });
+          await ph.page.waitForTimeout(40);
+        }
+        if (d.name === 'down') await snap(ph.page, '12-joystick-active-m390', 50);
+        await ph.page.waitForTimeout(900);
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+        await ph.page.waitForTimeout(300);
+        const moves = ph.tap.sent('move', t0);
+        const first = moves[0];
+        const last = moves.at(-1);
+        const dist = first && last ? (last.x - first.x) * d.dx + (last.y - first.y) * d.dy : 0;
+        notes.push(`joystick ${d.name}: ${moves.length} move frames; ${first ? `${Math.round(first.x)},${Math.round(first.y)}` : '-'} -> ${last ? `${Math.round(last.x)},${Math.round(last.y)}` : '-'}`);
+        expect(moves.length, `joystick ${d.name} produced move frames`).toBeGreaterThan(0);
+        if (dist > 4) {
+          moved = { name: d.name, frames: moves.length, dist };
+          break;
+        }
       }
-      await snap(ph.page, '12-joystick-active-m390', 50);
-      await ph.page.waitForTimeout(900);
-      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-      const moves = ph.tap.sent('move', t0);
-      const first = moves[0];
-      const last = moves.at(-1);
-      notes.push(`joystick: ${moves.length} move frames sent; ${first ? `${Math.round(first.x)},${Math.round(first.y)}` : '-'} -> ${last ? `${Math.round(last.x)},${Math.round(last.y)}` : '-'}`);
-      expect(moves.length, 'joystick produced movement').toBeGreaterThan(0);
-      expect(last.y - first.y, 'joystick pushed down moves the player down').toBeGreaterThan(4);
+      expect(moved, 'the joystick moves the player in at least one open direction').not.toBeNull();
     } else notes.push('no on-screen joystick on phone');
 
     // Reconnecting banner: drop the phone's network briefly.

@@ -14,6 +14,7 @@ import { Notebook } from '../ui/notebook/Notebook';
 import { Story } from '../ui/story/Story';
 import { ClockChip } from '../ui/clock/ClockChip';
 import { AbortGame } from '../ui/clock/AbortGame';
+import { LobbySafety } from '../ui/lobby/moderation'; // (v2.3 OPS-6) in-game report / mute / remove
 import './game.css';
 
 // Mounts the Phaser town for this lobby; renders `children` (HUD, Storyteller panel, voice panel,
@@ -218,7 +219,8 @@ function Toolbar({ conn }: { conn: RoomConnection }) {
         </button>
       )}
       <AbortGame conn={conn} />
-      <SettingsButton onLeave={game ? leave : undefined} leaveLabel={finished ? 'Back to lobbies' : 'Leave game'} />
+      <LobbySafety conn={conn} />
+      <SettingsButton conn={conn} onLeave={game ? leave : undefined} leaveLabel={finished ? 'Back to lobbies' : 'Leave game'} />
       <button class="ct-tb-icon" onClick={openHelp} aria-label="How to play" title="How to play · keyboard shortcuts (?)">
         ?
       </button>

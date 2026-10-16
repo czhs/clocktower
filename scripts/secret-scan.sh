@@ -49,7 +49,8 @@ ct-home-path	/(home|Users)/[a-z_][a-z0-9_-]{1,31}(/|[^a-z0-9_-]|$)
 EOF
 
 # Exact fake / placeholder values that are allowed (ERE, matched against the whole line).
-ALLOW='APIe2efakekey|APIqafakekey|APIperffake|perfkey|playtestkey|worldauditkey|perf-secret-0123456789abcdef0123456789abcdef|playtest-secret-0123456789abcdef0123456789|world-audit-secret-0123456789abcdef0123|leak-secret-leak-secret-0123456789|voice-test-secret-voice-test-secret-0123456789|fake-secret-fake-secret-fake-secret-0123456789|other-secret-other-secret-other-secret-xx|qa-fake-livekit-secret-0123456789abcdef0123456789|change-me-64-hex-chars|/(home|Users)/(<[^>]*>|user|USER|username|runner|node|ubuntu|clocktower|admin|you|me|example)([^a-z0-9_-]|$)|example\.ts\.net|AKIAIOSFODNN7EXAMPLE'
+# 100.64.0.0/10 is the generic CGNAT/Tailscale RANGE used in firewall rules (deploy/secure), not a node address.
+ALLOW='APIe2efakekey|APIqafakekey|APIperffake|perfkey|playtestkey|worldauditkey|perf-secret-0123456789abcdef0123456789abcdef|playtest-secret-0123456789abcdef0123456789|world-audit-secret-0123456789abcdef0123|leak-secret-leak-secret-0123456789|voice-test-secret-voice-test-secret-0123456789|fake-secret-fake-secret-fake-secret-0123456789|other-secret-other-secret-other-secret-xx|qa-fake-livekit-secret-0123456789abcdef0123456789|change-me-64-hex-chars|/(home|Users)/(<[^>]*>|user|USER|username|runner|node|ubuntu|clocktower|admin|you|me|example)([^a-z0-9_-]|$)|example\.ts\.net|AKIAIOSFODNN7EXAMPLE|100\.64\.0\.0/10'
 # Paths never scanned (lockfile hashes, binary art, this scanner and the gitleaks config).
 SKIP_PATHS='(^|/)pnpm-lock\.yaml$|(^|/)\.gitleaks\.toml$|(^|/)scripts/secret-scan\.sh$|\.(png|webp|jpe?g|gif|ico|woff2?|ttf|otf|mp3|ogg|wav|pdf|zip|gz)$'
 

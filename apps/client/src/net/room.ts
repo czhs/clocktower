@@ -160,6 +160,7 @@ export class RoomConnection {
       'voice:unavailable',
       'error',
       'kicked',
+      'report:ack', // (v2.3 OPS-6)
       'pong',
     ];
     room.onMessage('world:snap2', (frame: Snap2Frame) => {

@@ -53,7 +53,7 @@ import { isAutoCapable } from '../auto/index.js'; // (auto-st) automatic games +
 import { getServices, type Services } from '../services.js';
 import { createGameModule } from '../game/index.js';
 import { createWorldModule } from '../world/index.js';
-import { createVoiceModule } from '../voice/index.js';
+import { createVoiceModule, ipKeyFromJoin, noteVoiceMemberIp } from '../voice/index.js';
 import { createSocialModule } from '../social/index.js'; // (v2, social-server)
 import { buildRecordSafely, handleStoryMessage, writeAbandoned, writeFinished, type AbandonReason, type MatchMeta } from '../records/index.js'; // (records)
 import { createNotebookService, notebookStoreFor, type NotebookService } from '../notebook/index.js'; // (v2, notebook)
@@ -63,12 +63,16 @@ import { RateLimiter } from '../auth/rateLimit.js';
 import { characterName, firstFreeCharacter, isAllowedPreset } from '../auth/presets.js';
 import type { JoinIntent } from '../directory/tickets.js';
 import { displayLabels, memberView, shuffle, startBlockers } from './memberUtil.js';
+import { createViolationTracker, type ViolationKind } from '../guard/violations.js'; // (v2.3 security, SEC-7)
+import { handleModeration, type ModerationType, type ModMember } from '../moderation/room.js'; // (v2.3 OPS-6)
+import { filterChat } from '../moderation/chatFilter.js'; // (v2.3 OPS-6)
+import type { LobbyModeration } from '../moderation/lobby.js'; // (v2.3 OPS-6)
 
 /** Waiting-room disconnect: seat held this long, then released. */
 export const WAITING_GRACE_SEC = 30;
 /** An empty lobby outside a running game is disposed after this long (SR-2). */
 export const EMPTY_LOBBY_TIMEOUT_SEC = 120;
-/** A kicked account cannot rejoin the same lobby for this long. */
+/** (legacy, unused since v2.3 OPS-6: a removal now lasts until the host/ST lifts it or the lobby closes.) */
 export const KICK_BAN_MS = 10 * 60_000;
 /** If the creator has not shown up after this long, the first joiner becomes host. */
 const CREATOR_HOST_GRACE_MS = 30_000;
@@ -88,9 +92,10 @@ export const JOIN_ERRORS = {
 /** Per-pid message budgets (token buckets). */
 const MESSAGE_LIMITS: Record<string, { capacity: number; refillPerSec: number }> = {
   move: { capacity: 40, refillPerSec: 30 },
-  'chat:send': { capacity: 4, refillPerSec: 2 },
+  'chat:send': { capacity: 6, refillPerSec: 2 }, // (v2.3) burst 6; mirrored by the client's CHAT_BUCKET
   'voice:status': { capacity: 2, refillPerSec: 1 }, // <= 1/s sustained
   'voice:announce': { capacity: 2, refillPerSec: 2 }, // <= 2/s
+  'story:pamphlets': { capacity: 3, refillPerSec: 0.1 }, // (v2.3 VOICE-11) re-sends every pamphlet: 1 per 10 s
   default: { capacity: 20, refillPerSec: 10 },
 };
 
@@ -105,6 +110,10 @@ interface RoomAuthData {
   intent: JoinIntent;
   displayName: string;
   cosmetics: Cosmetics;
+  /** (v2.3 AUTH-1) Session the join ticket was issued to (revoking it closes this connection). */
+  sid?: string;
+  /** (v2.3 VOICE-4) client IP key for the per-IP voice cap (never sent or logged). */
+  ipKey?: string | null;
 }
 
 type GameClient = Client<RoomUserData, RoomAuthData>;
@@ -114,6 +123,8 @@ type Reconnection = ReturnType<Room['allowReconnection']>;
 interface Seat {
   member: RoomMember;
   client: GameClient | null;
+  /** (v2.3 AUTH-1) Session of the current connection (from its join ticket). */
+  sid?: string;
   ready: boolean;
   joinedAt: number;
   /** Explicit `lobby:leave` received: the following disconnect is final (waiting) / no grace. */
@@ -172,7 +183,8 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
   private status: Status = 'waiting';
   private seats = new Map<string, Seat>(); // pid -> seat
   private byAccount = new Map<string, string>(); // accountId -> pid
-  private bans = new Map<string, number>(); // accountId -> until
+  /** (v2.3 OPS-6) removals (account + network), mutes, chat filter, chat ring for reports (moderation/lobby.ts). */
+  private mod!: LobbyModeration;
   private matchId: string | null = null;
   private matchStartedAt = 0;
   private matchRoster = new Map<string, string>(); // pid -> accountId (frozen at start)
@@ -205,6 +217,8 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
 
   private limiters = new Map<string, RateLimiter>();
   private errorLimiter = new RateLimiter({ capacity: 5, refillPerSec: 1 });
+  /** (v2.3 security, SEC-7) per-connection protocol-violation score (guard/violations.ts). */
+  private violations = createViolationTracker();
 
   // ------------------------------------------------------------------------------------
   // Colyseus lifecycle
@@ -215,6 +229,7 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
     const init = this.services.directory.takeInit(lobbyId);
     if (!init) throw new Error(`unknown lobby ${lobbyId}`);
     this.lobbyId = lobbyId;
+    this.mod = this.services.moderation.lobby(lobbyId); // (v2.3 OPS-6)
     this.settings = {
       name: init.name,
       description: init.description,
@@ -265,6 +280,7 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
       isBanned: (accountId) => this.isBanned(accountId),
       connectedCount: () => this.connectedSeats().length,
       summary: () => this.summary(),
+      revokeAccount: (accountId, sid) => this.revokeAccount(accountId, sid), // (v2.3 AUTH-1)
       close: () => {
         if (this.disposing) return;
         this.disposing = true;
@@ -284,7 +300,7 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
     this.log.info('room created', { roomId: this.roomId });
   }
 
-  override onAuth(_client: GameClient, options: unknown): RoomAuthData {
+  override onAuth(_client: GameClient, options: unknown, context?: Parameters<typeof ipKeyFromJoin>[0]): RoomAuthData {
     const opts = RoomJoinOptions.safeParse(options);
     if (!opts.success) throw new ServerError(JOIN_ERRORS.unauthorized, 'Invalid join options');
     const check = this.services.tickets.verify(opts.data.ticket, this.lobbyId);
@@ -294,18 +310,20 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
     }
     const account = this.services.accounts.findById(check.claims.accountId);
     if (!account) throw new ServerError(JOIN_ERRORS.unauthorized, 'Unknown account');
-    return { accountId: account.id, intent: check.claims.intent, displayName: account.displayName, cosmetics: account.cosmetics };
+    return { accountId: account.id, intent: check.claims.intent, displayName: account.displayName, cosmetics: account.cosmetics, sid: check.claims.sid, ipKey: ipKeyFromJoin(context) };
   }
 
   /** Synchronous: membership + capacity decisions are atomic per room. */
   override onJoin(client: GameClient, options: unknown, auth: RoomAuthData) {
     const existing = this.byAccount.get(auth.accountId);
     const seat = existing ? this.seats.get(existing) : undefined;
+    if (seat && this.isBanned(auth.accountId)) throw new ServerError(JOIN_ERRORS.banned, 'You were removed from this lobby'); // (v2.3 OPS-6) in-game removal keeps the seat
     if (seat) this.restore(seat, client, auth);
     else this.admit(client, auth);
     // (v2.2, WP4) A fresh join decides the snapshot format (an old tab keeps 'world:snapshot').
     const joined = this.seats.get(client.userData?.pid ?? '');
     if (joined?.client === client) joined.snap2 = snapCapable(options);
+    if (joined?.client === client) noteVoiceMemberIp(this.lobbyId, joined.member.pid, auth.ipKey); // (v2.3 VOICE-4) per-IP voice cap
     this.afterHandler();
   }
 
@@ -356,6 +374,7 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
     this.disposing = true;
     this.recordOnDispose(); // (records) abandoned games are recorded too
     this.services.directory.remove(this.lobbyId);
+    this.services.moderation.dropLobby(this.lobbyId); // (v2.3 OPS-6)
     try {
       await this.voice.dispose();
     } catch (e) {
@@ -402,6 +421,7 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
         isHost: becomesHost,
       },
       client,
+      sid: auth.sid, // (v2.3 AUTH-1)
       ready: false,
       joinedAt: now,
       leaving: false,
@@ -431,6 +451,7 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
     if (this.status === 'waiting') {
       seat.member.displayName = auth.displayName;
     }
+    seat.sid = auth.sid; // (v2.3 AUTH-1) the newest connection's session
     this.reattach(seat, client);
     if (old && old !== client && old.state !== ClientState.LEAVING) {
       this.log.info('member replaced by newer connection', { pid: seat.member.pid });
@@ -470,6 +491,37 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
     }
   }
 
+  /**
+   * (v2.3 AUTH-1) The account's sessions were revoked (sign out [everywhere], passphrase rotation,
+   * deletion): close its connection with CLOSE_CODES.signedOut and kill its pending reconnection, so
+   * neither the socket nor the Colyseus reconnection token outlives the session. Waiting room: the
+   * seat is released. In game: the seat is kept; a fresh ticket (after signing in again) restores it.
+   */
+  private revokeAccount(accountId: string, sid?: string) {
+    const pid = this.byAccount.get(accountId);
+    const seat = pid ? this.seats.get(pid) : undefined;
+    if (!seat || (sid && seat.sid !== sid)) return;
+    this.log.info('member signed out', { pid: seat.member.pid });
+    if (seat.reconnection) {
+      const r = seat.reconnection;
+      seat.reconnection = null;
+      r.reject(new Error('signed out'));
+    }
+    const client = seat.client;
+    if (client && seat.member.connected) {
+      seat.leaving = true; // the coming onLeave is final: no reconnection window
+      try {
+        client.send('kicked', { reason: 'You were signed out' } satisfies S2CMessages['kicked']);
+        client.leave(CLOSE_CODES.signedOut, 'Signed out');
+      } catch {
+        // already closing
+      }
+    } else if (this.status === 'waiting') {
+      this.removeMember(seat, 'left');
+    }
+    this.afterHandler();
+  }
+
   private removeMember(seat: Seat, reason: 'left' | 'grace_expired' | 'kicked') {
     const { pid, accountId } = seat.member;
     if (!this.seats.delete(pid)) return;
@@ -490,6 +542,7 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
     this.lastGameView.delete(pid);
     this.forceGameView.delete(pid);
     for (const l of this.limiters.values()) l.delete(`${pid}`);
+    this.mod.forgetPid(pid); // (v2.3 OPS-6)
     this.host.emit({ type: 'member_left', pid });
     this.lobbyDirty = true;
     this.log.info('member left', { pid, reason });
@@ -548,11 +601,11 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
     if (!seat || seat.client !== client) return this.strayMessage(client, seat, pid, type, raw);
     // own properties only: '__proto__' / 'constructor' must not resolve to Object.prototype members
     const schema = Object.prototype.hasOwnProperty.call(C2S, type) ? (C2S as Record<string, z.ZodType>)[type] : undefined;
-    if (!schema) return this.sendError(seat, { code: 'invalid', message: 'Unknown message type', for: type.slice(0, 40) });
+    if (!schema) return this.violation(seat, type, 'unknown_type', { code: 'invalid', message: 'Unknown message type', for: type.slice(0, 40) });
     const limiter = this.limiters.get(type) ?? this.limiters.get('default')!;
-    if (!limiter.take(`${seat.member.pid}`)) return this.sendError(seat, { code: 'rate_limited', message: 'Slow down', for: type });
+    if (!limiter.take(`${seat.member.pid}`)) return this.violation(seat, type, 'rate_limited', { code: 'rate_limited', message: 'Slow down', for: type });
     const parsed = schema.safeParse(raw ?? {});
-    if (!parsed.success) return this.sendError(seat, { code: 'invalid', message: 'Invalid message payload', for: type });
+    if (!parsed.success) return this.violation(seat, type, 'invalid_payload', { code: 'invalid', message: 'Invalid message payload', for: type });
     try {
       this.dispatch(seat, type as C2SType, parsed.data);
     } catch (e) {
@@ -631,17 +684,31 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
         return;
       }
       case 'lobby:kick': {
-        if (!m.isHost) return this.sendError(seat, { code: 'forbidden', message: 'Only the host can do that', for: type });
-        if (!this.requireWaiting(seat, type)) return;
+        // (v2.3 OPS-6) the host (any phase), or the seated Storyteller once the game is running; the
+        // removal bans the account AND its network from this lobby until the host/ST lifts it (lobby:unban).
+        if (!(m.isHost || (isSt && this.status !== 'waiting'))) return this.sendError(seat, { code: 'forbidden', message: 'Only the host or Storyteller can do that', for: type });
         const target = this.seats.get((msg as C2SParsed<'lobby:kick'>).pid);
         if (!target) return this.sendError(seat, { code: 'not_found', message: 'No such member', for: type });
         if (target === seat) return this.sendError(seat, { code: 'forbidden', message: 'You cannot kick yourself', for: type });
-        this.bans.set(target.member.accountId, Date.now() + KICK_BAN_MS);
+        if (this.status !== 'waiting' && target.member.role === 'storyteller') return this.sendError(seat, { code: 'forbidden', message: 'The Storyteller cannot be removed during a game', for: type });
+        this.mod.remove(target.member.accountId, this.services.moderation.lastIpKey(target.member.accountId), this.label(target.member.pid));
+        this.log.info('member removed', { pid: target.member.pid, by: m.pid, inGame: this.status !== 'waiting' });
         const c = target.client;
-        this.removeMember(target, 'kicked');
+        if (this.status === 'waiting') this.removeMember(target, 'kicked');
+        else {
+          // In game the seat stays (the Storyteller resolves it like a player who walked out);
+          // the connection ends for good and no reconnection is allowed.
+          target.leaving = true;
+          if (target.reconnection) {
+            const r = target.reconnection;
+            target.reconnection = null;
+            r.reject(new Error('removed'));
+          }
+          this.lobbyDirty = true;
+        }
         if (c) {
           try {
-            c.send('kicked', { reason: 'Removed by the host' } satisfies S2CMessages['kicked']);
+            c.send('kicked', { reason: 'Removed from this lobby by the host or Storyteller' } satisfies S2CMessages['kicked']);
             c.leave(CLOSE_CODES.kicked, 'Removed by the host');
           } catch {
             // already gone
@@ -649,6 +716,11 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
         }
         return;
       }
+      // (v2.3 OPS-6) mute / unban / report-a-player (moderation/room.ts)
+      case 'lobby:mute':
+      case 'lobby:unban':
+      case 'report:player':
+        return handleModeration(this.modContext(seat, type), this.modMember(seat), type as ModerationType, msg);
       case 'lobby:settings': {
         if (!m.isHost) return this.sendError(seat, { code: 'forbidden', message: 'Only the host can do that', for: type });
         if (!this.requireWaiting(seat, type)) return;
@@ -683,6 +755,7 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
         }
         if (s.autoStoryline !== undefined) this.settings.autoStoryline = s.autoStoryline; // (v2.2)
         if (s.autoStorylinePublic !== undefined) this.settings.autoStorylinePublic = s.autoStorylinePublic;
+        if (s.chatFilter !== undefined) this.mod.chatFilter = s.chatFilter; // (v2.3 OPS-6)
         this.lobbyDirty = true;
         return;
       }
@@ -722,7 +795,7 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
       case 'world:useDoor':
         return this.world.handleUseDoor(m.pid, msg as C2SParsed<'world:useDoor'>);
       case 'chat:send':
-        return this.handleChat(seat, (msg as C2SParsed<'chat:send'>).text);
+        return this.handleChat(seat, (msg as C2SParsed<'chat:send'>).text, (msg as C2SParsed<'chat:send'>).cid);
       case 'game:nominate':
       case 'game:vote':
       case 'game:promptResponse':
@@ -878,8 +951,21 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
     return this.services.options.waitingGraceSec ?? WAITING_GRACE_SEC;
   }
 
-  private handleChat(seat: Seat, text: string) {
+  private handleChat(seat: Seat, text: string, cid?: string) {
     const m = seat.member;
+    // (v2.3 OPS-6) muted members, duplicate lines and a whole-lobby ceiling; then the host's filter,
+    // applied BEFORE delivery so chat panes and speech bubbles always show the masked text.
+    if (this.mod.isMuted(m.accountId)) {
+      // a light answer per send (sendError is itself rate-limited; never a violation)
+      return this.sendError(seat, { code: 'muted', message: 'The host or Storyteller muted your chat in this lobby', for: 'chat:send' });
+    }
+    const admitted = this.mod.admitLine(m.pid, text);
+    if (admitted === 'duplicate') {
+      if (this.mod.shouldNotice('duplicate', m.pid, 10_000)) this.sendError(seat, { code: 'duplicate', message: 'You just said that', for: 'chat:send' });
+      return;
+    }
+    if (admitted === 'busy') return this.sendError(seat, { code: 'rate_limited', message: 'The chat is very busy, try again in a moment', for: 'chat:send' });
+    text = filterChat(text, this.mod.chatFilter);
     const msg: ChatMessage = {
       id: randomId(10),
       fromPid: m.pid,
@@ -894,8 +980,38 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
     audience.add(m.pid);
     for (const pid of audience) {
       const s = this.seats.get(pid);
-      if (s) this.sendTo(s, 'chat:message', msg);
+      if (s) this.sendTo(s, 'chat:message', pid === m.pid && cid ? { ...msg, cid } : msg); // cid: the sender's own echo only
     }
+    this.mod.record(msg, m.accountId, audience); // (v2.3 OPS-6) who received it (report context)
+  }
+
+  // (v2.3 OPS-6) moderation glue (moderation/room.ts)
+  private modMember(seat: Seat): ModMember {
+    const m = seat.member;
+    return { pid: m.pid, accountId: m.accountId, name: this.label(m.pid), isHost: m.isHost, role: m.role };
+  }
+
+  private modContext(seat: Seat, type: string) {
+    return {
+      lobbyId: this.lobbyId,
+      lobbyName: this.settings.name,
+      phase: this.directoryPhase(),
+      mod: this.mod,
+      moderation: this.services.moderation,
+      member: (pid: string) => {
+        const s = this.seats.get(pid);
+        return s ? this.modMember(s) : null;
+      },
+      members: () => [...this.seats.values()].map((s) => this.modMember(s)),
+      sendAck: (pid: string, ack: S2CMessages['report:ack']) => {
+        const s = this.seats.get(pid);
+        if (s) this.sendTo(s, 'report:ack', ack);
+      },
+      error: (err: ServerErrorMsg) => this.sendError(seat, { ...err, for: err.for ?? type }),
+      markDirty: () => {
+        this.lobbyDirty = true;
+      },
+    };
   }
 
   // ------------------------------------------------------------------------------------
@@ -1221,7 +1337,11 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
       this.services.directory.update(summary);
       const blockers = this.startBlockers();
       const labels = this.labels();
-      const members = [...this.seats.values()].sort((a, b) => a.joinedAt - b.joinedAt).map((s) => memberView(s.member, s.ready, labels.get(s.member.pid)));
+      const members = [...this.seats.values()].sort((a, b) => a.joinedAt - b.joinedAt).map((s) => {
+        const v = memberView(s.member, s.ready, labels.get(s.member.pid));
+        return this.mod.isMuted(s.member.accountId) ? { ...v, muted: true } : v; // (v2.3 OPS-6) public moderation act
+      });
+      const removed = this.mod.removedView(); // (v2.3 OPS-6) host / Storyteller only
       for (const s of this.connectedSeats()) {
         const view: LobbyRoomView = {
           lobby: summary,
@@ -1233,6 +1353,7 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
         // (v2.2) private extras: the seated Storyteller's pre-game settings; the auto host's storyline pick.
         if (s.member.role === 'storyteller' && !this.isAuto() && isAutoCapable(this.game) && this.game.prepareView) view.stPrepare = this.game.prepareView();
         if (this.isAuto() && s.member.isHost) view.autoStorylineChoice = this.settings.autoStoryline;
+        if (removed.length && (s.member.isHost || s.member.role === 'storyteller')) view.removed = removed; // (v2.3 OPS-6)
         this.sendTo(s, 'lobby:view', view);
       }
     }
@@ -1293,6 +1414,19 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
     if (this.errorLimiter.take(seat.member.pid)) this.sendTo(seat, 'error', err);
   }
 
+  /** (v2.3 security, SEC-7) Answer a protocol violation; a connection over its budget is closed (terminal). */
+  private violation(seat: Seat, type: string, kind: ViolationKind, err: ServerErrorMsg) {
+    this.sendError(seat, err);
+    const c = seat.client;
+    if (!c || !this.violations.record(c, type, kind) || c.state === ClientState.LEAVING) return;
+    this.log.warn('connection closed: too many protocol violations', { pid: seat.member.pid, kind, type: type.slice(0, 40) });
+    try {
+      c.leave(CLOSE_CODES.abuse, 'Too many invalid messages');
+    } catch {
+      // already closed
+    }
+  }
+
   private labels(): Map<string, string> {
     return displayLabels([...this.seats.values()].map((s) => ({ pid: s.member.pid, displayName: s.member.displayName, joinedAt: s.joinedAt })));
   }
@@ -1337,12 +1471,9 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
     return [...this.seats.values()].filter((s) => s.member.connected && s.client);
   }
 
+  /** (v2.3 OPS-6) Removed from this lobby: the account itself, or anyone joining from its network. */
   private isBanned(accountId: string): boolean {
-    const until = this.bans.get(accountId);
-    if (until === undefined) return false;
-    if (until > Date.now()) return true;
-    this.bans.delete(accountId);
-    return false;
+    return this.mod.isRemoved(accountId, this.services.moderation.lastIpKey(accountId));
   }
 
   /** (auto-st) storytellerMode 'auto': no Storyteller seat, the server runs the game. */
@@ -1391,6 +1522,7 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
       createdAt: this.createdAt,
       updatedAt: Date.now(),
       storytellerMode: this.settings.storytellerMode, // (auto-st)
+      chatFilter: this.mod.chatFilter, // (v2.3 OPS-6)
       ...(this.isAuto() ? { autoTimings: { ...this.settings.autoTimings } } : {}),
       // (v2.2) the storyline is secret unless the host announces it (it reveals the characters in play)
       ...(this.isAuto() ? { autoStoryline: this.settings.autoStoryline === null ? 'random' : this.settings.autoStorylinePublic ? this.settings.autoStoryline : 'secret' } : {}),

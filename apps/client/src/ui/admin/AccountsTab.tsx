@@ -3,6 +3,7 @@ import { copyText, errorText } from '../lobby/finder';
 import { adminApi, type AccountQuery } from './adminApi';
 import { ConfirmDialog, Dialog, fmtAgo, fmtDate, isForbidden, type ConfirmSpec, type Notify } from './shared';
 import type { AdminAccountView, AdminAccountsPage, AdminBulkDeleteResponse } from './types';
+import { AccountSafety } from './SafetyTab'; // (v2.3 OPS-1)
 
 const PAGE = 50;
 /** One-click filters for cleaning up accounts made by test runs. */
@@ -91,8 +92,9 @@ export function AccountsTab({ notify, onForbidden }: { notify: Notify; onForbidd
       ),
       confirmLabel: 'Generate new passphrase',
       danger: a.isYou,
-      run: async () => {
-        const r = await adminApi.rotatePassphrase(a.id, a.isYou);
+      passphrase: true, // (v2.3 AUTH-8)
+      run: async (pass) => {
+        const r = await adminApi.rotatePassphrase(a.id, a.isYou, pass);
         setReveal({ name: r.account.displayName, passphrase: r.passphrase, self: a.isYou });
         refresh();
       },
@@ -106,7 +108,7 @@ export function AccountsTab({ notify, onForbidden }: { notify: Notify; onForbidd
           <p>
             Ends all {a.activeSessions} active session{a.activeSessions === 1 ? '' : 's'}. Their passphrase keeps working.
           </p>
-          <p class="muted ct-small">A game they are connected to right now continues until they leave or refresh.</p>
+          <p class="muted ct-small">A game they are connected to right now is disconnected too; in a running game their seat is kept until they sign in again.</p>
           {a.isYou && <p class="ct-adm-warn">This includes this browser — you will be signed out.</p>}
         </>
       ),
@@ -139,8 +141,9 @@ export function AccountsTab({ notify, onForbidden }: { notify: Notify; onForbidd
       acknowledge: `Yes, delete “${a.displayName}” permanently`,
       confirmLabel: 'Delete permanently',
       danger: true,
-      run: async () => {
-        await adminApi.deleteAccount(a.id);
+      passphrase: true, // (v2.3 AUTH-8)
+      run: async (pass) => {
+        await adminApi.deleteAccount(a.id, pass);
         setOpen(null);
         setSelected((prev) => {
           const next = new Map(prev);
@@ -171,8 +174,9 @@ export function AccountsTab({ notify, onForbidden }: { notify: Notify; onForbidd
       acknowledge: `Yes, delete these ${names.length} accounts permanently`,
       confirmLabel: 'Delete permanently',
       danger: true,
-      run: async () => {
-        const r = await adminApi.bulkDelete([...selected.keys()]);
+      passphrase: true, // (v2.3 AUTH-8)
+      run: async (pass) => {
+        const r = await adminApi.bulkDelete([...selected.keys()], pass);
         setSelected(new Map());
         setBulkResult(r);
         refresh();
@@ -337,6 +341,7 @@ function AccountRow(props: {
             {a.isYou && <span class="ct-adm-badge you">you</span>}
             {a.isAdmin && <span class="ct-adm-badge admin">admin</span>}
             {a.lobby && <span class="ct-adm-badge live">in “{a.lobby.name}”</span>}
+            {a.suspended && <span class="ct-adm-badge">suspended</span>}
           </div>
           <code class="ct-adm-id">{a.id}</code>
         </div>
@@ -433,6 +438,7 @@ function ManagePanel({ a, onRenamed, onRotate, onSignOut, onDelete }: Parameters
         </button>
       </div>
       {deleteBlocked && <p class="muted ct-small">{deleteBlocked}</p>}
+      <AccountSafety a={a} />
     </div>
   );
 }

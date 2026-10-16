@@ -9,6 +9,8 @@ export interface TicketClaims {
   /** Expiry, epoch ms. */
   exp: number;
   nonce: string;
+  /** (v2.3 AUTH-1) Non-secret id of the issuing session, so revoking that session closes this seat. */
+  sid?: string;
 }
 
 export type TicketCheck =
@@ -40,9 +42,10 @@ export function createTicketService(secret: string, opts: { ttlMs?: number; now?
   }
 
   return {
-    issue(c: { accountId: string; lobbyId: string; intent: JoinIntent }): { ticket: string; expiresAt: number } {
+    issue(c: { accountId: string; lobbyId: string; intent: JoinIntent; sid?: string }): { ticket: string; expiresAt: number } {
       const exp = now() + ttl;
       const claims: TicketClaims = { accountId: c.accountId, lobbyId: c.lobbyId, intent: c.intent, exp, nonce: randomBytes(16).toString('base64url') };
+      if (c.sid) claims.sid = c.sid;
       const payload = Buffer.from(JSON.stringify(claims)).toString('base64url');
       return { ticket: `v1.${payload}.${sign(payload).toString('base64url')}`, expiresAt: exp };
     },
@@ -68,7 +71,8 @@ export function createTicketService(secret: string, opts: { ttlMs?: number; now?
         typeof claims.lobbyId !== 'string' ||
         typeof claims.nonce !== 'string' ||
         typeof claims.exp !== 'number' ||
-        !INTENTS.includes(claims.intent)
+        !INTENTS.includes(claims.intent) ||
+        (claims.sid !== undefined && typeof claims.sid !== 'string')
       )
         return { ok: false, reason: 'malformed' };
       if (claims.lobbyId !== lobbyId) return { ok: false, reason: 'wrong_lobby' };

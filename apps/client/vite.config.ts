@@ -1,4 +1,21 @@
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
+
+// (v2.3, Trusted Types) msgpackr (via colyseus) probes `new Function('')` at load to decide whether it
+// may compile inline record readers. Under our CSP + Trusted Types that probe is refused (and caught),
+// but the browser still logs a violation in every player's console. msgpackr documents replacing the
+// probe for no-eval builds; we make the probe fail without calling Function, so msgpackr goes straight
+// to its interpreter (inlineObjectReadThreshold = Infinity) and never evaluates strings.
+function msgpackrNoEval(): Plugin {
+  const probe = /try\s*\{\s*new Function\(''\)\s*\}\s*catch\s*\(error\)\s*\{/;
+  return {
+    name: 'ct-msgpackr-no-eval',
+    enforce: 'pre',
+    transform(code, id) {
+      if (!/msgpackr[\\/]unpack\.js$/.test(id.split('?')[0]!) || !probe.test(code)) return null;
+      return { code: code.replace(probe, 'try { throw 0 } catch (error) {'), map: null };
+    },
+  };
+}
 
 // The production server (apps/server) serves dist/ on the same origin as the API and
 // WebSockets. In dev, `pnpm --filter @ct/client dev` proxies API/WS to the dev server on 3001.
@@ -9,6 +26,7 @@ import { defineConfig } from 'vite';
 // and typechecks against the full protocol; importing a schema at runtime fails this build
 // ("… is not exported by …/client.ts").
 export default defineConfig({
+  plugins: [msgpackrNoEval()],
   esbuild: { jsx: 'automatic', jsxImportSource: 'preact' },
   resolve: { alias: [{ find: /^@ct\/protocol$/, replacement: '@ct/protocol/client' }] },
   server: {

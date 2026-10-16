@@ -9,14 +9,14 @@ read this page first, then `CLAUDE.md` (binding rules), `docs/vision.md` (produc
 Clocktower Town: a browser, gothic pixel-art town where up to 15 friends + a Storyteller play Blood on
 the Clocktower (Trouble Brewing) with proximity / private voice (LiveKit). One-screen town square
 ringed by 15 houses (homes at night, private voice rooms by day). Human-Storyteller games and
-(v2.1) automatic games. Live at https://clocktower.chrisshi.com (Cloudflare Tunnel → hshi-u1:3000).
+(v2.1) automatic games. Live at https://clocktower.chrisshi.com (Cloudflare Tunnel → <host>:3000).
 
 ## Ground rules you must not break
 
-1. **Nothing runs on the Mac.** Edit files locally; run everything on `hshi-u1` with
+1. **Nothing runs on the Mac.** Edit files locally; run everything on the host with
    `CT_AGENT=<your-name> scripts/remote.sh <cmd>` (rsyncs the tree into
-   `~/clocktower/work/<your-name>/`, installs deps, runs in a resource-capped scope). Never use `hshi`
-   (the 4090 box).
+   `~/clocktower/work/<your-name>/`, installs deps, runs in a resource-capped scope). Host details (SSH alias etc.) are in the
+   gitignored `ops.local.env` / `CLAUDE.local.md` — never in tracked files (public repo).
 2. **Ports:** 3000 = prod, 3001 = dev — never bind them. Use your range from `CLAUDE.md`; always
    `127.0.0.1`.
 3. **One browser at a time on the host.** Any Playwright / headless-Chromium run must hold the host
@@ -39,13 +39,13 @@ ringed by 15 houses (homes at night, private voice rooms by day). Human-Storytel
    IPs, usernames, home paths, account ids or secrets. Security fixes are **deployed before they are
    pushed** (`/healthz` reveals the deployed commit), and vulnerability write-ups stay local
    (`.git/info/exclude`) until fixed.
-8. **hshi-u1 is also production.** `scripts/remote.sh` runs everything in a capped low-priority
+8. **The host is also production.** `scripts/remote.sh` runs everything in a capped low-priority
    slice; don't bypass it with plain `ssh … node/pnpm/playwright`. Prod deploys are done by the user
    or with their explicit go-ahead.
 9. **Record every test command you actually ran** (and failures) in your report; the lead copies them
    into `docs/test-results.md`. Never claim a test passed that you did not run.
 
-## Everyday commands (on hshi-u1 via scripts/remote.sh)
+## Everyday commands (on the host via scripts/remote.sh)
 
 | What | Command |
 |---|---|
@@ -56,7 +56,7 @@ ringed by 15 houses (homes at night, private voice rooms by day). Human-Storytel
 | Regenerate art | `pnpm assets:generate` then `CT_AGENT=<you> scripts/pull.sh packages/assets/generated` |
 | Perf budgets (release candidates) | see `docs/perf-v2.2-results.md` → WP7 (`scripts/perf/budgets.mjs`) |
 | Deploy | `scripts/deploy-hshi-u1.sh dev [<sha>]`, then `scripts/deploy-hshi-u1.sh prod <sha>` (prod refuses an uncommitted HEAD and an active game; rollback = deploy the previous sha) |
-| Prod logs | `ssh hshi-u1 journalctl -u clocktower-prod -f` |
+| Prod logs | `ssh <host> journalctl -u clocktower-prod -f` |
 
 E2E suites and rough durations: `lobby` (≈3 min), `v21-clock` (≈3), `v2-social`, `v2-phone` (≈4),
 `v2-look`, `v2-st-ui`, `ux-ready` (≈2), `ux-walkthrough` (≈7), `game-full` (≈11–15), `game-chaos`

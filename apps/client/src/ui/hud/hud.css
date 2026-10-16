@@ -219,3 +219,13 @@ p.cth-ability { padding: 0; }
 @media (prefers-reduced-motion: reduce) {
   .cth-hint.fade { animation: none; }
 }
+
+/* (st-qol) phones: stacked toasts covered the phase pill ("First night", top-right of the dock).
+   Start them below the pill and use the full width (fewer wrapped lines = a shorter stack). The
+   clock card rules in clock.css (body:has(.ctc-…) .cth-toasts) still push them further down. */
+@media (max-width: 720px) {
+  .cth-toasts { top: 74px; left: 8px; right: 8px; width: auto; transform: none; align-items: stretch; }
+}
+@media (max-height: 520px) and (min-width: 721px) {
+  .cth-toasts { top: 74px; }
+}

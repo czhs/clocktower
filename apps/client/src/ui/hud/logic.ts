@@ -58,3 +58,9 @@ export function storedPttCode(): string | null {
     return 'KeyV';
   }
 }
+
+/** (v2.3 chat/ux) How long a toast stays: refusals 9 s; announcements get reading time (6–14 s). */
+export function toastMs(kind: string, text: string): number {
+  if (kind === 'error') return 9000;
+  return Math.max(6000, Math.min(14_000, 3500 + 60 * text.length));
+}

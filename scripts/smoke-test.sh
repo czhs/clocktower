@@ -3,7 +3,7 @@
 #
 #   scripts/smoke-test.sh                                       # $CT_PUBLIC_URL or https://clocktower.chrisshi.com
 #   scripts/smoke-test.sh http://localhost:3001                 # dev via scripts/dev.sh tunnel
-#   ssh hshi-u1 'bash -s http://127.0.0.1:3001' < scripts/smoke-test.sh   # on the host
+#   ssh <host> 'bash -s http://127.0.0.1:3001' < scripts/smoke-test.sh   # on the host
 #   scripts/smoke-test.sh <url> --no-lobby   # skip lobby creation (always use this on prod)
 #   scripts/smoke-test.sh <url> --expect-version <sha>
 #   scripts/smoke-test.sh <url> --resolver 8.8.8.8   # public DNS server used to pin https hosts
@@ -12,7 +12,7 @@
 # default) and pinned with curl --resolve, so a stale local resolver cache cannot cause false
 # failures; the resolver used is printed.
 #
-# Steps: /healthz, SPA index + deep link, create account (cookie jar), /api/me, create lobby,
+# Steps: /healthz (+ /internal/version on local URLs), SPA index + deep link, create account (cookie jar), /api/me, create lobby,
 # list lobbies, join ticket, sign out (session must be revoked). The passphrase and cookie are
 # kept only in a temp dir that is deleted on exit; they are never printed.
 # Cleanup limits: there is no account/lobby delete API, so the smoke account (name "smoke-<ts>")
@@ -68,9 +68,22 @@ except Exception: pass' "$BODY" "$1"; }
 echo "smoke test: $BASE"
 req GET /healthz
 if [[ $CODE == 200 && $(jget 'd["ok"]') == true ]]; then
-  pass "/healthz env=$(jget 'd["env"]') version=$(jget 'd.get("version")')"
-  if [[ -n $EXPECT_VERSION && $(jget 'd.get("version")') != "$EXPECT_VERSION" ]]; then fail "version mismatch (expected $EXPECT_VERSION)"; fi
+  # v2.3 HOST-07: the public liveness answer carries no env/commit; the exact version is on the
+  # loopback-only /internal/version (404 through the tunnel).
+  if [[ -n $(jget 'd.get("version")') ]]; then fail "/healthz leaks the deployed version ($(jget 'd.get("version")')) — HOST-07"
+  else pass "/healthz ok (no version leaked)"; fi
 else fail "/healthz -> $CODE $(head -c 200 "$BODY" 2>/dev/null)"; fi
+if [[ $BASE =~ ^http://(127\.0\.0\.1|localhost|\[::1\])(:[0-9]+)?$ ]]; then
+  req GET /internal/version
+  if [[ $CODE == 200 && $(jget 'd["ok"]') == true ]]; then
+    pass "/internal/version env=$(jget 'd["env"]') version=$(jget 'd.get("version")')"
+    if [[ -n $EXPECT_VERSION && $(jget 'd.get("version")') != "$EXPECT_VERSION" ]]; then fail "version mismatch (expected $EXPECT_VERSION)"; fi
+  else fail "/internal/version -> $CODE (expected 200 on a local URL)"; fi
+else
+  req GET /internal/version
+  if [[ $CODE == 404 ]]; then pass "/internal/version not reachable via $BASE (404)"; else fail "/internal/version reachable via $BASE -> $CODE"; fi
+  if [[ -n $EXPECT_VERSION ]]; then printf '  NOTE  %s\n' "--expect-version needs a local URL (run on the host: bash -s http://127.0.0.1:3000 --expect-version <sha>)"; fi
+fi
 
 req GET /
 if [[ $CODE == 200 ]] && grep -qi '<div id="app"' "$BODY"; then pass "SPA index served"; else fail "SPA index -> $CODE"; fi

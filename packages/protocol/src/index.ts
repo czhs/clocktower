@@ -3,6 +3,7 @@
 // mirrored there (test/client-entry.test.ts).
 export * from './constants.js';
 export * from './text.js';
+export * from './textSafety.js'; // (v2.3, sec-web) zod-free
 export * from './cosmetics.js';
 export * from './auth.js';
 export * from './lobby.js';
@@ -19,4 +20,6 @@ export * from './clock.js';
 export * from './story.js';
 export * from './notebook.js'; // (v2, notebook)
 export * from './admin.js';
+export * from './moderationShared.js'; // (v2.3, sec-ops) zod-free
+export * from './moderation.js'; // (v2.3, sec-ops)
 export * from './messages.js';

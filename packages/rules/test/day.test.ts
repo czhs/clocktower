@@ -196,6 +196,7 @@ describe('slayer', () => {
   const S: CharacterId[] = ['imp', 'poisoner', 'slayer', 'empath', 'recluse', 'monk', 'chef'];
   it('a healthy Slayer kills the Demon -> good wins', () => {
     const s = day1(S);
+    st(s, { type: 'set_nominations_open', open: true });
     act(s, 2, { type: 'slayerShot', targetSeat: 0 });
     expect(alive(s, 0)).toBe(false);
     // The detected end waits for the ST (players see nothing yet; play is paused).
@@ -203,7 +204,9 @@ describe('slayer', () => {
     expect(s.resultPending).toBe(true);
     expect(projectForStoryteller(s).pendingResult).toEqual({ winner: 'good', reason: 'The Demon is dead.' });
     expect(projectForPlayer(s, 3).result).toBeNull();
+    // (security v2.3 SEC-2) a VALID action waits; an invalid one gets its ordinary error (no oracle).
     expect(actErr(s, 3, { type: 'nominate', nomineeSeat: 4 })).toMatch(/wait/);
+    expect(actErr(s, 3, { type: 'vote', nominationId: 'nope', vote: true })).toMatch(/Unknown nomination/);
     st(s, { type: 'confirm_result' });
     expect(s.phase).toBe('finished');
     expect(s.result!.winner).toBe('good');

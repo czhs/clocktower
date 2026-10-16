@@ -15,6 +15,13 @@ import {
 } from './game.js';
 import type { LocationId } from './world.js';
 import { STORYLINE_IDS, type StorylineId } from './storylines.js';
+import { cleanText } from './text.js';
+import { cleanMultiline } from './textSafety.js';
+
+// (v2.3 WEB-1) Storyteller free text reaches every player: same character cleaning as chat
+// (controls, bidi overrides, zero-width, invisible letters, Zalgo stacks); stText keeps line breaks.
+const stLine = (min: number, max: number) => z.string().max(max * 4).transform(cleanText).pipe(z.string().min(min).max(max));
+const stText = (min: number, max: number) => z.string().max(max * 4).transform(cleanMultiline).pipe(z.string().min(min).max(max));
 
 // ---------------------------------------------------------------------------------------
 // Storyteller contracts. Co-owned by rules-storyteller (additive changes; log them in
@@ -203,8 +210,8 @@ const Seat = z.number().int().min(0).max(14);
 
 export const PromptSpec = z.object({
   kind: z.enum(PROMPT_KINDS),
-  title: z.string().min(1).max(120),
-  body: z.string().max(500).optional(),
+  title: stLine(1, 120),
+  body: stText(0, 500).optional(),
   minTargets: z.number().int().min(0).max(15).optional(),
   maxTargets: z.number().int().min(0).max(15).optional(),
   allowSelf: z.boolean().optional(),
@@ -215,7 +222,7 @@ export const PromptSpec = z.object({
 export type PromptSpecInput = z.input<typeof PromptSpec>;
 
 export const InfoSpec = z.object({
-  text: z.string().min(1).max(500),
+  text: stText(1, 500),
   seats: z.array(Seat).max(15).optional(),
   characters: z.array(CharacterIdSchema).max(22).optional(),
   number: z.number().int().min(0).max(99).optional(),
@@ -306,7 +313,7 @@ export const StCommand = z.discriminatedUnion('type', [
   z.object({ type: z.literal('start_vote'), nominationId: z.string().max(64) }),
   z.object({ type: z.literal('cancel_nomination'), nominationId: z.string().max(64) }),
   z.object({ type: z.literal('execute'), seat: Seat.nullable() }),
-  z.object({ type: z.literal('kill'), seat: Seat, cause: z.string().max(80).optional(), announce: z.boolean() }),
+  z.object({ type: z.literal('kill'), seat: Seat, cause: stLine(0, 80).optional(), announce: z.boolean() }),
   z.object({
     type: z.literal('set_alive'),
     seat: Seat,
@@ -329,8 +336,8 @@ export const StCommand = z.discriminatedUnion('type', [
     alignment: z.enum(['good', 'evil']).optional(),
     notify: z.boolean(),
   }),
-  z.object({ type: z.literal('add_reminder'), seat: Seat, token: z.string().min(1).max(40) }),
-  z.object({ type: z.literal('remove_reminder'), seat: Seat, token: z.string().min(1).max(40) }),
+  z.object({ type: z.literal('add_reminder'), seat: Seat, token: stLine(1, 40) }),
+  z.object({ type: z.literal('remove_reminder'), seat: Seat, token: stLine(1, 40) }),
   z.object({ type: z.literal('prompt_player'), seat: Seat, prompt: PromptSpec }),
   z.object({ type: z.literal('send_info'), seat: Seat, info: InfoSpec }),
   z.object({
@@ -346,9 +353,9 @@ export const StCommand = z.discriminatedUnion('type', [
   z.object({ type: z.literal('skip_step'), stepId: z.string().max(64) }),
   z.object({ type: z.literal('visit_home'), seat: Seat }),
   z.object({ type: z.literal('leave_home') }),
-  z.object({ type: z.literal('announce'), text: z.string().min(1).max(300) }),
+  z.object({ type: z.literal('announce'), text: stText(1, 300) }),
   z.object({ type: z.literal('set_travel_speed'), mult: z.number().min(1).max(4) }),
-  z.object({ type: z.literal('declare_winner'), winner: z.enum(['good', 'evil']), reason: z.string().max(200) }),
+  z.object({ type: z.literal('declare_winner'), winner: z.enum(['good', 'evil']), reason: stLine(0, 200) }),
   z.object({ type: z.literal('undo_last') }),
   /** (additive) Accept the pending game-ending result (the game finishes and is recorded). */
   z.object({ type: z.literal('confirm_result') }),

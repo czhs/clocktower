@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Interactively store LiveKit credentials for ONE environment on hshi-u1 (lead-owned helper).
-#   ssh -t hshi-u1 '~/clocktower/bin/set-livekit.sh prod'     (or: dev)
+# Interactively store LiveKit credentials for ONE environment on the host (lead-owned helper).
+#   ssh -t <host> '~/clocktower/bin/set-livekit.sh prod'     (or: dev)
 # Values are read from the terminal (secret hidden), written to ~/clocktower/env/<env>.env (0600),
 # never echoed or logged. Only that environment's service is restarted.
 set -euo pipefail

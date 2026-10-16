@@ -11,8 +11,9 @@ import './help.css';
 
 const SEEN_KEY = 'ct.help.seen.v1';
 
-export function openHelp() {
-  window.dispatchEvent(new CustomEvent('ct:help'));
+/** Open the guide; `tab` picks a page (e.g. 'Keys' from ⚙ Settings → Controls). */
+export function openHelp(tab?: unknown) {
+  window.dispatchEvent(new CustomEvent('ct:help', { detail: typeof tab === 'string' ? tab : undefined }));
 }
 
 export function helpSeen(): boolean {
@@ -33,10 +34,15 @@ function markSeen() {
 /** Mount once per screen. `autoOpen` shows it on the very first visit. */
 export function HowToPlayHost({ autoOpen = false, touch = false }: { autoOpen?: boolean; touch?: boolean }) {
   const [open, setOpen] = useState(() => autoOpen && !helpSeen());
+  const [startTab, setStartTab] = useState<Tab | undefined>(undefined);
   // (tutorial) "Watch the tour": the video tour, loaded on demand (its own chunk + CSS).
   const [Tour, setTour] = useState<ComponentType<IntroTourProps> | null>(null);
   useEffect(() => {
-    const on = () => setOpen(true);
+    const on = (e: Event) => {
+      const t = (e as CustomEvent<unknown>).detail;
+      setStartTab((TABS as readonly unknown[]).includes(t) ? (t as Tab) : undefined);
+      setOpen(true);
+    };
     // (qol) "?" opens this guide from anywhere (not while typing or under another dialog).
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== '?' || e.ctrlKey || e.metaKey || e.altKey) return;
@@ -72,6 +78,7 @@ export function HowToPlayHost({ autoOpen = false, touch = false }: { autoOpen?: 
   return (
     <HowToPlay
       touch={touch}
+      initialTab={startTab}
       onTour={watchTour}
       onClose={() => {
         markSeen();
@@ -85,8 +92,8 @@ const TABS = ['Basics', 'Day & votes', 'Night', 'Voice', 'Keys'] as const;
 type Tab = (typeof TABS)[number];
 
 
-export function HowToPlay({ onClose, touch, onTour }: { onClose: () => void; touch?: boolean; onTour?: () => void }) {
-  const [tab, setTab] = useState<Tab>('Basics');
+export function HowToPlay({ onClose, touch, onTour, initialTab }: { onClose: () => void; touch?: boolean; onTour?: () => void; initialTab?: Tab }) {
+  const [tab, setTab] = useState<Tab>(initialTab && !(touch && initialTab === 'Keys') ? initialTab : 'Basics');
   const closeRef = useRef<HTMLButtonElement>(null);
   const prevFocus = useRef<Element | null>(null);
   useEffect(() => {
@@ -211,7 +218,7 @@ export function HowToPlay({ onClose, touch, onTour }: { onClose: () => void; tou
                   <td>
                     <kbd>{pttLabel(storedPttCode() ?? 'KeyV')}</kbd> (hold)
                   </td>
-                  <td>Push-to-talk (change it in the Voice panel)</td>
+                  <td>Push-to-talk (change it in ⚙ Settings or the Voice panel)</td>
                 </tr>
                 <tr>
                   <td>

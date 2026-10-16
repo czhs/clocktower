@@ -159,3 +159,51 @@ Thanks to Isaac (GitHub `isaac9000`) for PRs #2 and #3, merged into one history 
   copy on your own computer.
 - Kept from v2.2 where both releases built the same thing: chat bubbles, walkable cottages and the
   door-board character tokens (Isaac's versions of these were folded into v2.2's).
+
+# v2.3.0 — a safer town to host
+
+Security hardening (summary: docs/security-v2.3.md) plus chat and settings polish. The priority was
+keeping the host machine and home network safe; game-cheating defences come second and never at the
+cost of players' experience.
+
+## Safer hosting
+- Message floods are cut off before they cost CPU; a single server error no longer ends every game;
+  caps on sign-ups, lobby-list connections, record sizes; HTTP timeouts.
+- `/healthz` no longer tells the world which commit is deployed.
+- Ready for the owner to apply (one script with dry-run / apply / rollback + a verifier): separate
+  locked-down service users, an outbound firewall from the game to the LAN / tailnet / local services,
+  no core dumps, a sandboxed build user.
+- Supply chain: frozen installs, minimum release age, strict dependency builds, the unused `@pm2/io`
+  removed, secret scanning (pre-push hook + CI), private infrastructure details out of the repo.
+
+## Accounts
+- Signing out (everywhere), passphrase rotation and deletion now close live games' connections.
+- Sign-in floods no longer lock real players out; sessions last at most 90 days.
+- **Export my data** and **Delete account** on the home screen.
+
+## Voice
+- Usage is measured from LiveKit itself; voice stops at the monthly cap; no voice token until you press
+  Enable voice; per-lobby / per-address caps; idle voice switches off; usage alerts; an admin kill switch.
+- Storyteller town announcements end by themselves (silence, 5 minutes, nightfall, home visits) and show
+  a clear "You are announcing to the whole town" bar — no more accidental broadcasts of private visits.
+
+## Chat
+- Chat always says who will read you ("Town square · everyone outside", "Inside Ada's home · 3 here").
+- Smoother: Enter sends and keeps focus, your line shows instantly, fast bursts queue with a countdown
+  instead of disappearing, "N new" pill, unread badge, Enter/T opens chat from the town, phone keyboard
+  friendly. A **Crier** tab keeps every announcement, including "the host ended the game".
+- Automatic games announce less: the full explanation once, then short lines; one bedtime line.
+- Light moderation: report a player (with only the chat you saw), host/Storyteller kick and mute,
+  a slurs-only chat filter the host can change.
+
+## Settings
+- Player ⚙ Settings reorganised: Audio & voice · Graphics · Chat & social · Controls · Privacy & safety ·
+  About (reduced-motion switch, silenced players, report, account links, reset to defaults).
+- Admin console: **Security & limits** (every protection above is a live, bounded, audited setting) and
+  **Panic** (sign-ups open / invite code / closed, maintenance, voice off, close all lobbies, sign
+  everyone out); account suspension and network blocks; backups with a status marker and a safe restore
+  script.
+
+## Also in this release (merged from Isaac)
+- Brianbi (HD character), NPCs that avoid each other, Docker local preview, a fix for frozen movement
+  after reloading the town, nearby-only chat in the waiting room too.

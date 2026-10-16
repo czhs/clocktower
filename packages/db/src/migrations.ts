@@ -147,4 +147,54 @@ UPDATE match_players SET avatar_id = (
 CREATE INDEX match_records_storyteller_idx ON match_records (storyteller_account_id, ended_at);
 `,
   },
+  {
+    id: 6,
+    name: 'moderation',
+    // (v2.3 OPS-1/2/6) Account suspensions, network (IP /64) blocks, each account's last network key
+    // (for "block this account's network"; never logged, never sent to other players), runtime ops
+    // switches (sign-ups / maintenance / voice) and player reports (admin queue).
+    sql: `
+CREATE TABLE account_suspensions (
+  account_id TEXT PRIMARY KEY NOT NULL,
+  at INTEGER NOT NULL,
+  until INTEGER,
+  reason TEXT NOT NULL,
+  admin_account_id TEXT NOT NULL
+);
+CREATE TABLE ip_blocks (
+  key TEXT PRIMARY KEY NOT NULL,
+  at INTEGER NOT NULL,
+  until INTEGER,
+  reason TEXT NOT NULL,
+  admin_account_id TEXT NOT NULL
+);
+CREATE TABLE account_ips (
+  account_id TEXT PRIMARY KEY NOT NULL,
+  ip_key TEXT NOT NULL,
+  at INTEGER NOT NULL
+);
+CREATE INDEX account_ips_key_idx ON account_ips (ip_key);
+CREATE TABLE ops_flags (
+  key TEXT PRIMARY KEY NOT NULL,
+  value_json TEXT NOT NULL,
+  updated_at INTEGER NOT NULL,
+  admin_account_id TEXT NOT NULL
+);
+CREATE TABLE reports (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  at INTEGER NOT NULL,
+  reporter_account_id TEXT NOT NULL,
+  target_account_id TEXT NOT NULL,
+  lobby_id TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  note TEXT,
+  context_json TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'open',
+  resolved_by TEXT,
+  resolved_at INTEGER,
+  resolution TEXT
+);
+CREATE INDEX reports_status_idx ON reports (status, at);
+`,
+  },
 ];

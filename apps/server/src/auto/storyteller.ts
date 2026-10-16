@@ -10,10 +10,15 @@
 //   bedtime   the engine's countdown (timings.bedtimeSec) + the world's escort; if stragglers are not
 //             home STRAGGLER_MS after the countdown, the night is forced (they are put to bed).
 //   night     at nightfall every step that needs a choice prompts its player at once (their usual
-//             prompt UI, at home); steps then resolve strictly in night order. An unanswered prompt
-//             gets a random legal answer at its deadline. Info is computed by fate (truthful with
-//             Spy/Recluse registration, or false when drunk/poisoned). The night lasts at least
-//             timings.nightSec (so its length reveals nothing), at most that + prompt timeouts.
+//             prompt UI, at home) and the evil team learns each other. Everything else waits for ONE
+//             fixed release time (nightfall + promptTimeoutMs, when every prompt is answered or
+//             defaulted): then the steps resolve in night order in one go, so all info arrives at the
+//             same moment whatever anyone answered and whoever is in play (SEC-1: per-step delivery
+//             leaked e.g. "no Poisoner" to the Chef). A prompt created after the release (the
+//             Ravenkeeper) never holds up the steps behind it and is due by the night's minimum
+//             length. An unanswered prompt gets a random legal answer at its deadline. Info is
+//             computed by fate (truthful with Spy/Recluse registration, or false when drunk/poisoned).
+//             The night lasts timings.nightSec (so its length reveals nothing).
 //   dawn      straight to day: deaths are announced by the engine.
 //   day       clock 'discussion' (discussionMin) → nominations open, clock 'nominations'
 //             (nominationsMin). A nomination's vote starts VOTE_DELAY_MS later (accusation +
@@ -109,7 +114,14 @@ interface NightRun {
   number: number;
   startAt: number;
   deadlines: Map<string, number>;
+  /** (SEC-1) Steps whose prompt was created after the release time (the Ravenkeeper): never blocking. */
+  late: Set<string>;
 }
+
+/** (SEC-1) Steps resolved at nightfall: the evil team's own info (identical timing for every evil player). */
+const AT_NIGHTFALL: ReadonlySet<NightStep['kind']> = new Set(['dusk', 'minion_info', 'demon_info']);
+/** (SEC-1) A prompt created after the release time gets at least this long to answer. */
+export const LATE_PROMPT_MIN_MS = 5_000;
 
 interface DayRun {
   number: number;
@@ -234,18 +246,30 @@ export function createAutoStoryteller(port: AutoPort, opts: AutoClockOptions, fa
   function sendPrompt(step: NightStep, now: number) {
     const spec = promptFor(st(), step);
     if (!spec || step.seat === null) return;
-    if (cmd({ type: 'prompt_player', seat: step.seat, prompt: spec })) night!.deadlines.set(step.id, now + opts.promptTimeoutMs);
+    if (!cmd({ type: 'prompt_player', seat: step.seat, prompt: spec })) return;
+    if (now < releaseAt()) night!.deadlines.set(step.id, now + opts.promptTimeoutMs);
+    else {
+      // (SEC-1) Created after the release (the Ravenkeeper): due by the night's minimum length, so
+      // neither the info of the steps behind it nor the length of the night depends on it.
+      night!.late.add(step.id);
+      night!.deadlines.set(step.id, Math.max(night!.startAt + opts.nightMinMs, now + LATE_PROMPT_MIN_MS));
+    }
+  }
+
+  /** (SEC-1) The one moment tonight's steps (and so every piece of info) are resolved. */
+  function releaseAt(): number {
+    return night!.startAt + opts.promptTimeoutMs;
   }
 
   function beginNight(now: number) {
     const s = st();
-    night = { number: s.nightNumber, startAt: now, deadlines: new Map() };
+    night = { number: s.nightNumber, startAt: now, deadlines: new Map(), late: new Set() };
     day = null;
     clock.clear();
     ballot.cancel();
-    explain(
-      `The automatic Storyteller wakes players in night order. If a question pops up, answer it at home within ${Math.round(opts.promptTimeoutMs / 1000)} seconds. Dawn comes after at least ${minutes(opts.nightMinMs)}.`,
-    );
+    // Explained in full on the first night only; later nights have just the engine's "Night N falls."
+    if (s.phase === 'first_night')
+      explain(`The automatic Storyteller wakes players in night order: answer any question at home within ${Math.round(opts.promptTimeoutMs / 1000)} seconds. Dawn comes after at least ${minutes(opts.nightMinMs)}.`);
     // Everyone who will make a choice tonight is asked at once (answers resolve in night order).
     for (const step of s.nightQueue) {
       if (step.status !== 'pending' || step.seat === null) continue;
@@ -257,18 +281,31 @@ export function createAutoStoryteller(port: AutoPort, opts: AutoClockOptions, fa
 
   const open = (x: NightStep) => x.status !== 'resolved' && x.status !== 'skipped';
 
-  /** Process night steps in order as far as possible. */
+  /**
+   * Process night steps in order as far as possible. (SEC-1) Before the release time only the evil
+   * team's nightfall info resolves; at the release everything else resolves in one go (a late prompt,
+   * i.e. the Ravenkeeper, is stepped over while it waits).
+   */
   function runNight(now: number) {
     const s = st();
     if (!night || night.number !== s.nightNumber) beginNight(now);
     for (let guard = 0; guard < 64; guard++) {
       if (s.resultPending || s.phase === 'finished') return;
-      const step = st().nightQueue.find(open);
-      if (!step) {
+      const queue = st().nightQueue.filter(open);
+      if (!queue.length) {
         if (now >= night!.startAt + opts.nightMinMs && cmd({ type: 'advance_phase', to: 'day' }) && st().phase === 'day') beginDay(now);
         return;
       }
-      if (!processStep(step, now)) return; // waiting for an answer
+      let progressed = false;
+      for (const step of queue) {
+        if (now < releaseAt() && !AT_NIGHTFALL.has(step.kind)) return;
+        if (processStep(step, now)) {
+          progressed = true;
+          break; // the state changed: rescan from the top
+        }
+        if (!night!.late.has(step.id)) return; // waiting for an answer
+      }
+      if (!progressed) return;
     }
   }
 
@@ -353,7 +390,7 @@ export function createAutoStoryteller(port: AutoPort, opts: AutoClockOptions, fa
     ballot.resetDay(s.dayNumber);
     clock.set('discussion', opts.discussionMs, now);
     clockNote(`The town clock: ${minutes(opts.discussionMs)} of discussion before nominations open.`, { stage: 'discussion', ms: opts.discussionMs });
-    explain(`Day ${s.dayNumber}: ${minutes(opts.discussionMs)} to talk, then ${minutes(opts.nominationsMs)} of nominations. Need more time? Propose it on the town clock.`);
+    explain(`Day ${s.dayNumber}: ${minutes(opts.discussionMs)} to talk, then ${minutes(opts.nominationsMs)} of nominations.${s.dayNumber <= 1 ? ' Need more time? Propose it on the town clock.' : ''}`);
   }
 
   function minutes(ms: number) {
@@ -461,10 +498,7 @@ export function createAutoStoryteller(port: AutoPort, opts: AutoClockOptions, fa
           ballot.cancel();
         }
         if (s.bedtimeOvertime) {
-          if (overtimeSince === null) {
-            overtimeSince = now;
-            explain(`Time for bed! Night falls within ${minutes(opts.stragglerMs)}: anyone still outside is walked home.`);
-          }
+          overtimeSince ??= now; // (the bell's own line already says what happens: GameState.bedtimeNote)
           if (now - overtimeSince >= opts.stragglerMs) {
             const who = s.players.filter((p) => !p.connected).map((p) => p.seat);
             clockNote('The town clock strikes night: whoever is still outside is put to bed.', { forcedNight: true }, who);
@@ -525,6 +559,8 @@ export function createAutoStoryteller(port: AutoPort, opts: AutoClockOptions, fa
     start() {
       startedAt = port.now();
       installAdjudicator();
+      // One bedtime line instead of two: the engine's bell announcement carries the automatic rule.
+      st().bedtimeNote = `Whoever is still out is walked home; night falls at most ${minutes(opts.stragglerMs)} later.`;
       cmd({ type: 'set_bedtime_seconds', seconds: Math.max(10, Math.min(300, Math.round(opts.bedtimeSec))) });
       // (v2.2) the host's storyline (dealt at random onto the seats); falls back to a random setup
       // when it does not fit this player count.

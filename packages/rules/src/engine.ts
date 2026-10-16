@@ -300,7 +300,7 @@ function startBedtime(s: GameState, op: Op, first = false): void {
     s.bedtimePausedRemainingMs = ms;
   }
   sound(op, 'bell');
-  announce(s, op, 'phase', `The bell tolls. Return to your homes within ${s.bedtimeSeconds} seconds.`);
+  announce(s, op, 'phase', `The bell tolls. Return to your homes within ${s.bedtimeSeconds} seconds.${s.bedtimeNote ? ` ${s.bedtimeNote}` : ''}`);
 }
 
 function advance(s: GameState, op: Op, to: 'day' | 'bedtime' | 'night' | 'dawn'): void {
@@ -994,7 +994,8 @@ function promptResponse(s: GameState, op: Op, p: PlayerState, a: Extract<PlayerA
 
 /** Apply a player action from `seat` (caller maps pid -> seat). */
 export function applyPlayerAction(s: GameState, seat: number, a: PlayerAction, ctx: Ctx): CommandResult {
-  const r = run(s, ctx.now, (op) => playerAction(s, op, seat, a), 'none', a.type !== 'vote');
+  // (SEC-2) while a result is pending every action may be refused after it ran: always roll back then.
+  const r = run(s, ctx.now, (op) => playerAction(s, op, seat, a), 'none', a.type !== 'vote' || s.resultPending);
   // Recorded against the ST's last undoable command so undo_last can replay it.
   if (r.ok) s.history.at(-1)?.replay.push({ seat, action: a, now: ctx.now });
   return r;
@@ -1002,21 +1003,27 @@ export function applyPlayerAction(s: GameState, seat: number, a: PlayerAction, c
 
 function playerAction(s: GameState, op: Op, seat: number, a: PlayerAction): void {
   const p = mustPlayer(s, seat);
-  if (s.resultPending) throw new RuleError('phase', 'Please wait for the Storyteller.');
+  const wasPending = s.resultPending; // (an action may itself propose the end, e.g. the Slayer's shot)
+  // (security v2.3, SEC-2) Validate FIRST: a blanket "pending result" refusal before validation let
+  // any player probe for an unconfirmed game end (e.g. at night, with a junk prompt id). Invalid
+  // actions now get their ordinary error whatever is pending; a prompt answer is simply recorded (it
+  // is moot if the Storyteller confirms the end); a VALID day action is refused (and rolled back, see
+  // applyPlayerAction) while the Storyteller decides.
   switch (a.type) {
     case 'nominate':
       nominate(s, op, seat, a.nomineeSeat);
-      return;
+      break;
     case 'vote':
       setHand(s, op, seat, a.nominationId, a.vote);
-      return;
+      break;
     case 'promptResponse':
       promptResponse(s, op, p, a);
       return;
     case 'slayerShot':
       slayerShot(s, op, seat, a.targetSeat);
-      return;
+      break;
   }
+  if (wasPending) throw new RuleError('phase', 'Please wait for the Storyteller.');
 }
 
 // ------------------------------------------------------------------------- timers/presence

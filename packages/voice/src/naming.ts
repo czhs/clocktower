@@ -7,10 +7,14 @@ import { ZONE_ANNOUNCE, ZONE_SQUARE, ZONE_STREET } from './zones.js';
 //             which makes the name injective: lobby "ab-square" can never collide with lobby
 //             "ab" + zone "square".
 //   zoneSlug  'square' | 'street' | 'announce' | 'bld-<buildingId>'
+//   epoch     (v2.3 VOICE-9, optional) `_<epoch>` suffix, [a-z0-9]{4,16}. The server rotates a
+//             room's epoch when it empties / a member leaves a private room, so an old token (or a
+//             LiveKit refresh token) names a dead room. Building ids never contain '_'.
 
 const PREFIX_RE = /^[a-z0-9-]{1,16}$/;
 const LOBBY_RE = /^[A-Za-z0-9_-]{1,64}$/;
 const BUILDING_RE = /^[a-z0-9-]{1,32}$/;
+const EPOCH_RE = /^[a-z0-9]{4,16}$/;
 
 export function encodeLobbyComponent(lobbyId: string): string {
   if (!LOBBY_RE.test(lobbyId)) throw new Error('invalid lobby id for voice room');
@@ -50,27 +54,36 @@ export function zoneFromSlug(slug: string): AcousticZoneId | null {
   return null;
 }
 
-export function roomNameFor(prefix: string, lobbyId: string, zone: AcousticZoneId): string {
+export function roomNameFor(prefix: string, lobbyId: string, zone: AcousticZoneId, epoch?: string): string {
   if (!PREFIX_RE.test(prefix)) throw new Error('invalid voice room prefix');
-  return `${prefix}-${encodeLobbyComponent(lobbyId)}-${zoneSlug(zone)}`;
+  if (epoch !== undefined && !EPOCH_RE.test(epoch)) throw new Error('invalid voice room epoch');
+  return `${prefix}-${encodeLobbyComponent(lobbyId)}-${zoneSlug(zone)}${epoch !== undefined ? `_${epoch}` : ''}`;
 }
 
 /** Parse a room name produced by roomNameFor for a known prefix. */
-export function parseRoomName(prefix: string, room: string): { lobbyId: string; zone: AcousticZoneId } | null {
+export function parseRoomName(prefix: string, room: string): { lobbyId: string; zone: AcousticZoneId; epoch?: string } | null {
   if (!room.startsWith(`${prefix}-`)) return null;
   const rest = room.slice(prefix.length + 1);
   const dash = rest.indexOf('-');
   if (dash <= 0) return null;
   const lobbyId = decodeLobbyComponent(rest.slice(0, dash));
-  const zone = zoneFromSlug(rest.slice(dash + 1));
+  let slug = rest.slice(dash + 1);
+  let epoch: string | undefined;
+  const us = slug.lastIndexOf('_');
+  if (us >= 0) {
+    epoch = slug.slice(us + 1);
+    slug = slug.slice(0, us);
+    if (!EPOCH_RE.test(epoch)) return null;
+  }
+  const zone = zoneFromSlug(slug);
   if (lobbyId === null || zone === null) return null;
-  return { lobbyId, zone };
+  return epoch !== undefined ? { lobbyId, zone, epoch } : { lobbyId, zone };
 }
 
 /** Guard used before minting any token: the room must belong to this env + lobby. */
 export function assertRoomInLobby(prefix: string, lobbyId: string, room: string): void {
   const p = parseRoomName(prefix, room);
-  if (!p || p.lobbyId !== lobbyId || roomNameFor(prefix, lobbyId, p.zone) !== room) {
+  if (!p || p.lobbyId !== lobbyId || roomNameFor(prefix, lobbyId, p.zone, p.epoch) !== room) {
     throw new Error('voice room does not belong to this lobby');
   }
 }

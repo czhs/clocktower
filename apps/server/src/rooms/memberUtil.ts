@@ -1,5 +1,5 @@
 import { randomInt } from 'node:crypto';
-import { MIN_PLAYERS, type MemberView } from '@ct/protocol';
+import { MIN_PLAYERS, nameSkeleton, type MemberView } from '@ct/protocol';
 import type { RoomMember } from './modules.js';
 
 /** Fisher–Yates with a CSPRNG (seat order must not be predictable or join-order-derived). */
@@ -46,7 +46,7 @@ export function displayLabels(members: readonly { pid: string; displayName: stri
   const out = new Map<string, string>();
   const seen = new Map<string, number>();
   for (const m of [...members].sort((a, b) => a.joinedAt - b.joinedAt)) {
-    const key = m.displayName.normalize('NFKC').trim().toLowerCase();
+    const key = nameSkeleton(m.displayName); // (v2.3 WEB-7) look-alikes and forged "(n)" collide too
     const n = (seen.get(key) ?? 0) + 1;
     seen.set(key, n);
     out.set(m.pid, n === 1 ? m.displayName : `${m.displayName} (${n})`);
