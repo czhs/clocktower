@@ -12,6 +12,7 @@ import { renderGround, sliceTiles } from './ground.js';
 import { Img } from './lib/img.js';
 import { drawProps } from './props.js';
 import { buildCast } from './cast/index.js';
+import { buildCastHd } from './cast/hd.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const OUT = join(here, '..', 'generated');
@@ -143,6 +144,11 @@ write('characters.json', JSON.stringify(charManifest, null, 0));
   write('cast.png', cast.img.toPNG());
   write('cast.json', JSON.stringify(cast.manifest, null, 0));
   if (review) writeFileSync(join(REVIEW, 'cast-x4.png'), cast.review.toPNG());
+  const hd = buildCastHd();
+  if (hd) {
+    write('cast-hd.png', hd.img.toPNG());
+    write('cast-hd.json', JSON.stringify(hd.manifest, null, 0));
+  }
 }
 
 // --- social (social-art agent) ---
