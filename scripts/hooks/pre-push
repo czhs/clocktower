@@ -15,30 +15,32 @@ STATUS=0
 # stdin: <local ref> <local sha> <remote ref> <remote sha>
 while read -r lref lsha rref rsha; do
   [[ -z ${lsha:-} || $lsha == "$ZERO" ]] && continue # branch deletion
-  if [[ $rsha == "$ZERO" ]]; then
-    # New branch: scan the commits not already on any remote-tracking ref of this remote.
-    base=$(git rev-list "$lsha" --not --remotes="$remote" 2>/dev/null | tail -n 1)
-    if [[ -z $base ]]; then continue; fi
-    if git rev-parse --verify --quiet "${base}^" >/dev/null; then range="${base}^..${lsha}"; else range="$lsha"; fi
-  else
-    if git cat-file -e "${rsha}^{commit}" 2>/dev/null; then range="${rsha}..${lsha}"
-    else range="$lsha --not --remotes=$remote"; fi # remote tip unknown locally (force push)
-  fi
-  echo "pre-push: scanning $lref ($range)" >&2
+  # Scan exactly the commits this push would newly publish: those not reachable from ANY
+  # remote-tracking ref of this remote. Commits already on the remote (e.g. a collaborator's merged
+  # PR that our branch merges in) are public already and are not re-scanned.
+  new=$(git rev-list --reverse "$lsha" --not --remotes="$remote" 2>/dev/null)
+  if [[ -z $new ]]; then echo "pre-push: $lref has no unpublished commits" >&2; continue; fi
+  echo "pre-push: scanning $lref ($(echo "$new" | wc -l | tr -d ' ') unpublished commit(s))" >&2
   if command -v gitleaks >/dev/null 2>&1; then
-    # shellcheck disable=SC2086
-    gitleaks git --config "$ROOT/.gitleaks.toml" --redact --no-banner -v --log-opts="$range" "$ROOT" || STATUS=1
+    gitleaks git --config "$ROOT/.gitleaks.toml" --redact --no-banner -v --log-opts="$lsha --not --remotes=$remote" "$ROOT" || STATUS=1
   else
-    if [[ $range == *" --not "* ]]; then
-      # secret-scan.sh takes A..B; approximate with the oldest unpushed commit's parent.
-      first=$(git rev-list $range | tail -n 1); range="${first}^..${lsha}"
-      git rev-parse --verify --quiet "${first}^" >/dev/null || range="$lsha"
-    fi
-    if [[ $range == *..* ]]; then
-      bash "$ROOT/scripts/secret-scan.sh" --range "$range" || STATUS=1
-    else
-      bash "$ROOT/scripts/secret-scan.sh" --history || STATUS=1 # root commit: scan everything
-    fi
+    # secret-scan.sh --range A..B scans lines ADDED by those commits (merge commits contribute no
+    # diff of their own; their unpublished parents are scanned individually here).
+    while read -r c; do
+      if git rev-parse --verify --quiet "${c}^2" >/dev/null; then
+        # A merge: `parent..merge` would re-list the merged-in branch's commits (public already, or
+        # scanned on their own in this loop). Scan from the merged-in side instead: that covers this
+        # side's commits; git log shows no diff for the merge commit itself (its conflict resolutions
+        # went through the staged scan at commit time).
+        bash "$ROOT/scripts/secret-scan.sh" --range "${c}^2..${c}" >/dev/null 2>"$ROOT/.git/ct-scan.err" || { cat "$ROOT/.git/ct-scan.err" >&2; STATUS=1; }
+      elif git rev-parse --verify --quiet "${c}^" >/dev/null; then
+        bash "$ROOT/scripts/secret-scan.sh" --range "${c}^..${c}" >/dev/null 2>"$ROOT/.git/ct-scan.err" || { cat "$ROOT/.git/ct-scan.err" >&2; STATUS=1; }
+      else
+        bash "$ROOT/scripts/secret-scan.sh" --history || STATUS=1 # root commit: scan everything
+      fi
+    done <<< "$new"
+    rm -f "$ROOT/.git/ct-scan.err"
+    [[ $STATUS -eq 0 ]] && echo "secret-scan: clean ($(echo "$new" | wc -l | tr -d ' ') unpublished commit(s))" >&2
   fi
 done
 
