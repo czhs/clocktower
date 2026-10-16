@@ -2,6 +2,24 @@
 
 All commands run on **hshi-u1** via `scripts/remote.sh` unless stated otherwise.
 
+## 2026-10-16 — door rejection after refreshing
+
+Run on the editing Mac using the Node 24 / pnpm wrapper and isolated browser-test settings below.
+The production change restores the client's movement sequence from server teleports and snapshot
+acknowledgements. A refreshed scene previously restarted at zero while the server retained the old
+counter, silently ignoring movement and rejecting doors at the client's apparent position.
+
+| Executed command | Result |
+|---|---|
+| `pnpm exec playwright test -c tests/e2e/playwright.config.ts door-reconnect.spec.ts` (before fix) | Reproduced: after a reload with a retained movement sequence, the character walked to Wychwood but stayed outdoors. The captured browser trace shows the exact `Too far from the door.` alert. |
+| `pnpm --filter @ct/client build` | Passed; rebuilt the local preview assets. Existing Zod annotation and VoiceClient import warnings remain. |
+| `pnpm --filter @ct/client typecheck` | Passed. |
+| `pnpm exec tsc -p tests/tsconfig.json --noEmit` | Passed. |
+| `pnpm exec playwright test -c tests/e2e/playwright.config.ts door-reconnect.spec.ts doors.spec.ts` | Reload regression passed (9.5s): click and keyboard entry after separate reloads, first movement sequence newer than the retained server sequence, no door errors. Existing offset fixture failed before entry because its 10px keyboard positioning overshot to 16.5px at 30fps, exceeding its 16px setup assertion. Allowed up to 18px in that assertion; production door ranges unchanged. |
+| `pnpm exec playwright test -c tests/e2e/playwright.config.ts doors.spec.ts` | Passed (28.1s): centered and both off-center approaches at Wychwood, Weaver's House, and Ravenscroft; immediate re-entry tap; no door errors. |
+| `curl --fail --silent http://127.0.0.1:3002/healthz` | Passed: development / local-preview / ok. |
+| `git diff --check` | Passed. |
+
 ## 2026-10-16 — full house-sign occupant lists
 
 Run on the editing Mac for the user's local preview, using Node 24.22.0 and pnpm 10.34.7 via

@@ -64,7 +64,8 @@ test('Wychwood, Weaver and Ravenscroft accept off-centre walking approaches', as
               }
             }, { x: door.x, offset });
             await expect.poll(() => Math.abs(me()!.x - door.x)).toBeGreaterThanOrEqual(9);
-            expect(Math.abs(me()!.x - door.x)).toBeLessThan(16);
+            // A delayed 30fps frame can overshoot 10px; stay within the doorway approach.
+            expect(Math.abs(me()!.x - door.x)).toBeLessThan(18);
           }
           await page.keyboard.down('ArrowUp');
           await page.waitForTimeout(500);

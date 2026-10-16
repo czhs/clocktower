@@ -848,6 +848,8 @@ export class TownScene extends Phaser.Scene {
   }
 
   onTeleport(t: WorldTeleport) {
+    // Rejoining keeps the server's last movement sequence, even though this scene is new.
+    this.seq = Math.max(this.seq, t.seq);
     if (t.reason === 'correction' && t.seq <= this.fenceSeq) return;
     this.fenceSeq = this.seq;
     this.lastSent = { x: t.x, y: t.y, moving: false, facing: this.me.facing };
@@ -864,6 +866,9 @@ export class TownScene extends Phaser.Scene {
   }
 
   onSnapshot(s: WorldSnapshot) {
+    // The spawn teleport can precede scene creation; snapshots also restore the sequence.
+    // Otherwise a reload's moves are discarded as stale until the counter catches up.
+    this.seq = Math.max(this.seq, s.ackSeq);
     noteServerTime(s.t);
     const now = performance.now();
     const seen = new Set<string>();
