@@ -10,7 +10,7 @@ import { inject, installSocketTap } from './helpers';
 const OUT = path.resolve('test-results/v2-look');
 let ipNo = 0;
 
-async function account(browser: Browser, name: string, viewport = { width: 1440, height: 900 }) {
+async function account(browser: Browser, name: string, viewport = { width: 1440, height: 900 }, light = false) {
   const ctx = await browser.newContext({ viewport, extraHTTPHeaders: { 'X-Forwarded-For': `10.88.${process.pid % 200}.${++ipNo}` } });
   await installSocketTap(ctx);
   // first-visit tour + hints off
@@ -20,6 +20,8 @@ async function account(browser: Browser, name: string, viewport = { width: 1440,
       localStorage.setItem('ct.hint.move.v1', '1');
     } catch {}
   });
+  // background players render at a few fps so the shared test host isn't starved (software WebGL)
+  if (light) await ctx.addInitScript(() => { try { localStorage.setItem('ct.debug.fps', '6'); } catch {} });
   const page = await ctx.newPage();
   page.on('dialog', (d) => void d.accept());
   await page.goto('/');
@@ -55,7 +57,7 @@ test('v2 look: day, inside, bedtime, night, phone', async ({ browser }) => {
   const players = [];
   for (const [i, n] of names.entries()) {
     // only the first three players are photographed: keep the rest light for the shared test host
-    const p = await account(browser, n, i < 3 ? undefined : { width: 480, height: 320 });
+    const p = await account(browser, n, i < 3 ? undefined : { width: 480, height: 320 }, i >= 3);
     await p.page.goto(`/lobby/${id}`);
     await expect(p.page.getByRole('button', { name: "I'm ready" })).toBeEnabled({ timeout: 30_000 });
     await p.page.getByRole('button', { name: "I'm ready" }).click();

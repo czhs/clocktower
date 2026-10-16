@@ -148,3 +148,7 @@
   .ct-inside-who { font-size: 12.5px; }
   .ct-inside-leave { min-height: 34px; min-width: 110px; }
 }
+@media (max-height: 460px) {
+  /* the full-height waiting sheet sits above the joystick (collapse it to walk) */
+  .ct-game .ct-waiting { z-index: 28; }
+}

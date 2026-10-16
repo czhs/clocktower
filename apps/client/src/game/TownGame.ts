@@ -5,6 +5,13 @@ import { TownScene, type TownBridge } from './TownScene';
 export function createTownGame(parent: HTMLElement, bridge: TownBridge): { destroy(): void } {
   const size = () => ({ w: Math.max(64, Math.floor(parent.clientWidth)), h: Math.max(64, Math.floor(parent.clientHeight)) });
   const s0 = size();
+  // Opt-in frame cap (tests / low-power): localStorage 'ct.debug.fps' = e.g. '8'.
+  let fpsLimit = 0;
+  try {
+    fpsLimit = Number(localStorage.getItem('ct.debug.fps') ?? 0) || 0;
+  } catch {
+    // storage blocked
+  }
   const game = new Phaser.Game({
     type: Phaser.AUTO,
     parent,
@@ -20,7 +27,7 @@ export function createTownGame(parent: HTMLElement, bridge: TownBridge): { destr
     scale: { mode: Phaser.Scale.NONE },
     render: { antialias: false, powerPreference: 'high-performance' },
     // dev sandbox only: keep ticking in a hidden pane (RAF is paused there)
-    ...(import.meta.env.DEV && (window as unknown as { __ctForceTimeout?: boolean }).__ctForceTimeout ? { fps: { forceSetTimeOut: true, target: 30 } } : {}),
+    ...(import.meta.env.DEV && (window as unknown as { __ctForceTimeout?: boolean }).__ctForceTimeout ? { fps: { forceSetTimeOut: true, target: 30 } } : fpsLimit > 0 ? { fps: { limit: fpsLimit } } : {}),
     scene: [new TownScene(bridge)],
   });
   const ro = new ResizeObserver(() => {
