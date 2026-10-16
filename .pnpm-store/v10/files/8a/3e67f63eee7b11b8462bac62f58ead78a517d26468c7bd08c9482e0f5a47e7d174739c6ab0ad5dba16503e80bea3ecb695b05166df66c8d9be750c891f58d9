@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["../src/index.ts"],
+  "sourcesContent": ["export { Delayed, Type } from \"./Delayed.js\";\nexport { TimerClearedError } from \"./TimerClearedError.js\";\nimport { ClockTimer } from \"./ClockTimer.js\";\n\nexport default ClockTimer;\n"],
+  "mappings": ";;;;;;;;;;;;;;;;;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA;AAAA,qBAA8B;AAC9B,+BAAkC;AAClC,wBAA2B;AAE3B,IAAO,cAAQ;",
+  "names": []
+}

@@ -832,6 +832,7 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
       env: this.services.config.env,
       log: this.log,
       now: () => Date.now(),
+      script: () => room.settings.script,
       members: () => [...room.seats.values()].map((s) => s.member),
       member: (pid) => room.seats.get(pid)?.member,
       storytellerPid: () => room.storytellerSeat()?.member.pid ?? null,

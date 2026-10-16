@@ -12,6 +12,7 @@ import { useEffect, useMemo, useState } from 'preact/hooks';
 import { PLAYABLE_IDS } from '@ct/assets';
 import {
   CHARACTER_INFO,
+  type CharacterType,
   PROMPT_KINDS,
   type AccountView,
   type C2SPayload,
@@ -548,7 +549,14 @@ function SetupTab({ view, send }: { view: StorytellerGameView; send: Send }) {
   const [bluffs, setBluffs] = useState<(CharacterId | '')[]>(['', '', '']);
   const [nonstandard, setNonstandard] = useState(false);
   const chosen = Object.values(assign).filter((c): c is CharacterId => !!c);
-  const counts = { townsfolk: 0, outsider: 0, minion: 0, demon: 0 };
+  const counts: Record<CharacterType, number> = {
+    townsfolk: 0,
+    outsider: 0,
+    minion: 0,
+    demon: 0,
+    traveller: 0,
+    fabled: 0,
+  };
   for (const c of chosen) counts[CHARACTER_INFO[c].type]++;
   const base = view.setupCounts;
   const viewHasBaron = view.grimoire.some((g) => g.character === 'baron');

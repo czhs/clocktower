@@ -1,0 +1,81 @@
+{
+  "name": "@colyseus/httpie",
+  "version": "2.0.1",
+  "repository": "lukeed/httpie",
+  "description": "A lightweight, Promise-based HTTP client for Node.js and the browser~!",
+  "browser": "xhr/index.mjs",
+  "unpkg": "xhr/index.min.js",
+  "worker": "fetch/index.mjs",
+  "module": "node/index.mjs",
+  "main": "node/index.js",
+  "types": "index.d.ts",
+  "license": "MIT",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "worker": "./fetch/index.mjs",
+      "browser": "./xhr/index.mjs",
+      "import": "./node/index.mjs",
+      "require": "./node/index.js"
+    },
+    "./node": {
+      "types": "./node/index.d.ts",
+      "import": "./node/index.mjs",
+      "require": "./node/index.js"
+    },
+    "./fetch": {
+      "types": "./fetch/index.d.ts",
+      "import": "./fetch/index.mjs",
+      "require": "./fetch/index.js"
+    },
+    "./browser": {
+      "types": "./xhr/index.d.ts",
+      "import": "./xhr/index.mjs",
+      "require": "./xhr/index.js"
+    },
+    "./xhr": {
+      "types": "./xhr/index.d.ts",
+      "import": "./xhr/index.mjs",
+      "require": "./xhr/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "author": {
+    "name": "Luke Edwards",
+    "email": "luke.edwards05@gmail.com",
+    "url": "https://lukeed.com"
+  },
+  "engines": {
+    "node": ">=10"
+  },
+  "scripts": {
+    "pretest": "npm run build",
+    "build": "bundt --main --module --unpkg",
+    "test": "uvu -r esm test"
+  },
+  "modes": {
+    "fetch": "src/fetch.js",
+    "node": "src/node.js",
+    "xhr": "src/xhr.js"
+  },
+  "files": [
+    "*.d.ts",
+    "fetch",
+    "node",
+    "xhr"
+  ],
+  "keywords": [
+    "http",
+    "fetch",
+    "client",
+    "request",
+    "universal",
+    "promise",
+    "xhr"
+  ],
+  "devDependencies": {
+    "bundt": "1.1.5",
+    "esm": "3.2.25",
+    "uvu": "0.5.6"
+  }
+}

@@ -24,6 +24,7 @@ export {
 } from './engine.js';
 export { projectForPlayer, projectForStoryteller } from './project.js';
 export {
+  DEFAULT_SCRIPT,
   SETUP_TABLE,
   setupCounts,
   countTypes,
@@ -33,6 +34,31 @@ export {
   type SetupCounts,
   type Assignment,
 } from './setup.js';
-export { ROLES, FIRST_NIGHT_ORDER, OTHER_NIGHT_ORDER, type RoleDef } from './roles.js';
+export {
+  ROLES,
+  FIRST_NIGHT_ORDER,
+  OTHER_NIGHT_ORDER,
+  firstNightOrder,
+  otherNightOrder,
+  jinxesFor,
+  type RoleDef,
+  type ScriptRoleDefs,
+} from './roles.js';
+export {
+  acknowledge,
+  choose,
+  chooseCharacter,
+  chooseRange,
+  chosen,
+  pairPick,
+  pairSuggestion,
+  target,
+  targets,
+  yesNo,
+  type KillPrevention,
+  type ResolveInput,
+  type StepSuggestion,
+} from './rolekit.js';
+export { becomeDemon, killPlayer, killPrevention } from './deaths.js';
 export { finishVoteNow, minVotes } from './day.js';
 export { mulberry32, impaired, actingRole } from './util.js';

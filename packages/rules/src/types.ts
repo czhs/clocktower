@@ -4,6 +4,7 @@ import type {
   Alignment,
   AnnouncementView,
   CharacterId,
+  ScriptId,
   EvilTeamView,
   GamePhase,
   GameResult,
@@ -132,6 +133,8 @@ export interface DayState {
 
 export interface GameState {
   version: 1;
+  /** The script this game is being run on (selects the character pool). */
+  script: ScriptId;
   players: PlayerState[];
   phase: GamePhase;
   dayNumber: number;

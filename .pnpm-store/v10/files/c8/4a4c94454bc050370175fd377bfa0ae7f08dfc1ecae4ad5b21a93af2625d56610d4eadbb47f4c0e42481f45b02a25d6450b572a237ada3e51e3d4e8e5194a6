@@ -1,0 +1,1 @@
+{"version":3,"file":"events.d.ts","sourceRoot":"","sources":["../../../../../src/room/rpc/server/events.ts"],"names":[],"mappings":"AAAA,OAAO,KAAK,EAAE,UAAU,EAAE,MAAM,mBAAmB,CAAC;AAEpD,MAAM,MAAM,mBAAmB,GAAG;IAChC,MAAM,EAAE,UAAU,CAAC;CACpB,CAAC;AAEF,MAAM,MAAM,yBAAyB,GAAG;IACtC,cAAc,EAAE,CAAC,KAAK,EAAE,mBAAmB,KAAK,IAAI,CAAC;CACtD,CAAC"}

@@ -1,0 +1,46 @@
+{
+  "name": "@colyseus/ws-transport",
+  "version": "0.16.5",
+  "input": "./src/index.ts",
+  "main": "./build/index.js",
+  "module": "./build/index.mjs",
+  "typings": "./build/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./build/index.d.ts",
+      "import": "./build/index.mjs",
+      "require": "./build/index.js"
+    }
+  },
+  "dependencies": {
+    "@types/ws": "^8.5.14",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@colyseus/core": "^0.16.16"
+  },
+  "peerDependencies": {
+    "@colyseus/core": "0.16.x"
+  },
+  "author": "Endel Dreyer",
+  "license": "MIT",
+  "keywords": [
+    "colyseus",
+    "transport",
+    "websockets"
+  ],
+  "files": [
+    "build",
+    "LICENSE",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/colyseus/colyseus.git"
+  },
+  "homepage": "https://colyseus.io/",
+  "publishConfig": {
+    "access": "public"
+  },
+  "gitHead": "320a0325f01eff3cd7afa8fb2efa80077ebdbf4a"
+}

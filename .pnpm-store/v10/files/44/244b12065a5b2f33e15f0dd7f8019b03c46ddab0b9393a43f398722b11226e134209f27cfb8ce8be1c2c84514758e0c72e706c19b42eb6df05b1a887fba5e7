@@ -1,0 +1,1 @@
+cmd_Release/obj.target/extract.node := g++ -o Release/obj.target/extract.node -shared -pthread -rdynamic -fPIC -fvisibility=hidden  -Wl,-soname=extract.node -Wl,--start-group Release/obj.target/extract/src/extract.o -Wl,--end-group 

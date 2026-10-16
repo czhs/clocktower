@@ -1,9 +1,11 @@
-import type { Alignment, GameResult } from '@ct/protocol';
-import { insertDynamicStep } from './night.js';
+import type { Alignment, CharacterId, GameResult } from '@ct/protocol';
+import { ROLES } from './roles.js';
+import type { KillPrevention } from './rolekit.js';
 import type { GameState, PlayerState } from './types.js';
 import {
   addReminder,
   aliveCount,
+  charName,
   alert,
   announce,
   giveInfo,
@@ -18,7 +20,17 @@ import {
   type Op,
 } from './util.js';
 
-export type DeathCause = 'demon' | 'execution' | 'slayer' | 'virgin' | 'storyteller' | 'starpass';
+export type { DeathCause } from './rolekit.js';
+import type { DeathCause } from './rolekit.js';
+
+/**
+ * Ask the victim's character whether it stops this kill (Soldier and friends). Pure: the engine
+ * calls it both to preview the outcome for the Storyteller and to apply it.
+ */
+export function killPrevention(s: GameState, p: PlayerState, cause: DeathCause): KillPrevention | null {
+  const def = ROLES[p.character];
+  return def?.preventsKill?.(s, p, cause) ?? null;
+}
 
 export interface KillOptions {
   /** Force the death to be public now (day deaths always are). */
@@ -53,10 +65,9 @@ export function killPlayer(s: GameState, op: Op, p: PlayerState, cause: DeathCau
     if (st.seat === p.seat && (st.status === 'pending' || st.status === 'visiting') && st.kind !== 'ravenkeeper')
       st.status = 'skipped';
   }
-  if (cause === 'demon' && isNightPhase(s) && actingRole(p) === 'ravenkeeper') {
-    insertDynamicStep(s, p.seat, 'ravenkeeper');
-    alert(s, op, `Ravenkeeper ${who(p)} was killed by the Demon: wake them to choose a player.`);
-  }
+  // Death-triggered abilities. Dispatched on the ACTING role, so a Drunk who believes they are
+  // the Ravenkeeper still wakes (and learns nothing true).
+  ROLES[actingRole(p)]?.onDeath?.(s, op, p, cause);
   // Star-pass: the caller picks the successor and then checks victory itself.
   if (opts.raw || cause === 'starpass') return true;
   if (typeOf(p.character) === 'demon') demonDied(s, op, aliveBefore);
@@ -84,35 +95,43 @@ export function publish(s: GameState, op: Op, p: PlayerState, cause: DeathCause 
   sound(op, 'toll');
 }
 
-/** Turn a player into the Imp and tell them privately. */
-export function becomeImp(s: GameState, op: Op, p: PlayerState, why: string): void {
+/**
+ * Turn a player into a Demon (`demonId`) and tell them privately. Used by the Imp's star-pass, the
+ * Scarlet Woman, and any script's equivalent succession.
+ */
+export function becomeDemon(s: GameState, op: Op, p: PlayerState, demonId: CharacterId, why: string): void {
   // Losing the Minion character ends its ability at once (the Poisoner's victim recovers).
   if (p.character === 'poisoner') endPoisonerPoison(s);
-  p.character = 'imp';
-  p.believedCharacter = 'imp';
+  p.character = demonId;
+  p.believedCharacter = demonId;
   p.alignment = 'evil';
   p.believedAlignment = 'evil';
-  addReminder(p, 'Became the Imp');
+  addReminder(p, `Became the ${charName(demonId)}`);
   // The new Imp no longer acts with their old (Minion) ability tonight.
   for (const st of s.nightQueue) {
-    if (st.seat === p.seat && st.kind !== 'imp' && st.status !== 'resolved' && st.status !== 'skipped') {
+    if (st.seat === p.seat && st.kind !== demonId && st.status !== 'resolved' && st.status !== 'skipped') {
       st.status = 'skipped';
       p.prompts = p.prompts.filter((q) => q.stepId !== st.id);
     }
   }
-  giveInfo(s, p, { text: `You are now the Imp (${why}).`, characters: ['imp'] });
-  log(s, op, `${who(p)} became the Imp: ${why}`);
+  giveInfo(s, p, { text: `You are now the ${charName(demonId)} (${why}).`, characters: [demonId] });
+  log(s, op, `${who(p)} became the ${charName(demonId)}: ${why}`);
 }
 
-/** The Demon died (not by star-pass). Scarlet Woman catches it if 5+ were alive and she is healthy. */
+/** Back-compat alias (the records recorder matches on this log wording). */
+export function becomeImp(s: GameState, op: Op, p: PlayerState, why: string): void {
+  becomeDemon(s, op, p, 'imp', why);
+}
+
+/**
+ * No Demon is alive any more (and it was not a star-pass). Offer every living character a chance
+ * to take over (Scarlet Woman and any script's equivalent), in seat order.
+ */
 export function demonDied(s: GameState, op: Op, aliveBefore: number): void {
   if (s.players.some((p) => p.alive && typeOf(p.character) === 'demon')) return;
-  const sw = s.players.find((p) => p.alive && p.character === 'scarlet_woman');
-  if (sw && aliveBefore >= 5 && !impaired(sw)) {
-    becomeImp(s, op, sw, 'the Demon died and the Scarlet Woman took its place');
-    alert(s, op, `Scarlet Woman ${who(sw)} became the Imp (${aliveBefore} players were alive).`);
-  } else if (sw && aliveBefore >= 5) {
-    alert(s, op, `Scarlet Woman ${who(sw)} is drunk/poisoned and does not become the Demon.`);
+  for (const p of [...s.players].sort((a, b) => a.seat - b.seat)) {
+    if (!p.alive) continue;
+    if (ROLES[p.character]?.onDemonDeath?.(s, op, p, aliveBefore)) return;
   }
 }
 
@@ -133,7 +152,8 @@ export function starPass(s: GameState, op: Op, imp: PlayerState, chosenSeat: num
     checkVictory(s, op);
     return `Imp ${who(imp)} killed themself with no living Minion: the Demon is gone.`;
   }
-  becomeImp(s, op, successor, 'the previous Imp passed the role to you');
+  // The successor becomes whatever Demon the dying player was.
+  becomeDemon(s, op, successor, imp.character, 'the previous Imp passed the role to you');
   alert(
     s,
     op,

@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["../../src/utils/nanoevents.ts"],
+  "sourcesContent": ["export const createNanoEvents = () => ({\n    emit(event: string, ...args: any[]) {\n      for (\n        let callbacks = this.events[event] || [],\n          i = 0,\n          length = callbacks.length;\n        i < length;\n        i++\n      ) {\n        callbacks[i](...args)\n      }\n    },\n    events: {},\n    on(event: string, cb: (...args: any[]) => void) {\n      ;(this.events[event] ||= []).push(cb)\n      return () => {\n        this.events[event] = this.events[event]?.filter(i => cb !== i)\n      }\n    }\n  })"],
+  "mappings": ";AAAO,IAAM,mBAAmB,OAAO;AAAA,EACnC,KAAK,UAAkB,MAAa;AAClC,aACM,YAAY,KAAK,OAAO,KAAK,KAAK,CAAC,GACrC,IAAI,GACJ,SAAS,UAAU,QACrB,IAAI,QACJ,KACA;AACA,gBAAU,CAAC,EAAE,GAAG,IAAI;AAAA,IACtB;AAAA,EACF;AAAA,EACA,QAAQ,CAAC;AAAA,EACT,GAAG,OAAe,IAA8B;AAC9C;AAAC,KAAC,KAAK,OAAO,KAAK,MAAM,CAAC,GAAG,KAAK,EAAE;AACpC,WAAO,MAAM;AACX,WAAK,OAAO,KAAK,IAAI,KAAK,OAAO,KAAK,GAAG,OAAO,OAAK,OAAO,CAAC;AAAA,IAC/D;AAAA,EACF;AACF;",
+  "names": []
+}

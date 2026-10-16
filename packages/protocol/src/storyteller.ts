@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { DayClockCommand } from './clock.js';
 import {
+  CHARACTER_COUNT,
   CharacterIdSchema,
   PROMPT_KINDS,
   type Alignment,
@@ -176,7 +177,7 @@ export const PromptSpec = z.object({
   maxTargets: z.number().int().min(0).max(15).optional(),
   allowSelf: z.boolean().optional(),
   allowDead: z.boolean().optional(),
-  characterOptions: z.array(CharacterIdSchema).max(22).optional(),
+  characterOptions: z.array(CharacterIdSchema).max(CHARACTER_COUNT).optional(),
   stepId: z.string().max(64).optional(),
 });
 export type PromptSpecInput = z.input<typeof PromptSpec>;
@@ -184,7 +185,7 @@ export type PromptSpecInput = z.input<typeof PromptSpec>;
 export const InfoSpec = z.object({
   text: z.string().min(1).max(500),
   seats: z.array(Seat).max(15).optional(),
-  characters: z.array(CharacterIdSchema).max(22).optional(),
+  characters: z.array(CharacterIdSchema).max(CHARACTER_COUNT).optional(),
   number: z.number().int().min(0).max(99).optional(),
   yes: z.boolean().optional(),
   stepId: z.string().max(64).optional(),

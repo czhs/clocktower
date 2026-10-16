@@ -1,0 +1,24 @@
+import http from 'http';
+import WebSocket, { type ServerOptions, WebSocketServer } from 'ws';
+import { Transport } from '@colyseus/core';
+type RawWebSocketClient = WebSocket & {
+    pingCount: number;
+};
+export interface TransportOptions extends ServerOptions {
+    pingInterval?: number;
+    pingMaxRetries?: number;
+}
+export declare class WebSocketTransport extends Transport {
+    protected wss: WebSocketServer;
+    protected pingInterval: NodeJS.Timeout;
+    protected pingIntervalMS: number;
+    protected pingMaxRetries: number;
+    private _originalSend;
+    constructor(options?: TransportOptions);
+    listen(port: number, hostname?: string, backlog?: number, listeningListener?: () => void): this;
+    shutdown(): void;
+    simulateLatency(milliseconds: number): void;
+    protected autoTerminateUnresponsiveClients(pingInterval: number, pingMaxRetries: number): void;
+    protected onConnection(rawClient: RawWebSocketClient, req: http.IncomingMessage): Promise<void>;
+}
+export {};

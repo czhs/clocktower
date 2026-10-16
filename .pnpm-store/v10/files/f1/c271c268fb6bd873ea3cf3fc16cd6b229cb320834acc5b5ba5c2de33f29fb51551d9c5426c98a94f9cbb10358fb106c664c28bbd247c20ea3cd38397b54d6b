@@ -1,0 +1,61 @@
+{
+  "name": "@colyseus/core",
+  "version": "0.16.26",
+  "description": "Multiplayer Framework for Node.js.",
+  "input": "./src/index.ts",
+  "main": "./build/index.js",
+  "module": "./build/index.mjs",
+  "typings": "./build/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./build/index.d.ts",
+      "import": "./build/index.mjs",
+      "require": "./build/index.js"
+    }
+  },
+  "funding": "https://github.com/sponsors/endel",
+  "author": "Endel Dreyer",
+  "license": "MIT",
+  "keywords": [
+    "colyseus",
+    "multiplayer",
+    "netcode",
+    "realtime",
+    "networking",
+    "websockets"
+  ],
+  "files": [
+    "build",
+    "LICENSE",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/colyseus/colyseus.git"
+  },
+  "homepage": "https://colyseus.io/",
+  "engines": {
+    "node": ">= 18.x"
+  },
+  "dependencies": {
+    "@colyseus/timer": "^1.0.1",
+    "@colyseus/msgpackr": "^1.11.2",
+    "debug": "^4.3.4",
+    "nanoid": "^2.0.0",
+    "@colyseus/greeting-banner": "^2.0.6"
+  },
+  "devDependencies": {
+    "@types/nanoid": "^2.0.0"
+  },
+  "peerDependencies": {
+    "@colyseus/schema": "^3.0.0",
+    "@pm2/io": "^6.1.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "gitHead": "c45b410e99eadffff4b74e701339992e2faa15f8",
+  "scripts": {
+    "tslint": "tslint --project . --config ../../tslint.json"
+  }
+}

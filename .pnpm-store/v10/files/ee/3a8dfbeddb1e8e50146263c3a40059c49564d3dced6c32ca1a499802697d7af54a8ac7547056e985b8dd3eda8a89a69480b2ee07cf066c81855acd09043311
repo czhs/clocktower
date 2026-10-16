@@ -1,0 +1,60 @@
+{
+  "name": "machina",
+  "version": "7.0.1",
+  "description": "Focused finite state machines for JavaScript and TypeScript. States in, states out.",
+  "author": "Jim Cowart (http://ifandelse.com)",
+  "license": "MIT",
+  "homepage": "https://machina-js.org/",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/ifandelse/machina.js.git"
+  },
+  "bugs": {
+    "url": "http://github.com/ifandelse/machina.js/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "licenses": [
+    {
+      "type": "MIT",
+      "url": "http://opensource.org/licenses/MIT"
+    },
+    {
+      "type": "GPL",
+      "url": "http://opensource.org/licenses/GPL-2.0"
+    }
+  ],
+  "main": "dist/index.cjs",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.mts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22.22"
+  },
+  "sideEffects": false,
+  "devDependencies": {
+    "eslint": "^9.39.4",
+    "jest": "^30.3.0",
+    "ts-jest": "^29.4.6",
+    "tsdown": "^0.20.3",
+    "typescript": "^5.9.3"
+  },
+  "scripts": {
+    "dev": "tsdown --watch",
+    "build": "tsdown",
+    "test": "jest --passWithNoTests",
+    "test:watch": "jest --watch",
+    "lint": "eslint 'src/**/*.{ts,tsx}'"
+  }
+}

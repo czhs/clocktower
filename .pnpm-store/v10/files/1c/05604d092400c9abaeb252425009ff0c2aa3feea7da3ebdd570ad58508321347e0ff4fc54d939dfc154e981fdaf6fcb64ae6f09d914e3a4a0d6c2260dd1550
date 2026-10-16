@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["../../src/utils/StandardSchema.ts"],
+  "sourcesContent": ["import { StandardSchemaV1 } from '@standard-schema/spec';\nexport type { StandardSchemaV1 };\n\nexport function standardValidate<T extends StandardSchemaV1>(\n    schema: T,\n    input: StandardSchemaV1.InferInput<T>\n): StandardSchemaV1.InferOutput<T> {\n    let result = schema['~standard'].validate(input);\n\n    if (result instanceof Promise) {\n        throw new Error('Schema validation must be synchronous');\n    }\n\n    // if the `issues` field exists, the validation failed\n    if (result.issues) {\n        throw new Error(JSON.stringify(result.issues, null, 2));\n    }\n\n    return (result as StandardSchemaV1.SuccessResult<StandardSchemaV1.InferOutput<T>>).value;\n}"],
+  "mappings": ";;;;;;;;;;;;;;;;;;AAAA;AAAA;AAAA;AAAA;AAAA;AAGO,SAAS,iBACZ,QACA,OAC+B;AAC/B,MAAI,SAAS,OAAO,WAAW,EAAE,SAAS,KAAK;AAE/C,MAAI,kBAAkB,SAAS;AAC3B,UAAM,IAAI,MAAM,uCAAuC;AAAA,EAC3D;AAGA,MAAI,OAAO,QAAQ;AACf,UAAM,IAAI,MAAM,KAAK,UAAU,OAAO,QAAQ,MAAM,CAAC,CAAC;AAAA,EAC1D;AAEA,SAAQ,OAA2E;AACvF;",
+  "names": []
+}

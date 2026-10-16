@@ -1,0 +1,493 @@
+import { ClientInfo_Capability } from '@livekit/protocol';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  stubMissingCompressionStreams,
+  stubMissingDeflateRawSupport,
+} from '../test/compressionStreamStubs';
+import { getBrowser } from '../utils/browserParser';
+import {
+  ddExtensionURI,
+  extractMaxAgeFromRequestHeaders,
+  getClientInfo,
+  isAppleMobile,
+  isCompressionStreamSupported,
+  isDeflateRawCompressionSupported,
+  isIPadOS,
+  isSVCSimulcast,
+  isSVCSimulcastSupportedByServer,
+  negotiateDependencyDescriptor,
+  resetDeflateRawCompressionSupportCache,
+  splitUtf8,
+  supportsAdaptiveStream,
+  toWebsocketUrl,
+  usesLegacySVCEncodings,
+} from './utils';
+
+describe('toWebsocketUrl', () => {
+  it('leaves wss urls alone', () => {
+    expect(toWebsocketUrl('ws://mywebsite.com')).toEqual('ws://mywebsite.com');
+  });
+
+  it('converts https to wss', () => {
+    expect(toWebsocketUrl('https://mywebsite.com')).toEqual('wss://mywebsite.com');
+  });
+
+  it('does not convert other parts of URL', () => {
+    expect(toWebsocketUrl('https://httpsmywebsite.com')).toEqual('wss://httpsmywebsite.com');
+  });
+});
+
+describe('getClientInfo', () => {
+  it('does not advertise packet trailer capability by default', () => {
+    expect(getClientInfo().capabilities).toEqual([]);
+  });
+
+  it('advertises packet trailer capability when provided', () => {
+    expect(getClientInfo([ClientInfo_Capability.CAP_PACKET_TRAILER]).capabilities).toEqual([
+      ClientInfo_Capability.CAP_PACKET_TRAILER,
+    ]);
+  });
+});
+
+describe('splitUtf8', () => {
+  it('splits a string into chunks of the given size', () => {
+    expect(splitUtf8('hello world', 5)).toEqual([
+      new TextEncoder().encode('hello'),
+      new TextEncoder().encode(' worl'),
+      new TextEncoder().encode('d'),
+    ]);
+  });
+
+  it('splits a string with special characters into chunks of the given size', () => {
+    expect(splitUtf8('héllo wörld', 5)).toEqual([
+      new TextEncoder().encode('héll'),
+      new TextEncoder().encode('o wö'),
+      new TextEncoder().encode('rld'),
+    ]);
+  });
+
+  it('splits a string with multi-byte utf8 characters correctly', () => {
+    expect(splitUtf8('こんにちは世界', 5)).toEqual([
+      new TextEncoder().encode('こ'),
+      new TextEncoder().encode('ん'),
+      new TextEncoder().encode('に'),
+      new TextEncoder().encode('ち'),
+      new TextEncoder().encode('は'),
+      new TextEncoder().encode('世'),
+      new TextEncoder().encode('界'),
+    ]);
+  });
+
+  it('handles a string with a single multi-byte utf8 character', () => {
+    expect(splitUtf8('😊', 5)).toEqual([new TextEncoder().encode('😊')]);
+  });
+
+  it('handles a string with mixed single and multi-byte utf8 characters', () => {
+    expect(splitUtf8('a😊b', 4)).toEqual([
+      new TextEncoder().encode('a'),
+      new TextEncoder().encode('😊'),
+      new TextEncoder().encode('b'),
+    ]);
+  });
+
+  it('handles an empty string', () => {
+    expect(splitUtf8('', 5)).toEqual([]);
+  });
+});
+
+describe('extractMaxAgeFromRequestHeaders', () => {
+  it('extracts max-age from valid Cache-Control header', () => {
+    const headers = new Headers();
+    headers.set('Cache-Control', 'max-age=3600');
+    expect(extractMaxAgeFromRequestHeaders(headers)).toBe(3600);
+  });
+
+  it('extracts max-age from Cache-Control header with multiple directives', () => {
+    const headers = new Headers();
+    headers.set('Cache-Control', 'public, max-age=7200, must-revalidate');
+    expect(extractMaxAgeFromRequestHeaders(headers)).toBe(7200);
+  });
+
+  it('extracts max-age when it appears at the beginning', () => {
+    const headers = new Headers();
+    headers.set('Cache-Control', 'max-age=1800, public, no-cache');
+    expect(extractMaxAgeFromRequestHeaders(headers)).toBe(1800);
+  });
+
+  it('extracts max-age when it appears in the middle', () => {
+    const headers = new Headers();
+    headers.set('Cache-Control', 'public, max-age=900, no-store');
+    expect(extractMaxAgeFromRequestHeaders(headers)).toBe(900);
+  });
+
+  it('handles max-age with value 0', () => {
+    const headers = new Headers();
+    headers.set('Cache-Control', 'max-age=0');
+    expect(extractMaxAgeFromRequestHeaders(headers)).toBe(0);
+  });
+
+  it('handles large max-age values', () => {
+    const headers = new Headers();
+    headers.set('Cache-Control', 'max-age=31536000'); // 1 year
+    expect(extractMaxAgeFromRequestHeaders(headers)).toBe(31536000);
+  });
+
+  it('returns undefined when Cache-Control header is missing', () => {
+    const headers = new Headers();
+    expect(extractMaxAgeFromRequestHeaders(headers)).toBeUndefined();
+  });
+
+  it('returns undefined when Cache-Control header exists but has no max-age', () => {
+    const headers = new Headers();
+    headers.set('Cache-Control', 'public, no-cache, must-revalidate');
+    expect(extractMaxAgeFromRequestHeaders(headers)).toBeUndefined();
+  });
+
+  it('returns undefined when Cache-Control header is empty', () => {
+    const headers = new Headers();
+    headers.set('Cache-Control', '');
+    expect(extractMaxAgeFromRequestHeaders(headers)).toBeUndefined();
+  });
+
+  it('handles Cache-Control header with extra whitespace', () => {
+    const headers = new Headers();
+    headers.set('Cache-Control', '  public,  max-age=1200  , no-cache  ');
+    expect(extractMaxAgeFromRequestHeaders(headers)).toBe(1200);
+  });
+
+  it('returns undefined for malformed max-age values', () => {
+    const headers = new Headers();
+    headers.set('Cache-Control', 'max-age=abc, public');
+    expect(extractMaxAgeFromRequestHeaders(headers)).toBeUndefined();
+  });
+
+  it('handles max-age with leading zeros', () => {
+    const headers = new Headers();
+    headers.set('Cache-Control', 'max-age=0003600');
+    expect(extractMaxAgeFromRequestHeaders(headers)).toBe(3600);
+  });
+
+  it('takes the first max-age value when multiple are present', () => {
+    const headers = new Headers();
+    headers.set('Cache-Control', 'max-age=1800, public, max-age=3600');
+    expect(extractMaxAgeFromRequestHeaders(headers)).toBe(1800);
+  });
+
+  it('handles case-insensitive Cache-Control header name', () => {
+    const headers = new Headers();
+    headers.set('cache-control', 'max-age=2400');
+    expect(extractMaxAgeFromRequestHeaders(headers)).toBe(2400);
+  });
+
+  it('handles Cache-Control with s-maxage (should ignore s-maxage)', () => {
+    const headers = new Headers();
+    headers.set('Cache-Control', 's-maxage=1800, max-age=3600');
+    expect(extractMaxAgeFromRequestHeaders(headers)).toBe(3600);
+  });
+
+  it('returns undefined when only s-maxage is present (no max-age)', () => {
+    const headers = new Headers();
+    headers.set('Cache-Control', 's-maxage=1800, public');
+    expect(extractMaxAgeFromRequestHeaders(headers)).toBeUndefined();
+  });
+
+  it('returns undefined for negative max-age values (regex only matches positive digits)', () => {
+    const headers = new Headers();
+    headers.set('Cache-Control', 'max-age=-100');
+    expect(extractMaxAgeFromRequestHeaders(headers)).toBeUndefined();
+  });
+
+  it('ignores non standard cache control custom-max-age values', () => {
+    const headers = new Headers();
+    headers.set('Cache-Control', 'custom-max-age=7200');
+    expect(extractMaxAgeFromRequestHeaders(headers)).toBeUndefined();
+  });
+
+  it('still works with comma separated non standard cache control custom-max-age values', () => {
+    const headers = new Headers();
+    headers.set('Cache-Control', 'custom-max-age=7200,max-age=3600');
+    expect(extractMaxAgeFromRequestHeaders(headers)).toBe(3600);
+  });
+});
+
+describe('negotiateDependencyDescriptor', () => {
+  /** A transceiver whose header extension control offers `extensions`, or none at all. */
+  const transceiverWith = (extensions?: RTCRtpHeaderExtensionCapability[], throws = false) => {
+    const set = vi.fn((updated: RTCRtpHeaderExtensionCapability[]) => {
+      if (throws) {
+        throw new Error('InvalidModificationError');
+      }
+      extensions = updated;
+    });
+    return {
+      transceiver: (extensions
+        ? {
+            getHeaderExtensionsToNegotiate: () => extensions!,
+            setHeaderExtensionsToNegotiate: set,
+          }
+        : {}) as unknown as RTCRtpTransceiver,
+      set,
+      current: () => extensions,
+    };
+  };
+
+  it('turns the extension on for a transceiver that has it stopped', () => {
+    const { transceiver, set, current } = transceiverWith([
+      { uri: 'urn:ietf:params:rtp-hdrext:sdes:mid', direction: 'sendrecv' },
+      { uri: ddExtensionURI, direction: 'stopped' },
+    ]);
+
+    expect(negotiateDependencyDescriptor(transceiver)).toBe(true);
+    expect(set).toHaveBeenCalledOnce();
+    // sendrecv keeps it a plain a=extmap line, with no direction suffix for the server to parse
+    expect(current()?.find((ext) => ext.uri === ddExtensionURI)?.direction).toBe('sendrecv');
+  });
+
+  it('leaves an extension the browser already negotiates alone', () => {
+    const { transceiver, set } = transceiverWith([{ uri: ddExtensionURI, direction: 'recvonly' }]);
+
+    expect(negotiateDependencyDescriptor(transceiver)).toBe(true);
+    expect(set).not.toHaveBeenCalled();
+  });
+
+  it('reports no negotiation where the browser does not know the extension', () => {
+    const { transceiver, set } = transceiverWith([
+      { uri: 'urn:ietf:params:rtp-hdrext:sdes:mid', direction: 'sendrecv' },
+    ]);
+
+    expect(negotiateDependencyDescriptor(transceiver)).toBe(false);
+    expect(set).not.toHaveBeenCalled();
+  });
+
+  it('reports no negotiation where the browser has no such control', () => {
+    const { transceiver } = transceiverWith();
+
+    expect(negotiateDependencyDescriptor(transceiver)).toBe(false);
+  });
+
+  it('swallows a rejected direction rather than failing the connection', () => {
+    const { transceiver } = transceiverWith([{ uri: ddExtensionURI, direction: 'stopped' }], true);
+
+    expect(negotiateDependencyDescriptor(transceiver)).toBe(false);
+  });
+});
+
+describe('supportsAdaptiveStream', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('reports support where both observers exist', () => {
+    expect(supportsAdaptiveStream()).toBe(true);
+  });
+
+  it('reports no support where ResizeObserver is missing', () => {
+    vi.stubGlobal('ResizeObserver', undefined);
+
+    expect(supportsAdaptiveStream()).toBe(false);
+  });
+
+  it('reports no support where IntersectionObserver is missing', () => {
+    vi.stubGlobal('IntersectionObserver', undefined);
+
+    expect(supportsAdaptiveStream()).toBe(false);
+  });
+});
+
+describe('isSVCSimulcast', () => {
+  it('requires an svc capable codec, simulcast and a single spatial layer mode', () => {
+    expect(isSVCSimulcast('vp9', { simulcast: true, scalabilityMode: 'L1T2' })).toBe(true);
+    expect(isSVCSimulcast('av1', { simulcast: true, scalabilityMode: 'L1T3' })).toBe(true);
+  });
+
+  it('stays on svc without the opt in', () => {
+    expect(isSVCSimulcast('vp9', { simulcast: false, scalabilityMode: 'L1T2' })).toBe(false);
+    expect(isSVCSimulcast('vp9', { simulcast: true })).toBe(false);
+    // a multi spatial layer mode is svc by definition
+    expect(isSVCSimulcast('vp9', { simulcast: true, scalabilityMode: 'L3T3_KEY' })).toBe(false);
+    expect(isSVCSimulcast('vp9', undefined)).toBe(false);
+  });
+
+  it('does not apply to non svc codecs', () => {
+    expect(isSVCSimulcast('vp8', { simulcast: true, scalabilityMode: 'L1T2' })).toBe(false);
+    expect(isSVCSimulcast('h264', { simulcast: true, scalabilityMode: 'L1T2' })).toBe(false);
+    expect(isSVCSimulcast(undefined, { simulcast: true, scalabilityMode: 'L1T2' })).toBe(false);
+  });
+});
+
+describe('isSVCSimulcastSupportedByServer', () => {
+  it('requires a server newer than 1.13.6', () => {
+    expect(isSVCSimulcastSupportedByServer('1.13.7')).toBe(true);
+    expect(isSVCSimulcastSupportedByServer('1.14.0')).toBe(true);
+    expect(isSVCSimulcastSupportedByServer('2.0.0')).toBe(true);
+  });
+
+  it('rejects 1.13.6 and older', () => {
+    expect(isSVCSimulcastSupportedByServer('1.13.6')).toBe(false);
+    expect(isSVCSimulcastSupportedByServer('1.13.5')).toBe(false);
+    expect(isSVCSimulcastSupportedByServer('1.9.0')).toBe(false);
+    expect(isSVCSimulcastSupportedByServer('0.15.1')).toBe(false);
+  });
+
+  it('treats an unknown version as unsupported', () => {
+    expect(isSVCSimulcastSupportedByServer(undefined)).toBe(false);
+    expect(isSVCSimulcastSupportedByServer('')).toBe(false);
+  });
+});
+
+describe('usesLegacySVCEncodings', () => {
+  const stubUserAgent = (userAgent: string) =>
+    vi.stubGlobal('navigator', { userAgent, product: 'Gecko' });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const chrome = (v: string) =>
+    `Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${v} Safari/537.36`;
+
+  it('is legacy on chrome before M113', () => {
+    stubUserAgent(chrome('112.0.0.0'));
+    expect(usesLegacySVCEncodings()).toBe(true);
+  });
+
+  it('is not legacy from chrome M113 onwards', () => {
+    stubUserAgent(chrome('113.0.0.0'));
+    expect(usesLegacySVCEncodings()).toBe(false);
+    stubUserAgent(chrome('120.0.0.0'));
+    expect(usesLegacySVCEncodings()).toBe(false);
+  });
+
+  it('is legacy on safari, which has no rid based svc simulcast', () => {
+    stubUserAgent(
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15',
+    );
+    expect(usesLegacySVCEncodings()).toBe(true);
+  });
+
+  it('is legacy on iOS, where every browser is webkit', () => {
+    stubUserAgent(
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/120.0.0.0 Mobile/15E148 Safari/604.1',
+    );
+    expect(usesLegacySVCEncodings()).toBe(true);
+  });
+
+  it('is legacy on react native regardless of chrome version', () => {
+    vi.stubGlobal('navigator', { userAgent: chrome('120.0.0.0'), product: 'ReactNative' });
+    expect(usesLegacySVCEncodings()).toBe(true);
+  });
+});
+
+describe('isIPadOS / isAppleMobile', () => {
+  const stub = (userAgent: string, maxTouchPoints: number) =>
+    vi.stubGlobal('navigator', { userAgent, maxTouchPoints, product: 'Gecko' });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  // measured on an iPad 6 running iPadOS 17: the default (desktop) user agent, maxTouchPoints 5
+  const IPAD_DESKTOP_UA =
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.14 Safari/605.1.15';
+  // measured on macOS Safari 26.4: the same shape of user agent, maxTouchPoints 0
+  const MAC_SAFARI_UA =
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.4 Safari/605.1.15';
+  const IPHONE_UA =
+    'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.6 Mobile/15E148 Safari/604.1';
+  const IPAD_MOBILE_UA =
+    'Mozilla/5.0 (iPad; CPU OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
+  const MAC_CHROME_UA =
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
+  const ANDROID_CHROME_UA =
+    'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36';
+
+  it('detects an iPad sending the desktop user agent', () => {
+    stub(IPAD_DESKTOP_UA, 5);
+    expect(isIPadOS()).toBe(true);
+    expect(isAppleMobile()).toBe(true);
+  });
+
+  it('is the case getBrowser() alone gets wrong', () => {
+    // the gap this exists to close: iPadOS parses as macOS, so `os === 'iOS'` misses it
+    stub(IPAD_DESKTOP_UA, 5);
+    expect(getBrowser()?.os).toBe('macOS');
+  });
+
+  it('leaves macOS Safari alone, where the camera reports correctly and frames are slow', () => {
+    stub(MAC_SAFARI_UA, 0);
+    expect(isIPadOS()).toBe(false);
+    expect(isAppleMobile()).toBe(false);
+  });
+
+  it('covers iPhones through the existing iOS check', () => {
+    stub(IPHONE_UA, 5);
+    expect(isIPadOS()).toBe(false);
+    expect(isAppleMobile()).toBe(true);
+  });
+
+  it('covers an iPad set to request the mobile site', () => {
+    stub(IPAD_MOBILE_UA, 5);
+    expect(isIPadOS()).toBe(false);
+    expect(isAppleMobile()).toBe(true);
+  });
+
+  it('does not fire for a Mac with a touchscreen attached, which is not Safari', () => {
+    stub(MAC_CHROME_UA, 5);
+    expect(isIPadOS()).toBe(false);
+    expect(isAppleMobile()).toBe(false);
+  });
+
+  it('does not fire on android', () => {
+    stub(ANDROID_CHROME_UA, 5);
+    expect(isIPadOS()).toBe(false);
+    expect(isAppleMobile()).toBe(false);
+  });
+
+  it('does not fire on a desktop safari reporting no touch support', () => {
+    stub(MAC_SAFARI_UA, 1);
+    expect(isIPadOS()).toBe(false);
+  });
+});
+
+describe('isDeflateRawCompressionSupported', () => {
+  afterEach(() => {
+    resetDeflateRawCompressionSupportCache();
+  });
+
+  it('is true in a runtime that supports the deflate-raw format', () => {
+    expect(isDeflateRawCompressionSupported()).toBe(true);
+  });
+
+  it('is false without the compression streams api at all', () => {
+    const restoreCompressionStreams = stubMissingCompressionStreams();
+    try {
+      expect(isDeflateRawCompressionSupported()).toBe(false);
+      expect(isCompressionStreamSupported()).toBe(false);
+    } finally {
+      restoreCompressionStreams();
+    }
+  });
+
+  it('is false when the api exists but deflate-raw is not a supported format', () => {
+    const restoreCompressionStreams = stubMissingDeflateRawSupport();
+    try {
+      expect(isDeflateRawCompressionSupported()).toBe(false);
+      // Chromium 80-102 still compresses gzip, which is all the wrapped join request needs.
+      expect(isCompressionStreamSupported()).toBe(true);
+    } finally {
+      restoreCompressionStreams();
+    }
+  });
+
+  it('probes the runtime only once', () => {
+    expect(isDeflateRawCompressionSupported()).toBe(true);
+
+    const originalCompressionStream = globalThis.CompressionStream;
+    try {
+      (globalThis as any).CompressionStream = undefined;
+      expect(isDeflateRawCompressionSupported()).toBe(true);
+    } finally {
+      (globalThis as any).CompressionStream = originalCompressionStream;
+    }
+  });
+});
