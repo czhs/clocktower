@@ -513,7 +513,8 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
     const pid = client.userData?.pid;
     const seat = pid ? this.seats.get(pid) : undefined;
     if (!seat || seat.client !== client) return this.strayMessage(client, seat, pid, type, raw);
-    const schema = (C2S as Record<string, z.ZodType>)[type];
+    // own properties only: '__proto__' / 'constructor' must not resolve to Object.prototype members
+    const schema = Object.prototype.hasOwnProperty.call(C2S, type) ? (C2S as Record<string, z.ZodType>)[type] : undefined;
     if (!schema) return this.sendError(seat, { code: 'invalid', message: 'Unknown message type', for: type.slice(0, 40) });
     const limiter = this.limiters.get(type) ?? this.limiters.get('default')!;
     if (!limiter.take(`${seat.member.pid}`)) return this.sendError(seat, { code: 'rate_limited', message: 'Slow down', for: type });
