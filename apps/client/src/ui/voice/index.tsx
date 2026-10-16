@@ -1,5 +1,7 @@
 // OWNED BY voice. Compact voice panel: enable button, push-to-talk / open mic, mute, deafen,
 // input device, per-participant volume + speaking indicators, ST announcement, debug overlay.
+// Statically imported by main.tsx: keep it (and ../../voice/VoiceClient) free of livekit-client —
+// the LiveKit part (voice/VoiceEngine) is import()ed on "Enable voice".
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { AccountView } from '@ct/protocol';
 import type { RoomConnection } from '../../net/room';
@@ -189,8 +191,8 @@ export function VoicePanel({ conn }: { conn: RoomConnection; account: AccountVie
 
       {!s.enabled ? (
         <div class="ctv-body">
-          <button class="primary ctv-enable" onClick={() => void client.enable()} disabled={s.availability === 'not_configured'}>
-            Enable voice
+          <button class="primary ctv-enable" onClick={() => void client.enable()} disabled={s.availability === 'not_configured' || s.loading}>
+            {s.loading ? 'Loading voice…' : 'Enable voice'}
           </button>
           <p class="ctv-note">
             Talk to whoever is near you in town. Your browser will ask to use the microphone — you can also play without
@@ -329,11 +331,12 @@ function VoiceDebug({ client, names }: { client: VoiceClient; names: Map<string,
         announce: {info.announceRoom ?? '—'} ({info.announceState})
       </div>
       <div>
-        mic muted: {String(info.micMuted)} · audio ctx: {info.audioContext} · net: {info.quality}
+        mic muted: {String(info.micMuted)} · audio ctx: {info.audioContext} · net: {info.quality} · red: {info.red ? 'on' : 'off'}
       </div>
       {info.gains.map((g) => (
         <div>
           {names.get(g.pid) ?? g.pid}: gain {g.gain.toFixed(2)} → vol {g.applied.toFixed(2)} · net {g.quality}
+          {g.culled ? ' · not received (far)' : ''}
         </div>
       ))}
     </div>

@@ -12,14 +12,19 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { Pamphlet, PamphletKind, StoryStView } from '@ct/protocol';
 import type { RoomConnection } from '../../net/room';
-import { useStore } from '../../net/store';
+import { shallowEqual, useStore, useStoreSelector } from '../../net/store';
 import { PamphletView, StorySections } from './StoryParts';
 
 type Tab = 'day' | 'all' | 'pamphlets';
 
 export function Story({ conn, touch }: { conn: RoomConnection; touch: boolean }) {
   const lobby = useStore(conn.lobbyView);
-  const game = useStore(conn.gameView);
+  // (only these fields: no re-render for votes, nominations, prompts…)
+  const game = useStoreSelector(
+    conn.gameView,
+    (g) => (g ? { kind: g.kind, phase: g.phase, dayNumber: g.dayNumber, pamphlets: g.kind === 'storyteller' && g.settings?.pamphlets === true } : null),
+    shallowEqual,
+  );
   const status = useStore(conn.status);
   const isSt = game?.kind === 'storyteller';
   const finished = game?.phase === 'finished';
@@ -81,7 +86,7 @@ export function Story({ conn, touch }: { conn: RoomConnection; touch: boolean })
   }, [open]);
 
   if (!game) return null;
-  const pamphletsOn = isSt && game.kind === 'storyteller' && game.settings?.pamphlets === true;
+  const pamphletsOn = isSt && game.pamphlets;
   // Gentle nudge for the Storyteller: a new day's story is ready (pamphlets on), or the game ended.
   const nudge = isSt && !open && ((pamphletsOn && game.phase === 'day' && game.dayNumber > seenDay) || (finished && !seenEnd));
   if (!isSt && pamphlets.length === 0 && !toast) return null;

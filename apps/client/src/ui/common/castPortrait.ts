@@ -1,6 +1,9 @@
 // Cast portraits (v2 roster): draws one frame of a character's sheet from the generated
 // packages/assets/generated/cast.png (+ cast.json) onto a canvas, pixel-crisp. Shared by the
 // character picker, the waiting room and anything else outside the Phaser scene that shows "who".
+// (v2.2 perf) 'down' frames come from the small portrait strip (cast-portraits.*: every 'down' frame
+// of the playable cast + the idle 'down' frame of everyone else and every ghost, the same pixels), so
+// the DOM UI never downloads the full game sheet; any other frame still loads cast.* on demand.
 //
 //   <CastPortrait id="frog" size={48} />               square box, sprite fitted (integer scale)
 //   <CastPortrait id="frog" size={120} crop="frame" animate />   whole 32x40 frame, walking in place
@@ -9,9 +12,11 @@
 //
 // Until the sheet has loaded (or for an id the sheet does not have yet) a small silhouette in the
 // character's own colour is drawn instead, so layouts never jump and nothing is ever blank.
-// The sheet is looked up with import.meta.glob, so a checkout without generated art still builds.
+// The manifest is looked up with import.meta.glob; the image URLs (WebP or PNG) come from @ct/assets/runtime.
 import { h } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
+import { atlasFormat, castUrl, portraitsUrl } from '@ct/assets/runtime';
+import portraitStrip from '@ct/assets/generated/cast-portraits.json';
 // CONTRACT-REQUEST(lobby-ui -> lead/world-art): export the cast roster from '@ct/assets' (src/index.ts)
 // so clients can `import { CAST, PLAYABLE, castById } from '@ct/assets'`; until then the source is
 // imported directly (it has no imports of its own).
@@ -30,31 +35,52 @@ export interface CastManifest {
   placeholders?: string[];
 }
 
+/** cast-portraits.json: sheet key -> its idle 'down' cell in the strip; `frames` cells follow. */
+interface PortraitStrip {
+  dir: string;
+  sheets: Record<string, { x: number; y: number; frames: number }>;
+}
+
 const MANIFESTS = import.meta.glob('../../../../../packages/assets/generated/cast.json', { eager: true, import: 'default' }) as Record<string, CastManifest>;
-const SHEET_URLS = import.meta.glob('../../../../../packages/assets/generated/cast.png', { eager: true, query: '?url', import: 'default' }) as Record<string, string>;
 const MANIFEST: CastManifest | null = Object.values(MANIFESTS)[0] ?? null;
-const SHEET_URL: string | null = Object.values(SHEET_URLS)[0] ?? null;
+const STRIP = portraitStrip as PortraitStrip;
+const STRIP_ROW = CAST_DIRS.indexOf(STRIP.dir as CastDir);
 
 /** The cast manifest, or null when this build has no generated cast art. */
 export const castManifest = (): CastManifest | null => MANIFEST;
 
 let sheet: HTMLImageElement | null = null;
 let sheetPromise: Promise<HTMLImageElement | null> | null = null;
+let strip: HTMLImageElement | null = null;
+let stripPromise: Promise<HTMLImageElement | null> | null = null;
 
-/** Load cast.png once (resolves null when there is no sheet or it fails to load). */
+/** Decode one image (WebP or PNG, whichever @ct/assets/runtime settled on); null on failure. */
+function loadImage(url: () => string): Promise<HTMLImageElement | null> {
+  return atlasFormat.then(
+    () =>
+      new Promise((resolve) => {
+        const img = new Image();
+        img.decoding = 'async';
+        img.onload = () => resolve(img);
+        img.onerror = () => resolve(null);
+        img.src = url();
+      }),
+  );
+}
+
+/** Load the full cast sheet once (resolves null when there is no sheet or it fails to load). */
 export function loadCastSheet(): Promise<HTMLImageElement | null> {
   if (sheetPromise) return sheetPromise;
-  if (!MANIFEST || !SHEET_URL || typeof Image === 'undefined') return (sheetPromise = Promise.resolve(null));
-  sheetPromise = new Promise((resolve) => {
-    const img = new Image();
-    img.decoding = 'async';
-    img.onload = () => resolve((sheet = img));
-    img.onerror = () => resolve(null);
-    img.src = SHEET_URL;
-  });
-  return sheetPromise;
+  if (!MANIFEST || typeof Image === 'undefined') return (sheetPromise = Promise.resolve(null));
+  return (sheetPromise = loadImage(() => castUrl).then((img) => (sheet = img)));
 }
-/** True once cast.png is decoded (drawing is then synchronous). */
+/** Load the portrait strip once (resolves null when it fails to load). */
+function loadPortraitStrip(): Promise<HTMLImageElement | null> {
+  if (stripPromise) return stripPromise;
+  if (!MANIFEST || typeof Image === 'undefined') return (stripPromise = Promise.resolve(null));
+  return (stripPromise = loadImage(() => portraitsUrl).then((img) => (strip = img)));
+}
+/** True once the full cast sheet is decoded. */
 export const castSheetReady = (): boolean => sheet !== null;
 
 export type CastCrop = 'frame' | 'fit' | 'bust';
@@ -183,33 +209,65 @@ function drawFallback(canvas: HTMLCanvasElement, id: string, opts: CastPortraitO
   g.restore();
 }
 
+/** Which frame `opts` asks for: sheet key (a missing ghost variant falls back to the living sheet), row, frame. */
+interface FrameReq {
+  key: string;
+  r: number;
+  f: number;
+}
+function frameReq(id: string, opts: CastPortraitOpts): FrameReq | null {
+  const k = castSheetKey(id, opts.ghost);
+  const key = MANIFEST?.sheets[k] ? k : MANIFEST?.sheets[id] ? id : null;
+  if (!key) return null;
+  const r = Math.max(0, CAST_DIRS.indexOf(opts.dir ?? 'down'));
+  const f = Math.min(CAST_FRAMES.length - 1, Math.max(0, Math.round(opts.frame ?? 0)));
+  return { key, r, f };
+}
+const inStrip = (q: FrameReq): boolean => q.r === STRIP_ROW && q.f < (STRIP.sheets[q.key]?.frames ?? 0);
+
+/**
+ * The decoded image holding the frame, its top-left (sx, sy) and the top-left of the same row's
+ * idle frame (ix, iy) — or null while neither the strip (when it has the frame) nor the sheet is ready.
+ */
+function source(q: FrameReq): { img: HTMLImageElement; sx: number; sy: number; ix: number; iy: number } | null {
+  const p = STRIP.sheets[q.key];
+  if (strip && p && inStrip(q)) return { img: strip, sx: p.x + q.f * CAST_FW, sy: p.y, ix: p.x, iy: p.y };
+  const o = MANIFEST?.sheets[q.key];
+  if (sheet && o) return { img: sheet, sx: o.x + q.f * CAST_FW, sy: o.y + q.r * CAST_FH, ix: o.x, iy: o.y + q.r * CAST_FH };
+  return null;
+}
+/** Load whatever `q` needs: the strip if it has the frame (the full sheet if the strip fails), else the sheet. */
+async function loadFor(q: FrameReq): Promise<void> {
+  if (inStrip(q) && (await loadPortraitStrip())) return;
+  await loadCastSheet();
+}
+
 /**
  * Draw a character onto `canvas` (sizing its backing store, see `CastPortraitOpts.size`).
- * Draws the fallback silhouette straight away if the sheet is not decoded yet, then the real
+ * Draws the fallback silhouette straight away if the art is not decoded yet, then the real
  * frame once it is. Resolves true when real art was drawn, false for the fallback.
  */
 export async function drawCastPortrait(canvas: HTMLCanvasElement, id: string, opts: CastPortraitOpts = {}): Promise<boolean> {
-  const placeholder = !castSheetReady();
+  const q = frameReq(id, opts);
+  const placeholder = !q || !source(q);
   if (placeholder) drawFallback(canvas, id, opts);
-  const img = await loadCastSheet();
-  if (!img && placeholder) return false;
-  return paint(canvas, id, opts, img);
+  if (!q) return false;
+  if (placeholder) await loadFor(q);
+  if (!source(q) && placeholder) return false;
+  return paint(canvas, id, opts);
 }
 
-function paint(canvas: HTMLCanvasElement, id: string, opts: CastPortraitOpts, img: HTMLImageElement | null): boolean {
-  const key = castSheetKey(id, opts.ghost);
-  const origin = MANIFEST?.sheets[key] ?? MANIFEST?.sheets[id];
-  if (!img || !origin) {
+function paint(canvas: HTMLCanvasElement, id: string, opts: CastPortraitOpts): boolean {
+  const q = frameReq(id, opts);
+  const src0 = q && source(q);
+  if (!q || !src0) {
     drawFallback(canvas, id, opts);
     return false;
   }
-  const r = Math.max(0, CAST_DIRS.indexOf(opts.dir ?? 'down'));
-  const f = Math.min(CAST_FRAMES.length - 1, Math.max(0, Math.round(opts.frame ?? 0)));
-  const sx = origin.x + f * CAST_FW;
-  const sy = origin.y + r * CAST_FH;
+  const { img, sx, sy } = src0;
   const crop = opts.crop ?? 'fit';
   // Crop from the idle frame's bounds so walk frames don't make the box breathe.
-  const bounds = frameBounds(img, origin.x, sy, `${key}|${r}`);
+  const bounds = frameBounds(img, src0.ix, src0.iy, `${q.key}|${q.r}`);
   const src = cropRect(bounds, crop);
   const { k, dx, dy } = layout(canvas, src.w, src.h, { ...opts, crop });
   const g = canvas.getContext('2d');
@@ -265,10 +323,15 @@ export function CastPortrait({
     if (!animate) return () => void (live = false);
     let i = 0;
     const t = setInterval(() => {
-      if (!castSheetReady() || !ref.current) return;
+      if (!ref.current) return;
       const still = reducedMotion();
-      i = (i + 1) % WALK.length;
-      paint(ref.current, id, { ghost, crop, dir, size, frame: still ? 0 : WALK[i] }, sheet);
+      const next = (i + 1) % WALK.length;
+      const opts = { ghost, crop, dir, size, frame: still ? 0 : WALK[next] };
+      const q = frameReq(id, opts);
+      if (!q) return;
+      if (!source(q)) return void loadFor(q); // not decoded yet (e.g. a frame only the full sheet has)
+      i = next;
+      paint(ref.current, id, opts);
     }, 140);
     return () => {
       live = false;

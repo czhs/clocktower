@@ -11,7 +11,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { castById, PLAYABLE } from '@ct/assets';
 import { PIN_COLORS, type PinColor } from '@ct/protocol';
 import type { RoomConnection } from '../../net/room';
-import { useStore } from '../../net/store';
+import { useStore, useStoreSelector } from '../../net/store';
 import { CastPortrait } from '../common/castPortrait';
 import { SOCIAL_SHEET } from '../../game/social/art';
 import { isPinColor, PIN_HEX, savePinColor } from '../../game/social/logic';
@@ -79,13 +79,13 @@ export function SocialPalette(props: { conn: RoomConnection; touch: boolean }) {
 
 function Dock({ conn, touch }: { conn: RoomConnection; touch: boolean }) {
   const lobby = useStore(conn.lobbyView);
-  const game = useStore(conn.gameView);
+  const stView = useStoreSelector(conn.gameView, (g) => g?.kind === 'storyteller');
   const mode = useStore(socialMode);
   const info = useStore(socialInfo);
   const [open, setOpen] = useState(() => readFlag(OPEN_KEY) === '1');
   const [hint, setHint] = useState(() => readFlag(HINT_KEY) !== '1');
   const meM = lobby?.members.find((m) => m.pid === lobby.youPid);
-  const st = game?.kind === 'storyteller' || meM?.role === 'storyteller';
+  const st = stView || meM?.role === 'storyteller';
   const character = st ? 'storyteller' : meM ? castIdFor(meM.pid, meM.cosmetics.preset) : null;
   const color = mode.color;
 

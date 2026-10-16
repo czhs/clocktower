@@ -7,6 +7,8 @@
 // V8 CPU profile of the server (NODE_OPTIONS=--cpu-prof) summarised by tests/perf/cpuprofile-summary.ts.
 //
 //   CT_AGENT=perf-audit scripts/remote.sh npx tsx tests/perf/server-profile.ts [--players 15] [--walk 40] [--voice yes] [--out /tmp/ct-perf]
+//   (v2.2 WP4) [--snap2 yes] bots join with the compact 'world:snap2' capability like the real client;
+//   [--ports 3370-3373] another port range for the test server (default 3390-3394).
 import { execSync } from 'node:child_process';
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -25,6 +27,8 @@ const WALK_S = Number(arg('walk', '40'));
 const VOTE_S = Number(arg('vote', '45'));
 const VOICE = arg('voice', 'yes') === 'yes';
 const OUT = path.resolve(arg('out', '/tmp/ct-perf'));
+const SNAP2 = arg('snap2', 'no') === 'yes';
+const [PORT_MIN, PORT_MAX] = arg('ports', '3390-3394').split('-').map(Number) as [number, number];
 const PROF_DIR = path.join(OUT, 'cpuprof');
 mkdirSync(PROF_DIR, { recursive: true });
 for (const f of readdirSync(PROF_DIR)) if (f.endsWith('.cpuprofile')) execSync(`rm -f ${path.join(PROF_DIR, f)}`);
@@ -140,7 +144,7 @@ async function measure(label: string, bots: Bot[], meters: ReturnType<typeof met
 }
 
 async function main() {
-  const port = await pickPort(3390, 3394);
+  const port = await pickPort(PORT_MIN, PORT_MAX);
   const env: Record<string, string> = {
     LOBBY_IDLE_TIMEOUT_SEC: '120',
     NODE_OPTIONS: `--cpu-prof --cpu-prof-dir=${PROF_DIR} --cpu-prof-interval=500`,
@@ -151,7 +155,7 @@ async function main() {
   log('server', server.url, 'pid', server.pid);
   const results: unknown[] = [];
   try {
-    const bots = await makeBots(PLAYERS + 1, `pf${Math.random().toString(36).slice(2, 5)}-`, server.url, server.wsUrl, { record: false });
+    const bots = await makeBots(PLAYERS + 1, `pf${Math.random().toString(36).slice(2, 5)}-`, server.url, server.wsUrl, { record: false, snap2: SNAP2 });
     const meters = [meter(bots[0]!), meter(bots[1]!, true)];
     const g = await setupGame(server.url, server.wsUrl, { players: PLAYERS, bots, maxPlayers: PLAYERS });
     if (!g) throw new Error('game did not start');

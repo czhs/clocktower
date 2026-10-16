@@ -178,7 +178,10 @@ export function createGameplayLayer(scene: Phaser.Scene, ctx: GameplayCtx): Game
 
   let spotsKey = '';
   let spots: CircleSpot[] = [];
+  let spotsOf: GameView['players'] | null = null;
   const spotsFor = (view: GameView): CircleSpot[] => {
+    if (view.players === spotsOf) return spots; // same view object: no map + sort + join per call
+    spotsOf = view.players;
     const seats = view.players.map((p) => p.seat);
     const key = [...seats].sort((a, b) => a - b).join(',');
     if (key !== spotsKey) {
@@ -264,7 +267,9 @@ export function createGameplayLayer(scene: Phaser.Scene, ctx: GameplayCtx): Game
         .setDepth(DEPTH_GROUND_TEXT);
       seatText.set(seat, t);
     }
-    t.setColor(color).setPosition(r(x), r(y)).setVisible(true);
+    // setColor re-renders the text canvas + re-uploads its texture: only on change
+    if (t.style.color !== color) t.setColor(color);
+    t.setPosition(r(x), r(y)).setVisible(true);
   };
 
   // ---------------------------------------------------------------------------------------

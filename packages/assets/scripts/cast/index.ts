@@ -3,11 +3,11 @@
 // (a labelled silhouette) so the game always has a sheet for every roster id.
 import { CAST, CAST_ANCHOR, CAST_DIRS, CAST_FH, CAST_FRAMES, CAST_FW } from '../../src/cast.js';
 import { Img } from '../lib/img.js';
+import { sheetCols } from './sheet.js';
 import type { CharacterArt, DrawnDir, FrameIndex } from './types.js';
 
 const SW = CAST_FW * CAST_FRAMES.length;
 const SH = CAST_FH * CAST_DIRS.length;
-const COLS = 8;
 
 function placeholder(id: string): CharacterArt {
   let h = 0;
@@ -120,6 +120,7 @@ export async function buildCast(): Promise<{ img: Img; manifest: unknown; review
   const ghostIds = CAST.filter((c) => c.kind === 'villager' || c.kind === 'mascot').map((c) => c.id);
   // '<id>/ghost' = dead, ghost vote unspent (halo); '<id>/ghost-spent' = dead, vote used (no halo).
   const keys = [...CAST.map((c) => c.id), ...ghostIds.flatMap((id) => [`${id}/ghost`, `${id}/ghost-spent`])];
+  const COLS = sheetCols(keys.length);
   const rows = Math.ceil(keys.length / COLS);
   const img = new Img(COLS * SW, rows * SH);
   const sheets: Record<string, { x: number; y: number }> = {};

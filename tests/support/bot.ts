@@ -5,7 +5,10 @@ import { Client, type Room } from 'colyseus.js';
 import {
   isBlockedPx,
   PLAYER_SPEED,
+  SNAP_CAPABILITY,
+  SnapshotDecoder,
   tileCenterPx,
+  type Snap2Frame,
   type JoinTicketResponse,
   type LobbyRoomView,
   type PlayerGameView,
@@ -26,6 +29,8 @@ export interface BotOptions {
   record?: boolean;
   /** Extra headers for HTTP calls (e.g. X-Forwarded-For to spread rate limits in load tests). */
   headers?: Record<string, string>;
+  /** (v2.2 WP4) Join with the compact 'world:snap2' capability (decoded back into 'world:snapshot'). */
+  snap2?: boolean;
 }
 
 export interface PingStats {
@@ -61,6 +66,8 @@ export class Bot {
   private timers: ReturnType<typeof setInterval>[] = [];
   private pingSent = new Map<number, number>();
   private answered = new Set<string>();
+  private readonly snap2: boolean;
+  private snaps = new SnapshotDecoder();
 
   constructor(
     readonly name: string,
@@ -71,6 +78,7 @@ export class Bot {
     this.api = new ApiClient(baseUrl, opts.headers);
     this.recorder = new Recorder(name, opts.record ?? true);
     this.colyseus = new Client(wsUrl);
+    this.snap2 = opts.snap2 ?? false;
   }
 
   // ---- account / lobby (HTTP) ---------------------------------------------------------------
@@ -102,7 +110,7 @@ export class Bot {
   }
 
   async joinWithTicket(t: Pick<JoinTicketResponse, 'roomId' | 'ticket'>): Promise<Room> {
-    const room = await this.colyseus.joinById(t.roomId, { ticket: t.ticket });
+    const room = await this.colyseus.joinById(t.roomId, this.snap2 ? { ticket: t.ticket, snap: SNAP_CAPABILITY } : { ticket: t.ticket });
     this.attach(room);
     return room;
   }
@@ -111,6 +119,7 @@ export class Bot {
   attach(room: Room) {
     // A new connection starts with no server state: views must be re-sent by the server.
     for (const k of Object.keys(this.latest)) delete this.latest[k];
+    this.snaps = new SnapshotDecoder(); // delta state is per connection
     this.room = room;
     this.lastCloseCode = null;
     this.reconnectionToken = room.reconnectionToken;
@@ -144,6 +153,14 @@ export class Bot {
   private onS2C(type: string, payload: unknown) {
     this.latest[type] = payload;
     this.recorder.record(type, payload);
+    if (type === 'world:snap2') {
+      // Recorded raw (byte accounting); handled below as the snapshot it decodes to.
+      const s = this.snaps.decode(payload as Snap2Frame);
+      if (!s) return;
+      this.latest['world:snapshot'] = s;
+      type = 'world:snapshot';
+      payload = s;
+    }
     if (type === 'pong') {
       const t = (payload as { t?: number })?.t;
       let sentAt = typeof t === 'number' ? this.pingSent.get(t) : undefined;

@@ -1,7 +1,8 @@
 # @ct/assets — Hollowmere town, art and generators (world-art)
 
-Everything here is original and generated deterministically by code (TypeScript + `pngjs`).
-No external art, no randomness: re-running the generator produces byte-identical files.
+Everything here is original and generated deterministically by code (TypeScript + `pngjs`; WebP
+via `sharp`, pinned to an exact version). No external art, no randomness: re-running the generator
+produces byte-identical files.
 
 ## Source of truth
 
@@ -50,6 +51,9 @@ and character grids to `packages/assets/.review/` (git-ignored) for art review.
 | `objects.png` + `objects.json` | Atlas of buildings (`bld_<id>`) and props; `frames: {name: {x,y,w,h}}`. Sprites anchor at the bottom-left of their anchor tile. |
 | `characters.png` + `characters.json` | Character layer sheets. Each sheet is 5 columns (idle, walk1–4) × 4 rows (down, up, left, right) of 24×32 frames, feet anchor (12, 30). Keys: `body/{skin}`, `outfit/{outfit}/{palette}`, `hair/{hair}/{hairColor}` (none for `bald`), `accessory/{accessory}` (none for `none`), `ghost/{ghost}`, `storyteller`. Composite in `layerOrder` (body → outfit → hair → accessory); all layer offsets are 0. |
 | `lights.png` | Two 128×128 white radial glows (tinted at runtime). |
+| `cast.png` + `cast.json` | The v2 roster: one 5×8 block (idle + walk1–4 × 8 directions) of 32×40 frames per character and per ghost variant; block positions in `sheets` (the arrangement minimises empty blocks, `scripts/cast/sheet.ts`). |
+| `cast-portraits.png` + `.json` | The DOM UI's strip: every 'down' frame of the playable cast, the idle 'down' frame of everyone else and of every ghost (exact copies). |
+| `*.webp` | (v2.2) Every runtime atlas (terrain, decor, objects, lights, cast, cast-portraits, social, square-props) also as **lossless** WebP, bit-identical to its PNG (`scripts/lib/encode.ts`, checked by `test/atlas-encoding.test.ts`). The client never names a format: it imports URLs from `@ct/assets/runtime`, which picks WebP when the browser decodes lossless WebP and the PNG otherwise. |
 | `favicon.png` | 32×32 favicon (clock tower and moon). |
 | `preview-town.png` | Full-map render at 1× for eyeballing the art. |
 

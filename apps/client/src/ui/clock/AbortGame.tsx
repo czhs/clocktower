@@ -3,7 +3,7 @@
 // game as abandoned and returns everyone to the waiting room. Renders nothing otherwise.
 // Mount (lead): in the in-game Toolbar (GameScreen.tsx), before <SettingsButton>: <AbortGame conn={conn} />
 import type { RoomConnection } from '../../net/room';
-import { useStore } from '../../net/store';
+import { shallowEqual, useStore, useStoreSelector } from '../../net/store';
 import { modeOf } from './logic';
 import './clock.css';
 
@@ -18,7 +18,7 @@ export const ABORT_CONFIRM = 'End this game for everyone? Everybody returns to t
 
 export function AbortGame({ conn }: { conn: RoomConnection }) {
   const lobby = useStore(conn.lobbyView);
-  const game = useStore(conn.gameView);
+  const game = useStoreSelector(conn.gameView, (g) => (g ? { phase: g.phase, storytellerMode: g.storytellerMode } : null), shallowEqual);
   if (!canAbort(lobby, game)) return null;
   return (
     <button

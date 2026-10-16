@@ -3,9 +3,9 @@
 // Discussion / Nominations / Bedtime" (StCommand 'day_clock'). The clock is only a prop: it never
 // moves the phases in a human game.
 import { useEffect, useState } from 'preact/hooks';
-import type { C2SPayload, ClockStage, StorytellerGameView } from '@ct/protocol';
+import type { C2SPayload, ClockStage, DayClockView, StorytellerGameView } from '@ct/protocol';
 import { serverNow } from '../../net/serverTime';
-import { clockLine } from './logic';
+import { clockLine, clockRemainingMs } from './logic';
 import './clock.css';
 
 const STAGE_LABEL: Record<ClockStage, string> = { discussion: 'Discussion', nominations: 'Nominations', bedtime: 'Bedtime' };
@@ -23,14 +23,10 @@ export function StClockControl({
   defaultMinutes?: number;
 }) {
   const c = view.clock ?? null;
-  const [, tick] = useState(0);
-  useEffect(() => {
-    if (!c || c.paused || c.endsAt === null) return;
-    const t = setInterval(() => tick((n) => n + 1), 500);
-    return () => clearInterval(t);
-  }, [c]);
   const [minutes, setMinutes] = useState(defaultMinutes);
-  const line = c ? clockLine(c, serverNow(), { onTheBlock: !!view.day?.onTheBlock && view.day.executedSeat === null }) : null;
+  // (v2.2 perf) only <StClockNow> ticks; "is a countdown set" does not depend on the time
+  const isSet = !!c && clockRemainingMs(c, 0) !== null;
+  const onTheBlock = !!view.day?.onTheBlock && view.day.executedSeat === null;
   const step = (dir: 1 | -1) => {
     const next = dir > 0 ? MINUTE_STEPS.find((m) => m > minutes) : [...MINUTE_STEPS].reverse().find((m) => m < minutes);
     if (next !== undefined) setMinutes(next);
@@ -40,16 +36,13 @@ export function StClockControl({
     <div class="cts-timer ctc-stctl" aria-label="Town clock">
       <div class="ctc-stctl-row">
         <span class="cts-timer-label">Town clock:</span>
-        {line ? (
-          <span class={`ctc-stctl-now ctc-${line.tone}${line.urgent ? ' ctc-urgent-text' : ''}`} title={line.title}>
-            {line.label}
-            {line.time && <b> {line.time}</b>}
-          </span>
+        {isSet ? (
+          <StClockNow c={c!} onTheBlock={onTheBlock} />
         ) : (
           <span class="muted">not set</span>
         )}
         <span class="cts-spacer" />
-        {line && (
+        {isSet && (
           <>
             {c!.paused ? (
               <button onClick={() => cmd('resume')} title="Start the clock again">
@@ -84,7 +77,7 @@ export function StClockControl({
         {stages.map((s) => (
           <button
             key={s}
-            class={c?.stage === s && line ? 'on' : ''}
+            class={c?.stage === s && isSet ? 'on' : ''}
             onClick={() => cmd('set', { stage: s, minutes })}
             title={`Show ${minutes} min ${s === 'discussion' ? 'until nominations open' : s === 'nominations' ? 'until the execution' : 'until night falls'} on the tower (everyone sees it)`}
           >
@@ -93,5 +86,23 @@ export function StClockControl({
         ))}
       </div>
     </div>
+  );
+}
+
+/** What the tower shows right now: the only part of the control that changes every tick (2 Hz). */
+function StClockNow({ c, onTheBlock }: { c: DayClockView; onTheBlock: boolean }) {
+  const [, tick] = useState(0);
+  useEffect(() => {
+    if (c.paused || c.endsAt === null) return;
+    const t = setInterval(() => tick((n) => n + 1), 500);
+    return () => clearInterval(t);
+  }, [c]);
+  const line = clockLine(c, serverNow(), { onTheBlock });
+  if (!line) return null;
+  return (
+    <span class={`ctc-stctl-now ctc-${line.tone}${line.urgent ? ' ctc-urgent-text' : ''}`} title={line.title}>
+      {line.label}
+      {line.time && <b> {line.time}</b>}
+    </span>
   );
 }

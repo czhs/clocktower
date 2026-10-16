@@ -209,7 +209,9 @@ async function loadTiming(browser: import('@playwright/test').Browser, base: str
 }
 
 async function main() {
-  const port = await pickPort(3390, 3394);
+  // --ports lo-hi: another agent's assigned test-port range (default 3390-3394)
+  const [pLo, pHi] = arg('ports', '3390-3394').split('-').map(Number) as [number, number];
+  const port = await pickPort(pLo, pHi);
   const server = await startServer({
     mode: 'source',
     port,
@@ -242,6 +244,16 @@ async function main() {
     const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
     await ctx.addInitScript({ content: NAME_SHIM });
   await ctx.addInitScript(probes);
+    // --quality auto|low|medium|high: the town render tier preference (localStorage 'ct.fxQuality'); unset = default
+    const quality = arg('quality', '');
+    if (quality)
+      await ctx.addInitScript((q: string) => {
+        try {
+          localStorage.setItem('ct.fxQuality', q);
+        } catch {
+          /* about:blank */
+        }
+      }, quality);
     const page = await enterLobby(ctx, base, 'Perfy');
     const errors: string[] = [];
     page.on('pageerror', (e) => errors.push(String(e)));

@@ -2,12 +2,7 @@
    near-opaque Panel ink panels with a 1px Frame iron keyline, Parchment text, gold reserved for
    primary actions / focus / a few headings, 4px radius, 8px rhythm, IM Fell English headings and
    Alegreya Sans body (self-hosted via @fontsource — the CSP allows fonts from 'self' only). */
-@import '@fontsource/alegreya-sans/400.css';
-@import '@fontsource/alegreya-sans/500.css';
-@import '@fontsource/alegreya-sans/700.css';
-@import '@fontsource/alegreya-sans/400-italic.css';
-@import '@fontsource/im-fell-english/400.css';
-@import '@fontsource/im-fell-english/400-italic.css';
+@import './fonts.css'; /* latin + latin-ext only (v2.2) */
 
 :root {
   --bg: #13111a;

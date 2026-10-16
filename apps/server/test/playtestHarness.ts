@@ -13,6 +13,8 @@
 // player projection, forbidden keys, night snapshots/voice grants scoped to the own home, no night
 // deaths before dawn, no account ids, no cross-lobby data), and every ST night visit is checked to
 // leave the streams of all non-visited players unchanged (only identical world snapshots).
+// (v2.2, WP4) Clients take the compact 'world:snap2' stream: snapshots are checked decoded, and the
+// raw frames too (scanWire).
 import {
   CHARACTER_INFO,
   type S2CMessages,
@@ -26,7 +28,9 @@ import {
   type PromptView,
   type StCommand,
   type StorytellerGameView,
+  type Snap2Frame,
   type WorldSnapshot,
+  SNAP_RESET,
 } from '@ct/protocol';
 import net from 'node:net';
 import { mulberry32 } from '@ct/rules';
@@ -513,7 +517,7 @@ export async function runStep(g: Game, step: NightStepView, hooks: NightHooks) {
   const marks = new Map(
     g.online()
       .filter((o) => !exceptions.has(o.seat))
-      .map((o) => [o, { idx: o.c.messages.length, ents: lastEntities(o.c), lobby: lobbyKey(g, o.c.last('lobby:view')) }]),
+      .map((o) => [o, { idx: o.c.messages.length, widx: o.c.wire.length, ents: lastEntities(o.c), lobby: lobbyKey(g, o.c.last('lobby:view')) }]),
   );
   let skipWindow = false;
   const visitCues = p.c.of('sound').filter((s) => s.cue === 'visit').length;
@@ -566,6 +570,8 @@ export async function runStep(g: Game, step: NightStepView, hooks: NightHooks) {
         );
       expect(JSON.stringify((msg.payload as WorldSnapshot).entities), `seat ${o.seat} snapshot during visit to ${p.seat}`).toBe(m.ents);
     }
+    // (v2.2, WP4) On the wire: nothing new was indexed for them (no new id / location string).
+    for (const f of o.c.wire.slice(m.widx)) expect(f.payload[4] ?? null, `seat ${o.seat} snap2 defs during visit to ${p.seat}`).toBeNull();
   }
   g.visitsChecked++;
 }
@@ -875,8 +881,28 @@ export function keysOf(value: unknown, out = new Set<string>(), skip = 'spyGrimo
   return out;
 }
 
+/**
+ * (v2.2, WP4) Raw 'world:snap2' frames of one connection: no foreign ids, and the string table is
+ * filled lazily: every string a frame defines is used by an entity in that same frame (so the table
+ * never names anyone the viewer was not sent; the decoded snapshots are checked in scanPlayer).
+ */
+export function scanWire(where: string, frames: { payload: Snap2Frame }[], foreign: string[]) {
+  let size = 0;
+  for (const { payload: f } of frames) {
+    const json = JSON.stringify(f);
+    for (const x of foreign) if (json.includes(x)) throw new Error(`${where} world:snap2: contains foreign/secret id ${x}`);
+    const [kind, , , ents, defs] = f as [number, number, number, (number[] | null)?, (string[] | null)?];
+    if (kind === SNAP_RESET) size = 0;
+    const used = new Set<number>();
+    for (let i = 0; i + 4 < (ents ?? []).length; i += 5) used.add(ents![i]!).add(ents![i + 4]!);
+    for (let k = 0; k < (defs ?? []).length; k++) expect(used.has(size + k), `${where} world:snap2 def '${defs![k]}' unused in its frame`).toBe(true);
+    size += defs?.length ?? 0;
+  }
+}
+
 /** Every message one player ever received must be consistent with what they may know. */
 export function scanPlayer(g: Game, p: Player, foreign: string[]) {
+  for (const c of [...p.past, p.c]) scanWire(`${g.prefix} seat ${p.seat}`, c.wire, foreign);
   const init = g.initial.get(p.seat)!;
   const msgs = [...p.past.flatMap((c) => c.messages), ...p.c.messages.slice(p.since ?? 0)];
   let phase: GamePhase | null = null;
@@ -940,6 +966,7 @@ export function scanGame(g: Game) {
   for (const p of g.players) scanPlayer(g, p, foreign);
   // The ST stream must not contain other lobbies' data or account ids either.
   for (const c of [...g.stPast, g.st]) {
+    scanWire(`${g.prefix} ST`, c.wire, foreign);
     for (const m of c.messages) {
       const json = JSON.stringify(m.payload);
       for (const f of foreign) if (json.includes(f)) throw new Error(`${g.prefix} ST ${m.type}: contains ${f}`);

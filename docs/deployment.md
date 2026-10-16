@@ -50,6 +50,56 @@ health-checks `/healthz` for the commit's version, and rolls back on failure. qa
 pipeline (including automatic rollback from a deliberately broken release) on the legacy user units
 earlier on 2026-10-14. The system-mode path is the lead's.
 
+## HTTP caching and old chunks across deploys (v2.2 WP6)
+
+Origin `Cache-Control` (set in `apps/server/src/app.ts`; Cloudflare keeps an origin TTL that is longer than its own 4 h):
+
+| Path | Cache-Control |
+|---|---|
+| `/assets/*` (Vite output, content-hashed names) | `public, max-age=31536000, immutable` |
+| other files from `public/` (`/landing`, `/audio`, `/tutorial`, `/art`, `/favicon.png`) | `public, max-age=86400, stale-while-revalidate=604800` (ETag revalidation) |
+| `*.json` manifests, `/index.html`, SPA navigations (`/`, `/lobby/<id>`, `/admin`) | `no-cache` |
+| missing files (any path with an extension, anything under `/assets/`, non-HTML `Accept`) | **404** `text/plain`, `no-store`. The SPA shell is never sent for these. |
+| `/api/*`, `/healthz`, `/internal/*`, `/matchmake`, WebSocket upgrades | unchanged: never get a cacheable lifetime (API routes send `no-store`) |
+
+The SPA fallback only answers navigations: `GET`/`HEAD`, no file extension, not under `/assets/`, and an
+`Accept` that allows HTML. That includes `*/*`, so curl and link previews still get the shell.
+
+**Old chunks survive one deploy.** A tab opened before a deploy keeps the old `index.html`. It may lazy-load
+`TownGame-<oldhash>.js`, `IntroTour-…` or `VoiceEngine-…` later. `scripts/deploy-hshi-u1.sh` therefore
+handles the previous release's hashed assets in three steps, all on hshi-u1:
+1. `carry_assets snapshot`, before the deploy, stages the live tree's **own** `apps/client/dist/assets/*` in
+   `~/clocktower/incoming/carry-assets-<env>-<sha>/`.
+2. `carry_assets merge`, after a **successful** deploy, copies the staged files into the new live tree's
+   `dist/assets/`:
+   - it never overwrites a file (a file with the same name has the same content);
+   - it temporarily lifts the release's read-only bit and restores it afterwards;
+   - before its first merge, it records the tree's own files in `dist/.own-assets`. Dotfiles are never
+     served. Because only own files are carried, an old chunk lives exactly one more release.
+3. `carry_assets discard`, after a failed or rolled-back deploy, deletes the staging directory. The live tree
+   is not touched.
+
+The steps are best effort: a failure only prints a warning and never changes the deploy's exit status.
+They are idempotent, so a re-run or a redeploy of the same commit adds nothing. A rollback with
+`deploy prod <older-sha>` works the same way: the older release gains the newer release's own files.
+
+The merge runs right after the restart and health check, so there is a window of a few seconds in which an old chunk can 404. The 404 is `no-store`, so the edge does not cache it. The prod guard refuses
+deploys while games are running, so few tabs request chunks in that window. Removing the window would need a
+pre-restart hook in `deploy/bin/install-release.sh`.
+
+The carry-over was tested in isolation on hshi-u1, on temp dirs with no services involved. The function
+text was produced by the Mac's bash, exactly as the deploy produces it, and all 21 checks passed. They
+cover the first deploy (no manifest), idempotent re-runs, expiry after one release, a failed deploy, the
+auto-rollback guard, a rollback deploy, the dev tree and the no-live-tree case. The harness was handed to
+the lead/qa-deploy with the WP6 report, for `tests/`.
+
+Check on prod after a deploy:
+```bash
+IP=$(dig +short @1.1.1.1 clocktower.chrisshi.com A | head -1)
+curl -sI --resolve clocktower.chrisshi.com:443:$IP https://clocktower.chrisshi.com/assets/<file> | grep -iE 'cache-control|cf-cache-status'
+curl -sI --resolve clocktower.chrisshi.com:443:$IP https://clocktower.chrisshi.com/assets/missing-x.js | head -1   # 404
+```
+
 ## Private dev access **(tested)**
 
 ```bash

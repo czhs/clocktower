@@ -18,13 +18,8 @@
 import * as Phaser from 'phaser';
 import { castById, PLAYABLE, PLAZA, townLayout, townMap } from '@ct/assets';
 import objectsAtlas from '@ct/assets/generated/objects.json';
-import terrainUrl from '@ct/assets/generated/terrain.png';
-import decorUrl from '@ct/assets/generated/decor.png';
-import objectsUrl from '@ct/assets/generated/objects.png';
-import lightsUrl from '@ct/assets/generated/lights.png';
 import castJson from '@ct/assets/generated/cast.json';
-import castUrl from '@ct/assets/generated/cast.png';
-import townJsonUrl from '@ct/assets/generated/town.json?url';
+import { castUrl, decorUrl, lightsUrl, objectsUrl, squarePropsUrl, terrainUrl, townJsonUrl } from '@ct/assets/runtime';
 import {
   isBlockedPx,
   locationAt,
@@ -48,6 +43,7 @@ import { createGameplayLayer, doorTagsStore, stagePick, type DoorBoardView, type
 import { findPath } from './path';
 import { createSocialLayer, type SocialLayer } from './social';
 import { noteServerTime, serverNow } from '../net/serverTime';
+import { LOW_TIER_AMBIENCE, TierState } from './fx/tier';
 
 const L = townLayout;
 const TS = L.tileSize;
@@ -99,7 +95,7 @@ function toFacing(d: Dir8, vx: number, vy: number): Facing {
 // Square props / ambient FX (generated/square-props.*, drawn by the fx art agent). Optional:
 // everything degrades to simple shapes while the sheet does not exist yet.
 
-const FX_PNG = Object.values(import.meta.glob('../../../../packages/assets/generated/square-props.png', { eager: true, query: '?url', import: 'default' }) as Record<string, string>)[0];
+const FX_PNG: string | undefined = squarePropsUrl;
 const FX_JSON = Object.values(import.meta.glob('../../../../packages/assets/generated/square-props.json', { eager: true, import: 'default' }) as Record<string, unknown>)[0] as
   | {
       frames: Record<string, { x: number; y: number; w: number; h: number }>;
@@ -166,6 +162,10 @@ const AMBIENT_IN: Record<Phase, number> = {
 };
 const LIGHT_TINT: Record<string, number> = { warm: 0xffb868, cool: 0x8a9ad0, fire: 0xff9440, holy: 0xc89aff, lantern: 0xffc070, st: 0xffcf7a };
 const LABEL_FONT = '"Alegreya Sans", "Segoe UI", system-ui, sans-serif';
+/** Lamp / window / hearth flicker is stepped at 12 Hz (the light layer is re-stamped only on change). */
+const FLICKER_MS = 1000 / 12;
+/** localPlayer store notifications (HUD subscribers) at most this often; get() is always current. */
+const LOCAL_PUBLISH_MS = 100;
 
 interface LightSrc {
   x: number;
@@ -174,6 +174,21 @@ interface LightSrc {
   color: string;
   building: string | null;
   facade: boolean;
+}
+/** A fixed light of the current area, pre-filtered and pre-computed (see TownScene.rebuildLights). */
+interface AreaLight {
+  /** Stamp position, relative to the light layer (= the area's top-left). */
+  x: number;
+  y: number;
+  scale: number;
+  tint: number;
+  frame: number;
+  /** 0 = inside a cottage, 1 = window (facade), 2 = outdoor lamp. */
+  mode: 0 | 1 | 2;
+  /** Constant alpha factor (before the phase factor and the flicker). */
+  k: number;
+  /** Flicker phase seed. */
+  seed: number;
 }
 interface Sample {
   t: number;
@@ -209,6 +224,9 @@ class Avatar {
   hasLantern = false;
   isST = false;
   ghost = false;
+  /** Label colour / style currently drawn (each Text change is a canvas redraw + texture upload). */
+  private labelColor = '#efe6cf';
+  private labelStyle = '';
   constructor(
     readonly scene: TownScene,
     readonly pid: string,
@@ -226,17 +244,31 @@ class Avatar {
     this.hasLantern = opts.lantern && !opts.ghost;
     this.ghost = opts.ghost;
     if (this.label.text !== name) this.label.setText(name);
-    this.label.setColor(this.isST ? '#e8c76a' : opts.ghost ? '#cfe6ee' : '#efe6cf');
+    const color = this.isST ? '#e8c76a' : opts.ghost ? '#cfe6ee' : '#efe6cf';
+    if (color !== this.labelColor) {
+      this.labelColor = color;
+      this.label.setColor(color);
+    }
     if (key !== this.key) {
       this.key = key;
       this.play(true);
     }
   }
+  /** Label size for the current zoom: one redraw, and none when nothing changed. */
+  setLabelStyle(resolution: number, fontPx: number, strokeThickness: number) {
+    const k = `${resolution}|${fontPx}|${strokeThickness}`;
+    if (k === this.labelStyle) return;
+    this.labelStyle = k;
+    this.label.setStyle({ resolution, fontSize: `${fontPx}px`, stroke: '#0b0812', strokeThickness });
+  }
   setPose(x: number, y: number, dir: Dir8, moving: boolean) {
     this.sprite.setPosition(Math.round(x), Math.round(y));
-    this.sprite.setDepth(10 + y);
+    // setDepth always queues a full display-list depth sort, even for the same value
+    const depth = 10 + y;
+    if (this.sprite.depth !== depth) this.sprite.setDepth(depth);
     this.label.setPosition(Math.round(x), Math.round(y) - (CAST.anchor.y - 4) + (this.ghost ? -4 : 0));
-    this.last = { x, y };
+    this.last.x = x;
+    this.last.y = y;
     if (dir !== this.dir || moving !== this.moving) {
       this.dir = dir;
       this.moving = moving;
@@ -316,11 +348,23 @@ export class TownScene extends Phaser.Scene {
   private clockFace: { x: number; y: number; r: number } | null = null;
   private clockDepth = 0;
   private clockGfx: Phaser.GameObjects.Graphics | null = null;
+  private clockKey = '';
   private lastInsideKey = '';
+  private tier: TierState;
+  /** Fixed lights of the current area (rebuilt on area / phase-view changes, see rebuildLights). */
+  private areaLights: AreaLight[] = [];
+  private lightsDirty = true;
+  /** Inputs of the last lighting pass: the layer is re-stamped only when one of them changes. */
+  private lit = { amb: -1, phase: '', tick: -1, carried: [] as number[] };
+  private carriedBuf: number[] = [];
+  private stampCfg = { scale: 1, tint: 0xffffff, alpha: 1, blendMode: Phaser.BlendModes.ADD, skipBatch: true };
+  /** Pooled chimney puffs (sprite + start time); a free one has t0 < 0. */
+  private puffs: { s: Phaser.GameObjects.Sprite; t0: number; x: number; y: number }[] = [];
 
-  constructor(bridge: TownBridge) {
+  constructor(bridge: TownBridge, tier?: TierState) {
     super({ key: 'town' });
     this.bridge = bridge;
+    this.tier = tier ?? new TierState(performance.now(), undefined, false);
   }
 
   textRes() {
@@ -328,7 +372,11 @@ export class TownScene extends Phaser.Scene {
   }
   /** Text size (world px) that renders at about `screenPx` CSS px at the current zoom. */
   private fontPx(screenPx: number) {
-    return Math.max(4, screenPx / Math.max(0.2, this.cameras.main.zoom));
+    return Math.max(4, screenPx / Math.max(0.2, this.cssZoom()));
+  }
+  /** CSS px per world px (the camera zoom is in canvas px; the low tier renders the canvas smaller). */
+  cssZoom() {
+    return this.cameras.main.zoom / this.tier.renderScale;
   }
 
   preload() {
@@ -347,8 +395,10 @@ export class TownScene extends Phaser.Scene {
     this.cameras.main.setRoundPixels(true);
     // --- map
     const map = this.make.tilemap({ key: 'town' });
-    map.createLayer('ground', map.addTilesetImage('terrain', 'terrain')!, 0, 0)!.setDepth(0);
-    map.createLayer('decor', map.addTilesetImage('decor', 'decor')!, 0, 0)!.setDepth(1);
+    const ground: Phaser.GameObjects.GameObject[] = [
+      map.createLayer('ground', map.addTilesetImage('terrain', 'terrain')!, 0, 0)!.setDepth(0),
+      map.createLayer('decor', map.addTilesetImage('decor', 'decor')!, 0, 0)!.setDepth(1),
+    ];
     const atlas = this.textures.get('objects');
     for (const [name, r] of Object.entries((objectsAtlas as unknown as { frames: Record<string, { x: number; y: number; w: number; h: number }> }).frames)) atlas.add(name, 0, r.x, r.y, r.w, r.h);
     this.defineCast();
@@ -363,10 +413,11 @@ export class TownScene extends Phaser.Scene {
       if (type === 'door') continue; // handled below (needs the building depth)
       const frame = String(prop(o, 'frame'));
       const depth = Number(prop(o, 'depth') ?? o.y! + o.height!);
-      this.add
+      const img = this.add
         .image(o.x!, o.y!, 'objects', frame)
         .setOrigin(0, 0)
         .setDepth(type === 'flat' ? 2 : 10 + depth);
+      if (type === 'flat') ground.push(img);
       if (type === 'building') {
         const id = String(prop(o, 'building') ?? '');
         const ck = prop(o, 'clock');
@@ -391,6 +442,7 @@ export class TownScene extends Phaser.Scene {
       }
     }
     this.setupDoors(map, buildingDepth);
+    this.bakeGround(map.widthInPixels, map.heightInPixels, ground);
     // --- lighting (world-space multiply layer over the current area) + letterbox mask
     this.lightRT = this.add.renderTexture(0, 0, Math.max(TOWN.w, 400), Math.max(TOWN.h, 400)).setOrigin(0, 0).setDepth(5000).setBlendMode(Phaser.BlendModes.MULTIPLY);
     this.mask = this.add.graphics().setDepth(5300);
@@ -409,6 +461,7 @@ export class TownScene extends Phaser.Scene {
       this.gview = g;
       this.phase = g?.phase ?? (this.lobby?.lobby.phase === 'finished' ? 'finished' : 'waiting');
       if (prev !== this.phase) this.onPhaseChange(prev, this.phase);
+      this.lightsDirty = true; // empty cottages keep their windows dark
       this.refreshAppearances();
       this.refreshBoards();
     };
@@ -422,6 +475,7 @@ export class TownScene extends Phaser.Scene {
     this.offs.push(doorTagsStore.subscribe(() => this.refreshBoards()));
     this.bridge.registerLeave?.(() => this.leave());
     this.offs.push(() => this.bridge.registerLeave?.(null));
+    this.offs.push(this.tier.subscribe(() => this.applyAmbienceVisibility()));
 
     // --- input (window-level so typing in inputs is ignored)
     const down = (e: KeyboardEvent) => {
@@ -481,6 +535,7 @@ export class TownScene extends Phaser.Scene {
         return best?.pid ?? null;
       },
       characterOf: (pid) => this.castKey(pid).key.split('/')[0]!,
+      renderScale: () => this.tier.renderScale,
       passTap: (sx, sy) => this.handleTap(sx, sy, false),
       faceToward: (x, y) => {
         if (!this.myAvatar) return;
@@ -506,9 +561,10 @@ export class TownScene extends Phaser.Scene {
         worldToScreen: (x: number, y: number) => {
           const cam = this.cameras.main;
           const r = this.game.canvas.getBoundingClientRect();
-          return { x: r.left + (x - cam.worldView.x) * cam.zoom, y: r.top + (y - cam.worldView.y) * cam.zoom };
+          const z = cam.zoom * (r.width / this.scale.width); // CSS px per world px (low-tier render scale)
+          return { x: r.left + (x - cam.worldView.x) * z, y: r.top + (y - cam.worldView.y) * z };
         },
-        view: () => ({ ...this.cameras.main.worldView, zoom: this.cameras.main.zoom }),
+        view: () => ({ ...this.cameras.main.worldView, zoom: this.cssZoom() }),
         me: () => ({ ...this.me }),
       };
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.cleanup());
@@ -523,6 +579,33 @@ export class TownScene extends Phaser.Scene {
 
   // ---------------------------------------------------------------------------------------
   // textures
+
+  /**
+   * Ground + decor tiles and the flat decals never change: drawn ONCE into one texture, which is
+   * then a single quad per frame instead of ~1200 culled tile quads + 45 images (and 47 fewer
+   * entries in every depth sort). Same world grid, same NEAREST sampling, same draw order (all of
+   * it below everything else, depth 0..2) = the same pixels. The parts leave the display list but
+   * are kept to re-bake after a WebGL context restore (render-texture contents do not survive one).
+   */
+  private bakeGround(w: number, h: number, parts: Phaser.GameObjects.GameObject[]) {
+    const rt = this.add.renderTexture(0, 0, w, h).setOrigin(0, 0).setDepth(0);
+    const bake = () => {
+      rt.clear();
+      rt.draw(parts);
+    };
+    bake();
+    for (const p of parts) this.children.remove(p);
+    const r = this.game.renderer;
+    const restored = () => {
+      bake();
+      this.lit.amb = -1; // the light layer is re-stamped on the next frame too
+    };
+    r.on(Phaser.Renderer.Events.RESTORE_WEBGL, restored);
+    this.offs.push(() => {
+      r.off(Phaser.Renderer.Events.RESTORE_WEBGL, restored);
+      for (const p of parts) p.destroy();
+    });
+  }
 
   private defineCast() {
     const tex = this.textures.get('cast');
@@ -908,9 +991,7 @@ export class TownScene extends Phaser.Scene {
     this.fitCamera();
     for (const b of this.boards.values()) for (const o of b.objs) (o as unknown as Phaser.GameObjects.Components.Visible).setVisible(this.me.location === 'outdoors');
     for (const o of this.boarded.values()) (o as unknown as Phaser.GameObjects.Components.Visible).setVisible(this.me.location === 'outdoors');
-    for (const n of this.npcs) n.sprite.setVisible(this.me.location === 'outdoors' && DAYLIKE.has(this.phase));
-    for (const f of this.fireflies) f.img.setVisible(this.me.location === 'outdoors');
-    for (const e of this.fx) e.setVisible(this.me.location === 'outdoors');
+    this.applyAmbienceVisibility();
     this.refreshInside();
     this.publishLocal(true);
     // a tap made while inside: we're out now, carry on
@@ -1131,6 +1212,20 @@ export class TownScene extends Phaser.Scene {
     }
   }
 
+  /** How many fireflies / townsfolk / pigeons the current render tier shows (the first n of each). */
+  private ambienceCount(kind: 'fireflies' | 'townsfolk' | 'pigeons'): number {
+    return this.tier.tier === 'low' ? LOW_TIER_AMBIENCE[kind] : Infinity;
+  }
+
+  private applyAmbienceVisibility() {
+    const outdoors = this.me.location === 'outdoors';
+    const folk = this.ambienceCount('townsfolk');
+    const flies = this.ambienceCount('fireflies');
+    this.npcs.forEach((n, i) => n.sprite.setVisible(outdoors && DAYLIKE.has(this.phase) && i < folk));
+    this.fireflies.forEach((f, i) => f.img.setVisible(outdoors && i < flies));
+    for (const e of this.fx) e.setVisible(outdoors);
+  }
+
   private makeDotTexture(): string {
     const key = 'ct-dot';
     if (!this.textures.exists(key)) {
@@ -1147,24 +1242,33 @@ export class TownScene extends Phaser.Scene {
     const outdoors = this.me.location === 'outdoors';
     const dark = NIGHT.has(this.phase) || this.phase === 'bedtime' || this.phase === 'dawn';
     const t = now / 1000;
-    for (const f of this.fireflies) {
-      const a = dark && outdoors ? Math.max(0, Math.sin(t * f.sp + f.ph)) * 0.9 : 0;
+    const flies = this.ambienceCount('fireflies');
+    for (let i = 0; i < this.fireflies.length; i++) {
+      const f = this.fireflies[i]!;
+      const a = dark && outdoors && i < flies ? Math.max(0, Math.sin(t * f.sp + f.ph)) * 0.9 : 0;
       f.img.setAlpha(a);
       if (a > 0) f.img.setPosition(Math.round(f.x + Math.sin(t * 0.5 + f.ph) * 10), Math.round(f.y + Math.cos(t * 0.37 + f.ph * 2) * 6));
     }
-    // chimney smoke (always, gently; more visible at dusk)
-    if (outdoors) {
+    // chimney smoke (always, gently; more visible at dusk) — none on the low render tier
+    if (outdoors && (this.tier.tier !== 'low' || LOW_TIER_AMBIENCE.smoke)) {
       for (const c of this.chimneys) {
         if (now < c.next) continue;
         c.next = now + 900 + ((c.x * 37 + c.y * 11) % 700);
-        this.puff(c.x, c.y);
+        this.puff(c.x, c.y, now);
       }
     }
+    this.stepPuffs(now);
     // door glows: every lived-in cottage alike (no occupancy), warmer at dusk and night
     const glowK = NIGHT.has(this.phase) ? 0.55 : this.phase === 'bedtime' || this.phase === 'dawn' ? 0.45 : 0.12;
     for (const g of this.doorGlows) g.img.setAlpha(outdoors && this.houseInUse(g.d.b) ? glowK * (0.9 + 0.1 * Math.sin(t * 2 + g.d.at.x)) : 0);
     // pigeons: peck by day, scatter when you walk up, drift back later
-    for (const p of this.pigeons) {
+    const birds = this.ambienceCount('pigeons');
+    for (let i = 0; i < this.pigeons.length; i++) {
+      const p = this.pigeons[i]!;
+      if (i >= birds) {
+        p.s.setVisible(false);
+        continue;
+      }
       const near = this.ready && outdoors && Math.hypot(this.me.x - p.home.x, this.me.y - p.home.y) < 34;
       if (near && !p.away && this.anims.exists('fx#flap')) {
         p.away = now + 9000;
@@ -1179,9 +1283,11 @@ export class TownScene extends Phaser.Scene {
     }
     // townsfolk: daytime only, gentle loops, never in anyone's way
     const day = DAYLIKE.has(this.phase);
-    for (const n of this.npcs) {
-      n.sprite.setVisible(day && outdoors);
-      if (!day) continue;
+    const folk = this.ambienceCount('townsfolk');
+    for (let i = 0; i < this.npcs.length; i++) {
+      const n = this.npcs[i]!;
+      n.sprite.setVisible(day && outdoors && i < folk);
+      if (!day || i >= folk) continue;
       const tgt = n.route[(n.i + 1) % n.route.length]!;
       let moving = false;
       if (now >= n.waitUntil) {
@@ -1201,22 +1307,44 @@ export class TownScene extends Phaser.Scene {
           moving = true;
         }
       }
-      n.sprite.setPosition(Math.round(n.x), Math.round(n.y)).setDepth(10 + n.y);
+      n.sprite.setPosition(Math.round(n.x), Math.round(n.y));
+      if (n.sprite.depth !== 10 + n.y) n.sprite.setDepth(10 + n.y);
       const anim = `${n.id}#${moving ? 'walk' : 'idle'}-${moving ? n.dir : n.dir === 'up' ? 'down' : n.dir}`;
       if (this.anims.exists(anim) && n.sprite.anims.currentAnim?.key !== anim) n.sprite.play(anim, true);
     }
   }
 
-  private puff(x: number, y: number) {
+  private puff(x: number, y: number, now: number) {
     if (this.anims.exists('fx#smoke')) {
-      const s = this.add.sprite(x, y, 'fx').setDepth(4060).setAlpha(0.75);
-      s.play('fx#smoke');
-      this.tweens.add({ targets: s, y: y - 18, x: x + 4, duration: 1600, onComplete: () => s.destroy() });
+      // pooled: a puff drifts 18 px up and 4 px right over 1.6 s (linear), then is parked hidden
+      let p = this.puffs.find((q) => q.t0 < 0);
+      if (!p) {
+        p = { s: this.add.sprite(x, y, 'fx').setDepth(4060).setAlpha(0.75), t0: 0, x, y };
+        this.puffs.push(p);
+      }
+      p.t0 = now;
+      p.x = x;
+      p.y = y;
+      p.s.setPosition(x, y).setVisible(true);
+      p.s.play('fx#smoke');
       return;
     }
     const s = this.add.image(x, y, this.makeSmokeTexture()).setDepth(4060).setAlpha(0.5);
     this.tweens.add({ targets: s, y: y - 18, x: x + 5, alpha: 0, scale: 1.8, duration: 1800, onComplete: () => s.destroy() });
   }
+  private stepPuffs(now: number) {
+    for (const p of this.puffs) {
+      if (p.t0 < 0) continue;
+      const k = (now - p.t0) / 1600;
+      if (k >= 1) {
+        p.t0 = -1;
+        p.s.setVisible(false);
+        continue;
+      }
+      p.s.setPosition(p.x + 4 * k, p.y - 18 * k);
+    }
+  }
+
   private makeSmokeTexture(): string {
     const key = 'ct-smoke';
     if (!this.textures.exists(key)) {
@@ -1250,7 +1378,7 @@ export class TownScene extends Phaser.Scene {
       if (!st) cam.flash(900, 70, 40, 50);
       this.time.delayedCall(3500, () => this.bridge.setCaption(null));
     }
-    for (const n of this.npcs) n.sprite.setVisible(DAYLIKE.has(next) && this.me.location === 'outdoors');
+    this.applyAmbienceVisibility();
     this.refreshInside();
   }
 
@@ -1266,13 +1394,14 @@ export class TownScene extends Phaser.Scene {
     const h = this.scale.height;
     if (b) {
       // inside: the whole room, cosy, not huge — above the "Inside … with …" panel at the bottom
-      const reserve = h < 520 ? 92 : 132;
+      const k = this.tier.renderScale; // the panel is sized in CSS px
+      const reserve = (h / k < 520 ? 92 : 132) * k;
       const zoom = Math.min(Math.min(w / a.w, (h - reserve - 8) / a.h) * 0.94, 7);
       cam.setZoom(zoom);
       cam.centerOn(a.x + a.w / 2, a.y + a.h / 2 + reserve / 2 / zoom);
     } else {
       // outdoors: the zoom of the square's preset view (whole circle + the clock tower's face)
-      cam.setZoom(Math.max(0.2, Math.min(w / SQUARE_VIEW.w, h / SQUARE_VIEW.h)));
+      cam.setZoom(outdoorZoom(w, h));
       this.view.init = false;
       this.updateCamera(0);
     }
@@ -1285,12 +1414,9 @@ export class TownScene extends Phaser.Scene {
     this.mask.fillRect(a.x - big, a.y, big, a.h);
     this.mask.fillRect(a.x + a.w, a.y, big, a.h);
     this.lightRT.setPosition(a.x, a.y);
+    this.lightsDirty = true;
     const res = this.textRes();
-    for (const av of [...this.avatars.values(), ...(this.myAvatar ? [this.myAvatar] : [])]) {
-      av.label.setResolution(res);
-      av.label.setFontSize(this.fontPx(10.5));
-      av.label.setStroke('#0b0812', Math.max(1.5, this.fontPx(10.5) / 4));
-    }
+    for (const av of [...this.avatars.values(), ...(this.myAvatar ? [this.myAvatar] : [])]) av.setLabelStyle(res, this.fontPx(10.5), Math.max(1.5, this.fontPx(10.5) / 4));
     this.refreshBoards();
   }
 
@@ -1321,21 +1447,31 @@ export class TownScene extends Phaser.Scene {
     if (!f) return;
     if (!this.clockGfx) this.clockGfx = this.add.graphics().setDepth(this.clockDepth);
     const g = this.clockGfx;
+    const c = this.gview?.clock ?? null;
+    const idle = !c || (c.endsAt === null && c.remainingMs === null);
+    const top = -Math.PI / 2;
+    let end = top;
+    let frac = 0;
+    if (c && !idle) {
+      const left = Math.max(0, c.paused ? (c.remainingMs ?? 0) : (c.endsAt ?? 0) - serverNow());
+      frac = c.totalMs > 0 ? Math.min(1, left / c.totalMs) : 0;
+      end = top + frac * Math.PI * 2;
+    }
+    // Redraw only when the picture changes: the hand's tip moved >= 1/4 screen px, or the state did.
+    const key =
+      this.me.location !== 'outdoors' ? 'in' : !c || idle ? 'idle' : `${c.stage}|${c.paused}|${frac > 0.002}|${Math.round(end * f.r * 0.86 * this.cameras.main.zoom * 4)}`;
+    if (key === this.clockKey) return;
+    this.clockKey = key;
     g.clear();
     if (this.me.location !== 'outdoors') return;
-    const c = this.gview?.clock ?? null;
-    const top = -Math.PI / 2;
     const hand = (ang: number, len: number, w: number, col: number) => {
       g.lineStyle(w, col, 1);
       g.lineBetween(f.x, f.y, f.x + Math.cos(ang) * len, f.y + Math.sin(ang) * len);
     };
-    if (!c || (c.endsAt === null && c.remainingMs === null)) {
+    if (!c || idle) {
       hand(top - Math.PI / 6, f.r * 0.82, 1, 0x120e16);
       hand(top - Math.PI / 72, f.r * 0.55, 2, 0x120e16);
     } else {
-      const left = Math.max(0, c.paused ? (c.remainingMs ?? 0) : (c.endsAt ?? 0) - serverNow());
-      const frac = c.totalMs > 0 ? Math.min(1, left / c.totalMs) : 0;
-      const end = top + frac * Math.PI * 2;
       const col = c.stage === 'nominations' ? 0xc0413b : c.stage === 'bedtime' ? 0x6f7fd0 : 0xd5b56a;
       if (frac > 0.002) {
         g.fillStyle(col, c.paused ? 0.28 : 0.5);
@@ -1477,16 +1613,33 @@ export class TownScene extends Phaser.Scene {
     this.publishLocal(false);
   }
 
-  private lastLocalPublish = { x: NaN, y: NaN, loc: '' };
+  private lastLocalPublish = { x: NaN, y: NaN, loc: '', at: -Infinity };
+  /**
+   * localPlayer: get() always returns the current predicted position (per-frame readers — voice
+   * gains, sound, gameplay — read it directly), but subscribers (HUD) are notified at most every
+   * LOCAL_PUBLISH_MS while walking, and at once on a location (or player) change.
+   */
   private publishLocal(force: boolean) {
     const p = this.lastLocalPublish;
-    if (!force && Math.abs(p.x - this.me.x) < 0.5 && Math.abs(p.y - this.me.y) < 0.5 && p.loc === this.me.location) return;
-    this.lastLocalPublish = { x: this.me.x, y: this.me.y, loc: this.me.location };
-    localPlayer.set({ pid: this.myPid, x: this.me.x, y: this.me.y, location: this.me.location });
+    const cur = localPlayer.get();
+    const now = performance.now();
+    const moved = Math.abs(p.x - this.me.x) >= 0.5 || Math.abs(p.y - this.me.y) >= 0.5;
+    if (force || p.loc !== this.me.location || cur.pid !== this.myPid || (moved && now - p.at >= LOCAL_PUBLISH_MS)) {
+      p.x = this.me.x;
+      p.y = this.me.y;
+      p.loc = this.me.location;
+      p.at = now;
+      localPlayer.set({ pid: this.myPid, x: this.me.x, y: this.me.y, location: this.me.location });
+      return;
+    }
+    // between notifications: keep the published object current (same object => no re-render)
+    cur.x = this.me.x;
+    cur.y = this.me.y;
   }
 
   private stepRemotes() {
-    const renderAt = performance.now() - INTERP_DELAY_MS;
+    const nowMs = performance.now();
+    const renderAt = nowMs - INTERP_DELAY_MS;
     for (const a of this.avatars.values()) {
       const s = a.samples;
       if (!s.length) continue;
@@ -1509,7 +1662,7 @@ export class TownScene extends Phaser.Scene {
           ref = s0;
         }
       }
-      const stale = performance.now() - s[s.length - 1]!.t > 600;
+      const stale = nowMs - s[s.length - 1]!.t > 600;
       const moving = ref.moving && !stale;
       let d = a.dir;
       const mx = x - a.last.x;
@@ -1518,7 +1671,12 @@ export class TownScene extends Phaser.Scene {
       else if (!moving && (d === 'left' || d === 'right' || d === 'up' || d === 'down') && d !== ref.facing) d = fromFacing(ref.facing);
       a.setPose(x, y, d, moving);
       a.setVisible(a.location === this.me.location);
-      remoteEntities.set(a.pid, { x, y, location: a.location });
+      const e = remoteEntities.get(a.pid);
+      if (e) {
+        e.x = x;
+        e.y = y;
+        e.location = a.location;
+      } else remoteEntities.set(a.pid, { x, y, location: a.location });
     }
   }
 
@@ -1558,6 +1716,13 @@ export class TownScene extends Phaser.Scene {
     this.bridge.setPrompt(text ? { key: '', text, locked } : null);
   }
 
+  /**
+   * The light layer: ambient colour + light stamps (ADD) in a world-space RenderTexture drawn with
+   * MULTIPLY over the area. It is re-stamped only when an input changed — the ambient colour (still
+   * easing after a phase change), the flicker step (12 Hz), the phase, the area / its lights, or a
+   * carried light (visible avatars only: the visiting Storyteller's lantern is never drawn where you
+   * cannot see them) — and all stamps go through ONE capture pass instead of one per stamp.
+   */
   private updateLighting(dt: number) {
     const inside = this.me.location !== 'outdoors';
     const target = (inside ? AMBIENT_IN : AMBIENT_OUT)[this.phase] ?? 0xffffff;
@@ -1566,23 +1731,97 @@ export class TownScene extends Phaser.Scene {
     this.ambient.g += (((target >> 8) & 255) - this.ambient.g) * k;
     this.ambient.b += ((target & 255) - this.ambient.b) * k;
     const amb = (Math.round(this.ambient.r) << 16) | (Math.round(this.ambient.g) << 8) | Math.round(this.ambient.b);
-    const rt = this.lightRT;
-    const a = this.area;
-    rt.clear();
-    rt.fill(amb, 1);
+    if (this.lightsDirty) this.rebuildLights();
     const night = NIGHT.has(this.phase);
     const dusk = this.phase === 'bedtime' || this.phase === 'dawn';
+    const dim = night || dusk;
+    // carried lights: [kind, x, y] per light, in stamping order
+    const buf = this.carriedBuf;
+    buf.length = 0;
+    const carry = (av: Avatar, x: number, y: number) => {
+      const kind = av.isST ? (av === this.myAvatar ? 2 : 1) : av.hasLantern ? 3 : av.ghost ? 4 : 0;
+      if (kind) buf.push(kind, x, y);
+    };
+    for (const av of this.avatars.values()) if (av.sprite.visible) carry(av, av.sprite.x, av.sprite.y);
+    if (this.myAvatar && this.ready) {
+      carry(this.myAvatar, this.myAvatar.sprite.x, this.myAvatar.sprite.y);
+      if (dim && !this.myAvatar.isST && !inside) buf.push(5, this.me.x, this.me.y);
+    }
+    const tick = this.areaLights.length ? Math.floor(this.time.now / FLICKER_MS) : 0;
+    const lit = this.lit;
+    if (lit.amb === amb && lit.tick === tick && lit.phase === this.phase && sameNumbers(lit.carried, buf)) return;
+    lit.amb = amb;
+    lit.tick = tick;
+    lit.phase = this.phase;
+    lit.carried.length = 0;
+    for (const v of buf) lit.carried.push(v);
+
+    const rt = this.lightRT;
+    const a = this.area;
     const lampK = night ? 1 : dusk ? 0.8 : 0.28;
     // Windows glow at night identically for every cottage (nothing about who is home).
     const facadeK = night ? 0.95 : dusk ? 0.6 : 0;
-    const here = inside ? this.me.location.slice(4) : null;
-    const stamp = (x: number, y: number, r: number, color: number, alpha: number, soft = 0) => {
+    const ft = tick * FLICKER_MS;
+    const flicker = (x: number) => 0.92 + 0.08 * Math.sin(ft / 130 + x * 0.37) * Math.sin(ft / 370 + x);
+    const webgl = this.game.renderer.type === Phaser.WEBGL;
+    rt.clear();
+    if (!webgl) rt.fill(amb, 1);
+    rt.beginDraw();
+    if (webgl) {
+      // The ambient fill goes INTO the capture as an opaque quad: ADD (ONE, DST_ALPHA) onto an opaque
+      // target is a plain sum, so batching every stamp in one pass gives the same pixels as the
+      // per-stamp passes (fill, then each light added) — without a full-layer blit per light.
+      const w = this.textures.getFrame('__WHITE');
+      rt.stamp('__WHITE', undefined, 0, 0, { originX: 0, originY: 0, scaleX: rt.width / w.width, scaleY: rt.height / w.height, tint: amb, alpha: 1, skipBatch: true });
+    }
+    for (const l of this.areaLights) {
+      const alpha = (l.mode === 0 ? l.k : l.mode === 1 ? facadeK * l.k : lampK * l.k) * flicker(l.seed);
+      if (alpha > 0.01) this.stampLight(l.frame, l.x, l.y, l.scale, l.tint, alpha);
+    }
+    const carried = (x: number, y: number, r: number, color: number, alpha: number, frame: number) => {
       if (alpha <= 0.01) return;
       if (x + r < a.x || y + r < a.y || x - r > a.x + a.w || y - r > a.y + a.h) return;
-      rt.stamp('lights', soft, x - a.x, y - a.y, { scale: (r * 2) / 128, tint: color, alpha, blendMode: Phaser.BlendModes.ADD });
+      this.stampLight(frame, x - a.x, y - a.y, (r * 2) / 128, color, alpha);
     };
-    const flicker = (x: number) => 0.92 + 0.08 * Math.sin(this.time.now / 130 + x * 0.37) * Math.sin(this.time.now / 370 + x);
-    // empty cottages (no resident — public) keep their windows dark
+    for (let i = 0; i < buf.length; i += 3) {
+      const x = buf[i + 1]!;
+      const y = buf[i + 2]!;
+      switch (buf[i]) {
+        case 1:
+        case 2:
+          carried(x, y - 14, buf[i] === 2 && night ? 104 : 70, LIGHT_TINT.st!, dim ? 0.95 : 0.25, 0);
+          break;
+        case 3:
+          carried(x, y - 12, 46, LIGHT_TINT.lantern!, dim ? 0.75 : 0.15, 1);
+          break;
+        case 4:
+          carried(x, y - 14, 30, 0x9ad0e0, dim ? 0.45 : 0.15, 1);
+          break;
+        default:
+          carried(x, y - 12, 44, 0x9aa4d8, 0.35, 1);
+      }
+    }
+    rt.endDraw();
+  }
+
+  private stampLight(frame: number, x: number, y: number, scale: number, tint: number, alpha: number) {
+    const c = this.stampCfg;
+    c.scale = scale;
+    c.tint = tint;
+    c.alpha = alpha;
+    this.lightRT.stamp('lights', frame, x, y, c);
+  }
+
+  /**
+   * The fixed lights of the current area (on area / game-view changes): this location's lights
+   * only, windows of empty cottages (no resident — public) dark, off-area lights culled.
+   */
+  private rebuildLights() {
+    this.lightsDirty = false;
+    this.lit.amb = -1; // force a pass
+    const inside = this.me.location !== 'outdoors';
+    const here = inside ? this.me.location.slice(4) : null;
+    const a = this.area;
     const dark: { x: number; y: number; w: number; h: number }[] = [];
     if (!inside && this.gview)
       for (const d of this.doors) {
@@ -1590,26 +1829,32 @@ export class TownScene extends Phaser.Scene {
         if (u && !this.houseInUse(d.b)) dark.push({ x: u.wx - 2, y: u.wy - 2, w: u.w + 4, h: u.h + 4 });
       }
     const unlit = (x: number, y: number) => dark.some((r) => x >= r.x && y >= r.y && x < r.x + r.w && y < r.y + r.h);
+    const out: AreaLight[] = [];
     for (const l of this.lightSrcs) {
       if (l.building !== here) continue;
       if (l.facade && dark.length && unlit(l.x, l.y)) continue;
-      const tint = LIGHT_TINT[l.color] ?? LIGHT_TINT.warm!;
-      if (inside) stamp(l.x, l.y, l.r * 1.3, tint, (l.color === 'fire' ? 0.85 : 0.6) * flicker(l.x), 1);
-      else if (l.facade) stamp(l.x, l.y, l.r, tint, facadeK * 0.7 * flicker(l.y));
-      else stamp(l.x, l.y, l.r * 0.85, tint, lampK * 0.8 * flicker(l.x + l.y), 0);
+      const mode = inside ? 0 : l.facade ? 1 : 2;
+      const r = mode === 0 ? l.r * 1.3 : mode === 1 ? l.r : l.r * 0.85;
+      if (l.x + r < a.x || l.y + r < a.y || l.x - r > a.x + a.w || l.y - r > a.y + a.h) continue;
+      out.push({
+        x: l.x - a.x,
+        y: l.y - a.y,
+        scale: (r * 2) / 128,
+        tint: LIGHT_TINT[l.color] ?? LIGHT_TINT.warm!,
+        frame: mode === 0 ? 1 : 0,
+        mode,
+        k: mode === 0 ? (l.color === 'fire' ? 0.85 : 0.6) : mode === 1 ? 0.7 : 0.8,
+        seed: mode === 0 ? l.x : mode === 1 ? l.y : l.x + l.y,
+      });
     }
-    const dim = night || dusk;
-    const carried = (av: Avatar, x: number, y: number) => {
-      if (av.isST) stamp(x, y - 14, av === this.myAvatar && night ? 104 : 70, LIGHT_TINT.st!, dim ? 0.95 : 0.25, 0);
-      else if (av.hasLantern) stamp(x, y - 12, 46, LIGHT_TINT.lantern!, dim ? 0.75 : 0.15, 1);
-      else if (av.ghost) stamp(x, y - 14, 30, 0x9ad0e0, dim ? 0.45 : 0.15, 1);
-    };
-    for (const av of this.avatars.values()) if (av.sprite.visible) carried(av, av.sprite.x, av.sprite.y);
-    if (this.myAvatar && this.ready) {
-      carried(this.myAvatar, this.myAvatar.sprite.x, this.myAvatar.sprite.y);
-      if (dim && !this.myAvatar.isST && !inside) stamp(this.me.x, this.me.y - 12, 44, 0x9aa4d8, 0.35, 1);
-    }
+    this.areaLights = out;
   }
+}
+
+function sameNumbers(a: readonly number[], b: readonly number[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
 }
 
 function easeOut(t: number) {
@@ -1652,6 +1897,11 @@ function isTyping(e: KeyboardEvent): boolean {
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || n.isContentEditable) return true;
   }
   return false;
+}
+
+/** The outdoor camera zoom for a w x h canvas: the square's preset view (circle + clock face) fits. */
+export function outdoorZoom(w: number, h: number): number {
+  return Math.max(0.2, Math.min(w / SQUARE_VIEW.w, h / SQUARE_VIEW.h));
 }
 
 /** Spawn-free helper used before the first server position arrives. */

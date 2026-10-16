@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 
 // LEAD-OWNED. Minimal observable store + Preact hook. High-frequency data (world snapshots)
 // does NOT go through stores; use RoomConnection.on('world:snapshot') instead.
@@ -32,6 +32,43 @@ export function useStore<T>(store: Store<T>): T {
     return store.subscribe(setV);
   }, [store]);
   return v;
+}
+
+/**
+ * Subscribe to a derived slice of a store: the component re-renders only when the selected value
+ * changes according to `eq` (default Object.is). For per-frame stores (localPlayer) and views whose
+ * consumers need a few fields only (e.g. `conn.gameView` -> phase). `select` may close over props:
+ * the latest one is used; it runs on every store update, so keep it cheap and pure.
+ */
+export function useStoreSelector<T, S>(store: Store<T>, select: (v: T) => S, eq: (a: S, b: S) => boolean = Object.is): S {
+  const [, bump] = useState(0);
+  const ref = useRef<{ select: (v: T) => S; eq: (a: S, b: S) => boolean; value: S } | null>(null);
+  const next = select(store.get());
+  // keep the previous value's identity while it is "equal" (stable props / memo deps downstream)
+  const value = ref.current && ref.current.eq(ref.current.value, next) ? ref.current.value : next;
+  ref.current = { select, eq, value };
+  useEffect(() => {
+    const check = (v: T) => {
+      const r = ref.current!;
+      const n = r.select(v);
+      if (r.eq(r.value, n)) return;
+      r.value = n;
+      bump((x) => x + 1);
+    };
+    check(store.get()); // the store may have changed between render and subscribe
+    return store.subscribe(check);
+  }, [store]);
+  return value;
+}
+
+/** Shallow equality for small selector results (plain objects / arrays of primitives). */
+export function shallowEqual<S>(a: S, b: S): boolean {
+  if (Object.is(a, b)) return true;
+  if (!a || !b || typeof a !== 'object' || typeof b !== 'object') return false;
+  const ka = Object.keys(a as object);
+  if (ka.length !== Object.keys(b as object).length) return false;
+  for (const k of ka) if (!Object.is((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k])) return false;
+  return true;
 }
 
 export class Emitter<M extends object> {

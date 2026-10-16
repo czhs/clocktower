@@ -30,8 +30,9 @@ import {
   C2S,
   CLOSE_CODES,
   RoomJoinOptions,
-  SERVER_TICK_HZ,
   SNAPSHOT_HZ,
+  SnapshotEncoder,
+  snapCapable,
   type C2SParsed,
   type C2SType,
   type ChatMessage,
@@ -124,6 +125,10 @@ interface Seat {
    * Colyseus starts listening). Replayed in order by reattach(). Bounded.
    */
   pending?: { client: GameClient; type: string; raw: unknown }[];
+  /** (v2.2, WP4) This member's client joined with the 'world:snap2' capability (kept across token reconnects). */
+  snap2?: boolean;
+  /** (v2.2, WP4) Delta state of the CURRENT connection only: a different client object starts over. */
+  snapEnc?: { client: GameClient; enc: SnapshotEncoder } | null;
 }
 
 /** A connected seat whose client cannot receive (JOINING / socket not open) for this long is closed. */
@@ -139,6 +144,15 @@ const PENDING_MAX = 32;
 const STALE_WARN_MS = 10_000;
 
 const CreateOptions = z.object({ lobbyId: z.string().min(4).max(32) });
+
+/**
+ * (v2.2, WP4) Snapshots go out on every 2nd tick: a steady SNAPSHOT_HZ (12 Hz, every 83.3 ms)
+ * instead of the 50/100 ms jitter of a 20 Hz tick with an 83.3 ms accumulator, so the client's
+ * INTERP_DELAY_MS (110) always covers one interval. Snapshots stay aligned to ticks (server walks
+ * advance per tick). CONTRACT-REQUEST(lead): SERVER_TICK_HZ (constants.ts) = 24 to match.
+ */
+const TICKS_PER_SNAPSHOT = 2;
+const TICK_HZ = SNAPSHOT_HZ * TICKS_PER_SNAPSHOT;
 
 export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
   // Generous: see header comment. Real capacity is enforced in onJoin.
@@ -183,7 +197,7 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
   private lobbyDirty = true;
   private forceGameView = new Set<string>();
   private lastGameView = new Map<string, string>();
-  private snapshotAcc = 0;
+  private snapshotTick = 0;
   private idleSince: number | null = null;
   private idleCheckAcc = 0;
   private disposing = false;
@@ -236,7 +250,7 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
 
     for (const [type, spec] of Object.entries(MESSAGE_LIMITS)) this.limiters.set(type, new RateLimiter(spec));
     this.onMessage('*', (client, type, message) => this.handleMessage(client as GameClient, String(type), message));
-    this.setSimulationInterval((dt) => this.tick(dt), 1000 / SERVER_TICK_HZ);
+    this.setSimulationInterval((dt) => this.tick(dt), 1000 / TICK_HZ);
     // A joining socket must arrive within this many seconds of the HTTP seat reservation. The
     // Colyseus default (15 s) expired under heavy host load ("seat reservation expired", 4002),
     // which made clients retry with a second join.
@@ -281,11 +295,14 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
   }
 
   /** Synchronous: membership + capacity decisions are atomic per room. */
-  override onJoin(client: GameClient, _options: unknown, auth: RoomAuthData) {
+  override onJoin(client: GameClient, options: unknown, auth: RoomAuthData) {
     const existing = this.byAccount.get(auth.accountId);
     const seat = existing ? this.seats.get(existing) : undefined;
     if (seat) this.restore(seat, client, auth);
     else this.admit(client, auth);
+    // (v2.2, WP4) A fresh join decides the snapshot format (an old tab keeps 'world:snapshot').
+    const joined = this.seats.get(client.userData?.pid ?? '');
+    if (joined?.client === client) joined.snap2 = snapCapable(options);
     this.afterHandler();
   }
 
@@ -1095,12 +1112,8 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
       this.recordOutcome();
     }
 
-    this.snapshotAcc += dtMs;
-    const snapEvery = 1000 / SNAPSHOT_HZ;
-    if (this.snapshotAcc >= snapEvery) {
-      this.snapshotAcc %= snapEvery;
-      this.sendSnapshots();
-    }
+    this.snapshotTick = (this.snapshotTick + 1) % TICKS_PER_SNAPSHOT;
+    if (this.snapshotTick === 0) this.sendSnapshots();
     this.flushViews();
 
     this.idleCheckAcc += dtMs;
@@ -1182,7 +1195,15 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
         // (every snapshot is complete, never a delta: absent = no pins).
         const pins = this.social.pinsFor(s.member.pid);
         if (pins.length) snap.pins = pins;
-        this.sendTo(s, 'world:snapshot', snap);
+        if (!s.snap2 || !s.client) {
+          this.sendTo(s, 'world:snapshot', snap);
+          continue;
+        }
+        // (v2.2, WP4) The per-viewer snapshot above (visibility + pins decided first) is the ONLY
+        // input of this viewer's encoder; its delta state belongs to this exact connection.
+        if (s.snapEnc?.client !== s.client) s.snapEnc = { client: s.client, enc: new SnapshotEncoder() };
+        const frame = s.snapEnc.enc.encode(snap);
+        if (frame) this.sendTo(s, 'world:snap2', frame);
       } catch (e) {
         // One viewer's failure must never starve everyone after it in the loop.
         this.log.error('snapshotFor failed', { pid: s.member.pid, err: errMsg(e) });

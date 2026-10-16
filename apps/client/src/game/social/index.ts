@@ -72,6 +72,8 @@ export interface SocialCtx {
    * start a walk first) and replayed through this (wired by TownScene).
    */
   passTap?(sx: number, sy: number): void;
+  /** Optional: canvas px per CSS px (the low render tier draws the canvas smaller; default 1). */
+  renderScale?(): number;
 }
 
 export interface SocialLayer {
@@ -189,6 +191,8 @@ export function createSocialLayer(scene: Phaser.Scene, ctx: SocialCtx): SocialLa
   };
   const nameOf = (pid: string) => conn.lobbyView.get()?.members.find((m) => m.pid === pid)?.displayName ?? 'Someone';
   const canvasRect = () => scene.game.canvas.getBoundingClientRect();
+  /** CSS px per world px: sizes meant in screen px use this (the camera zoom is in canvas px). */
+  const cssZoom = () => cam().zoom / (ctx.renderScale?.() ?? 1);
   const worldAt = (sx: number, sy: number) => cam().getWorldPoint(sx, sy);
   const clampCoord = (v: number) => Math.max(-64, Math.min(4096, Math.round(v * 10) / 10));
 
@@ -385,7 +389,7 @@ export function createSocialLayer(scene: Phaser.Scene, ctx: SocialCtx): SocialLa
     }
     if (st === 'cancelled') return;
     // a short tap: your pin -> remove it; else the town's normal tap
-    const hit = pinAt(pr.wx, pr.wy, 8 / cam().zoom);
+    const hit = pinAt(pr.wx, pr.wy, 8 / cssZoom());
     if (hit && canRemove(hit.view)) {
       unpin(hit.id);
       return;
@@ -409,10 +413,11 @@ export function createSocialLayer(scene: Phaser.Scene, ctx: SocialCtx): SocialLa
     input.off('gameover', onOver);
   });
 
-  /** Viewport (client) coords of a pointer: the canvas is sized 1:1 in CSS px. */
+  /** Viewport (client) coords of a pointer (canvas px -> CSS px; 1:1 unless the low tier scales the canvas). */
   function clientOf(p: Phaser.Input.Pointer) {
     const r = canvasRect();
-    return { x: r.left + p.x, y: r.top + p.y };
+    const k = r.width / scene.scale.width;
+    return { x: r.left + p.x * k, y: r.top + p.y * k };
   }
 
   function radialButtonAt(cx: number, cy: number): 'point' | 'pin' | null {
@@ -552,7 +557,7 @@ export function createSocialLayer(scene: Phaser.Scene, ctx: SocialCtx): SocialLa
   }
 
   function drawEmotes(t: number) {
-    const z = cam().zoom;
+    const z = cssZoom();
     const still = reducedMotion();
     for (const [pid, e] of emotes) {
       const age = debugHold ? Math.min(t - e.t0, EMOTE_POINT_MS / 2) : t - e.t0;
@@ -690,9 +695,10 @@ export function createSocialLayer(scene: Phaser.Scene, ctx: SocialCtx): SocialLa
   }
 
   function layoutPins(t: number) {
-    const z = cam().zoom;
+    const z = cam().zoom; // canvas px per world px: pixel snapping
+    const zc = cssZoom(); // CSS px per world px: sizes
     const g = art.pinGeom();
-    const s = pinTexels(z) / z;
+    const s = pinTexels(zc) / zc;
     const still = reducedMotion();
     const list = displayPins(t);
     const live = new Set(list.map((p) => p.view.id));
@@ -734,7 +740,7 @@ export function createSocialLayer(scene: Phaser.Scene, ctx: SocialCtx): SocialLa
         const stack = stacks.get(v.target.pid) ?? [v];
         const i = Math.max(0, stack.findIndex((q) => q.id === v.id));
         const slot = fanSlot(i, stack.length, g.w * s);
-        const label = 14 / z; // clear the name label above the head
+        const label = 14 / zc; // clear the name label above the head
         const bob = reducedMotion() ? 0 : Math.round(Math.sin(t / 420 + i * 1.3)) * s;
         x = p.x + slot.dx;
         y = p.y - 35 - label + slot.dy + bob;
@@ -768,7 +774,7 @@ export function createSocialLayer(scene: Phaser.Scene, ctx: SocialCtx): SocialLa
           if (still) alpha = k;
           else {
             const fall = k < 0.68 ? 1 - (k / 0.68) ** 2 : -0.14 * Math.sin(((k - 0.68) / 0.32) * Math.PI);
-            yOff = -fall * (30 / z);
+            yOff = -fall * (30 / zc);
             alpha = Math.min(1, k * 4);
           }
         } else sp.animate = false;
@@ -779,9 +785,10 @@ export function createSocialLayer(scene: Phaser.Scene, ctx: SocialCtx): SocialLa
       }
       const px = Math.round(x * z) / z;
       const py = Math.round((y + yOff) * z) / z;
-      sp.img.setPosition(px, py).setScale(s * k2).setRotation(rot).setAlpha(alpha).setDepth(depth).setVisible(true);
+      sp.img.setPosition(px, py).setScale(s * k2).setRotation(rot).setAlpha(alpha).setVisible(true);
+      if (sp.img.depth !== depth) sp.img.setDepth(depth); // setDepth always queues a display-list sort
       if (sp.shadow) {
-        const near = 1 - Math.min(1, -yOff / (30 / z));
+        const near = 1 - Math.min(1, -yOff / (30 / zc));
         sp.shadow
           .setPosition(Math.round(x * z) / z, Math.round(y * z) / z)
           .setScale(s * (0.6 + 0.4 * near))
@@ -831,7 +838,7 @@ export function createSocialLayer(scene: Phaser.Scene, ctx: SocialCtx): SocialLa
   // hover (mouse): tooltip + remove badge + cursor
 
   function updateHover() {
-    const z = cam().zoom;
+    const z = cssZoom();
     let hit: PinSprite | null = null;
     if (cursor.over && cursor.mouse && !press) {
       const w = worldAt(cursor.sx, cursor.sy);
@@ -894,7 +901,7 @@ export function createSocialLayer(scene: Phaser.Scene, ctx: SocialCtx): SocialLa
           // no haptics
         }
       } else if (press.state === 'pending' && age > 110) {
-        const z = cam().zoom;
+        const z = cssZoom();
         const k = Math.min(1, (age - 110) / (350 - 110));
         const r = 15 / z;
         gUp.lineStyle(4 / z, 0x1a1008, 0.5).beginPath().arc(press.wx, press.wy, r, 0, Math.PI * 2).strokePath();

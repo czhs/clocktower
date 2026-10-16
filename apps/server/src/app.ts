@@ -148,12 +148,45 @@ export async function startAppServer(config: AppConfig, log: Logger, options: Ap
 
   registerHttpRoutes(app, services);
 
-  // Static SPA. Unknown non-API GETs fall back to index.html so /lobby/<id> share links work.
+  // Static SPA (v2.2 WP6). Cache policy:
+  // - /assets/* are Vite's content-hashed outputs: immutable for a year (Cloudflare keeps the
+  //   longer origin TTL). The deploy keeps the previous release's assets for one more release so
+  //   open tabs can still lazy-load their old chunks.
+  // - other public/ files (/landing, /audio, /tutorial, /art, favicon) keep their names across
+  //   releases: one day, then served stale for up to a week while revalidating (ETag).
+  //   JSON manifests and index.html are always revalidated.
+  // - Unknown paths fall back to index.html only for navigations (no file extension, HTML
+  //   acceptable) so /lobby/<id> share links work; a missing file (e.g. an old chunk) is a real,
+  //   uncacheable 404 instead of an HTML page that the edge would cache under a .js URL.
+  // /api, /healthz, /matchmake and /internal never reach these handlers' caching.
   if (clientDist && existsSync(clientDist)) {
-    app.use(express.static(clientDist, { index: false, maxAge: '1h' }));
-    app.get(/^(?!\/(api|healthz|matchmake|internal)\b).*/, (_req, res) => {
-      res.setHeader('Cache-Control', 'no-cache');
-      res.sendFile(path.join(clientDist, 'index.html'));
+    const root = path.resolve(clientDist); // serve-static hands setHeaders absolute paths
+    const assetsDir = path.join(root, 'assets') + path.sep;
+    const indexHtml = path.join(root, 'index.html');
+    app.use(
+      express.static(root, {
+        index: false,
+        cacheControl: false,
+        setHeaders(res, filePath) {
+          let cc: string;
+          if (filePath.startsWith(assetsDir)) cc = 'public, max-age=31536000, immutable';
+          else if (filePath === indexHtml || filePath.endsWith('.json')) cc = 'no-cache';
+          else cc = 'public, max-age=86400, stale-while-revalidate=604800';
+          res.setHeader('Cache-Control', cc);
+        },
+      }),
+    );
+    const notOurs = /^\/(api|healthz|matchmake|internal)\b/;
+    app.use((req, res, next) => {
+      if ((req.method !== 'GET' && req.method !== 'HEAD') || notOurs.test(req.path)) return next();
+      const navigation = !path.posix.extname(req.path) && !req.path.startsWith('/assets/') && req.accepts('html') === 'html';
+      if (navigation) {
+        res.setHeader('Cache-Control', 'no-cache');
+        res.sendFile(indexHtml);
+        return;
+      }
+      res.setHeader('Cache-Control', 'no-store');
+      res.status(404).type('text/plain').send('Not found');
     });
   } else if (clientDist) {
     log.warn('client dist not found; API-only mode', { clientDist });

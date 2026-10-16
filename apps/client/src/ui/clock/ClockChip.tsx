@@ -6,24 +6,42 @@
 //   * the open proposal as a compact inline vote card for everyone (one tap Yes / No, live tally,
 //     seconds left), which turns into a brief result line ("+2 min added" / "Not extended").
 // Mount (lead, GameScreen children): <ClockChip conn={conn} />. Renders nothing without a clock.
+// (v2.2 perf) Only the small leaves tick: ChipFace (countdown text + mini dial, 4 Hz) and VoteCard
+// (while a proposal is open). The chip itself re-renders on a new view, and at 1 Hz only while the
+// "+ time" state can change with the clock (automatic games, players).
+import type { ComponentChildren } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import type { DayClockView, PlayerGameView, StorytellerGameView } from '@ct/protocol';
+import type { ClockProposalView, DayClockView, PlayerGameView, StorytellerGameView } from '@ct/protocol';
 import type { RoomConnection } from '../../net/room';
 import { serverNow } from '../../net/serverTime';
 import { useStore } from '../../net/store';
-import { clockLine, proposalCard, proposalOutcome, proposeState, type ClockLine, type LocalExtensionLog, type ProposalOutcome } from './logic';
+import { clockLine, clockRemainingMs, proposalCard, proposalOutcome, proposeState, type ClockLine, type LocalExtensionLog, type ProposalOutcome } from './logic';
 import './clock.css';
 
 type View = PlayerGameView | StorytellerGameView;
 
-/** Re-render every `ms` while active (server-time countdowns). */
-function useTick(active: boolean, ms = 250): number {
+/** Re-render every `ms` while active (server-time countdowns). With `alignTo` (a server ms, e.g. the
+ * clock's endsAt) the ticks land just after each whole `ms` step before/after it (whole seconds of
+ * the countdown, including the moment it reaches zero). */
+function useTick(active: boolean, ms = 250, alignTo: number | null = null): number {
   const [, setN] = useState(0);
   useEffect(() => {
     if (!active) return;
-    const t = setInterval(() => setN((n) => n + 1), ms);
-    return () => clearInterval(t);
-  }, [active, ms]);
+    if (alignTo === null) {
+      const t = setInterval(() => setN((n) => n + 1), ms);
+      return () => clearInterval(t);
+    }
+    let t: ReturnType<typeof setTimeout>;
+    const next = () => {
+      const d = (((alignTo - serverNow()) % ms) + ms) % ms || ms;
+      t = setTimeout(() => {
+        setN((n) => n + 1);
+        next();
+      }, d + 5);
+    };
+    next();
+    return () => clearTimeout(t);
+  }, [active, ms, alignTo]);
   return serverNow();
 }
 
@@ -34,7 +52,8 @@ export function ClockChip({ conn }: { conn: RoomConnection }) {
   const clock = view?.clock ?? null;
   const phaseOk = !!view && (view.phase === 'day' || view.phase === 'bedtime') && !view.result;
   const running = !!clock && (!clock.paused || !!clock.proposal);
-  const now = useTick(phaseOk && !!clock && (running || !!clock.proposal));
+  const canPropose = !!view && view.kind === 'player' && view.storytellerMode === 'auto';
+  const now = useTick(phaseOk && !!clock && running && canPropose, 1000, clock?.endsAt ?? null);
 
   const [trayOpen, setTrayOpen] = useState(false);
   const [asking, setAsking] = useState<number | null>(null);
@@ -117,11 +136,10 @@ export function ClockChip({ conn }: { conn: RoomConnection }) {
   }, [trayOpen, ps?.allowed]);
 
   if (!view || !clock || !phaseOk || !ps) return null;
-  const line = clockLine(clock, now, { onTheBlock: !!view.day?.onTheBlock && view.day.executedSeat === null });
-  if (!line) return null;
+  if (clockRemainingMs(clock, now) === null) return null; // (= clockLine(…) === null: no countdown set)
+  const onTheBlock = !!view.day?.onTheBlock && view.day.executedSeat === null;
   const myPid = view.kind === 'player' ? view.you.pid : null;
   const nameOf = (pid: string) => view.players.find((p) => p.pid === pid)?.name ?? 'Someone';
-  const card = clock.proposal && view.kind === 'player' ? proposalCard(clock.proposal, { myPid, nameOf, now, pending: pendingVote }) : null;
 
   const propose = (minutes: number) => {
     conn.send('clock:propose', { minutes });
@@ -129,19 +147,14 @@ export function ClockChip({ conn }: { conn: RoomConnection }) {
     setAsking(minutes);
     setNote(null);
   };
-  const vote = (yes: boolean) => {
-    if (!card || card.secondsLeft <= 0) return;
-    if (card.my === (yes ? 'yes' : 'no')) return;
-    setPendingVote({ id: card.id, yes });
-    conn.send('clock:vote', { id: card.id, yes });
+  const vote = (id: string, yes: boolean) => {
+    setPendingVote({ id, yes });
+    conn.send('clock:vote', { id, yes });
   };
 
   return (
     <div class={`ctc${view.kind === 'storyteller' ? ' ctc-st' : ''}`} ref={root}>
-      <div class={`ctc-chip ctc-${line.tone}${line.urgent ? ' ctc-urgent' : ''}${line.due ? ' ctc-due' : ''}`} role="timer" aria-live="off" title={line.title}>
-        <MiniDial line={line} paused={clock.paused} />
-        <span class="ctc-label">{line.label}</span>
-        {line.time && <span class="ctc-time">{line.time}</span>}
+      <ChipFace clock={clock} onTheBlock={onTheBlock}>
         {ps.show && (
           <button
             class={`ctc-plus${trayOpen ? ' on' : ''}`}
@@ -157,11 +170,7 @@ export function ClockChip({ conn }: { conn: RoomConnection }) {
             + time
           </button>
         )}
-      </div>
-      {/* accessible announcement of the stage (not every second) */}
-      <span class="ctc-sr" aria-live="polite">
-        {line.due ? line.label : clock.paused ? 'Town clock paused' : line.label}
-      </span>
+      </ChipFace>
 
       {trayOpen && ps.allowed && (
         <div class="ctc-tray" role="group" aria-label="Propose more time">
@@ -174,24 +183,8 @@ export function ClockChip({ conn }: { conn: RoomConnection }) {
         </div>
       )}
 
-      {card ? (
-        <div class={`ctc-vote${card.passing ? ' passing' : ''}`} role="group" aria-label={`${card.title}: vote`}>
-          <div class="ctc-vote-title">{card.title}</div>
-          <div class="ctc-vote-row">
-            <button class={`ctc-yes${card.my === 'yes' ? ' on' : ''}`} aria-pressed={card.my === 'yes'} disabled={card.secondsLeft <= 0} onClick={() => vote(true)}>
-              Yes
-            </button>
-            <button class={`ctc-no${card.my === 'no' ? ' on' : ''}`} aria-pressed={card.my === 'no'} disabled={card.secondsLeft <= 0} onClick={() => vote(false)}>
-              No
-            </button>
-            <span class="ctc-vote-meta">
-              <b>{card.tally}</b> · {card.secondsLeft} s
-            </span>
-          </div>
-          <div class="ctc-drain" aria-hidden="true">
-            <i style={{ transform: `scaleX(${card.fraction})` }} />
-          </div>
-        </div>
+      {clock.proposal && view.kind === 'player' ? (
+        <VoteCard proposal={clock.proposal} myPid={myPid} nameOf={nameOf} pending={pendingVote} onVote={vote} />
       ) : result ? (
         <div class={`ctc-result ${result.passed ? 'ok' : 'no'}`} role="status">
           {result.passed ? `✓ ${result.text}` : result.text}
@@ -210,9 +203,69 @@ export function ClockChip({ conn }: { conn: RoomConnection }) {
   );
 }
 
+/** The chip face: the only part that changes every tick (countdown text + mini dial). */
+function ChipFace({ clock, onTheBlock, children }: { clock: DayClockView; onTheBlock: boolean; children?: ComponentChildren }) {
+  const now = useTick(!clock.paused || !!clock.proposal);
+  const line = clockLine(clock, now, { onTheBlock });
+  if (!line) return null;
+  return (
+    <>
+      <div class={`ctc-chip ctc-${line.tone}${line.urgent ? ' ctc-urgent' : ''}${line.due ? ' ctc-due' : ''}`} role="timer" aria-live="off" title={line.title}>
+        <MiniDial line={line} paused={clock.paused} />
+        <span class="ctc-label">{line.label}</span>
+        {line.time && <span class="ctc-time">{line.time}</span>}
+        {children}
+      </div>
+      {/* accessible announcement of the stage (not every second) */}
+      <span class="ctc-sr" aria-live="polite">
+        {line.due ? line.label : clock.paused ? 'Town clock paused' : line.label}
+      </span>
+    </>
+  );
+}
+
+/** The open extension proposal: one tap Yes / No, live tally and the draining window (ticks). */
+function VoteCard(props: {
+  proposal: ClockProposalView;
+  myPid: string | null;
+  nameOf: (pid: string) => string;
+  pending: { id: string; yes: boolean } | null;
+  onVote: (id: string, yes: boolean) => void;
+}) {
+  const now = useTick(true);
+  const card = proposalCard(props.proposal, { myPid: props.myPid, nameOf: props.nameOf, now, pending: props.pending });
+  const vote = (yes: boolean) => {
+    if (card.secondsLeft <= 0) return;
+    if (card.my === (yes ? 'yes' : 'no')) return;
+    props.onVote(card.id, yes);
+  };
+  return (
+    <div class={`ctc-vote${card.passing ? ' passing' : ''}`} role="group" aria-label={`${card.title}: vote`}>
+      <div class="ctc-vote-title">{card.title}</div>
+      <div class="ctc-vote-row">
+        <button class={`ctc-yes${card.my === 'yes' ? ' on' : ''}`} aria-pressed={card.my === 'yes'} disabled={card.secondsLeft <= 0} onClick={() => vote(true)}>
+          Yes
+        </button>
+        <button class={`ctc-no${card.my === 'no' ? ' on' : ''}`} aria-pressed={card.my === 'no'} disabled={card.secondsLeft <= 0} onClick={() => vote(false)}>
+          No
+        </button>
+        <span class="ctc-vote-meta">
+          <b>{card.tally}</b> · {card.secondsLeft} s
+        </span>
+      </div>
+      <div class="ctc-drain" aria-hidden="true">
+        <i style={{ transform: `scaleX(${card.fraction})` }} />
+      </div>
+    </div>
+  );
+}
+
+/** Dial resolution: 1° steps (0.11 px at this size) — the DOM changes only when the hand visibly moves. */
+const DIAL_STEPS = 360;
+
 /** A tiny tower dial: the wedge is the time left (gold / red for nominations / blue for bedtime). */
 function MiniDial({ line, paused }: { line: ClockLine; paused: boolean }) {
-  const f = line.fraction;
+  const f = line.fraction >= 0.999 || line.fraction <= 0.002 ? line.fraction : Math.round(line.fraction * DIAL_STEPS) / DIAL_STEPS;
   const a = -Math.PI / 2 + f * Math.PI * 2;
   const r = 6.5;
   const x = 8 + Math.cos(a) * r;

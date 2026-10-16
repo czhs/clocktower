@@ -1,97 +1,58 @@
+// Stylesheets first, in the cascade order of the single v2.1 bundle (theme.css last). Every sheet
+// stays in the entry CSS even though most components now load lazily: chunk CSS would be appended
+// after theme.css and silently change which rule wins (v2.2 perf WP3 splits JS only).
+import './ui/common/help.css';
+import './ui/auth/auth.css';
+import './ui/auth/landing.css';
+import './ui/lobby/lobby.css';
+import './ui/social/social.css';
+import './ui/common/RoleIcon.css';
+import './ui/notebook/notebook.css';
+import './ui/story/story.css';
+import './ui/clock/clock.css';
+import './game/game.css';
+import './ui/admin/admin.css';
+import './ui/hud/hud.css';
+import './ui/storyteller/storyteller.css';
+import './ui/voice/voice.css';
+import './ui/chat/chat.css';
+import './ui/common/theme.css';
 import { render } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
-import { CLOSE_CODES, type AccountView } from '@ct/protocol';
-import { api, ApiFailure } from './net/api';
-import { CLIENT_CLOSE, RoomConnection } from './net/room';
-import { useStore } from './net/store';
+import type { AccountView } from '@ct/protocol';
+import { api } from './net/api';
 import { AuthScreen } from './ui/auth/AuthScreen';
 import { HomeScreen } from './ui/lobby/HomeScreen';
-import { WaitingRoom } from './ui/lobby/WaitingRoom';
-import { GameScreen } from './game/GameScreen';
-import { AdminScreen } from './ui/admin/AdminScreen';
-import { Hud } from './ui/hud';
-import { StorytellerPanel } from './ui/storyteller';
-import { VoicePanel } from './ui/voice';
-import { ChatPanel } from './ui/chat';
-import './ui/common/theme.css';
+import { lazyComponent, whenIdle } from './ui/common/lazy';
+import { navigate, parseRoute, type Route } from './ui/common/route';
 import { installUiSounds } from './game/audio';
 
-// LEAD-OWNED shell: session bootstrap + tiny path router.
-//   /               account home + lobby finder (or auth when signed out)
-//   /lobby/:id      join/restore that lobby; town is rendered behind the waiting-room overlay
-//   /admin          admin status (server enforces ADMIN_ACCOUNT_IDS)
+// LEAD-OWNED shell: session bootstrap + tiny path router (ui/common/route.ts).
+// The entry holds only what a visitor needs before joining a lobby (landing / sign-up / sign-in,
+// account home + lobby finder). Everything after that is code-split (v2.2 perf WP3):
+//   LobbyRoute   colyseus + the town screen, HUD, voice, chat, waiting room (prefetched on home);
+//                Phaser (TownGame) and the Storyteller panel are further chunks below it
+//   AdminScreen  /admin only
 
-export type Route = { name: 'home' } | { name: 'lobby'; id: string; intent: 'player' | 'storyteller' } | { name: 'admin' };
-
-function parseRoute(): Route {
-  const m = location.pathname.match(/^\/lobby\/([A-Za-z0-9_-]{4,32})\/?$/);
-  if (m) return { name: 'lobby', id: m[1]!, intent: 'player' };
-  if (location.pathname === '/admin') return { name: 'admin' };
-  return { name: 'home' };
-}
-
-export function navigate(route: Route) {
-  const path = route.name === 'lobby' ? `/lobby/${route.id}` : route.name === 'admin' ? '/admin' : '/';
-  history.pushState(route, '', path);
-  window.dispatchEvent(new CustomEvent('ct:navigate', { detail: route }));
-}
-
-function LobbyRoute({ id, intent, account }: { id: string; intent: 'player' | 'storyteller'; account: AccountView }) {
-  const [conn, setConn] = useState<RoomConnection | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    const c = new RoomConnection(id);
-    let alive = true;
-    c.connect(intent)
-      .then(() => alive && setConn(c))
-      .catch((e: unknown) => alive && setError(e instanceof ApiFailure ? e.body.message : String((e as Error)?.message ?? e)));
-    const offClosed = c.events.on('closed', ({ code }) => {
-      if (code === CLOSE_CODES.kicked) setError('You were removed from this lobby.');
-      else if (code === CLOSE_CODES.replaced) setError('This account joined the lobby from another tab or device.');
-      else if (code === CLOSE_CODES.lobbyClosed) setError('This lobby was closed.');
-      else if (code === CLIENT_CLOSE.lobbyGone)
-        setError('This lobby no longer exists. The server may have restarted; any game in progress could not be recovered. Your account and stats are safe.');
-      else setError('Lost connection to the lobby and could not reconnect. Check your internet connection, then try again.');
-    });
-    return () => {
-      alive = false;
-      offClosed();
-      void c.leave();
-    };
-    // Only the lobby id identifies the connection: an intent change for the same lobby (e.g. the
-    // route re-parsed on popstate) must not tear down and re-join (two sockets for one account).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
-  if (error)
-    return (
-      <div class="screen center">
-        <div class="panel">
-          <p>{error}</p>
-          <button class="primary" onClick={() => navigate({ name: 'home' })}>Back to lobbies</button>{' '}
-          <button onClick={() => location.reload()}>Try again</button>
-        </div>
-      </div>
-    );
-  if (!conn) return <div class="screen center">Joining lobby…</div>;
-  return <InLobby conn={conn} account={account} />;
-}
-
-function InLobby({ conn, account }: { conn: RoomConnection; account: AccountView }) {
-  const lobby = useStore(conn.lobbyView);
-  const game = useStore(conn.gameView);
-  const waiting = !game && (!lobby || lobby.lobby.phase === 'waiting');
-  return (
-    <div class="screen">
-      <GameScreen conn={conn} account={account}>
-        <Hud conn={conn} account={account} />
-        <StorytellerPanel conn={conn} account={account} />
-        <VoicePanel conn={conn} account={account} />
-        <ChatPanel conn={conn} account={account} />
-      </GameScreen>
-      {waiting && <WaitingRoom conn={conn} account={account} onLeave={() => navigate({ name: 'home' })} />}
+const loadFailed = (what: string) => (
+  <div class="screen center">
+    <div class="panel">
+      <p>The {what} could not be loaded. Check your internet connection, then try again.</p>
+      <button class="primary" onClick={() => location.reload()}>
+        Try again
+      </button>
     </div>
-  );
-}
+  </div>
+);
+
+const LobbyRoute = lazyComponent(
+  () => import('./ui/lobby/LobbyRoute').then((m) => m.LobbyRoute),
+  (failed) => (failed ? loadFailed('lobby') : <div class="screen center">Joining lobby…</div>),
+);
+const AdminScreen = lazyComponent(
+  () => import('./ui/admin/AdminScreen').then((m) => m.AdminScreen),
+  (failed) => (failed ? loadFailed('admin page') : <div class="screen center">Loading…</div>),
+);
 
 function App() {
   const [account, setAccount] = useState<AccountView | null | undefined>(undefined);
@@ -110,6 +71,11 @@ function App() {
       window.removeEventListener('ct:navigate', onNav);
     };
   }, []);
+  // Signed in on the home screen: fetch the lobby chunk while the user picks a lobby.
+  const home = !!account && route.name === 'home';
+  useEffect(() => {
+    if (home) return whenIdle(() => void LobbyRoute.preload());
+  }, [home]);
 
   if (account === undefined) return <div class="screen center">Loading…</div>;
   if (account === null) return <AuthScreen onSignedIn={setAccount} />;
@@ -124,6 +90,11 @@ function App() {
     />
   );
 }
+
+// A direct /lobby/<id> (or /admin) link: fetch that chunk in parallel with the session check.
+const first = parseRoute();
+if (first.name === 'lobby') void LobbyRoute.preload();
+else if (first.name === 'admin') void AdminScreen.preload();
 
 installUiSounds();
 render(<App />, document.getElementById('app')!);

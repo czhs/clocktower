@@ -3,6 +3,7 @@
 // browser was sent (secrecy) without reaching into app internals.
 import { expect, type Browser, type BrowserContext, type Page } from '@playwright/test';
 import { unpack } from '@colyseus/msgpackr';
+import { SnapshotDecoder, type Snap2Frame } from '../../packages/protocol/src/index.js';
 
 const ROOM_DATA = 13; // colyseus Protocol.ROOM_DATA
 
@@ -49,11 +50,16 @@ export class FrameTap {
     page: Page,
   ) {
     page.on('websocket', (ws) => {
+      // (v2.2 WP4) compact 'world:snap2' frames are kept AND recorded as the 'world:snapshot' they
+      // decode to (delta state is per socket, like the page's own decoder).
+      const snaps = new SnapshotDecoder();
       const handle = (dir: 'in' | 'out') => (data: { payload: string | Buffer }) => {
         if (typeof data.payload === 'string') return;
         try {
           const d = decodeRoomData(data.payload);
           if (d) this.frames.push({ at: Date.now(), dir, type: d.type, payload: d.payload });
+          const snap = d && dir === 'in' && d.type === 'world:snap2' ? snaps.decode(d.payload as Snap2Frame) : null;
+          if (snap) this.frames.push({ at: Date.now(), dir, type: 'world:snapshot', payload: snap });
         } catch {
           /* non-room frame */
         }

@@ -14,6 +14,7 @@ import type {
   S2CMessages,
   StorytellerGameView,
 } from '@ct/protocol';
+import { SNAP_CAPABILITY, SnapshotDecoder, type Snap2Frame } from '@ct/protocol';
 import type { AccountRecord } from '@ct/db';
 import { loadConfig, type AppConfig } from '../config.js';
 import type { ServiceOptions } from '../services.js';
@@ -133,9 +134,16 @@ export async function waitFor<T>(
 
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/** A colyseus.js client that records every S2C message it receives. */
+/**
+ * A colyseus.js client that records every S2C message it receives. (v2.2, WP4) Like the real client
+ * it joins with the 'world:snap2' capability (unless `TestClient.snap2` is false) and records each
+ * decoded frame as the 'world:snapshot' it stands for; the raw frames are kept in `wire`.
+ */
 export class TestClient {
+  static snap2 = true;
   messages: { type: string; payload: any }[] = [];
+  /** (v2.2, WP4) Raw 'world:snap2' frames as received (for secrecy scans of the wire format). */
+  wire: { type: 'world:snap2'; payload: Snap2Frame }[] = [];
   closeCode: number | null = null;
   private dropped = false;
   constructor(
@@ -147,7 +155,14 @@ export class TestClient {
 
   private bind(room: Room) {
     this.room = room;
+    const snaps = new SnapshotDecoder(); // per connection, like the server's encoder
     room.onMessage('*', (type, payload) => {
+      if (type === 'world:snap2') {
+        this.wire.push({ type, payload });
+        const snap = snaps.decode(payload);
+        if (snap) this.messages.push({ type: 'world:snapshot', payload: snap });
+        return;
+      }
       this.messages.push({ type: String(type), payload });
     });
     room.onLeave((code) => {
@@ -163,7 +178,7 @@ export class TestClient {
 
   static async joinWithTicket(srv: RunningServer, t: JoinTicketResponse, name = 'client', roomId = t.roomId) {
     const client = new Client(`ws://127.0.0.1:${srv.port}`);
-    const room = await client.joinById(roomId, { ticket: t.ticket });
+    const room = await client.joinById(roomId, TestClient.snap2 ? { ticket: t.ticket, snap: SNAP_CAPABILITY } : { ticket: t.ticket });
     return new TestClient(room, name);
   }
 

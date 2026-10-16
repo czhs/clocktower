@@ -7,10 +7,13 @@
 // ordered per-member stream. Two runs that differ ONLY in what the Storyteller does at night
 // (visits, prompts, info, walking around) must produce byte-identical streams for every player
 // the ST did not visit (snapshot `t` zeroed).
+// (v2.2, WP4) Each member's snapshots also go through a per-member SnapshotEncoder exactly as the
+// room does for 'world:snap2' clients; those frames land in the same stream (before the snapshot of
+// the same tick) and must be byte-identical too (they carry the real, deterministic fake-clock `t`).
 import { describe, expect, it } from 'vitest';
 import { townLayout } from '@ct/assets';
 import type { CharacterId, PlayerGameView, StCommand, StorytellerGameView } from '@ct/protocol';
-import { tileCenterPx } from '@ct/protocol';
+import { SnapshotEncoder, tileCenterPx } from '@ct/protocol';
 import { MemoryVoiceUsageStore } from '@ct/voice';
 import { createGameModule } from '../src/game/index.js';
 import { createVoiceModule } from '../src/voice/index.js';
@@ -57,6 +60,7 @@ async function build(): Promise<Rig> {
     'st',
   );
   const lastView = new Map<string, string>();
+  const encoders = new Map<string, SnapshotEncoder>();
   const push = (pid: string, type: string, payload: unknown) => {
     const list = host.sent.get(pid) ?? [];
     list.push({ type: type as never, payload: JSON.parse(JSON.stringify(payload)) });
@@ -89,7 +93,11 @@ async function build(): Promise<Rig> {
           lastView.set(m.pid, json);
           push(m.pid, 'game:view', v);
         }
-        push(m.pid, 'world:snapshot', { ...world.snapshotFor(m.pid), t: 0 });
+        const snap = world.snapshotFor(m.pid);
+        const enc = encoders.get(m.pid) ?? encoders.set(m.pid, new SnapshotEncoder()).get(m.pid)!;
+        const frame = enc.encode(snap);
+        if (frame) push(m.pid, 'world:snap2', frame);
+        push(m.pid, 'world:snapshot', { ...snap, t: 0 });
       }
     },
     streams() {
@@ -172,6 +180,7 @@ describe('night-visit secrecy with the real modules (world-audit)', () => {
       expect(busy.get(pid)).not.toEqual(quiet.get(pid));
       expect(busy.get(pid)!.some((m) => m === 'sound {"cue":"visit"}')).toBe(true);
       expect(busy.get(pid)!.some((m) => m.startsWith('world:snapshot') && m.includes('"id":"st"'))).toBe(true);
+      expect(busy.get(pid)!.some((m) => m.startsWith('world:snap2') && m.includes('"st"'))).toBe(true);
     }
     expect(quiet.get('p1')!.some((m) => m.includes('"cue":"visit"'))).toBe(false);
   });
@@ -187,6 +196,7 @@ describe('night-visit secrecy with the real modules (world-audit)', () => {
       expect(nightStart).toBeGreaterThan(0);
       for (const m of s.slice(nightStart, dawn)) {
         expect(m, pid).not.toContain('"id":"st"');
+        if (m.startsWith('world:snap2')) expect(m, pid).not.toContain('"st"'); // compact frames: the id string table
         expect(m, pid).not.toContain('"cue":"visit"');
         expect(m.replaceAll(`house-${seat}`, ''), pid).not.toMatch(/house-\d/);
         expect(m, pid).not.toContain('"storytellerVisitingYou":true');

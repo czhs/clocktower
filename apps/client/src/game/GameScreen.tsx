@@ -1,10 +1,10 @@
 import type { ComponentChildren } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { townLayout } from '@ct/assets';
-import { tileCenterPx, type AccountView } from '@ct/protocol';
-import { localPlayer } from '../net/localPlayer';
+import { tileCenterPx, type AccountView, type BuildingDef } from '@ct/protocol';
+import { localPlayer, type LocalPlayerState } from '../net/localPlayer';
 import type { RoomConnection } from '../net/room';
-import { useStore } from '../net/store';
+import { shallowEqual, useStore, useStoreSelector } from '../net/store';
 import { HowToPlayHost, openHelp } from '../ui/common/HowToPlay';
 import { applyAmbientVolume, SettingsButton } from '../ui/common/Settings';
 import { goTo } from '../ui/lobby/finder';
@@ -122,10 +122,11 @@ const markHint = (k: string) => {
 };
 
 /** First visit: a "this is you" marker over your character and a controls hint that fade once
- * you have walked a few steps (remembered per browser). */
+ * you have walked a few steps (remembered per browser). The per-frame localPlayer store is read in
+ * a subscription, not rendered: this re-renders only when the marker / hint change. */
 function FirstSteps({ touch }: { touch: boolean }) {
-  const me = useStore(localPlayer);
   const [done, setDone] = useState(() => hintSeen(MOVE_HINT_KEY));
+  const hasPid = useStoreSelector(localPlayer, (lp) => !done && !!lp.pid);
   const start = useRef<{ x: number; y: number } | null>(null);
   const [youFaded, setYouFaded] = useState(false);
   // The Storyteller mostly fast-travels, so the "walked 3 tiles" dismissal may never fire: fade anyway.
@@ -140,17 +141,34 @@ function FirstSteps({ touch }: { touch: boolean }) {
     return () => clearTimeout(t);
   }, [done]);
   useEffect(() => {
-    if (done || !me.pid) return;
-    if (!start.current) start.current = { x: me.x, y: me.y };
-    const moved = Math.hypot(me.x - start.current.x, me.y - start.current.y);
-    if (moved > 8 && !youFaded) setYouFaded(true);
-    if (moved > 3 * townLayout.tileSize) {
-      markHint(MOVE_HINT_KEY);
-      const t = setTimeout(() => setDone(true), 1200);
-      return () => clearTimeout(t);
-    }
-  }, [me, done, youFaded]);
-  if (done || !me.pid) return null;
+    if (done || !hasPid) return;
+    let t: ReturnType<typeof setTimeout> | undefined;
+    let marked = false;
+    let faded = false;
+    const step = (me: LocalPlayerState) => {
+      if (!me.pid) return;
+      if (!start.current) start.current = { x: me.x, y: me.y };
+      const moved = Math.hypot(me.x - start.current.x, me.y - start.current.y);
+      if (moved > 8 && !faded) {
+        faded = true;
+        setYouFaded(true);
+      }
+      if (moved > 3 * townLayout.tileSize) {
+        if (!marked) markHint(MOVE_HINT_KEY);
+        marked = true;
+        // (as before: the hint goes 1.2 s after the last move beyond 3 tiles)
+        clearTimeout(t);
+        t = setTimeout(() => setDone(true), 1200);
+      }
+    };
+    step(localPlayer.get());
+    const off = localPlayer.subscribe(step);
+    return () => {
+      off();
+      clearTimeout(t);
+    };
+  }, [done, hasPid]);
+  if (done || !hasPid) return null;
   return (
     <>
       {!youFaded && (
@@ -185,7 +203,7 @@ function FirstSteps({ touch }: { touch: boolean }) {
 /** Top-right: How to play, Leave / Back to lobbies, and Play again (ST or host) after a game. */
 function Toolbar({ conn }: { conn: RoomConnection }) {
   const lobby = useStore(conn.lobbyView);
-  const game = useStore(conn.gameView);
+  const game = useStoreSelector(conn.gameView, (g) => (g ? { phase: g.phase } : null), shallowEqual);
   const me = lobby?.members.find((m) => m.pid === lobby.youPid);
   const finished = game?.phase === 'finished' || lobby?.lobby.phase === 'finished';
   const canRematch = !!game && finished && !!me && (me.role === 'storyteller' || me.isHost);
@@ -221,17 +239,33 @@ function Toolbar({ conn }: { conn: RoomConnection }) {
 
 const L = townLayout;
 
+/** What the compass shows, from the per-frame local position: re-render only when it changes
+ * (whole steps, the arrow angle in 5° steps, home / inside / outdoors). */
+type CompassFix = { at: 'home' } | { at: 'inside' } | { at: 'out'; steps: number; deg: number } | null;
+function compassFix(me: LocalPlayerState, house: BuildingDef | undefined): CompassFix {
+  if (!me.pid || !house) return null;
+  if (me.location === `bld:${house.id}`) return { at: 'home' };
+  if (me.location !== 'outdoors') return { at: 'inside' };
+  const door = tileCenterPx(L, house.door);
+  const dx = door.x - me.x;
+  const dy = door.y - me.y;
+  const steps = Math.round(Math.hypot(dx, dy) / L.tileSize);
+  const deg = Math.round((Math.atan2(dy, dx) * 180) / Math.PI / 5) * 5;
+  return { at: 'out', steps, deg };
+}
+
 /** Points from the local player to their own cottage door (players only, outdoors). */
 function HomeCompass({ conn }: { conn: RoomConnection }) {
-  const game = useStore(conn.gameView);
-  const me = useStore(localPlayer);
-  if (!game || game.kind !== 'player' || game.phase === 'finished' || !me.pid) return null;
-  const seat = game.you.seat;
-  const house = L.buildings.find((b) => b.houseIndex === seat);
-  if (!house) return null;
-  const bedtime = game.phase === 'bedtime';
-  const homeLoc = `bld:${house.id}`;
-  if (me.location === homeLoc) {
+  const game = useStoreSelector(
+    conn.gameView,
+    (g) => (g && g.kind === 'player' && g.phase !== 'finished' ? { seat: g.you.seat, bedtime: g.phase === 'bedtime' } : null),
+    shallowEqual,
+  );
+  const house = game ? L.buildings.find((b) => b.houseIndex === game.seat) : undefined;
+  const fix = useStoreSelector(localPlayer, (lp) => compassFix(lp, house), shallowEqual);
+  if (!game || !house || !fix) return null;
+  const bedtime = game.bedtime;
+  if (fix.at === 'home') {
     if (!bedtime) return null;
     return (
       <div class="ct-compass ct-compass-home" role="status">
@@ -242,7 +276,7 @@ function HomeCompass({ conn }: { conn: RoomConnection }) {
       </div>
     );
   }
-  if (me.location !== 'outdoors') {
+  if (fix.at === 'inside') {
     if (!bedtime) return null;
     return (
       <div class="ct-compass urgent" role="status">
@@ -253,11 +287,7 @@ function HomeCompass({ conn }: { conn: RoomConnection }) {
       </div>
     );
   }
-  const door = tileCenterPx(L, house.door);
-  const dx = door.x - me.x;
-  const dy = door.y - me.y;
-  const steps = Math.round(Math.hypot(dx, dy) / L.tileSize);
-  const deg = (Math.atan2(dy, dx) * 180) / Math.PI;
+  const { steps, deg } = fix;
   return (
     <div class={`ct-compass${bedtime ? ' urgent' : ''}`} role="status" aria-label={`Your home, ${house.name}: ${steps} steps`}>
       <span class="ct-compass-arrow" aria-hidden="true" style={{ transform: `rotate(${deg}deg)` }}>

@@ -16,6 +16,12 @@ export const VOICE_DEFAULTS = {
    * and groups 8+ tiles apart are effectively separate conversations; 1 was -4 dB at 6 tiles.
    */
   falloffExponent: 2,
+  /**
+   * Client subscription culling in street rooms: stop receiving a talker who has been beyond
+   * silentTiles + cullMarginTiles for longer than cullDelayMs; receive them again within silentTiles.
+   */
+  cullMarginTiles: 2,
+  cullDelayMs: 2000,
   /** Client gain smoothing time constant (ms). */
   gainSmoothingMs: 150,
   /** LiveKit join-token lifetime (seconds). Only gates the initial connect. */

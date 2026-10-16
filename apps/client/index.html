@@ -12,6 +12,10 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/landing/emblem-32.png" />
     <link rel="icon" type="image/png" sizes="192x192" href="/landing/emblem-192.png" />
     <link rel="apple-touch-icon" href="/landing/emblem-180.png" />
+    <!-- (v2.2) the two display faces above the fold (landing tagline + card title; the largest font
+         downloads of the auth screen). Same files as ui/common/fonts.css, so one download each. -->
+    <link rel="preload" as="font" type="font/woff2" crossorigin href="./node_modules/@fontsource/im-fell-english/files/im-fell-english-latin-400-italic.woff2" />
+    <link rel="preload" as="font" type="font/woff2" crossorigin href="./node_modules/@fontsource/im-fell-english/files/im-fell-english-latin-400-normal.woff2" />
   </head>
   <body>
     <div id="app"></div>

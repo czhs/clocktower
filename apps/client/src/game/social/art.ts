@@ -8,6 +8,7 @@
 // Without it every texture is drawn here as small pixel art, so the layer always works.
 import type * as Phaser from 'phaser';
 import type { PinColor } from '@ct/protocol';
+import { socialUrl } from '@ct/assets/runtime';
 import { drawCastPortrait } from '../../ui/common/castPortrait';
 import { PIN_HEX } from './logic';
 
@@ -29,7 +30,7 @@ export interface SocialSheet {
   };
 }
 
-const ART_PNG = Object.values(import.meta.glob('../../../../../packages/assets/generated/social.png', { eager: true, query: '?url', import: 'default' }) as Record<string, string>)[0];
+const ART_PNG: string | undefined = socialUrl;
 const ART_JSON = Object.values(import.meta.glob('../../../../../packages/assets/generated/social.json', { eager: true, import: 'default' }) as Record<string, unknown>)[0] as SocialSheet | undefined;
 /** For the DOM (dock / radial): the sheet URL + manifest, when the art exists. */
 export const SOCIAL_SHEET: { url: string; json: SocialSheet } | null = ART_PNG && ART_JSON ? { url: ART_PNG, json: ART_JSON } : null;

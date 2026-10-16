@@ -19,6 +19,7 @@ import {
 import { StCommand, type StorytellerGameView } from './storyteller.js';
 import { VoiceAnnounceMsg, VoiceStatusMsg, type VoiceGrant, type VoiceRevoke, type VoiceUnavailable } from './voice.js';
 import { MoveMsg, UseDoorMsg, type WorldSnapshot, type WorldTeleport } from './world.js';
+import type { Snap2Frame } from './snapshotCodec.js';
 import { EmoteMsg, PinClearMsg, PinDropMsg, PinRemoveMsg, type EmoteEvent } from './social.js';
 import { ClockProposeMsg, ClockVoteMsg } from './clock.js';
 import { StoryGetMsg, StoryPamphletsMsg, StoryReleaseMsg, type Pamphlet, type StoryStView } from './story.js';
@@ -94,6 +95,8 @@ export interface S2CMessages {
   /** Exactly one of these per client, depending on their seat. */
   'game:view': PlayerGameView | StorytellerGameView;
   'world:snapshot': WorldSnapshot;
+  /** (v2.2, WP4) Compact snapshot frame, only to clients that joined with `snap: SNAP_CAPABILITY` (see snapshotCodec.ts). */
+  'world:snap2': Snap2Frame;
   'world:teleport': WorldTeleport;
   /** (v2) Someone you can see made a gesture (only sent to viewers who can see them). */
   'social:emote': EmoteEvent;

@@ -6,7 +6,7 @@ import type { LobbySummary, PlayerGameView } from '@ct/protocol';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { api, makeAccount, startTestServer, TestClient, waitFor, type TestServer } from '../src/rooms/testkit.js';
 
-const PORT = 3314; // auto-st range 3314-3318
+const PORT = 3317; // auto-st range (3314 is playtest.persistence)
 let srv: TestServer;
 const clients: TestClient[] = [];
 
