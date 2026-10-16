@@ -2,6 +2,49 @@
 
 All commands run on **hshi-u1** via `scripts/remote.sh` unless stated otherwise.
 
+## 2026-10-16 — playable Brianbi and bounded NPC avoidance
+
+Run on the editing Mac for the requested local preview, using Node 24.22.0 / pnpm 10.34.7:
+`npm exec --offline --cache /private/tmp/clocktower-npm-cache --yes --package=node@24 --package=pnpm@10.34.7 -- …`.
+Browser checks used `PLAYWRIGHT_BROWSERS_PATH=/private/tmp/clocktower-browsers CT_E2E_NO_BUILD=1 E2E_VOICE=0`
+and the isolated server/database at `127.0.0.1:3398`.
+
+| Executed command / check | Result |
+|---|---|
+| `node --import tsx packages/assets/scripts/hd/import-brianbi.ts` | Initial validation rejected a source row boundary that would clip a figure. Changed packing to use transparent gutters; rerun passed with 40 complete frames. |
+| `node --import tsx packages/assets/scripts/generate.ts` | Passed; regenerated the small and HD character sheets, ghost variants, and social portraits. |
+| `pnpm typecheck` | Passed across all seven packages, including the final NPC changes. |
+| `pnpm build` and subsequent `pnpm --filter @ct/client build` | Passed; final client build served by the local preview. |
+| `pnpm exec vitest run packages/assets/test/hdCast.test.ts apps/client/test/castPicker.test.ts` | 10 passed. Checks frame padding, distinct poses, atlas/manifest correspondence, and roster helpers. |
+| `pnpm exec vitest run apps/client/test/npcRoaming.test.ts apps/client/test/castPicker.test.ts packages/assets/test/hdCast.test.ts` | 15 passed. Includes 3 minutes of simulated continuous chasing, return to home, blocked paths, and walkable escape routes around all four actual NPC homes. |
+| `pnpm exec tsc -p tests/tsconfig.json --noEmit` | Passed, including the final browser-test changes. |
+| `pnpm exec playwright test -c tests/e2e/playwright.config.ts hd-cast.spec.ts` | First repair run passed (14.8s test time). Final run with NPC behavior and portrait changes passed (17.4s / 19.0s total). Real picker; correct torso click target; advancing walk frames; idle on release; down-right animation; live reduced-motion toggle; sweeper avoidance; all NPCs within their fixed 48px home radii; cottage entry/exit at 2/3 scale; HD ghost; no page errors. |
+| Manual Chrome preview at `http://localhost:3002` | Initially reproduced rejection of Brianbi by the old server process started before the roster change. Restarted only the local preview with the rebuilt server and existing DB. Brianbi selection then saved successfully and was visibly rendered in the new playground. Refreshed the final client with NPC behavior. |
+| `curl -s http://127.0.0.1:3002/healthz` | Passed: development / local-preview / ok. |
+| `git diff --check` | Passed. |
+
+Visual checks: inspected all eight directions and five poses in `packages/assets/art/brianbi.png`,
+plus in-game indoor and ghost screenshots. The built-in imagegen source and selected prompt set
+are retained in `packages/assets/art/`. NPCs react only to visible, living, outdoor Brianbi
+avatars during daytime phases; they remain client-local cosmetic townsfolk. The artwork retains
+the original photoreal style and asymmetric footwear, using a short four-frame walk cycle.
+
+## 2026-10-16 — Brianbi visual/integration review
+
+Reviewed the uncommitted HD character on the editing Mac using the existing Node 24 / pnpm wrapper
+and isolated Playwright server. No model or game-code edits made during this review.
+
+| Executed command | Result |
+|---|---|
+| `pnpm --filter @ct/client typecheck` | Passed. |
+| `pnpm vitest run apps/client/test/castPicker.test.ts --maxWorkers=1` | 8 passed. |
+| `pnpm exec playwright test -c tests/e2e/playwright.config.ts hd-cast.spec.ts` (existing built client, voice disabled) | Passed, 21.7s test time. Picker, town, walking, indoor and ghost screenshots inspected. |
+| Temporary `brianbi-review-probe.spec.ts` via the same Playwright config, output `/private/tmp/clocktower-brianbi-review` | Passed as an observational probe. Right-clicking 18 world pixels above Brianbi's feet selected another player instead of Brianbi; clicking 2 pixels above his feet selected Brianbi. Confirms the HD texture scale is incorrectly reused for character hitboxes. Temporary spec removed after execution. |
+
+Review findings: the down-right image faces left; several source-sheet crops clip hair; HD social
+hitboxes and head attachments use texture scale (0.2) instead of world character scale (1); walking
+has only a bob/sway on one pose per direction. These are not covered by the existing HD smoke test.
+
 ## 2026-10-16 — door rejection after refreshing
 
 Run on the editing Mac using the Node 24 / pnpm wrapper and isolated browser-test settings below.
@@ -39,6 +82,24 @@ Browser checks use a throwaway server/database on `127.0.0.1:3398` and
 The server already supplies every occupant. The text boards now use that full list instead of the
 four-portrait subset, refresh for changes anywhere in the roster, and hang names downward from the
 sign instead of growing upward over the roof. Existing server privacy rules are unchanged.
+
+## 2026-10-16 — photo-real roster character `brianbi`
+
+Run on the editing Mac (hshi-u1 still does not resolve; user approved local runs). Same Node 24.22.0 /
+pnpm 10.34.7 `npm exec --offline …` wrapper and Playwright env as the entry below. Art: the user's
+turnaround sheet, right shoe removed with `codex exec -m gpt-6-sol` image edits (raw inputs/outputs in
+gitignored `packages/assets/ai/staging/brianbi/`), cut out with `packages/assets/scripts/hd/brianbi_cutout.py`
+(Pillow/numpy/scipy in a throwaway venv) into `packages/assets/art/brianbi.png`.
+
+| Executed command | Result |
+|---|---|
+| `pnpm assets:generate` | Passed. Changed only cast.png/json, social.png/json; new cast-hd.png (455 KiB) / cast-hd.json. |
+| `pnpm typecheck` | Passed all workspace packages. |
+| `pnpm exec tsc -p tests/tsconfig.json --noEmit` | Passed. |
+| `pnpm vitest run packages/assets apps/server/test/{auth,room,records.game,playtest.persistence,world.room}.test.ts --maxWorkers=1` | 79 passed, 3 skipped (pre-existing `ambient.test.ts` skips). |
+| `pnpm test --maxWorkers=2` | 647 passed, 7 skipped, 2 failed: `castPicker.test.ts` roster count (13 → 14 villagers; test updated, rerun: client tests 59/59 passed) and `review-probes` SR-1, which reads `/proc/<pid>/status` and cannot run on macOS (unrelated; not rerun on Linux). |
+| `pnpm build` | Passed. |
+| `pnpm exec playwright test … hd-cast` | First run: picker/town/walk/indoor steps passed, then a raw Leave click during the door cooldown failed; switched to `leaveByButton`. Rerun **1 passed (12.6s)**: picked via the real picker, HD sheet fetched, town/walking/indoors/ghost screenshots inspected, no page errors. |
 
 ## 2026-10-16 — local preview, room chat, walkable cottages, and doorway regression
 

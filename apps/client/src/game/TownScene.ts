@@ -14,7 +14,7 @@
 //   boards     a bulletin board by each door: who lives there + who is inside, DAYTIME ONLY
 //              (from the server's public door tags); at night every cottage looks the same
 //   ambience   chimney smoke, flickering lamps, fireflies, a few plain townsfolk by day —
-//              all derived from time + the PUBLIC phase only (never from other entities)
+//              phase-driven; daytime townsfolk also avoid visible Brianbi avatars locally
 import * as Phaser from 'phaser';
 import { castById, PLAYABLE, PLAZA, townLayout, townMap } from '@ct/assets';
 import objectsAtlas from '@ct/assets/generated/objects.json';
@@ -45,10 +45,12 @@ import { localPlayer, remoteEntities } from '../net/localPlayer';
 import type { RoomConnection } from '../net/room';
 import { playCue, type Cue } from './audio';
 import { createGameplayLayer, doorTagsStore, stagePick, type DoorBoardView, type GameplayLayer } from './gameplay';
-import { findPath, nearestFree } from './path';
+import { findPath, nearestFree, segmentClear } from './path';
+import { createNpcRoamer, stepNpcRoamer, type NpcRoamer } from './npcRoaming';
 import { createSocialLayer, type SocialLayer } from './social';
 import { noteServerTime, serverNow } from '../net/serverTime';
 import { createChatBubbles, type ChatBubbles } from './chatBubbles';
+import { reducedMotion } from './fx/motion';
 
 const L = townLayout;
 const TS = L.tileSize;
@@ -81,6 +83,18 @@ interface CastManifest {
   sheets: Record<string, { x: number; y: number }>;
 }
 const CAST = castJson as unknown as CastManifest;
+// HD cast members use authored walking frames with smooth texture filtering.
+interface CastHdManifest {
+  scale: number;
+  directions: readonly Dir8[];
+  frameWidth: number;
+  frameHeight: number;
+  rows: Record<string, number>;
+  frames: readonly string[];
+  walkFps: number;
+}
+const CAST_HD_PNG = Object.values(import.meta.glob('../../../../packages/assets/generated/cast-hd.png', { eager: true, query: '?url', import: 'default' }) as Record<string, string>)[0];
+const CAST_HD = Object.values(import.meta.glob('../../../../packages/assets/generated/cast-hd.json', { eager: true, import: 'default' }) as Record<string, CastHdManifest>)[0];
 type Dir8 = 'down' | 'down-right' | 'right' | 'up-right' | 'up' | 'up-left' | 'left' | 'down-left';
 const DIR8: readonly Dir8[] = ['right', 'down-right', 'down', 'down-left', 'left', 'up-left', 'up', 'up-right'];
 const fromFacing = (f: Facing): Dir8 => f;
@@ -210,6 +224,11 @@ class Avatar {
   hasLantern = false;
   isST = false;
   ghost = false;
+  /** Drawn from the cast-hd texture (see CAST_HD). */
+  hd = false;
+  private still = false;
+  /** World size, independent of how many source pixels the texture uses. */
+  get worldScale() { return this.location === 'outdoors' ? 1 : 2 / 3; }
   constructor(
     readonly scene: TownScene,
     readonly pid: string,
@@ -234,20 +253,34 @@ class Avatar {
     }
   }
   setPose(x: number, y: number, dir: Dir8, moving: boolean) {
-    const scale = this.location === 'outdoors' ? 1 : 2 / 3;
-    this.sprite.setScale(scale);
-    this.sprite.setPosition(Math.round(x), Math.round(y));
+    const still = reducedMotion();
+    if (dir !== this.dir || moving !== this.moving || still !== this.still) {
+      this.dir = dir;
+      this.moving = moving;
+      this.still = still;
+      this.play();
+    }
+    const scale = this.worldScale;
+    this.sprite.setScale(this.hd ? scale / CAST_HD!.scale : scale);
+    const bob = this.hd && this.ghost ? -3 - (still ? 0 : Math.sin(this.scene.time.now / 1000 * 2.2)) : 0;
+    this.sprite.setPosition(this.hd ? x : Math.round(x), (this.hd ? y : Math.round(y)) + bob * scale);
     this.sprite.setDepth(10 + y);
     this.label.setPosition(Math.round(x), Math.round(y) - (CAST.anchor.y - 4 + (this.ghost ? 4 : 0)) * scale);
     this.last = { x, y };
-    if (dir !== this.dir || moving !== this.moving) {
-      this.dir = dir;
-      this.moving = moving;
-      this.play();
-    }
   }
   play(force = false) {
     if (!this.key) return;
+    if (CAST_HD?.rows[this.key] !== undefined && this.scene.textures.exists('cast-hd')) {
+      const anim = `${this.key}#hd-${this.moving && !this.ghost && !this.still ? 'walk' : 'idle'}-${this.dir}`;
+      if (force || !this.hd || this.sprite.anims.currentAnim?.key !== anim) this.sprite.play(anim, !force);
+      this.hd = true;
+      return;
+    }
+    if (this.hd) {
+      this.hd = false;
+      this.sprite.setRotation(0);
+      this.sprite.setTexture('cast');
+    }
     const anim = `${this.key}#${this.moving && !this.ghost ? 'walk' : 'idle'}-${this.dir}`;
     if (!this.scene.anims.exists(anim)) return;
     if (force || this.sprite.anims.currentAnim?.key !== anim) this.sprite.play(anim, !force);
@@ -263,14 +296,9 @@ class Avatar {
 }
 
 /** Plain background townsfolk (client-only; never collide, no names, daytime only). */
-interface Npc {
+interface Npc extends NpcRoamer {
   id: string;
   sprite: Phaser.GameObjects.Sprite;
-  route: { x: number; y: number; wait: number }[];
-  i: number;
-  x: number;
-  y: number;
-  waitUntil: number;
   dir: Dir8;
 }
 
@@ -340,6 +368,7 @@ export class TownScene extends Phaser.Scene {
     this.load.image('decor', decorUrl);
     this.load.image('objects', objectsUrl);
     this.load.image('cast', castUrl);
+    if (CAST_HD_PNG && CAST_HD) this.load.image('cast-hd', CAST_HD_PNG);
     this.load.spritesheet('lights', lightsUrl, { frameWidth: 128, frameHeight: 128 });
     this.load.tilemapTiledJSON('town', townJsonUrl);
     if (FX_PNG && FX_JSON) this.load.image('fx', FX_PNG);
@@ -485,15 +514,15 @@ export class TownScene extends Phaser.Scene {
       amStoryteller: () => this.amStoryteller(),
       positionOf: (pid) => {
         const a = pid === this.myPid ? (this.ready ? this.myAvatar : null) : this.avatars.get(pid);
-        return a && a.sprite.visible ? { x: a.sprite.x, y: a.sprite.y, scale: a.sprite.scaleX } : null;
+        return a && a.sprite.visible ? { x: a.sprite.x, y: a.sprite.y, scale: a.worldScale } : null;
       },
       entityAt: (x, y) => {
         let best: { pid: string; d: number } | null = null;
         for (const a of [...this.avatars.values(), ...(this.myAvatar ? [this.myAvatar] : [])]) {
           if (!a.sprite.visible) continue;
           const dx = x - a.sprite.x;
-          const dy = y - (a.sprite.y - 14 * a.sprite.scaleX);
-          if (Math.abs(dx) > 14 * a.sprite.scaleX || Math.abs(dy) > 20 * a.sprite.scaleX) continue;
+          const dy = y - (a.sprite.y - 14 * a.worldScale);
+          if (Math.abs(dx) > 14 * a.worldScale || Math.abs(dy) > 20 * a.worldScale) continue;
           const d = Math.hypot(dx, dy);
           if (!best || d < best.d) best = { pid: a.pid, d };
         }
@@ -504,7 +533,7 @@ export class TownScene extends Phaser.Scene {
       faceToward: (x, y) => {
         if (!this.myAvatar) return;
         this.myDir = dir8(x - this.me.x, y - (this.me.y - 12));
-        this.myAvatar.setPose(this.myAvatar.sprite.x, this.myAvatar.sprite.y, this.myDir, false);
+        this.myAvatar.setPose(this.me.x, this.me.y, this.myDir, false);
       },
     });
     this.offs.push(() => {
@@ -529,6 +558,12 @@ export class TownScene extends Phaser.Scene {
         },
         view: () => ({ ...this.cameras.main.worldView, zoom: this.cameras.main.zoom }),
         me: () => ({ ...this.me }),
+        avatar: (pid: string) => {
+          const a = pid === this.myPid ? this.myAvatar : this.avatars.get(pid);
+          return a?.sprite.visible ? { texture: a.sprite.texture.key, frame: a.sprite.frame.name, scale: a.worldScale,
+            width: a.sprite.displayWidth, height: a.sprite.displayHeight, x: a.sprite.x, y: a.sprite.y } : null;
+        },
+        npcs: () => this.npcs.filter((n) => n.sprite.visible).map((n) => ({ id: n.id, x: n.x, y: n.y, home: { ...n.home }, avoiding: n.avoiding })),
         doorBoards: () => Object.fromEntries([...this.boards].map(([id, board]) => [
           id,
           board.objs
@@ -566,6 +601,24 @@ export class TownScene extends Phaser.Scene {
           repeat: -1,
         });
       });
+    }
+    if (CAST_HD && this.textures.exists('cast-hd')) {
+      const hd = this.textures.get('cast-hd');
+      // not pixel art: smooth filtering, unlike the rest of the (pixelArt: true) game
+      hd.setFilter(Phaser.Textures.FilterMode.LINEAR);
+      for (const [key, r] of Object.entries(CAST_HD.rows)) {
+        const ghost = key.includes('/ghost');
+        CAST_HD.directions.forEach((dir, c) => {
+          for (let f = 0; f < (ghost ? 1 : CAST_HD.frames.length); f++)
+            hd.add(`${key}|${dir}|${f}`, 0, c * CAST_HD.frameWidth, (r + f) * CAST_HD.frameHeight, CAST_HD.frameWidth, CAST_HD.frameHeight);
+          for (const action of ['idle', 'walk']) this.anims.create({
+            key: `${key}#hd-${action}-${dir}`,
+            frames: (action === 'walk' && !ghost ? [1, 2, 3, 4] : [0]).map((f) => ({ key: 'cast-hd', frame: `${key}|${dir}|${f}` })),
+            frameRate: CAST_HD.walkFps,
+            repeat: -1,
+          });
+        });
+      }
     }
   }
 
@@ -1122,7 +1175,7 @@ export class TownScene extends Phaser.Scene {
   }
 
   // ---------------------------------------------------------------------------------------
-  // ambience (time + public phase only)
+  // ambience (public phase, with local daytime reactions to visible Brianbi avatars)
 
   private setupAmbience() {
     // Fireflies: a handful of soft glowing dots over the grass, night only (also at bedtime/dawn).
@@ -1134,13 +1187,13 @@ export class TownScene extends Phaser.Scene {
       img.setDepth(4050).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0);
       this.fireflies.push({ img, x, y, ph: i * 1.7, sp: 0.6 + (i % 5) * 0.12 });
     }
-    // Townsfolk: plain background people with small daily loops.
-    const T = (x: number, y: number, wait = 0) => ({ x: x * TS + 8, y: y * TS + 14, wait });
-    const routes: Record<string, { x: number; y: number; wait: number }[]> = {
-      'npc-sweeper': [T(16, 12, 3), T(13, 15, 2), T(13, 23, 3), T(16, 26, 2), T(28, 26, 3), T(31, 23, 2), T(31, 15, 3), T(28, 12, 2)],
-      'npc-vendor': [T(10, 17, 6), T(12, 17, 2), T(10, 17, 5), T(8, 17, 2)],
-      'npc-elder': [T(10, 21, 12), T(12, 21, 1), T(15, 23, 4), T(12, 22, 1)],
-      'npc-porter': [T(4, 34, 2), T(22, 34, 1), T(40, 34, 3), T(22, 34, 1)],
+    // Each townsperson keeps a permanent home area, even when Brianbi shoos them away.
+    const T = (x: number, y: number) => ({ x: x * TS + 8, y: y * TS + 14 });
+    const homes = {
+      'npc-sweeper': T(16, 12),
+      'npc-vendor': T(10, 17),
+      'npc-elder': T(10, 21),
+      'npc-porter': T(22, 34),
     };
     // pigeons by the fountain and a cat asleep on the east bench (cosmetic, local only)
     const fountain = townMap.objects.find((o) => o.kind === 'fountain');
@@ -1158,11 +1211,12 @@ export class TownScene extends Phaser.Scene {
       const bench = townMap.objects.filter((o) => o.kind === 'bench').sort((a, b) => b.x - a.x)[0];
       if (bench) this.add.image(bench.x * TS + 22, bench.y * TS + 6, 'fx', 'cat_sleep').setOrigin(0.5, 1).setDepth(10 + bench.y * TS + 17);
     }
-    for (const [id, route] of Object.entries(routes)) {
+    for (const [id, home] of Object.entries(homes)) {
       if (!CAST.sheets[id]) continue;
-      const p = route[0]!;
+      const p = nearestFree(L, home, 40, (x, y) => locationAt(L, x, y) === 'outdoors');
+      if (!p) continue;
       const sprite = this.add.sprite(p.x, p.y, 'cast').setOrigin(CAST.anchor.x / CAST.frameWidth, CAST.anchor.y / CAST.frameHeight).setAlpha(0.96);
-      this.npcs.push({ id, sprite, route, i: 0, x: p.x, y: p.y, waitUntil: 0, dir: 'down' });
+      this.npcs.push({ id, sprite, ...createNpcRoamer(p, this.npcs.length), dir: 'down' });
     }
   }
 
@@ -1212,30 +1266,19 @@ export class TownScene extends Phaser.Scene {
       }
       p.s.setVisible(outdoors && DAYLIKE.has(this.phase));
     }
-    // townsfolk: daytime only, gentle loops, never in anyone's way
+    // Reactions use only avatars already visible outdoors. Hidden/night/indoor players
+    // cannot move an NPC or reveal their presence through this cosmetic behavior.
     const day = DAYLIKE.has(this.phase);
+    const brianbis = day && outdoors && this.ready
+      ? [...this.avatars.values(), ...(this.myAvatar ? [this.myAvatar] : [])]
+        .filter((a) => a.key === 'brianbi' && a.sprite.visible && a.location === 'outdoors')
+        .map((a) => ({ x: a.sprite.x, y: a.sprite.y })) : [];
     for (const n of this.npcs) {
       n.sprite.setVisible(day && outdoors);
       if (!day) continue;
-      const tgt = n.route[(n.i + 1) % n.route.length]!;
-      let moving = false;
-      if (now >= n.waitUntil) {
-        const dx = tgt.x - n.x;
-        const dy = tgt.y - n.y;
-        const d = Math.hypot(dx, dy);
-        const step = 32 * dt;
-        if (d <= step) {
-          n.x = tgt.x;
-          n.y = tgt.y;
-          n.i = (n.i + 1) % n.route.length;
-          n.waitUntil = now + tgt.wait * 1000;
-        } else {
-          n.x += (dx / d) * step;
-          n.y += (dy / d) * step;
-          n.dir = dir8(dx, dy);
-          moving = true;
-        }
-      }
+      const delta = stepNpcRoamer(n, dt, now, brianbis, (from, to) => locationAt(L, to.x, to.y) === 'outdoors' && segmentClear(L, from.x, from.y, to.x, to.y));
+      const moving = Math.hypot(delta.x, delta.y) > 0.01;
+      if (moving) n.dir = dir8(delta.x, delta.y);
       n.sprite.setPosition(Math.round(n.x), Math.round(n.y)).setDepth(10 + n.y);
       const anim = `${n.id}#${moving ? 'walk' : 'idle'}-${moving ? n.dir : n.dir === 'up' ? 'down' : n.dir}`;
       if (this.anims.exists(anim) && n.sprite.anims.currentAnim?.key !== anim) n.sprite.play(anim, true);

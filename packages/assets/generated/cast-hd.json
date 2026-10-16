@@ -1,0 +1,1 @@
+{"image":"cast-hd.png","scale":5,"frameWidth":160,"frameHeight":200,"anchor":{"x":80,"y":190},"directions":["down","down-right","right","up-right","up","up-left","left","down-left"],"frames":["idle","walk1","walk2","walk3","walk4"],"walkFps":8,"rows":{"brianbi":0,"brianbi/ghost":5,"brianbi/ghost-spent":6}}
