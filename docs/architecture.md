@@ -160,3 +160,16 @@ visits player B (modulo timestamps).
   - **Game records** (migration 3 `match_records`, docs/game-records.md): one versioned JSON record per game (finished or abandoned) incl. a play-by-play `timeline`; admin `GET /api/admin/games[/:id]`.
   - **Story** (`story.ts`): the ST's private play-by-play (`story:get` → S2C `story:st`), optional pamphlet release (`story:release` → S2C `story:pamphlet` to everyone; `story:pamphlets` re-fetch). Mid-game pamphlets only if `StSettings.pamphlets` (default **false**) and built from public events only; the final story (full reveal) only after the end is confirmed.
   - **Admin console**: `/api/admin/*` (accounts, lobbies, games, audit log; migration 2 `admin_audit`).
+- 2026-10-15 (auto-st, v2.1 town clock + automatic games). Protocol changes are all additive; the contract is `clock.ts`, written by the lead. Design: docs/auto-storyteller.md.
+  - **`lobby.ts`:** `LobbySummary.storytellerMode?` is always set by the server. `LobbySummary.autoTimings?` is set only in auto mode.
+  - **`messages.ts`:** new C2S `lobby:abort` (`EmptyMsg`). Only the host of a running automatic game may send it. The game is recorded as abandoned with `abandon.reason 'aborted_by_host'` and the lobby returns to the waiting room. Human games answer `forbidden`.
+  - **Views:** `clock` and `storytellerMode` are now filled in every player and Storyteller game view. The bedtime countdown is mirrored as stage `'bedtime'`. The human Storyteller's `day_clock` is a prop that is cleared when the day ends and is not undoable.
+  - **Server:** `GameModule` gains optional capabilities `configureMode` / `handleClock` / `storytellerMode`. These live in the extension interface `AutoCapableGame` in apps/server/src/auto; `modules.ts` is unchanged. `GameRoom` changes:
+    - an auto lobby has no Storyteller seat; a `storyteller` intent joins as a player, and claim / transfer are refused;
+    - the host starts the game;
+    - `lobby:settings` takes `storytellerMode` / `autoTimings`;
+    - `clock:*` messages are routed to the game module;
+    - the stats `storytellerAccountId` and `MatchMeta.storyteller` are null in auto mode.
+  - **Directory:** `LobbyInit.storytellerMode`. A ticket with intent `storyteller` for an automatic lobby is checked like a player ticket.
+  - **`@ct/rules`:** optional `GameState.adjudicator` (`Adjudicator`: `spyRegistersAsTownsfolk`, `recluseRegistersAsDemon`, `enforceButler`). It is never serialised or snapshotted. When it is absent, the engine behaves exactly as before (alerts for the ST).
+  - **Records:** `AbandonReason` gains `'aborted_by_host'`. The recorder's `NOT_UNDOABLE` gains `'day_clock'`. Automatic decisions are timeline entries of kind `storyteller` with `data.auto: 'fate' | 'clock'`, and the first one carries the seeds.

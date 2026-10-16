@@ -37,6 +37,9 @@ import {
 import type { GameModule, GameOutcome, RoomHost } from '../rooms/modules.js';
 // (records) Full game record + play-by-play: the recorder observes every committed change.
 import { attachRecorder, GameRecorder, type RecordTrigger } from '../records/index.js';
+// (auto-st, v2.1) The town clock (every game) + the automatic Storyteller (storytellerMode 'auto').
+import { AUTO_DEFAULTS, type AutoTimings, type DayClockView, type StorytellerMode } from '@ct/protocol';
+import { BedtimeMirror, DayClock, autoClockOptions, createAutoStoryteller, relabelForAuto, type AutoCapableGame, type AutoClockOptions, type AutoPort, type AutoStoryteller } from '../auto/index.js';
 
 export interface GameModuleOptions {
   /** Deterministic RNG seed (tests). Default: crypto-random. */
@@ -49,6 +52,10 @@ export interface GameModuleOptions {
   nightfallGraceMs?: number;
   /** Town layout (homes for visits). Default: the shipped @ct/assets layout. */
   layout?: TownLayout;
+  /** (auto-st) Automatic games: seed of fate's RNG (default: derived from the engine seed). */
+  fateSeed?: number;
+  /** (auto-st) Automatic games: timing overrides (tests). */
+  auto?: Partial<AutoClockOptions>;
 }
 
 type PlayerMsgType = 'game:nominate' | 'game:vote' | 'game:promptResponse' | 'game:slayerShot';
@@ -86,8 +93,16 @@ const PUBLIC_SEAT_COMMANDS = new Set<StCommand['type']>([
   'freeze',
 ]);
 
-export function createGameModule(host: RoomHost, opts: GameModuleOptions = {}): GameModule {
+export function createGameModule(host: RoomHost, opts: GameModuleOptions = {}): AutoCapableGame {
   const opts0 = opts;
+  // (auto-st, v2.1) town clock + automatic games. Human games: the Storyteller's 'day_clock' prop.
+  let mode: StorytellerMode = 'human';
+  let autoTimings: AutoTimings = { ...AUTO_DEFAULTS };
+  const humanClock = new DayClock();
+  const bedtimeMirror = new BedtimeMirror();
+  let auto: AutoStoryteller | null = null;
+  /** Timeline entries already relabelled for an automatic game (no human Storyteller). */
+  let relabelled = 0;
   const layout = opts.layout ?? townLayout;
   /** Bedtime: since when every seated player has been inside their own home (nightfall beat). */
   let allHomeSince: number | null = null;
@@ -99,6 +114,7 @@ export function createGameModule(host: RoomHost, opts: GameModuleOptions = {}): 
     if (!recorder || !state) return;
     try {
       recorder.observe(state, host.now(), trigger);
+      if (mode === 'auto') relabelTimeline(); // (auto-st)
     } catch (e) {
       const err = e instanceof Error ? e.message : String(e);
       if (recorder.warnings.length < 50) recorder.warnings.push(`observe(${trigger.kind}) failed: ${err}`);
@@ -107,6 +123,116 @@ export function createGameModule(host: RoomHost, opts: GameModuleOptions = {}): 
   }
   const seatByPid = new Map<string, number>();
   const pidBySeat = new Map<number, string>();
+
+  // ---- (auto-st, v2.1) town clock + automatic Storyteller -----------------------------------
+  function relabelTimeline() {
+    if (!recorder) return;
+    const tl = recorder.timeline;
+    for (; relabelled < tl.length; relabelled++) tl[relabelled]!.text = relabelForAuto(tl[relabelled]!.text);
+  }
+
+  /** The public town clock (identical for every viewer): bedtime mirror, else the day clock. */
+  function clockView(): DayClockView | null {
+    const s = state;
+    if (!s || s.phase === 'finished') return null;
+    const bed = bedtimeMirror.view(s, host.now());
+    if (bed) return bed;
+    return mode === 'auto' ? (auto?.clockView() ?? null) : humanClock.view();
+  }
+
+  /** Human games: StCommand 'day_clock' — a prop; it never moves the phases. Not undoable. */
+  function dayClockCommand(pid: string, cmd: Extract<StCommand, { type: 'day_clock' }>) {
+    const s = state!;
+    const now = host.now();
+    const err = (code: 'invalid' | 'phase', message: string) => {
+      logStCommand(cmd, false, code);
+      host.send(pid, 'error', { code, message, for: 'st:command' });
+    };
+    if (s.phase === 'finished') return err('phase', 'The game is over');
+    const mins = (m: number) => `${Math.round(m * 100) / 100} min`;
+    let text: string;
+    switch (cmd.action) {
+      case 'set':
+        if (!cmd.stage || cmd.minutes === undefined) return err('invalid', 'Pick a stage and a length');
+        if (cmd.stage === 'bedtime') return err('invalid', 'Bedtime has its own countdown (use the bedtime timer)');
+        if (s.phase === 'bedtime') return err('phase', 'During bedtime the clock shows the bedtime countdown');
+        humanClock.set(cmd.stage, cmd.minutes * 60_000, now);
+        text = `set ${cmd.stage} ${mins(cmd.minutes)}`;
+        break;
+      case 'pause':
+        if (!humanClock.pause(now)) return err('invalid', humanClock.isSet ? 'The clock is already paused' : 'No clock is set');
+        text = 'paused';
+        break;
+      case 'resume':
+        if (!humanClock.resume(now)) return err('invalid', humanClock.isSet ? 'The clock is not paused' : 'No clock is set');
+        text = 'resumed';
+        break;
+      case 'add':
+        if (cmd.minutes === undefined) return err('invalid', 'How many minutes?');
+        if (!humanClock.add(cmd.minutes * 60_000, now)) return err('invalid', 'No clock is set');
+        text = `+${mins(cmd.minutes)}`;
+        break;
+      case 'clear':
+        humanClock.clear();
+        text = 'cleared';
+        break;
+    }
+    logStCommand(cmd, true);
+    noteStoryteller(s, now, `Town clock ${text}`);
+    record({ kind: 'st', cmd });
+    host.markGameDirty();
+  }
+
+  /** What the automatic Storyteller may do (every change goes through the engine + commit). */
+  const autoPort: AutoPort = {
+    state: () => state!,
+    now: () => host.now(),
+    command(cmd) {
+      const s = state!;
+      const before = snap(s);
+      const r = applyStCommand(s, cmd, { now: host.now() });
+      logStCommand(cmd, r.ok, r.ok ? undefined : r.code, 'auto command');
+      if (r.ok) commit(before, r.effects, { kind: 'st', cmd });
+      return r;
+    },
+    act(seat, action) {
+      const s = state!;
+      const before = snap(s);
+      const r = applyPlayerAction(s, seat, action, { now: host.now() });
+      if (r.ok) commit(before, r.effects, { kind: 'player', seat, action });
+      return r;
+    },
+    note(kind, text, data, seats = []) {
+      const s = state;
+      if (!s) return;
+      const now = host.now();
+      noteStoryteller(s, now, `${kind === 'fate' ? 'Fate' : 'Town clock'}: ${text}`);
+      if (!recorder) return;
+      try {
+        relabelTimeline();
+        const c = recorder.ctxOf(s, now);
+        recorder.timeline.push({
+          t: c.t,
+          at: c.at,
+          day: c.day,
+          night: c.night,
+          phase: c.phase,
+          kind: 'storyteller',
+          actors: seats.map((seat) => ({ seat, pid: pidBySeat.get(seat) ?? '' })),
+          data: { auto: kind, ...data },
+          text,
+        });
+        relabelled = recorder.timeline.length;
+      } catch (e) {
+        if (recorder.warnings.length < 50) recorder.warnings.push(`auto note failed: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    },
+    connectedPids: () => [...seatByPid.keys()].filter((pid) => host.member(pid)?.connected),
+    seatOf: (pid) => seatByPid.get(pid),
+    pidOf: (seat) => pidBySeat.get(seat),
+    error: (pid, forType, code, message) => host.send(pid, 'error', { code, message, for: forType }),
+    dirty: () => host.markGameDirty(),
+  };
 
   const snap = (s: GameState): PublicSnapshot => ({
     phase: s.phase,
@@ -225,6 +351,8 @@ export function createGameModule(host: RoomHost, opts: GameModuleOptions = {}): 
         if (pid) host.send(pid, 'sound', { cue: 'visit' });
       }
     }
+    // (auto-st) a Storyteller's day clock belongs to its day: it is cleared when the day ends.
+    if (before.phase === 'day' && s.phase !== 'day') humanClock.clear();
     if (!before.finished && s.phase === 'finished') {
       host.emit({ type: 'game_finished' });
       host.markLobbyDirty();
@@ -270,7 +398,7 @@ export function createGameModule(host: RoomHost, opts: GameModuleOptions = {}): 
     if (errors.length) err(errors.join('; '));
   }
 
-  function logStCommand(cmd: StCommand, ok: boolean, code?: string) {
+  function logStCommand(cmd: StCommand, ok: boolean, code?: string, label = 'st command') {
     const s = state;
     const phase = s?.phase ?? null;
     const data: Record<string, unknown> = { lobbyId: host.lobbyId, phase, day: s?.dayNumber ?? 0, cmd: cmd.type };
@@ -281,8 +409,8 @@ export function createGameModule(host: RoomHost, opts: GameModuleOptions = {}): 
       if (c.nominatorSeat !== undefined) data.nominatorSeat = c.nominatorSeat;
       if (c.nomineeSeat !== undefined) data.nomineeSeat = c.nomineeSeat;
     }
-    if (ok) host.log.info('st command', data);
-    else host.log.info('st command rejected', { ...data, code });
+    if (ok) host.log.info(label, data);
+    else host.log.info(`${label} rejected`, { ...data, code });
   }
 
   function reportError(pid: string, r: CommandResult, forType: string) {
@@ -323,7 +451,20 @@ export function createGameModule(host: RoomHost, opts: GameModuleOptions = {}): 
     if (setVisiting(s, seat)) commit(before, [], { kind: 'visit' });
   }
 
-  const mod: GameModule = {
+  const mod: AutoCapableGame = {
+    // (auto-st) storytellerMode + timings: the room calls this before start().
+    configureMode(m, timings) {
+      if (state) return;
+      mode = m;
+      autoTimings = { ...timings };
+    },
+    storytellerMode: () => mode,
+    handleClock(pid, type, payload) {
+      if (!state) return host.send(pid, 'error', { code: 'phase', message: 'No game in progress', for: type });
+      if (mode !== 'auto' || !auto) return host.send(pid, 'error', { code: 'forbidden', message: 'The Storyteller runs the clock in this game', for: type });
+      auto.handleClock(pid, type, payload);
+    },
+
     onEvent(e) {
       const s = state;
       if (!s) return;
@@ -349,7 +490,7 @@ export function createGameModule(host: RoomHost, opts: GameModuleOptions = {}): 
         seatByPid.set(x.pid, x.seat);
         pidBySeat.set(x.seat, x.pid);
       }
-      stPid = storytellerPid;
+      stPid = mode === 'auto' ? null : storytellerPid; // (auto-st) no Storyteller seat in automatic games
       synced = { circle: '', escort: false, settings: '' };
       state = createGame({
         players: seats.map((x) => ({ pid: x.pid, seat: x.seat, name: x.name })),
@@ -359,13 +500,22 @@ export function createGameModule(host: RoomHost, opts: GameModuleOptions = {}): 
         ...(opts.bedtimeSeconds !== undefined ? { bedtimeSeconds: opts.bedtimeSeconds } : {}),
       });
       for (const x of seats) setPlayerConnected(state, x.seat, host.member(x.pid)?.connected ?? true);
-      setStorytellerConnected(state, host.member(storytellerPid)?.connected ?? true, host.now());
-      recorder = new GameRecorder(state, host.now(), storytellerPid); // (records)
+      if (stPid) setStorytellerConnected(state, host.member(storytellerPid)?.connected ?? true, host.now());
+      recorder = new GameRecorder(state, host.now(), stPid); // (records)
       attachRecorder(mod, recorder);
+      humanClock.clear();
+      relabelled = 0;
       host.emit({ type: 'phase_changed', phase: 'setup', prev: null, phaseEndsAt: null });
       host.markGameDirty();
       host.markLobbyDirty();
-      host.log.info('game started', { lobbyId: host.lobbyId, players: seats.length });
+      host.log.info('game started', { lobbyId: host.lobbyId, players: seats.length, mode });
+      if (mode === 'auto') {
+        // (auto-st) fate's RNG is separate from the engine's; both seeds go into the record.
+        const fateSeed = opts.fateSeed ?? (Math.imul(seed ^ 0x9e3779b9, 0x85ebca6b) >>> 0);
+        auto = createAutoStoryteller(autoPort, autoClockOptions(autoTimings, opts.auto), fateSeed);
+        autoPort.note('fate', 'Fate rolls the dice: an automatic game begins.', { decision: 'seeds', engineSeed: seed, fateSeed, timings: { ...autoTimings } });
+        auto.start();
+      }
     },
 
     handlePlayer(pid, type, payload) {
@@ -382,6 +532,7 @@ export function createGameModule(host: RoomHost, opts: GameModuleOptions = {}): 
         return reportError(pid, r, type);
       }
       commit(before, r.effects, { kind: 'player', seat, action });
+      auto?.flushNotes(); // (auto-st) fate's rulings made inside the engine (Virgin / Slayer)
     },
 
     handleStoryteller(pid, cmd) {
@@ -401,6 +552,7 @@ export function createGameModule(host: RoomHost, opts: GameModuleOptions = {}): 
         return;
       }
       if (!s) return host.send(pid, 'error', { code: 'phase', message: 'No game in progress', for: 'st:command' });
+      if (cmd.type === 'day_clock') return dayClockCommand(pid, cmd); // (auto-st) the town clock prop
       if (STAGE_COMMANDS.has(cmd.type)) {
         if (s.phase === 'finished') return host.send(pid, 'error', { code: 'phase', message: 'The game is over', for: 'st:command' });
         logStCommand(cmd, true);
@@ -427,10 +579,16 @@ export function createGameModule(host: RoomHost, opts: GameModuleOptions = {}): 
         const v = projectForStoryteller(s);
         const w = world();
         if (w) v.stage = w.stageView();
+        v.clock = clockView(); // (auto-st)
+        v.storytellerMode = mode;
         return v;
       }
       const seat = seatByPid.get(pid);
-      return seat === undefined ? null : projectForPlayer(s, seat);
+      if (seat === undefined) return null;
+      const v = projectForPlayer(s, seat);
+      v.clock = clockView(); // (auto-st) public, identical for everyone
+      v.storytellerMode = mode;
+      return v;
     },
 
     phase: () => state?.phase ?? null,
@@ -465,6 +623,7 @@ export function createGameModule(host: RoomHost, opts: GameModuleOptions = {}): 
     tick(now) {
       const s = state;
       if (!s) return;
+      auto?.tick(now); // (auto-st) the automatic Storyteller decides first; the engine's timers follow
       const before = snap(s);
       // Bedtime: night falls once every seated player is inside their own home (world module).
       const w = world();
@@ -478,6 +637,7 @@ export function createGameModule(host: RoomHost, opts: GameModuleOptions = {}): 
       } else allHomeSince = null;
       const r = rulesTick(s, now, opts);
       if (r.changed) commit(before, r.effects, { kind: 'tick' });
+      auto?.flushNotes();
     },
 
     outcome(): GameOutcome | null {

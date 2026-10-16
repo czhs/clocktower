@@ -16,6 +16,7 @@ import { CHARACTER_INFO, type BuildingDef, type GrimoireEntry, type NightStepVie
 import { CastPortrait } from '../common/castPortrait';
 import { charName, Countdown, nameOf } from '../hud/shared';
 import { BedtimeTimer, ClockButton, ConfirmButton, deathEffects, EVERYONE, noExecutionEffects, only, type Send } from './stage';
+import { StClockControl } from '../clock/StClock'; // (v2.1, clock-client) the town clock on the tower
 
 /** Character (cast) id for a seat's portrait, or null (silhouette). */
 export type CastOf = (seat: number) => string | null;
@@ -842,6 +843,7 @@ function DayScript({ view, send, castOf, openTools }: { view: StorytellerGameVie
           {d.nominationsOpen ? '✋ Nominations open (close)' : '✋ Open nominations'}
         </button>
       </div>
+      <StClockControl view={view} send={send} stages={['discussion', 'nominations']} />
 
       {voting && (
         <div class="cts-votenow" role="status">

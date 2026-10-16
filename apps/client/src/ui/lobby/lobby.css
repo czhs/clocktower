@@ -186,3 +186,42 @@ button.ct-ready-on { border-color: #3d6b3a; color: #bfe0b9; }
 .ct-notice { margin-top: 10px; }
 .ct-nudge { animation: ct-nudge 1.6s ease-in-out infinite; }
 @keyframes ct-nudge { 50% { box-shadow: 0 0 0 4px #d5b56a44; } }
+
+/* (v2.1, clock-client) game mode: Storyteller vs Automatic, automatic timings, finder badge */
+.ct-modes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+@media (max-width: 420px) { .ct-modes { grid-template-columns: 1fr; } }
+.ct-mode-opt {
+  position: relative; display: flex; flex-direction: column; gap: 2px; padding: 9px 11px; cursor: pointer;
+  border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel-sunk);
+}
+.ct-mode-opt:hover { border-color: #5a4b70; }
+.ct-mode-opt.on { border-color: var(--accent); background: #2c2418; box-shadow: inset 0 0 0 1px #d5b56a33; }
+.ct-mode-opt.disabled { opacity: 0.6; cursor: default; }
+.ct-mode-opt input { position: absolute; opacity: 0; pointer-events: none; }
+.ct-mode-opt:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ct-mode-title { font-family: var(--font-display); font-size: 1.1rem; color: var(--text); }
+.ct-mode-opt.on .ct-mode-title { color: var(--accent); }
+.ct-mode-sub { font-size: 0.875rem; color: var(--text); }
+.ct-mode-line { font-size: 0.8rem; color: var(--muted); line-height: 1.3; }
+
+.ct-mode-badge { font-size: 0.8rem; line-height: 1.2; padding: 1px 6px; border-radius: 3px; border: 1px solid var(--border); color: var(--muted); }
+.ct-mode-badge-auto { color: #c8d4f6; border-color: #4a5590; background: #232a4a66; }
+
+.ct-mode-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.ct-mode-head h3 { margin-bottom: 6px; }
+.ct-mode-seg { display: inline-flex; margin-bottom: 6px; }
+.ct-mode-seg button { border-radius: 0; padding: 3px 10px; font-size: 0.85rem; min-height: 28px; }
+.ct-mode-seg button:first-child { border-radius: var(--radius) 0 0 var(--radius); }
+.ct-mode-seg button:last-child { border-radius: 0 var(--radius) var(--radius) 0; border-left-width: 0; }
+.ct-mode-seg button.on { background: var(--accent-deep); border-color: var(--accent); color: #f6ecd2; }
+.ct-auto-box { margin-bottom: 10px; }
+.ct-auto-box p { margin: 0 0 6px; line-height: 1.35; }
+
+.ct-timings { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+@media (max-width: 380px) { .ct-timings { grid-template-columns: 1fr; } }
+.ct-timing { display: flex; flex-direction: column; gap: 3px; padding: 6px 8px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel-sunk); }
+.ct-timing-label { font-size: 0.875rem; color: var(--text); display: flex; flex-direction: column; }
+.ct-timing-label small { color: var(--muted); font-size: 0.75rem; }
+.ct-timing-step { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
+.ct-timing-step b { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ct-timing-step button { min-width: 32px; min-height: 30px; padding: 0 8px; font-size: 1rem; }

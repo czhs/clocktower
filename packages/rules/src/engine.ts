@@ -159,7 +159,7 @@ export function createGame(opts: CreateGameOptions): GameState {
 
 function serializeCore(s: GameState): string {
   return JSON.stringify(s, function (this: unknown, key: string, value: unknown) {
-    if (this === s && (key === 'rng' || key === 'history')) return undefined;
+    if (this === s && (key === 'rng' || key === 'history' || key === 'adjudicator')) return undefined;
     return value;
   });
 }

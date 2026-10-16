@@ -176,8 +176,27 @@ export interface GameState {
   voteStepMs: number;
   /** Injected RNG (not part of snapshots). */
   rng: Rng;
+  /**
+   * (auto-st, additive) Optional rulings for automatic (Storyteller-less) games. Absent in human
+   * games: the engine then only raises alerts and the Storyteller decides. Not part of snapshots.
+   */
+  adjudicator?: Adjudicator;
   /** Undo entries (newest last; not part of snapshots). */
   history: HistoryEntry[];
+}
+
+/**
+ * (auto-st, additive) Storyteller judgement calls the engine can ask for when there is no human
+ * Storyteller (apps/server/src/auto). Each hook is optional; without it the engine behaves exactly
+ * as before (alert for the Storyteller).
+ */
+export interface Adjudicator {
+  /** A healthy Spy nominated a healthy, living Virgin (first nomination): does the Spy register as a Townsfolk (executed on the spot)? */
+  spyRegistersAsTownsfolk?(spy: PlayerState, virgin: PlayerState): boolean;
+  /** A real, healthy Slayer shot a healthy Recluse: does the Recluse register as the Demon (and die)? */
+  recluseRegistersAsDemon?(recluse: PlayerState, slayer: PlayerState): boolean;
+  /** A healthy living Butler's raised hand counts as "no" when their master is not voting (instead of an alert). */
+  enforceButler?: boolean;
 }
 
 /**

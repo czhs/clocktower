@@ -821,6 +821,7 @@ export async function verifyFinished(g: Game, expected: { winner?: 'good' | 'evi
 const PLAYER_VIEW_KEYS = [
   'announcements',
   'bedtimeOvertime',
+  'clock', // (v2.1, auto-st) public town clock
   'day',
   'dayNumber',
   'gathering',
@@ -832,6 +833,7 @@ const PLAYER_VIEW_KEYS = [
   'prompts',
   'result',
   'spyGrimoire',
+  'storytellerMode', // (v2.1, auto-st)
   'storytellerVisitingYou',
   'you',
 ];

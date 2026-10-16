@@ -34,6 +34,8 @@ export interface LobbyInit {
   creatorName: string;
   creatorTakesStoryteller: boolean;
   createdAt: number;
+  /** (v2.1, auto-st) 'auto' = no Storyteller seat; the server runs the game. */
+  storytellerMode?: 'human' | 'auto';
 }
 
 /** Live view of a GameRoom used by the directory (same process; never serialised). */
@@ -128,8 +130,9 @@ export class LobbyDirectory {
         maxPlayers: Math.min(req.maxPlayers, this.deps.playerMaxPerLobby),
         creatorAccountId: account.id,
         creatorName: account.displayName,
-        creatorTakesStoryteller: req.takeStoryteller,
+        creatorTakesStoryteller: req.takeStoryteller && req.storytellerMode !== 'auto',
         createdAt: t,
+        storytellerMode: req.storytellerMode ?? 'human', // (auto-st)
       };
       const entry: Entry = {
         id,
@@ -146,12 +149,13 @@ export class LobbyDirectory {
           maxPlayers: init.maxPlayers,
           playerCount: 0,
           storytellerName: null,
-          storytellerSeatOpen: true,
+          storytellerSeatOpen: init.storytellerMode !== 'auto',
           phase: 'waiting',
           joinable: true,
           hostName: account.displayName,
           createdAt: t,
           updatedAt: t,
+          storytellerMode: init.storytellerMode ?? 'human', // (auto-st)
         },
       };
       this.entries.set(id, entry);
@@ -237,8 +241,10 @@ export class LobbyDirectory {
       const s = e.summary;
       if (intent === 'reconnect') throw new DirectoryError(409, 'conflict', 'You have no seat to restore in this lobby');
       if (s.phase !== 'waiting') throw new DirectoryError(409, 'lobby_started', 'This game has already started');
-      if (intent === 'storyteller' && !s.storytellerSeatOpen) throw new DirectoryError(409, 'conflict', 'The Storyteller seat is taken');
-      if (intent === 'player' && s.playerCount >= s.maxPlayers) throw new DirectoryError(409, 'lobby_full', 'This lobby is full');
+      // (auto-st) automatic lobbies have no Storyteller seat: a 'storyteller' ticket joins as a player.
+      const auto = s.storytellerMode === 'auto';
+      if (intent === 'storyteller' && !auto && !s.storytellerSeatOpen) throw new DirectoryError(409, 'conflict', 'The Storyteller seat is taken');
+      if ((intent === 'player' || auto) && s.playerCount >= s.maxPlayers) throw new DirectoryError(409, 'lobby_full', 'This lobby is full');
     }
     const t = this.deps.tickets.issue({ accountId: account.id, lobbyId, intent });
     return { lobbyId, roomId: e.roomId, ticket: t.ticket, expiresAt: t.expiresAt };

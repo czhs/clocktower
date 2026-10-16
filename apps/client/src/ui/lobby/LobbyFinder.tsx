@@ -8,8 +8,11 @@ import {
   SCRIPTS,
   type LobbySummary,
   type ScriptId,
+  type StorytellerMode,
 } from '@ct/protocol';
 import { api, subscribeDirectory } from '../../net/api';
+import { modeOf } from '../clock/logic';
+import { ModeBadge, ModeChoice } from './ModeSettings';
 import { applyDirectoryEvent, DEFAULT_FILTERS, errorText, filterLobbies, PHASE_LABEL, SCRIPT_LABEL, sortLobbies, type FinderFilters } from './finder';
 
 const FILTER_KEY = 'ct.finder.filters';
@@ -197,19 +200,21 @@ export function LobbyFinder({ onJoin }: { onJoin: (lobbyId: string, intent: 'pla
 
 function LobbyRow({ lobby: l, onJoin }: { lobby: LobbySummary; onJoin: (id: string, intent: 'player' | 'storyteller') => void }) {
   const waiting = l.phase === 'waiting';
+  const auto = modeOf(l) === 'auto';
   return (
     <div class={`ct-lobby ${l.joinable ? '' : 'ct-lobby-closed'}`} role="listitem">
       <div class="ct-lobby-main">
         <div class="ct-lobby-name">
           {l.name}
           <span class={`ct-phase ct-phase-${l.phase}`}>{PHASE_LABEL[l.phase]}</span>
+          <ModeBadge lobby={l} />
         </div>
         {l.description && <div class="ct-lobby-desc muted">{l.description}</div>}
         <div class="ct-lobby-meta muted">
           <span title="Players seated / seats">
             {l.playerCount}/{l.maxPlayers} players
           </span>
-          <span>{l.storytellerName ? `Storyteller: ${l.storytellerName}` : 'Storyteller seat open'}</span>
+          <span>{auto ? 'No Storyteller: runs itself' : l.storytellerName ? `Storyteller: ${l.storytellerName}` : 'Storyteller seat open'}</span>
           <span>{SCRIPT_LABEL[l.script] ?? l.script}</span>
           <span>Host: {l.hostName}</span>
         </div>
@@ -220,7 +225,7 @@ function LobbyRow({ lobby: l, onJoin }: { lobby: LobbySummary; onJoin: (id: stri
             <button class="primary" disabled={!l.joinable} onClick={() => onJoin(l.id, 'player')}>
               {l.joinable ? 'Join' : 'Full'}
             </button>
-            {l.storytellerSeatOpen && <button onClick={() => onJoin(l.id, 'storyteller')}>Join as Storyteller</button>}
+            {l.storytellerSeatOpen && !auto && <button onClick={() => onJoin(l.id, 'storyteller')}>Join as Storyteller</button>}
           </>
         ) : (
           <button title="Only players seated in this game can return" onClick={() => onJoin(l.id, 'player')}>
@@ -238,6 +243,7 @@ export function CreateLobbyModal({ onClose, onCreated }: { onClose: () => void; 
   const [script, setScript] = useState<ScriptId>('trouble-brewing');
   const [description, setDescription] = useState('');
   const [takeSt, setTakeSt] = useState(true);
+  const [mode, setMode] = useState<StorytellerMode>('human');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -253,8 +259,9 @@ export function CreateLobbyModal({ onClose, onCreated }: { onClose: () => void; 
     setBusy(true);
     setError(null);
     try {
-      const { lobby } = await api.createLobby({ name: name.trim(), maxPlayers, script, description: description.trim(), takeStoryteller: takeSt });
-      onCreated(lobby, takeSt);
+      const st = mode === 'human' && takeSt;
+      const { lobby } = await api.createLobby({ name: name.trim(), maxPlayers, script, description: description.trim(), takeStoryteller: st, ...(mode === 'auto' ? { storytellerMode: 'auto' as const } : {}) });
+      onCreated(lobby, st);
     } catch (err) {
       setError(errorText(err));
       setBusy(false);
@@ -300,10 +307,18 @@ export function CreateLobbyModal({ onClose, onCreated }: { onClose: () => void; 
             onInput={(e) => setDescription((e.currentTarget as HTMLTextAreaElement).value)}
           />
         </label>
-        <label class="ct-check">
-          <input type="checkbox" checked={takeSt} onChange={(e) => setTakeSt((e.currentTarget as HTMLInputElement).checked)} />
-          <span>Take the Storyteller seat (not counted as a player)</span>
-        </label>
+        <div class="ct-field">
+          <span>Who runs the game?</span>
+          <ModeChoice value={mode} onChange={setMode} name="ct-create-mode" />
+        </div>
+        {mode === 'human' ? (
+          <label class="ct-check">
+            <input type="checkbox" checked={takeSt} onChange={(e) => setTakeSt((e.currentTarget as HTMLInputElement).checked)} />
+            <span>Take the Storyteller seat (not counted as a player)</span>
+          </label>
+        ) : (
+          <p class="muted ct-small">You play too. Adjust the day and night timings in the waiting room.</p>
+        )}
         <p class="muted ct-small">Lobbies are public on this server — anyone signed in can see and join. No password needed.</p>
         {error && <p class="ct-error" role="alert">{error}</p>}
         <div class="ct-row">

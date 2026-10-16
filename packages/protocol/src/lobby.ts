@@ -36,6 +36,10 @@ export interface LobbySummary {
   hostName: string;
   createdAt: number;
   updatedAt: number;
+  /** (v2.1, auto-st) 'auto' = no Storyteller seat: the server runs the game (clock.ts). Absent = 'human'. */
+  storytellerMode?: import('./clock.js').StorytellerMode;
+  /** (v2.1, auto-st) Automatic-game timings (present when storytellerMode is 'auto'). */
+  autoTimings?: import('./clock.js').AutoTimings;
 }
 
 export type DirectoryEvent =

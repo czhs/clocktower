@@ -38,6 +38,7 @@ const ABANDON_TEXT: Record<AbandonReason, string> = {
   closed_by_admin: 'the lobby was closed by an administrator',
   idle_timeout: 'everyone left',
   room_disposed: 'the server shut the lobby down',
+  aborted_by_host: 'the host ended the game', // (auto-st)
 };
 
 const DAYISH: GamePhase[] = ['day', 'bedtime'];

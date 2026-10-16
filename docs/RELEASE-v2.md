@@ -63,3 +63,20 @@ pins/pointing, notebook, phone portrait/landscape, walkthrough screenshots).
 ## Not yet
 - Human playtests with real microphones and real phones, plus a full 10–15 person game.
 - A stats page (the data is now being recorded).
+
+# v2.1.0 — the town clock and automatic games
+
+- **The tower clock tells the time.** In the square the camera rests on a view that shows the whole
+  circle and the clock-tower dial; the dial's wedge and hand show the time left until nominations
+  open, or until the day's execution. A small chip at the top says it in words ("Nominations open in
+  4:12"). Bedtime counts down on it too.
+- **Storyteller games:** the Storyteller can set, pause, add to or clear the day clock from the
+  script panel. It is a prop: reaching zero never moves the phase by itself.
+- **Automatic games (no Storyteller):** choose "Automatic" when creating a lobby. The server deals a
+  legal Trouble Brewing setup, wakes characters at night, hands out information, runs nominations and
+  votes on the clock, and decides chance effects (drunk/poisoned information, the Spy and Recluse,
+  etc.) at random. The host can tune the timings in the waiting room and can end the game early
+  (recorded as abandoned).
+- **Asking for more time:** in automatic games anyone can tap "+ time" on the clock chip and propose
+  +1, +2 or +3 minutes; everyone gets a Yes/No card and a majority of connected players adds the time.
+  Proposals are rate-limited.

@@ -19,6 +19,7 @@ import {
 } from '@ct/protocol';
 import type { RoomConnection } from '../../net/room';
 import { useStore } from '../../net/store';
+import { townSays } from '../clock/logic';
 import { charName, CharacterSelect, Countdown, friendlyError, goHome, nameOf, PHASE_LABEL, phaseTitle, seatLabel, VoteClock } from './shared';
 import { homeOf, MoveHint } from './hints';
 import './hud.css';
@@ -205,7 +206,7 @@ function RoleBadge({ view }: { view: PlayerGameView }) {
 
 function RoleCard({ view }: { view: PlayerGameView }) {
   const role = view.you.role;
-  if (!role) return <p class="cth-ability muted">The Storyteller is preparing the Grimoire. Your character arrives with the first night.</p>;
+  if (!role) return <p class="cth-ability muted">{townSays('The Storyteller is preparing the Grimoire. Your character arrives with the first night.', view.storytellerMode)}</p>;
   const team = view.you.evilTeam;
   return (
     <div class="cth-rolecard">

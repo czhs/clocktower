@@ -7,6 +7,7 @@ import {
   type AccountView,
   type LobbyRoomView,
   type MemberView,
+  type StorytellerMode,
 } from '@ct/protocol';
 import { useStore } from '../../net/store';
 import type { RoomConnection } from '../../net/room';
@@ -14,6 +15,8 @@ import { helpSeen, openHelp } from '../common/HowToPlay';
 import { CastPortrait } from '../common/castPortrait';
 import { CharacterPicker, characterOf, takenBy } from './CharacterPicker';
 import { copyText, SCRIPT_LABEL, shareUrl } from './finder';
+import { MODE_COPY, modeOf, timingsOf, timingsSummary } from '../clock/logic';
+import { AutoTimingsEditor, useTimingsDraft } from './ModeSettings';
 import '../auth/auth.css';
 import './lobby.css';
 
@@ -65,6 +68,10 @@ export function WaitingRoom({ conn, onLeave }: { conn: RoomConnection; account: 
   const players = view.members.filter((m) => m.role === 'player');
   const readyCount = players.filter((m) => m.ready).length;
   const notReady = players.filter((m) => !m.ready);
+  const auto = isAuto(view);
+  const host = view.members.find((m) => m.isHost) ?? null;
+  // automatic games have no Storyteller: the host starts
+  const canStartHere = isSt || (auto && isHost);
 
   return (
     <div class={`ct-waiting panel${collapsed ? ' ct-waiting-collapsed' : ''}`} role="dialog" aria-label="Waiting room" aria-modal="false">
@@ -84,6 +91,7 @@ export function WaitingRoom({ conn, onLeave }: { conn: RoomConnection; account: 
           <div class="muted ct-small">
             {players.length}/{view.lobby.maxPlayers} players · {readyCount} ready
             {!collapsed && <> · {SCRIPT_LABEL[view.lobby.script]}</>}
+            {auto && <> · Automatic</>}
             {status === 'reconnecting' && <span class="ct-error"> · reconnecting…</span>}
           </div>
         </div>
@@ -94,12 +102,12 @@ export function WaitingRoom({ conn, onLeave }: { conn: RoomConnection; account: 
 
       <div class="ct-waiting-actions">
         {me?.role === 'player' && <ReadyButton conn={conn} ready={me.ready} lastOne={!me.ready && notReady.length === 1 && players.length >= MIN_PLAYERS} />}
-        {isSt && (
+        {canStartHere && (
           <button class="primary ct-start" disabled={!view.canStart} onClick={() => conn.send('lobby:start', {})}>
             Start game
           </button>
         )}
-        {!st && !isSt && (
+        {!st && !isSt && !auto && (
           <button onClick={() => conn.send('lobby:claimStoryteller', {})} title="Run the game as the Storyteller (not counted as a player)">
             Be the Storyteller
           </button>
@@ -116,7 +124,11 @@ export function WaitingRoom({ conn, onLeave }: { conn: RoomConnection; account: 
           </p>
         ) : (
           <p class="ct-waiting-status ct-ok ct-small" aria-live="polite">
-            {isSt ? 'Everyone is ready — start when you like.' : 'Everyone is ready. Waiting for the Storyteller to start.'}
+            {canStartHere
+              ? 'Everyone is ready — start when you like.'
+              : auto
+                ? `Everyone is ready. Waiting for ${host?.displayName ?? 'the host'} to start.`
+                : 'Everyone is ready. Waiting for the Storyteller to start.'}
           </p>
         )}
       </div>
@@ -137,14 +149,15 @@ export function WaitingRoom({ conn, onLeave }: { conn: RoomConnection; account: 
           {view.lobby.description && <p class="ct-waiting-desc">{view.lobby.description}</p>}
           <ShareLink lobbyId={view.lobby.id} />
 
-          <h3>Storyteller</h3>
-          {st ? (
-            <MemberRow m={st} view={view} me={me} />
-          ) : (
-            <div class="ct-member ct-member-empty">
-              <span class="muted">Seat open — someone must take it to start.</span>
-            </div>
-          )}
+          <GameMode view={view} conn={conn} isHost={isHost} st={st} auto={auto} />
+          {!auto &&
+            (st ? (
+              <MemberRow m={st} view={view} me={me} />
+            ) : (
+              <div class="ct-member ct-member-empty">
+                <span class="muted">Seat open — someone must take it to start.</span>
+              </div>
+            ))}
           <h3>
             Players <span class="muted">({players.length}/{view.lobby.maxPlayers})</span>
           </h3>
@@ -271,7 +284,7 @@ function ShareLink({ lobbyId }: { lobbyId: string }) {
 
 function MemberRow({ m, view, me, conn }: { m: MemberView; view: LobbyRoomView; me: MemberView | undefined; conn?: RoomConnection }) {
   const you = m.pid === view.youPid;
-  const canTransferSt = !!me && (me.isHost || me.role === 'storyteller') && m.role === 'player';
+  const canTransferSt = !!me && (me.isHost || me.role === 'storyteller') && m.role === 'player' && !isAuto(view);
   const hostTools = !!me?.isHost && !you;
   const face = m.role === 'storyteller' ? 'storyteller' : characterOf(m.cosmetics)?.id;
   return (
@@ -318,6 +331,54 @@ function MemberRow({ m, view, me, conn }: { m: MemberView; view: LobbyRoomView; 
         </span>
       )}
     </div>
+  );
+}
+
+/** (v2.1) The lobby's mode (read defensively: the summary or the room view may carry it). */
+function isAuto(view: LobbyRoomView): boolean {
+  return modeOf(view.lobby) === 'auto' || modeOf(view) === 'auto';
+}
+
+/**
+ * (v2.1) "Storyteller" heading, or the automatic game's line + timings. The host switches the mode
+ * with a two-way toggle and steps the automatic timings in place (sent as lobby:settings).
+ */
+function GameMode({ view, conn, isHost, st, auto }: { view: LobbyRoomView; conn: RoomConnection; isHost: boolean; st: MemberView | null; auto: boolean }) {
+  const server = timingsOf(view.lobby, view);
+  const { value, step } = useTimingsDraft(server, (patch) => conn.send('lobby:settings', { autoTimings: patch }));
+  const setMode = (m: StorytellerMode) => {
+    if (m === (auto ? 'auto' : 'human')) return;
+    if (m === 'auto' && st && !confirm(`Play without a Storyteller? ${st.displayName} becomes a player.`)) return;
+    conn.send('lobby:settings', { storytellerMode: m });
+  };
+  return (
+    <>
+      <div class="ct-mode-head">
+        <h3>{auto ? 'Automatic game' : 'Storyteller'}</h3>
+        {isHost && (
+          <div class="ct-mode-seg" role="radiogroup" aria-label="Who runs the game">
+            {(['human', 'auto'] as const).map((m) => (
+              <button
+                key={m}
+                role="radio"
+                aria-checked={(m === 'auto') === auto}
+                class={(m === 'auto') === auto ? 'on' : ''}
+                title={MODE_COPY[m].line}
+                onClick={() => setMode(m)}
+              >
+                {MODE_COPY[m].title}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      {auto && (
+        <div class="ct-auto-box">
+          <p class="ct-small">No Storyteller: the town clock on the tower paces the day, and night choices come to you at home. Anyone can ask the town for more time.</p>
+          {isHost ? <AutoTimingsEditor value={value} onStep={step} /> : <p class="muted ct-small">{timingsSummary(value)}</p>}
+        </div>
+      )}
+    </>
   );
 }
 

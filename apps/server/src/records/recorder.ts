@@ -79,6 +79,7 @@ const NOT_UNDOABLE = new Set<string>([
   'freeze',
   'door_lock',
   'teleport_self',
+  'day_clock', // (auto-st) the town clock prop is not on the engine's undo history
 ]);
 const ENGINE_HISTORY_LIMIT = 30;
 const NIGHTISH: GamePhase[] = ['first_night', 'night', 'dawn'];

@@ -197,3 +197,12 @@ Clean `git archive e5d31ef` + the new helpers.ts (sandbox `e2e-head`), build ✅
 | `v2-phone` | ❌ landscape: the open lobby chat (`.ct-chat-list` / chat input) intercepted the tap on "Change character…" in the waiting-room sheet (real bug; lead fixed in 9fd63ec — not re-run here at the lead's request) |
 | `game-full` GAME_RUN=h1 | ✅ (12.3 min); every tap resolved through the hook (0 "no camera hook" fallbacks in `game-full-steps-h1.json`) |
 | `lobby` | ✅ 6/6 — the roster test now passes (B1 fixed: the Storyteller's character is no longer shown as taken) |
+
+### 2026-10-15 — v2.1 (town clock + automatic games), lead
+
+| Command (hshi-u1, sandbox `lead`) | Result |
+|---|---|
+| `pnpm -r run typecheck` | ✅ |
+| `pnpm test` | ❌ 1/724: `tests/security/leakage.test.ts` lobby summary keys did not allow the new optional `storytellerMode`/`autoTimings` (public lobby settings) — test updated; `vitest run tests/security` ✅ 70/70 |
+| `playwright test … v21-clock` | human test ✅; automatic test ❌ after the host's abort the players' clients kept showing the aborted game (client only dropped a *finished* game's view) — fixed in `net/room.ts` (drop the game view when the lobby goes back to waiting) |
+| `playwright test … v21-clock -g automatic` (×2) | ✅ (2.8 min): create automatic lobby, finder badge, auto deal → day clock, chip + tower dial, +2 min proposal voted through (clock +120 s), phone chip/vote card, host abort → waiting room. Second run after moving HUD toasts below an open clock card (the proposal toast covered the vote card's title) |

@@ -152,9 +152,11 @@ export class RoomConnection {
       room.onMessage(type, (payload: never) => {
         if (type === 'world:snapshot') this.lastFeedAt = Date.now();
         if (type === 'lobby:view') {
+          const before = this.lobbyView.get()?.lobby.phase;
           this.lobbyView.set(payload);
-          // Rematch: the lobby returned to waiting, so drop the finished game's view.
-          if ((payload as LobbyRoomView).lobby.phase === 'waiting' && this.gameView.get()?.phase === 'finished') this.gameView.set(null);
+          // Rematch / host abort (v2.1): the lobby returned to waiting, so drop the old game's view.
+          const now = (payload as LobbyRoomView).lobby.phase;
+          if (now === 'waiting' && (this.gameView.get()?.phase === 'finished' || (before !== undefined && before !== 'waiting'))) this.gameView.set(null);
         }
         else if (type === 'game:view') this.gameView.set(payload);
         else if (type === 'chat:message') this.chat.set((c) => [...c.slice(-199), payload]);

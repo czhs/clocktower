@@ -12,6 +12,8 @@ import { attachSound, unlockAudio } from './audio';
 import { SocialPalette } from '../ui/social/SocialPalette';
 import { Notebook } from '../ui/notebook/Notebook';
 import { Story } from '../ui/story/Story';
+import { ClockChip } from '../ui/clock/ClockChip';
+import { AbortGame } from '../ui/clock/AbortGame';
 import './game.css';
 
 // Mounts the Phaser town for this lobby; renders `children` (HUD, Storyteller panel, voice panel,
@@ -91,6 +93,7 @@ export function GameScreen(props: { conn: RoomConnection; account: AccountView; 
       {status === 'ready' && <Story conn={props.conn} touch={touch} />}
       {status === 'ready' && <FirstSteps touch={touch} />}
       <HomeCompass conn={props.conn} />
+      {status === 'ready' && <ClockChip conn={props.conn} />}
       <Toolbar conn={props.conn} />
       <ErrorToasts conn={props.conn} />
       <ConnectionBanner conn={props.conn} />
@@ -196,6 +199,7 @@ function Toolbar({ conn }: { conn: RoomConnection }) {
           Play again
         </button>
       )}
+      <AbortGame conn={conn} />
       <SettingsButton onLeave={game ? leave : undefined} leaveLabel={finished ? 'Back to lobbies' : 'Leave game'} />
       <button class="ct-tb-icon" onClick={openHelp} aria-label="How to play" title="How to play">
         ?
@@ -276,7 +280,7 @@ function ErrorToasts({ conn }: { conn: RoomConnection }) {
     let n = 0;
     return conn.events.on('error', (e) => {
       const f = e.for ?? '';
-      if (f.startsWith('game:') || f.startsWith('st:') || f.startsWith('chat:')) return;
+      if (f.startsWith('game:') || f.startsWith('st:') || f.startsWith('chat:') || f.startsWith('clock:')) return;
       const waiting = !conn.gameView.get() && conn.lobbyView.get()?.lobby.phase === 'waiting';
       if (waiting && (!f || f.startsWith('lobby:'))) return;
       const id = ++n;

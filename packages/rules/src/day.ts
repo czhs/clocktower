@@ -79,6 +79,11 @@ export function nominate(s: GameState, op: Op, nominatorSeat: number, nomineeSea
     } else if (typeOf(nominator.character) === 'townsfolk') {
       n.status = 'cancelled';
       executeNow(s, op, nominator.seat, 'virgin');
+    } else if (nominator.character === 'spy' && !impaired(nominator) && s.adjudicator?.spyRegistersAsTownsfolk?.(nominator, nominee)) {
+      // (auto-st) automatic games: the Spy registered as a Townsfolk.
+      log(s, op, `Spy ${who(nominator)} registers as a Townsfolk for the Virgin`);
+      n.status = 'cancelled';
+      executeNow(s, op, nominator.seat, 'virgin');
     } else if (nominator.character === 'spy' && !impaired(nominator)) {
       alert(
         s,
@@ -149,7 +154,16 @@ export function setHand(s: GameState, _op: Op, seat: number, nominationId: strin
 function lockVote(s: GameState, op: Op, n: NominationState, seat: number): void {
   const v = s.day!.vote!;
   const p = mustPlayer(s, seat);
-  const yes = v.hands.includes(seat) && canVote(s, seat);
+  let yes = v.hands.includes(seat) && canVote(s, seat);
+  // (auto-st) automatic games: a healthy Butler's vote only counts if their master votes too.
+  if (yes && s.adjudicator?.enforceButler && p.character === 'butler' && p.alive && !impaired(p)) {
+    const m = p.butlerMasterSeat;
+    const masterVotes = m === null ? false : m in n.votes ? n.votes[m] === true : v.hands.includes(m);
+    if (!masterVotes) {
+      yes = false;
+      log(s, op, `Butler ${who(p)} raised a hand without their master: the vote does not count`);
+    }
+  }
   n.votes[seat] = yes;
   v.hands = v.hands.filter((x) => x !== seat);
   if (!yes) return;
@@ -290,6 +304,10 @@ export function slayerShot(s: GameState, op: Op, shooterSeat: number, targetSeat
     shooter.abilityUsed = true;
     if (!impaired(shooter)) {
       if (typeOf(target.character) === 'demon') {
+        killed = killPlayer(s, op, target, 'slayer');
+      } else if (target.character === 'recluse' && !impaired(target) && s.adjudicator?.recluseRegistersAsDemon?.(target, shooter)) {
+        // (auto-st) automatic games: the Recluse registered as the Demon.
+        log(s, op, `Recluse ${who(target)} registers as the Demon for the Slayer`);
         killed = killPlayer(s, op, target, 'slayer');
       } else if (target.character === 'recluse' && !impaired(target)) {
         alert(

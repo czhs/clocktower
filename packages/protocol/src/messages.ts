@@ -40,8 +40,9 @@ export const C2S = {
   'lobby:transferHost': LobbyPidMsg,
   'lobby:kick': LobbyPidMsg, // host only, waiting phase only
   'lobby:settings': LobbySettingsMsg, // host only, waiting phase only
-  'lobby:start': EmptyMsg, // storyteller only
+  'lobby:start': EmptyMsg, // storyteller only (automatic games: the host)
   'lobby:leave': EmptyMsg,
+  'lobby:abort': EmptyMsg, // (v2.1, auto-st) automatic games: the host ends the running game (abandoned record) -> waiting room
   // world
   move: MoveMsg,
   'world:useDoor': UseDoorMsg,

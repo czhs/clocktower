@@ -372,4 +372,4 @@ export interface GameRecordV1 {
   warnings: string[];
 }
 
-export type AbandonReason = 'closed_by_admin' | 'idle_timeout' | 'room_disposed';
+export type AbandonReason = 'closed_by_admin' | 'idle_timeout' | 'room_disposed' | 'aborted_by_host'; // (auto-st) automatic games: the host ended it
