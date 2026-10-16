@@ -299,7 +299,7 @@ export class FakeGame implements GameModule {
 
 export interface FakeRegistry {
   games: Map<string, FakeGame>;
-  /** lobbyId -> (pid -> audience). Default: nobody else hears you. */
+  /** lobbyId -> (pid -> audience). Default: everyone shares the outdoor square. */
   audience: Map<string, (pid: string) => string[]>;
   moves: { lobbyId: string; pid: string }[];
 }
@@ -342,7 +342,7 @@ export function fakeModules(): { registry: FakeRegistry; factories: NonNullable<
         onEvent: () => undefined,
         handleStatus: () => undefined,
         handleAnnounce: () => undefined,
-        audienceOf: (pid) => registry.audience.get(host.lobbyId)?.(pid) ?? [],
+        audienceOf: (pid) => registry.audience.get(host.lobbyId)?.(pid) ?? host.members().map((m) => m.pid),
         tick: () => undefined,
         dispose: async () => undefined,
       }),

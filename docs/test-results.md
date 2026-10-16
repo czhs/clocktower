@@ -2,6 +2,38 @@
 
 All commands run on **hshi-u1** via `scripts/remote.sh` unless stated otherwise.
 
+## 2026-10-16 — local preview, room chat, walkable cottages, and doorway regression
+
+Run on the editing Mac for the user's explicitly requested local preview. The documented SSH alias
+and full hostname for hshi-u1 did not resolve. Native preview: `127.0.0.1:3002`, isolated `data/local`;
+browser tests: throwaway server/database on `127.0.0.1:3398`. No shared deployment.
+
+Commands below use Node 24.22.0 and pnpm 10.34.7 via
+`npm exec --offline --cache /private/tmp/clocktower-npm-cache --yes --package=node@24 --package=pnpm@10.34.7 -- …`.
+Playwright commands set `PLAYWRIGHT_BROWSERS_PATH=/private/tmp/clocktower-browsers CT_E2E_NO_BUILD=1 E2E_VOICE=0`
+and use `-c tests/e2e/playwright.config.ts`. Local socket/browser runs required sandbox escalation.
+
+| Executed command | Result |
+|---|---|
+| `pnpm typecheck` | Passed all workspace packages. |
+| `pnpm --filter @ct/client typecheck` | Passed after indoor scaling, bubble stacking, and door changes. |
+| `pnpm exec tsc -p tests/tsconfig.json --noEmit` | Initial new-test import of `@ct/assets` failed root resolution; switched to the existing source-relative convention. Subsequent runs passed. |
+| `pnpm build` | Passed, including repeated rebuilds to update the local preview. Existing Zod annotation and mixed static/dynamic VoiceClient import warnings remain. |
+| `pnpm vitest run apps/server/test/room.test.ts apps/server/test/world.test.ts apps/server/test/world.stage.test.ts packages/assets/test/navigation.test.ts --maxWorkers=2` | 69 tests passed. Room suite could not bind port 3331 inside the sandbox; its 20 tests were skipped in this attempt. |
+| `pnpm vitest run apps/server/test/room.test.ts --maxWorkers=1` (escalated) | 20 passed: includes waiting/day/finished chat audience isolation and existing spam limits. Total targeted unit/integration checks: 89 passed. |
+| `pnpm exec playwright test … chat-bubbles` | Initial run lacked Chromium; installed into the temporary browser directory. Next run reached phone walking but hit an ambiguous Leave locator; scoped it to the cottage. A later run passed stacking/walking and failed a test assumption: forcing the first night yields `first_night`, not `night`; fixed the expectation. Subsequent runs passed. |
+| `pnpm exec playwright test … chat-bubbles.spec.ts doors.spec.ts` | Chat test passed in both combined runs: independent five-second expiry, newest-three cap, escaped text, private waiting/night/finished chat, Storyteller replies, departure cleanup, keyboard and phone floor-tap walking, bubble bounds, no page errors. Door fixture failures described below. |
+| `pnpm exec playwright test … doors.spec.ts` (initial iterations) | Reproduced the original trigger failure: feet 12px off-centre against the wall, still outdoors. Test setup then exposed seat-dependent stage-teleport offsets and the fountain blocking a straight approach to Ravenscroft. Switched to leaving onto the doorstep and moving sideways. A 30fps frame overshot the requested 10px offset to 15px; that also exposed the intermediate 16px trigger missing at the wall. Final trigger uses 20px, within the unchanged 22px server range. |
+| `pnpm exec playwright test … chat-bubbles.spec.ts doors.spec.ts` (final build) | **2 passed, 52.5s.** Door coverage: Wychwood, Weaver’s House, Ravenscroft, centered and both off-center approaches, immediate leave/re-enter tap during cooldown, no door errors. Chat coverage above passed again, with desktop/phone screenshots inspected. |
+| Collision probe via `pnpm exec tsx -e …`, then `node --import tsx --input-type=module -e …` | First attempt blocked by the sandbox's IPC restriction; loader form succeeded. Confirmed the fountain collision south of Ravenscroft, while the immediate doorstep is clear. |
+| `/Users/isaacsun/.docker/bin/docker compose config --quiet` | Passed. Docker image/runtime not tested: CLI exists, Docker Desktop/daemon is unavailable on this Mac. Native preview runs successfully. |
+| `curl --fail --silent http://127.0.0.1:3002/healthz` | Passed: development / local-preview / ok. |
+| `git diff --check` | Passed. |
+
+Existing chat/point/pin token-bucket limits were deliberately retained at the user's request.
+The broader full-game/chaos/phone suites had their changed indoor controls/text expectations updated;
+those full suites were not rerun in this session. LiveKit audio was not exercised.
+
 ## 2026-10-14 — M0 (lead)
 
 | Command | Result |

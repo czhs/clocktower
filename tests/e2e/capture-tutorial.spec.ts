@@ -631,7 +631,7 @@ async function play(browser: import('@playwright/test').Browser, base: string) {
       say(`Ada taps ${homeB.name}: ${(await tapCottage(A, pidA, homeB.id, { timeoutMs: 40_000 })).join(' | ')}`);
       await inB;
       const inAt = now();
-      await expect(A.page.locator('.ct-inside')).toContainText(/only you two can hear each other/, { timeout: 10_000 });
+      await expect(A.page.locator('.ct-inside')).toContainText(/voice and text stay in this room/, { timeout: 10_000 });
       await sleep(2600);
       addSegment('inside', 'ada', Math.max(t0, inAt - 5.6), now());
       posters.inside = now() - 0.8;

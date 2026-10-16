@@ -107,7 +107,7 @@ describe('GameRoom lifecycle (real Colyseus, fake gameplay modules)', () => {
       for (const id of accountIds) expect(dump).not.toContain(id);
     }
     const chat = A.players[0]!.of('chat:message');
-    expect(chat.every((m) => m.scope === 'lobby')).toBe(true);
+    expect(chat.every((m) => m.scope === 'zone' || m.scope === 'storyteller')).toBe(true);
   });
 
   it('a user can leave lobby A and join lobby B; counts update in the directory', async () => {
@@ -354,10 +354,14 @@ describe('GameRoom lifecycle (real Colyseus, fake gameplay modules)', () => {
     expect(v.members.filter((m) => m.isHost)).toHaveLength(1);
   });
 
-  it('in-game chat follows the voice audience; waiting chat goes to the whole lobby', async () => {
+  it.each(['waiting', 'day', 'finished'] as const)('%s chat stays within the voice audience, including private cottages', async (phase) => {
     const L = await seatLobby(5, { ready: true });
     const [p0, p1, p2] = L.players as [TestClient, TestClient, TestClient];
-    await startGame(L.st, L.players);
+    if (phase !== 'waiting') await startGame(L.st, L.players);
+    if (phase === 'finished') {
+      L.st.send('st:command', { type: 'declare_winner', winner: 'good', reason: 'Chat privacy test' });
+      await L.st.view((v) => v.lobby.phase === 'finished');
+    }
     fakes.registry.audience.set(L.lobby.id, (pid) => (pid === p0.pid ? [p1.pid!] : pid === L.st.pid ? [p2.pid!] : []));
     p0.send('chat:send', { text: 'psst only p1' });
     await p1.waitMsg('chat:message', (m) => m.text === 'psst only p1');

@@ -59,7 +59,7 @@ export interface SocialCtx {
   me(): { x: number; y: number; location: LocationId; facing: Facing };
   amStoryteller(): boolean;
   /** Feet position of a pid the viewer can currently SEE (rendered avatar, incl. yourself), else null. */
-  positionOf(pid: string): { x: number; y: number } | null;
+  positionOf(pid: string): { x: number; y: number; scale: number } | null;
   /** The visible character under a world point (generous hit box), else null. */
   entityAt(x: number, y: number): string | null;
   /** Cast id used to draw this pid ('storyteller' for the Storyteller). */
@@ -565,7 +565,7 @@ export function createSocialLayer(scene: Phaser.Scene, ctx: SocialCtx): SocialLa
       const from = ctx.positionOf(e.pid);
       const tp = e.target ? ctx.positionOf(e.target) : null;
       const to = tp ?? { x: e.x, y: e.y };
-      const aim = { x: to.x, y: tp ? to.y - 14 : to.y };
+      const aim = { x: to.x, y: tp ? to.y - 14 * tp.scale : to.y };
       // ping at the target (a person: at their feet)
       if (e.ping) e.ping.setPosition(Math.round(to.x), Math.round(to.y)).setAlpha(a).setVisible(true);
       else {
@@ -593,7 +593,7 @@ export function createSocialLayer(scene: Phaser.Scene, ctx: SocialCtx): SocialLa
         continue;
       }
       // the hand beside the emoter's head, aimed at the target (world scale 1 = the cast's pixel size)
-      const head = { x: from.x, y: from.y - HEAD_Y };
+      const head = { x: from.x, y: from.y - HEAD_Y * from.scale };
       const dx = aim.x - head.x;
       const dy = aim.y - head.y;
       const dir = nearestDir(dx, dy, DIR_VECTORS);
@@ -737,7 +737,7 @@ export function createSocialLayer(scene: Phaser.Scene, ctx: SocialCtx): SocialLa
         const label = 14 / z; // clear the name label above the head
         const bob = reducedMotion() ? 0 : Math.round(Math.sin(t / 420 + i * 1.3)) * s;
         x = p.x + slot.dx;
-        y = p.y - 35 - label + slot.dy + bob;
+        y = p.y - 35 * p.scale - label + slot.dy + bob;
         rot = slot.rot;
         depth = DEPTH_PERSON_PIN + i * 0.001;
       } else {

@@ -1,0 +1,41 @@
+/* Parchment speech notes: readable at every camera zoom, below HUD panels, and never clickable. */
+.ct-chat-bubbles {
+  position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 5;
+}
+.ct-chat-stack {
+  position: absolute; left: 0; top: 0; visibility: hidden;
+  display: flex; flex-direction: column; align-items: stretch; gap: 5px;
+  width: max-content; max-width: min(220px, calc(100% - 16px));
+}
+.ct-chat-stack[hidden] { display: none; }
+.ct-chat-bubble {
+  position: relative; max-width: 100%; box-sizing: border-box;
+  padding: 7px 10px; border: 1px solid #a68a56; border-radius: 5px;
+  background: #f3e7cb; color: #302637;
+  box-shadow: 0 2px 0 #30233480, 0 3px 12px #09070d50, inset 0 0 0 1px #fff4db;
+  font-family: 'Alegreya Sans', 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.2;
+  text-align: center; overflow-wrap: anywhere; unicode-bidi: plaintext;
+  animation: ct-chat-bubble-fade 5s linear both;
+}
+.ct-chat-bubble-text {
+  display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden;
+  white-space: pre-wrap;
+}
+.ct-chat-bubble:last-child::before {
+  content: ''; position: absolute; top: 100%; left: var(--tail-x, 50%);
+  width: 1px; height: var(--tail-h, 10px); background: #bca373;
+}
+.ct-chat-bubble:last-child::after {
+  content: ''; position: absolute; top: calc(100% - 4px); left: calc(var(--tail-x, 50%) - 4px);
+  width: 7px; height: 7px; background: #f3e7cb;
+  border-right: 1px solid #a68a56; border-bottom: 1px solid #a68a56; transform: rotate(45deg);
+}
+.ct-chat-bubble-st { border-color: #9d80aa; background: #eee1f2; color: #392640; }
+.ct-chat-bubble-st:last-child::after { background: #eee1f2; border-color: #9d80aa; }
+.ct-chat-bubble-st:last-child::before { background: #9d80aa; }
+@keyframes ct-chat-bubble-fade {
+  0% { opacity: 0; } 3%, 96% { opacity: 1; } 100% { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ct-chat-bubble { animation: none; }
+}

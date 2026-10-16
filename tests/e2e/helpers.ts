@@ -573,8 +573,8 @@ export async function holdFrames(page: Page, codes: string[], frames: number): P
 // ---------------------------------------------------------------------------- v2: doors, taps, camera
 //
 // v2 one-screen town: doors are automatic (walk INTO a doorway), a tap/click on a cottage walks
-// there and goes in (client-side path), inside there is no walking (fixed room view + "Inside …"
-// panel with a Leave button; any arrow/WASD key also leaves). The Storyteller's click teleports
+// there and goes in (client-side path). Inside, floor taps and keys walk; Leave / Escape exits.
+// The Storyteller's outdoor click teleports
 // (st:command teleport_self).
 //
 // Tapping needs canvas coordinates. The client exposes an opt-in, production-safe camera hook
@@ -844,11 +844,11 @@ export async function leaveByButton(p: Player, pid: string, opts: { touch?: bool
   await expect(insidePanel(p.page)).toHaveCount(0, { timeout: 10_000 });
 }
 
-/** Leave a cottage by pressing a movement key (v2: any arrow/WASD key inside walks you out). */
-export async function leaveByKey(p: Player, pid: string, key = 'ArrowDown'): Promise<void> {
+/** Leave a cottage with the Escape shortcut. Movement keys now walk within the room. */
+export async function leaveByKey(p: Player, pid: string): Promise<void> {
   await p.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
   for (let k = 0; k < 3; k++) {
-    await p.page.keyboard.press(key);
+    await p.page.keyboard.press('Escape');
     const ok = await expect
       .poll(() => selfEntity(p, pid)?.location, { timeout: 8000 })
       .toBe('outdoors')
@@ -858,7 +858,7 @@ export async function leaveByKey(p: Player, pid: string, key = 'ArrowDown'): Pro
       );
     if (ok) return;
   }
-  throw new Error(`${p.name}: ${key} inside did not walk us out (at ${selfEntity(p, pid)?.location})`);
+  throw new Error(`${p.name}: Escape inside did not leave (at ${selfEntity(p, pid)?.location})`);
 }
 
 /**

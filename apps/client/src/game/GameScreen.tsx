@@ -436,14 +436,15 @@ function InsidePanel({ inside, prompt, onLeave }: { inside: Inside; prompt: Prom
       <div class="ct-inside-who">
         {others.length ? (
           <>
-            In here with <b>{others.join(', ')}</b> — only you {others.length === 1 ? 'two' : 'here'} can hear each other
+            In here with <b>{others.join(', ')}</b> — voice and text stay in this room
           </>
         ) : (
-          <>Nobody else is here — only people inside can hear you</>
+          <>Nobody else is here — voice and text stay in this room</>
         )}
       </div>
+      <div class="ct-inside-note">Walk with WASD / arrows, or tap the floor.</div>
       {prompt?.locked && prompt.text && <div class="ct-inside-note">{prompt.text}</div>}
-      <button class="primary ct-inside-leave" disabled={!inside.canLeave} title={inside.canLeave ? 'Walk back out (or press any arrow key)' : inside.lockedReason} onClick={onLeave}>
+      <button class="primary ct-inside-leave" disabled={!inside.canLeave} title={inside.canLeave ? 'Leave the cottage (Escape)' : inside.lockedReason} onClick={onLeave}>
         {inside.canLeave ? 'Leave' : inside.lockedReason ?? 'Locked'}
       </button>
     </div>
