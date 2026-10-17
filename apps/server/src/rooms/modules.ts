@@ -18,7 +18,6 @@ import type {
   PlayerGameView,
   S2CMessages,
   S2CType,
-  ScriptId,
   StageTarget,
   StageView,
   StSelfTarget,
@@ -66,8 +65,6 @@ export interface RoomHost {
   readonly env: string;
   readonly log: Logger;
   now(): number;
-  /** The script this lobby runs (LobbySettings.script); selects the character pool. */
-  script(): ScriptId;
   members(): readonly RoomMember[];
   member(pid: string): RoomMember | undefined;
   storytellerPid(): string | null;

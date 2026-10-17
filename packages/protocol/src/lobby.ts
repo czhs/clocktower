@@ -1,7 +1,6 @@
 import { z } from 'zod';
 import { MAX_PLAYERS, MIN_PLAYERS } from './constants.js';
 import { Cosmetics } from './cosmetics.js';
-import { SCRIPT_IDS, type ScriptId } from './characters/types.js';
 import { LobbyDescription, LobbyName } from './text.js';
 import { STORYLINE_IDS } from './storylines.js';
 import { CHAT_FILTER_MODES } from './moderationShared.js';
@@ -17,8 +16,8 @@ import { CHAT_FILTER_MODES } from './moderationShared.js';
 // reusable across lobbies. Reconnection uses Colyseus reconnection tokens, falling back to a
 // fresh ticket — the server maps the account back to its previous seat.
 
-// Script ids live in ./characters/types.js (shared with the character catalogue).
-export const SCRIPTS = SCRIPT_IDS;
+export const SCRIPTS = ['trouble-brewing'] as const;
+export type ScriptId = (typeof SCRIPTS)[number];
 
 /** Coarse phase shown in the lobby finder. */
 export type DirectoryPhase = 'waiting' | 'starting' | 'day' | 'night' | 'finished';

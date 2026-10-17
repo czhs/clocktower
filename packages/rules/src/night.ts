@@ -1,4 +1,4 @@
-import type { CharacterId, InfoSpecInput, NightStepView } from '@ct/protocol';
+import type { InfoSpecInput, NightStepView } from '@ct/protocol';
 import { ROLES } from './roles.js';
 import { RuleError, type GameState, type NightStep, type PlayerState, type StepKind } from './types.js';
 import {
@@ -111,7 +111,7 @@ export function resolveStep(
   s: GameState,
   op: Op,
   st: NightStep,
-  input: { seats?: number[]; starpassSeat?: number; redirectSeat?: number; character?: CharacterId },
+  input: { seats?: number[]; starpassSeat?: number; redirectSeat?: number },
 ): void {
   if (st.status === 'resolved' || st.status === 'skipped') throw new RuleError('invalid', 'Step already finished');
   let outcome = '';

@@ -6,7 +6,6 @@ import { localPlayer, type LocalPlayerState } from '../net/localPlayer';
 import type { RoomConnection } from '../net/room';
 import { shallowEqual, useStore, useStoreSelector } from '../net/store';
 import { HowToPlayHost, openHelp } from '../ui/common/HowToPlay';
-import { openRulebook, RulebookHost } from '../ui/rulebook'; // rulebook Grimoire (lazy chunk)
 import { applyAmbientVolume, SettingsButton } from '../ui/common/Settings';
 import { goTo } from '../ui/lobby/finder';
 import { attachSound, unlockAudio } from './audio';
@@ -100,7 +99,6 @@ export function GameScreen(props: { conn: RoomConnection; account: AccountView; 
       <ConnectionBanner conn={props.conn} />
       {props.children}
       <HowToPlayHost touch={touch} />
-      <RulebookMount conn={props.conn} />
     </div>
   );
 }
@@ -222,12 +220,6 @@ function Toolbar({ conn }: { conn: RoomConnection }) {
       <AbortGame conn={conn} />
       <LobbySafety conn={conn} />
       <SettingsButton conn={conn} onLeave={game ? leave : undefined} leaveLabel={finished ? 'Back to lobbies' : 'Leave game'} />
-      <button class="ct-tb-rulebook" onClick={openRulebook} aria-label="Rulebook" title="Rulebook: every script's rules and characters">
-        <span class="ct-tb-glyph" aria-hidden="true">
-          ❦
-        </span>{' '}
-        <span class="ct-tb-label">Rules</span>
-      </button>
       <button class="ct-tb-icon" onClick={openHelp} aria-label="How to play" title="How to play · keyboard shortcuts (?)">
         ?
       </button>
@@ -242,13 +234,6 @@ function Toolbar({ conn }: { conn: RoomConnection }) {
       )}
     </div>
   );
-}
-
-/** The rulebook, opened on this lobby's script, with the viewer's own character highlighted. */
-function RulebookMount({ conn }: { conn: RoomConnection }) {
-  const script = useStoreSelector(conn.lobbyView, (l) => l?.lobby.script);
-  const mine = useStoreSelector(conn.gameView, (g) => (g && 'you' in g ? g.you.role?.character : undefined));
-  return <RulebookHost script={script} mine={mine} />;
 }
 
 // ------------------------------------------------------------------------------------ home compass

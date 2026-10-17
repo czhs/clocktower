@@ -2,9 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   C2S,
   CHARACTER_IDS,
-  CHARACTER_INFO,
-  charactersOfScript,
-  isSeatedType,
   CreateLobbyRequest,
   DisplayName,
   LobbyName,
@@ -41,29 +38,10 @@ describe('lobby schemas', () => {
   });
 });
 
-/** Official scripts whose character table has landed. Add to this list as scripts are built. */
-const IMPLEMENTED_SCRIPTS = ['trouble-brewing', 'bad-moon-rising', 'sects-and-violets'] as const;
-
 describe('message map', () => {
-  it('has a consistent character catalogue across every script', () => {
-    // Trouble Brewing is still exactly its original 22.
-    expect(charactersOfScript('trouble-brewing')).toHaveLength(22);
-    // Ids are globally unique and every id has catalogue metadata.
-    expect(new Set(CHARACTER_IDS).size).toBe(CHARACTER_IDS.length);
-    for (const id of CHARACTER_IDS) {
-      expect(CHARACTER_INFO[id], id).toBeDefined();
-      expect(CHARACTER_INFO[id].name.length, id).toBeGreaterThan(0);
-      expect(CHARACTER_INFO[id].ability.length, id).toBeGreaterThan(0);
-    }
-    // Every official script's pool is a subset of the catalogue, and the types line up.
-    for (const script of IMPLEMENTED_SCRIPTS) {
-      const pool = charactersOfScript(script);
-      expect(pool.length, script).toBeGreaterThan(0);
-      for (const c of pool) expect(CHARACTER_IDS, `${script}: ${c}`).toContain(c);
-      // A playable script needs at least one Demon and the four seated types are all it uses.
-      expect(pool.some((c) => CHARACTER_INFO[c].type === 'demon'), script).toBe(true);
-      for (const c of pool) expect(isSeatedType(CHARACTER_INFO[c].type), `${script}: ${c}`).toBe(true);
-    }
+  it('has 22 Trouble Brewing characters', () => {
+    expect(CHARACTER_IDS).toHaveLength(22);
+    expect(new Set(CHARACTER_IDS).size).toBe(22);
   });
   it('validates storyteller commands strictly', () => {
     expect(StCommand.safeParse({ type: 'kill', seat: 3, announce: true }).success).toBe(true);

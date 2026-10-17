@@ -41,9 +41,6 @@ importers:
       '@ct/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
-      '@ct/rules':
-        specifier: workspace:*
-        version: link:../../packages/rules
       '@ct/voice':
         specifier: workspace:*
         version: link:../../packages/voice

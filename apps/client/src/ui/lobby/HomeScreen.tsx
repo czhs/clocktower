@@ -6,7 +6,6 @@ import { LobbyFinder } from './LobbyFinder';
 import { StatsPanel } from './StatsPanel'; // (v2.2 stats)
 import { AccountPanel } from './AccountPanel'; // (v2.3 AUTH-5/6)
 import { HowToPlayHost, openHelp } from '../common/HowToPlay';
-import { openRulebook, RulebookHost } from '../rulebook';
 import { signOutAll } from '../common/http';
 import { errorText, goTo } from './finder';
 import '../auth/auth.css';
@@ -39,7 +38,6 @@ export function HomeScreen({
         </main>
       </div>
       <HowToPlayHost />
-      <RulebookHost />
     </div>
   );
 }
@@ -123,9 +121,6 @@ function AccountHeader({
         )}
         <button class="ct-link" onClick={openHelp}>
           How to play
-        </button>
-        <button class="ct-link" onClick={openRulebook}>
-          Rulebook
         </button>
         {account.isAdmin && (
           <button class="ct-link" onClick={() => goTo('/admin')}>

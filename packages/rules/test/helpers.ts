@@ -1,4 +1,4 @@
-import type { CharacterId, ScriptId, StCommand } from '@ct/protocol';
+import type { CharacterId, StCommand } from '@ct/protocol';
 import { expect } from 'vitest';
 import {
   applyPlayerAction,
@@ -17,23 +17,16 @@ export function players(n: number) {
   return Array.from({ length: n }, (_, i) => ({ pid: `pid${i}`, seat: i, name: `P${i + 1}` }));
 }
 
-export function newGame(n: number, seed = 1, script?: ScriptId): GameState {
-  return createGame({ players: players(n), rng: mulberry32(seed), now: clock.now, ...(script ? { script } : {}) });
+export function newGame(n: number, seed = 1): GameState {
+  return createGame({ players: players(n), rng: mulberry32(seed), now: clock.now });
 }
 
 /** Game with characters assigned in seat order. */
 export function mkGame(
   chars: CharacterId[],
-  opts: {
-    drunkBelieves?: CharacterId;
-    redHerringSeat?: number;
-    bluffs?: CharacterId[];
-    seed?: number;
-    /** Script to run (default Trouble Brewing). Off-script characters only warn, so any mix works. */
-    script?: ScriptId;
-  } = {},
+  opts: { drunkBelieves?: CharacterId; redHerringSeat?: number; bluffs?: CharacterId[]; seed?: number } = {},
 ): GameState {
-  const s = newGame(chars.length, opts.seed ?? 1, opts.script);
+  const s = newGame(chars.length, opts.seed ?? 1);
   st(s, {
     type: 'assign_characters',
     assignments: chars.map((character, seat) => ({ seat, character })),
