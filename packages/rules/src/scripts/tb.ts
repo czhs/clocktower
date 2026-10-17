@@ -364,7 +364,8 @@ export const TB_ROLES: ScriptRoleDefs = {
         notes.push('Pass starpassSeat when resolving to choose which Minion becomes the Imp.');
       } else if (!t.alive) text = `${who(t)} is already dead: nothing happens.`;
       else if (t.protectedTonight) text = `${who(t)} is protected by the Monk: nobody dies.`;
-      else if (killPrevention(s, t, 'demon')) text = `${killPrevention(s, t, 'demon')!.reason} Nobody dies.`;
+      else if (killPrevention(s, t, 'demon', { preview: true }))
+        text = `${killPrevention(s, t, 'demon', { preview: true })!.reason} Nobody dies.`;
       else if (t.character === 'mayor' && !impaired(t)) {
         text = `${who(t)} is the Mayor: they die unless you bounce the kill.`;
         notes.push('Pass redirectSeat when resolving to have another player die instead.');

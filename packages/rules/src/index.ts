@@ -61,4 +61,6 @@ export {
 } from './rolekit.js';
 export { becomeDemon, killPlayer, killPrevention } from './deaths.js';
 export { finishVoteNow, minVotes } from './day.js';
+// Storyteller-facing night-step view (suggestion, prompt, notes). Used by the ST panel and tests.
+export { stepView, buildNightQueue, findStep, openStepFor } from './night.js';
 export { mulberry32, impaired, actingRole } from './util.js';

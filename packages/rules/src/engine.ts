@@ -701,10 +701,11 @@ function stCommand(s: GameState, op: Op, cmd: StCommand): void {
     case 'resolve_step': {
       notSetupOrFinished(s);
       const st = findStep(s, cmd.stepId);
-      const input: { seats?: number[]; starpassSeat?: number; redirectSeat?: number } = {};
+      const input: { seats?: number[]; starpassSeat?: number; redirectSeat?: number; character?: CharacterId } = {};
       if (cmd.seats) input.seats = cmd.seats;
       if (cmd.starpassSeat !== undefined) input.starpassSeat = cmd.starpassSeat;
       if (cmd.redirectSeat !== undefined) input.redirectSeat = cmd.redirectSeat;
+      if (cmd.character !== undefined) input.character = cmd.character;
       resolveStep(s, op, st, input);
       for (const p of s.players) p.prompts = p.prompts.filter((q) => q.stepId !== st.id);
       return;

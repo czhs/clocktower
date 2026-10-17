@@ -283,6 +283,12 @@ export const StCommand = z.discriminatedUnion('type', [
     starpassSeat: Seat.optional(),
     /** (additive) Mayor bounce: the player who dies instead of the Mayor. */
     redirectSeat: Seat.optional(),
+    /**
+     * (additive, multi-script) A character the resolution needs: the Courtier's and Gambler's
+     * guesses, the character the Pit-Hag creates, the character the Cerenovus makes someone mad
+     * about, the ability the Philosopher takes.
+     */
+    character: CharacterIdSchema.optional(),
   }),
   z.object({ type: z.literal('skip_step'), stepId: z.string().max(64) }),
   z.object({ type: z.literal('visit_home'), seat: Seat }),

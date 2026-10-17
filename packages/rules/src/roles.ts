@@ -4,15 +4,15 @@
 // The definition contract and its helpers live in ./rolekit.ts; the tables live in ./scripts/*.
 // Nothing in the engine branches on a character id — it calls the hooks declared here.
 import { CHARACTER_IDS, CHARACTER_INFO, type CharacterId, type ScriptId, charactersOfScript } from '@ct/protocol';
-import type { RoleDef, ScriptRoleDefs } from './rolekit.js';
-import { BMR_ROLES } from './scripts/bmr.js';
+import type { RoleDef, ScriptHooks, ScriptRoleDefs } from './rolekit.js';
+import { BMR_HOOKS, BMR_ROLES } from './scripts/bmr.js';
 import { FABLED_ROLES } from './scripts/fabled.js';
 import { HOMEBREW_ROLES } from './scripts/homebrew.js';
-import { SNV_ROLES } from './scripts/snv.js';
+import { SNV_HOOKS, SNV_ROLES } from './scripts/snv.js';
 import { TB_ROLES } from './scripts/tb.js';
 import { TRAVELLERS_ROLES } from './scripts/travellers.js';
 
-export type { RoleDef, ScriptRoleDefs, StepSuggestion, ResolveInput, KillPrevention } from './rolekit.js';
+export type { RoleDef, ScriptHooks, ScriptRoleDefs, StepSuggestion, ResolveInput, KillPrevention } from './rolekit.js';
 
 /**
  * Every character definition, keyed by id. A character present in the protocol catalogue but
@@ -45,6 +45,12 @@ function buildRoles(): Record<CharacterId, RoleDef> {
 }
 
 export const ROLES: Readonly<Record<CharacterId, RoleDef>> = buildRoles();
+
+/**
+ * Script-level hooks, for abilities that act on other players' events (see `ScriptHooks`).
+ * Consulted in addition to the per-character hooks, in script order.
+ */
+export const SCRIPT_HOOKS: readonly ScriptHooks[] = [BMR_HOOKS, SNV_HOOKS];
 
 /** Characters that wake on the first night, in order. Scoped to `script` when given. */
 export function firstNightOrder(script?: ScriptId): CharacterId[] {

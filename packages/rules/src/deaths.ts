@@ -1,5 +1,5 @@
 import type { Alignment, CharacterId, GameResult } from '@ct/protocol';
-import { ROLES } from './roles.js';
+import { ROLES, SCRIPT_HOOKS } from './roles.js';
 import type { KillPrevention } from './rolekit.js';
 import type { GameState, PlayerState } from './types.js';
 import {
@@ -27,9 +27,20 @@ import type { DeathCause } from './rolekit.js';
  * Ask the victim's character whether it stops this kill (Soldier and friends). Pure: the engine
  * calls it both to preview the outcome for the Storyteller and to apply it.
  */
-export function killPrevention(s: GameState, p: PlayerState, cause: DeathCause): KillPrevention | null {
-  const def = ROLES[p.character];
-  return def?.preventsKill?.(s, p, cause) ?? null;
+export function killPrevention(
+  s: GameState,
+  p: PlayerState,
+  cause: DeathCause,
+  opts: { preview?: boolean } = {},
+): KillPrevention | null {
+  const preview = opts.preview === true;
+  const own = ROLES[p.character]?.preventsKill?.(s, p, cause, { preview });
+  if (own) return own;
+  for (const hooks of SCRIPT_HOOKS) {
+    const blocked = hooks.preventsKill?.(s, p, cause, { preview });
+    if (blocked) return blocked;
+  }
+  return null;
 }
 
 export interface KillOptions {
@@ -50,6 +61,19 @@ function publicNow(s: GameState, opts: KillOptions): boolean {
  */
 export function killPlayer(s: GameState, op: Op, p: PlayerState, cause: DeathCause, opts: KillOptions = {}): boolean {
   if (!p.alive) return false;
+  // Single gate for every death that is not a raw Storyteller correction. Callers may also check
+  // `killPrevention` first to show the Storyteller the outcome before committing (preview: true).
+  if (!opts.raw && cause !== 'storyteller') {
+    if (cause === 'demon' && p.protectedTonight) {
+      log(s, op, `${who(p)} was protected and survived a Demon kill`);
+      return false;
+    }
+    const blocked = killPrevention(s, p, cause);
+    if (blocked) {
+      log(s, op, `${who(p)} survived (${cause}): ${blocked.reason}`);
+      return false;
+    }
+  }
   const aliveBefore = aliveCount(s);
   p.alive = false;
   p.died = true;
@@ -68,6 +92,8 @@ export function killPlayer(s: GameState, op: Op, p: PlayerState, cause: DeathCau
   // Death-triggered abilities. Dispatched on the ACTING role, so a Drunk who believes they are
   // the Ravenkeeper still wakes (and learns nothing true).
   ROLES[actingRole(p)]?.onDeath?.(s, op, p, cause);
+  // Script-level death watchers (the Minstrel reacting to a Minion's execution, and so on).
+  for (const hooks of SCRIPT_HOOKS) hooks.onAnyDeath?.(s, op, p, cause);
   // Star-pass: the caller picks the successor and then checks victory itself.
   if (opts.raw || cause === 'starpass') return true;
   if (typeOf(p.character) === 'demon') demonDied(s, op, aliveBefore);

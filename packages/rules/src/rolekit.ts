@@ -100,10 +100,19 @@ export interface RoleDef {
   nightNote?: string;
 
   /**
-   * Stops a night kill aimed at this player (Soldier). Return a reason to prevent it. Checked for
-   * the VICTIM, after protection reminders, for `cause: 'demon'` kills.
+   * Stops a kill aimed at this player (Soldier, Fool, Tea Lady's neighbours, ...). Return a reason
+   * to prevent it. Consulted for the VICTIM on every cause except `'storyteller'` (the Storyteller
+   * is never blocked) and never for a `raw` kill.
+   *
+   * `opts.preview` is true when the engine is only showing the Storyteller what WOULD happen; a
+   * once-per-game protection must NOT be consumed in that case.
    */
-  preventsKill?: (s: GameState, p: PlayerState, cause: DeathCause) => KillPrevention | null;
+  preventsKill?: (
+    s: GameState,
+    p: PlayerState,
+    cause: DeathCause,
+    opts: { preview: boolean },
+  ) => KillPrevention | null;
   /** This player just died. Use for dynamic wakes (Ravenkeeper) and death-triggered state. */
   onDeath?: (s: GameState, op: Op, p: PlayerState, cause: DeathCause) => void;
   /**
@@ -131,6 +140,27 @@ export interface RoleDef {
 
 /** A script's character table: `{ [characterId]: definition }` without the id/type boilerplate. */
 export type ScriptRoleDefs = Partial<Record<CharacterId, Omit<RoleDef, 'id' | 'type'>>>;
+
+/**
+ * Some abilities protect or react to OTHER players, so they cannot live on the affected player's
+ * own `RoleDef` (the Tea Lady protects her neighbours; the Minstrel reacts to a Minion's
+ * execution). A script may export these script-level hooks and the engine consults them alongside
+ * the per-character ones.
+ */
+export interface ScriptHooks {
+  /**
+   * Consulted for every kill, after the victim's own `preventsKill`. Return a reason to stop it.
+   * `preview` has the same meaning as on `RoleDef.preventsKill`: do not consume anything.
+   */
+  preventsKill?: (
+    s: GameState,
+    victim: PlayerState,
+    cause: DeathCause,
+    opts: { preview: boolean },
+  ) => KillPrevention | null;
+  /** Called after any player dies, for abilities that watch other players' deaths. */
+  onAnyDeath?: (s: GameState, op: Op, dead: PlayerState, cause: DeathCause) => void;
+}
 
 // ------------------------------------------------------------------------------------- helpers
 
