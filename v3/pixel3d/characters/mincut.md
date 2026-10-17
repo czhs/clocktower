@@ -4,6 +4,10 @@
 evidence `shots/char-mincut/self/`. Identity source (read only): `pipgws/packages/assets/scripts/cast/mincut.ts`,
 `refs/cast/mincut.png`. Render host: render-host (RTX 4090, every render). Round 1 (author) → round 2 (critic 17/24 fixes), 2026-10-16.
 Round-2 evidence: `shots/char-mincut/r2/` (z-*.png 8-facing crops, s-*1x.png 1x GIF sheets, sil-lineup.png).
+**Round 3 (cast close-out, 2026-10-17): added the game clips point, ghost, ghost-spent** (everything else unchanged).
+Evidence `shots/char-mincut/r3/`: point probes `pt/pu/pv/pw/px-stack.png` (variant `shots/char-mincut/mincut_pt3.js`),
+final 8-facing keys `g8-new-stack.png` (rows: point f4, ghost f0/f32, spent f0/f36), `ghost-zoom.png`, 1× GIF frame
+sheets `s-point1x.png` / `s-ghost1x.png` / `s-ghostspent1x.png`, baked rows `bake-new-rows.png`, logs `pack.log`, `bake.log`.
 
 ## 0. Brief
 - Concept: a plush-toy red panda, unclothed, russet fur, white face mask (muzzle, cheeks, brow spots) with the russet
@@ -95,6 +99,23 @@ copy now reads russet-brown (`scene-noon-crop.png`), sig_ground noon-shade +27 %
   f22 OPEN at the link2/link3 joint (5) · f27 SNIP shut (5) · f32 OPEN (5) · f37 SNIP + bottom link drops 0.1 m, tail
   flick (3) · f40 link gone (5; on the glyph's fade frame so `snip.strobe` is 2, not 3) · f45 SMUG — chin up, half-lid,
   scissors raised, 2-link chain still held (12) · f57 idle (props away).
+- point (r3, length 35, no FX): f0 wind — paws drawn in, chest −8, half-lid, ears up (4) · f4 POINT — chest twisted
+  +16 (spine +12) so the RIGHT shoulder leads, head turned back to the target (twist −16, roll 4), jaw 8, eyes narrowed;
+  right arm `upperArmR [105, 0, 4]` + `forearmR [-30, 0, 0]` (straight), reach `'.l'` 0.8 / 0.6 (+80 / +60 %), both
+  segments `.s` [0.25, 0, 0.25] (1.25× thick: a paw, not a twig); left paw forward-up-out `[95, 0, 30]` `.l` 0.7, thick;
+  tail flicked out (−22/−14) — HELD 24 frames · f28 paws down (6) · f34 idle. Aim: along the facing (R W4 point) — at SE/E
+  the right arm leaves the outline to screen-right and rises ≈ 20°, at W/SW it leaves to screen-left, at S the left paw
+  breaks the outline at screen-right (the right arm is end-on over the belly there). Texels outside the idle outline
+  (`mincut_outside.py.js`, includes the tail flick): S 125, SE 164, E 206, NE 193, N 174, NW 219, W 161, SW 148.
+  Rejected (`r3/pt-stack`, `pu-stack`): `.l` 1.15–1.4 = a 2× stick (`.l` is a FRACTION: 1.4 = +140 %); out 22–30 = a
+  sideways raise that hides at SE; two symmetric forward-up arms = a "ta-da" at N/S.
+- ghost (r3, loop 64, keys every 16, dynamics hold; `spec.ghost { hover 0.14, keepHue 0.3 }`): rigid bob 0.03/0.015/0/
+  0.015, paws floating out in turn (out 16/24), head roll ±4, half-lid on key 3, legs dangling (module floats + dissolves
+  them), tail sways out −6…−20 with tail1 following. Pale pink-lilac ramp (keepHue keeps the russet/white mask readable:
+  mask, eyes, ringed tail all read at 1× SE, `r3/ghost-zoom.png`), gold halo over the ears.
+- ghost-spent (r3, loop 72, keys every 18): sunk −0.02…−0.05, spine/chest 6, head bowed 14 (roll ±3), half-lid, ears
+  back −35, paws hanging, tail drooped (tipped forward 20); module spent ramp = dimmer mauve, no halo. Face still shows
+  at S/SE (eyes + mask), `g8-new-stack.png` rows 4–5.
 - walk / run: §Unique 1–2. turn: 45° steps held ≥ 2 grid frames (`turn.off_grid` 0).
 
 ## Final numbers (sheet = code)
@@ -130,3 +151,25 @@ copy now reads russet-brown (`scene-noon-crop.png`), sig_ground noon-shade +27 %
 
 **Total 20 / 24.** Weakest: (1) white-mask region still has 8–10 isolated texels at S (nose / eye texels); (2) the tail
 is hidden at E; (3) foot_slide n/a / legs-only flicker (module).
+
+## Round 3 (cast close-out, 2026-10-17) — game clips point / ghost / ghost-spent
+- Pack under the CURRENT rules (`tools/charpack.sh mincut --preset cast`, render-host RTX 4090, `r3/pack.log`): **0 FAIL,
+  116 pass / 18 warn**, `cast_clips` PASS (idle, walk, talk, vote, point, die, ghost, ghost-spent + snip). New rows all
+  PASS: point off_grid 0, flicker 0, hold_redraws 0, key_delta 49 %, pose_read 35 % ×24, key_speckle +0; ghost off_grid
+  0, amplitude 30 %, key_delta 53 %; ghost-spent off_grid 0, amplitude 15 %, key_delta 36 %; islands 1 on all three.
+  Living rows identical to r2 (face_lit 91 %, face_visible 75 %, isolated_px fur max 4, sig_ground PASS ×4,
+  game.readable 3.95 H/s, deterministic).
+- Warns kept and why: the r2 set (height_px S 43 under the 40–52 band's preferred 46, colors/slot, speckle 27, sig.fur/
+  white isolated, foot_slide n/a at 4 H/s, micro 1–2, vote/snip/die key_speckle = the scissor/chain props + curled
+  die) plus one NEW row from the newer charcheck: `prop_area.handleB` 0–4 px (edge-on 4/8) — by design, the scissor
+  handles sit inside the fist; the blades (`prop_area.bladeA/B`) PASS 14–32 px, edge-on 0/8.
+- 1× real time (dir 1, `r3/s-point1x.png`, GIF durations 270/130/800/200/440 ms): idle → paws in (4 f) → the two-paw
+  "THAT one" held 0.8 s, right arm rising toward screen-right past the cheek → down → idle. Ghost (`s-ghost1x.png`, 8
+  drawings ≈ 0.53 s each): pale floating red panda, halo over the ears, ringed tail and mask readable, legs dissolve.
+  Spent (`s-ghostspent1x.png`, 0.6 s drawings): dimmer mauve, head bowed, ears back, no halo — clearly the "used" ghost.
+- Bake (`tools/charpack.sh --bake mincut --preset cast`, `r3/bake.log`): 10 clips × 8 dirs, cell 56×70 anchor [28, 60],
+  sheet 504×5600, point 4 / ghost 4 / ghost-spent 4 frames, no warnings; rows checked in `r3/bake-new-rows.png`.
+- Self-score (round-2 table unchanged; the new clips): 7 Animation timing stays 2 (point holds 24 f with a 4-f wind, ghost
+  keys every 16/18 f, no redraws); 12 Technical 2 (0 FAIL, bake 10 clips). Weakest new thing: at S the pointer (right
+  arm) is end-on over the belly — the outline break there is the LEFT paw, so S reads "points up-right" rather than "at
+  me"; at SW the right paw clears the outline by only ≈ 4–6 texels in the baked frame. Needs a critic r3.

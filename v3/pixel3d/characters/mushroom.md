@@ -152,3 +152,32 @@ pv-sheet.png point A/B, point-1x.png 1× strip, bake-ghost.png / bake-point.png 
 - **Module fixes re-check:** walk/game at 4.0 H/s, cycle 0.278 s, 4/4 drawings (`game.readable` PASS); hem stays above
   the ground on every hop drawing, boots show under it on rise/fall, shadow gap at the apex (`clip-game.png`,
   `game-onion.png`). walk/game/run leg flicker unchanged in kind (legs only, upper 0).
+
+## Close-out (2026-10-17): golden-hour colour drift
+
+Problem (`docs/CAST_GALLERY.md`, learnings §Run 05 close #4): at golden the ivory robe of the sun copy went mauve
+(`#7A657E` / `#89738E`) and the cap spots apricot (`#EFBD78`, `#DFB48B`); the spent ghost's cap went khaki-olive.
+All A/B on render-host (RTX 4090), evidence in `shots/char-mushroom/wk/`.
+
+- **`material.creamKeep: [1, 0.85]`** — the robe slot (robe, sleeves, cuffs, spots) is the only slot its gate takes
+  (skin / gold / cap / trim are too saturated, so the face stays warm and the cap stays the golden red). Golden sun copy:
+  spots `#E9DFCD`, robe mid `#D5C9B0`, shade band `#9E8A91` — the three bands stay separate (not flattened).
+  `[1, 1]` (wkD) was brighter (`#FAF1DC`) and looked pasted-on against the golden grass; whiteKeep 0.8 and
+  hueKeep { robe: 1 } on top of creamKeep changed 0 px (wkB / wkC). hueKeep { cap: 1 } (wkE) fixed the spent ghost but
+  dulled the lit living cap to salmon (the r2 critic's complaint), hueKeep 1 on every slot (wkG) greyed the face: rejected.
+  `material.merge` not needed: no seam involved (spots are cut into the dome, no junction line).
+- **Ghosts at golden** (our own GHOST_GLSL is not the shared `uCharGhost`, so the warm key multiplied the pale ramp):
+  new `ghostUnwarm()` in `material.fragmentHead` — under a warm grade only (rampHi r−b gate, same as whiteKeep) each
+  ghost band tone is pre-divided by the hue of the ramp toon.js is about to apply (`rampFor`), so the ghost lands on its
+  own blue at the ramp's luma. Full strength for the ghost (pale blue as at noon), `SPENT_UNWARM = 0.35` for the spent
+  ghost (0.5 / 0.65 / 1 read too vivid a blue, `wk/spent-k.png`). Golden cap: ghost greenish-grey → pale blue, spent
+  khaki → dim blue-grey (`wk/g8tod-ghost.png`, `wk/g8tod-ghost-spent.png`: noon / golden / night rows, base vs fix).
+- **Before / after**: `wk/cmp-golden.png` (scene crops: base + every variant), `wk/g8cmp-fix-idle-ghost-ghost-spent.png`
+  (golden 8-facing, base row over fix row), `scene-golden-crop.png` (new). Golden clips at 1× with timings:
+  `wk/gold-fix-1x.png` (idle, bless, ghost, ghost-spent, game rendered with `--q tod=golden` into `wk/gold-fix/`; the
+  pre-fix set is `wk/gold-base/`).
+- **Regression**: full `--preset cast --raw` pack re-rendered (`shots/char-mushroom/`, **105 pass / 23 warn / 0 fail**,
+  report identical to the pre-fix pack `wk/pack0/` apart from the run time). Raw-frame A/B (`wkab.py`, `wk/ab.txt`):
+  46 jobs, **2 differing frames — scene-golden and scene-mark-golden (2496 px, the sun copy only)**; every clip, the
+  turnarounds and the noon / night scenes are 0 px (pack clips render at noon). Bake re-run
+  (`out/sprites/mushroom.*`: 10 clips × 8 dirs, cell 128×113; die/SW still touches the render border, pre-existing).

@@ -343,6 +343,12 @@ export function make() {
     // left three beige 8x4 'eggs' under the goose)
     fx: { feather: [PALETTE.wing[0], PALETTE.wing[2]], vote: { node: 'wingTipL' }, dust: ['#F4EEE2', '#DED5C4', '#BDB2A0'] },
     material: { sides: { eyeL: 'mid', eyeR: 'mid', footL: 'mid', footR: 'mid', shinL: 'mid', shinR: 'mid' },
+      // (close-out) golden-hour drift: the down went apricot (#EFBD7D sun copy) and the wings tan under the golden key.
+      // creamKeep [1, 0.85] keeps the down's authored warm-white hue in every band (sun + shade copy) and ≥ 0.85 × its
+      // authored luma (whiteKeep alone only greyed the hi band: #D2C6BA; creamKeep without the lift: #CFC7BD, flat
+      // grey); hueKeep keeps the wings' lilac-grey and the ghost-spent blue-grey (the custom ghost tones went khaki: our
+      // GHOST_GLSL is not uCharGhost, so the keeps act on it). Golden only: noon / night 0 px (A/B shots/char-chonk/wk-*).
+      creamKeep: [1, 0.85], hueKeep: { down: 1, wing: 1 },
       // (t3) ghost / ghost-spent look (GHOST_GLSL; bone index = skeleton order = rig.js topological order, parents first)
       vertexHead: GHOST_GLSL.vertexHead, fragmentHead: GHOST_GLSL.fragmentHead, tones: GHOST_GLSL.tones,
       vertex: GHOST_GLSL.vertex(S.findIndex((b) => b.name === 'head'), S.findIndex((b) => b.name === 'halo')) },

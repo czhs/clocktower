@@ -1,7 +1,7 @@
 # Preservation (cast `preservation`) — design sheet
 
 "A blue frog who never changes type." (15-312 mascot; twin of `progress`.) Spec: `characters/preservation.js`. Pack:
-`shots/char-preservation/`. Identity source (read only): `pipgws/packages/assets/scripts/cast/preservation.ts` +
+`shots/char-preservation/` (game clips idle walk talk vote point die ghost ghost-spent + emote invariant; run optional). Identity source (read only): `pipgws/packages/assets/scripts/cast/preservation.ts` +
 `lib-c-frog.ts`, `refs/cast/preservation.png`. Everything rendered on render-host (RTX 4090).
 
 ## 0. Brief (written before modelling)
@@ -90,6 +90,38 @@ accent blush `#F6B0B0 / #E2909A / #B06A80`. sig_ground 4/4 PASS (noon dH 146, go
   f16 bounce 84° (4) · f20 settle, chin tucked · held to f60.
 - invariant: f0 crouch (4) · f4/6/8 spin 90/180/270 (2 each) · f10 land (4) · f14 paw ×1.9 [135, 0, −11] across the right
   lens, head [8, 0, −12] (8) · f22 still, chin up, `emote:star@glasses` (20) · f42 idle.
+
+- point (t1, one-shot, 38 f): f0 wind (4, pos −1 texel, both forearms coiled) · f4 POINT (12): right paw [115, 0, 26]
+  `.l` 1.3/1.3 forward-UP along the facing + left paw forward-low [70, 0, 34] `.l` 0.8, eyes a touch wider, jaw 8 ·
+  f16 the precise correction (16): pointer re-aimed [109, 0, 24] (≈ 1 texel at the paw), jaw shut, chin −3 · f32 lower
+  (6) · f38 idle. Hold 28 f (0.93 s). No head twist on any key (twist re-rasterised the pupils into glyphs).
+- ghost (t1, loop 72, `spec.ghost { hover 0.14, keepHue 0.3, spent [#3A4260, #B0BACE] }`): 4 keys every 18 f, RIGID
+  whole-texel bob +1/0/−1/0 (`pos` y in TX_Y steps, never a wobble: "never changes type", even dead), head roll ±3, paws
+  out 22/28 alternating, webbed feet hanging toes-down, blink on key 2; the module adds the pale ramp, gold halo, hover,
+  float legs and the bind-height dissolve.
+- ghost-spent (t1, loop 72): same keys 2 texels lower, half the bob, spine 5 / chest 6 / head bowed 8 (14 hid the glasses:
+  the bowed head read as a one-eyed slate blob), eyes half shut, paws hanging. No halo (module).
+
+## Close-out t1 (2026-10-17): point + ghost + ghost-spent added
+All on render-host RTX 4090, looked at. Pack `tools/charpack.sh preservation --preset cast` → `report.txt`:
+**115 pass / 18 warn / 0 fail, `cast_clips PASS all`**, page_errors 0; every point / ghost / ghost-spent row PASS
+(point pose_read 12 % held 12, key_speckle +1..+2, strobe 1; ghost amplitude 30 %, spent 9 %; off_grid / flicker 0).
+The 18 WARNs are the r2 ones (speckle, isolated px, vote/die key_speckle, walk/run/game foot_slide n/a on a hop, turn
+foot_slide 4.84, prop_area τ edge-on). Bake: `tools/charpack.sh --bake preservation --preset cast --game 1` → 10 clips × 8
+dirs, cell 80×78 (auto-raised from 62: die/vote touched the border), point 5 / ghost 4 / ghost-spent 4 frames; copy in
+`bake/`, preview crops `t1/bk-point.png`, `t1/bk-ghost.png`.
+- **point reads at 8/8**: silhouette diff vs idle (`t1/final/sil-hold.png`, `sil-nudge.png`, bg=key, pres_sil.py.js):
+  an arm ≥ 8 texels outside the outline at S, SE, SW, W (and E, NE, N, NW). Search `t1/sw1`–`sw4` (`st.png` each): one
+  right arm alone never left the wide-head outline at S/SE (`sw1`, `sw3`: forward-up is end-on under the 25-texel head;
+  a chest twist did not help); two symmetric arms = a "ta-da" T at S (`sw2`); the asymmetric pointer + forward-low paw
+  (`sw4` d3) is the pick. A glasses-push with the free hand (in character) hid the only SE arm (`sw3` c2–c5): dropped.
+- **ghost / spent**: `t1/final/g8.png` (point + ghost + spent at noon / golden / night, 8 facings ×2); tone A/B
+  `t1/gh2/st.png` (v1 module default spent = murky slate at noon; v4 = keepHue 0.3 + lifted spent ramp, chosen).
+- **1× real time**: `clip-point-1x.gif`, `clip-ghost-1x.gif`, `clip-ghost-spent-1x.gif`, frame sheets with durations
+  `t1/gs-all.png` (point: wind 130 ms → point 400 → correction 540 → lower 200; ghost 600 ms per drawing).
+- Unchanged clips re-rendered identical in read (turnaround, vote, die, invariant, game walk looked at).
+- Weak: at S the pointer is necessarily sideways (the target is the viewer; an arm toward the camera is end-on);
+  the arms are 2 texels thick, so the long pointer is a thin stick at 1×; the ghost arms barely show at SE.
 
 ## Lights
 None.

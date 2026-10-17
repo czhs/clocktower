@@ -306,7 +306,36 @@ export const CLIPS = {
       upperArmL: [70, 0, 20], forearmL: [60, 0, -20], handL: [0, 0, -14], upperArmR: [60, 0, 20], forearmR: [60, 0, -20], tail0: [4, 0, 40] } },
     { f: 34, pose: breathe(0, 0, 4) },
   ] },
+  // point (the game's shared emote, aimed at whoever he FACES = the viewer at SE): a 4-frame wind-up (chest turns away,
+  // fins cocked) → BOTH fins thrust forward-and-up along the facing (camera-side fin = RIGHT at SE/E, LEFT = the bomb
+  // fin at W/SW), chest leans in, chin up, eyes wide, beret cocked; HELD 26 f → back to the idle breath.
+  point: { fps: 30, loop: false, interp: 'step', keys: [
+    { f: 0, pose: { pos: [0, -0.03, 0], chest: [4, -10, 0], head: [-2, -6, 0], tail0: [4, 0, 36], ...BERET(2, 4),
+      upperArmL: [20, 0, 40], forearmL: [30, 0, -8], handL: [0, 0, -14], upperArmR: [20, 0, 40], forearmR: [30, 0, -6] } },
+    { f: 4, pose: { pos: [0, 0.02, 0], spine: [4, 0, 0], chest: [6, -22, 0], head: [-14, 14, 0], jaw: [10, 0, 0], ...EYES(0.1, 0.25), tail0: [4, 0, 24],
+      ...BERET(-6, 12), ...SPARK_BIG,
+      upperArmR: [170, 0, 30], forearmR: [0, 0, 0], 'upperArmR.l': [0.7], 'forearmR.l': [0.7],
+      upperArmL: [124, 0, 20], forearmL: [6, 0, -4], handL: [-10, 0, -14], 'upperArmL.l': [0.4] } },
+    { f: 30, pose: { pos: [0, -0.01, 0], chest: [4, 2, 0], head: [-4, 2, 0], jaw: [4, 0, 0], tail0: [4, 0, 30], ...BERET(0, 6),
+      upperArmL: [50, 0, 38], forearmL: [20, 0, -8], handL: [0, 0, -14], upperArmR: [40, 0, 40], forearmR: [20, 0, -6] } },
+    { f: 36, pose: breathe(0, 0, 4) },
+  ] },
+  // ghost (spec.ghost: pale ramp, gold halo, hover, floating legs): a slow drift, fins floating out and alternating, tail
+  // sway, legs dangling, the bomb still in the fin with a small spark; spent: dimmer, head bowed, fins hanging, beret
+  // drooped, spark OUT.
+  ghost: { fps: 30, loop: true, interp: 'step', length: 72, dynamics: 'hold', keys: [0, 18, 36, 54].map((f, i) => ({ f, pose: {
+    pos: [0, [0.03, 0.015, 0, 0.015][i], 0], chest: [-2, 0, [3, 0, -3, 0][i]], head: [-6, 0, [4, 0, -4, 0][i]],
+    tail0: [4, 0, [36, 26, 16, 26][i]], ...BERET(-2, [8, 4, 0, 4][i]), ...SPARK_SMALL, ...(i === 2 ? BLINK : {}),
+    upperArmL: [36, 0, 48 + 8 * (i % 2)], forearmL: [10, 0, -8], handL: [-20, 0, -12],
+    upperArmR: [10, 0, 52 + 8 * ((i + 1) % 2)], forearmR: [10, 0, 6],
+    thighL: [20, 0, 4], shinL: [-30, 0, 0], footL: [30, 0, 0], thighR: [20, 0, 4], shinR: [-30, 0, 0], footR: [30, 0, 0] } })) },
+  'ghost-spent': { fps: 30, loop: true, interp: 'step', length: 72, dynamics: 'hold', keys: [0, 18, 36, 54].map((f, i) => ({ f, pose: {
+    pos: [0, [-0.02, -0.035, -0.05, -0.035][i], 0], spine: [4, 0, 0], chest: [4, 0, [2, 0, -2, 0][i]], head: [2, 0, [3, 0, -3, 0][i]],
+    ...EYES(0, -0.7), tail0: [-8, 0, [20, 14, 8, 14][i]], ...BERET(-6, -6, -0.02), ...SPARK_OUT,
+    upperArmL: [24, 0, 22], forearmL: [6, 0, -8], handL: [-10, 0, -12], upperArmR: [6, 0, 20], forearmR: [6, 0, -6],
+    thighL: [25, 0, 0], shinL: [-35, 0, 0], footL: [30, 0, 0], thighR: [25, 0, 0], shinR: [-35, 0, 0], footR: [30, 0, 0] } })) },
 };
+CLIPS.point.length = 37;
 
 export function make() {
   const S = skeleton();
@@ -327,6 +356,7 @@ export function make() {
     locomotion: { plan: 'biped', walkSpeed: V_GAME, runSpeed: 2 * V_GAME, cycleTime: [0.3, 0.267], poses: [4, 4],
       duty: [0.25, 0.2], lift: [0.05, 0.07], plant: 'hold', surge: false },
     character: { quant: { yaw: 8, chain: 4 } },
+    ghost: { hover: 0.14, keepHue: 0.25 },
     clips: CLIPS,
     fx: { stepClips: ['walk', 'run'], stepEvery: 2, speech: { node: 'crown' } },
     material: { slots: { belly: { lift: 0.18 } }, sides: { eyeL: 'mid', eyeR: 'mid', handL: 'mid', handR: 'mid', spark: 'mid' }, whiteKeep: 1 },

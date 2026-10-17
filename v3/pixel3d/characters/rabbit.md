@@ -6,6 +6,35 @@ evidence `shots/char-rabbit/self/`, r3 working renders `shots/char-rabbit/r3a/` 
 raw), bake `shots/char-rabbit/bake/`. Identity source (read only): `pipgws/packages/assets/scripts/cast/rabbit.ts`,
 `refs/cast/rabbit.png`. Every render on render-host (RTX 4090 in every report.txt / shot log).
 
+## Close-out (2026-10-17): golden-hour colour drift fixed (`material.hueKeep`)
+Problem (CAST_GALLERY / LEARNINGS "Run 05 close"): at golden the sun copy went full apricot (fur hi #F8E8FF → #F1B889,
+pink ear insides → salmon, cream apron → orange) and the old-recipe ghost-spent went khaki-tan; noon and night were fine.
+Fix = one spec line, `material.hueKeep: { fur: 1, cream: 1, pink: 1 }` (no palette change). Evidence `shots/char-rabbit/gk/`:
+- **Variant A/B** (variant specs `rabbit_gk{0..5}.js`, scene-only packs `gk/v*`; `gk/cmp-v0-v4-v5.png` = noon / golden /
+  night rows of v0 base | v4 chosen | v5 whiteKeep): v1 `hueKeep {fur}` fixed the head but left the ears salmon; v2/v3
+  re-coloured the fur to a neutral white (rejected: changes noon, and v3 = v4 by eye); **v4 `{fur, cream, pink}`** = white
+  head + pink ears + cream apron; v5 `whiteKeep 0.8 + whiteKeepLift 0.8 + creamKeep [1, 0.85]` only half-works (head
+  beige, ears still peach): whiteKeep's chroma gate (< 0.18) rejects the lilac-pushed hi (#F8E8FF = 0.19) and it never
+  touches the ears' 'mid'-sided faces. `material.merge` not adopted: no ear/head junction line at any facing
+  (`turnaround.png`), nothing for it to do.
+- **Before / after** (`gk/before-after.png`, `gk/zoom-golden-before-after.png` = golden sun copy ×8): sun copy apricot →
+  lilac-white with the hi / mid / sh bands intact (34 colours in the crop before and after); golden-sun sig_ground #F1B889
+  dH 34 (4° margin) → **#CFC1D0 dH 136 / dL +15 %**, golden-shade +49 → +52 %. **Noon and night 0 px** (scene x2 images).
+- **8 facings at golden** (`gk/g8/cmp-idle.png`, `gk/g8/cmp-ghosts.png`, rows base / new, vh 4): idle white at 8/8 with
+  shading kept; ghost unchanged blue with the gold halo; **ghost-spent khaki-tan → blue-grey** (the spec's own GHOST_GLSL
+  is not skipped by the keeps, hueKeep re-hues to the already ghost-remapped tone — same as chonk/moth).
+- **Full pack** (`--preset cast --clips idle,walk,run,talk,vote,die,sniff,point,ghost,ghost-spent,turn --raw`, render-host
+  RTX 4090): **116 pass / 17 warn / 0 fail**, page_errors 0. vs the same pack with the keep stripped (`rabbit_gkpre.js`,
+  `gk/prepack/`): every raw clip frame **0 px** (idle 240, walk 120, run 120, talk 120, vote 125, die 185, sniff 165, point
+  241, ghost 240, ghost-spent 240, turn 240, game 96), turnarounds / pan / noon / night identical; only `scene-golden` and
+  the two golden sig_ground rows changed. No clip changed, so the 1x GIFs are the frames reviewed at the touch-up
+  (re-looked: `clip-talk.png`).
+- **Bake** `shots/char-rabbit/bake/` re-baked (`--preset cast --game 1`): 10 clips × 8 dirs, cell 62×72, anchor [31, 62],
+  frames unchanged; vs the keep-stripped bake (`bake-pre/`) **0 px in every row** (bakes are noon). vs the 2026-10-16 bake
+  rows moved (preset order now point before die) and talk (992 px: the steady bubble now on all 4 frames), ghost (168 px:
+  the NW/W ear tip takes a darker band), sniff 20, ghost-spent 4, point/die 1 px differ — shared module changes since the
+  touch-up, not this spec (`gk/bake-talk.png`, `gk/bake-ghost.png`, `gk/bake-ghost-nw-zoom.png`, old | new | diff).
+
 ## Touch-up (2026-10-16): Clocktower clips point / ghost / ghost-spent
 Rules: PLAYBOOK / CAST_PORTING top notes (Clocktower-only, no combat). Pack `shots/char-rabbit/` re-rendered with
 `--preset cast --clips idle,walk,run,talk,vote,die,sniff,point,ghost,ghost-spent,turn --raw` → **111 pass / 16 warn / 0 fail**
@@ -110,7 +139,7 @@ the baked sheet; `dir2/` dir-2 walk/game; `pre/` + `pack/` = the A/B).
 ## Palette ([hi, mid, sh]; 5 slots + gold accent + leaf story accent + eye)
 | slot | tones | use |
 |---|---|---|
-| fur (signature) | #F8E8FF #DECCF4 #9E8CBE | head, ears, paws, legs, cotton tail (r3 cool pink-lilac white: golden sun dH 34) |
+| fur (signature) | #F8E8FF #DECCF4 #9E8CBE | head, ears, paws, legs, cotton tail (r3 cool pink-lilac white; close-out `hueKeep` fur/cream/pink: golden sun dH 136) |
 | pink (signature part `earIn`) | #F6B8C0 #E48C9C #A65C78 | ear insides, nose, blush, pink flowers |
 | dress | #7CBCA4 #3A7A6C #587C84 | teal-jade dress, lifted shadow (no navy cape) |
 | cream | #FFF4D8 #EAD8B4 #A8928C | apron, petticoat, white flowers, eye glint |
@@ -155,4 +184,6 @@ the baked sheet; `dir2/` dir-2 walk/game; `pre/` + `pack/` = the A/B).
 
 Three weakest points: (1) contact — the hop has no world-planted foot (the boots hide under the hem at touchdown); (2) at
 SE the far eye still shows as a 1-texel sliver at the cheek contour next to the snout (physically correct for a 3/4 view,
-no longer proud); (3) in golden light she still reads warm peach-pink (the metric passes at dH 34, margin 4°).
+no longer proud); (3) ~~in golden light she still reads warm peach-pink~~ fixed at the close-out (`hueKeep`, golden-sun
+dH 136, lilac-white at 8/8 facings); her pillar-shade copy still reads lilac-purple at every time of day (the authored fur
+sh #9E8CBE — a palette question, not drift).

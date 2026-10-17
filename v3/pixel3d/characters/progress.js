@@ -162,6 +162,33 @@ const skip = (s, flight) => {
       [`upperArm${L}`]: [30, 0, 28], [`forearm${L}`]: [40, 0, 0], [`upperArm${R}`]: [-24, 0, 28], [`forearm${R}`]: [20, 0, 0], pack: [-20, 0, 0] };
 };
 
+// (c1) point keys: [fwd, twist, out]; '.l' = reach (segment longer, hand not scaled). Twin preservation's measured
+// recipe (right pointer forward-up + left paw forward-low leaves the wide outline at 8/8), retuned on progress's sheet.
+const TX_Y = 0.02778 / Math.cos(Math.PI / 6);   // one screen texel of world height at the 30° camera
+export const POINT_WIND = { pos: [0, -TX_Y, 0], spine: [6, 0, 0], chest: [3, -6, 0], head: [-3, 0, 0],
+  upperArmR: [24, 0, 18], forearmR: [70, 0, 0], upperArmL: [16, 0, 16], forearmL: [50, 0, 0], pack: [-6, 0, 0] };
+export const POINT_HOLD = { pos: [0, 0.01, 0.02], spine: [-3, 0, 0], head: [-8, 0, 0], ...EYES(0.06, 0.12), jaw: [14, 0, 0],
+  upperArmR: [115, 0, 26], forearmR: [0, 0, 0], handR: [0, 0, 0], 'upperArmR.l': [1.3], 'forearmR.l': [1.3],
+  upperArmL: [70, 0, 34], forearmL: [20, 0, 0], 'upperArmL.l': [0.8], 'forearmL.l': [0.8], pack: [6, 0, 0] };
+// (c1) ghost pose i (0..3): rigid whole-texel bob +1/0/−1/0; live = the feet paddle a slow stride (he still takes
+// steps); spent = 2 texels lower, legs hanging, bowed, eyes half shut, grin closed
+const GHOST_POSE = (i, spent) => {
+  const bob = [1, 0, -1, 0][i] * TX_Y, sway = [3, 0, -3, 0][i];
+  if (!spent) {
+    // c1b: one knee lifts per key (L, both hang, R, both hang) — a hanging foot keeps ONE pose so it never "slides"
+    // (c1 stride swung both feet: ghost.foot_slide FAIL 2.04 — charcheck measures hovering feet by height)
+    const st = [1, 0, -1, 0][i];                        // +1 left knee up, −1 right knee up
+    const leg = (s) => (st * s > 0 ? [50, -72, 22] : [12, -24, 34]);
+    const [tL, sL, fL] = leg(1), [tR, sR, fR] = leg(-1);
+    return { pos: [0, bob, 0], head: [-6, 0, sway], jaw: [4, 0, 0], ...(i === 2 ? BLINK : {}),
+      thighL: [tL, 0, 6], shinL: [sL, 0, 0], footL: [fL, 0, 0], thighR: [tR, 0, 6], shinR: [sR, 0, 0], footR: [fR, 0, 0],
+      upperArmL: [-14 * st, 0, 22], upperArmR: [14 * st, 0, 22], forearmL: [26, 0, 0], forearmR: [26, 0, 0], pack: [-2 * st, 0, 0] };
+  }
+  return { pos: [0, bob * 0.5 - 2 * TX_Y, 0], spine: [5, 0, 0], chest: [6, 0, 0], head: [10, 0, sway * 0.6], jaw: [-8, 0, 0], ...EYES(0.05, -0.45),
+    thighL: [14, 0, 4], shinL: [-22, 0, 0], footL: [36, 0, 0], thighR: [14, 0, 4], shinR: [-22, 0, 0], footR: [36, 0, 0],
+    upperArmL: [2, 0, 8], upperArmR: [2, 0, 8], forearmL: [8, 0, 0], forearmR: [8, 0, 0], pack: [4, 0, 0] };
+};
+
 export const CLIPS = {
   idle: { fps: 30, loop: true, interp: 'step', length: 72, dynamics: 'hold', keys: [
     { f: 0, pose: breathe(0, 0) }, { f: 30, pose: breathe(0.014, 2) }, { f: 36, pose: breathe(0.028, 4) },
@@ -213,14 +240,26 @@ export const CLIPS = {
       thighL: [38, 0, 28], shinL: [-18, 0, 0], footL: [-10, 0, 0], thighR: [38, 0, 28], shinR: [-18, 0, 0], footR: [-10, 0, 0],
       upperArmR: [-14, 0, 80], forearmR: [16, 0, 0], upperArmL: [-14, 0, 80], forearmL: [16, 0, 0], pack: [42, 0, 0] } },
   ] },
-  // point (the game's shared emote): lean in (4) → right arm straight out at shoulder height, head turned along it, grin
-  // open (held 18) → idle
+  // point (the game's shared emote, close-out c1): R W4 — aimed ALONG the facing (the target = whoever he faces; at SE
+  // the viewer), forward + UP, both arms (one arm never leaves the wide head/belly outline at S, SE, SW AND W):
+  // wind (4, crouch, arms coiled) → "THAT one!": up on his toes, the right arm thrust forward-up and long (.l), the left
+  // paw forward-low, chin up, grin wide (12) → the eager little bounce (1 texel up, he wants to step toward them) (12)
+  // → held (10) → arms down (6) → idle. Old r7 point (arm level + chest twist) left the outline only sideways.
   point: { fps: 30, loop: false, interp: 'step', keys: [
-    { f: 0, pose: { pos: [0, -0.03, 0], chest: [4, 10, 0], head: [-4, 6, 0], upperArmR: [30, 0, 20], forearmR: [60, 0, 0], upperArmL: [4, 0, 14] } },
-    { f: 4, pose: { pos: [0, 0.0, 0.02], spine: [4, -6, 0], chest: [2, -10, 0], head: [-6, -12, 0], jaw: [12, 0, 0],
-      upperArmR: [88, 0, 14], forearmR: [0, 0, 0], 'forearmR.s': [0, 0.3, 0], upperArmL: [-10, 0, 20], forearmL: [20, 0, 0] } },
-    { f: 22, pose: breathe(0, 0) },
+    { f: 0, pose: POINT_WIND },
+    { f: 4, pose: POINT_HOLD },
+    { f: 16, pose: { ...POINT_HOLD, pos: [0, 0.035, 0.02] } },
+    { f: 28, pose: POINT_HOLD },
+    { f: 38, pose: { pos: [0, -0.01, 0], head: [-2, 0, 0], upperArmR: [40, 0, 22], forearmR: [30, 0, 0], upperArmL: [24, 0, 18], forearmL: [24, 0, 0] } },
+    { f: 44, pose: breathe(0, 0) },
   ] },
+  // ghost (loop 72; spec.ghost draws the pale ramp, gold halo, hover, floating FK legs): he still "always takes a
+  // step" — the webbed feet paddle a slow stride in the air (knees alternate per key), arms swing with it, a rigid
+  // whole-texel bob, grin kept (identity), a blink on key 2
+  ghost: { fps: 30, loop: true, interp: 'step', length: 72, dynamics: 'hold', keys: [0, 18, 36, 54].map((f, i) => ({ f, pose: GHOST_POSE(i, false) })) },
+  // ghost-spent (loop 72): the same hover 2 texels lower, half the bob, legs hanging still (no more steps), head bowed,
+  // eyes half shut, grin closed, arms limp (the module dims the ramp, no halo)
+  'ghost-spent': { fps: 30, loop: true, interp: 'step', length: 72, dynamics: 'hold', keys: [0, 18, 36, 54].map((f, i) => ({ f, pose: GHOST_POSE(i, true) })) },
   // step (emote, "always takes a step"): r5 a real STEP FORWARD — gather back (crouch, body 0.08 behind, arms back) (8) →
   // airborne (6) → LANDS 0.34 m ahead of the gather (≈ 12 texels) in a lunge, the left foot clearly ahead, arms up and OUT
   // in a wide V that clears the head at every facing, grin wide, star glyph (14) → back foot joins (6) → idle. Legs FK.
@@ -267,9 +306,15 @@ export function make() {
     locomotion: { plan: 'biped', plant: 'hold', walkSpeed: V_GAME, runSpeed: 2 * V_GAME, cycleTime: [0.3, 0.267], poses: [4, 4],
       duty: [0.25, 0.2], lift: [0.16, 0.2], lean: [6, 12], surge: false },
     character: { quant: { yaw: 8, chain: 4 } },
+    // (c1) shared ghost look (pale ramp, gold halo on level 1, dimmer spent ramp, floating FK legs, hover); keepHue 0.3:
+    // the leaf green IS the identity (R W4 colour-identity ghost)
+    ghost: { hover: 0.14, keepHue: 0.3 },
     clips: CLIPS,
     fx: { stepClips: ['walk', 'run'], stepEvery: 2, speech: { node: 'crown' } },
-    material: { sides: { eyeL: 'mid', eyeR: 'mid' }, merge: { scarf0: 'chest' } },
+    // (c1) hullMargin 0.3: the spec.ghost halo (0.12 m over the eye bumps) is outside the bind self-shadow hull and
+    // painted a slate-blue blotch on the far eye bump at SE/N/NW (0.15 did not clear it; A/B c1/z-wvm-ghost.png);
+    // living cost: idle 0 px, vote 82 / point 20 / die 250 px (pack underside a tone lighter, c1/ab-hm-*.png)
+    material: { sides: { eyeL: 'mid', eyeR: 'mid' }, merge: { scarf0: 'chest' }, hullMargin: 0.3 },
   };
 }
 

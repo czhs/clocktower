@@ -198,6 +198,26 @@ const tip = (a) => [-a, 0, DIE_ROLL * Math.min(1, a / 90)];
 // r2: the hanging scarf front end is tucked away (scale 0) once he lies down: it rasterised as a brown blob under the body
 const TUCK = { 'scarf0.s': [-1, -1, -1], 'knot0.s': [-1, -1, -1] };
 
+// (t1) point keys: [fwd, twist, out]; '.l' = reach (segment longer, hand not scaled). Overridable by shots/char-preservation/pv.js.
+export const POINT_WIND = { pos: [0, -TX_Y, 0], chest: [3, -6, 0], head: [-3, 0, 0],
+  upperArmR: [24, 0, 18], forearmR: [70, 0, 0], upperArmL: [16, 0, 16], forearmL: [50, 0, 0] };
+// sweep shots/char-preservation/t1/sw1-sw4 (bg=key 8 facings, silhouette diff vs idle): one arm never left the wide-head
+// outline at SE; the right pointer [115,0,26] + the left paw forward-low [70,0,34] leave it at 8/8 (t1/sw4/sil-d3.png)
+export const POINT_HOLD = { pos: [0, 0, 0], chest: [0, 0, 0], head: [-6, 0, 0], ...EYES(0.06, 0.12), jaw: [8, 0, 0],
+  upperArmR: [115, 0, 26], forearmR: [0, 0, 0], handR: [0, 0, 0], 'upperArmR.l': [1.3], 'forearmR.l': [1.3],
+  upperArmL: [70, 0, 34], forearmL: [20, 0, 0], 'upperArmL.l': [0.8], 'forearmL.l': [0.8] };
+// the precise correction: the pointer re-aims a few degrees (≈ 1 texel at the paw), mouth shut, chin a touch down
+export const POINT_NUDGE = { upperArmR: [109, 0, 24], head: [-3, 0, 0], jaw: [0, 0, 0] };
+// (t1) ghost pose i (0..3): rigid whole-texel bob +1/0/−1/0 texels; spent: 2 texels lower, bowed, half-shut eyes
+const GHOST_POSE = (i, spent) => {
+  const bob = [1, 0, -1, 0][i] * TX_Y, sway = [3, 0, -3, 0][i];
+  const legs = { thighL: [18, 0, 4], shinL: [-24, 0, 0], footL: [34, 0, 0], thighR: [18, 0, 4], shinR: [-24, 0, 0], footR: [34, 0, 0] };
+  if (!spent) return { pos: [0, bob, 0], head: [-5, 0, sway], ...legs, ...(i === 2 ? SHUT : {}),
+    upperArmL: [10, 0, 22 + (i % 2) * 6], upperArmR: [10, 0, 22 + ((i + 1) % 2) * 6], forearmL: [24, 0, 0], forearmR: [24, 0, 0] };
+  return { pos: [0, bob * 0.5 - 2 * TX_Y, 0], spine: [5, 0, 0], chest: [6, 0, 0], head: [8, 0, sway * 0.6], ...EYES(0.05, -0.45), ...legs,
+    upperArmL: [2, 0, 7], upperArmR: [2, 0, 7], forearmL: [8, 0, 0], forearmR: [8, 0, 0] };
+};
+
 export const CLIPS = {
   idle: { fps: 30, loop: true, interp: 'step', length: 72, dynamics: 'hold', keys: [
     { f: 0, pose: breathe(0, 0) }, { f: 30, pose: breathe(1, 4) },
@@ -267,6 +287,22 @@ export const CLIPS = {
     { f: 22, pose: { pos: [0, 0.005, 0], chest: [-4, 0, 0], head: [-7, 0, 0], ...ARMS(3, 0, 0), ...EYES(0.04, 0.06) } },
     { f: 42, pose: breathe(0, 0) },
   ] },
+  // point (the game's shared emote, close-out t1): a short wind (4) → "precisely THAT one": the right paw thrust
+  // forward-UP along the facing (the target), the chest twisted so the right shoulder leads, the left paw flung
+  // forward-out (the camera-side pointer at S/SW/W; one arm never leaves the wide outline at S/SE/SW/W), eyes a touch
+  // wider (held) → a 1-texel "correction" nudge of the pointing paw, the precise frog (f16) → held → back down (6) → idle
+  point: { fps: 30, loop: false, interp: 'step', keys: [
+    { f: 0, pose: POINT_WIND },
+    { f: 4, pose: POINT_HOLD },
+    { f: 16, pose: { ...POINT_HOLD, ...POINT_NUDGE } },
+    { f: 32, pose: { pos: [0, -0.01, 0], chest: [0, 4, 0], head: [-2, 0, 0], upperArmR: [40, 0, 24], forearmR: [30, 0, 0], upperArmL: [24, 0, 20], forearmL: [24, 0, 0] } },
+    { f: 38, pose: breathe(0, 0) },
+  ] },
+  // ghost (loop 72; spec.ghost draws the pale ramp, halo, hover and floating legs): "never changes type", even dead —
+  // the same calm smile and glasses, a RIGID whole-texel bob (no wobble), paws a little out, webbed feet hanging toes-down
+  ghost: { fps: 30, loop: true, interp: 'step', length: 72, dynamics: 'hold', keys: [0, 18, 36, 54].map((f, i) => ({ f, pose: GHOST_POSE(i, false) })) },
+  // ghost-spent (loop 72): the same hover 2 texels lower, head bowed 8° (more hid the glasses), paws hanging, eyes half shut (the module dims the ramp, no halo)
+  'ghost-spent': { fps: 30, loop: true, interp: 'step', length: 72, dynamics: 'hold', keys: [0, 18, 36, 54].map((f, i) => ({ f, pose: GHOST_POSE(i, true) })) },
 };
 // vote / die end on a HELD pose (clip.hold): repeat the last key later so the clip length covers the FX tail
 const holdTo = (clip, f) => clip.keys.push({ f, pose: clip.keys[clip.keys.length - 1].pose });
@@ -302,6 +338,10 @@ export function make() {
       height: 1.3 * HEIGHT, stepLift: 0.056, stepTol: 0.067, vStart: 0.117, vStop: 0.064 },
     character: { quant: { yaw: 8, chain: 4 } },
     clips: CLIPS,
+    // (t1) shared ghost look (pale ramp, gold halo on level 1, dimmer spent ramp, floating legs, hover)
+    // keepHue 0.3: some of the living blue stays (the blue IS the identity); spent ramp light end lifted #98A2BA → #B0BACE: the
+    // default left the mid-blue frog a murky slate blob (t1/gh2/st.png v1 vs v4) — still clearly dimmer than the live ghost
+    ghost: { hover: 0.14, keepHue: 0.3, spent: ['#3A4260', '#B0BACE'] },
     fx: { stepClips: ['walk', 'run'], stepEvery: 2, speech: { node: 'crown' } },
     // r2: lens whites lifted (stay white when the head rolls away from the key, talk f6) + golden white keep
     material: { sides: { eyeL: 'mid', eyeR: 'mid', scarf0: 'mid', knot0: 'mid' }, whiteKeep: 0.7, slots: { lens: { lift: 0.8 } } },

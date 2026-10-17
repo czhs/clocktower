@@ -90,6 +90,15 @@ E/W and the near ear hangs in front of the body; at SE the camera-side ear stick
   [165, 0, 25] nearly straight up, hand twist −38° so the card faces the SE game camera: face-on at SE, angled at S/E, edge-on only at NE), eyes wide, ears up, `vote@paddleTop` · hold to f30+.
 - **die** one-shot, held: f0 sway, half-lid, ears droop (8) · f8 knees buckle −0.14 (6) · f14 sits back LOWER (r2: pos −0.4, knees 68; 5–9 texels below f8 at every facing) (4) · f18 lies on
   her LEFT side, eyes shut, knees up, tail limp, `die` + `land` · hold to f60+.
+- **point** one-shot (length 40, `dynamics 'snap'`): f0 wind-up, both hooves drawn in at the chest, half-lid (4) · f4
+  "THAT one!": BOTH hooves forward-and-up along the facing (R `[120, 0, 8]`, L `[110, 0, 30]`, `.l` 0.35 on upper arm and
+  forearm), chest twisted 14° to her LEFT so the camera-side RIGHT shoulder leads, head turned back −14 onto the target,
+  eyes wide, ears pricked forward, jaw 10, bell back (6) · f10 same aim, ears relax (held 20 → 26 f = 0.87 s at 1×) · f30
+  hooves ease down (6) · f36 idle. The parallel cow points with both hooves at once.
+- **ghost** loop 64 (`spec.ghost { hover 0.14, keepHue 0.3 }`): 4 keys × 16 f, 1-texel drift, both hooves floating forward
+  together, ears and tail sway in opposite phases, a half-lid on key 3; module draws ramp, gold halo, floating legs.
+- **ghost-spent** loop 72: 4 keys × 18 f, sinks 0.02–0.05 m, head bowed 9 / spine 4 (16 + 8 hid the face), ears drooped
+  −38, hooves hanging, tail limp, eyes half-lid; module draws the dimmer ramp, no halo.
 - **moo** (emote): f0 inhale, half-lid (6) · f6 MOO: head up 10°, jaw 24°, eyes shut, RIGHT hoof WAVES high, LEFT
   hoof POINTS forward, `emote:note@crown` · r2: f6/f20 the RIGHT hoof up by the ear (upperArmR out 170), f14/f26 out at the chest (out 100, elbow 70) = a ≈ 10-texel arc in front of the head at SE; ears flap one up / one down per beat · f26 half-moo (8) ·
   f34 second moo (10) · f44 idle.
@@ -153,3 +162,27 @@ Evidence: `shots/char-clarabelle/` (pack `--preset cast --raw`: **83 pass / 22 w
 Not fixed (not mine): talk bubble gap at f18 of the first loop (fx.speech.chain, `clip-talk.png` f12/f18 have no bubble).
 Remaining weak points: pink isolated px 7–8 at S/SE (nostrils), ear hi/mid 10 % at NE/NW, walk legs flicker 82 (LegGait hold).
 Self-score r2: 1 Sil 2 · 2 Stab 2 · 3 Line 1 · 4 Tone 1 · 5 Ground 2 · 6 Expr 1 · 7 Timing 2 · 8 Weight 2 · 9 Pers 2 · 10 FX 1 · 11 Turns 2 · 12 Tech 2 = **20 / 24**.
+
+## Round 3 — cast close-out: point, ghost, ghost-spent (rendered on render-host RTX 4090, 2026-10-17)
+
+Added the three Clocktower game clips the wave-3 build lacked (CAST_GALLERY "missing game clips"); nothing else changed
+(idle/walk/run/talk/vote/die/moo keys, parts, palette untouched). Evidence: `shots/char-clarabelle/` (full pack
+`--preset cast --raw`: **115 pass / 19 warn / 0 fail**, `cast_clips` PASS "all", page_errors 0), `r3/` (8-facing stills,
+probes, 1× strips), `bake/` (10 clips × 8 dirs, cell 70×84, no border touch after auto growth).
+
+| clip | check | evidence |
+|---|---|---|
+| point | off_grid 0, flicker 0, hold_redraws 0, pose_read 31 %, strobe 1; key_speckle +9 WARN | `clip-point.png`, `r3/s1x-point.png` (1× SE: 133 ms wind, 870 ms aim hold, return), `r3/z-r3.png` row 2 |
+| point aim per facing | hoof ≥ 4 texels outside the idle outline: S (left hoof, ≈ 6), SE (white RIGHT arm forward-up past the snout, ≈ 6), E (right, ≈ 8), SW/W (left, ≈ 6–8); N/NE/NW also show an arm | `r3/z-r3.png` rows 1 (idle) vs 2 (point f12), `bake/` point rows |
+| ghost | off_grid 0, flicker 0, key_delta 45 %, amplitude 28 %; pale ramp + gold halo, pink snout and red collar faintly kept (keepHue 0.3) | `clip-ghost.png`, `r3/s1x-ghost.png`, `r3/z-r3.png` row 3 |
+| ghost-spent | off_grid 0, flicker 0, key_delta 32 %, amplitude 14 %; dimmer grey-blue, no halo, head bowed but snout visible at S/SE | `clip-ghost-spent.png`, `r3/s1x-ghost-spent.png`, `r3/z-r3.png` row 4 |
+
+Probes (variant spec `shots/char-clarabelle/pv.js`, `pt=` JSON overrides on the aim keys): `r3/z-pv.png` symmetric V
+fwd 105 → 130 (105 read as a level thrust); `r3/z-pv2.png` — every symmetric V put the far, dark-forearmed LEFT arm out as
+the pointer at SE (shaded as far half, `r3/z-ptdbg.png` row 2 `look=far`), with the white right arm hidden in front of the
+chest; the chest twist +14 (row 3 = shipped) brings the white RIGHT arm out at SE/E. First ghost try at keepHue 0 made
+the face one pale blob and head 16 / spine 8 hid the spent face (`r3/z-new.png` rows 3–4).
+
+Remaining weak points: at SE the pointing right arm draws in its shade tone (the lit face points up/away), so the pointer
+is a mid-grey arm with a dark hoof rather than white; at S only the left hoof clears the outline (the right hoof sits on the
+chest); point key_speckle +9 (the dark hooves over the white chest).

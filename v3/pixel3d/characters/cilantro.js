@@ -253,6 +253,13 @@ const KNEES = (a) => ({ thighL: [a, 0, 0], shinL: [-2 * a, 0, 0], footL: [a, 0, 
 const IDLE_A = breathe(0, 0, { ...NECK(0, -16, -8, [0, -10, 6]), ...EARS([0, 0, 0]) });
 const IDLE_B = breathe(0.028, 3, { ...NECK(-3, 16, 8, [-4, 10, -6]), ...EARS([0, 0, 6]) });
 
+// point aim (close-out): neck pokes forward on the target, head tipped down onto it, both hooves forward. The camera
+// looks along SE, so a hoof raised 35° there lies on the view ray and vanishes (c1/z-cal-b): the RIGHT hoof stays
+// near level (fwd 98, reads at SE/E), the LEFT rises forward-up (fwd 125, reads at S/W/SW). Reach by .l, not .s.
+const POINT_AIM = (extra = {}) => ({ pos: [0, 0.01, 0.02], spine: [-2, 0, 0], chest: [-3, 0, 0], ...NECK(26, 0, 0, [-26, 0, 0]), ...WIDE,
+  upperArmR: [98, 0, 12], forearmR: [0, 0, 0], 'upperArmR.l': [0.5], 'forearmR.l': [0.5],
+  upperArmL: [125, 0, 14], forearmL: [0, 0, 0], 'upperArmL.l': [0.4], 'forearmL.l': [0.4], ...extra });
+
 const DEAD = { pos: [0, -0.24, 0], hips: [0, 0, 84], spine: [0, 0, 6], chest: [0, 0, 4],
   neck: [10, 0, 12], neck1: [8, 0, 10], neck2: [6, 0, 10], head: [30, -60, 10], ...EYES(-0.55), jaw: [6, 0, 0], ...EARS([-30, 0, -35]),
   thighL: [50, 0, 0], shinL: [-80, 0, 0], thighR: [35, 0, 0], shinR: [-60, 0, 0],
@@ -325,6 +332,33 @@ export const CLIPS = {
     { f: 40, pose: breathe(0.02, 2, { ...NECK(6, -6, 4, [-6, -8, 0]), 'neck1.p': [0, 0.02, 0], 'neck2.p': [0, 0.02, 0], 'head.p': [0, 0.02, 0], ...EARS([0, 0, 10]) }) },
     { f: 46, pose: IDLE_A },
   ] },
+  // point (close-out; the game's shared emote, aimed ALONG the facing at whoever she faces — at SE that is the viewer):
+  // f0 wind-up: neck draws back, hooves in at the chest (4) → f4 "that one!": the neck pokes toward the target (head
+  // tipped down onto it, eyes wide, ears pricked forward), BOTH hooves thrust forward (right near level = the pointer at
+  // SE/E, left forward-UP = the pointer at S/W/SW; see POINT_AIM), reach by .l → f10 settle, same aim, held to f36 →
+  // f36 hooves ease down, held to the end (42; the idle resumes — an IDLE_A end key read 1 % key_delta vs the idle)
+  point: { fps: 30, loop: false, interp: 'step', length: 42, keys: [
+    { f: 0, pose: breathe(0.03, 4, { ...NECK(-6, 0, 0, [4, 0, 0]), ...HALF, ...EARS([0, 0, -10]),
+      upperArmL: [30, 0, 15], forearmL: [90, 0, 0], upperArmR: [30, 0, 15], forearmR: [90, 0, 0] }) },
+    { f: 4, pose: POINT_AIM({ ...EARS([30, 0, 25]), jaw: [8, 0, 0] }) },
+    { f: 10, pose: POINT_AIM({ ...EARS([20, 0, 18]) }) },
+    { f: 36, pose: breathe(0.01, 1, { ...NECK(4, 0, 0, [-2, 0, 0]), ...EARS([0, 0, 6]),
+      upperArmL: [35, 0, 12], forearmL: [40, 0, 0], upperArmR: [35, 0, 12], forearmR: [40, 0, 0] }) },
+  ] },
+  // ghost (close-out; loop 72 — spec.ghost draws the pale ramp, gold halo over the ossicones, hover and floating legs):
+  // the idle's slow neck sway kept (her identity), hooves floating forward-low together, knees soft, a blink at f54
+  ghost: { fps: 30, loop: true, interp: 'step', length: 72, legs: 'float', dynamics: 'hold', keys: [0, 18, 36, 54].map((f, i) => ({ f, pose: {
+    pos: [0, [0, 0.02, 0.04, 0.02][i], 0], spine: [2, 0, 0],
+    ...NECK(-2, [-12, 0, 12, 0][i], [-6, 0, 6, 0][i], [-4, [-8, 0, 8, 0][i], [4, 0, -4, 0][i]]),
+    upperArmL: [30, 0, 14 + 6 * (i % 2)], forearmL: [40, 0, 0], upperArmR: [30, 0, 14 + 6 * ((i + 1) % 2)], forearmR: [40, 0, 0],
+    ...EARS([0, 0, [8, 0, -6, 0][i]], [0, 0, [-6, 0, 8, 0][i]]), ...KNEES(14), ...(i === 3 ? HALF : {}) } })) },
+  // ghost-spent (close-out; loop 72, after the ghost's one vote — dimmer ramp, no halo): the long neck BOWED in a soft
+  // curve that also droops to her left (straight forward it foreshortened to nothing at S: c2/z-g8-ghost-spent-f0),
+  // head face-out, ears drooping, hooves hanging, sinking lower, heavy lids
+  'ghost-spent': { fps: 30, loop: true, interp: 'step', length: 72, legs: 'float', dynamics: 'hold', keys: [0, 18, 36, 54].map((f, i) => ({ f, pose: {
+    pos: [0, [-0.02, -0.035, -0.05, -0.035][i], 0], spine: [4, 0, 0], chest: [4, 0, 0],
+    ...NECK(10, 0, [30, 26, 22, 26][i], [6, 0, [-14, -12, -10, -12][i]]), ...HALF, ...EARS([0, 0, -32]),
+    upperArmL: [4, 0, 8], forearmL: [12, 0, 0], upperArmR: [4, 0, 8], forearmR: [12, 0, 0], ...KNEES(10) } })) },
 };
 
 export function make() {
@@ -347,6 +381,8 @@ export function make() {
       duty: [0.25, 0.2], reach: 0.6, plant: 'hold', holdDrop: 0.05, arms: [28, 45], elbows: [25, 45], bob: [0.035, 0.07], lean: [2, 9],
       lift: [0.075, 0.12], twist: [7, 10] },
     character: { quant: { yaw: 8, chain: 4 } },
+    // close-out: shared ghost look; keepHue 0.3 keeps a hint of the tan neck / blue hoodie / green scarf on the pale ramp
+    ghost: { hover: 0.14, keepHue: 0.3, halo: { lift: 0.2 } },   // halo lift 0.12 sat ON the ossicone knobs at S/SE (c2/z-ghost-S.png)
     clips: CLIPS,
     fx: { stepClips: ['walk', 'run'], stepEvery: 2, speech: { node: 'crown' } },
     material: { sides: { eyeL: 'mid', eyeR: 'mid', earL0: 'mid', earR0: 'mid' }, slots: { scarf: { lift: 0.3 } },
