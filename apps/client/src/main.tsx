@@ -1,21 +1,15 @@
-// Stylesheets first, in the cascade order of the single v2.1 bundle (theme.css last). Every sheet
-// stays in the entry CSS even though most components now load lazily: chunk CSS would be appended
-// after theme.css and silently change which rule wins (v2.2 perf WP3 splits JS only).
+// Stylesheets (v2.4 perf P2): the entry carries only what the landing / sign-in / home screens need
+// (index-base-*.css: help, auth, landing, lobby, role icons) and the theme (index-*.css, last). Every
+// other sheet is imported by its own component and ships with that lazy chunk; ui/common/cssOrder.ts
+// (imported first, before anything can start a dynamic import) inserts those chunk sheets BEFORE the
+// theme, so the cascade is the single v2.1 bundle's (theme.css wins ties). Order + checks:
+// apps/client/build/cssOrder.ts (the build fails if a sheet lands outside the scheme).
+import './ui/common/cssOrder';
 import './ui/common/help.css';
 import './ui/auth/auth.css';
 import './ui/auth/landing.css';
 import './ui/lobby/lobby.css';
-import './ui/social/social.css';
 import './ui/common/RoleIcon.css';
-import './ui/notebook/notebook.css';
-import './ui/story/story.css';
-import './ui/clock/clock.css';
-import './game/game.css';
-import './ui/admin/admin.css';
-import './ui/hud/hud.css';
-import './ui/storyteller/storyteller.css';
-import './ui/voice/voice.css';
-import './ui/chat/chat.css';
 import './ui/common/theme.css';
 import { render } from 'preact';
 import { useEffect, useState } from 'preact/hooks';

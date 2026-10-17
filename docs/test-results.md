@@ -2,6 +2,27 @@
 
 All commands run on **the host** via `scripts/remote.sh` unless stated otherwise.
 
+## 2026-10-16 — v2.4 release gate (lead, hshi-u1, sandbox `lead`, capped remote.sh)
+
+Tree = v2.3 (`28a9d6e`) + v2.4 P1 (client runtime), P2 (load path), P3 (server CPU) + lead fixes
+(admin.css `.ct-set*` scoped under `.ct-admin`; budgets.mjs sums entry CSS; perf results no longer
+record host paths).
+
+| Command | Result |
+|---|---|
+| `pnpm -r --no-bail run typecheck` | 7/7 Done |
+| `pnpm -r --if-present run build` | ✅ |
+| `pnpm test` (first run) | 1263 passed, ❌ 1: `repo-hygiene` REPO-03 — two P2 perf JSONs recorded a host home path (redacted; `client-perf.ts` now writes `dist` repo-relative) |
+| `pnpm test` (final tree) | 118 files passed, 1 skipped; 1264 passed, 3 skipped |
+| e2e (`~/clocktower/work/lead-e2e24.sh`, serialized under the browser lock): `v21-clock v2-social v2-phone v2-look v2-st-ui ux-ready chat-bubbles door-boards door-reconnect doors hd-cast v23-chat v23-settings ops-moderation ops-admin-settings game-chaos ux-walkthrough` | all ✅ |
+| e2e `lobby` | ❌ 1/6 in the gate (`v2 roster…` — "You are … now." not shown within 10 s); ✅ 6/6 on two re-runs → flake |
+| e2e `game-full` | ❌ in the gate (step 3b' test helper: `no path from 1548,97` for a bot's walk home); ✅ on re-run (7.7 m) → flake |
+| `node scripts/perf/budgets.mjs` (bundle-report, `server-profile.ts --snap2 yes --cpuprof no` after one warm-up run, `client-perf.ts --gpu yes` windows + load) | **13/13 ok** → `tests/perf/results/2026-10-16-v2.4.json`. First attempt forgot `--gpu yes` (SwiftShader numbers, 3 over); the header now spells out the flags |
+
+Key numbers: entry CSS 11.4 KiB br (v2.3 24.9), LobbyRoute 63.8 (83.4), town atlases on entry 578 KiB
+(835), server CPU 2.2 % core profiler-off, phone walk main 12.1 %, HUD churn 3.6/s (v2.3 real walk
+≈ 16), Slow-4G town network-idle 16.4 s (21.5).
+
 ## 2026-10-16 — v2.2.1 merge of Isaac's GitHub `main` into v2.2 (integration teammate, the host, sandbox `merge-isaac`, capped remote.sh)
 
 All commands via `CT_AGENT=merge-isaac scripts/remote.sh …`; browsers under `flock ~/clocktower/browser.lock`, `CT_E2E_NO_BUILD=1`, `-c tests/e2e/playwright.config.ts`.

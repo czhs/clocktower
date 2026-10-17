@@ -1,0 +1,37 @@
+{
+  "at": "2026-10-16",
+  "package": "v2.4 P3 server CPU (perf server teammate)",
+  "scenario": "tests/perf/server-profile.ts --players 15 --walk 40 --vote 20 --snap2 yes --ports 3305-3309 (1 human-ST bot + 15 player bots wandering at 10 Hz, voice configured to an unreachable LiveKit); hshi-u1, capped ctwork.slice, runs interleaved v2.3/v2.2",
+  "trees": {
+    "v2.2": "git archive 466ef66 (separate sandbox v24-server-v22; same server-profile.ts copied in)",
+    "v2.3": "28a9d6e working tree before the P3 change",
+    "v2.4-p3": "28a9d6e + P3 (guard/socketBudget.ts cached live spec, diagnostics counters)"
+  },
+  "serverCpuPctOfOneCore_dayWalk": {
+    "profilerOn_warmSandbox": { "v2.2": [5.1, 4.9], "v2.3": [5.1, 5.2, 5.5], "v2.4-p3": [5.1, 5.2, 5.4] },
+    "profilerOn_coldSandbox_firstRunAfterInstall": { "v2.2": [8.2], "v2.3": [8.2, 8.2], "note": "extra tsx 'WorkerThread' 1.5 % + a second V8 sampling profiler (v8:ProfEvntProc 3.3 % instead of 1.7 %); the next run in the same sandbox: 4.9 %. This is the v2.4 plan's 7.7 %." },
+    "profilerOff_source": { "v2.2": [2.2, 2.1, 2.0], "v2.3": [1.9, 2.1, 2.0] },
+    "profilerOff_source_later_window": { "v2.4-p3": [2.4, 2.4, 2.5], "note": "host busier in this window; interleaved v2.2 runs in the same window measured 2.4 / 2.4" },
+    "profilerOff_source_voiceAutoOptIn": { "v2.2": [2.4, 2.4], "v2.4-p3": [2.5, 2.5] },
+    "profilerOff_dist_bundle_as_prod": { "v2.2": [2.3, 2.3, 2.4], "v2.4-p3": [2.3, 2.5, 2.4] }
+  },
+  "threadsPctOfOneCore_profilerOn_warm_v2.3": { "MainThread": 3.0, "v8:ProfEvntProc": 1.7, "V8Worker": 0.5 },
+  "threadsPctOfOneCore_profilerOff_v2.3": { "MainThread": 1.6, "V8Worker": 0.5 },
+  "jsSteadyStateMsPer43s_profilerOn_skip20s": {
+    "v2.2_run2": { "busy": 301, "sendSnapshots": 97, "_onMessage": 88, "handleMessage": 54, "flushViews": 16, "snapshotCodec.encode": 13, "snapshotFor": 10, "socketBudget.take": 0 },
+    "v2.3_run3": { "busy": 410, "sendSnapshots": 175, "_onMessage": 97, "handleMessage": 57, "flushViews": 16, "snapshotCodec.encode": 28, "snapshotFor": 16, "socketBudget.take": 5, "violations": 0, "settingsRegistry": 0, "voiceCoordinator.tick": 1, "moderation/chatFilter": 0, "recorder": 3 }
+  },
+  "microBench_nsPerOp": {
+    "socketBudget.take v2.3 (spec object per frame)": [34.6, 37.5],
+    "socketBudget.take v2.4 (cached live spec)": [33.8, 32.7],
+    "violations.record (only on a violation)": 90.1,
+    "C2S.move safeParse (every move, for scale)": 126.6
+  },
+  "memory_5minWalk_profilerOff_v2.4-p3": {
+    "rssAnonMbEvery10s": [214, 217, 217, 217, 217, 217, 217, 217, 217, 217, 217, 88, 89, 89, 89, 93, 93, 93, 93, 93, 93, 89, 89, 89, 89, 90, 93, 93, 93],
+    "rssMbEvery10s": [270, 274, 274, 274, 274, 274, 274, 274, 274, 274, 274, 145, 146, 146, 146, 149, 149, 149, 149, 150, 150, 146, 146, 146, 146, 146, 149, 149, 149],
+    "verdict": "no growth; a one-time release of ~128 MB anonymous memory ~2 min after start-up (reproduced in 2 runs), then flat"
+  },
+  "rssMb_dist_dayWalk": { "v2.2": [247, 246, 246], "v2.4-p3": [264, 266, 280] },
+  "lifecycleLeakTest": "apps/server/test/lifecycle.leaks.test.ts: 12 lobbies in 3 waves (real modules, voice configured): 0 coordinators, 0 moderation states, 1 reconciler, ref'd timers back to baseline — pass"
+}

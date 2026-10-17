@@ -1,9 +1,9 @@
-// Assembles generated/cast.png + cast.json from the per-character modules in this folder.
+// Assembles generated/cast.png + cast-ghosts.png + cast.json from the per-character modules in this folder.
 // Each module default-exports a CharacterArt (see types.ts). Missing modules get a placeholder
 // (a labelled silhouette) so the game always has a sheet for every roster id.
 import { CAST, CAST_ANCHOR, CAST_DIRS, CAST_FH, CAST_FRAMES, CAST_FW } from '../../src/cast.js';
 import { Img } from '../lib/img.js';
-import { sheetCols } from './sheet.js';
+import { GHOST_CELL_H, GHOST_HOVER, GHOST_ROW_OFFSET, ghostCols, sheetCols } from './sheet.js';
 import type { CharacterArt, DrawnDir, FrameIndex } from './types.js';
 
 const SW = CAST_FW * CAST_FRAMES.length;
@@ -43,7 +43,6 @@ function hslToHex(s: string): string {
  * character: no ground shadow, pale spectral blue-white, translucent and fading towards the feet,
  * a soft 1 px halo, floating (the walk frames become a gentle hover on the idle pose).
  */
-const GHOST_HOVER = [-2, -3, -4, -3, -2];
 /** `halo` = the ghost still has their ghost vote (pale glowing rim + a little gold ring over the head). */
 function ghostOf(alive: Img, frame: FrameIndex, halo: boolean): Img {
   const src = alive;
@@ -106,7 +105,13 @@ function mirror(src: Img): Img {
   return o;
 }
 
-export async function buildCast(): Promise<{ img: Img; manifest: unknown; review: Img }> {
+/**
+ * (v2.4 perf P2) Two atlases: cast.png holds every living sheet (the roster, the Storyteller, the
+ * NPCs: one 5x8 block each) and is all a town needs until someone dies; cast-ghosts.png holds the
+ * ghost variants ('<id>/ghost', '<id>/ghost-spent'), one 32 x (8 x GHOST_CELL_H) column each (see
+ * scripts/cast/sheet.ts: hover frames are row offsets into the idle cell), loaded on the first death.
+ */
+export async function buildCast(): Promise<{ img: Img; ghosts: Img; manifest: unknown; review: Img }> {
   const arts = new Map<string, CharacterArt>();
   for (const c of CAST) {
     try {
@@ -119,11 +124,15 @@ export async function buildCast(): Promise<{ img: Img; manifest: unknown; review
   }
   const ghostIds = CAST.filter((c) => c.kind === 'villager' || c.kind === 'mascot').map((c) => c.id);
   // '<id>/ghost' = dead, ghost vote unspent (halo); '<id>/ghost-spent' = dead, vote used (no halo).
-  const keys = [...CAST.map((c) => c.id), ...ghostIds.flatMap((id) => [`${id}/ghost`, `${id}/ghost-spent`])];
+  const keys = CAST.map((c) => c.id);
+  const ghostKeys = ghostIds.flatMap((id) => [`${id}/ghost`, `${id}/ghost-spent`]);
   const COLS = sheetCols(keys.length);
-  const rows = Math.ceil(keys.length / COLS);
-  const img = new Img(COLS * SW, rows * SH);
+  const img = new Img(COLS * SW, Math.ceil(keys.length / COLS) * SH);
+  const GCOLS = ghostCols(ghostKeys.length);
+  const GBH = GHOST_CELL_H * CAST_DIRS.length;
+  const ghosts = new Img(GCOLS * CAST_FW, Math.ceil(ghostKeys.length / GCOLS) * GBH);
   const sheets: Record<string, { x: number; y: number }> = {};
+  const ghostSheets: Record<string, { x: number; y: number }> = {};
   const placeholders: string[] = [];
   const drawFrame = (art: CharacterArt, id: string, dir: (typeof CAST_DIRS)[number], f: FrameIndex): Img => {
     let frame: Img;
@@ -134,21 +143,23 @@ export async function buildCast(): Promise<{ img: Img; manifest: unknown; review
     return frame;
   };
   keys.forEach((key, i) => {
-    const ghost = key.endsWith('/ghost') || key.endsWith('/ghost-spent');
-    const id = ghost ? key.slice(0, key.lastIndexOf('/')) : key;
-    const halo = key.endsWith('/ghost');
-    const art = arts.get(id)!;
-    if (!ghost && art.id !== id) placeholders.push(id);
+    const art = arts.get(key)!;
+    if (art.id !== key) placeholders.push(key);
     const ox = (i % COLS) * SW;
     const oy = Math.floor(i / COLS) * SH;
     sheets[key] = { x: ox, y: oy };
     CAST_DIRS.forEach((dir, r) => {
-      for (let f = 0; f < CAST_FRAMES.length; f++) {
-        // ghosts hover on their idle pose instead of stepping
-        const frame = ghost ? ghostOf(drawFrame(art, id, dir, 0), f as FrameIndex, halo) : drawFrame(art, id, dir, f as FrameIndex);
-        img.copy(frame, ox + f * CAST_FW, oy + r * CAST_FH);
-      }
+      for (let f = 0; f < CAST_FRAMES.length; f++) img.copy(drawFrame(art, key, dir, f as FrameIndex), ox + f * CAST_FW, oy + r * CAST_FH);
     });
+  });
+  ghostKeys.forEach((key, i) => {
+    const id = key.slice(0, key.lastIndexOf('/'));
+    const halo = key.endsWith('/ghost');
+    const ox = (i % GCOLS) * CAST_FW;
+    const oy = Math.floor(i / GCOLS) * GBH;
+    ghostSheets[key] = { x: ox, y: oy };
+    // ghosts hover on their idle pose: one cell per direction (frame 0's hover), see sheet.ts
+    CAST_DIRS.forEach((dir, r) => ghosts.copy(ghostOf(drawFrame(arts.get(id)!, id, dir, 0), 0, halo), ox, oy + r * GHOST_CELL_H));
   });
   // Review sheet: per character the 8 idle directions + the down and right walk cycles, 4x, on grass.
   const RS = 4;
@@ -179,6 +190,21 @@ export async function buildCast(): Promise<{ img: Img; manifest: unknown; review
     sheetHeight: SH,
     sheets,
     placeholders,
+    /**
+     * Ghost variants (cast-ghosts.png): key -> top-left of its column; direction r's cell starts at
+     * y + r * cellHeight and frame f is the frameWidth x frameHeight window rowOffset[f] rows below that.
+     */
+    ghosts: { image: 'cast-ghosts.png', cellHeight: GHOST_CELL_H, rowOffset: GHOST_ROW_OFFSET, sheets: ghostSheets },
   };
-  return { img, manifest, review };
+  return { img, ghosts, manifest, review };
 }
+
+/** The pixels of ghost frame (dir row r, frame f) of a cast-ghosts block at (x, y): exported for tests. */
+export function ghostFrame(ghosts: Img, at: { x: number; y: number }, r: number, f: number): Img {
+  const o = new Img(CAST_FW, CAST_FH);
+  o.copy(ghosts, 0, 0, at.x, at.y + r * GHOST_CELL_H + GHOST_ROW_OFFSET[f]!, CAST_FW, CAST_FH);
+  return o;
+}
+
+/** The old 5-frame ghost drawing (frame f of a ghost of `alive`): exported so tests can compare. */
+export { ghostOf };

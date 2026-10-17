@@ -11,6 +11,7 @@
 // night too (above the lighting layer, slightly dimmer).
 import type * as Phaser from 'phaser';
 import { homeBuilding, type TownLayout } from '@ct/protocol';
+import { fillRoundRectBands } from '../render/roundRect';
 
 // ---------------------------------------------------------------------------------------
 // pure parts (unit-tested)
@@ -196,7 +197,9 @@ export function createHouseNameLayer(scene: Phaser.Scene, env: HouseNameEnv): Ho
     // faint backdrop + a tail pointing at the doorway (the tail alone on the low tier)
     const g = scene.add.graphics().setDepth(5149);
     g.fillStyle(0x0b0812, low ? 0.5 : 0.42);
-    if (!low) g.fillRoundedRect(Math.round(cx - w / 2), Math.round(bottom - h), Math.round(w), Math.round(h), Math.min(h / 2, fs * 0.45));
+    // v2.4: rect bands, not fillRoundedRect — Phaser re-runs earcut over a 400-point path every frame
+    // (render/roundRect.ts); one band per device pixel looks the same.
+    if (!low) fillRoundRectBands(g, Math.round(cx - w / 2), Math.round(bottom - h), Math.round(w), Math.round(h), Math.min(h / 2, fs * 0.45), 1 / (z * Math.max(1, env.textRes())));
     g.fillTriangle(inp.x - tail, bottom, inp.x + tail, bottom, inp.x, inp.y); // tip stays on the doorway
     g.setAlpha(st.alpha);
     objs.push(g, text);

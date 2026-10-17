@@ -1,0 +1,890 @@
+{
+ "at": "2026-10-16",
+ "what": "v2.4 P1 client runtime windows, before = tree with v2.3 houseNames/doorTags/compass, after = P1 fixes; same snapshot, same build host (RTX 3060 / SwiftShader); walk windows verified to move (moved.path px, outdoors)",
+ "runs": {
+  "r-before-gpu": {
+   "winS": 20,
+   "gpu": {
+    "canvas": "1440x900",
+    "renderer": "ANGLE (NVIDIA, Vulkan 1.4.312 (NVIDIA NVIDIA GeForce RTX 3060 (0x000024C7)), NVIDIA)",
+    "images": [
+     "button.png",
+     "panel.png",
+     "storyteller.png",
+     "host.png",
+     "cast-portraits-C6S294TH.webp",
+     "cast-hd-De4A8leg.webp",
+     "terrain-BTQUcxWW.webp",
+     "decor-CBXRLsWQ.webp",
+     "objects-DzJJM8xW.webp",
+     "cast-Brz16qm2.webp",
+     "cast-hd-De4A8leg.webp",
+     "lights-B5IWcovY.webp",
+     "square-props-CL806UBF.webp",
+     "social-q5gkHCkk.webp",
+     "social-q5gkHCkk.webp",
+     "button-hover.png"
+    ]
+   },
+   "desktopIdle": {
+    "name": "desktop-idle",
+    "secs": 20,
+    "fps": 60,
+    "frameMs": {
+     "p50": 16.7,
+     "p95": 16.7,
+     "p99": 16.8,
+     "max": 17
+    },
+    "framesOver33ms": 0,
+    "mainThreadBusyPct": 14.1,
+    "scriptPct": 12.9,
+    "layoutPlusStylePct": 0,
+    "layoutsPerSec": 0.2,
+    "styleRecalcsPerSec": 0.2,
+    "jsHeapMb": 30,
+    "jsHeapDeltaMb": 6.4,
+    "domNodes": 587,
+    "domMutationsPerSec": 0.2,
+    "domMutationsTop": [
+     "0.1/s childList div.cth-toasts",
+     "0.1/s childList div.cth",
+     "0.1/s childList div.cts-dock"
+    ],
+    "longTasks": {
+     "n": 0,
+     "maxMs": 0
+    },
+    "scene": {
+     "botsConnected": 15,
+     "botsOutdoors": 15,
+     "botCloseCodes": [],
+     "botErrors": 0,
+     "me": {
+      "x": 472,
+      "y": 542,
+      "facing": "down",
+      "moving": false,
+      "location": "outdoors"
+     }
+    }
+   },
+   "desktopWalk": {
+    "name": "desktop-walk",
+    "secs": 20.6,
+    "fps": 60,
+    "frameMs": {
+     "p50": 16.7,
+     "p95": 16.8,
+     "p99": 16.8,
+     "max": 17
+    },
+    "framesOver33ms": 0,
+    "mainThreadBusyPct": 15,
+    "scriptPct": 13,
+    "layoutPlusStylePct": 0.3,
+    "layoutsPerSec": 5.8,
+    "styleRecalcsPerSec": 34.8,
+    "jsHeapMb": 24,
+    "jsHeapDeltaMb": 5.3,
+    "domNodes": 587,
+    "domMutationsPerSec": 16.2,
+    "domMutationsTop": [
+     "5.8/s attributes:aria-label div.ct-compass",
+     "5.8/s characterData div.ct-compass",
+     "4.5/s attributes:style span.ct-compass-arrow"
+    ],
+    "longTasks": {
+     "n": 0,
+     "maxMs": 0
+    },
+    "scene": {
+     "botsConnected": 15,
+     "botsOutdoors": 15,
+     "botCloseCodes": [],
+     "botErrors": 0,
+     "me": {
+      "x": 473.9874999999985,
+      "y": 259.9985000000002,
+      "facing": "right",
+      "moving": false,
+      "location": "outdoors"
+     }
+    },
+    "moved": {
+     "path": 2964,
+     "maxFromStart": 255,
+     "leftOutdoors": null,
+     "ok": true,
+     "minPx": 100
+    }
+   },
+   "mobileWalk": {
+    "name": "mobile-walk",
+    "secs": 20.5,
+    "fps": 60,
+    "frameMs": {
+     "p50": 16.7,
+     "p95": 16.7,
+     "p99": 16.8,
+     "max": 17
+    },
+    "framesOver33ms": 0,
+    "mainThreadBusyPct": 44.4,
+    "scriptPct": 38.8,
+    "layoutPlusStylePct": 1,
+    "layoutsPerSec": 5.9,
+    "styleRecalcsPerSec": 35,
+    "jsHeapMb": 27,
+    "jsHeapDeltaMb": 4.9,
+    "domNodes": 587,
+    "domMutationsPerSec": 16.4,
+    "domMutationsTop": [
+     "5.9/s attributes:aria-label div.ct-compass",
+     "5.9/s characterData div.ct-compass",
+     "4.6/s attributes:style span.ct-compass-arrow"
+    ],
+    "longTasks": {
+     "n": 0,
+     "maxMs": 0
+    },
+    "scene": {
+     "botsConnected": 15,
+     "botsOutdoors": 15,
+     "botCloseCodes": [],
+     "botErrors": 0,
+     "me": {
+      "x": 473.9949999999987,
+      "y": 259.99700000000087,
+      "facing": "right",
+      "moving": false,
+      "location": "outdoors"
+     }
+    },
+    "moved": {
+     "path": 2978,
+     "maxFromStart": 255,
+     "leftOutdoors": null,
+     "ok": true,
+     "minPx": 100
+    }
+   },
+   "nightHome": {
+    "name": "night-home",
+    "secs": 20,
+    "fps": 60,
+    "frameMs": {
+     "p50": 16.7,
+     "p95": 16.8,
+     "p99": 16.8,
+     "max": 17
+    },
+    "framesOver33ms": 0,
+    "mainThreadBusyPct": 4.3,
+    "scriptPct": 2.9,
+    "layoutPlusStylePct": 0,
+    "layoutsPerSec": 0.1,
+    "styleRecalcsPerSec": 7.9,
+    "jsHeapMb": 29,
+    "jsHeapDeltaMb": 6.7,
+    "domNodes": 605,
+    "domMutationsPerSec": 0.1,
+    "domMutationsTop": [
+     "0.1/s childList div.cth",
+     "0/s childList div.ct-game"
+    ],
+    "longTasks": {
+     "n": 0,
+     "maxMs": 0
+    },
+    "scene": {
+     "botsConnected": 15,
+     "botsOutdoors": 1,
+     "botCloseCodes": [],
+     "botErrors": 0,
+     "me": {
+      "x": 1368,
+      "y": 254,
+      "facing": "right",
+      "moving": false,
+      "location": "bld:house-8"
+     }
+    }
+   },
+   "pageErrors": []
+  },
+  "r-after-gpu": {
+   "winS": 20,
+   "gpu": {
+    "canvas": "1440x900",
+    "renderer": "ANGLE (NVIDIA, Vulkan 1.4.312 (NVIDIA NVIDIA GeForce RTX 3060 (0x000024C7)), NVIDIA)",
+    "images": [
+     "button.png",
+     "panel.png",
+     "host.png",
+     "storyteller.png",
+     "cast-portraits-C6S294TH.webp",
+     "terrain-BTQUcxWW.webp",
+     "decor-CBXRLsWQ.webp",
+     "objects-DzJJM8xW.webp",
+     "cast-Brz16qm2.webp",
+     "cast-hd-De4A8leg.webp",
+     "lights-B5IWcovY.webp",
+     "square-props-CL806UBF.webp",
+     "social-q5gkHCkk.webp",
+     "social-q5gkHCkk.webp",
+     "button-hover.png"
+    ]
+   },
+   "desktopIdle": {
+    "name": "desktop-idle",
+    "secs": 20,
+    "fps": 60,
+    "frameMs": {
+     "p50": 16.7,
+     "p95": 16.7,
+     "p99": 16.8,
+     "max": 17
+    },
+    "framesOver33ms": 0,
+    "mainThreadBusyPct": 5.4,
+    "scriptPct": 4.4,
+    "layoutPlusStylePct": 0,
+    "layoutsPerSec": 0.1,
+    "styleRecalcsPerSec": 0.1,
+    "jsHeapMb": 21,
+    "jsHeapDeltaMb": 2.7,
+    "domNodes": 586,
+    "domMutationsPerSec": 0.1,
+    "domMutationsTop": [
+     "0/s childList div.cth-toasts",
+     "0/s childList div.cth",
+     "0/s childList div.cts-dock"
+    ],
+    "longTasks": {
+     "n": 0,
+     "maxMs": 0
+    },
+    "scene": {
+     "botsConnected": 15,
+     "botsOutdoors": 15,
+     "botCloseCodes": [],
+     "botErrors": 0,
+     "me": {
+      "x": 88,
+      "y": 398,
+      "facing": "down",
+      "moving": false,
+      "location": "outdoors"
+     }
+    }
+   },
+   "desktopWalk": {
+    "name": "desktop-walk",
+    "secs": 20.5,
+    "fps": 60,
+    "frameMs": {
+     "p50": 16.7,
+     "p95": 16.7,
+     "p99": 16.8,
+     "max": 17
+    },
+    "framesOver33ms": 0,
+    "mainThreadBusyPct": 6,
+    "scriptPct": 4.6,
+    "layoutPlusStylePct": 0.1,
+    "layoutsPerSec": 1.8,
+    "styleRecalcsPerSec": 15.8,
+    "jsHeapMb": 26,
+    "jsHeapDeltaMb": -3.6,
+    "domNodes": 586,
+    "domMutationsPerSec": 3.6,
+    "domMutationsTop": [
+     "1.8/s characterData div.ct-compass",
+     "1.8/s attributes:style span.ct-compass-arrow"
+    ],
+    "longTasks": {
+     "n": 0,
+     "maxMs": 0
+    },
+    "scene": {
+     "botsConnected": 15,
+     "botsOutdoors": 15,
+     "botCloseCodes": [],
+     "botErrors": 0,
+     "me": {
+      "x": 432.97899999999925,
+      "y": 251.50350000000037,
+      "facing": "right",
+      "moving": false,
+      "location": "outdoors"
+     }
+    },
+    "moved": {
+     "path": 2967,
+     "maxFromStart": 253,
+     "leftOutdoors": null,
+     "ok": true,
+     "minPx": 100
+    }
+   },
+   "mobileWalk": {
+    "name": "mobile-walk",
+    "secs": 20.6,
+    "fps": 60,
+    "frameMs": {
+     "p50": 16.7,
+     "p95": 16.7,
+     "p99": 16.8,
+     "max": 17
+    },
+    "framesOver33ms": 0,
+    "mainThreadBusyPct": 19.6,
+    "scriptPct": 14.7,
+    "layoutPlusStylePct": 0.5,
+    "layoutsPerSec": 1.7,
+    "styleRecalcsPerSec": 14.4,
+    "jsHeapMb": 24,
+    "jsHeapDeltaMb": 4.1,
+    "domNodes": 586,
+    "domMutationsPerSec": 3.3,
+    "domMutationsTop": [
+     "1.7/s characterData div.ct-compass",
+     "1.6/s attributes:style span.ct-compass-arrow"
+    ],
+    "longTasks": {
+     "n": 0,
+     "maxMs": 0
+    },
+    "scene": {
+     "botsConnected": 15,
+     "botsOutdoors": 15,
+     "botCloseCodes": [],
+     "botErrors": 0,
+     "me": {
+      "x": 437.9934999999984,
+      "y": 249.0074999999991,
+      "facing": "right",
+      "moving": false,
+      "location": "outdoors"
+     }
+    },
+    "moved": {
+     "path": 2976,
+     "maxFromStart": 255,
+     "leftOutdoors": null,
+     "ok": true,
+     "minPx": 100
+    }
+   },
+   "nightHome": {
+    "name": "night-home",
+    "secs": 20,
+    "fps": 60,
+    "frameMs": {
+     "p50": 16.7,
+     "p95": 16.7,
+     "p99": 16.8,
+     "max": 17
+    },
+    "framesOver33ms": 0,
+    "mainThreadBusyPct": 3.7,
+    "scriptPct": 2.5,
+    "layoutPlusStylePct": 0,
+    "layoutsPerSec": 0.1,
+    "styleRecalcsPerSec": 7.9,
+    "jsHeapMb": 25,
+    "jsHeapDeltaMb": -5.5,
+    "domNodes": 604,
+    "domMutationsPerSec": 0.1,
+    "domMutationsTop": [
+     "0.1/s childList div.cth",
+     "0/s childList div.ct-game"
+    ],
+    "longTasks": {
+     "n": 0,
+     "maxMs": 0
+    },
+    "scene": {
+     "botsConnected": 15,
+     "botsOutdoors": 1,
+     "botCloseCodes": [],
+     "botErrors": 0,
+     "me": {
+      "x": 1176,
+      "y": 430,
+      "facing": "right",
+      "moving": false,
+      "location": "bld:house-12"
+     }
+    }
+   },
+   "pageErrors": []
+  },
+  "r-before-sw": {
+   "winS": 15,
+   "gpu": {
+    "canvas": "1080x675",
+    "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+    "images": [
+     "button.png",
+     "panel.png",
+     "terrain-BTQUcxWW.webp",
+     "decor-CBXRLsWQ.webp",
+     "objects-DzJJM8xW.webp",
+     "cast-Brz16qm2.webp",
+     "cast-hd-De4A8leg.webp",
+     "lights-B5IWcovY.webp",
+     "square-props-CL806UBF.webp",
+     "storyteller.png",
+     "host.png",
+     "cast-portraits-C6S294TH.webp",
+     "social-q5gkHCkk.webp",
+     "social-q5gkHCkk.webp",
+     "button-hover.png"
+    ]
+   },
+   "desktopIdle": {
+    "name": "desktop-idle",
+    "secs": 15,
+    "fps": 41.2,
+    "frameMs": {
+     "p50": 16.7,
+     "p95": 50,
+     "p99": 50,
+     "max": 67
+    },
+    "framesOver33ms": 67,
+    "mainThreadBusyPct": 94.3,
+    "scriptPct": 2.6,
+    "layoutPlusStylePct": 0,
+    "layoutsPerSec": 0.4,
+    "styleRecalcsPerSec": 0.4,
+    "jsHeapMb": 29,
+    "jsHeapDeltaMb": 1.3,
+    "domNodes": 534,
+    "domMutationsPerSec": 0.6,
+    "domMutationsTop": [
+     "0.1/s attributes:style div.ct-game-canvas",
+     "0.1/s childList div.cth-toasts",
+     "0.1/s childList div.cth",
+     "0.1/s childList div.ct-game",
+     "0.1/s characterData div.ct-game-prompt",
+     "0.1/s attributes:width div.ct-game-canvas"
+    ],
+    "longTasks": {
+     "n": 25,
+     "maxMs": 54
+    },
+    "scene": {
+     "botsConnected": 15,
+     "botsOutdoors": 15,
+     "botCloseCodes": [],
+     "botErrors": 0,
+     "me": {
+      "x": 88,
+      "y": 222,
+      "facing": "down",
+      "moving": false,
+      "location": "outdoors"
+     }
+    }
+   },
+   "desktopWalk": {
+    "name": "desktop-walk",
+    "secs": 16.1,
+    "fps": 49,
+    "frameMs": {
+     "p50": 16.7,
+     "p95": 33.4,
+     "p99": 33.4,
+     "max": 50
+    },
+    "framesOver33ms": 46,
+    "mainThreadBusyPct": 91.7,
+    "scriptPct": 2.3,
+    "layoutPlusStylePct": 0.2,
+    "layoutsPerSec": 6.1,
+    "styleRecalcsPerSec": 23.6,
+    "jsHeapMb": 20,
+    "jsHeapDeltaMb": 0.1,
+    "domNodes": 534,
+    "domMutationsPerSec": 15.6,
+    "domMutationsTop": [
+     "6.1/s attributes:aria-label div.ct-compass",
+     "6.1/s characterData div.ct-compass",
+     "3.3/s attributes:style span.ct-compass-arrow"
+    ],
+    "longTasks": {
+     "n": 0,
+     "maxMs": 0
+    },
+    "scene": {
+     "botsConnected": 15,
+     "botsOutdoors": 15,
+     "botCloseCodes": [],
+     "botErrors": 0,
+     "me": {
+      "x": 432.49800000000056,
+      "y": 268.4995000000003,
+      "facing": "right",
+      "moving": false,
+      "location": "outdoors"
+     }
+    },
+    "moved": {
+     "path": 2310,
+     "maxFromStart": 255,
+     "leftOutdoors": null,
+     "ok": true,
+     "minPx": 100
+    }
+   },
+   "mobileWalk": {
+    "name": "mobile-walk",
+    "secs": 15.8,
+    "fps": 60,
+    "frameMs": {
+     "p50": 16.7,
+     "p95": 16.8,
+     "p99": 16.8,
+     "max": 17
+    },
+    "framesOver33ms": 0,
+    "mainThreadBusyPct": 64.8,
+    "scriptPct": 7.7,
+    "layoutPlusStylePct": 0.8,
+    "layoutsPerSec": 6.1,
+    "styleRecalcsPerSec": 28.8,
+    "jsHeapMb": 27,
+    "jsHeapDeltaMb": -1.3,
+    "domNodes": 534,
+    "domMutationsPerSec": 15.7,
+    "domMutationsTop": [
+     "6.1/s attributes:aria-label div.ct-compass",
+     "6.1/s characterData div.ct-compass",
+     "3.6/s attributes:style span.ct-compass-arrow"
+    ],
+    "longTasks": {
+     "n": 0,
+     "maxMs": 0
+    },
+    "scene": {
+     "botsConnected": 15,
+     "botsOutdoors": 15,
+     "botCloseCodes": [],
+     "botErrors": 0,
+     "me": {
+      "x": 437.9970000000005,
+      "y": 268.00599999999974,
+      "facing": "right",
+      "moving": false,
+      "location": "outdoors"
+     }
+    },
+    "moved": {
+     "path": 2284,
+     "maxFromStart": 255,
+     "leftOutdoors": null,
+     "ok": true,
+     "minPx": 100
+    }
+   },
+   "pageErrors": []
+  },
+  "r-after-sw": {
+   "winS": 15,
+   "gpu": {
+    "canvas": "1080x675",
+    "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+    "images": [
+     "button.png",
+     "panel.png",
+     "host.png",
+     "storyteller.png",
+     "terrain-BTQUcxWW.webp",
+     "decor-CBXRLsWQ.webp",
+     "objects-DzJJM8xW.webp",
+     "cast-Brz16qm2.webp",
+     "cast-hd-De4A8leg.webp",
+     "lights-B5IWcovY.webp",
+     "square-props-CL806UBF.webp",
+     "cast-portraits-C6S294TH.webp",
+     "social-q5gkHCkk.webp",
+     "social-q5gkHCkk.webp",
+     "button-hover.png"
+    ]
+   },
+   "desktopIdle": {
+    "name": "desktop-idle",
+    "secs": 15,
+    "fps": 39,
+    "frameMs": {
+     "p50": 16.7,
+     "p95": 50,
+     "p99": 50.1,
+     "max": 67
+    },
+    "framesOver33ms": 81,
+    "mainThreadBusyPct": 95,
+    "scriptPct": 2.4,
+    "layoutPlusStylePct": 0,
+    "layoutsPerSec": 0.4,
+    "styleRecalcsPerSec": 0.4,
+    "jsHeapMb": 20,
+    "jsHeapDeltaMb": -0.9,
+    "domNodes": 537,
+    "domMutationsPerSec": 0.6,
+    "domMutationsTop": [
+     "0.1/s attributes:style div.ct-game-canvas",
+     "0.1/s childList div.cth-toasts",
+     "0.1/s childList div.cth",
+     "0.1/s attributes:width div.ct-game-canvas",
+     "0.1/s attributes:height div.ct-game-canvas",
+     "0.1/s childList div.ct-game"
+    ],
+    "longTasks": {
+     "n": 25,
+     "maxMs": 55
+    },
+    "scene": {
+     "botsConnected": 15,
+     "botsOutdoors": 15,
+     "botCloseCodes": [],
+     "botErrors": 0,
+     "me": {
+      "x": 632,
+      "y": 302,
+      "facing": "down",
+      "moving": false,
+      "location": "outdoors"
+     }
+    }
+   },
+   "desktopWalk": {
+    "name": "desktop-walk",
+    "secs": 16.4,
+    "fps": 43.9,
+    "frameMs": {
+     "p50": 16.7,
+     "p95": 33.4,
+     "p99": 33.4,
+     "max": 50
+    },
+    "framesOver33ms": 61,
+    "mainThreadBusyPct": 94.1,
+    "scriptPct": 2.4,
+    "layoutPlusStylePct": 0.1,
+    "layoutsPerSec": 1.7,
+    "styleRecalcsPerSec": 12,
+    "jsHeapMb": 18,
+    "jsHeapDeltaMb": -5.5,
+    "domNodes": 530,
+    "domMutationsPerSec": 3.4,
+    "domMutationsTop": [
+     "1.7/s characterData div.ct-compass",
+     "1.7/s attributes:style span.ct-compass-arrow"
+    ],
+    "longTasks": {
+     "n": 0,
+     "maxMs": 0
+    },
+    "scene": {
+     "botsConnected": 15,
+     "botsOutdoors": 15,
+     "botCloseCodes": [],
+     "botErrors": 0,
+     "me": {
+      "x": 459.98549999999994,
+      "y": 245.99450000000053,
+      "facing": "right",
+      "moving": false,
+      "location": "outdoors"
+     }
+    },
+    "moved": {
+     "path": 2315,
+     "maxFromStart": 255,
+     "leftOutdoors": null,
+     "ok": true,
+     "minPx": 100
+    }
+   },
+   "mobileWalk": {
+    "name": "mobile-walk",
+    "secs": 15.7,
+    "fps": 60,
+    "frameMs": {
+     "p50": 16.7,
+     "p95": 16.8,
+     "p99": 16.8,
+     "max": 17
+    },
+    "framesOver33ms": 0,
+    "mainThreadBusyPct": 64.2,
+    "scriptPct": 7.5,
+    "layoutPlusStylePct": 0.4,
+    "layoutsPerSec": 1.6,
+    "styleRecalcsPerSec": 15.4,
+    "jsHeapMb": 19,
+    "jsHeapDeltaMb": 0.7,
+    "domNodes": 530,
+    "domMutationsPerSec": 3.4,
+    "domMutationsTop": [
+     "1.8/s attributes:style span.ct-compass-arrow",
+     "1.7/s characterData div.ct-compass"
+    ],
+    "longTasks": {
+     "n": 0,
+     "maxMs": 0
+    },
+    "scene": {
+     "botsConnected": 15,
+     "botsOutdoors": 15,
+     "botCloseCodes": [],
+     "botErrors": 0,
+     "me": {
+      "x": 459.9810000000008,
+      "y": 245.99750000000023,
+      "facing": "right",
+      "moving": false,
+      "location": "outdoors"
+     }
+    },
+    "moved": {
+     "path": 2280,
+     "maxFromStart": 248,
+     "leftOutdoors": null,
+     "ok": true,
+     "minPx": 100
+    }
+   },
+   "pageErrors": []
+  },
+  "r-after-prof": {
+   "winS": 20,
+   "gpu": {
+    "canvas": "1440x900",
+    "renderer": "ANGLE (NVIDIA, Vulkan 1.4.312 (NVIDIA NVIDIA GeForce RTX 3060 (0x000024C7)), NVIDIA)",
+    "images": [
+     "button.png",
+     "panel.png",
+     "host.png",
+     "storyteller.png",
+     "cast-portraits-C6S294TH.webp",
+     "social-q5gkHCkk.webp",
+     "terrain-BTQUcxWW.webp",
+     "decor-CBXRLsWQ.webp",
+     "objects-DzJJM8xW.webp",
+     "cast-Brz16qm2.webp",
+     "cast-hd-De4A8leg.webp",
+     "lights-B5IWcovY.webp",
+     "square-props-CL806UBF.webp",
+     "social-q5gkHCkk.webp",
+     "button-hover.png"
+    ]
+   },
+   "desktopWalk": {
+    "name": "desktop-walk",
+    "secs": 20.6,
+    "fps": 60.1,
+    "frameMs": {
+     "p50": 16.7,
+     "p95": 16.7,
+     "p99": 16.8,
+     "max": 300
+    },
+    "framesOver33ms": 1,
+    "mainThreadBusyPct": 9.4,
+    "scriptPct": 5.9,
+    "layoutPlusStylePct": 0.1,
+    "layoutsPerSec": 2,
+    "styleRecalcsPerSec": 16.3,
+    "jsHeapMb": 24,
+    "jsHeapDeltaMb": 4.5,
+    "domNodes": 538,
+    "domMutationsPerSec": 3.8,
+    "domMutationsTop": [
+     "1.9/s characterData div.ct-compass",
+     "1.8/s attributes:style span.ct-compass-arrow",
+     "0/s childList div.cth",
+     "0/s childList div.cts-dock"
+    ],
+    "longTasks": {
+     "n": 0,
+     "maxMs": 0
+    },
+    "scene": {
+     "botsConnected": 15,
+     "botsOutdoors": 15,
+     "botCloseCodes": [],
+     "botErrors": 0,
+     "me": {
+      "x": 462.48849999999965,
+      "y": 262.00300000000067,
+      "facing": "right",
+      "moving": false,
+      "location": "outdoors"
+     }
+    },
+    "moved": {
+     "path": 2959,
+     "maxFromStart": 253,
+     "leftOutdoors": null,
+     "ok": true,
+     "minPx": 100
+    }
+   },
+   "mobileWalk": {
+    "name": "mobile-walk",
+    "secs": 20.7,
+    "fps": 60,
+    "frameMs": {
+     "p50": 16.7,
+     "p95": 16.7,
+     "p99": 16.8,
+     "max": 217
+    },
+    "framesOver33ms": 2,
+    "mainThreadBusyPct": 24.3,
+    "scriptPct": 17.2,
+    "layoutPlusStylePct": 0.6,
+    "layoutsPerSec": 2,
+    "styleRecalcsPerSec": 17,
+    "jsHeapMb": 21,
+    "jsHeapDeltaMb": -3.6,
+    "domNodes": 533,
+    "domMutationsPerSec": 4,
+    "domMutationsTop": [
+     "2/s characterData div.ct-compass",
+     "1.9/s attributes:style span.ct-compass-arrow"
+    ],
+    "longTasks": {
+     "n": 0,
+     "maxMs": 0
+    },
+    "scene": {
+     "botsConnected": 15,
+     "botsOutdoors": 15,
+     "botCloseCodes": [],
+     "botErrors": 0,
+     "me": {
+      "x": 457.46499999999884,
+      "y": 264.50049999999965,
+      "facing": "right",
+      "moving": false,
+      "location": "outdoors"
+     }
+    },
+    "moved": {
+     "path": 2962,
+     "maxFromStart": 255,
+     "leftOutdoors": null,
+     "ok": true,
+     "minPx": 100
+    }
+   },
+   "pageErrors": []
+  }
+ }
+}

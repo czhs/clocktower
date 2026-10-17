@@ -200,6 +200,10 @@ export function createModeration(deps: { database: Database; config: AppConfig; 
     dropLobby(lobbyId: string): void {
       lobbies.delete(lobbyId);
     },
+    /** (v2.4 P3) Live per-lobby moderation states (diagnostics / leak tests). */
+    lobbyCount(): number {
+      return lobbies.size;
+    },
 
     // ---- reports ------------------------------------------------------------------------------
     fileReport(r: ReportInput): number {

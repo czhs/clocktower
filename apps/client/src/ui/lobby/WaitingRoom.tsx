@@ -19,7 +19,7 @@ import { copyText, SCRIPT_LABEL, shareUrl } from './finder';
 import { MODE_COPY, modeOf, timingsOf, timingsSummary } from '../clock/logic';
 import { AutoTimingsEditor, useTimingsDraft } from './ModeSettings';
 import { StPrepareButton } from '../storyteller/prepareSlot'; // (v2.2) the Storyteller's tools before the game
-import { AutoStorylineSetting } from '../storyteller/autoStoryline'; // (v2.2) automatic games: storyline
+import { AutoStorylineSetting } from '../common/lazyTown'; // (v2.2) automatic games: storyline (v2.4: lazy chunk)
 import { ChatFilterSetting, MemberModTools, MutedBadge, RemovedList } from './moderation'; // (v2.3 OPS-6)
 import '../auth/auth.css';
 import './lobby.css';

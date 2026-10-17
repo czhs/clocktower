@@ -1,6 +1,6 @@
 # Agent handoff — start here
 
-_Last updated: 2026-10-15 (lead, v2.2 release; v2.3 security audit done, fixes pending)._ If you are a new agent (or a human) picking this repo up,
+_Last updated: 2026-10-16 (lead, v2.4 performance release; v2.3 security release before it)._ If you are a new agent (or a human) picking this repo up,
 read this page first, then `CLAUDE.md` (binding rules), `docs/vision.md` (product principles) and
 `docs/architecture.md` (contracts + secrecy model).
 
@@ -93,5 +93,7 @@ E2E suites and rough durations: `lobby` (≈3 min), `v21-clock` (≈3), `v2-soci
 
 ## Current state and open work
 
-See `docs/progress.md` → "v2.2" for what shipped in this release, what was verified, and the ranked
-list of open items (with owners) for the next agent.
+See `docs/progress.md` → "v2.4 status" (newest; then "v2.3 status", "v2.2") for what shipped, what was
+verified, the open items with owners, and the owner-only actions (sudo / dashboards) still pending.
+Release notes: `docs/RELEASE-v2.md`. Perf budgets: `node scripts/perf/budgets.mjs` (inputs listed in
+its header).

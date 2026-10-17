@@ -9,6 +9,8 @@
 //   CT_AGENT=perf-audit scripts/remote.sh npx tsx tests/perf/server-profile.ts [--players 15] [--walk 40] [--voice yes] [--out /tmp/ct-perf]
 //   (v2.2 WP4) [--snap2 yes] bots join with the compact 'world:snap2' capability like the real client;
 //   [--ports 3370-3373] another port range for the test server (default 3390-3394).
+//   (v2.4 P3) [--cpuprof no] run the server WITHOUT the V8 sampling profiler (its 500 µs sampling costs
+//   CPU itself); every phase also records user / system CPU and per-thread CPU (/proc/<pid>/task).
 import { execSync } from 'node:child_process';
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -28,11 +30,18 @@ const VOTE_S = Number(arg('vote', '45'));
 const VOICE = arg('voice', 'yes') === 'yes';
 const OUT = path.resolve(arg('out', '/tmp/ct-perf'));
 const SNAP2 = arg('snap2', 'no') === 'yes';
+const CPUPROF = arg('cpuprof', 'yes') === 'yes';
+// (v2.4 P3) [--voiceoptin yes]: VOICE_TEST_AUTO_OPT_IN=1, i.e. every member wants voice like a v2.2 client
+// did (grants are minted + refreshed); by default v2.3 bots never press "Enable voice" (no grants).
+const VOICE_OPTIN = arg('voiceoptin', 'no') === 'yes';
+// (v2.4 P3) [--mode dist]: profile the built bundle (apps/server/dist/server.js, as prod runs it; build it
+// first) instead of the TypeScript sources under tsx.
+const MODE = arg('mode', 'source') === 'dist' ? 'dist' : 'source';
 const [PORT_MIN, PORT_MAX] = arg('ports', '3390-3394').split('-').map(Number) as [number, number];
 const PROF_DIR = path.join(OUT, 'cpuprof');
 mkdirSync(PROF_DIR, { recursive: true });
 for (const f of readdirSync(PROF_DIR)) if (f.endsWith('.cpuprofile')) execSync(`rm -f ${path.join(PROF_DIR, f)}`);
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 const log = (...a: unknown[]) => console.log(`[perf ${new Date().toISOString().slice(11, 19)}]`, ...a);
 
 const CLK = Number(execSync('getconf CLK_TCK').toString().trim()) || 100;
@@ -41,6 +50,35 @@ const ticks = (pid: number) => {
   const a = f.slice(f.lastIndexOf(')') + 2).split(' ');
   return Number(a[11]) + Number(a[12]);
 };
+/** [utime, stime] in clock ticks. */
+const ticksUS = (pid: number): [number, number] => {
+  const f = readFileSync(`/proc/${pid}/stat`, 'utf8');
+  const a = f.slice(f.lastIndexOf(')') + 2).split(' ');
+  return [Number(a[11]), Number(a[12])];
+};
+/** Per-thread utime+stime by thread name (threads of the same name are summed). */
+const threadTicks = (pid: number): Map<string, number> => {
+  const out = new Map<string, number>();
+  let tids: string[] = [];
+  try {
+    tids = readdirSync(`/proc/${pid}/task`);
+  } catch {
+    return out;
+  }
+  for (const tid of tids) {
+    try {
+      const f = readFileSync(`/proc/${pid}/task/${tid}/stat`, 'utf8');
+      const name = f.slice(f.indexOf('(') + 1, f.lastIndexOf(')')).replace(/[0-9]+$/, '#');
+      const a = f.slice(f.lastIndexOf(')') + 2).split(' ');
+      out.set(name, (out.get(name) ?? 0) + Number(a[11]) + Number(a[12]));
+    } catch {
+      /* thread exited */
+    }
+  }
+  return out;
+};
+/** (v2.4 P3) Anonymous resident memory (heap + malloc), without file-backed pages the kernel may drop. */
+const rssAnon = (pid: number) => Number(readFileSync(`/proc/${pid}/status`, 'utf8').match(/RssAnon:\s+(\d+)/)?.[1] ?? 0) / 1024;
 const rss = (pid: number) => Number(readFileSync(`/proc/${pid}/status`, 'utf8').match(/VmRSS:\s+(\d+)/)![1]) / 1024;
 
 type TypeStat = { n: number; frameBytes: number; mp: number; json: number; maxMp: number };
@@ -103,13 +141,21 @@ async function measure(label: string, bots: Bot[], meters: ReturnType<typeof met
   const tx0 = bots.map((b) => b.recorder.txBytes);
   const t0 = performance.now();
   const c0 = ticks(pid);
+  const us0 = ticksUS(pid);
+  const th0 = threadTicks(pid);
   const cpuSamples: number[] = [];
+  const rssSamples: number[] = [];
+  const anonSamples: number[] = [];
   let last = c0;
   let lastT = t0;
   const sampler = setInterval(() => {
     const c = ticks(pid);
     const t = performance.now();
     cpuSamples.push(((c - last) / CLK / ((t - lastT) / 1000)) * 100);
+    if (cpuSamples.length % 10 === 0) {
+      rssSamples.push(Math.round(rss(pid)));
+      anonSamples.push(Math.round(rssAnon(pid)));
+    }
     last = c;
     lastT = t;
   }, 1000);
@@ -117,6 +163,15 @@ async function measure(label: string, bots: Bot[], meters: ReturnType<typeof met
   clearInterval(sampler);
   const secs = (performance.now() - t0) / 1000;
   const cpu = (((ticks(pid) - c0) / CLK) / secs) * 100;
+  const us1 = ticksUS(pid);
+  const th1 = threadTicks(pid);
+  const pctOf = (t: number) => Math.round(((t / CLK / secs) * 100) * 10) / 10;
+  const threads = Object.fromEntries(
+    [...th1.entries()]
+      .map(([k, v]) => [k, pctOf(v - (th0.get(k) ?? 0))] as const)
+      .filter(([, v]) => v > 0)
+      .sort((a, b) => b[1] - a[1]),
+  );
   const rx = bots.map((b, i) => (b.recorder.rxBytes - rx0[i]!) / secs);
   const tx = bots.map((b, i) => (b.recorder.txBytes - tx0[i]!) / secs);
   const sorted = [...cpuSamples].sort((a, b) => a - b);
@@ -125,7 +180,13 @@ async function measure(label: string, bots: Bot[], meters: ReturnType<typeof met
     secs: Math.round(secs * 10) / 10,
     serverCpuPct: Math.round(cpu * 10) / 10,
     serverCpuP95: Math.round((sorted[Math.floor(sorted.length * 0.95)] ?? 0) * 10) / 10,
+    serverCpuUserPct: pctOf(us1[0] - us0[0]),
+    serverCpuSysPct: pctOf(us1[1] - us0[1]),
+    serverCpuThreads: threads,
+    cpuProfiler: CPUPROF,
     rssMb: Math.round(rss(pid)),
+    rssSamplesMb: rssSamples, // (v2.4 P3) every 10 s of the phase
+    rssAnonSamplesMb: anonSamples, // (v2.4 P3) same, anonymous memory only (leak check)
     s2cBytesPerSecPerClient: { avg: Math.round(rx.reduce((a, b) => a + b, 0) / rx.length), max: Math.round(Math.max(...rx)), st: Math.round(rx[0]!) },
     c2sBytesPerSecPerClient: Math.round(tx.reduce((a, b) => a + b, 0) / tx.length),
     perType: Object.fromEntries(
@@ -147,11 +208,12 @@ async function main() {
   const port = await pickPort(PORT_MIN, PORT_MAX);
   const env: Record<string, string> = {
     LOBBY_IDLE_TIMEOUT_SEC: '120',
-    NODE_OPTIONS: `--cpu-prof --cpu-prof-dir=${PROF_DIR} --cpu-prof-interval=500`,
   };
+  if (VOICE_OPTIN) env.VOICE_TEST_AUTO_OPT_IN = '1';
+  if (CPUPROF) env.NODE_OPTIONS = `--cpu-prof --cpu-prof-dir=${PROF_DIR} --cpu-prof-interval=500`;
   if (VOICE)
     Object.assign(env, { LIVEKIT_URL: 'ws://127.0.0.1:9', LIVEKIT_API_KEY: 'perfkey', LIVEKIT_API_SECRET: 'perf-secret-0123456789abcdef0123456789abcdef' });
-  const server = await startServer({ mode: 'source', port, env });
+  const server = await startServer({ mode: MODE, port, env });
   log('server', server.url, 'pid', server.pid);
   const results: unknown[] = [];
   try {
@@ -203,7 +265,7 @@ async function main() {
   await sleep(500);
   const prof = readdirSync(PROF_DIR).filter((f) => f.endsWith('.cpuprofile'));
   log('cpu profiles', prof.join(', ') || 'NONE (server did not exit cleanly)');
-  writeFileSync(path.join(OUT, 'server-profile.json'), JSON.stringify({ players: PLAYERS, walkS: WALK_S, voice: VOICE, results, profiles: prof }, null, 1));
+  writeFileSync(path.join(OUT, 'server-profile.json'), JSON.stringify({ players: PLAYERS, walkS: WALK_S, voice: VOICE, mode: MODE, results, profiles: prof }, null, 1));
   log('wrote', path.join(OUT, 'server-profile.json'));
 }
 

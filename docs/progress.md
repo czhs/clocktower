@@ -142,4 +142,25 @@ The pre-pivot art-overhaul WIP is preserved on branch `wip/art-overhaul`.
   path (not reproduced on re-run).
 - **Several Claude sessions deploy to this host.** Always base prod deploys on the newest release
   branch (`work/v2.2-v2.3` or later) and check `git log` / the releases dir before deploying.
-- **Next:** v2.4 = performance sweep (see "Roadmap").
+- **Next:** v2.4 = performance sweep — done, see "v2.4 status" below.
+
+## v2.4 status (2026-10-16, lead) — current state for the next agent
+
+- **What shipped:** docs/RELEASE-v2.md "v2.4.0" (performance only). Plan: docs/perf-plan-v2.4.md;
+  measurements and before/after tables: docs/perf-v2.2-results.md "v2.4 — P1 / P2 / P3"; budgets
+  tightened in `scripts/perf/budgets.mjs` (server CPU now measured with `--cpuprof no`; entry CSS sums
+  `index-base-*` + `index-*`). Gate: docs/test-results.md "v2.4 release gate".
+- **How the perf tests work now:** `tests/perf/client-perf.ts` teleports the browser player to an
+  open outdoor spot before each walk window and fails if the path is < 100 px or ends indoors (the v2.3
+  windows had walked into a cottage). Never compare `serverCpuPct` from a first run in a fresh sandbox
+  (cold tsx cache) or with the profiler on.
+- **Open items (owner):**
+  - voice: wire `apps/client/src/voice/talkerCap.ts` (decode only the N loudest talkers) into the
+    engine after a human test with real LiveKit (does `isSpeaking` keep updating while unsubscribed?
+    how much of the first words is lost on resubscribe? phone CPU with 10 talkers).
+  - world-art: `TownScene.drawTownClock` still earcuts one 100-point wedge per frame while a timer
+    runs (small); check the low render tier's automatic 30 fps drop on GPU-less desktops (39–49 fps).
+  - qa-deploy: hd-cast e2e flakes when a bot is randomly dealt brianbi (~4/28); the `fps` probe counts
+    browser frames, not Phaser renders.
+  - The Vite preload-helper patch (`apps/client/build/cssOrder.ts`) is tied to Vite 7.3; on a Vite
+    upgrade the build fails loudly until it is updated.

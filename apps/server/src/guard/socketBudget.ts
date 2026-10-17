@@ -18,7 +18,7 @@
 // traced with CT_SOCKET_BUDGET_TRACE=<file> (JSON lines; tests/diagnostics only).
 import { appendFileSync } from 'node:fs';
 import { CLOSE_CODES } from '@ct/protocol';
-import { DEFAULT_HOST_LIMITS, getHostLimits } from './hostLimits.js';
+import { DEFAULT_HOST_LIMITS, getHostLimits, type HostLimits } from './hostLimits.js';
 import type { Logger } from '../rooms/modules.js';
 
 export interface SocketBudgetSpec {
@@ -37,10 +37,21 @@ export const DEFAULT_SOCKET_BUDGET: SocketBudgetSpec = {
   bytesPerSec: DEFAULT_HOST_LIMITS.socketBytesPerSec,
 };
 
-/** Live budget from the settings (guard/hostLimits.ts): changes apply to every socket immediately. */
+/**
+ * Live budget from the settings (guard/hostLimits.ts): changes apply to every socket immediately.
+ * (v2.4 P3) Called for every incoming frame: the spec is rebuilt only when the host-limits snapshot
+ * changes (setHostLimits / resetHostLimits always install a new frozen object), so the hot path
+ * allocates nothing and still sees every change on the very next frame.
+ */
+let liveSpecFor: Readonly<HostLimits> | null = null;
+let liveSpec: Readonly<SocketBudgetSpec> = DEFAULT_SOCKET_BUDGET;
 export function liveSocketBudget(): SocketBudgetSpec {
   const l = getHostLimits();
-  return { frameBurst: l.socketFrameBurst, framesPerSec: l.socketFramesPerSec, byteBurst: l.socketByteBurst, bytesPerSec: l.socketBytesPerSec };
+  if (l !== liveSpecFor) {
+    liveSpec = Object.freeze({ frameBurst: l.socketFrameBurst, framesPerSec: l.socketFramesPerSec, byteBurst: l.socketByteBurst, bytesPerSec: l.socketBytesPerSec });
+    liveSpecFor = l;
+  }
+  return liveSpec;
 }
 
 type SpecSource = SocketBudgetSpec | (() => SocketBudgetSpec);

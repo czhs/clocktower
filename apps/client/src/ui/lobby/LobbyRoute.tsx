@@ -12,6 +12,7 @@ import { Hud } from '../hud';
 import { VoicePanel } from '../voice';
 import { ChatPanel } from '../chat';
 import { lazyComponent, whenIdle } from '../common/lazy';
+import { preloadTownParts } from '../common/lazyTown';
 import { navigate } from '../common/route';
 import { LoadingScreen, lobbyErrorCopy, StatusScreen } from '../common/StatusScreen';
 import { errorText } from './finder';
@@ -32,8 +33,12 @@ const StorytellerPanel = lazyComponent(
     ) : null,
 );
 
-/** Start fetching Phaser + the town code now, in parallel with the join (GameScreen imports it too). */
-const warmTown = () => void import('../../game/TownGame').catch(() => undefined);
+/** Start fetching Phaser + the town code now, in parallel with the join (GameScreen imports it too),
+ * and the in-town panels' chunk (v2.4: notebook, story, social palette, clock chip, storyline). */
+const warmTown = () => {
+  void import('../../game/TownGame').catch(() => undefined);
+  void preloadTownParts();
+};
 
 /** A lobby join/close failure: an ApiErrorCode or close reason (see lobbyErrorCopy) + fallback text. */
 interface JoinError {

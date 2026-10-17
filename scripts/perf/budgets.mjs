@@ -4,10 +4,12 @@
 // slack (the host is shared with prod, so numbers are noisy). Missing inputs are reported as SKIP.
 //
 //   node scripts/perf/budgets.mjs \
-//     [--bundle /tmp/ct-bundle.json]            # node scripts/perf/bundle-report.mjs --json …
-//     [--server /tmp/ct-srv/server-profile.json] # tests/perf/server-profile.ts --snap2 yes --out …
-//     [--client /tmp/ct-client/client-perf.json] # tests/perf/client-perf.ts --only desktop-idle,desktop-walk,mobile-walk,night-home
-//     [--load   /tmp/ct-load/client-perf.json]   # tests/perf/client-perf.ts --only load
+//     [--bundle /tmp/ct-bundle.json]            # node scripts/perf/bundle-report.mjs --json /tmp/ct-bundle.json
+//     [--server /tmp/ct-srv/server-profile.json] # tests/perf/server-profile.ts --snap2 yes --cpuprof no --out …
+//                                                  (v2.4: profiler off — --cpu-prof itself costs ~3 % of a core and a
+//                                                   cold tsx cache adds ~3 % more; see perf-v2.2-results.md P3)
+//     [--client /tmp/ct-client/client-perf.json] # tests/perf/client-perf.ts --gpu yes --win 20 --only desktop-idle,desktop-walk,mobile-walk,night-home
+//     [--load   /tmp/ct-load/client-perf.json]   # tests/perf/client-perf.ts --gpu yes --only load
 //     [--atlases packages/assets/generated]      # shipped *.webp atlas bytes (default)
 //     [--out tests/perf/results/<date>.json]
 // Commands and the measured v2.2 baseline: docs/perf-v2.2-results.md (WP7).
@@ -24,18 +26,18 @@ const KiB = 1024;
 // name → max allowed value (and unit for printing)
 export const BUDGETS = {
   entryJsBrKiB: { max: 45, unit: 'KiB br', why: 'JS before sign-in (v2.2: 36.5)' },
-  entryCssBrKiB: { max: 27, unit: 'KiB br', why: 'entry CSS (v2.2: 22.1)' },
-  lobbyChunkBrKiB: { max: 85, unit: 'KiB br', why: 'LobbyRoute chunk (v2.2: 68.2)' },
+  entryCssBrKiB: { max: 15, unit: 'KiB br', why: 'entry CSS, base + theme (v2.4: 11.4; v2.3: 24.9)' },
+  lobbyChunkBrKiB: { max: 72, unit: 'KiB br', why: 'LobbyRoute chunk (v2.4: 63.8; v2.3: 83.4)' },
   townChunkBrKiB: { max: 300, unit: 'KiB br', why: 'TownGame chunk, Phaser (v2.2: 284.5)' },
-  townAtlasKiB: { max: 950, unit: 'KiB', why: 'runtime WebP atlases (v2.2: ≈ 770)' },
+  townAtlasKiB: { max: 700, unit: 'KiB', why: 'WebP atlases loaded on town entry (v2.4: 578; HD/ghosts on demand)' },
   snapshotBytesPerSecPerClient: { max: 2000, unit: 'B/s', why: 'S2C per client, day walk (v2.2: 1487)' },
-  serverCpuPct16: { max: 10, unit: '% core', why: 'server CPU, 16 clients walking (v2.2: 4.9)' },
+  serverCpuPct16: { max: 4, unit: '% core', why: 'server CPU, 16 clients walking, profiler off (v2.4: 2.0-2.5)' },
   desktopWalkFrameP95Ms: { max: 20, unit: 'ms', why: 'desktop-walk frame p95 (v2.2: 16.7)' },
-  desktopWalkMainPct: { max: 10, unit: '%', why: 'desktop-walk main thread (v2.2: 7.5)' },
-  mobileWalkMainPct: { max: 17, unit: '%', why: 'phone profile walk main thread (v2.2: 13.9)' },
-  mobileWalkDomMutPerSec: { max: 25, unit: '/s', why: 'HUD churn while walking (v2.2: 18.4)' },
+  desktopWalkMainPct: { max: 9, unit: '%', why: 'desktop-walk, outdoors (v2.4: 6.0; v2.3 real walk: 15)' },
+  mobileWalkMainPct: { max: 24, unit: '%', why: 'phone profile walk, outdoors (v2.4: 15-20, noisy; v2.3 real walk: 44)' },
+  mobileWalkDomMutPerSec: { max: 6, unit: '/s', why: 'HUD churn while walking (v2.4: 3.3; compass gated to 2/s)' },
   authScreenMs: { max: 3500, unit: 'ms', why: 'Slow-4G phone profile, local uncompressed (v2.2: 2.5 s)' },
-  townNetworkIdleMs: { max: 21000, unit: 'ms', why: 'Slow-4G phone profile, local uncompressed (v2.2: 16.7 s)' },
+  townNetworkIdleMs: { max: 19000, unit: 'ms', why: 'Slow-4G phone profile, local uncompressed (v2.4: 16.5 s)' },
 };
 
 const readJson = (p) => (p && existsSync(p) ? JSON.parse(readFileSync(p, 'utf8')) : null);
@@ -45,8 +47,9 @@ const bundle = readJson(arg('bundle'));
 if (bundle) {
   const chunks = Object.entries(bundle.chunks ?? {});
   const br = (pred) => {
-    const f = (bundle.files ?? []).find((x) => pred(x.file));
-    return f?.br != null ? f.br / KiB : null;
+    // Sum every match: since v2.4 the entry CSS is two files (index-base-* + the theme index-*).
+    const fs = (bundle.files ?? []).filter((x) => pred(x.file) && x.br != null);
+    return fs.length ? fs.reduce((a, x) => a + x.br, 0) / KiB : null;
   };
   const entry = chunks.find(([, c]) => c.isEntry)?.[0];
   if (entry) measured.entryJsBrKiB = br((f) => f === entry);

@@ -20,7 +20,7 @@ import * as Phaser from 'phaser';
 import { castById, PLAYABLE, PLAZA, townLayout, townMap } from '@ct/assets';
 import objectsAtlas from '@ct/assets/generated/objects.json';
 import castJson from '@ct/assets/generated/cast.json';
-import { castHdUrl, castUrl, decorUrl, lightsUrl, objectsUrl, squarePropsUrl, terrainUrl, townJsonUrl } from '@ct/assets/runtime';
+import { castGhostsUrl, castHdUrl, castUrl, decorUrl, lightsUrl, objectsUrl, squarePropsUrl, terrainUrl, townJsonUrl } from '@ct/assets/runtime';
 import {
   isBlockedPx,
   locationAt,
@@ -88,8 +88,12 @@ interface CastManifest {
   frames: readonly string[];
   walkFps: number;
   sheets: Record<string, { x: number; y: number }>;
+  /** (v2.4) ghost variants in cast-ghosts.*: one cell per direction, frame f = rowOffset[f] rows down. */
+  ghosts?: { cellHeight: number; rowOffset: readonly number[]; sheets: Record<string, { x: number; y: number }> };
 }
 const CAST = castJson as unknown as CastManifest;
+/** A sheet key the cast art has (living in cast.*, ghost variants in cast-ghosts.*). */
+const hasCastSheet = (key: string): boolean => !!CAST.sheets[key] || !!CAST.ghosts?.sheets[key];
 // Photo-real cast members (CastMember.hd, e.g. brianbi) also have authored full-resolution walking
 // frames in generated/cast-hd.* (WebP/PNG via @ct/assets/runtime), drawn with smooth filtering and
 // scaled down to the 32x40 world size; cast.png carries a downscale for everything else.
@@ -315,6 +319,8 @@ class Avatar {
   }
   play(force = false) {
     if (!this.key) return;
+    // (v2.4 perf P2) the HD sheet loads on demand: the regular cast frames stand in until it is there
+    if (CAST_HD?.rows[this.key] !== undefined && !this.scene.textures.exists('cast-hd')) this.scene.wantCastHd();
     if (CAST_HD?.rows[this.key] !== undefined && this.scene.textures.exists('cast-hd')) {
       const anim = `${this.key}#hd-${this.moving && !this.ghost && !this.still ? 'walk' : 'idle'}-${this.dir}`;
       if (!this.hd) this.sprite.setScale(1 / CAST_HD.scale);
@@ -327,7 +333,12 @@ class Avatar {
       this.sprite.setScale(1);
       this.sprite.setTexture('cast');
     }
-    const anim = `${this.key}#${this.moving && !this.ghost ? 'walk' : 'idle'}-${this.dir}`;
+    let anim = `${this.key}#${this.moving && !this.ghost ? 'walk' : 'idle'}-${this.dir}`;
+    if (!this.scene.anims.exists(anim) && CAST.ghosts?.sheets[this.key]) {
+      // (v2.4 perf P2) ghost art loads on the first death: the living idle frame stands in meanwhile
+      this.scene.wantGhosts();
+      anim = `${this.key.slice(0, this.key.lastIndexOf('/'))}#idle-${this.dir}`;
+    }
     if (!this.scene.anims.exists(anim)) return;
     if (force || this.sprite.anims.currentAnim?.key !== anim) this.sprite.play(anim, !force);
   }
@@ -438,7 +449,7 @@ export class TownScene extends Phaser.Scene {
     this.load.image('decor', decorUrl);
     this.load.image('objects', objectsUrl);
     this.load.image('cast', castUrl);
-    if (CAST_HD) this.load.image('cast-hd', castHdUrl);
+    // (v2.4 perf P2) not here: cast-ghosts (first death) and cast-hd (an hd character in the lobby)
     this.load.spritesheet('lights', lightsUrl, { frameWidth: 128, frameHeight: 128 });
     this.load.tilemapTiledJSON('town', townJsonUrl);
     if (FX_PNG && FX_JSON) this.load.image('fx', FX_PNG);
@@ -518,6 +529,7 @@ export class TownScene extends Phaser.Scene {
     const onLobby = (v: LobbyRoomView | null) => {
       this.lobby = v;
       this.myPid = v?.youPid ?? this.myPid;
+      this.wantLobbyArt(v);
       // Our own pid can arrive AFTER the first world:teleport / snapshot (join, reconnect): the
       // avatar couldn't be created then, so create it now (and drop a "remote" copy of ourselves).
       if (this.myPid && !this.myAvatar && this.ready) this.adoptSelf();
@@ -529,6 +541,7 @@ export class TownScene extends Phaser.Scene {
       this.phase = g?.phase ?? (this.lobby?.lobby.phase === 'finished' ? 'finished' : 'waiting');
       if (prev !== this.phase) this.onPhaseChange(prev, this.phase);
       this.lightsDirty = true; // empty cottages keep their windows dark
+      if (g?.players.some((p) => !p.alive)) this.wantGhosts(); // (v2.4) ghost art on the first death
       this.refreshAppearances();
       this.refreshBoards();
     };
@@ -751,25 +764,89 @@ export class TownScene extends Phaser.Scene {
         });
       });
     }
-    if (CAST_HD && this.textures.exists('cast-hd')) {
-      const hd = this.textures.get('cast-hd');
-      // not pixel art: smooth filtering, unlike the rest of the (pixelArt: true) game
-      hd.setFilter(Phaser.Textures.FilterMode.LINEAR);
-      for (const [key, r] of Object.entries(CAST_HD.rows)) {
-        const ghost = key.includes('/ghost');
-        CAST_HD.directions.forEach((dir, c) => {
-          for (let f = 0; f < (ghost ? 1 : CAST_HD.frames.length); f++)
-            hd.add(`${key}|${dir}|${f}`, 0, c * CAST_HD.frameWidth, (r + f) * CAST_HD.frameHeight, CAST_HD.frameWidth, CAST_HD.frameHeight);
-          for (const action of ['idle', 'walk'])
-            this.anims.create({
-              key: `${key}#hd-${action}-${dir}`,
-              frames: (action === 'walk' && !ghost ? [1, 2, 3, 4] : [0]).map((f) => ({ key: 'cast-hd', frame: `${key}|${dir}|${f}` })),
-              frameRate: CAST_HD.walkFps,
-              repeat: -1,
-            });
-        });
-      }
+  }
+
+  // (v2.4 perf P2) On-demand cast atlases. The town starts with cast.* only; the ghost variants
+  // (cast-ghosts.*, 2.3 MiB GPU) load on the first death and the photo-real sheet (cast-hd.*, 740 KB)
+  // as soon as a lobby member uses an hd character. Avatars draw the regular frames until then and
+  // switch over when the texture arrives (refreshCastArt).
+  private castLoads = new Set<string>();
+  /** Queue an image for this scene's loader (once; retried after a failure) and run `done` when it is in. */
+  private loadLate(key: string, url: string, done: () => void) {
+    const live = () => this.sys.isActive() || !!this.sys.settings.active; // (also while create() runs)
+    if (this.textures.exists(key) || this.castLoads.has(key) || !live()) return;
+    this.castLoads.add(key);
+    const ok = (k: string) => {
+      if (k !== key) return;
+      off();
+      if (live() && this.textures.exists(key)) done();
+    };
+    const failed = (f: Phaser.Loader.File) => {
+      if (f.key !== key) return;
+      off();
+      this.castLoads.delete(key); // try again the next time it is wanted
+    };
+    const off = () => {
+      this.load.off(Phaser.Loader.Events.FILE_COMPLETE, ok);
+      this.load.off(Phaser.Loader.Events.FILE_LOAD_ERROR, failed);
+    };
+    this.load.on(Phaser.Loader.Events.FILE_COMPLETE, ok);
+    this.load.on(Phaser.Loader.Events.FILE_LOAD_ERROR, failed);
+    this.offs.push(off);
+    this.load.image(key, url);
+    if (!this.load.isLoading()) this.load.start();
+  }
+  wantGhosts() {
+    if (CAST.ghosts) this.loadLate('cast-ghosts', castGhostsUrl, () => this.defineGhosts());
+  }
+  wantCastHd() {
+    if (CAST_HD) this.loadLate('cast-hd', castHdUrl, () => this.defineCastHd());
+  }
+  /** Prefetch on-demand art a lobby member needs (an hd character), before their avatar is in view. */
+  private wantLobbyArt(v: LobbyRoomView | null) {
+    if (CAST_HD && v?.members.some((m) => CAST_HD.rows[m.cosmetics.preset ?? ''] !== undefined)) this.wantCastHd();
+  }
+  private defineGhosts() {
+    const G = CAST.ghosts;
+    if (!G || !this.textures.exists('cast-ghosts')) return;
+    const tex = this.textures.get('cast-ghosts');
+    const fw = CAST.frameWidth;
+    const fh = CAST.frameHeight;
+    for (const [key, pos] of Object.entries(G.sheets)) {
+      CAST.directions.forEach((dir, r) => {
+        G.rowOffset.forEach((dy, f) => tex.add(`${key}|${dir}|${f}`, 0, pos.x, pos.y + r * G.cellHeight + dy, fw, fh));
+        this.anims.create({ key: `${key}#walk-${dir}`, frames: [1, 2, 3, 4].map((f) => ({ key: 'cast-ghosts', frame: `${key}|${dir}|${f}` })), frameRate: Math.round(CAST.walkFps * 1.25), repeat: -1 });
+        this.anims.create({ key: `${key}#idle-${dir}`, frames: [0, 1, 2, 3, 4, 3, 2, 1].map((f) => ({ key: 'cast-ghosts', frame: `${key}|${dir}|${f}` })), frameRate: 5, repeat: -1 });
+      });
     }
+    this.refreshCastArt();
+    this.refreshBoards(); // ghost door tokens are redrawn from the ghost art (boardTokens.ts)
+  }
+  private defineCastHd() {
+    if (!CAST_HD || !this.textures.exists('cast-hd')) return;
+    const hd = this.textures.get('cast-hd');
+    // not pixel art: smooth filtering, unlike the rest of the (pixelArt: true) game
+    hd.setFilter(Phaser.Textures.FilterMode.LINEAR);
+    for (const [key, r] of Object.entries(CAST_HD.rows)) {
+      const ghost = key.includes('/ghost');
+      CAST_HD.directions.forEach((dir, c) => {
+        for (let f = 0; f < (ghost ? 1 : CAST_HD.frames.length); f++)
+          hd.add(`${key}|${dir}|${f}`, 0, c * CAST_HD.frameWidth, (r + f) * CAST_HD.frameHeight, CAST_HD.frameWidth, CAST_HD.frameHeight);
+        for (const action of ['idle', 'walk'])
+          this.anims.create({
+            key: `${key}#hd-${action}-${dir}`,
+            frames: (action === 'walk' && !ghost ? [1, 2, 3, 4] : [0]).map((f) => ({ key: 'cast-hd', frame: `${key}|${dir}|${f}` })),
+            frameRate: CAST_HD.walkFps,
+            repeat: -1,
+          });
+      });
+    }
+    this.refreshCastArt();
+  }
+  /** Re-pick every avatar's animation (new on-demand art arrived). */
+  private refreshCastArt() {
+    this.myAvatar?.play(true);
+    for (const a of this.avatars.values()) a.play(true);
   }
 
   private defineFx() {
@@ -1012,9 +1089,9 @@ export class TownScene extends Phaser.Scene {
     let key = id;
     if (dead) {
       const g = pub!.ghostVoteAvailable ? `${id}/ghost` : `${id}/ghost-spent`;
-      key = CAST.sheets[g] ? g : CAST.sheets[`${id}/ghost`] ? `${id}/ghost` : id;
+      key = hasCastSheet(g) ? g : hasCastSheet(`${id}/ghost`) ? `${id}/ghost` : id;
     }
-    if (!CAST.sheets[key]) key = Object.keys(CAST.sheets)[0]!;
+    if (!hasCastSheet(key)) key = Object.keys(CAST.sheets)[0]!;
     return { key, name, st: false, lantern: !!castById(id)?.lantern, ghost: dead };
   }
 

@@ -1,4 +1,5 @@
 import { defineConfig, type Plugin } from 'vite';
+import { BASE_CHUNK, baseBeforeTheme, baseChunkFor, lazyIndexName, renamedCss, checkCssChunks, CSS_ORDER, markThemeLink, patchPreloadHelper, srcCss, type ChunkCss } from './build/cssOrder';
 
 // (v2.3, Trusted Types) msgpackr (via colyseus) probes `new Function('')` at load to decide whether it
 // may compile inline record readers. Under our CSP + Trusted Types that probe is refused (and caught),
@@ -17,6 +18,73 @@ function msgpackrNoEval(): Plugin {
   };
 }
 
+// (v2.4 perf P2) Lazy chunks carry their own stylesheets; this keeps the single-bundle cascade order
+// (theme.css wins ties against feature sheets) — see build/cssOrder.ts and src/ui/common/cssOrder.ts.
+// Build-time only: patches Vite's preload helper to place chunk <link>s via window.__ctPlaceCss, marks
+// the theme <link> in index.html, and fails the build if a stylesheet lands outside the scheme.
+function cssOrder(): Plugin {
+  const chunks = new Map<string, ChunkCss>();
+  let patched = false;
+  return {
+    name: 'ct-css-order',
+    apply: 'build',
+    transform(code, id) {
+      if (id !== '\0vite/preload-helper.js') return null;
+      const out = patchPreloadHelper(code);
+      if (!out) this.error('ct-css-order: unexpected Vite preload helper (document.head.appendChild(link) not found once); update build/cssOrder.ts');
+      patched = true;
+      return { code: out, map: null };
+    },
+    renderChunk(_code, chunk) {
+      const sheets = chunk.moduleIds.map(srcCss).filter((s): s is string => !!s);
+      if (sheets.length) chunks.set(chunk.fileName, { name: chunk.name, isEntry: chunk.isEntry, sheets });
+      return null;
+    },
+    generateBundle(_o, bundle) {
+      // A renamed lazy index chunk (chunkFileNames) still gets Vite's CSS asset name index-*.css: rename
+      // it after the chunk and fix the references (preload dependency lists, importedCss).
+      const out = Object.values(bundle);
+      for (const c of out) {
+        if (c.type !== 'chunk' || c.isEntry) continue;
+        const dir = lazyIndexName(c);
+        if (!dir) continue;
+        for (const css of [...(c.viteMetadata?.importedCss ?? [])]) {
+          const to = renamedCss(css, dir);
+          const asset = bundle[css];
+          if (to === css || !asset || bundle[to]) continue;
+          delete bundle[css];
+          asset.fileName = to;
+          bundle[to] = asset;
+          for (const o of out) {
+            if (o.type !== 'chunk') continue;
+            if (o.code.includes(css)) o.code = o.code.split(css).join(to);
+            const imported = o.viteMetadata?.importedCss;
+            if (imported?.delete(css)) imported.add(to);
+          }
+        }
+      }
+      const errors = checkCssChunks([...chunks.values()]);
+      const lazyCss = Object.values(bundle).some((c) => c.type === 'chunk' && c.isDynamicEntry && (c.viteMetadata?.importedCss.size ?? 0) > 0);
+      if (lazyCss && !patched) errors.push('lazy chunks have CSS but the preload helper was not patched');
+      if (errors.length) this.error(`ct-css-order:\n  ${errors.join('\n  ')}`);
+    },
+    transformIndexHtml: {
+      order: 'post',
+      handler(html, ctx) {
+        // (the pure-CSS index-base chunk's sheet is listed with the entry's own)
+        const own = [...(ctx.chunk?.viteMetadata?.importedCss ?? [])].filter((f) => !f.includes(`/${BASE_CHUNK}-`));
+        if (own.length !== 1) throw new Error(`ct-css-order: the entry should have exactly one own stylesheet (the theme), found ${own.join(', ') || 'none'}`);
+        const marked = markThemeLink(html, own[0]!);
+        if (!marked) throw new Error(`ct-css-order: theme <link> for ${own[0]} not found in index.html`);
+        // Vite lists the merged pure-CSS chunk after the entry's own sheet: the base goes first.
+        const out = baseBeforeTheme(marked);
+        if (!out) throw new Error(`ct-css-order: no ${BASE_CHUNK} stylesheet in index.html: ${marked.match(/<link rel="stylesheet"[^>]*>/g)?.join(' ')}`);
+        return out;
+      },
+    },
+  };
+}
+
 // The production server (apps/server) serves dist/ on the same origin as the API and
 // WebSockets. In dev, `pnpm --filter @ct/client dev` proxies API/WS to the dev server on 3001.
 //
@@ -26,7 +94,8 @@ function msgpackrNoEval(): Plugin {
 // and typechecks against the full protocol; importing a schema at runtime fails this build
 // ("… is not exported by …/client.ts").
 export default defineConfig({
-  plugins: [msgpackrNoEval()],
+  plugins: [msgpackrNoEval(), cssOrder()],
+  define: { __CT_CSS_ORDER__: JSON.stringify(CSS_ORDER) },
   esbuild: { jsx: 'automatic', jsxImportSource: 'preact' },
   resolve: { alias: [{ find: /^@ct\/protocol$/, replacement: '@ct/protocol/client' }] },
   server: {
@@ -39,5 +108,17 @@ export default defineConfig({
       '^/[a-zA-Z0-9]{9}/[a-zA-Z0-9_-]+': { target: 'ws://127.0.0.1:3001', ws: true },
     },
   },
-  build: { target: 'es2022', chunkSizeWarningLimit: 2000, assetsInlineLimit: 0 },
+  build: {
+    target: 'es2022',
+    chunkSizeWarningLimit: 2000,
+    assetsInlineLimit: 0,
+    rollupOptions: {
+      output: {
+        manualChunks: baseChunkFor,
+        // (v2.4 P2) lazy chunks entered at a directory's index.tsx are named after the directory (their
+        // CSS asset is renamed to match in cssOrder's generateBundle)
+        chunkFileNames: (c) => `assets/${lazyIndexName(c) ?? '[name]'}-[hash].js`,
+      },
+    },
+  },
 });

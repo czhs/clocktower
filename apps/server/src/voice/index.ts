@@ -20,7 +20,7 @@ import { isVoiceDisabled, onVoiceControlChange, setVoiceEnvDisabled, voiceContro
 import { createVoiceCoordinator, DEFAULT_TUNING, type LivekitSettings, type VoiceCoordinator, type VoiceDeps, type VoiceRoomService, type VoiceTuning } from './coordinator.js';
 import { readVoiceEnv, type VoiceEnv } from './env.js';
 import { baseVoiceSettings, resolveVoiceSettings, type VoiceSettings } from './settings.js';
-import { forgetVoiceLobbyIps, forgetVoiceMemberIp, voiceMemberIp } from './ip.js';
+import { forgetVoiceLobbyIps, forgetVoiceMemberIp, voiceMemberIp, voiceMemberIpCount } from './ip.js';
 import { createVoiceReconciler, HeartbeatBuffer, type ReconcileRoomService, type VoiceReconciler } from './reconciler.js';
 
 export { createVoiceCoordinator, DEFAULT_LIMITS, DEFAULT_TUNING } from './coordinator.js';
@@ -300,6 +300,11 @@ export function createVoiceModule(host: RoomHost, overrides: Partial<VoiceDeps> 
       await dispose();
     },
   });
+}
+
+/** (v2.4 P3) Process-wide voice state (diagnostics / lobby create-dispose leak tests). */
+export function voiceProcessStats(): { coordinators: number; reconciler: boolean; memberIps: number } {
+  return { coordinators: live.size, reconciler: rec !== null, memberIps: voiceMemberIpCount() };
 }
 
 /** Tests: stop the process-wide reconciler. */

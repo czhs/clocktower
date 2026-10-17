@@ -3,7 +3,8 @@
 // character picker, the waiting room and anything else outside the Phaser scene that shows "who".
 // (v2.2 perf) 'down' frames come from the small portrait strip (cast-portraits.*: every 'down' frame
 // of the playable cast + the idle 'down' frame of everyone else and every ghost, the same pixels), so
-// the DOM UI never downloads the full game sheet; any other frame still loads cast.* on demand.
+// the DOM UI never downloads the full game sheet; any other frame still loads cast.* on demand
+// ((v2.4) ghost variants: cast-ghosts.*, one cell per direction, hover frames as row offsets).
 //
 //   <CastPortrait id="frog" size={48} />               square box, sprite fitted (integer scale)
 //   <CastPortrait id="frog" size={120} crop="frame" animate />   whole 32x40 frame, walking in place
@@ -15,7 +16,7 @@
 // The manifest is looked up with import.meta.glob; the image URLs (WebP or PNG) come from @ct/assets/runtime.
 import { h } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { atlasFormat, castHdUrl, castUrl, portraitsUrl } from '@ct/assets/runtime';
+import { atlasFormat, castGhostsUrl, castHdPortraitsUrl, castHdUrl, castUrl, portraitsUrl } from '@ct/assets/runtime';
 import portraitStrip from '@ct/assets/generated/cast-portraits.json';
 // CONTRACT-REQUEST(lobby-ui -> lead/world-art): export the cast roster from '@ct/assets' (src/index.ts)
 // so clients can `import { CAST, PLAYABLE, castById } from '@ct/assets'`; until then the source is
@@ -29,8 +30,10 @@ export interface CastManifest {
   frameHeight: number;
   directions: readonly string[];
   frames: readonly string[];
-  /** Sheet key (`<id>`, `<id>/ghost`, `<id>/ghost-spent`) -> top-left of its 5x8 frame block. */
+  /** Living sheet key (`<id>`) -> top-left of its 5x8 frame block. */
   sheets: Record<string, { x: number; y: number }>;
+  /** (v2.4) Ghost variants (`<id>/ghost`, `<id>/ghost-spent`) in cast-ghosts.*: one column of 8 cells. */
+  ghosts?: { cellHeight: number; rowOffset: readonly number[]; sheets: Record<string, { x: number; y: number }> };
   /** Ids still drawn as generator placeholders. */
   placeholders?: string[];
 }
@@ -48,17 +51,35 @@ const STRIP_ROW = CAST_DIRS.indexOf(STRIP.dir as CastDir);
 
 // Photo-real members (CastMember.hd) also have high-res animation rows in cast-hd.* (WebP or PNG via
 // @ct/assets/runtime, like every atlas); they are drawn from it smoothed (not pixel-crisp), cropped
-// with the same frame-local boxes x CAST_HD_SCALE. Only loaded when such a portrait is drawn.
+// with the same frame-local boxes x CAST_HD_SCALE. Only loaded when such a portrait is drawn, and
+// (v2.4) a 'down' portrait only loads the sheet's 'down' column (cast-hd-portraits.*, ~92 KB) instead
+// of the 740 KB sheet; the low-res frame is shown until it is there.
 const HD_MANIFEST = (Object.values(import.meta.glob('../../../../../packages/assets/generated/cast-hd.json', { eager: true, import: 'default' }))[0] ?? null) as {
   rows: Record<string, number>;
+  portraits?: { dir: string };
 } | null;
 let hdSheet: HTMLImageElement | null = null;
 let hdPromise: Promise<HTMLImageElement | null> | null = null;
+let hdStrip: HTMLImageElement | null = null;
+let hdStripPromise: Promise<HTMLImageElement | null> | null = null;
 function loadHdSheet(): Promise<HTMLImageElement | null> {
   if (hdPromise) return hdPromise;
   if (!HD_MANIFEST || typeof Image === 'undefined') return (hdPromise = Promise.resolve(null));
   return (hdPromise = loadImage(() => castHdUrl).then((img) => (hdSheet = img)));
 }
+function loadHdStrip(): Promise<HTMLImageElement | null> {
+  if (hdStripPromise) return hdStripPromise;
+  if (!HD_MANIFEST?.portraits || typeof Image === 'undefined') return (hdStripPromise = Promise.resolve(null));
+  return (hdStripPromise = loadImage(() => castHdPortraitsUrl).then((img) => (hdStrip = img)));
+}
+/** The decoded HD image for direction row `r` and its column there (the strip is one column), or null. */
+function hdSource(r: number): { img: HTMLImageElement; col: number } | null {
+  if (hdSheet) return { img: hdSheet, col: r };
+  if (hdStrip && HD_MANIFEST?.portraits && CAST_DIRS[r] === HD_MANIFEST.portraits.dir) return { img: hdStrip, col: 0 };
+  return null;
+}
+/** Load the HD art direction row `r` needs: the 'down' strip when it covers it, else the full sheet. */
+const loadHdFor = (r: number): Promise<unknown> => (HD_MANIFEST?.portraits && CAST_DIRS[r] === HD_MANIFEST.portraits.dir ? loadHdStrip().then((s) => s ?? loadHdSheet()) : loadHdSheet());
 const isHd = (key: string): boolean => HD_MANIFEST?.rows[key] !== undefined;
 
 /** The cast manifest, or null when this build has no generated cast art. */
@@ -66,6 +87,9 @@ export const castManifest = (): CastManifest | null => MANIFEST;
 
 let sheet: HTMLImageElement | null = null;
 let sheetPromise: Promise<HTMLImageElement | null> | null = null;
+let ghosts: HTMLImageElement | null = null;
+let ghostsPromise: Promise<HTMLImageElement | null> | null = null;
+const GHOSTS = MANIFEST?.ghosts ?? null;
 let strip: HTMLImageElement | null = null;
 let stripPromise: Promise<HTMLImageElement | null> | null = null;
 
@@ -88,6 +112,12 @@ export function loadCastSheet(): Promise<HTMLImageElement | null> {
   if (sheetPromise) return sheetPromise;
   if (!MANIFEST || typeof Image === 'undefined') return (sheetPromise = Promise.resolve(null));
   return (sheetPromise = loadImage(() => castUrl).then((img) => (sheet = img)));
+}
+/** Load the ghost atlas once (resolves null when there is none or it fails to load). */
+function loadGhostSheet(): Promise<HTMLImageElement | null> {
+  if (ghostsPromise) return ghostsPromise;
+  if (!GHOSTS || typeof Image === 'undefined') return (ghostsPromise = Promise.resolve(null));
+  return (ghostsPromise = loadImage(() => castGhostsUrl).then((img) => (ghosts = img)));
 }
 /** Load the portrait strip once (resolves null when it fails to load). */
 function loadPortraitStrip(): Promise<HTMLImageElement | null> {
@@ -238,7 +268,7 @@ interface FrameReq {
 }
 function frameReq(id: string, opts: CastPortraitOpts): FrameReq | null {
   const k = castSheetKey(id, opts.ghost);
-  const key = MANIFEST?.sheets[k] ? k : MANIFEST?.sheets[id] ? id : null;
+  const key = MANIFEST?.sheets[k] || GHOSTS?.sheets[k] ? k : MANIFEST?.sheets[id] ? id : null;
   if (!key) return null;
   const r = Math.max(0, CAST_DIRS.indexOf(opts.dir ?? 'down'));
   const f = Math.min(CAST_FRAMES.length - 1, Math.max(0, Math.round(opts.frame ?? 0)));
@@ -255,12 +285,18 @@ function source(q: FrameReq): { img: HTMLImageElement; sx: number; sy: number; i
   if (strip && p && inStrip(q)) return { img: strip, sx: p.x + q.f * CAST_FW, sy: p.y, ix: p.x, iy: p.y };
   const o = MANIFEST?.sheets[q.key];
   if (sheet && o) return { img: sheet, sx: o.x + q.f * CAST_FW, sy: o.y + q.r * CAST_FH, ix: o.x, iy: o.y + q.r * CAST_FH };
+  const g = GHOSTS?.sheets[q.key];
+  if (ghosts && g) {
+    const cell = g.y + q.r * GHOSTS!.cellHeight;
+    return { img: ghosts, sx: g.x, sy: cell + (GHOSTS!.rowOffset[q.f] ?? 0), ix: g.x, iy: cell + (GHOSTS!.rowOffset[0] ?? 0) };
+  }
   return null;
 }
 /** Load whatever `q` needs: the strip if it has the frame (the full sheet if the strip fails), else the sheet. */
 async function loadFor(q: FrameReq): Promise<void> {
   if (inStrip(q) && (await loadPortraitStrip())) return;
-  await loadCastSheet();
+  if (GHOSTS?.sheets[q.key]) await loadGhostSheet();
+  else await loadCastSheet();
 }
 
 /**
@@ -275,7 +311,13 @@ export async function drawCastPortrait(canvas: HTMLCanvasElement, id: string, op
   if (!q) return false;
   if (placeholder) await loadFor(q);
   if (!source(q) && placeholder) return false;
-  if (isHd(q.key) || isHd(id)) await loadHdSheet();
+  if (isHd(q.key) || isHd(id)) {
+    // (v2.4) the regular frame first, the smoothed HD one once its (small) strip has arrived
+    if (!hdSource(q.r)) {
+      paint(canvas, id, opts);
+      await loadHdFor(q.r);
+    }
+  }
   return paint(canvas, id, opts);
 }
 
@@ -301,7 +343,8 @@ function paint(canvas: HTMLCanvasElement, id: string, opts: CastPortraitOpts): b
   }
   const src = cropRect(bounds, crop, isHd(key));
   const hdKey = isHd(key) ? key : isHd(id) ? id : null;
-  const hd = hdKey !== null && hdSheet ? hdSheet : null;
+  const hdSrc = hdKey !== null ? hdSource(r) : null;
+  const hd = hdSrc?.img ?? null;
   const { k, dx, dy } = layout(canvas, src.w, src.h, { ...opts, crop }, !!hd);
   const g = canvas.getContext('2d');
   if (!g) return false;
@@ -316,7 +359,7 @@ function paint(canvas: HTMLCanvasElement, id: string, opts: CastPortraitOpts): b
   if (cx1 <= cx0 || cy1 <= cy0) return true;
   if (hd) {
     const K = CAST_HD_SCALE;
-    const hx = r * CAST_FW * K;
+    const hx = hdSrc!.col * CAST_FW * K;
     const hy = (HD_MANIFEST!.rows[hdKey!]! + (hdKey!.includes('/ghost') ? 0 : f)) * CAST_FH * K;
     g.drawImage(hd, hx + cx0 * K, hy + cy0 * K, (cx1 - cx0) * K, (cy1 - cy0) * K, dx + (cx0 - src.x) * k, dy + (cy0 - src.y) * k, (cx1 - cx0) * k, (cy1 - cy0) * k);
     return true;

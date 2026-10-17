@@ -1,0 +1,248 @@
+{
+ "dist": "<host-sandbox>/v24-load/apps/client/dist",
+ "winS": 20,
+ "gpu": {
+  "canvas": "1440x900",
+  "renderer": "ANGLE (NVIDIA, Vulkan 1.4.312 (NVIDIA NVIDIA GeForce RTX 3060 (0x000024C7)), NVIDIA)",
+  "images": [
+   "button.png",
+   "panel.png",
+   "storyteller.png",
+   "host.png",
+   "terrain-BTQUcxWW.webp",
+   "decor-CBXRLsWQ.webp",
+   "objects-DzJJM8xW.webp",
+   "cast-Pufe8lpU.webp",
+   "lights-B5IWcovY.webp",
+   "square-props-CL806UBF.webp",
+   "cast-portraits-C6S294TH.webp",
+   "social-q5gkHCkk.webp",
+   "social-q5gkHCkk.webp",
+   "button-hover.png"
+  ]
+ },
+ "loadAuth": {
+  "label": "auth",
+  "authScreenMs": 2543,
+  "authLoadEventMs": 4574,
+  "authBytes": {
+   "Document": 3709,
+   "Stylesheet": 63224,
+   "Font": 171080,
+   "Script": 161568,
+   "Fetch": 1329,
+   "Image": 428943
+  },
+  "authFiles": [
+   {
+    "url": "/landing/hero-m.avif",
+    "bytes": 152012,
+    "type": "Image"
+   },
+   {
+    "url": "/assets/index-lmrmco0t.js",
+    "bytes": 142954,
+    "type": "Script"
+   },
+   {
+    "url": "/landing/fog.png",
+    "bytes": 80893,
+    "type": "Image"
+   },
+   {
+    "url": "/landing/frame-px.png",
+    "bytes": 70082,
+    "type": "Image"
+   },
+   {
+    "url": "/assets/im-fell-english-latin-400-normal-BhowGHCQ.woff2",
+    "bytes": 61206,
+    "type": "Font"
+   },
+   {
+    "url": "/assets/im-fell-english-latin-400-italic-DD_ylKHZ.woff2",
+    "bytes": 59134,
+    "type": "Font"
+   },
+   {
+    "url": "/landing/logo.webp",
+    "bytes": 45935,
+    "type": "Image"
+   },
+   {
+    "url": "/assets/index-base-DcW0fODK.css",
+    "bytes": 43223,
+    "type": "Stylesheet"
+   },
+   {
+    "url": "/assets/alegreya-sans-latin-400-italic-rmlAbObI.woff2",
+    "bytes": 25706,
+    "type": "Font"
+   },
+   {
+    "url": "/assets/alegreya-sans-latin-400-normal-DtLlO8BS.woff2",
+    "bytes": 25034,
+    "type": "Font"
+   },
+   {
+    "url": "/landing/clock-face.png",
+    "bytes": 22705,
+    "type": "Image"
+   },
+   {
+    "url": "/assets/IntroTour-K4dZXkq1.js",
+    "bytes": 14644,
+    "type": "Script"
+   }
+  ]
+ },
+ "pageErrors": [],
+ "loadTown": {
+  "label": "town",
+  "authScreenMs": 2534,
+  "authLoadEventMs": 4575,
+  "authBytes": {
+   "Document": 3709,
+   "Stylesheet": 63224,
+   "Font": 171080,
+   "Script": 161568,
+   "Fetch": 1329,
+   "Image": 428943
+  },
+  "authFiles": [
+   {
+    "url": "/landing/hero-m.avif",
+    "bytes": 152012,
+    "type": "Image"
+   },
+   {
+    "url": "/assets/index-lmrmco0t.js",
+    "bytes": 142954,
+    "type": "Script"
+   },
+   {
+    "url": "/landing/fog.png",
+    "bytes": 80893,
+    "type": "Image"
+   },
+   {
+    "url": "/landing/frame-px.png",
+    "bytes": 70082,
+    "type": "Image"
+   },
+   {
+    "url": "/assets/im-fell-english-latin-400-normal-BhowGHCQ.woff2",
+    "bytes": 61206,
+    "type": "Font"
+   },
+   {
+    "url": "/assets/im-fell-english-latin-400-italic-DD_ylKHZ.woff2",
+    "bytes": 59134,
+    "type": "Font"
+   },
+   {
+    "url": "/landing/logo.webp",
+    "bytes": 45935,
+    "type": "Image"
+   },
+   {
+    "url": "/assets/index-base-DcW0fODK.css",
+    "bytes": 43223,
+    "type": "Stylesheet"
+   },
+   {
+    "url": "/assets/alegreya-sans-latin-400-italic-rmlAbObI.woff2",
+    "bytes": 25706,
+    "type": "Font"
+   },
+   {
+    "url": "/assets/alegreya-sans-latin-400-normal-DtLlO8BS.woff2",
+    "bytes": 25034,
+    "type": "Font"
+   },
+   {
+    "url": "/landing/clock-face.png",
+    "bytes": 22705,
+    "type": "Image"
+   },
+   {
+    "url": "/assets/IntroTour-K4dZXkq1.js",
+    "bytes": 14644,
+    "type": "Script"
+   }
+  ],
+  "townCanvasMs": 11564,
+  "townNetworkIdleMs": 16462,
+  "townBytes": {
+   "Document": 3709,
+   "Stylesheet": 124683,
+   "Font": 196382,
+   "Script": 1818195,
+   "Fetch": 3150,
+   "XHR": 774131,
+   "Image": 13652
+  },
+  "townFiles": [
+   {
+    "url": "/assets/TownGame-DYU4zxIe.js",
+    "bytes": 1326473,
+    "type": "Script"
+   },
+   {
+    "url": "/assets/terrain-BTQUcxWW.webp",
+    "bytes": 307920,
+    "type": "XHR"
+   },
+   {
+    "url": "/assets/LobbyRoute-kgNWeX3-.js",
+    "bytes": 232868,
+    "type": "Script"
+   },
+   {
+    "url": "/assets/cast-Pufe8lpU.webp",
+    "bytes": 183800,
+    "type": "XHR"
+   },
+   {
+    "url": "/assets/town-D67moh1p.json",
+    "bytes": 171823,
+    "type": "XHR"
+   },
+   {
+    "url": "/assets/index-lmrmco0t.js",
+    "bytes": 142954,
+    "type": "Script"
+   },
+   {
+    "url": "/assets/objects-DzJJM8xW.webp",
+    "bytes": 78879,
+    "type": "XHR"
+   },
+   {
+    "url": "/assets/im-fell-english-latin-400-normal-BhowGHCQ.woff2",
+    "bytes": 61206,
+    "type": "Font"
+   },
+   {
+    "url": "/assets/im-fell-english-latin-400-italic-DD_ylKHZ.woff2",
+    "bytes": 59134,
+    "type": "Font"
+   },
+   {
+    "url": "/assets/index-base-DcW0fODK.css",
+    "bytes": 43223,
+    "type": "Stylesheet"
+   },
+   {
+    "url": "/assets/LobbyRoute-LSHHIHqE.css",
+    "bytes": 39794,
+    "type": "Stylesheet"
+   },
+   {
+    "url": "/assets/townParts-B4It4paW.js",
+    "bytes": 37367,
+    "type": "Script"
+   }
+  ]
+ }
+}

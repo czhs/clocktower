@@ -107,6 +107,17 @@ function hdGhost(src: Img, halo: boolean): Img {
   return o;
 }
 
+/**
+ * (v2.4 perf P2) generated/cast-hd-portraits.*: the 'down' column of cast-hd.png (same rows, same
+ * pixels, one HW-wide column): all the DOM portraits (picker, waiting room) ever draw, at about a
+ * seventh of the sheet's download.
+ */
+export function hdPortraitStrip(sheet: Img): Img {
+  const strip = new Img(HW, sheet.h);
+  strip.copy(sheet, 0, 0, CAST_DIRS.indexOf('down') * HW, 0, HW, sheet.h);
+  return strip;
+}
+
 /** generated/cast-hd.png + manifest, or null when no cast member is hd. */
 export function buildCastHd(): { img: Img; manifest: unknown } | null {
   const ids = CAST.filter((c) => c.hd).map((c) => c.id);
@@ -137,6 +148,8 @@ export function buildCastHd(): { img: Img; manifest: unknown } | null {
     directions: CAST_DIRS,
     frames: CAST_FRAMES,
     walkFps: 8,
+    /** (v2.4) cast-hd-portraits.*: the 'down' column only (x = 0), same rows. */
+    portraits: { image: 'cast-hd-portraits.png', dir: 'down' },
     /** Sheet key -> starting row; direction columns, animation rows. Ghosts have only idle. */
     rows,
   };

@@ -240,6 +240,8 @@ interface CastJson {
   frameHeight: number;
   directions: readonly string[];
   sheets: Record<string, { x: number; y: number }>;
+  /** (v2.4) ghost variants live in cast-ghosts.* (loaded on the first death, TownScene.wantGhosts). */
+  ghosts?: { cellHeight: number; rowOffset: readonly number[]; sheets: Record<string, { x: number; y: number }> };
 }
 const CAST = castJson as unknown as CastJson;
 // Board placement per house (square-props meta, optional like in TownScene).
@@ -247,7 +249,7 @@ const FX_HOUSES = (
   Object.values(import.meta.glob('../../../../../packages/assets/generated/square-props.json', { eager: true, import: 'default' }) as Record<string, { meta?: { houses?: Record<string, HouseFx> } }>)[0]?.meta?.houses ?? {}
 ) as Record<string, HouseFx>;
 const SPANS = boardSpans(FX_HOUSES);
-const CAST_SHEETS: Record<string, unknown> = CAST.sheets;
+const CAST_SHEETS: Record<string, unknown> = { ...CAST.sheets, ...CAST.ghosts?.sheets };
 const DOWN_ROW = Math.max(0, CAST.directions.indexOf('down'));
 const FALLBACK = ['#7a4b6b', '#4b6b7a', '#6b7a4b', '#8a6a3a', '#5a5a8a', '#8a4a4a', '#4a7a6a', '#7a6a8a'];
 const LABEL_FONT = '"Alegreya Sans", "Segoe UI", system-ui, sans-serif';
@@ -300,7 +302,10 @@ function paintDisc(g: CanvasRenderingContext2D, d: number, face: string, rim: st
 /** The token texture key for (preset, ghost), building it on first use. */
 function tokenTexture(scene: Phaser.Scene, preset: string | null, ghost: boolean, pid: string): string {
   const id = preset && CAST.sheets[preset] ? preset : null;
-  const key = `board-token/${id ?? `anon-${hash(pid) % FALLBACK.length}`}${ghost ? '/ghost' : ''}`;
+  // (v2.4) until the ghost atlas is in, a ghost token shows the living bust (own key: rebuilt after)
+  const ghostArt = !!id && !!CAST.ghosts?.sheets[tokenStyle(id, true).sheet];
+  const pending = ghost && ghostArt && !scene.textures.exists('cast-ghosts');
+  const key = `board-token/${id ?? `anon-${hash(pid) % FALLBACK.length}`}${ghost ? (pending ? '/ghost-pending' : '/ghost') : ''}`;
   if (scene.textures.exists(key)) return key;
   const D = TOKEN_TEX;
   const c = document.createElement('canvas');
@@ -319,12 +324,14 @@ function tokenTexture(scene: Phaser.Scene, preset: string | null, ghost: boolean
   bust.width = inner;
   bust.height = inner;
   const bg = bust.getContext('2d');
-  const src = scene.textures.exists('cast') ? (scene.textures.get('cast').getSourceImage() as CanvasImageSource) : null;
-  const pos = id ? CAST.sheets[st.sheet] ?? CAST.sheets[id] : undefined;
+  const fromGhosts = ghost && ghostArt && !pending;
+  const sheetTex = fromGhosts ? 'cast-ghosts' : 'cast';
+  const src = scene.textures.exists(sheetTex) ? (scene.textures.get(sheetTex).getSourceImage() as CanvasImageSource) : null;
+  const pos = !id ? undefined : fromGhosts ? CAST.ghosts!.sheets[st.sheet] : CAST.sheets[id];
   if (bg && src && pos) {
     bg.imageSmoothingEnabled = false;
     const sx = pos.x;
-    const sy = pos.y + DOWN_ROW * CAST.frameHeight;
+    const sy = fromGhosts ? pos.y + DOWN_ROW * CAST.ghosts!.cellHeight + CAST.ghosts!.rowOffset[0]! : pos.y + DOWN_ROW * CAST.frameHeight;
     const r = bustRect(frameBounds(src, sx, sy));
     // native pixels when the bust fits; otherwise the largest exact fit (still nearest-neighbour)
     const k = r.w <= inner ? 1 : inner / r.w;

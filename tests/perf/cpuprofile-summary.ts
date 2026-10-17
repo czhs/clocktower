@@ -1,6 +1,7 @@
 // perf-audit: summarise a V8 .cpuprofile (from --cpu-prof): total sampled time, GC/idle share,
 // top functions by SELF time, and INCLUSIVE time of named hot paths (tick, sendSnapshots, viewFor…).
 //   npx tsx tests/perf/cpuprofile-summary.ts <file.cpuprofile> [--focus name1,name2] [--top 40]
+//   (v2.4 P3) [--skip <ms>] ignore the first <ms> of the profile (server start-up / module compile).
 import { readFileSync } from 'node:fs';
 
 type Node = { id: number; callFrame: { functionName: string; url: string; lineNumber: number }; children?: number[]; hitCount?: number };
@@ -12,6 +13,15 @@ const focus = (focusArg ||
   'tick,sendSnapshots,flushViews,snapshotFor,pinsFor,viewFor,stageView,doorTags,record,recordState,commit,afterHandler,onMessage,handleMove,send,sendTo,encode,pack,stringify,_onMessage,broadcast,voice,coordinator,grantsFor,recompute')
   .split(',');
 const p = JSON.parse(readFileSync(file, 'utf8')) as { nodes: Node[]; samples: number[]; timeDeltas: number[]; startTime: number; endTime: number };
+const skipMs = argv.indexOf('--skip') >= 0 ? Number(argv[argv.indexOf('--skip') + 1]) || 0 : 0;
+if (skipMs > 0) {
+  let t = 0;
+  for (let i = 0; i < p.samples.length; i++) {
+    t += p.timeDeltas[i] ?? 0;
+    if (t < skipMs * 1000) p.timeDeltas[i] = 0;
+  }
+  p.startTime += skipMs * 1000;
+}
 const byId = new Map(p.nodes.map((n) => [n.id, n]));
 const parent = new Map<number, number>();
 for (const n of p.nodes) for (const c of n.children ?? []) parent.set(c, n.id);

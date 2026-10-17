@@ -207,3 +207,31 @@ cost of players' experience.
 ## Also in this release (merged from Isaac)
 - Brianbi (HD character), NPCs that avoid each other, Docker local preview, a fix for frozen movement
   after reloading the town, nearby-only chat in the waiting room too.
+
+# v2.4.0 — a lighter, faster town
+
+A performance sweep after v2.3. Nothing new to learn; the town loads faster on slow phones and costs
+less to run while you walk. Measurements: docs/perf-v2.2-results.md ("v2.4 — P1/P2/P3"); budgets in
+`scripts/perf/budgets.mjs`.
+
+## Loading
+- On a slow phone connection the town is ready about 5 s sooner (21.5 s → 16.5 s on the Slow-4G test
+  profile); first-load styles shrank from 24.9 to 11.4 KiB and the lobby code from 83 to 64 KiB.
+- Brianbi's high-detail art (740 KB) only downloads when someone in the lobby plays an HD character;
+  ghost sprites download on the first death. Until they arrive (about a second) the regular sprite
+  shows.
+- The character sheet uses about a third of the graphics memory it did (17.6 → 6.4 MiB).
+
+## While playing
+- House-name labels no longer redraw from scratch every frame: walking costs about half the CPU on a
+  phone (main thread ≈ 44 % → ≈ 20 % on the 4× slowed phone profile) and on desktop (15 % → 6 %).
+- The home compass updates at most twice a second (screen readers no longer re-announce it
+  constantly).
+- The in-game Settings dialog lost some stray spacing it had been borrowing from the admin page.
+
+## Under the hood
+- Server CPU for a 16-player lobby is unchanged since v2.2 (≈ 2–2.5 % of one core); the v2.3
+  protections cost ≈ 0.01 %. The earlier "7.7 %" was the profiler itself. New leak test: closing
+  lobbies releases their voice, moderation and timer state.
+- Groundwork (not switched on yet): in very large voice rooms, decode only the few loudest talkers
+  (`apps/client/src/voice/talkerCap.ts`), pending a test with real players.

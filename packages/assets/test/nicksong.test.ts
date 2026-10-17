@@ -24,8 +24,9 @@ describe('Nick Song', () => {
   });
 
   it('has drawn art (no placeholder), ghosts and portrait-strip cells in the generated manifests', () => {
-    const cast = json<{ sheets: Record<string, unknown>; placeholders: string[] }>('cast.json');
-    for (const k of ['nicksong', 'nicksong/ghost', 'nicksong/ghost-spent']) expect(cast.sheets[k], k).toBeDefined();
+    const cast = json<{ sheets: Record<string, unknown>; ghosts: { sheets: Record<string, unknown> }; placeholders: string[] }>('cast.json');
+    expect(cast.sheets.nicksong).toBeDefined();
+    for (const k of ['nicksong/ghost', 'nicksong/ghost-spent']) expect(cast.ghosts.sheets[k], k).toBeDefined(); // (v2.4) cast-ghosts.*
     expect(cast.placeholders).not.toContain('nicksong');
     const strip = json<{ sheets: Record<string, { frames: number }> }>('cast-portraits.json');
     expect(strip.sheets.nicksong?.frames).toBe(CAST_FRAMES.length);

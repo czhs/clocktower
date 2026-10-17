@@ -13,8 +13,8 @@ import { losslessWebP, optimisedPNG } from './lib/encode.js';
 import { Img } from './lib/img.js';
 import { drawProps } from './props.js';
 import { buildCast } from './cast/index.js';
-import { buildPortraits } from './cast/portraits.js';
-import { buildCastHd } from './cast/hd.js';
+import { buildPortraits, type CastManifestForPortraits } from './cast/portraits.js';
+import { buildCastHd, hdPortraitStrip } from './cast/hd.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const OUT = join(here, '..', 'generated');
@@ -149,16 +149,20 @@ write('characters.json', JSON.stringify(charManifest, null, 0));
 {
   const cast = await buildCast();
   await writeAtlas('cast', cast.img);
+  // (v2.4 perf P2) the ghost variants: their own small atlas, loaded on the first death
+  await writeAtlas('cast-ghosts', cast.ghosts);
   write('cast.json', JSON.stringify(cast.manifest, null, 0));
   if (review) writeFileSync(join(REVIEW, 'cast-x4.png'), cast.review.toPNG());
   // the DOM UI's slim 'down'-row strip (scripts/cast/portraits.ts)
-  const portraits = buildPortraits(cast.img, cast.manifest as { sheets: Record<string, { x: number; y: number }> });
+  const portraits = buildPortraits(cast.img, cast.ghosts, cast.manifest as CastManifestForPortraits);
   await writeAtlas('cast-portraits', portraits.img);
   write('cast-portraits.json', JSON.stringify(portraits.manifest, null, 0));
-  // photo-real ("hd") cast members' full-resolution sheet (scripts/cast/hd.ts), same WebP + PNG pair
+  // photo-real ("hd") cast members' full-resolution sheet (scripts/cast/hd.ts), same WebP + PNG pair,
+  // plus (v2.4 perf P2) its 'down' column alone for the DOM portraits (the picker never needs the rest)
   const hd = buildCastHd();
   if (hd) {
     await writeAtlas('cast-hd', hd.img);
+    await writeAtlas('cast-hd-portraits', hdPortraitStrip(hd.img));
     write('cast-hd.json', JSON.stringify(hd.manifest, null, 0));
   }
 }

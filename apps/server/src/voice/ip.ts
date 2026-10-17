@@ -43,3 +43,8 @@ export function forgetVoiceLobbyIps(lobbyId: string): void {
   const p = `${lobbyId}\u0000`;
   for (const k of byMember.keys()) if (k.startsWith(p)) byMember.delete(k);
 }
+
+/** (v2.4 P3) Diagnostics / leak tests: remembered member IPs in this process. */
+export function voiceMemberIpCount(): number {
+  return byMember.size;
+}

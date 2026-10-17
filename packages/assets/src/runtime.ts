@@ -15,8 +15,12 @@
 // Debug: localStorage 'ct.debug.atlas' = 'png' forces the fallback.
 import castPng from '../generated/cast.png?url';
 import castWebp from '../generated/cast.webp?url';
+import castGhostsPng from '../generated/cast-ghosts.png?url';
+import castGhostsWebp from '../generated/cast-ghosts.webp?url';
 import castHdPng from '../generated/cast-hd.png?url';
 import castHdWebp from '../generated/cast-hd.webp?url';
+import castHdPortraitsPng from '../generated/cast-hd-portraits.png?url';
+import castHdPortraitsWebp from '../generated/cast-hd-portraits.webp?url';
 import portraitsPng from '../generated/cast-portraits.png?url';
 import portraitsWebp from '../generated/cast-portraits.webp?url';
 import terrainPng from '../generated/terrain.png?url';
@@ -37,8 +41,15 @@ export type AtlasFormat = 'webp' | 'png';
 
 /** The 8-direction cast sheet (Phaser). */
 export let castUrl: string = castPng;
-/** Photo-real ("hd") cast members' full-resolution sheet (cast-hd.json, CAST_HD_SCALE x the 32x40 cell). */
+/** (v2.4) The ghost variants (cast.json `ghosts`); loaded on the first death, not with the town. */
+export let castGhostsUrl: string = castGhostsPng;
+/**
+ * Photo-real ("hd") cast members' full-resolution sheet (cast-hd.json, CAST_HD_SCALE x the 32x40 cell).
+ * (v2.4) Loaded only while someone in view uses an hd character (740 KB).
+ */
 export let castHdUrl: string = castHdPng;
+/** (v2.4) The 'down' column of cast-hd (cast-hd.json `portraits`): what DOM portraits draw. */
+export let castHdPortraitsUrl: string = castHdPortraitsPng;
 /** The DOM UI's 'down'-row portrait strip (cast-portraits.json). */
 export let portraitsUrl: string = portraitsPng;
 export let terrainUrl: string = terrainPng;
@@ -53,7 +64,9 @@ export const townJsonUrl: string = townJson;
 function use(format: AtlasFormat): AtlasFormat {
   if (format === 'webp') {
     castUrl = castWebp;
+    castGhostsUrl = castGhostsWebp;
     castHdUrl = castHdWebp;
+    castHdPortraitsUrl = castHdPortraitsWebp;
     portraitsUrl = portraitsWebp;
     terrainUrl = terrainWebp;
     decorUrl = decorWebp;

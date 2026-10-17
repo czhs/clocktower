@@ -9,10 +9,9 @@ import { HowToPlayHost, openHelp } from '../ui/common/HowToPlay';
 import { applyAmbientVolume, SettingsButton } from '../ui/common/Settings';
 import { goTo } from '../ui/lobby/finder';
 import { attachSound, unlockAudio } from './audio';
-import { SocialPalette } from '../ui/social/SocialPalette';
-import { Notebook } from '../ui/notebook/Notebook';
-import { Story } from '../ui/story/Story';
-import { ClockChip } from '../ui/clock/ClockChip';
+import { TrailingGate, type GateResult } from './hudRate';
+// (v2.4 perf P2) lazy: one chunk with the in-town panels, prefetched by LobbyRoute next to Phaser
+import { ClockChip, Notebook, SocialPalette, Story } from '../ui/common/lazyTown';
 import { AbortGame } from '../ui/clock/AbortGame';
 import { LobbySafety } from '../ui/lobby/moderation'; // (v2.3 OPS-6) in-game report / mute / remove
 import './game.css';
@@ -256,6 +255,28 @@ function compassFix(me: LocalPlayerState, house: BuildingDef | undefined): Compa
   return { at: 'out', steps, deg };
 }
 
+/** v2.4: the compass while walking changes ≤ 2x/s (game/hudRate.ts); home / inside / outdoors at once. */
+const COMPASS_MIN_MS = 500;
+function useCompassFix(house: BuildingDef | undefined): CompassFix {
+  const [fix, setFix] = useState<CompassFix>(() => compassFix(localPlayer.get(), house));
+  useEffect(() => {
+    const gate = new TrailingGate<CompassFix>(compassFix(localPlayer.get(), house), COMPASS_MIN_MS, shallowEqual, (a, b) => a?.at !== b?.at);
+    setFix(gate.value);
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const apply = (r: GateResult<CompassFix>) => {
+      if (r.emit) setFix(r.value);
+      if (timer) clearTimeout(timer);
+      timer = r.wakeInMs > 0 ? setTimeout(() => apply(gate.flush(performance.now())), r.wakeInMs) : null;
+    };
+    const off = localPlayer.subscribe((lp) => apply(gate.offer(compassFix(lp, house), performance.now())));
+    return () => {
+      off();
+      if (timer) clearTimeout(timer);
+    };
+  }, [house]);
+  return fix;
+}
+
 /** Points from the local player to their own cottage door (players only, outdoors). */
 function HomeCompass({ conn }: { conn: RoomConnection }) {
   const game = useStoreSelector(
@@ -264,7 +285,7 @@ function HomeCompass({ conn }: { conn: RoomConnection }) {
     shallowEqual,
   );
   const house = game ? L.buildings.find((b) => b.houseIndex === game.seat) : undefined;
-  const fix = useStoreSelector(localPlayer, (lp) => compassFix(lp, house), shallowEqual);
+  const fix = useCompassFix(house);
   if (!game || !house || !fix) return null;
   const bedtime = game.bedtime;
   if (fix.at === 'home') {
@@ -291,7 +312,7 @@ function HomeCompass({ conn }: { conn: RoomConnection }) {
   }
   const { steps, deg } = fix;
   return (
-    <div class={`ct-compass${bedtime ? ' urgent' : ''}`} role="status" aria-label={`Your home, ${house.name}: ${steps} steps`}>
+    <div class={`ct-compass${bedtime ? ' urgent' : ''}`} role="status" aria-label={`Your home, ${house.name}`}>
       <span class="ct-compass-arrow" aria-hidden="true" style={{ transform: `rotate(${deg}deg)` }}>
         ➜
       </span>
