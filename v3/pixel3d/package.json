@@ -1,0 +1,10 @@
+{
+  "name": "pixel3d",
+  "private": true,
+  "type": "module",
+  "description": "3D pixel-art renderer (three.js) built by an agent swarm",
+  "dependencies": {
+    "three": "0.170.0",
+    "playwright": "1.63.0"
+  }
+}

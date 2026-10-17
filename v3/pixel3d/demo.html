@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hollowmere demo</title>
+<!-- Playable local demo (owner: demo lead, docs/DEMO.md). Walk the town as a character; the UI (src/demo/ui.js)
+     drives time of day, phase / seats, bell, quality, life, cut-away and camera.
+     Serve the repo root over http (no build step) and open /demo.html; params: docs/DEMO.md §5. -->
+<style>
+  html, body { margin: 0; height: 100%; background: #0d1020; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+  #demo-ui { position: fixed; inset: 0; pointer-events: none; z-index: 10; font: 12px/1.35 system-ui, sans-serif; color: #eee; }
+  #demo-ui > * { pointer-events: auto; }
+  #demo-boot { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; color: #cfd;
+    font: 14px monospace; background: #0d1020; z-index: 20; transition: opacity .4s; }
+  #demo-boot.done { opacity: 0; pointer-events: none; }
+  #demo-boot.error { color: #f99; white-space: pre-wrap; align-items: flex-start; padding: 24px; overflow: auto; }
+</style>
+<link rel="stylesheet" href="./src/demo/ui.css">
+<link rel="stylesheet" href="./src/demo/loading.css">
+<script type="importmap">
+{ "imports": {
+  "three": "./node_modules/three/build/three.module.js",
+  "three/addons/": "./node_modules/three/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<!-- no #hud: Engine would print its debug-camera help there; the UI shows fps -->
+<div id="demo-ui"></div>
+<div id="demo-boot">building Hollowmere ...</div>
+<!-- loading screen + cinematic (owner: intro; src/demo/loading.js draws into #demo-loading, then runs src/demo/intro.js).
+     Loaded BEFORE main.js so it is up from the first frame; ?intro=0 disables the cinematic. -->
+<div id="demo-loading"><div class="ldg-fallback">HOLLOWMERE</div></div>
+<script type="module" src="./src/demo/loading.js"></script>
+<script type="module" src="./src/demo/main.js"></script>
+</body>
+</html>

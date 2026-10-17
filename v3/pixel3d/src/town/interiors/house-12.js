@@ -1,0 +1,336 @@
+// house-12 interior: Rookery House - the town gossip, scribe of "The Hollowmere Crier" (owner: lore-10..14 builder).
+// docs/LORE.md row 12, docs/INTERIORS.md.
+// A TALL, NARROW, crooked room (6.4 x 5 m, 3.6 m high): inky dark wallpaper papered over with yellowing old front pages
+// (they climb the walls at a lean, like the house), worn ink-stained floorboards littered with paper scraps, one tall leaning window with a
+// spyglass on its sill (pointed at the neighbours). No hearth - the only warmth is a green-shaded desk lamp.
+// Story: the back wall is the SUSPICION BOARD - fifteen notes pinned in a ring (the fifteen seats of the voting circle),
+// red string criss-crossing between them, two notes struck through with a black X, most of the strings converging on
+// one note with a black rook feather pinned to it; beside it a calendar with one date CIRCLED in red. A hand printing
+// press on the left with bundles of the Crier tied with string, fresh sheets pegged on lines across the room to dry
+// (they flutter, scraps drift down), a rook in a hanging cage, a cot buried in newspapers, an overflowing waste basket.
+// Ambiance: inky blacks + newsprint cream + red string; a cold green lamp pool; paper scraps. Paranoid, nosy.
+import * as THREE from 'three';
+import { Builder } from '../kit.js';
+
+export const ROOM = { w: 6.4, d: 5.0, h: 3.6, wall: 'plaster', pal: 0, floor: 'boards' };
+
+// ---------------------------------------------------------------------------------------------- local helpers
+/** Animated specks: n small boxes in ONE mesh, moved per particle (stepped 8 fps, pure function of t). */
+function particles(room, ctx, { name, n, make, path, glow = true }) {
+  const b = new Builder(room.engine, { name });
+  const layer = glow ? 'glass' : 'soft', ranges = [];
+  for (let i = 0; i < n; i++) {
+    const a = (b.layers[layer]?.pos.length ?? 0) / 3;
+    make(b, i, layer);
+    ranges.push([a, b.layers[layer].pos.length / 3]);
+  }
+  const grp = b.build({ name, castShadow: false, receiveShadow: false });
+  const mesh = grp.children[0];
+  if (glow) mesh.material = ctx.kit.interiorGlowMaterial(room.engine);
+  mesh.frustumCulled = false;
+  const pos = mesh.geometry.getAttribute('position'), base = pos.array.slice();
+  let last = -1;
+  return {
+    group: grp,
+    update(t) {
+      const k = Math.floor(t * 8) / 8;
+      if (k === last) return;
+      last = k;
+      for (let i = 0; i < n; i++) {
+        const [ox, oy, oz] = path(i, k);
+        for (let v = ranges[i][0]; v < ranges[i][1]; v++) {
+          pos.array[v * 3] = base[v * 3] + ox; pos.array[v * 3 + 1] = base[v * 3 + 1] + oy; pos.array[v * 3 + 2] = base[v * 3 + 2] + oz;
+        }
+      }
+      pos.needsUpdate = true;
+    },
+  };
+}
+/**
+ * Shadow-only ceiling: a plane high up the sun ray (off screen) with holes that let sun onto the floor. The holes are
+ * either grid cells where `open(x, z)` is true or `holes` (polygons [[x, z], ...], room-local, non-overlapping; smooth
+ * rounded sun-flecks). At NIGHT (the sun colour turns blue, or the sun is down) the moon must not paint the day
+ * patches: `night: 'lid'` closes every hole (an extra lid in the same mesh, toggled by drawRange: no extra call),
+ * `night: 'off'` hides the mask (even moonlight over the open dollhouse).
+ */
+function sunMask(room, { open, holes, cell = 0.2, margin = 6, name, night = 'lid' }) {
+  const b = new Builder(room.engine, { name });
+  const x0 = -room.W / 2 - margin, z0 = -room.D / 2 - margin;
+  const nx = Math.ceil((room.W + 2 * margin) / cell), nz = Math.ceil((room.D + 2 * margin) / cell);
+  const X1 = x0 + nx * cell, Z1 = z0 + nz * cell;
+  if (holes) {
+    const V2 = (x, z) => new THREE.Vector2(x, z);
+    const shape = new THREE.Shape([V2(x0, z0), V2(X1, z0), V2(X1, Z1), V2(x0, Z1)]);
+    for (const pts of holes) shape.holes.push(new THREE.Path(pts.map(([x, z]) => V2(x, z))));
+    const g = new THREE.ExtrudeGeometry(shape, { depth: 0.04, bevelEnabled: false, curveSegments: 1 });
+    b.add(g, new THREE.Matrix4().makeRotationX(Math.PI / 2), { tones: 'timber' });      // shape (x, y) -> world (x, z)
+    g.dispose();
+  } else {
+    const rowRuns = (j) => {
+      const runs = []; let s = -1;
+      for (let i = 0; i <= nx; i++) {
+        const closed = i < nx && !open(x0 + (i + 0.5) * cell, z0 + (j + 0.5) * cell);
+        if (closed && s < 0) s = i; else if (!closed && s >= 0) { runs.push([s, i]); s = -1; }
+      }
+      return runs;
+    };
+    let start = 0, prev = rowRuns(0), key = JSON.stringify(prev);
+    const flush = (j0, j1, runs) => {
+      for (const [i0, i1] of runs) b.box((i1 - i0) * cell, 0.04, (j1 - j0) * cell, { at: [x0 + (i0 + i1) / 2 * cell, 0, z0 + (j0 + j1) / 2 * cell], tones: 'timber' });
+    };
+    for (let j = 1; j <= nz; j++) {
+      const runs = j < nz ? rowRuns(j) : null, k = runs ? JSON.stringify(runs) : null;
+      if (k !== key) { flush(start, j, prev); start = j; prev = runs; key = k; }
+    }
+  }
+  const nDay = (b.layers.solid?.pos.length ?? 0) / 3;
+  if (night === 'lid') b.box(X1 - x0, 0.04, Z1 - z0, { at: [(x0 + X1) / 2, -0.08, (z0 + Z1) / 2], tones: 'timber' });
+  const holder = new THREE.Group(); holder.name = name;
+  const grp = b.build({ name, castShadow: true, receiveShadow: false });
+  holder.add(grp);
+  const geo = grp.children[0]?.geometry, nAll = geo?.getAttribute('position').count ?? 0;
+  const sun = room.engine.uniforms?.uSunDir?.value, sunC = room.engine.uniforms?.uSunColor?.value;
+  return {
+    group: holder,
+    isNight: () => !sun || sun.y < 0.08 || (sunC && sunC.b > sunC.r + 0.02),
+    update() {
+      const dark = this.isNight();
+      if (!sun || sun.y < 0.02 || (dark && night === 'off')) { holder.visible = false; return; }
+      holder.visible = true;
+      geo?.setDrawRange(0, dark ? nAll : nDay);
+      const h = Math.min(20, 30 * sun.y);
+      holder.position.set((sun.x * h) / sun.y, h, (sun.z * h) / sun.y);
+    },
+  };
+}
+
+export default function build(room, ctx) {
+  const { FURNITURE: F, WALL: Wl, CLOTH, GLOW, TOWN_PALETTE: TP, paintRamp, M } = ctx;
+  const W = room.W, D = room.D, H = room.H;
+  const ink = paintRamp('#2a2838', { lightness: 0.26 });
+  const inkPaper = paintRamp('#33304a', { lightness: 0.3 });
+  const news = paintRamp('#d8ccaa', { lightness: 0.8 });
+  const newsOld = paintRamp('#c0ae84', { lightness: 0.7 });
+  const cork = paintRamp('#a0724a', { lightness: 0.52 });
+  const red = paintRamp('#c03030', { lightness: 0.5 });
+  const lampGreen = paintRamp('#2e6a4a', { lightness: 0.42 });
+  const boardsT = paintRamp('#6a5a52', { lightness: 0.42 });             // worn, ink-stained floorboards
+  const capNight = paintRamp('#7a7a98', { lightness: 0.5 });
+  const lean = 0.07;                                                   // the house's shear: things lean right
+
+  // ---- shell: inky wallpaper over a black dado, one tall window right of the board
+  const win = { x: 2.25, y: 0.95, w: 0.62, h: 1.75 };
+  room.shell({
+    windows: [{ ...win, panes: [2, 5], curtains: null, frame: 'timber' }],
+    wallTones: { upper: { tones: inkPaper, pattern: 'vboards', scale: 1.3 }, lower: { tones: ink, pattern: 'vboards', scale: 0.7 } },
+    dado: 0.8, floorTones: boardsT, floorPattern: 'planks', beams: false,
+  });
+  // the floor: worn boards, blotted with spilt ink (round the press and the desk) and littered with paper scraps
+  {
+    const fr = room.rng;
+    for (const [cx, cz, n, sp] of [[-W / 2 + 1.1, 1.0, 5, 0.55], [W / 2 - 1.1, -0.2, 4, 0.4], [-0.2, 0.3, 2, 0.25], [0.9, -1.6, 2, 0.2]]) {
+      for (let k = 0; k < n; k++) {
+        const r = 0.08 + fr() * 0.14;
+        room.b.cylinder(r, r, 0.004, { at: [cx + (fr() - 0.5) * sp * 2, 0.001 + k * 0.0005, cz + (fr() - 0.5) * sp * 2], tones: ink, segments: 8, layer: 'soft', tint: 0.94 + fr() * 0.1 });
+      }
+    }
+    for (let k = 0; k < 16; k++) {
+      const x = -W / 2 + 0.5 + fr() * (W - 1), z = -D / 2 + 1.5 + fr() * (D - 2);
+      if (Math.abs(x) < 0.7 && z > D / 2 - 1.1) continue;                // keep the doorway clean
+      room.b.box(0.14 + fr() * 0.12, 0.006, 0.1 + fr() * 0.1, { at: [x, 0.004, z], ry: fr() * Math.PI, tones: k % 3 ? news : newsOld, layer: 'soft' });
+    }
+  }
+  // wall caps catch the moonlight: a pale trim along the top of every wall (the room's outline never sinks into the void)
+  for (const wall of ['back', 'left', 'right']) room.wallFrame(wall, ({ full, len }) => {
+    const ext = wall === 'back' ? room.T : 0;
+    full.box(len + 2 * ext + 0.04, 0.03, room.T + 0.07, { at: [0, H + 0.12, -room.T / 2], tones: capNight });
+  });
+  room.wallFrame('front', ({ low, len }) => {
+    for (const s of [-1, 1]) low.box((len - room.doorW) / 2 + room.T, 0.03, room.T + 0.07, { at: [s * ((len - room.doorW) / 4 + room.doorW / 2 + room.T / 2), 0.42 + 0.06, -room.T / 2], tones: capNight });
+  });
+  // old front pages pasted up the walls at a lean (back wall top band, and a run down each side wall)
+  const pr = room.rng;
+  const page = (b, x, y, w, h, rz, tones = news) => {
+    b.push(M({ at: [x, y, 0.015], rz }));
+    b.box(w, h, 0.01, { at: [0, 0, 0], tones, origin: 'center' });
+    b.box(w * 0.8, h * 0.13, 0.008, { at: [0, h * 0.33, 0.008], tones: ink, origin: 'center' });             // the masthead
+    for (let k = 0; k < 2; k++) b.box(w * 0.36, h * 0.4, 0.006, { at: [(k ? 1 : -1) * w * 0.2, -h * 0.1, 0.008], tones: newsOld, origin: 'center' });
+    b.pop();
+  };
+  room.wallFrame('back', ({ full }) => {
+    for (let k = 0; k < 9; k++) {
+      const x = -W / 2 + 0.45 + k * 0.7 + (pr() - 0.5) * 0.15;
+      if (Math.abs(x - win.x) < 0.5) continue;
+      page(full, x, H - 0.55 + (pr() - 0.5) * 0.2, 0.5, 0.62, -lean * 2 + (pr() - 0.5) * 0.12, k % 3 ? news : newsOld);
+    }
+  });
+  for (const wall of ['left', 'right']) room.wallFrame(wall, ({ full, len }) => {
+    for (let k = 0; k < 6; k++) page(full, -len / 2 + 0.5 + k * 0.78, 1.5 + (k % 2) * 0.75, 0.5, 0.62, -lean * 2 + (pr() - 0.5) * 0.1, k % 2 ? news : newsOld);
+  });
+
+  // ---- THE SUSPICION BOARD: fifteen notes in a ring (the voting circle), red string, two struck out, one with a feather
+  const bx = -0.35, by = 1.65, bw = 2.7, bh = 1.6;
+  room.wallFrame('back', ({ full }) => {
+    full.box(bw + 0.12, bh + 0.12, 0.05, { at: [bx, by - bh / 2 - 0.06, 0.025], tones: 'timber' });
+    full.box(bw, bh, 0.03, { at: [bx, by - bh / 2, 0.05], tones: cork, pattern: 'plaster', scale: 0.4 });
+    const P = [];
+    for (let i = 0; i < 15; i++) {
+      const a = (i / 15) * Math.PI * 2 + 0.2;
+      P.push([bx + Math.cos(a) * 1.05, by + Math.sin(a) * 0.58]);
+    }
+    const suspect = 6;                                                   // most strings lead here
+    const strings = [[0, 6], [3, 6], [9, 6], [12, 6], [14, 6], [1, 8], [4, 11], [2, 13], [10, 5], [7, 6]];
+    for (const [a, c] of strings) {
+      const [x0, y0] = P[a], [x1, y1] = P[c], l = Math.hypot(x1 - x0, y1 - y0);
+      full.box(l, 0.025, 0.012, { at: [(x0 + x1) / 2, (y0 + y1) / 2, 0.075], rz: Math.atan2(y1 - y0, x1 - x0), tones: red, origin: 'center' });
+    }
+    P.forEach(([x, y], i) => {
+      const big = i === suspect;
+      const w = big ? 0.3 : 0.22, h = big ? 0.26 : 0.18;
+      full.box(w, h, 0.012, { at: [x, y, 0.07], rz: (pr() - 0.5) * 0.2, tones: i % 4 ? news : newsOld, origin: 'center' });
+      full.box(w * 0.6, 0.025, 0.006, { at: [x, y + 0.02, 0.08], tones: ink, origin: 'center' });
+      full.box(0.04, 0.04, 0.02, { at: [x, y + h / 2 - 0.03, 0.085], tones: red, origin: 'center' });       // pin
+      if (i === 2 || i === 11) for (const s of [-1, 1]) full.box(w * 1.1, 0.025, 0.006, { at: [x, y, 0.088], rz: s * 0.6, tones: ink, origin: 'center' });
+      if (big) {                                                         // a black rook feather pinned to it
+        full.box(0.06, 0.34, 0.01, { at: [x + 0.04, y - 0.06, 0.095], rz: -0.5, tones: 'crow', origin: 'center' });
+        full.box(0.012, 0.36, 0.008, { at: [x + 0.04, y - 0.06, 0.1], rz: -0.5, tones: 'iron', origin: 'center' });
+      }
+    });
+    // centre: a sketch of the dais and the grimoire
+    full.box(0.36, 0.28, 0.012, { at: [bx, by, 0.07], tones: news, origin: 'center' });
+    full.box(0.18, 0.12, 0.008, { at: [bx, by - 0.02, 0.08], tones: red, tint: 0.7, origin: 'center' });
+    full.box(0.012, 0.12, 0.008, { at: [bx, by - 0.02, 0.086], tones: newsOld, origin: 'center' });
+    // the calendar, one date circled in red
+    const cx = -2.35, cy = 1.55;
+    full.box(0.5, 0.62, 0.012, { at: [cx, cy, 0.02], tones: news, origin: 'center' });
+    full.box(0.5, 0.12, 0.014, { at: [cx, cy + 0.25, 0.025], tones: red, tint: 0.8, origin: 'center' });
+    for (let r = 0; r < 4; r++) for (let c = 0; c < 5; c++) full.box(0.05, 0.04, 0.006, { at: [cx - 0.18 + c * 0.09, cy + 0.1 - r * 0.1, 0.03], tones: ink, tint: 1.4, origin: 'center' });
+    for (let k = 0; k < 8; k++) {                                        // the red ring round the 3rd row, 4th day
+      const a = (k / 8) * Math.PI * 2;
+      full.box(0.05, 0.022, 0.006, { at: [cx - 0.18 + 3 * 0.09 + Math.cos(a) * 0.055, cy + 0.1 - 2 * 0.1 + Math.sin(a) * 0.045, 0.036], rz: a + Math.PI / 2, tones: red, origin: 'center' });
+    }
+  });
+  // the spyglass on the window sill, aimed out at the lane
+  room.wallFrame('back', ({ full }) => {
+    full.push(M({ at: [win.x, win.y + 0.02, 0.1], ry: 0.5, rx: -0.25 }));
+    full.cylinder(0.035, 0.05, 0.42, { at: [0, 0, 0], tones: 'brass', segments: 8 });
+    full.pop();
+  });
+
+  // ---- the cot in the back-left corner, buried in newspapers; a candle on a crate
+  const bedX = -W / 2 + 0.6, bedZ = -D / 2 + 1.02;
+  const bed = F.bed(room, { x: bedX, z: bedZ, quilt: 'night', frame: 'timber' });
+  for (const [dx, dz, ry] of [[-0.1, 0.2, 0.3], [0.15, 0.55, -0.2], [0, -0.2, 0.9], [-0.15, 0.75, 0.5]]) room.b.box(0.42, 0.02, 0.32, { at: [bedX + dx, 0.55, bedZ + dz], ry, tones: news, layer: 'soft' });
+  room.b.box(0.42, 0.45, 0.42, { at: [bedX + 0.85, 0, -D / 2 + 0.3], tones: 'plank', pattern: 'boards' });
+  room.solidAt(bedX + 0.85, -D / 2 + 0.3, 0.42, 0.42);
+  room.b.cylinder(0.06, 0.06, 0.02, { at: [bedX + 0.85, 0.45, -D / 2 + 0.3], tones: 'brass', segments: 8 });
+  room.b.box(0.05, 0.12, 0.05, { at: [bedX + 0.85, 0.47, -D / 2 + 0.3], tones: 'cream' });
+  room.g.box(0.05, 0.07, 0.05, { at: [bedX + 0.85, 0.6, -D / 2 + 0.3], tones: 'glass', layer: 'glass', glow: GLOW.candle, glowKind: 2 });
+  room.light({ pos: [bedX + 0.85, 0.75, -D / 2 + 0.45], color: GLOW.candle, r: 1.8, kind: 'lantern', intensity: 1.0 });
+
+  // ---- the desk along the right wall: clippings, scissors, paste pot, quill; the green-shaded lamp = the key light
+  const dx = W / 2 - 0.5, dz = -0.15;
+  F.table(room, {
+    x: dx, z: dz, w: 0.8, d: 1.5, items: false,
+    extra: (b, g, top) => {
+      for (const [x, z, ry] of [[-0.1, 0.3, 0.3], [0.05, -0.1, -0.2], [-0.15, -0.45, 0.6], [0.12, 0.55, 1.2]]) b.box(0.24, 0.008, 0.3, { at: [x, top + 0.004, z], ry, tones: news });
+      b.cylinder(0.06, 0.06, 0.08, { at: [-0.2, top, 0.05], tones: 'cream', segments: 8 });             // paste pot
+      b.box(0.16, 0.012, 0.02, { at: [0.05, top + 0.01, 0.15], ry: 0.7, tones: 'iron' });                 // scissors
+      b.box(0.16, 0.012, 0.02, { at: [0.05, top + 0.01, 0.15], ry: -0.1, tones: 'iron' });
+      b.cylinder(0.04, 0.04, 0.06, { at: [0.2, top, -0.25], tones: ink, segments: 8 });                   // inkwell + quill
+      b.box(0.015, 0.3, 0.015, { at: [0.2, top + 0.05, -0.25], rz: 0.4, tones: 'cream' });
+      // the lamp: brass stem, a green glass shade glowing over a bright bulb
+      b.cylinder(0.08, 0.1, 0.03, { at: [0.1, top, -0.55], tones: 'brass', segments: 8 });
+      b.box(0.03, 0.34, 0.03, { at: [0.1, top + 0.03, -0.55], tones: 'brass' });
+      g.box(0.2, 0.09, 0.42, { at: [0.0, top + 0.36, -0.5], tones: 'glass', layer: 'glass', glow: '#5AB880', glowKind: 1 });
+      g.box(0.12, 0.04, 0.32, { at: [0.0, top + 0.32, -0.5], tones: 'glass', layer: 'glass', glow: '#F0F4D8', glowKind: 1 });
+    },
+  });
+  room.light({ pos: [dx - 0.25, 1.25, dz - 0.5], color: '#C8F0C0', r: 2.6, kind: 'fire', intensity: 1.35 });
+  F.chair(room, { x: dx - 0.75, z: dz, ry: Math.PI / 2 });
+
+  // ---- the printing press (front-left): iron frame, the great screw + bar, platen, bed, ink slab; Crier bundles
+  const px = -W / 2 + 0.9, pz = 1.0;
+  {
+    const b = room.b;
+    for (const s of [-1, 1]) b.box(0.14, 1.75, 0.14, { at: [px + s * 0.42, 0, pz], tones: 'iron' });
+    b.box(1.0, 0.18, 0.2, { at: [px, 1.6, pz], tones: 'iron' });
+    b.box(1.0, 0.16, 0.2, { at: [px, 0.52, pz], tones: 'iron' });
+    b.box(0.95, 0.08, 0.9, { at: [px, 0.66, pz + 0.05], tones: 'timber' });                            // the bed (type forme)
+    b.box(0.6, 0.03, 0.5, { at: [px, 0.74, pz + 0.05], tones: ink });
+    b.cylinder(0.06, 0.06, 0.5, { at: [px, 1.1, pz], tones: 'brass', segments: 8 });                   // the screw
+    b.box(0.6, 0.08, 0.5, { at: [px, 1.02, pz], tones: 'iron', tint: 1.05 });                          // platen
+    b.box(0.9, 0.05, 0.05, { at: [px + 0.35, 1.38, pz + 0.15], ry: -0.6, tones: 'iron' });             // the bar
+    b.cylinder(0.04, 0.04, 0.12, { at: [px + 0.74, 1.33, pz + 0.48], tones: 'timber', segments: 8 });
+    b.box(0.3, 0.02, 0.4, { at: [px + 0.05, 0.78, pz + 0.75], tones: news });                         // a fresh sheet
+    room.solidAt(px, pz + 0.05, 1.05, 1.0);
+    // bundles of the Crier tied with string
+    for (const [x, z, y, ry] of [[-W / 2 + 0.45, 2.1, 0, 0.1], [-W / 2 + 0.45, 2.1, 0.22, -0.15], [-W / 2 + 1.05, 2.15, 0, 0.3], [-W / 2 + 0.45, 2.1, 0.44, 0.2]]) {
+      b.box(0.5, 0.22, 0.36, { at: [x, y, z], ry, tones: news, pattern: 'boards', scale: 0.4 });
+      b.box(0.52, 0.23, 0.03, { at: [x, y, z], ry, tones: 'thatch' });
+    }
+    room.solidAt(-W / 2 + 0.75, 2.12, 1.0, 0.5);
+  }
+  // waste basket overflowing with crumpled drafts
+  {
+    const wx = W / 2 - 0.55, wz = 1.25, b = room.b;
+    b.cylinder(0.2, 0.17, 0.38, { at: [wx, 0, wz], tones: 'thatch', pattern: 'thatch', scale: 0.4, segments: 8 });
+    for (const [x, z, y] of [[0, 0, 0.36], [0.08, 0.06, 0.42], [-0.08, 0.04, 0.4], [0.3, 0.2, 0], [0.28, -0.12, 0], [-0.3, 0.25, 0]]) b.box(0.1, 0.09, 0.1, { at: [wx + x, y, wz + z], ry: x * 9, tones: news, layer: 'soft' });
+    room.solidAt(wx, wz, 0.42, 0.42);
+  }
+  // the rook in a hanging iron cage by the window
+  {
+    const cx = -1.75, cz = -0.45, cy = 2.05, b = room.b;
+    b.box(0.02, H - cy - 0.5, 0.02, { at: [cx, cy + 0.5, cz], tones: 'iron' });
+    b.cylinder(0.26, 0.26, 0.04, { at: [cx, cy - 0.02, cz], tones: 'iron', segments: 8 });
+    for (let k = 0; k < 8; k++) { const a = (k / 8) * Math.PI * 2; b.box(0.02, 0.48, 0.02, { at: [cx + Math.cos(a) * 0.24, cy, cz + Math.sin(a) * 0.24], tones: 'iron' }); }
+    b.cylinder(0.26, 0.05, 0.14, { at: [cx, cy + 0.48, cz], tones: 'iron', segments: 8 });
+    b.box(0.32, 0.02, 0.02, { at: [cx, cy + 0.14, cz], tones: 'timber' });
+    b.box(0.14, 0.13, 0.22, { at: [cx, cy + 0.16, cz], ry: 0.6, tones: 'crow' });                     // the rook
+    b.box(0.09, 0.09, 0.09, { at: [cx + 0.06, cy + 0.27, cz + 0.08], ry: 0.6, tones: 'crow' });
+    b.box(0.05, 0.03, 0.08, { at: [cx + 0.1, cy + 0.29, cz + 0.15], ry: 0.6, tones: TP.cream });
+  }
+  F.hangingLantern(room, { x: 0.95, z: 0.35, y: 2.2 });
+  Wl.sconce(room, { wall: 'back', x: 1.32, y: 2.0, r: 2.8 });                // lights the board at night
+  F.doormat(room, { x: 0, z: D / 2 - 0.4 });
+
+  // ---- drying lines of fresh Crier sheets across the room (they flutter), scraps drifting down
+  const lines = [{ z: 1.05, y: 3.0 }, { z: 1.75, y: 3.1 }];
+  for (const { z, y } of lines) room.b.box(W, 0.02, 0.02, { at: [0, y, z], tones: 'cream', tint: 0.9 });
+  const sheetsAt = [];
+  lines.forEach(({ z, y }, li) => { for (let k = 0; k < 5; k++) sheetsAt.push([-2.4 + k * 1.15 + li * 0.5, y, z]); });
+  const sheets = particles(room, ctx, {
+    name: 'house-12-sheets', n: sheetsAt.length, glow: false,
+    make: (b, i, layer) => {
+      const [x, y, z] = sheetsAt[i];
+      b.box(0.36, 0.46, 0.012, { at: [x, y - 0.47, z], tones: news, layer });
+      b.box(0.3, 0.06, 0.016, { at: [x, y - 0.12, z], tones: ink, layer });
+      b.box(0.04, 0.06, 0.03, { at: [x - 0.12, y - 0.04, z], tones: 'timber', layer });              // pegs
+      b.box(0.04, 0.06, 0.03, { at: [x + 0.12, y - 0.04, z], tones: 'timber', layer });
+    },
+    path: (i, t) => [0, 0, Math.sin(t * 1.3 + i * 1.7) * 0.03],
+  });
+  const scraps = particles(room, ctx, {
+    name: 'house-12-scraps', n: 7, glow: false,
+    make: (b, i, layer) => b.box(0.09, 0.012, 0.07, { at: [0, 0, 0], ry: i, tones: i % 2 ? news : newsOld, layer }),
+    path: (i, t) => {
+      const u = (t * 0.06 + i / 7) % 1, x0 = -2.3 + ((i * 1.37) % 1) * 4.6;
+      return [x0 + Math.sin(t * 0.9 + i) * 0.25, 2.6 * (1 - u), (i % 2 ? 1.05 : 1.75) + Math.cos(t * 0.7 + i) * 0.2 + u * 0.4];
+    },
+  });
+
+  // ---- daylight: a single leaning shaft from the tall window across the checkers (the rest stays ink-dark)
+  const mask = sunMask(room, { name: 'house-12-shade', cell: 0.08, night: 'off', open: (x, z) => z > -2.2 && z < 0.4 && Math.abs(x - (1.75 - (z + 2.2) * 0.35)) < 0.36 });
+
+  room.spot('board', bx, -D / 2 + 0.9, Math.PI);
+  room.spot('desk', dx - 0.75, dz + 0.6, Math.PI / 2);
+  room.spot('press', px + 0.2, pz + 0.95, Math.PI);
+
+  return {
+    bed: { x: bedX, z: bedZ - 0.6, y: 0.55, facing: 0 },
+    visit: { x: bedX + 0.9, z: bedZ + 0.4, facing: -Math.PI / 2 },
+    extras: [mask.group, sheets.group, scraps.group],
+    update(t) { mask.update(); sheets.update(t); scraps.update(t); },
+    bedRect: bed.rect,
+  };
+}
