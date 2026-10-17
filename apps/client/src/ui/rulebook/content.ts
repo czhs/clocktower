@@ -98,6 +98,15 @@ const GENERAL_RULES: readonly RuleSection[] = [
       'Travellers sit outside this table: they are added on top of a legal setup.',
     ],
   },
+  {
+    heading: 'Chance and the Storyteller',
+    points: [
+      'Chance decides which characters are dealt and who gets each one.',
+      'The Storyteller decides who the Drunk is, which characters may be dealt at all, the Demon\'s bluffs, and everything each player is told at night.',
+      'Votes are counted exactly as they are cast: nothing about voting is left to chance.',
+      'In an automatic game there is no Storyteller, so the Drunk is dealt at random like any other character.',
+    ],
+  },
 ];
 
 const TB_RULES: readonly RuleSection[] = [

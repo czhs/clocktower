@@ -4,6 +4,7 @@ import {
   DEFAULT_ST_SETTINGS,
   MAX_PLAYERS,
   MIN_PLAYERS,
+  isSeatedType,
   type CharacterId,
   type ForcePhase,
   type ScriptId,
@@ -42,6 +43,7 @@ import {
   randomAssignment,
   validateAssignment,
   type Assignment,
+  type DrunkPlacement,
 } from './setup.js';
 import { dealBag, presetAssignment } from './presets.js';
 import {
@@ -639,8 +641,17 @@ function clearDeal(s: GameState, op: Op, why: string): void {
   alert(s, op, `${why}: deal the characters again.`);
 }
 
+/**
+ * Who the Drunk is in a deal: the Storyteller's pick, or (automatic games only, where nobody can
+ * choose) chance. A Storyteller's deal that holds a Drunk but names no seat is refused.
+ */
+function drunkSeatFor(s: GameState, seat: number | undefined): number | 'random' | 'ask' {
+  if (seat !== undefined) return seat;
+  return s.adjudicator ? 'random' : 'ask';
+}
+
 function dealPreset(s: GameState, op: Op, cmd: Extract<StCommand, { type: 'deal_preset' }>): void {
-  const { def, assignment } = presetAssignment(dealSeats(s), cmd.storyline, dealRng(s, cmd.seed));
+  const { def, assignment } = presetAssignment(dealSeats(s), cmd.storyline, dealRng(s, cmd.seed), { drunkSeat: drunkSeatFor(s, cmd.drunkSeat) });
   applyAssignment(s, withTravellers(s, assignment));
   s.deal = { method: 'storyline', storyline: def.id };
   log(s, op, `Storyline "${def.title}" dealt at random`);
@@ -656,6 +667,7 @@ function dealOwnBag(s: GameState, op: Op, cmd: Extract<StCommand, { type: 'deal_
     ...(cmd.drunkBelieves ? { drunkBelieves: cmd.drunkBelieves } : {}),
     ...(cmd.demonBluffs ? { demonBluffs: cmd.demonBluffs } : {}),
     script: s.script,
+    drunkSeat: drunkSeatFor(s, cmd.drunkSeat),
   });
   if (validation.warnings.length && !cmd.allowNonstandard) throw new RuleError('invalid', `${validation.warnings.join('; ')} (set allowNonstandard to accept)`);
   for (const w of validation.warnings) alert(s, op, w);
@@ -690,9 +702,30 @@ function stCommand(s: GameState, op: Op, cmd: StCommand): void {
     case 'random_setup': {
       requirePhase(s, 'setup');
       if (s.script === 'custom') throw new RuleError('invalid', 'A custom script has no fixed character list: assign the characters by hand');
-      applyAssignment(s, withTravellers(s, randomAssignment(dealSeats(s), s.rng, s.script)));
+      // The Drunk is the Storyteller's pick (or left out); only an automatic game draws it at random.
+      if (cmd.drunkBelieves !== undefined && cmd.drunkSeat === undefined) throw new RuleError('invalid', 'Choose which player is the Drunk');
+      const drunk: DrunkPlacement =
+        cmd.drunkSeat !== undefined
+          ? { seat: cmd.drunkSeat, ...(cmd.drunkBelieves ? { believes: cmd.drunkBelieves } : {}) }
+          : s.adjudicator
+            ? 'random'
+            : 'none';
+      const exclude = cmd.exclude ?? [];
+      applyAssignment(s, withTravellers(s, randomAssignment(dealSeats(s), s.rng, s.script, { exclude, drunk })));
       s.deal = { method: 'random' };
-      log(s, op, 'Random characters assigned');
+      log(s, op, `Random characters assigned${exclude.length ? ` (removed from the draw: ${exclude.map(charName).join(', ')})` : ''}`);
+      return;
+    }
+    case 'set_demon_bluffs': {
+      if (!s.assigned) throw new RuleError('invalid', 'Assign characters first');
+      if (s.players.some((p) => typeOf(p.character) === 'demon' && p.evilTeam)) alert(s, op, 'The Demon already learned their bluffs: tell them the new ones yourself.');
+      if (new Set(cmd.bluffs).size !== cmd.bluffs.length) throw new RuleError('invalid', 'Duplicate demon bluffs');
+      for (const b of cmd.bluffs) {
+        if (CHARACTER_INFO[b].alignment !== 'good' || !isSeatedType(CHARACTER_INFO[b].type)) throw new RuleError('invalid', `${charName(b)} is not a good character`);
+        if (s.players.some((p) => p.character === b)) throw new RuleError('invalid', `${charName(b)} is in play`);
+      }
+      s.demonBluffs = [...cmd.bluffs];
+      log(s, op, `Demon bluffs set: ${cmd.bluffs.map(charName).join(', ') || 'none'}`);
       return;
     }
     case 'set_traveller':

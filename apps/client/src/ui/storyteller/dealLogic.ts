@@ -67,6 +67,12 @@ export function charactersOf(t: CharacterType, script: ScriptId = 'trouble-brewi
   return pool.filter((c) => CHARACTER_INFO[c].type === t);
 }
 
+/** Does this storyline name the Drunk? Then the Storyteller says who the Drunk is (the server asks). */
+export function storylineNamesDrunk(id: StorylineId): boolean {
+  const def = storylineById(id);
+  return !!def && [...def.core, ...def.prefer].includes('drunk');
+}
+
 /** Deal modes a script supports: storylines are Trouble Brewing setups; a custom script has no random pool. */
 export function scriptDeals(script: ScriptId | undefined): { random: boolean; storyline: boolean } {
   const s = script ?? 'trouble-brewing';
@@ -143,13 +149,26 @@ export interface PracticeDeal {
   bluffs: CharacterId[];
 }
 
-/** A local fake deal for `n` seats (n clamped to 5-15 by the caller). Pure: same seed, same deal. */
-export function practiceDeal(n: number, storyline: StorylineId | null, seed: number): PracticeDeal {
+/**
+ * A local fake deal for `n` seats (n clamped to 5-15 by the caller). Pure: same seed, same deal.
+ * Like the server, chance never picks the Drunk: it is dealt only to `drunkSeat` (when the deal
+ * has an Outsider for it), and a deal that does not name the Drunk leaves it out.
+ */
+export function practiceDeal(n: number, storyline: StorylineId | null, seed: number, drunkSeat?: number): PracticeDeal {
   const rng = seededRng(seed);
-  const def = (storyline && storylineById(storyline)) || RANDOM_DEF;
-  const ok = storylineProblem(def, n, CHARACTER_INFO) === null;
-  const bag = buildStorylineBag(ok ? def : RANDOM_DEF, n, rng, CHARACTER_INFO);
+  const named = (storyline && storylineById(storyline)) || RANDOM_DEF;
+  const ok = storylineProblem(named, n, CHARACTER_INFO) === null;
+  const picked = ok ? named : RANDOM_DEF;
+  const wantsDrunk = drunkSeat !== undefined && drunkSeat >= 0 && drunkSeat < n;
+  const namesDrunk = [...picked.core, ...picked.prefer].includes('drunk');
+  const withDrunk: StorylineDef = wantsDrunk && !namesDrunk ? { ...picked, prefer: ['drunk', ...picked.prefer] } : picked;
+  const noDrunk: StorylineDef = { ...picked, avoid: [...picked.avoid, 'drunk'] };
+  const def = wantsDrunk ? withDrunk : !namesDrunk && storylineProblem(noDrunk, n, CHARACTER_INFO) === null ? noDrunk : picked;
+  const bag = buildStorylineBag(def, n, rng, CHARACTER_INFO);
   const bySeat = shuffled(rng, bag);
+  // The Storyteller's Drunk sits where they chose (swap with whoever was dealt that seat).
+  const at = bySeat.indexOf('drunk');
+  if (wantsDrunk && at >= 0 && at !== drunkSeat) [bySeat[at], bySeat[drunkSeat]] = [bySeat[drunkSeat]!, 'drunk'];
   const notInPlay = (c: CharacterId) => !bag.includes(c);
   const drunkBelieves = bag.includes('drunk')
     ? ((def.drunkBelieves ?? []).find((c) => notInPlay(c)) ?? shuffled(rng, charactersOf('townsfolk').filter(notInPlay))[0]!)
@@ -300,18 +319,18 @@ export function practiceReduce(ps: PracticeState, names: readonly string[], cmd:
   const n = names.length;
   const next: PracticeState = { ...ps, note: null };
   const say = (what: string) => ({ ...next, note: PRACTICE_NOTE(what) });
-  const deal = (storyline: StorylineId | null, how: string): PracticeState => {
+  const deal = (storyline: StorylineId | null, how: string, drunkSeat?: number): PracticeState => {
     if (ps.phase !== 'setup') return say('be refused: characters are dealt during setup');
     if (n < 5 || n > 15) return { ...next, note: `Practice needs 5-15 seats (there are ${n}).` };
     const seed = ps.seed + 1;
-    const d = practiceDeal(n, storyline, seed);
+    const d = practiceDeal(n, storyline, seed, drunkSeat);
     return { ...next, seed, deal: d, log: [...ps.log, how], note: 'Practice deal — the players were told nothing.' };
   };
   switch (cmd.type) {
     case 'random_setup':
-      return deal(null, 'Random characters assigned (practice)');
+      return deal(null, 'Random characters assigned (practice)', cmd.drunkSeat);
     case 'deal_preset':
-      return deal(cmd.storyline, `Storyline "${storylineTitle(cmd.storyline)}" dealt at random (practice)`);
+      return deal(cmd.storyline, `Storyline "${storylineTitle(cmd.storyline)}" dealt at random (practice)`, cmd.drunkSeat);
     case 'deal_bag':
     case 'assign_characters':
       return say('deal your own characters (the server shuffles a bag; "by hand" fixes every seat)');

@@ -11,7 +11,7 @@ import { MAX_PLAYERS, MIN_PLAYERS, type PrepareDeal, type StPreparePatch, type S
 import type { RoomConnection } from '../../net/room';
 import { useStore } from '../../net/store';
 import { ModeSwitch, StorylineCards } from './deal';
-import { practiceNames, practiceReduce, practiceStart, practiceView, scriptDeals, storylineTitle, type PracticeState } from './dealLogic';
+import { practiceNames, practiceReduce, practiceStart, practiceView, scriptDeals, storylineNamesDrunk, storylineTitle, type PracticeState } from './dealLogic';
 import { StPanel } from './index';
 import { Toggle } from './stage';
 import './storyteller.css';
@@ -92,13 +92,18 @@ export function StPrepare({ conn, onClose }: { conn: RoomConnection; onClose: ()
         <h3 class="cts-script-h">When the game starts, deal…</h3>
         <ModeSwitch modes={deals} value={dealMode} onPick={pickDeal} label="How to deal at the start" />
         {dealMode === 'manual' && <p class="cts-script-note muted">You deal in the Setup step: random, a storyline, your own characters, or seat by seat.</p>}
-        {dealMode === 'random' && <p class="cts-script-note muted">A random legal setup is dealt the moment you start. You can re-deal or tweak it before the first night.</p>}
+        {dealMode === 'random' && (
+          <p class="cts-script-note muted">
+            A random legal setup is dealt the moment you start, without the Drunk (who the Drunk is is yours to choose: re-deal in the Setup step to place one). You can re-deal or tweak it before the first night.
+          </p>
+        )}
         {dealMode === 'storyline' && (
           <>
             <p class="cts-script-note">
               {prep.storyline && !pickStory ? (
                 <>
                   <b>{storylineTitle(prep.storyline)}</b> is dealt at random the moment you start.{' '}
+                  {storylineNamesDrunk(prep.storyline) && <b class="cts-warn">It names the Drunk, and who the Drunk is is yours to choose: deal it in the Setup step instead. </b>}
                 </>
               ) : (
                 <>Pick a storyline. </>

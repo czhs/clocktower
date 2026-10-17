@@ -164,22 +164,88 @@ export function needsRedHerring(bySeat: Map<number, CharacterId>, believes: Char
   return chars.some((c) => ROLES[c]?.wantsRedHerring);
 }
 
+/**
+ * What the random draw does with the Drunk. Who the Drunk is belongs to the Storyteller, so a
+ * Storyteller's deal never draws it at random:
+ *   - 'none': the Drunk is not in play;
+ *   - { seat, believes? }: the Storyteller's pick (it takes one Outsider slot);
+ *   - 'random': drawn like any Outsider (automatic games only: there is nobody to choose).
+ */
+export type DrunkPlacement = 'random' | 'none' | { seat: number; believes?: CharacterId };
+
+export interface RandomSetupOptions {
+  /** Characters the Storyteller removed from the draw. */
+  exclude?: readonly CharacterId[];
+  /** Default 'random' (the pure function's historical behaviour); the engine always passes it. */
+  drunk?: DrunkPlacement;
+}
+
+/** `need` characters drawn from `pool`, or a clear error when the removals left too few. */
+function draw(rng: Rng, pool: readonly CharacterId[], need: number, label: string): CharacterId[] {
+  if (pool.length < need)
+    throw new RuleError('invalid', `Only ${pool.length} ${label} left to draw from, but this setup needs ${need}: put some back`);
+  return shuffle(rng, pool).slice(0, need);
+}
+
 /** Random legal setup for the given seats on `script`. */
-export function randomAssignment(seats: readonly number[], rng: Rng, script: ScriptId = DEFAULT_SCRIPT): Assignment {
+export function randomAssignment(
+  seats: readonly number[],
+  rng: Rng,
+  script: ScriptId = DEFAULT_SCRIPT,
+  opts: RandomSetupOptions = {},
+): Assignment {
   const n = seats.length;
   setupCounts(n); // validates n
   const base = SETUP_TABLE[n]!;
-  const demons = shuffle(rng, ALL_OF('demon', script)).slice(0, base.demons);
-  const minions = shuffle(rng, ALL_OF('minion', script)).slice(0, base.minions);
-  // Setup modifiers of the evil team are known before the good team is drawn.
-  const counts = setupCounts(n, [...demons, ...minions]);
-  const outsiders = shuffle(rng, ALL_OF('outsider', script)).slice(0, counts.outsiders);
-  const townsfolk = shuffle(rng, ALL_OF('townsfolk', script)).slice(0, counts.townsfolk);
+  const exclude = new Set(opts.exclude ?? []);
+  const placement = opts.drunk ?? 'random';
+  const drunkSeat = typeof placement === 'object' ? placement.seat : null;
+  if (drunkSeat !== null) {
+    if (!seats.includes(drunkSeat)) throw new RuleError('invalid', `Seat ${drunkSeat + 1} is not dealt in this setup`);
+    if (!ALL_OF('outsider', script).includes('drunk')) throw new RuleError('invalid', `The Drunk is not on ${script}`);
+    if (exclude.has('drunk')) throw new RuleError('invalid', 'The Drunk was removed from the draw');
+  }
+  const chosenBelief = typeof placement === 'object' ? placement.believes : undefined;
+  if (chosenBelief && typeOf(chosenBelief) !== 'townsfolk') throw new RuleError('invalid', 'The Drunk must believe they are a Townsfolk');
+  // The Drunk is only ever drawn at random in automatic games; the Drunk's believed Townsfolk is
+  // kept out of play.
+  const pool = (t: 'townsfolk' | 'outsider' | 'minion' | 'demon') =>
+    ALL_OF(t, script).filter((c) => !exclude.has(c) && c !== chosenBelief && (placement === 'random' || c !== 'drunk'));
+  // Setup modifiers of the evil team are known before the good team is drawn. An evil team whose
+  // modifiers ask for more good characters than are left (a Baron when the Drunk is not drawn, or
+  // after removals) is redrawn; a legal draw on the first try consumes the RNG exactly as before.
+  const slotsFit = (c: SetupCounts) => {
+    const outsiders = c.outsiders - (drunkSeat !== null ? 1 : 0);
+    return outsiders >= 0 && outsiders <= pool('outsider').length && c.townsfolk <= pool('townsfolk').length;
+  };
+  let demons: CharacterId[] = [];
+  let minions: CharacterId[] = [];
+  let counts: SetupCounts = { ...base };
+  for (let attempt = 0; attempt < 50; attempt++) {
+    demons = draw(rng, pool('demon'), base.demons, 'Demons');
+    minions = draw(rng, pool('minion'), base.minions, 'Minions');
+    counts = setupCounts(n, [...demons, ...minions]);
+    if (slotsFit(counts)) break;
+  }
+  if (drunkSeat !== null && counts.outsiders < 1)
+    throw new RuleError(
+      'invalid',
+      `${n} players have no Outsider slot for the Drunk${base.outsiders === 0 ? ' unless a character that adds Outsiders (the Baron) is dealt: keep it in the draw,' : ':'} deal without the Drunk, or deal by hand`,
+    );
+  const outsiders = draw(rng, pool('outsider'), counts.outsiders - (drunkSeat !== null ? 1 : 0), 'Outsiders');
+  const townsfolk = draw(rng, pool('townsfolk'), counts.townsfolk, 'Townsfolk');
   const chars: CharacterId[] = shuffle(rng, [...demons, ...minions, ...outsiders, ...townsfolk]);
   const bySeat = new Map<number, CharacterId>();
-  [...seats].sort((a, b) => a - b).forEach((seat, i) => bySeat.set(seat, chars[i]!));
+  [...seats]
+    .filter((seat) => seat !== drunkSeat)
+    .sort((a, b) => a - b)
+    .forEach((seat, i) => bySeat.set(seat, chars[i]!));
+  if (drunkSeat !== null) {
+    bySeat.set(drunkSeat, 'drunk');
+    chars.push('drunk');
+  }
   const believer = believerOf(chars);
-  const drunkBelieves = believer ? pickBelief(rng, chars, script, believer) : null;
+  const drunkBelieves = believer ? (chosenBelief ?? pickBelief(rng, chars, script, believer)) : null;
   const redHerringSeat = needsRedHerring(bySeat, drunkBelieves) ? pickRedHerring(rng, bySeat) : null;
   const demonBluffs = pickBluffs(rng, chars, drunkBelieves ? [drunkBelieves] : [], script);
   return { bySeat, drunkBelieves, redHerringSeat, demonBluffs, script };

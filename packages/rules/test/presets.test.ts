@@ -169,8 +169,11 @@ describe('deal_preset / deal_bag commands', () => {
     const bag: CharacterId[] = ['imp', 'baron', 'drunk', 'saint', 'empath', 'chef', 'monk'];
     const s = newGame(7, 4);
     expect(stErr(s, { type: 'deal_bag', characters: bag.slice(0, 6) })).toMatch(/6 characters for 7/);
-    st(s, { type: 'deal_bag', characters: bag, drunkBelieves: 'fortune_teller', demonBluffs: ['mayor'] });
+    // A Drunk in the bag needs the Storyteller's seat: the RNG never decides who the Drunk is.
+    expect(stErr(s, { type: 'deal_bag', characters: bag, drunkBelieves: 'fortune_teller' })).toMatch(/choose which player is the Drunk/);
+    st(s, { type: 'deal_bag', characters: bag, drunkBelieves: 'fortune_teller', demonBluffs: ['mayor'], drunkSeat: 5 });
     expect(s.players.map((p) => p.character).sort()).toEqual([...bag].sort());
+    expect(s.players[5]!.character).toBe('drunk');
     expect(s.players.find((p) => p.character === 'drunk')!.believedCharacter).toBe('fortune_teller');
     expect(s.demonBluffs[0]).toBe('mayor');
     expect(s.demonBluffs).toHaveLength(3);

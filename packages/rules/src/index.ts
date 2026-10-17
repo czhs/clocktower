@@ -33,6 +33,8 @@ export {
   completeAssignment,
   type SetupCounts,
   type Assignment,
+  type DrunkPlacement,
+  type RandomSetupOptions,
 } from './setup.js';
 export { storylineBag, dealBag, presetAssignment, type BagDealOptions } from './presets.js';
 export {

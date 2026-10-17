@@ -285,9 +285,22 @@ export const StPreparePatch = z
 export type StPreparePatch = z.infer<typeof StPreparePatch>;
 
 export const StCommand = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('random_setup') }),
-  /** (additive, v2.2) Deal a preset storyline: the server builds a legal bag for this player count and shuffles it onto the seats. */
-  z.object({ type: z.literal('deal_preset'), storyline: z.enum(STORYLINE_IDS), seed: z.number().int().min(0).max(0xffffffff).optional() }),
+  /**
+   * Random characters for every seat. The Drunk is never drawn at random: the Storyteller places it
+   * (`drunkSeat`, optionally `drunkBelieves`) or leaves it out. (additive) `exclude` = characters
+   * the Storyteller removed from the draw.
+   */
+  z.object({
+    type: z.literal('random_setup'),
+    exclude: z.array(CharacterIdSchema).max(CHARACTER_COUNT).optional(),
+    drunkSeat: Seat.optional(),
+    drunkBelieves: CharacterIdSchema.optional(),
+  }),
+  /**
+   * (additive, v2.2) Deal a preset storyline: the server builds a legal bag for this player count and shuffles it onto the seats.
+   * (additive) `drunkSeat`: who the Drunk is if the storyline deals one (required then).
+   */
+  z.object({ type: z.literal('deal_preset'), storyline: z.enum(STORYLINE_IDS), seed: z.number().int().min(0).max(0xffffffff).optional(), drunkSeat: Seat.optional() }),
   /**
    * (additive, v2.2) Deal the Storyteller's own bag of characters: the server SHUFFLES it onto the seats.
    * Size must equal the player count; standard distribution unless allowNonstandard.
@@ -296,6 +309,8 @@ export const StCommand = z.discriminatedUnion('type', [
     type: z.literal('deal_bag'),
     characters: z.array(CharacterIdSchema).min(5).max(15),
     drunkBelieves: CharacterIdSchema.optional(),
+    /** (additive) Who the Drunk is, when the bag holds one (required then: never left to chance). */
+    drunkSeat: Seat.optional(),
     demonBluffs: z.array(CharacterIdSchema).max(3).optional(),
     allowNonstandard: z.boolean().optional(),
     seed: z.number().int().min(0).max(0xffffffff).optional(),
@@ -390,6 +405,8 @@ export const StCommand = z.discriminatedUnion('type', [
   z.object({ type: z.literal('set_red_herring'), seat: Seat.nullable() }),
   /** (additive) Change the Townsfolk the Drunk believes they are (the player is told). */
   z.object({ type: z.literal('set_drunk_belief'), seat: Seat, character: CharacterIdSchema }),
+  /** (additive) Replace the Demon's bluffs (good characters not in play), before the Demon learns them. */
+  z.object({ type: z.literal('set_demon_bluffs'), bluffs: z.array(CharacterIdSchema).max(3) }),
 
   // ---- (additive, gameplay 2026-10-15) "props": the Storyteller can override anything. The rules
   // engine only advises (alerts); none of these is gated on engine readiness.

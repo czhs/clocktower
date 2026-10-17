@@ -64,8 +64,12 @@ describe('deal_preset / deal_bag through the game module', () => {
 
   it('deal_preset: legal setup in the grimoire, deal info + log for the ST, timeline entry, setup record; players see nothing', () => {
     const r = rig(9);
-    r.st({ type: 'deal_preset', storyline: 'outsiders-gate' });
+    // The storyline names the Drunk: the Storyteller must say who it is (never left to chance).
+    r.send('st', { type: 'deal_preset', storyline: 'outsiders-gate' });
+    expect(r.errors('st').at(-1)?.message).toMatch(/choose which player is the Drunk/);
+    r.st({ type: 'deal_preset', storyline: 'outsiders-gate', drunkSeat: 3 });
     const v = r.stView();
+    expect(v.grimoire.filter((g) => g.character === 'drunk').map((g) => g.seat)).toEqual([3]);
     expect(v.charactersAssigned).toBe(true);
     expect(v.deal).toEqual({ method: 'storyline', storyline: 'outsiders-gate' });
     expect(r.chars()).toContain('baron');
