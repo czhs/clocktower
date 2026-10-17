@@ -28,10 +28,7 @@ import './hud.css';
 export function Hud({ conn }: { conn: RoomConnection; account: AccountView }) {
   const view = useStore(conn.gameView);
   // (qol) Only "may I start another game?" from the lobby view: no re-render on chat / members.
-  const canRematch = useStoreSelector(conn.lobbyView, (l) => {
-    const me = l?.members.find((m) => m.pid === l.youPid);
-    return !!me && (me.role === 'storyteller' || me.isHost);
-  });
+  const canRematch = useStoreSelector(conn.lobbyView, (l) => !!l?.youAdmin);
   if (!view) return null;
   return (
     <div class="cth">
@@ -213,6 +210,7 @@ function PlayerHud({ view, conn }: { view: PlayerGameView; conn: RoomConnection 
       <div class="cth-dock">
         <PhaseBar view={view} />
         {view.prompts.length > 0 && <PromptCard key={view.prompts[0]!.id} prompt={view.prompts[0]!} view={view} conn={conn} />}
+        {view.exile && view.exile.status === 'voting' && <ExilePanel view={view} conn={conn} />}
         {activeNom && <VotePanel key={`${activeNom.id}-${activeNom.status}-${locked}`} nom={activeNom} view={view} conn={conn} />}
         {!activeNom && <RecentVote view={view} />}
         {!activeNom && view.day?.onTheBlock && view.phase === 'day' && (
@@ -350,6 +348,11 @@ function PlayerList({ view, conn }: { view: PlayerGameView; conn: RoomConnection
               </span>
               {!p.alive && <span title={p.ghostVoteAvailable ? 'Dead — ghost vote available' : 'Dead — ghost vote spent'}>{p.ghostVoteAvailable ? '👻' : '☠'}</span>}
               {!p.connected && <span class="muted" title="Disconnected">⚡</span>}
+              {p.traveller && (
+                <span class="cth-mini cth-traveller" title={`Traveller: ${charName(p.traveller)}${p.exiled ? ' (exiled)' : ''} · exiled, never executed`}>
+                  {p.exiled ? 'exiled' : charName(p.traveller)}
+                </span>
+              )}
               {p.nominatedToday && <span class="cth-mini" title="Has nominated today">N</span>}
               {p.wasNominatedToday && <span class="cth-mini" title="Was nominated today">⚖</span>}
               {mark && (
@@ -358,7 +361,7 @@ function PlayerList({ view, conn }: { view: PlayerGameView; conn: RoomConnection
                 </span>
               )}
               <span class="cth-spacer" />
-              {canNominate && !p.wasNominatedToday && (
+              {canNominate && !p.wasNominatedToday && !p.traveller && (
                 <ArmButton
                   label="Nominate"
                   confirmLabel="Confirm"
@@ -586,6 +589,28 @@ function VoteSummary({ nom, players, me }: { nom: NominationView; players: Publi
             </div>
           )}
         </>
+      )}
+    </div>
+  );
+}
+
+/** (travellers) Exile vote: everyone may raise a hand, alive or dead, without spending a ghost vote. */
+function ExilePanel({ view, conn }: { view: PlayerGameView; conn: RoomConnection }) {
+  const ex = view.exile!;
+  const up = ex.hands.includes(view.you.seat);
+  const me = view.players.find((p) => p.seat === view.you.seat);
+  return (
+    <div class="cth-vote cth-exile" role="status">
+      <p>
+        Exile <b>{nameOf(view.players, ex.travellerSeat)}</b>?{' '}
+        <span class="muted">
+          ✋ {ex.hands.length} / {ex.threshold} · everyone may vote (dead players too)
+        </span>
+      </p>
+      {!me?.exiled && (
+        <button class={up ? 'on' : 'primary'} aria-pressed={up} onClick={() => conn.send('game:exileHand', { vote: !up })}>
+          {up ? '✋ Hand raised (lower)' : '✋ Raise hand to exile'}
+        </button>
       )}
     </div>
   );

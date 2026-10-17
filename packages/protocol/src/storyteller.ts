@@ -168,6 +168,10 @@ export interface StorytellerGameView {
   settings?: StSettings;
   /** (additive, v2.2) How the current characters were dealt (null = not dealt yet). Storyteller-only. */
   deal?: DealInfo | null;
+  /** (additive, travellers) Seats the Storyteller made Travellers (dealt outside the distribution). */
+  travellers?: { seat: number; character: CharacterId; alignment: Alignment }[];
+  /** (additive, travellers) The running / most recent exile vote today. */
+  exile?: import('./game.js').ExileView | null;
 }
 
 /** (additive, v2.2) How characters were dealt: random_setup / deal_preset / deal_bag / assign_characters. */
@@ -363,6 +367,18 @@ export const StCommand = z.discriminatedUnion('type', [
   z.object({ type: z.literal('announce'), text: stText(1, 300) }),
   z.object({ type: z.literal('set_travel_speed'), mult: z.number().min(1).max(4) }),
   z.object({ type: z.literal('declare_winner'), winner: z.enum(['good', 'evil']), reason: stLine(0, 200) }),
+  /**
+   * (additive, travellers) Make a player a Traveller (character + secret alignment), or undo it
+   * (character null, setup only). In setup the seat is left out of every deal and the distribution;
+   * later it turns the player into the Traveller at once.
+   */
+  z.object({ type: z.literal('set_traveller'), seat: Seat, character: CharacterIdSchema.nullable(), alignment: z.enum(['good', 'evil']).optional() }),
+  /** (additive, travellers) Exile: call it on a Traveller (optionally opening the vote at once), open the vote, set a hand, tally, withdraw. */
+  z.object({ type: z.literal('exile_call'), seat: Seat, startVote: z.boolean().optional() }),
+  z.object({ type: z.literal('exile_start') }),
+  z.object({ type: z.literal('exile_hand'), seat: Seat, vote: z.boolean() }),
+  z.object({ type: z.literal('exile_tally') }),
+  z.object({ type: z.literal('exile_cancel') }),
   z.object({ type: z.literal('undo_last') }),
   /** (additive) Accept the pending game-ending result (the game finishes and is recorded). */
   z.object({ type: z.literal('confirm_result') }),

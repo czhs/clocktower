@@ -15,6 +15,7 @@ export function autoStorylineLine(view: LobbyRoomView): string {
 }
 
 export function AutoStorylineSetting({ view, conn, isHost }: { view: LobbyRoomView; conn: RoomConnection; isHost: boolean }) {
+  if (view.lobby.script !== 'trouble-brewing') return <p class="muted ct-small">Characters are dealt at random from this script (storylines are Trouble Brewing only).</p>;
   if (!isHost) return <p class="muted ct-small">{autoStorylineLine(view)}</p>;
   const choice = view.autoStorylineChoice ?? null;
   const n = Math.max(MIN_PLAYERS, view.members.filter((m) => m.role === 'player').length);

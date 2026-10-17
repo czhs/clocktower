@@ -661,8 +661,8 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
         if (!this.requireWaiting(seat, type)) return;
         const target = this.seats.get((msg as C2SParsed<'lobby:transferStoryteller'>).pid);
         const st = this.storytellerSeat();
-        // Only the host or the current Storyteller may move the seat; players cannot seize it.
-        if (!(m.isHost || isSt)) return this.sendError(seat, { code: 'forbidden', message: 'Only the host or Storyteller can do that', for: type });
+        // Only the current Storyteller may hand the seat over; players cannot seize it.
+        if (!isSt) return this.sendError(seat, { code: 'forbidden', message: 'Only the Storyteller can hand over the seat', for: type });
         if (!target) return this.sendError(seat, { code: 'not_found', message: 'No such member', for: type });
         if (target === st) return;
         if (this.isAuto()) return this.sendError(seat, { code: 'forbidden', message: 'This is an automatic game: there is no Storyteller seat', for: type }); // (auto-st)
@@ -686,7 +686,7 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
       case 'lobby:kick': {
         // (v2.3 OPS-6) the host (any phase), or the seated Storyteller once the game is running; the
         // removal bans the account AND its network from this lobby until the host/ST lifts it (lobby:unban).
-        if (!(m.isHost || (isSt && this.status !== 'waiting'))) return this.sendError(seat, { code: 'forbidden', message: 'Only the host or Storyteller can do that', for: type });
+        if (!this.isAdmin(m)) return this.sendError(seat, { code: 'forbidden', message: this.isAuto() ? 'Only the host can remove players' : 'Only the Storyteller can remove players', for: type });
         const target = this.seats.get((msg as C2SParsed<'lobby:kick'>).pid);
         if (!target) return this.sendError(seat, { code: 'not_found', message: 'No such member', for: type });
         if (target === seat) return this.sendError(seat, { code: 'forbidden', message: 'You cannot kick yourself', for: type });
@@ -722,7 +722,7 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
       case 'report:player':
         return handleModeration(this.modContext(seat, type), this.modMember(seat), type as ModerationType, msg);
       case 'lobby:settings': {
-        if (!m.isHost) return this.sendError(seat, { code: 'forbidden', message: 'Only the host can do that', for: type });
+        if (!this.isAdmin(m)) return this.sendError(seat, { code: 'forbidden', message: this.isAuto() ? 'Only the host can change the lobby' : 'Only the Storyteller can change the lobby', for: type });
         if (!this.requireWaiting(seat, type)) return;
         const s = msg as C2SParsed<'lobby:settings'>;
         // (auto-st) storytellerMode: switching to 'auto' moves a seated Storyteller to a player seat.
@@ -740,6 +740,16 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
         }
         if (s.name !== undefined) this.settings.name = s.name;
         if (s.description !== undefined) this.settings.description = s.description;
+        // (multi-script) the script can change until the game starts; storylines are TB-only
+        const script = s.script ?? this.settings.script;
+        if (s.autoStoryline && script !== 'trouble-brewing') {
+          return this.sendError(seat, { code: 'invalid', message: 'Storylines are Trouble Brewing setups', for: type });
+        }
+        if (s.script !== undefined && s.script !== this.settings.script) {
+          this.settings.script = s.script;
+          if (s.script !== 'trouble-brewing') this.settings.autoStoryline = null;
+          this.log.info('script changed', { script: s.script });
+        }
         if (s.storytellerMode !== undefined && s.storytellerMode !== this.settings.storytellerMode) {
           this.settings.storytellerMode = s.storytellerMode;
           if (toAuto && stNow) {
@@ -799,7 +809,8 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
       case 'game:nominate':
       case 'game:vote':
       case 'game:promptResponse':
-      case 'game:slayerShot': {
+      case 'game:slayerShot':
+      case 'game:exileHand': {
         if (this.status !== 'in_game') return this.sendError(seat, { code: 'phase', message: 'No game in progress', for: type });
         if (m.role !== 'player') return this.sendError(seat, { code: 'forbidden', message: 'Players only', for: type });
         this.game.handlePlayer(m.pid, type, msg as C2SParsed<'game:vote'>);
@@ -849,8 +860,8 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
     const m = seat.member;
     if (this.status === 'finished') {
       // Rematch: back to the waiting room with the same members.
-      if (!(m.role === 'storyteller' || m.isHost)) {
-        return this.sendError(seat, { code: 'forbidden', message: 'Only the Storyteller or host can start a rematch', for: 'lobby:start' });
+      if (!this.isAdmin(m)) {
+        return this.sendError(seat, { code: 'forbidden', message: this.isAuto() ? 'Only the host can start a rematch' : 'Only the Storyteller can start a rematch', for: 'lobby:start' });
       }
       return this.resetForRematch();
     }
@@ -988,7 +999,7 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
   // (v2.3 OPS-6) moderation glue (moderation/room.ts)
   private modMember(seat: Seat): ModMember {
     const m = seat.member;
-    return { pid: m.pid, accountId: m.accountId, name: this.label(m.pid), isHost: m.isHost, role: m.role };
+    return { pid: m.pid, accountId: m.accountId, name: this.label(m.pid), isHost: this.isAuto() && m.isHost, role: m.role };
   }
 
   private modContext(seat: Seat, type: string) {
@@ -1348,13 +1359,14 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
           lobby: summary,
           members,
           youPid: s.member.pid,
-          canStart: (this.isAuto() ? s.member.isHost : s.member.role === 'storyteller') && blockers.length === 0, // (auto-st) auto: the host
+          canStart: this.isAdmin(s.member) && blockers.length === 0, // (auto-st) auto: the host
           startBlockers: blockers,
+          youAdmin: this.isAdmin(s.member),
         };
         // (v2.2) private extras: the seated Storyteller's pre-game settings; the auto host's storyline pick.
         if (s.member.role === 'storyteller' && !this.isAuto() && isAutoCapable(this.game) && this.game.prepareView) view.stPrepare = this.game.prepareView();
         if (this.isAuto() && s.member.isHost) view.autoStorylineChoice = this.settings.autoStoryline;
-        if (removed.length && (s.member.isHost || s.member.role === 'storyteller')) view.removed = removed; // (v2.3 OPS-6)
+        if (removed.length && this.isAdmin(s.member)) view.removed = removed; // (v2.3 OPS-6)
         this.sendTo(s, 'lobby:view', view);
       }
     }
@@ -1482,6 +1494,14 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
     return this.settings.storytellerMode === 'auto';
   }
 
+  /**
+   * Who runs the lobby: the seated Storyteller (full control of a human game), or the host of an
+   * automatic game, which has no Storyteller. Everyone else can only take the open Storyteller seat.
+   */
+  private isAdmin(m: { isHost: boolean; role: string }): boolean {
+    return this.isAuto() ? m.isHost : m.role === 'storyteller';
+  }
+
   private startBlockers(): string[] {
     const st = this.storytellerSeat();
     return startBlockers({
@@ -1490,6 +1510,7 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
       // (auto-st) automatic games need no Storyteller (the host starts with 5+ ready players).
       storyteller: this.isAuto() ? { connected: true } : st ? { connected: st.member.connected } : null,
       players: this.playerSeats().map((s) => ({ connected: s.member.connected, ready: s.ready })),
+      autoCustomScript: this.isAuto() && this.settings.script === 'custom',
     });
   }
 

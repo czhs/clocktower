@@ -6,16 +6,16 @@
 // After any deal the grimoire shows the result; seats can still be tweaked (Setup tab: "Load current
 // Grimoire" -> edit -> Assign) and the cast can be re-dealt (a confirm guards an existing deal).
 // Nothing here reveals anything to players: they only ever see their own character, at nightfall.
-import { useState } from 'preact/hooks';
+import { useContext, useState } from 'preact/hooks';
 import { CHARACTER_INFO, type CharacterId, type SeatedType, type StorylineId, type StorytellerGameView } from '@ct/protocol';
-import { charName, CharacterSelect } from '../hud/shared';
+import { charName, CharacterSelect, ScriptCtx } from '../hud/shared';
 import { ConfirmButton, type Send } from './stage';
-import { charactersOf, checkBag, coreLine, countsLine, storylineOptions, storylineTitle, TYPE_ORDER } from './dealLogic';
+import { charactersOf, checkBag, coreLine, countsLine, scriptDeals, storylineOptions, storylineTitle, TYPE_ORDER } from './dealLogic';
 
 export type DealMode = 'random' | 'storyline' | 'bag' | 'hand';
 
 const MODES: { id: DealMode; label: string; icon: string; hint: string }[] = [
-  { id: 'random', label: 'Random', icon: '🎲', hint: 'A legal Trouble Brewing setup, dealt at random' },
+  { id: 'random', label: 'Random', icon: '🎲', hint: 'A legal setup for this script, dealt at random' },
   { id: 'storyline', label: 'Storyline', icon: '📜', hint: 'A preset story, dealt at random to the players' },
   { id: 'bag', label: 'Pick characters', icon: '⚱', hint: 'Choose which characters are in play; the server deals them at random' },
   { id: 'hand', label: 'By hand', icon: '✎', hint: 'Choose every player’s character yourself (Setup tab)' },
@@ -70,7 +70,8 @@ export function StorylineCards({ n, value, onPick }: { n: number; value: Storyli
 
 /** Pick the characters in play: toggle chips by type, live standard-count check. */
 function BagBuilder({ view, send, confirmRedeal }: { view: StorytellerGameView; send: Send; confirmRedeal: boolean }) {
-  const n = view.players.length;
+  const n = view.players.length - (view.travellers?.length ?? 0); // Travellers sit outside the distribution
+  const script = useContext(ScriptCtx);
   const [bag, setBag] = useState<CharacterId[]>([]);
   const [nonstandard, setNonstandard] = useState(false);
   const [drunkBelieves, setDrunkBelieves] = useState<CharacterId | ''>('');
@@ -101,7 +102,7 @@ function BagBuilder({ view, send, confirmRedeal }: { view: StorytellerGameView; 
             {typeCount[t][1] !== null && `/${typeCount[t][1]}`}
           </span>
           <span class="cts-bag-chips">
-            {charactersOf(t).map((c) => (
+            {charactersOf(t, script).map((c) => (
               <button key={c} class={`cts-bagchip ${CHARACTER_INFO[c].alignment}${bag.includes(c) ? ' on' : ''}`} aria-pressed={bag.includes(c)} title={CHARACTER_INFO[c].ability} onClick={() => toggle(c)}>
                 {charName(c)}
               </button>
@@ -124,7 +125,7 @@ function BagBuilder({ view, send, confirmRedeal }: { view: StorytellerGameView; 
       {bag.includes('drunk') && (
         <label class="cts-field">
           The Drunk believes they are
-          <CharacterSelect value={drunkBelieves} allowEmpty onChange={setDrunkBelieves} only={charactersOf('townsfolk').filter((c) => !bag.includes(c))} />
+          <CharacterSelect value={drunkBelieves} allowEmpty onChange={setDrunkBelieves} only={charactersOf('townsfolk', script).filter((c) => !bag.includes(c))} />
           <small class="muted">(empty = random)</small>
         </label>
       )}
@@ -157,9 +158,11 @@ function BagBuilder({ view, send, confirmRedeal }: { view: StorytellerGameView; 
 /** The script panel's Setup step: choose how to deal (default view the Storyteller sees). */
 export function DealChooser({ view, send, openHand }: { view: StorytellerGameView; send: Send; openHand: () => void }) {
   const dealt = !!view.charactersAssigned;
-  const [mode, setMode] = useState<DealMode>(view.deal?.method === 'storyline' ? 'storyline' : view.deal?.method === 'bag' ? 'bag' : 'random');
+  const can = scriptDeals(useContext(ScriptCtx));
+  const modes = MODES.filter((m) => (m.id === 'random' ? can.random : m.id === 'storyline' ? can.storyline : true));
+  const [mode, setMode] = useState<DealMode>(view.deal?.method === 'storyline' ? 'storyline' : view.deal?.method === 'bag' || !can.random ? 'bag' : 'random');
   const [story, setStory] = useState<StorylineId | null>(view.deal?.storyline ?? null);
-  const n = view.players.length;
+  const n = view.players.length - (view.travellers?.length ?? 0); // Travellers sit outside the distribution
   const storyOk = !!story && storylineOptions(n).some((o) => o.def.id === story && o.supported);
   // (a plain function, not a component: the armed confirm must survive re-renders)
   const dealButton = (label: string, run: () => void, disabled = false) =>
@@ -176,7 +179,7 @@ export function DealChooser({ view, send, openHand }: { view: StorytellerGameVie
     <div class="cts-deal">
       <p class="cts-deal-q">How do you want to deal?</p>
       <ModeSwitch
-        modes={MODES}
+        modes={modes}
         value={mode}
         label="How to deal"
         onPick={(m) => {

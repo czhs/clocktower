@@ -61,7 +61,7 @@ export interface GameModuleOptions {
   auto?: Partial<AutoClockOptions>;
 }
 
-type PlayerMsgType = 'game:nominate' | 'game:vote' | 'game:promptResponse' | 'game:slayerShot';
+type PlayerMsgType = 'game:nominate' | 'game:vote' | 'game:promptResponse' | 'game:slayerShot' | 'game:exileHand';
 
 interface PublicSnapshot {
   phase: GamePhase;
@@ -166,6 +166,7 @@ export function createGameModule(host: RoomHost, opts: GameModuleOptions = {}): 
     const r = applyStCommand(s, cmd, { now: host.now() });
     logStCommand(cmd, r.ok, r.ok ? undefined : r.code, 'prepared deal');
     if (r.ok) commit(before, r.effects, { kind: 'st', cmd });
+    else noteStoryteller(s, host.now(), `Prepared deal not applied (${r.error}): deal the characters yourself`);
   }
   // (auto-st, v2.1) town clock + automatic games. Human games: the Storyteller's 'day_clock' prop.
   let mode: StorytellerMode = 'human';
@@ -508,6 +509,8 @@ export function createGameModule(host: RoomHost, opts: GameModuleOptions = {}): 
       }
       case 'game:slayerShot':
         return { type: 'slayerShot', targetSeat: (payload as C2SParsed<'game:slayerShot'>).targetSeat };
+      case 'game:exileHand':
+        return { type: 'exileHand', vote: (payload as C2SParsed<'game:exileHand'>).vote };
     }
   }
 
@@ -568,6 +571,7 @@ export function createGameModule(host: RoomHost, opts: GameModuleOptions = {}): 
       synced = { circle: '', escort: false, settings: '' };
       state = createGame({
         players: seats.map((x) => ({ pid: x.pid, seat: x.seat, name: x.name })),
+        script: host.script(), // the lobby's script picks the character pool
         rng: mulberry32(seed),
         now: host.now(),
         ...(opts.voteStepMs !== undefined ? { voteStepMs: opts.voteStepMs } : {}),

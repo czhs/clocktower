@@ -564,7 +564,7 @@ export function createAutoStoryteller(port: AutoPort, opts: AutoClockOptions, fa
       cmd({ type: 'set_bedtime_seconds', seconds: Math.max(10, Math.min(300, Math.round(opts.bedtimeSec))) });
       // (v2.2) the host's storyline (dealt at random onto the seats); falls back to a random setup
       // when it does not fit this player count.
-      const story = opts.storyline ? storylineById(opts.storyline) : undefined;
+      const story = opts.storyline && st().script === 'trouble-brewing' ? storylineById(opts.storyline) : undefined; // storylines are TB setups
       const dealt = story && storylineProblem(story, st().players.length, CHARACTER_INFO) === null ? cmd({ type: 'deal_preset', storyline: story.id }) : false;
       if (!dealt) cmd({ type: 'random_setup' });
       const s = st();

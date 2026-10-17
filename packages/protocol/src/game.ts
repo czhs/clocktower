@@ -57,6 +57,27 @@ export interface PublicPlayerView {
   nominatedToday: boolean;
   wasNominatedToday: boolean;
   connected: boolean;
+  /** (additive, travellers) A Traveller's character is public once roles are revealed (alignment is not). */
+  traveller?: CharacterId;
+  /** (additive, travellers) This Traveller was exiled (out of the game). */
+  exiled?: boolean;
+}
+
+/**
+ * (additive, travellers) A Traveller exile vote. Public: everyone, alive or dead, may raise a hand
+ * and a dead player does not spend their ghost vote. Needs more than half the living.
+ */
+export interface ExileView {
+  id: string;
+  travellerSeat: number;
+  status: 'pending' | 'voting' | 'tallied' | 'cancelled';
+  /** Raised (not yet locked) hands. */
+  hands: number[];
+  /** Locked votes after the tally (seat -> raised). */
+  votes: Record<number, boolean>;
+  voteCount: number;
+  threshold: number;
+  exiled: boolean;
 }
 
 /** What the player has been told about their own character (Drunk sees a Townsfolk). */
@@ -173,6 +194,8 @@ export interface PlayerGameView {
   clock?: import('./clock.js').DayClockView | null;
   /** (v2.1) 'auto' = no Storyteller: the server runs the game. */
   storytellerMode?: import('./clock.js').StorytellerMode;
+  /** (additive, travellers) The running / most recent exile vote today (public). */
+  exile?: ExileView | null;
 }
 
 // Player C2S payloads
@@ -186,6 +209,8 @@ export const PromptResponseMsg = z.object({
 });
 /** Public "I am the Slayer" shot; anyone may attempt, only a real healthy Slayer's shot can kill. */
 export const SlayerShotMsg = z.object({ targetSeat: z.number().int().min(0).max(14) });
+/** (additive, travellers) Raise / lower your hand in the running exile vote (alive or dead). */
+export const ExileHandMsg = z.object({ vote: z.boolean() });
 
 // ---------------------------------------------------------------------------------------
 // Additions by rules-storyteller (2026-10-14, additive). Character metadata shared by the

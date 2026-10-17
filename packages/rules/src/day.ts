@@ -247,6 +247,7 @@ export function executeOnBlock(s: GameState, op: Op, seat: number): void {
 function executeNow(s: GameState, op: Op, seat: number, cause: 'execution' | 'virgin'): void {
   const d = s.day!;
   const p = mustPlayer(s, seat);
+  if (!canBeNominated(p)) throw new RuleError('forbidden', 'Travellers are exiled, not executed');
   d.executionOccurred = true;
   d.executedSeat = seat;
   d.block = null;
@@ -406,6 +407,7 @@ export function createNomination(s: GameState, op: Op, nominatorSeat: number, no
   const d = day(s);
   const nominator = mustPlayer(s, nominatorSeat);
   const nominee = mustPlayer(s, nomineeSeat);
+  if (!canBeNominated(nominee)) throw new RuleError('forbidden', 'Travellers are exiled, not executed');
   if (start) {
     const stopped = abortRunningVote(s);
     if (stopped) alert(s, op, `The running vote on seat ${stopped.nomineeSeat + 1} was stopped (it is pending again).`);

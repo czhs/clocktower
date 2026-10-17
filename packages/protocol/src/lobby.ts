@@ -112,6 +112,12 @@ export interface LobbyRoomView {
   members: MemberView[];
   youPid: string;
   canStart: boolean;
+  /**
+   * (additive) You run this lobby: the seated Storyteller, or the host of an automatic game (no
+   * Storyteller). Lobby settings, removals and the Storyteller seat are theirs; everyone else may
+   * only take the Storyteller seat when it is open.
+   */
+  youAdmin?: boolean;
   startBlockers: string[];
   /** (v2.2) ONLY in the seated Storyteller's own view: their pre-game settings ('prepare'). */
   stPrepare?: import('./storyteller.js').StPrepareView;
@@ -131,6 +137,8 @@ export const LobbySettingsMsg = z.object({
   maxPlayers: z.number().int().min(MIN_PLAYERS).max(MAX_PLAYERS).optional(),
   /** (v2.1) host only, waiting phase only. */
   storytellerMode: z.enum(['human', 'auto']).optional(),
+  /** (multi-script, additive) host only, waiting phase only. Leaving Trouble Brewing clears a storyline. */
+  script: z.enum(SCRIPTS).optional(),
   autoTimings: z
     .object({ discussionMin: z.number().min(1).max(30), nominationsMin: z.number().min(1).max(20), bedtimeSec: z.number().int().min(15).max(180), nightSec: z.number().int().min(20).max(300) })
     .partial()

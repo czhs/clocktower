@@ -176,6 +176,11 @@ export interface GameState {
     voterSeats: number[];
     executionOccurred: boolean;
   } | null;
+  /**
+   * (travellers) Seats the Storyteller made Travellers, with the character and the alignment they
+   * chose. Every deal skips these seats and the distribution is computed without them.
+   */
+  travellerSeats: Record<number, { character: CharacterId; alignment: Alignment }>;
   /** Running / most recent Traveller exile vote (see exile.ts). */
   exile: import('./exile.js').ExileState | null;
   exileSeq: number;

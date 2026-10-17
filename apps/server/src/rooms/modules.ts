@@ -109,8 +109,8 @@ export interface GameModule {
   start(seats: { pid: string; seat: number; name: string }[], storytellerPid: string): void;
   handlePlayer(
     pid: string,
-    type: 'game:nominate' | 'game:vote' | 'game:promptResponse' | 'game:slayerShot',
-    payload: C2SParsed<'game:nominate'> | C2SParsed<'game:vote'> | C2SParsed<'game:promptResponse'> | C2SParsed<'game:slayerShot'>,
+    type: 'game:nominate' | 'game:vote' | 'game:promptResponse' | 'game:slayerShot' | 'game:exileHand',
+    payload: C2SParsed<'game:nominate'> | C2SParsed<'game:vote'> | C2SParsed<'game:promptResponse'> | C2SParsed<'game:slayerShot'> | C2SParsed<'game:exileHand'>,
   ): void;
   handleStoryteller(pid: string, cmd: C2SParsed<'st:command'>): void;
   /** Per-client projection. null before the game starts. */

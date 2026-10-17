@@ -4,9 +4,11 @@ import {
   LOBBY_NAME_MAX,
   MAX_PLAYERS,
   MIN_PLAYERS,
+  SCRIPTS,
   type AccountView,
   type LobbyRoomView,
   type MemberView,
+  type ScriptId,
   type StorytellerMode,
   WORD_LOBBY_ID_RE,
 } from '@ct/protocol';
@@ -68,6 +70,9 @@ export function WaitingRoom({ conn, onLeave }: { conn: RoomConnection; account: 
     );
   const me = view.members.find((m) => m.pid === view.youPid);
   const isHost = !!me?.isHost;
+  // The lobby admin: the seated Storyteller, or the host of an automatic game (no Storyteller).
+  // Everyone else may only take the open Storyteller seat.
+  const admin = !!view.youAdmin;
   const isSt = me?.role === 'storyteller';
   const st = view.members.find((m) => m.role === 'storyteller') ?? null;
   const players = view.members.filter((m) => m.role === 'player');
@@ -163,7 +168,7 @@ export function WaitingRoom({ conn, onLeave }: { conn: RoomConnection; account: 
           {view.lobby.description && <p class="ct-waiting-desc">{view.lobby.description}</p>}
           <ShareLink lobbyId={view.lobby.id} />
 
-          <GameMode view={view} conn={conn} isHost={isHost} st={st} auto={auto} />
+          <GameMode view={view} conn={conn} isHost={admin} st={st} auto={auto} />
           {!auto &&
             (st ? (
               <MemberRow m={st} view={view} me={me} />
@@ -184,7 +189,7 @@ export function WaitingRoom({ conn, onLeave }: { conn: RoomConnection; account: 
             {players.length === 0 && <li class="muted ct-small">No players yet — share the link above.</li>}
           </ul>
           <RemovedList view={view} conn={conn} />
-          <ChatFilterSetting view={view} conn={conn} isHost={isHost} />
+          <ChatFilterSetting view={view} conn={conn} isHost={admin} />
           {view.startBlockers.length > 1 && (
             <ul class="ct-blockers">
               {view.startBlockers.map((b) => (
@@ -199,7 +204,7 @@ export function WaitingRoom({ conn, onLeave }: { conn: RoomConnection; account: 
                 Give up Storyteller seat
               </button>
             )}
-            {isHost && <HostSettings view={view} conn={conn} />}
+            {admin && <HostSettings view={view} conn={conn} />}
             {me && <LobbyCharacter conn={conn} view={view} me={me} open={pickOpen} setOpen={setPickOpen} error={pickError} setError={setPickError} />}
             <button class="ct-link" onClick={openHelp}>
               How to play
@@ -310,8 +315,10 @@ function ShareLink({ lobbyId }: { lobbyId: string }) {
 
 function MemberRow({ m, view, me, conn }: { m: MemberView; view: LobbyRoomView; me: MemberView | undefined; conn?: RoomConnection }) {
   const you = m.pid === view.youPid;
-  const canTransferSt = !!me && (me.isHost || me.role === 'storyteller') && m.role === 'player' && !isAuto(view);
-  const hostTools = !!me?.isHost && !you;
+  // The Storyteller hands over their own seat; the admin (Storyteller, or an automatic game's host) removes players.
+  const canTransferSt = me?.role === 'storyteller' && m.role === 'player' && !isAuto(view);
+  const hostTools = !!view.youAdmin && !you;
+  const autoHostTools = hostTools && isAuto(view);
   const face = m.role === 'storyteller' ? 'storyteller' : characterOf(m.cosmetics)?.id;
   return (
     <div class={`ct-member ${m.connected ? '' : 'ct-member-away'}`}>
@@ -324,7 +331,7 @@ function MemberRow({ m, view, me, conn }: { m: MemberView; view: LobbyRoomView; 
             <img class="ct-icon" src="/art/ui/storyteller.png" alt="" /> Storyteller
           </span>
         )}
-        {m.isHost && (
+        {m.isHost && isAuto(view) && (
           <span class="ct-badge ct-badge-host">
             <img class="ct-icon" src="/art/ui/host.png" alt="" /> Host
           </span>
@@ -342,9 +349,11 @@ function MemberRow({ m, view, me, conn }: { m: MemberView; view: LobbyRoomView; 
           )}
           {hostTools && (
             <>
-              <button class="ct-link" onClick={() => conn.send('lobby:transferHost', { pid: m.pid })}>
-                Make host
-              </button>
+              {autoHostTools && (
+                <button class="ct-link" onClick={() => conn.send('lobby:transferHost', { pid: m.pid })}>
+                  Make host
+                </button>
+              )}
               <button
                 class="ct-link ct-danger"
                 onClick={() => {
@@ -416,6 +425,7 @@ function HostSettings({ view, conn }: { view: LobbyRoomView; conn: RoomConnectio
   const [name, setName] = useState(view.lobby.name);
   const [description, setDescription] = useState(view.lobby.description);
   const [maxPlayers, setMaxPlayers] = useState(view.lobby.maxPlayers);
+  const [script, setScript] = useState<ScriptId>(view.lobby.script);
   const seated = view.members.filter((m) => m.role === 'player').length;
   if (!open)
     return (
@@ -428,7 +438,7 @@ function HostSettings({ view, conn }: { view: LobbyRoomView; conn: RoomConnectio
       class="ct-host-settings"
       onSubmit={(e) => {
         e.preventDefault();
-        conn.send('lobby:settings', { name: name.trim(), description: description.trim(), maxPlayers });
+        conn.send('lobby:settings', { name: name.trim(), description: description.trim(), maxPlayers, ...(script !== view.lobby.script ? { script } : {}) });
         setOpen(false);
       }}
     >
@@ -439,6 +449,17 @@ function HostSettings({ view, conn }: { view: LobbyRoomView; conn: RoomConnectio
       <label class="ct-field">
         <span>Description</span>
         <textarea rows={2} value={description} maxLength={LOBBY_DESCRIPTION_MAX} onInput={(e) => setDescription((e.currentTarget as HTMLTextAreaElement).value)} />
+      </label>
+      <label class="ct-field">
+        <span>Script</span>
+        <select value={script} onChange={(e) => setScript((e.currentTarget as HTMLSelectElement).value as ScriptId)}>
+          {SCRIPTS.map((s) => (
+            <option key={s} value={s}>
+              {SCRIPT_LABEL[s]}
+            </option>
+          ))}
+        </select>
+        {script !== 'trouble-brewing' && <small class="muted">Storylines are Trouble Brewing only; a custom script is dealt by hand.</small>}
       </label>
       <label class="ct-field">
         <span>Player seats</span>

@@ -4,6 +4,7 @@
 // names; never sent to anyone, never stored). Unit-tested in apps/client/test/deal.logic.test.ts.
 import {
   CHARACTER_INFO,
+  charactersOfScript,
   DEFAULT_ST_SETTINGS,
   MAX_PLAYERS,
   STORYLINES,
@@ -15,6 +16,7 @@ import {
   tbCounts,
   type CharacterId,
   type CharacterType,
+  type ScriptId,
   type SeatedType,
   type GrimoireEntry,
   type NightStepView,
@@ -59,8 +61,16 @@ export function coreLine(def: StorylineDef): string {
 
 export const TYPE_ORDER: SeatedType[] = ['townsfolk', 'outsider', 'minion', 'demon'];
 
-export function charactersOf(t: CharacterType): CharacterId[] {
-  return (Object.keys(CHARACTER_INFO) as CharacterId[]).filter((c) => CHARACTER_INFO[c].type === t);
+/** Characters of type `t` on `script` (a custom script may use any character). */
+export function charactersOf(t: CharacterType, script: ScriptId = 'trouble-brewing'): CharacterId[] {
+  const pool = script === 'custom' ? (Object.keys(CHARACTER_INFO) as CharacterId[]) : charactersOfScript(script);
+  return pool.filter((c) => CHARACTER_INFO[c].type === t);
+}
+
+/** Deal modes a script supports: storylines are Trouble Brewing setups; a custom script has no random pool. */
+export function scriptDeals(script: ScriptId | undefined): { random: boolean; storyline: boolean } {
+  const s = script ?? 'trouble-brewing';
+  return { random: s !== 'custom', storyline: s === 'trouble-brewing' };
 }
 
 export interface BagCheck {

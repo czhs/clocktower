@@ -208,7 +208,7 @@ function Toolbar({ conn }: { conn: RoomConnection }) {
   const game = useStoreSelector(conn.gameView, (g) => (g ? { phase: g.phase } : null), shallowEqual);
   const me = lobby?.members.find((m) => m.pid === lobby.youPid);
   const finished = game?.phase === 'finished' || lobby?.lobby.phase === 'finished';
-  const canRematch = !!game && finished && !!me && (me.role === 'storyteller' || me.isHost);
+  const canRematch = !!game && finished && !!lobby?.youAdmin;
   const leave = () => {
     if (finished || confirm('Leave the town? Your seat is kept — use “Rejoin my seat” in the lobby finder to come back.')) goTo('/');
   };

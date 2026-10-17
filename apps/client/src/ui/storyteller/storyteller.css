@@ -446,3 +446,13 @@
 @media (max-height: 520px) {
   .cts.cts-prep, .cts.cts-practice { top: 44px; max-height: calc(100dvh - 52px); width: min(420px, 52vw); }
 }
+
+/* Travellers + exile (travellers.tsx) */
+.cts-travellers { margin: 6px 0; }
+.cts-travellers summary { cursor: pointer; font-weight: 600; }
+.cts-traveller-add { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 4px; }
+.cts-traveller-add select, .cts-travellers li select { max-width: 11em; }
+.cts-exile { border-color: #8a7a3a; }
+.cts-exile-hands { list-style: none; display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; padding: 0; }
+.cts-exile-hands button { padding: 2px 8px; font-size: 12px; }
+.cts-exile-hands button.on { border-color: var(--accent); color: var(--accent); }

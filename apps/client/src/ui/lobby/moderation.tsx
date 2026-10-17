@@ -24,7 +24,8 @@ const FILTER_LABEL: Record<ChatFilterMode, string> = {
   strict: 'Strict: slurs and swearing hidden',
 };
 
-const canModerate = (me: MemberView | undefined) => !!me && (me.isHost || me.role === 'storyteller');
+/** Mute / remove / unban: the lobby admin (the Storyteller, or an automatic game's host). Reporting is for everyone. */
+const canModerate = (view: LobbyRoomView) => !!view.youAdmin;
 
 /** Report dialog: reason, optional note; your latest received lines from that member are attached. */
 export function ReportDialog({ conn, target, messageId, onClose }: { conn: RoomConnection; target: { pid: string; name: string }; messageId?: string; onClose: () => void }) {
@@ -100,8 +101,8 @@ export function ReportDialog({ conn, target, messageId, onClose }: { conn: RoomC
 export function MemberModTools({ m, view, me, conn, inGame = false }: { m: MemberView; view: LobbyRoomView; me: MemberView | undefined; conn: RoomConnection; inGame?: boolean }) {
   const [reporting, setReporting] = useState(false);
   if (!me || m.pid === view.youPid) return null;
-  const mod = canModerate(me);
-  const canRemove = inGame && (me.isHost || me.role === 'storyteller') && m.role !== 'storyteller';
+  const mod = canModerate(view);
+  const canRemove = inGame && mod && m.role !== 'storyteller';
   return (
     <>
       {mod && (
@@ -205,7 +206,7 @@ export function LobbySafety({ conn }: { conn: RoomConnection }) {
                 </li>
               ))}
             </ul>
-            {canModerate(me) && <RemovedList view={view} conn={conn} />}
+            {canModerate(view) && <RemovedList view={view} conn={conn} />}
             <div class="ct-actions">
               <button onClick={() => setOpen(false)}>Close</button>
             </div>

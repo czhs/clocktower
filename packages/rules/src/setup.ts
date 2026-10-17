@@ -196,8 +196,13 @@ export function validateAssignment(seats: readonly number[], a: Assignment): Val
   if (dupes.length) errors.push(`Duplicate characters: ${[...new Set(dupes)].join(', ')}`);
   const counts = countTypes(chars);
   if (counts.demons !== 1) errors.push(`Exactly one Demon is required (got ${counts.demons})`);
-  if (SETUP_TABLE[n]) {
-    const want = setupCounts(n, chars);
+  for (const c of new Set(chars)) if (CHARACTER_INFO[c].type === 'fabled') errors.push(`${CHARACTER_INFO[c].name} is a Fabled, not a player's character`);
+  // Travellers sit on top of a legal setup: the distribution is checked for the other seats.
+  const travellers = chars.filter((c) => CHARACTER_INFO[c].type === 'traveller').length;
+  const base = n - travellers;
+  if (travellers && SETUP_TABLE[n] && !SETUP_TABLE[base]) errors.push(`Besides Travellers, a game needs at least 5 players (got ${base})`);
+  if (SETUP_TABLE[base]) {
+    const want = setupCounts(base, chars);
     if (
       want.townsfolk !== counts.townsfolk ||
       want.outsiders !== counts.outsiders ||
@@ -206,7 +211,7 @@ export function validateAssignment(seats: readonly number[], a: Assignment): Val
     )
       warnings.push(
         `Distribution ${counts.townsfolk}/${counts.outsiders}/${counts.minions}/${counts.demons} differs from the standard ` +
-          `${want.townsfolk}/${want.outsiders}/${want.minions}/${want.demons} for ${n} players`,
+          `${want.townsfolk}/${want.outsiders}/${want.minions}/${want.demons} for ${base} players${travellers ? ` (+${travellers} Traveller${travellers > 1 ? 's' : ''})` : ''}`,
       );
   }
   const believer = believerOf(chars);
@@ -272,6 +277,13 @@ export function applyAssignment(s: GameState, a: Assignment): void {
     p.believedAlignment = CHARACTER_INFO[p.believedCharacter].alignment;
     p.reminders = [];
     if (def?.believesOther) p.reminders.push(`Is the ${CHARACTER_INFO[c].name}`);
+    // A Traveller's alignment is the Storyteller's choice (the catalogue value is only a default).
+    if (CHARACTER_INFO[c].type === 'traveller') {
+      const chosen = s.travellerSeats?.[p.seat]?.alignment ?? CHARACTER_INFO[c].alignment;
+      p.alignment = chosen;
+      p.believedAlignment = chosen;
+      p.reminders.push(`Traveller (${chosen})`);
+    }
   }
   s.redHerringSeat = a.redHerringSeat;
   s.demonBluffs = [...a.demonBluffs];

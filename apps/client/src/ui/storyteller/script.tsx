@@ -18,6 +18,7 @@ import { charName, Countdown, nameOf } from '../hud/shared';
 import { BedtimeTimer, ClockButton, ConfirmButton, deathEffects, EVERYONE, noExecutionEffects, only, type Send } from './stage';
 import { StClockControl } from '../clock/StClock'; // (v2.1, clock-client) the town clock on the tower
 import { DealChooser, dealSummary } from './deal'; // (v2.2) dealing modes
+import { ExileControls, TravellerSetup } from './travellers'; // Travellers + exile
 
 /** Character (cast) id for a seat's portrait, or null (silhouette). */
 export type CastOf = (seat: number) => string | null;
@@ -485,6 +486,8 @@ function SetupScript({ view, send, castOf, openTools }: { view: StorytellerGameV
   return (
     <section class="cts-sec-block" aria-label="Setup">
       <h3 class="cts-script-h">{view.charactersAssigned ? 'The cast is dealt' : 'Deal the characters'}</h3>
+      {/* Travellers first: every deal skips their seats */}
+      <TravellerSetup view={view} send={send} />
       {/* (v2.2) Random · Storyline · Pick characters · By hand (deal.tsx) */}
       <DealChooser view={view} send={send} openHand={() => openTools('setup')} />
       {view.charactersAssigned && (
@@ -894,6 +897,7 @@ function DayScript({ view, send, castOf, openTools }: { view: StorytellerGameVie
         </button>
       </div>
       <StClockControl view={view} send={send} stages={['discussion', 'nominations']} />
+      <ExileControls view={view} send={send} />
 
       {voting && (
         <div class="cts-votenow" role="status">

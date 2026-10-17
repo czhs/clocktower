@@ -11,7 +11,7 @@ import { MAX_PLAYERS, MIN_PLAYERS, type PrepareDeal, type StPreparePatch, type S
 import type { RoomConnection } from '../../net/room';
 import { useStore } from '../../net/store';
 import { ModeSwitch, StorylineCards } from './deal';
-import { practiceNames, practiceReduce, practiceStart, practiceView, storylineTitle, type PracticeState } from './dealLogic';
+import { practiceNames, practiceReduce, practiceStart, practiceView, scriptDeals, storylineTitle, type PracticeState } from './dealLogic';
 import { StPanel } from './index';
 import { Toggle } from './stage';
 import './storyteller.css';
@@ -61,7 +61,10 @@ export function StPrepare({ conn, onClose }: { conn: RoomConnection; onClose: ()
     );
   }
 
-  const dealMode: PrepareDeal = pickStory ? 'storyline' : prep.deal;
+  // Storylines are Trouble Brewing setups; a custom script has nothing to deal at random.
+  const can = scriptDeals(view.lobby.script);
+  const deals = DEALS.filter((d) => (d.id === 'random' ? can.random : d.id === 'storyline' ? can.storyline : true));
+  const dealMode: PrepareDeal = pickStory ? 'storyline' : deals.some((d) => d.id === prep.deal) ? prep.deal : 'manual';
   const pickDeal = (d: PrepareDeal) => {
     if (d === 'storyline' && !prep.storyline) return setPickStory(true); // choose one first
     setPickStory(false);
@@ -87,7 +90,7 @@ export function StPrepare({ conn, onClose }: { conn: RoomConnection; onClose: ()
         <p class="muted cts-script-note">Only you see this. It carries into the game; the players are told nothing.</p>
 
         <h3 class="cts-script-h">When the game starts, deal…</h3>
-        <ModeSwitch modes={DEALS} value={dealMode} onPick={pickDeal} label="How to deal at the start" />
+        <ModeSwitch modes={deals} value={dealMode} onPick={pickDeal} label="How to deal at the start" />
         {dealMode === 'manual' && <p class="cts-script-note muted">You deal in the Setup step: random, a storyline, your own characters, or seat by seat.</p>}
         {dealMode === 'random' && <p class="cts-script-note muted">A random legal setup is dealt the moment you start. You can re-deal or tweak it before the first night.</p>}
         {dealMode === 'storyline' && (

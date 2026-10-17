@@ -89,6 +89,16 @@ describe('Travellers and Fabled — catalogue', () => {
       script: 'trouble-brewing',
     });
     expect(v.errors).toEqual([]);
+    // the Traveller is outside the distribution: 5 seated players at 3/0/1/1 is standard
+    expect(v.warnings).toEqual([]);
+  });
+
+  it('a Fabled cannot sit in a seat, and Travellers need 5 other players', () => {
+    const base = { drunkBelieves: null, redHerringSeat: null, demonBluffs: [], script: 'trouble-brewing' as const };
+    const fabled = validateAssignment([0, 1, 2, 3, 4], { ...base, bySeat: new Map((['imp', 'poisoner', 'chef', 'empath', 'angel'] as CharacterId[]).map((c, i) => [i, c])) });
+    expect(fabled.errors.join()).toMatch(/Fabled/);
+    const few = validateAssignment([0, 1, 2, 3, 4], { ...base, bySeat: new Map((['imp', 'poisoner', 'chef', 'empath', 'scapegoat'] as CharacterId[]).map((c, i) => [i, c])) });
+    expect(few.errors.join()).toMatch(/at least 5 players/);
   });
 
   it('Travellers have an alignment the Storyteller is told to choose', () => {
@@ -221,7 +231,7 @@ describe('Exile', () => {
 
 describe('Traveller abilities', () => {
   it('the Bureaucrat and Thief mark a vote modifier and replace it each night', () => {
-    const s = mkGame(['imp', 'poisoner', 'chef', 'empath', 'bureaucrat'], { script: 'trouble-brewing' });
+    const s = mkGame(['imp', 'poisoner', 'chef', 'empath', 'bureaucrat', 'monk'], { script: 'trouble-brewing' });
     begin(s);
     const x = s.nightQueue.find((q) => q.kind === 'bureaucrat')!;
     st(s, { type: 'resolve_step', stepId: x.id, seats: [2] });
@@ -229,7 +239,7 @@ describe('Traveller abilities', () => {
   });
 
   it('an impaired Traveller ability does nothing', () => {
-    const s = mkGame(['imp', 'poisoner', 'chef', 'empath', 'bureaucrat'], { script: 'trouble-brewing' });
+    const s = mkGame(['imp', 'poisoner', 'chef', 'empath', 'bureaucrat', 'monk'], { script: 'trouble-brewing' });
     begin(s);
     st(s, { type: 'set_status', seat: 4, poisoned: true });
     const x = s.nightQueue.find((q) => q.kind === 'bureaucrat')!;
@@ -246,7 +256,7 @@ describe('Traveller abilities', () => {
   });
 
   it('the Gunslinger kills the player it shoots, once', () => {
-    const s = mkGame(['imp', 'poisoner', 'chef', 'empath', 'gunslinger'], { script: 'trouble-brewing' });
+    const s = mkGame(['imp', 'poisoner', 'chef', 'empath', 'gunslinger', 'monk'], { script: 'trouble-brewing' });
     begin(s);
     finishNight(s);
     toDay(s);

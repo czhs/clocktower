@@ -4,6 +4,7 @@ import {
   NominateMsg,
   PromptResponseMsg,
   SlayerShotMsg,
+  ExileHandMsg,
   VoteMsg,
   type AnnouncementView,
   type PlayerGameView,
@@ -70,6 +71,7 @@ export const C2S = {
   'game:vote': VoteMsg,
   'game:promptResponse': PromptResponseMsg,
   'game:slayerShot': SlayerShotMsg,
+  'game:exileHand': ExileHandMsg, // (additive, travellers) any seated player, alive or dead
   // storyteller
   'st:command': StCommand,
   // story (v2, records): 'story:get' / 'story:release' Storyteller only; 'story:pamphlets' anyone

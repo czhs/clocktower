@@ -282,7 +282,7 @@ describe('GameRoom lifecycle (real Colyseus, fake gameplay modules)', () => {
     await expect(TestClient.joinWithTicket(srv, { ...tA, ticket: tA.ticket.slice(0, -2) + 'xx' }, 'forged')).rejects.toThrow(/signature|malformed/);
   });
 
-  it('players cannot seize the Storyteller seat; host/ST can transfer it while waiting', async () => {
+  it('players cannot seize the Storyteller seat; only the ST transfers it while waiting, and the ST runs the lobby', async () => {
     const L = await seatLobby(2);
     const p = L.players[0]!;
     const stPid = L.st.pid!;
@@ -303,9 +303,13 @@ describe('GameRoom lifecycle (real Colyseus, fake gameplay modules)', () => {
     const v = await L.st.view((x) => x.members.find((m) => m.pid === p.pid)!.role === 'storyteller');
     expect(v.members.find((m) => m.pid === stPid)!.role).toBe('player');
     expect(v.members.filter((m) => m.role === 'player')).toHaveLength(2);
-    // Host power is separate from the ST seat: host can still kick; the new ST cannot.
-    p.send('lobby:kick', { pid: L.players[1]!.pid! });
-    await p.waitMsg('error', (e) => e.for === 'lobby:kick' && e.code === 'forbidden');
+    // The Storyteller runs a human lobby: the old Storyteller (still the host) is now a regular
+    // player and can no longer remove anyone or change the lobby.
+    L.st.send('lobby:kick', { pid: L.players[1]!.pid! });
+    await L.st.waitMsg('error', (e) => e.for === 'lobby:kick' && e.code === 'forbidden');
+    L.st.send('lobby:settings', { name: 'Seized' });
+    await L.st.waitMsg('error', (e) => e.for === 'lobby:settings' && e.code === 'forbidden');
+    expect((await p.view()).youAdmin).toBe(true);
     // releaseStoryteller makes the seat open; then a player may claim it.
     p.send('lobby:releaseStoryteller', {});
     await L.st.view((x) => x.lobby.storytellerSeatOpen);
