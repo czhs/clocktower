@@ -80,3 +80,11 @@ export {
   travellersIn,
   type ExileState,
 } from './exile.js';
+// Custom scripts: validate and derive a Storyteller-built character list (any mix, incl. homebrew).
+export {
+  buildCustomScript,
+  playerCountsSupported,
+  validateCustomScript,
+  type CustomScript,
+  type CustomScriptValidation,
+} from './customScript.js';

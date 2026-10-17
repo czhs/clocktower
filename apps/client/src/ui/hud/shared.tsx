@@ -1,13 +1,26 @@
 // OWNED BY rules-storyteller. Small helpers shared by the HUD and the Storyteller panel.
-import { useEffect, useState } from 'preact/hooks';
+import { createContext } from 'preact';
+import { useContext, useEffect, useState } from 'preact/hooks';
 import {
   CHARACTER_IDS,
   CHARACTER_INFO,
+  charactersOfScript,
   type CharacterId,
   type GamePhase,
   type NominationView,
   type PublicPlayerView,
+  type ScriptId,
 } from '@ct/protocol';
+
+/**
+ * The script the current lobby is running. Provided once near the top of the Storyteller panel and
+ * the notebook; `CharacterSelect` reads it so every character picker lists THIS script's
+ * characters first instead of all ~90 across every script.
+ *
+ * Off-script characters stay reachable in a trailing group: an official script should be the
+ * default, not a cage — the engine only warns about off-script characters, so the UI should too.
+ */
+export const ScriptCtx = createContext<ScriptId | undefined>(undefined);
 
 export const PHASE_LABEL: Record<GamePhase, string> = {
   setup: 'Setting up',
@@ -62,20 +75,57 @@ export function nameOf(players: PublicPlayerView[], seat: number): string {
   return players.find((x) => x.seat === seat)?.name ?? `Seat ${seat + 1}`;
 }
 
-export const CHARACTER_GROUPS: { label: string; ids: CharacterId[] }[] = [
-  { label: 'Townsfolk', ids: CHARACTER_IDS.filter((c) => CHARACTER_INFO[c].type === 'townsfolk') },
-  { label: 'Outsiders', ids: CHARACTER_IDS.filter((c) => CHARACTER_INFO[c].type === 'outsider') },
-  { label: 'Minions', ids: CHARACTER_IDS.filter((c) => CHARACTER_INFO[c].type === 'minion') },
-  { label: 'Demon', ids: CHARACTER_IDS.filter((c) => CHARACTER_INFO[c].type === 'demon') },
-];
+const TYPE_GROUPS = [
+  { label: 'Townsfolk', type: 'townsfolk' },
+  { label: 'Outsiders', type: 'outsider' },
+  { label: 'Minions', type: 'minion' },
+  { label: 'Demon', type: 'demon' },
+  { label: 'Travellers', type: 'traveller' },
+  { label: 'Fabled', type: 'fabled' },
+] as const;
+
+/** Every character, grouped by type (the whole catalogue; used when no script is known). */
+export const CHARACTER_GROUPS: { label: string; ids: CharacterId[] }[] = TYPE_GROUPS.map((g) => ({
+  label: g.label,
+  ids: CHARACTER_IDS.filter((c) => CHARACTER_INFO[c].type === g.type),
+})).filter((g) => g.ids.length > 0);
+
+/**
+ * Character groups for a picker: the script's own characters by type, then everything else in one
+ * trailing group so nothing is unreachable. 'custom' (and an unknown script) shows the full
+ * catalogue, since a custom script may mix anything.
+ */
+/**
+ * The flat list of characters a picker should offer for `script`: its own pool, or the whole
+ * catalogue for a custom/unknown script.
+ */
+export function scriptPool(script?: ScriptId): CharacterId[] {
+  if (!script || script === 'custom') return [...CHARACTER_IDS];
+  return [...charactersOfScript(script)];
+}
+
+export function characterGroups(script?: ScriptId): { label: string; ids: CharacterId[] }[] {
+  if (!script || script === 'custom') return CHARACTER_GROUPS;
+  const pool = charactersOfScript(script);
+  const onScript = TYPE_GROUPS.map((g) => ({
+    label: g.label,
+    ids: pool.filter((c) => CHARACTER_INFO[c].type === g.type),
+  })).filter((g) => g.ids.length > 0);
+  const rest = CHARACTER_IDS.filter((c) => !pool.includes(c));
+  return rest.length ? [...onScript, { label: 'Other scripts', ids: [...rest] }] : onScript;
+}
 
 export function CharacterSelect(props: {
   value: CharacterId | '';
   onChange: (c: CharacterId | '') => void;
   allowEmpty?: boolean;
   only?: CharacterId[];
+  /** Override the script from context (rarely needed). */
+  script?: ScriptId;
   class?: string;
 }) {
+  const ctxScript = useContext(ScriptCtx);
+  const groups = characterGroups(props.script ?? ctxScript);
   return (
     <select
       class={props.class}
@@ -83,7 +133,7 @@ export function CharacterSelect(props: {
       onChange={(e) => props.onChange((e.currentTarget as HTMLSelectElement).value as CharacterId | '')}
     >
       {props.allowEmpty && <option value="">—</option>}
-      {CHARACTER_GROUPS.map((g) => {
+      {groups.map((g) => {
         const ids = props.only ? g.ids.filter((c) => props.only!.includes(c)) : g.ids;
         if (!ids.length) return null;
         return (

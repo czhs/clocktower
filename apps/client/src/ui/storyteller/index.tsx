@@ -26,7 +26,7 @@ import {
 } from '@ct/protocol';
 import type { RoomConnection } from '../../net/room';
 import { useStore } from '../../net/store';
-import { charName, CharacterSelect, Countdown, friendlyError, phaseTitle, seatLabel, VoteClock } from '../hud/shared';
+import { charName, CharacterSelect, Countdown, friendlyError, phaseTitle, ScriptCtx, scriptPool, seatLabel, VoteClock } from '../hud/shared';
 import { ConfirmButton, deathEffects, EVERYONE, noExecutionEffects, only, PickBanner, StageBar, StageTab, StatusBadges, Toggle } from './stage';
 import { PhaseStageBar, ScriptView, type CastOf, type OpenTools } from './script';
 import { reducedMotion } from '../../game/fx/motion';
@@ -174,6 +174,8 @@ function StPanel({ view, conn }: { view: StorytellerGameView; conn: RoomConnecti
 
   const offline = view.players.filter((x) => !x.connected);
   return (
+    // Every character picker inside the panel lists this lobby's script first (ScriptCtx).
+    <ScriptCtx.Provider value={lobby?.lobby.script}>
     <aside class={`cts dock-${dock} ${tools ? 'cts-mode-tools' : 'cts-mode-script'}${reducedMotion() ? ' cts-still' : ''}`} aria-label="Storyteller">
       <header class="cts-head">
         <span class="cts-title">Storyteller</span>
@@ -257,6 +259,7 @@ function StPanel({ view, conn }: { view: StorytellerGameView; conn: RoomConnecti
         {tools ? '◂ Back to the script' : '☰ Grimoire & tools'}
       </button>
     </aside>
+    </ScriptCtx.Provider>
   );
 }
 
@@ -622,7 +625,7 @@ function SetupTab({ view, send }: { view: StorytellerGameView; send: Send }) {
             value={drunkBelieves}
             allowEmpty
             onChange={setDrunkBelieves}
-            only={(Object.keys(CHARACTER_INFO) as CharacterId[]).filter((c) => CHARACTER_INFO[c].type === 'townsfolk' && !chosen.includes(c))}
+            only={scriptPool(lobbyScript).filter((c) => CHARACTER_INFO[c].type === 'townsfolk' && !chosen.includes(c))}
           />
           <small class="muted">(empty = random)</small>
         </label>
@@ -647,7 +650,7 @@ function SetupTab({ view, send }: { view: StorytellerGameView; send: Send }) {
             key={i}
             value={b}
             allowEmpty
-            only={(Object.keys(CHARACTER_INFO) as CharacterId[]).filter(
+            only={scriptPool(lobbyScript).filter(
               (c) => CHARACTER_INFO[c].alignment === 'good' && !chosen.includes(c) && (c === b || !bluffs.includes(c)),
             )}
             onChange={(c) => setBluffs((x) => x.map((y, j) => (j === i ? c : y)))}
@@ -813,7 +816,7 @@ function GrimoireRow({ g, view, send, openComposer }: { g: GrimoireEntry; view: 
           {g.character === 'drunk' && (
             <CharacterSelect
               value={g.believedCharacter}
-              only={(Object.keys(CHARACTER_INFO) as CharacterId[]).filter((c) => CHARACTER_INFO[c].type === 'townsfolk')}
+              only={scriptPool(lobbyScript).filter((c) => CHARACTER_INFO[c].type === 'townsfolk')}
               onChange={(c) => c && CHARACTER_INFO[c].type === 'townsfolk' && send({ type: 'set_drunk_belief', seat: g.seat, character: c })}
             />
           )}
