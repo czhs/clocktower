@@ -23,10 +23,14 @@ const NIGHT_AMBIENT = { lit: '#ECE0C4', sh: '#9A9490', k: 0.65, gain: 1.2, mist:
  * dark (drawRange, no extra draw call). dayParticles false: the specks themselves only show in the dark too.
  * nightColor(i) -> hex | null: in the dark speck i glows steadily in that colour (e.g. window-kind ripples that would
  * otherwise go black at night), restored by day.
+ * day(b, layer): STATIC day-only geometry (the window's sun patch), drawn only while the room is NOT dark.
+ * Vertex order: [day][particles][night] -> by day drawRange(0, ..particles), in the dark drawRange(particles.., end).
  */
-function particles(room, ctx, { name, n, make, path, glow = true, night = null, dayParticles = true, nightColor = null }) {
+function particles(room, ctx, { name, n, make, path, glow = true, night = null, day = null, dayParticles = true, nightColor = null }) {
   const b = new Builder(room.engine, { name });
   const layer = glow ? 'glass' : 'soft', ranges = [];
+  if (day) day(b, layer);
+  const nDayOnly = (b.layers[layer]?.pos.length ?? 0) / 3;
   for (let i = 0; i < n; i++) {
     const a = (b.layers[layer]?.pos.length ?? 0) / 3;
     make(b, i, layer);
@@ -57,9 +61,13 @@ function particles(room, ctx, { name, n, make, path, glow = true, night = null, 
   return {
     group: grp,
     update(t) {
-      if (night || ga || !dayParticles) {
+      if (night || day || ga || !dayParticles) {
         const dark = isDark(room);
-        if (dark !== lastDark) { mesh.geometry.setDrawRange(0, dark ? nAll : dayParticles ? nDay : 0); recolor(dark); lastDark = dark; }
+        if (dark !== lastDark) {
+          if (dark) mesh.geometry.setDrawRange(nDayOnly, nAll - nDayOnly);
+          else mesh.geometry.setDrawRange(0, dayParticles ? nDay : nDayOnly);
+          recolor(dark); lastDark = dark;
+        }
       }
       const k = Math.floor(t * 8) / 8;
       if (k === last) return;
@@ -117,6 +125,25 @@ function ditherPool(b, layer, { x = 0, y = 0.006, z = 0, r, rv = r, cols, peak =
         run = i; runLvl = lvl;
       }
     }
+  }
+}
+/**
+ * The window's sun patch on the floor as a flat decal (day-only geometry for particles({day})): rows x cols panes
+ * (x = the patch centre, z0 = its back edge, w = its width; pane length pl along z, mullion bar `bar`), each pane a
+ * sunlit-board core inside a one-cell Bayer-dithered rim, so the patch reads as soft window light, not a cut-out.
+ * Cells are cu x cv metres (v stretched for the 30 deg camera, like ditherPool).
+ */
+function sunPanes(b, layer, { x, z0, w, rows = 5, cols = 2, pl = 0.28, bar = 0.07, cu = 0.03, cv = 0.045, core = '#8c6e60', rim = '#76605a' }) {
+  const pw = (w - (cols - 1) * bar) / cols, y = 0.006;
+  const quad = (xa, xb, za, zb, hex) => b.tris([xa, y, za, xb, y, zb, xb, y, za, xa, y, za, xa, y, zb, xb, y, zb], { tones: 'glass', layer, glow: hex, glowKind: 1 });
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+    const px0 = x - w / 2 + c * (pw + bar), pz0 = z0 + r * (pl + bar);
+    const ni = Math.max(3, Math.round(pw / cu)), nj = Math.max(3, Math.round(pl / cv)), du = pw / ni, dv = pl / nj;
+    // the core: one quad inside the rim
+    quad(px0 + du, px0 + pw - du, pz0 + dv, pz0 + pl - dv, core);
+    // the rim: every other cell (Bayer 2x2 checker), merged into runs along each edge
+    for (let i = 0; i < ni; i++) for (const j of [0, nj - 1]) if (((i + j) & 1) === 0) quad(px0 + i * du, px0 + (i + 1) * du, pz0 + j * dv, pz0 + (j + 1) * dv, rim);
+    for (let j = 1; j < nj - 1; j++) for (const i of [0, ni - 1]) if (((i + j) & 1) === 0) quad(px0 + i * du, px0 + (i + 1) * du, pz0 + j * dv, pz0 + (j + 1) * dv, rim);
   }
 }
 /**
@@ -402,6 +429,7 @@ export default function build(room, ctx) {
   //      Paranoid: the board is the warmest thing in the house at midnight.
   const nightGlow = particles(room, ctx, {
     name: 'house-12-night', n: 0, dayParticles: false, make: () => {}, path: () => [0, 0, 0],
+    day: (b, layer) => sunPanes(b, layer, { x: win.x - 0.65, z0: -D / 2 + 0.06, w: win.w - 0.06 }),
     night: (b, layer) => {
       // the lamp lights its own desk top (inside the top's rect: the papers sit on it, the dark under the desk stays dark)
       const dtx = dx, dtz = dz - 0.3;
@@ -433,8 +461,12 @@ export default function build(room, ctx) {
     else { l.r = Math.min(l.r, 0.9); l.intensity = Math.min(l.intensity, 0.6); }
   }
 
-  // ---- daylight: a single leaning shaft from the tall window across the checkers (the rest stays ink-dark)
-  const mask = sunMask(room, { name: 'house-12-shade', cell: 0.08, night: 'lid', open: (x, z) => z > -2.2 && z < 0.4 && Math.abs(x - (1.75 - (z + 2.2) * 0.35)) < 0.36 });
+  // ---- daylight: the room stays in shade (a closed shadow-only lid over the open dollhouse; the moon is shut out too);
+  //      the tall window's sun patch is a DAY-ONLY decal in the night-glow mesh (below): its 2 x 5 panes laid on the
+  //      boards just in front of the window, split by the mullion bars, with a dithered rim. It used to be a hole in
+  //      this lid (a leaning shaft cut from 8 cm cells): the sun shadow map drew it as a hard stair-stepped tan blob in
+  //      mid-floor with 1 px notches along every edge (critic, demo noon).
+  const mask = sunMask(room, { name: 'house-12-shade', cell: 0.5, night: 'lid', open: () => false });
 
   room.spot('board', bx, -D / 2 + 0.9, Math.PI);
   room.spot('desk', dx - 0.75, dz + 0.6, Math.PI / 2);

@@ -288,7 +288,8 @@ export default function build(room, ctx) {
     for (const sx of [-0.7, 0.7]) b.box(0.16, 0.06, 0.06, { at: [sx, 0.32, 0.31], tones: 'iron' });  // handles
   });
   room.solidAt(cbx, cbz, 2.1, 0.66, 0, 'coffin');
-  room.light({ pos: [cbx + 0.55, 0.85, cbz + 0.1], color: CANDLE, r: 1.05, kind: 'fire', intensity: 1.2 });
+// (polish 3: no point light for the coffin candle - 0.37 m over the flat lid, its toon pool painted a hard dark ellipse
+  //  under the candle; the dithered floor pool and the candle's own glow carry it, like the desk's and the candelabra's)
   at(room, { x: -4.6, z: 0.6, rz: 0.12 }, (b) => {                                              // the spade
     b.box(0.05, 1.2, 0.05, { at: [0, 0.3, 0], tones: 'plank' });
     b.box(0.16, 0.05, 0.05, { at: [0, 1.5, 0], tones: 'plank' });

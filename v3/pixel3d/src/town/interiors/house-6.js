@@ -284,7 +284,10 @@ export default function build(room, ctx) {
   b.box(0.2, 0.08, 0.14, { at: [ANX, 0.6, ANZ], tones: 'iron', tint: 1.06 });
   b.prism([[0, 0], [0.2, 0.04], [0, 0.1]], 0.12, { at: [ANX + 0.2, 0.58, ANZ], tones: 'iron' });
   room.solid(ANX - 0.27, ANZ - 0.25, ANX + 0.27, ANZ + 0.25);
-  room.light({ pos: [FXc - 0.2, 1.05, BZ + 1.3], color: '#FF7A30', r: 1.15, kind: 'fire', intensity: 1.7 });
+  // (polish 3: the fire sits over the coals under the hood, BEHIND the brick base's front face - 0.35 m in front of it,
+  //  its toon pool painted a hard pinkish half-ellipse on the brick. r 1.25 < its 1.2 m height + the hearth's depth, so
+  //  it reaches the hood, the coals' rim, the bellows and the anvil, never the flags: the dithered fan carries the floor)
+  room.light({ pos: [FXc - 0.1, 1.2, BZ + 0.45], color: '#FF7A30', r: 1.25, kind: 'fire', intensity: 1.7 });
 
   // ---- the back wall: the lamplighter's route map, the calendar with the circled date
   const MX = 1.6, MY = 1.55, MW = 1.36, MH = 1.05;

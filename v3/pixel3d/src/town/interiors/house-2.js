@@ -13,7 +13,7 @@
 // colourful threads everywhere; patient, watchful.
 import * as THREE from 'three';
 import { Builder } from '../kit.js';
-import { bareShell, polyWalls, polyFloor, blockOutside, inPoly, onSeg, motes, at, ditherCanvas, sunMask, flatQuad } from './house-0.js';
+import { bareShell, polyWalls, polyFloor, blockOutside, inPoly, onSeg, motes, at, ditherCanvas, sunMask, flatQuad, isNight } from './house-0.js';
 
 /** Room size / walls (index.js reads ROOM before build): the tall shop floor; the bay is part of the depth. */
 export const ROOM = {
@@ -156,7 +156,7 @@ export default function build(room, ctx) {
     b.box(0.12, 0.05, 0.12, { at: [0.55, 1.7, -0.32], tones: 'brass' });
     g.box(0.08, 0.1, 0.08, { at: [0.55, 1.75, -0.32], tones: 'glass', layer: 'glass', glow: GLOW.candle, glowKind: 2 });
   });
-  room.light({ pos: [3.0, 1.3, -1.6], color: '#FFE6BE', r: 1.6, kind: 'fire', intensity: 0.95 });
+  room.light({ pos: [3.0, 1.3, -1.6], color: '#FFE6BE', r: 1.2, kind: 'fire', intensity: 0.95 });   // (r < its height: no toon disc on the boards)
 
   // ---- the spinning wheel (turns) with a basket of red yarn balls
   const swx = -0.45, swz = 1.25;
@@ -214,7 +214,9 @@ export default function build(room, ctx) {
     });
   });
   room.solidAt(3.45, 1.75, 1.6, 0.5);
-  F.hangingLantern(room, { x: -2.85, z: 0.8, y: 1.35, r: 1.6, intensity: 1.0 });
+  // (polish 3: r 1.0 < the lamp's 1.25 m height - the toon pool no longer reaches the boards, where it painted a solid
+  //  tan disc under the dithered pool; the dither alone carries the lantern's light on the floor)
+  F.hangingLantern(room, { x: -2.85, z: 0.8, y: 1.35, r: 1.0, intensity: 1.0 });
   F.chest(room, { x: X - 0.3, z: -0.6, ry: -Math.PI / 2 });
   F.plant(room, { x: X - 0.4, z: -1.85 });
   F.rug(room, { x: 0.35, z: 0.9, w: 3.4, d: 2.2, tones: 'green', border: 'gold', pattern: 'stripes' });
@@ -233,9 +235,15 @@ export default function build(room, ctx) {
   // ---- lint floating in the bay light; at night the moon through the bay: the panes pale, three long silver window
   // patches dithered across the boards, the loom lamp's cream pool, the candles' small warm pools
   const inside = (u, w) => inPoly(poly, u, w);
+  const sets = {};
   const lint = motes(room, {
     n: 24, seed: 22, box: { x0: 0.6, x1: 4.2, y0: 0.4, y1: 3.0, z0: -3.0, z1: 0.6 }, size: 0.04, glow: '#FFF6E2', mode: 'drift', speed: 0.12, sway: 0.2, name: 'lint',
     night: (b) => {
+      // (polish 3: the kit's window glow is on from golden hour, but the moon is not up yet. The night layer starts with
+      //  the MOON part - the navy glazing and the silver wash - which update() collapses while the sun is still warm:
+      //  golden hour keeps its warm panes and no blue wash; the lamp pools stay.)
+      const nv = () => (b.layers.glass?.pos.length ?? 0) / 3;
+      const m0 = nv();
       // the moonlit glazing (the panes alone go navy): an overlay just inside each bay pane, with its round head
       for (const [k, u, w, h, y] of [[1, 0, 0.5, 2.0, 0.7], [2, -0.47, 0.76, 2.35, 0.55], [2, 0.47, 0.76, 2.35, 0.55], [3, 0, 0.5, 2.0, 0.7]]) {
         const sg = segs[k], gz = -T * 0.55 + 0.016;
@@ -250,8 +258,14 @@ export default function build(room, ctx) {
       //  instead of the old 1.7-texel cells' ragged 1-2 px blobs. The moon's panes on the boards are the lid's real
       //  moonlight now - the 12 dithered streaks are gone; one faint silver wash ties them together.)
       const TX = 7.33 / 360;
+      // the moon's wash under the bay: its own canvas a hair BELOW the lamps' (its cells fill the lamp pool's sparse rim;
+      // the loom lamp's dense core is left to the lamp), so it collapses alone when the moon is not up
+      const fm = ditherCanvas({ plane: 'floor', cw: TX, ch: TX * 2, y: 0.004 });
+      fm.pool({ x: 2.5, v: -2.25, r: 1.15, r2: 0.62, color: '#7080B0', inner: '#A8B8E0', peak: 0.24, power: 1.6, clip: (u, w) => inside(u, w) && ((u - 3.05) / 0.9) ** 2 + ((w + 1.6) / 0.7) ** 2 > 0.6 });
+      fm.draw(b);
+      sets.moon = [m0, nv()];
+      sets.base = Float32Array.from(b.layers.glass.pos.slice(m0 * 3, nv() * 3));   // (motes() collapses them at build)
       const fl = ditherCanvas({ plane: 'floor', cw: TX, ch: TX * 2 });
-      fl.pool({ x: 2.5, v: -2.25, r: 1.15, r2: 0.62, color: '#7080B0', inner: '#A8B8E0', peak: 0.24, power: 1.6, clip: inside });   // the moon's wash under the bay
       fl.pool({ x: 3.05, v: -1.6, r: 0.9, r2: 0.7, color: '#A89070', inner: '#DCC092', peak: 0.36, power: 2, clip: inside });   // the loom lamp
       fl.pool({ x: -2.85, v: 0.95, r: 0.85, r2: 0.65, color: '#A88456', inner: '#D8A866', peak: 0.34, power: 2, clip: inside });   // the lantern
       fl.pool({ x: -0.85, v: BZ + 1.1, r: 0.8, r2: 0.6, color: '#A88456', inner: '#D8A866', peak: 0.32, power: 2, clip: inside });   // the candle-stand
@@ -265,11 +279,33 @@ export default function build(room, ctx) {
     },
   });
 
+  // the moon is up only when the kit's night glow is on AND the sun has turned to moonlight (cool: golden hour's warm
+  // sun keeps the glow on but is no moon)
+  const moonUp = () => { const c = room.engine.style?.sunColor; return isNight(room) && (!c || c.b > c.r); };
+  let lintMesh = null;
+  lint.group.traverse((q) => { if (q.isMesh) lintMesh = q; });
+  const lpos = lintMesh.geometry.getAttribute('position'), [m0, m1] = sets.moon, mb = sets.base;
+  let setKey = null;
+  const switchSets = () => {
+    const nn = isNight(room), mu = nn && moonUp(), key = nn ? (mu ? 'moon' : 'dusk') : 'day';
+    if (key === setKey) return;
+    setKey = key;
+    if (!nn) return;                                      // by day motes() has already collapsed the whole night layer
+    for (let v = m0 * 3; v < m1 * 3; v++) lpos.array[v] = mu ? mb[v - m0 * 3] : mb[v % 3];
+    lpos.needsUpdate = true;
+  };
+
   // ---- at night the moon reaches the floor ONLY through the bay: a shadow-only lid (night only) with four window-shaped
   // holes, so the moonlight falls as long silver panes across the boards (and on the loom) while the rest of the
   // workshop is left to the lamp and the candles. (The tapestry is in the solid layer: 16 draw calls with the lid.)
+  // (polish 3: holes only over the room's own floor and 0.3 m clear of the bay's cheeks - cells outside the poly or
+  //  hugging the cheeks let the moon through the cheek panes onto the main back wall's dado: a hard grey triangle / saw-tooth by the bay)
+  const segDist = (x, z, ax, az, bx, bz) => {
+    const dx = bx - ax, dz = bz - az, t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz)));
+    return Math.hypot(x - ax - t * dx, z - az - t * dz);
+  };
   const panes = [[1.15, 0.5, -2.85], [2.03, 0.76, -3.15], [2.97, 0.76, -3.15], [3.85, 0.5, -2.85]];
-  const lid = sunMask(room, { name: 'house-2-lid', cell: 0.1, margin: 8, nightOnly: true, open: (x, z) => panes.some(([xc, w, z0]) => Math.abs(x - xc) < w / 2 + 0.04 && z > z0 && z < z0 + 1.55) });
+  const lid = sunMask(room, { name: 'house-2-lid', cell: 0.1, margin: 8, nightOnly: true, open: (x, z) => inPoly(poly, x, z) && segDist(x, z, 0.75, BZ, 1.55, -Z) > 0.3 && segDist(x, z, 4.25, BZ, 3.45, -Z) > 0.3 && panes.some(([xc, w, z0]) => Math.abs(x - xc) < w / 2 + 0.04 && z > z0 && z < z0 + 1.55) });
 
   room.spot('loom', 2.5, -1.25, Math.PI);
   room.spot('tapestry', -0.3, -1.2, Math.PI);
@@ -283,7 +319,9 @@ export default function build(room, ctx) {
       const k = Math.floor(t * 8) / 8;
       wheelG.rotation.z = -k * 1.4;
       lint.update(t);
+      switchSets();
       lid.update();
+      if (!moonUp()) lid.group.visible = false;           // golden hour: no lid, no hard sun panes through its holes
     },
     bedRect: bed.rect,
   };

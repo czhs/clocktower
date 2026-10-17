@@ -212,7 +212,10 @@ export default function build(room, ctx) {
   });
   for (const wall of ['back', 'left', 'right']) {
     room.wallFrame(wall, ({ full, len }) => {
-      for (let x = -len / 2 + 0.15; x <= len / 2 - 0.15; x += 0.2) full.box(0.1, 0.025, 0.02, { at: [x, H - 0.28, 0.012], tones: 'cream' });
+      // (flat quads 2 cm off the wall: the 12-tri boxes cost ~900 tris for 1-px dashes)
+      const q = [];
+      for (let x = -len / 2 + 0.15; x <= len / 2 - 0.15; x += 0.2) q.push(x - 0.05, H - 0.28, 0.022, x + 0.05, H - 0.28, 0.022, x + 0.05, H - 0.255, 0.022, x - 0.05, H - 0.28, 0.022, x + 0.05, H - 0.255, 0.022, x - 0.05, H - 0.255, 0.022);
+      full.tris(q, { tones: 'cream' });
     });
   }
 
@@ -252,6 +255,7 @@ export default function build(room, ctx) {
 
   // ---- THE SHOE WALL: three shelves, five pairs each (one per villager), brass name tags; pair 7 has ashy soles
   const rx0 = -1.75, rx1 = 2.3, shelfY = [0.42, 0.98, 1.54], ASH = 7;
+  const rackShoes = [];                                       // [x, y, z, prof, s, sy, col ramp, pair 0 back | 1 front, i] (wall-local)
   room.wallFrame('back', ({ full }) => {
     full.box(rx1 - rx0 + 0.2, 1.62, 0.04, { at: [(rx0 + rx1) / 2, 0.12, 0.02], tones: 'timber', pattern: 'vboards', scale: 0.6, tint: 0.9 });
     for (const s of [-1, 1]) full.box(0.08, 1.78, 0.36, { at: [s < 0 ? rx0 - 0.06 : rx1 + 0.06, 0, 0.18], tones: 'plank' });
@@ -263,8 +267,10 @@ export default function build(room, ctx) {
         const sy = s * 0.6;
         for (const p of [0, 1]) {
           full.prism(scaleP(prof, s, sy), 0.075, { at: [x - 0.16 + p * 0.03, y, 0.12 + p * 0.12], tones: col, tint: p ? 0.94 : 1 });
-          full.box(s * 0.92, 0.035, 0.085, { at: [x - 0.16 + p * 0.03 + s * 0.46, y, 0.12 + p * 0.12], tones: i === ASH ? ash : sole, tint: i === ASH ? 1.04 : 1 });
+          rackShoes.push([x - 0.16 + p * 0.03, y, 0.12 + p * 0.12, prof, s, sy, col, p, i]);
         }
+        // one sole slab under the pair (the gap between the two shoes is never seen at the 30 deg camera; half the tris)
+        full.box(s * 0.92 + 0.03, 0.035, 0.205, { at: [x - 0.16 + 0.015 + s * 0.46, y, 0.18], tones: i === ASH ? ash : sole, tint: i === ASH ? 1.04 : 1 });
         full.box(0.1, 0.06, 0.02, { at: [x, y - 0.08, 0.35], tones: 'brass' });                               // name tag
         if (i === ASH) for (const [ax, az] of [[-0.1, 0.32], [0.16, 0.36], [0.05, 0.3]]) full.box(0.07, 0.015, 0.05, { at: [x + ax, y, az], tones: ash });
       }
@@ -352,7 +358,8 @@ export default function build(room, ctx) {
     }, 0);
     room.solidAt(x, z, 0.5, 0.66);
   }
-  for (const [hx, hz, col] of [[-0.9, -0.2, leather], [-0.55, -0.35, leatherDk]]) {          // boots hung by their laces
+  const hungBoots = [[-0.9, -0.2, leather], [-0.55, -0.35, leatherDk]];
+  for (const [hx, hz, col] of hungBoots) {          // boots hung by their laces
     room.b.box(0.015, 0.4, 0.015, { at: [hx + 0.05, H - 0.5, hz], tones: 'cream' });
     for (const p of [0, 1]) room.b.prism(scaleP(BOOT, 0.3, 0.32).map(([x, y]) => [x, -y]), 0.08, { at: [hx - 0.04 + p * 0.09, H - 0.48, hz + p * 0.05], tones: col, tint: p ? 0.95 : 1 });
   }
@@ -369,17 +376,100 @@ export default function build(room, ctx) {
   // sconce warms the left end of the shoe rack, the door lantern a small pool on the boards. And the wrong note: the
   // ashy footprints and the ash-soled pair keep a faint cold pallor in the dark.
   const AMBER = ['#4a2c1e', '#7a4826', '#a8682e', '#d89a4a'];
+  // NIGHT SHOE WALL (fix 2026-10-16, the critic's "flat brown band with ragged holes, muddy boots"): the rack reads as a
+  // warm lamp-lit cabinet - each bay's backing in three soft steps (warm where the pairs stand, shadowed up under the
+  // next shelf), every shelf with a bright amber lip and a lit front strip, brass name tags that glint, and every
+  // shoe re-painted in its own colour (lifted, warmed) with a pale rim along its top edges; the back shoe of each
+  // pair shows as a darker band above its partner. The ash-soled pair keeps its cold pale soles. Flat decals in the
+  // dust mesh (night-only drawRange): no extra mesh, no extra light.
+  const nightTone = (ramp, L, warm = 0.18) => {
+    const c = new THREE.Color(ramp[1]), hsl = {};
+    c.getHSL(hsl, THREE.SRGBColorSpace);
+    c.setHSL(hsl.h, Math.min(0.6, hsl.s * 1.05 + 0.04), L(hsl.l), THREE.SRGBColorSpace);
+    return '#' + c.lerp(new THREE.Color('#e0904c'), warm).getHexString();
+  };
+  /**
+   * Night paint for a profile prism (pts [[x, y]] room-local, extruded `depth` along z, centred on zc): its front face
+   * as one flat `body` decal, and every top face (outward normal pointing up) as a lifted `top` quad - lit tops over a
+   * mid body instead of a dark unlit lump. Winding-safe for flipped profiles.
+   */
+  const paintPrism = (b, layer, pts, zc, depth, body, top) => {
+    const o = { tones: 'glass', layer, glowKind: 1 }, n = pts.length;
+    let area = 0;
+    for (let e = 0; e < n; e++) area += pts[e][0] * pts[(e + 1) % n][1] - pts[(e + 1) % n][0] * pts[e][1];
+    const sg = area > 0 ? 1 : -1, zf = zc + depth / 2 + 0.003, z0 = zc - depth / 2, z1 = zf;
+    const pos = [];
+    for (const [a, c, d] of THREE.ShapeUtils.triangulateShape(pts.map(([x, y]) => new THREE.Vector2(x, y)), [])) {
+      const [A, C, E] = [pts[a], pts[c], pts[d]], ccw = (C[0] - A[0]) * (E[1] - A[1]) - (C[1] - A[1]) * (E[0] - A[0]) > 0;
+      for (const q of ccw ? [A, C, E] : [A, E, C]) pos.push(q[0], q[1], zf);
+    }
+    b.tris(pos, { ...o, glow: body });
+    const tp = [];
+    for (let e = 0; e < n; e++) {
+      const [ax0, ay0] = pts[e], [bx0, by0] = pts[(e + 1) % n], dx = bx0 - ax0, dy = by0 - ay0, L = Math.hypot(dx, dy);
+      const nx = (sg * dy) / L, ny = (-sg * dx) / L;
+      if (ny < 0.5) continue;
+      const ex = (dx / L) * 0.008, ey = (dy / L) * 0.008;             // a little overlap: no dark wedge at the joints
+      let ax = ax0 - ex + nx * 0.003, ay = ay0 - ey + ny * 0.003, bx = bx0 + ex + nx * 0.003, by = by0 + ey + ny * 0.003;
+      if (dx > 0) [ax, ay, bx, by] = [bx, by, ax, ay];                 // walk right-to-left so the quad faces up
+      tp.push(ax, ay, z1, bx, by, z0, bx, by, z1, ax, ay, z1, ax, ay, z0, bx, by, z0);
+    }
+    if (tp.length) b.tris(tp, { ...o, glow: top });
+  };
+  const rackNight = (b, layer) => {
+    const Z = -D / 2, o = (hex) => ({ tones: 'glass', layer, glow: hex, glowKind: 1 });
+    const wallQ = (x0, y0, x1, y1, z, hex) => b.tris([x0, y0, Z + z, x1, y0, Z + z, x1, y1, Z + z, x0, y0, Z + z, x1, y1, Z + z, x0, y1, Z + z], o(hex));
+    const topQ = (x0, x1, z0, z1, y, hex) => b.tris([x0, y, Z + z1, x1, y, Z + z1, x1, y, Z + z0, x0, y, Z + z1, x1, y, Z + z0, x0, y, Z + z0], o(hex));
+    const X0 = rx0 - 0.1, X1 = rx1 + 0.1;
+    // the backing, bay by bay (in front of the board, behind the shoes)
+    shelfY.forEach((y, k) => {
+      const yt = k < 2 ? shelfY[k + 1] - 0.05 : 1.74, h = yt - y;
+      wallQ(X0, y, X1, y + h * 0.42, 0.045, '#4e301f');
+      wallQ(X0, y + h * 0.42, X1, y + h * 0.74, 0.045, '#3f271a');
+      wallQ(X0, y + h * 0.74, X1, yt, 0.045, '#2e1c15');
+    });
+    // the shelves: a warm top (brighter toward the front edge), a lit front strip with a hot amber lip
+    for (const y of shelfY) {
+      topQ(X0 + 0.05, X1 - 0.05, 0.0, 0.22, y + 0.003, '#4a2e1e');
+      topQ(X0 + 0.05, X1 - 0.05, 0.22, 0.34, y + 0.003, '#6e4628');
+      wallQ(X0 + 0.05, y - 0.05, X1 - 0.05, y - 0.018, 0.343, '#7a4c2a');
+      wallQ(X0 + 0.05, y - 0.018, X1 - 0.05, y, 0.343, '#d4a05a');
+    }
+    // the side uprights: a lit inner edge
+    for (const x of [rx0 - 0.06 + 0.02, rx1 + 0.06 - 0.02]) wallQ(x - 0.02, 0.0, x + 0.02, 1.78, 0.363, '#7a5032');
+    // the shoes: front shoe of each pair in its lifted colour, the back one darker above it, lit tops on both
+    for (const [X, y, z, prof, s, sy, col, p, i] of rackShoes) {
+      const pts = scaleP(prof, s, sy).map(([px, py]) => [X + px, y + py]);
+      if (p === 1) {
+        paintPrism(b, layer, pts, Z + z, 0.075, nightTone(col, (l) => Math.max(0.3, Math.min(0.46, l * 1.1))), nightTone(col, (l) => Math.max(0.58, Math.min(0.72, l * 1.1 + 0.26)), 0.25));
+        if (i === ASH) wallQ(X - 0.03, y, X + s * 0.92, y + 0.035, z + 0.0425 + 0.004, '#8e8c98');      // the ashy soles, cold and pale
+      } else paintPrism(b, layer, pts, Z + z, 0.075, nightTone(col, (l) => Math.max(0.22, Math.min(0.34, l * 0.9)), 0.12), nightTone(col, (l) => Math.max(0.4, Math.min(0.54, l + 0.12)), 0.2));
+    }
+    // the two pairs hung by their laces in front of the rack: dim leather, lit along their soles
+    for (const [hx, hz, col] of hungBoots) for (const p of [0, 1]) {
+      const pts = scaleP(BOOT, 0.3, 0.32).map(([x, y]) => [hx - 0.04 + p * 0.09 + x, H - 0.48 - y]);
+      paintPrism(b, layer, pts, hz + p * 0.05, 0.08, nightTone(col, (l) => Math.max(0.2, Math.min(0.3, l)), 0.15), nightTone(col, (l) => Math.max(0.38, Math.min(0.48, l + 0.12)), 0.2));
+    }
+    // brass name tags glint; the spilt ash on the ash pair's shelf
+    shelfY.forEach((y, row) => {
+      for (let k = 0; k < 5; k++) {
+        const x = rx0 + 0.2 + k * ((rx1 - rx0 - 0.4) / 4);
+        wallQ(x - 0.05, y - 0.08, x + 0.05, y - 0.02, 0.362, '#c8964c');
+        if (row * 5 + k === ASH) for (const [ax, az] of [[-0.1, 0.32], [0.16, 0.36], [0.05, 0.3]]) topQ(x + ax - 0.035, x + ax + 0.035, az - 0.025, az + 0.025, y + 0.017, '#6c6a76');
+      }
+    });
+  };
   const night = (b, layer) => {
     const underBench = (u, v) => !(Math.abs(u + 0.1) < 0.72 && Math.abs(-v + 0.2 - 0.05) < 0.3);     // the bench's own shadow
     ditherPool(b, layer, { room, x: wbx - 0.1, z: wbz + 0.2, y: 0.04, r: 1.95, rv: 1.4, cols: AMBER, peak: 0.82, fall: 1.3, cell: 0.05, keep: underBench });
     ditherPool(b, layer, { room, x: sx + 0.55, z: sz + 0.2, r: 1.1, rv: 0.8, cols: ['#4e2416', '#8a3c1c', '#c86428'], peak: 0.85, kind: 2, cell: 0.05 });
     ditherPool(b, layer, { room, plane: 'back', x: -2.05, y: 1.6, r: 0.75, rv: 0.85, cols: ['#4a2c22', '#6e4430', '#94603a'], peak: 0.85, cell: 0.05 });
-    // a faint warm fill behind the shoe rack (in front of its backing board, behind the shoes): the pairs stand out as
-    // silhouettes against warm leather-brown instead of sinking into navy
-    ditherPool(b, layer, { room, plane: 'back', off: 0.05, x: (rx0 + rx1) / 2, y: 1.0, r: 2.2, rv: 0.9, cols: ['#3e2619'], peak: 3, fall: 1, cell: 0.08,
-      keep: (u, v) => 1.0 + v > shelfY[0] - 0.02 && 1.0 + v < 1.72 && Math.abs(u) < (rx1 - rx0) / 2 + 0.02 });
+    rackNight(b, layer);
     ditherPool(b, layer, { room, x: 1.0, z: D / 2 - 0.85, r: 0.8, rv: 0.55, cols: ['#4a3022', '#7a5230'], peak: 0.85, cell: 0.05 });
-    for (const [x, z, ry] of ashSteps) b.box(0.2, 0.004, 0.07, { at: [x, 0.02, z], ry, tones: 'glass', layer, glow: '#5c5a68', glowKind: 1 });
+    for (const [x, z, ry] of ashSteps) {                       // (one flat quad per print: the 12-tri boxes cost the rack's budget)
+      const c = Math.cos(ry), sn = Math.sin(ry), P = (u, w) => [x + u * c + w * sn, 0.02, z - u * sn + w * c];
+      b.tris([...P(-0.1, 0.035), ...P(0.1, 0.035), ...P(0.1, -0.035), ...P(-0.1, 0.035), ...P(0.1, -0.035), ...P(-0.1, -0.035)], { tones: 'glass', layer, glow: '#5c5a68', glowKind: 1 });
+    }
   };
   const dust = particles(room, ctx, {
     name: 'house-10-dust', n: 14, night,
