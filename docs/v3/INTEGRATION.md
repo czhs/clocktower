@@ -1038,6 +1038,19 @@ v3-lobby e2e acceptance in phase 1 runs against the real `townLayoutV3` (availab
     confirm the lock/directory rules in §6.3. Without it, perf comes from your real devices via `ct.debug.v3perf`.
 
 
+
+**User decisions (2026-10-17, binding):**
+- **Players choose v2 or v3 per lobby.** The create-lobby form (`apps/client/src/ui/lobby/LobbyFinder.tsx` and friends)
+  gets a visible "Town" choice — *Classic (v2)* / *Hollowmere (v3)* — sent as `CreateLobbyRequest.world`. The lobby list
+  rows, the join-by-id preview and the waiting room show the lobby's world (small badge). Both stay first-class: v2 lobbies
+  keep working exactly as today, and the per-player Graphics setting still applies inside v3 lobbies (Classic 2D draws the
+  v3 map). The directory listing (`LobbyListing`) carries `world`. **Owner: WP6** (acting for lobby-auth on `ui/lobby/**`),
+  protocol/server plumbing stays WP0. e2e (WP7): create one lobby of each world from the UI and verify the choice sticks.
+  Q7 now only decides which choice is *pre-selected*.
+- **After the full v3 build is tested end to end (C2), run a dedicated performance swarm** (separate run, lead-launched)
+  over the v3 renderer and the v3 server world: load time / lazy chunk size, frame time per tier, character/overlay cost,
+  memory + disposal across lobby switches, server CPU for v3 lobbies; budgets go into `scripts/perf/budgets.mjs`.
+
 **Lead defaults (2026-10-17) — in force until the user overrides them.** Work proceeds with these; each is
 isolated behind one constant/setting so a later answer is a small change.
 
