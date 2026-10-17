@@ -164,3 +164,25 @@ The pre-pivot art-overhaul WIP is preserved on branch `wip/art-overhaul`.
     browser frames, not Phaser renders.
   - The Vite preload-helper patch (`apps/client/build/cssOrder.ts`) is tied to Vite 7.3; on a Vite
     upgrade the build fails loudly until it is updated.
+
+## v3 status (2026-10-17, branch `v3-game`) — the pixel3d / three.js town in the real game
+
+Contract: `docs/v3/INTEGRATION.md` (§8 Status table, §10 "How to continue", §11 decision log). v3 is opt-in per lobby
+(`world: 'v2' | 'v3'`, fixed at creation); v2 "Classic" stays the default and is unchanged. Nothing v3 is deployed.
+
+- **Works (C0, WP0 Foundation):** three@0.170.0 pinned to the vendor; Vite/vitest resolve `three`, `@pixel3d/`,
+  `@v3assets/` and patch the vendor imports at build time (`apps/client/build/pixel3dImports.ts`, fails loudly on
+  drift); lazy `town3d` chunk (222 KiB br, budget 230; entry +0.2, lobby +1.9 KiB br). `apps/client/src/game3d/`
+  has the renderer selector, boot guard, perf sampler, coords/projection and a stub 3D town (Hollowmere at noon,
+  own `wanderer` avatar with prediction, doors, `__ctCamera`), with in-place fallback to Classic on error.
+  Movement/door/input rules extracted to `apps/client/src/game/rules/`; `currentLayout()` (`net/layout.ts`) replaces
+  direct `townLayout` imports; protocol has `world`, `doorNormal`, dais stones. Server refuses `world: 'v3'` (409)
+  until the v3 layout exists.
+- **Gate:** typecheck, build, full `pnpm test` (126 files / 1393 tests pass, 3 skipped), C0 mount/destroy smoke
+  (`scripts/v3/smoke-mount.mjs`, SwiftShader) all pass.
+- **Next:** C0b = WP0s (core splits, `v3-core`) ∥ WP5a (Hollowmere export → `townLayoutV3`, wire the two
+  `CONTRACT-REQUEST(WP5a)` hooks, flip the "v3 refused" tests). Then C1 (WP1-4, WP5b, WP6 in parallel), C2 (WP7 QA
+  harness + e2e), C3.
+- **Open issues:** the stub draws no interiors or remote avatars; WebGL context loss swaps to Classic (rebuild is
+  WP1); the C0 5x cycle ran in `smoke-mount.mjs`, not yet in the WP7 harness; `sound/areas.ts` still reads v2
+  surfaces (WP5a); pixel3d-side requests are collected in INTEGRATION.md §9.2.

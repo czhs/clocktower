@@ -25,7 +25,7 @@ import { createStore, Emitter } from '../../net/store';
 import type { RoomConnection } from '../../net/room';
 import { GameScreen } from '../GameScreen';
 import { CosmeticPreview } from '../CosmeticPreview';
-import { PLAYABLE } from '@ct/assets';
+import { PLAYABLE, townLayout } from '@ct/assets';
 import '../../ui/common/theme.css';
 
 const params = new URLSearchParams(location.search);
@@ -69,6 +69,7 @@ const host: RoomHost = {
   lobbyId: 'sandbox',
   env: 'dev',
   log: console as unknown as RoomHost['log'],
+  layout: () => townLayout, // (v3) the sandbox is a v2 lobby
   now: () => Date.now(),
   members: () => members,
   member: (pid) => members.find((m) => m.pid === pid),

@@ -25,7 +25,7 @@
 //   doorLocked(): const o = this.gameplay?.doorOverride(d.b.id);
 //                 if (o !== null && o !== undefined && !this.amStoryteller()) return o;
 import type * as Phaser from 'phaser';
-import { townLayout } from '@ct/assets';
+import { currentLayout } from '../../net/layout'; // (v3) the lobby's layout
 import {
   CIRCLE_SEATED_PX,
   circleCentre,
@@ -83,7 +83,6 @@ export interface GameplayLayer {
 
 type GameView = PlayerGameView | StorytellerGameView;
 
-const L = townLayout;
 const NIGHT: ReadonlySet<GamePhase> = new Set(['first_night', 'night']);
 
 // Placeholder palette (docs/art-direction.md master palette).
@@ -186,16 +185,16 @@ export function createGameplayLayer(scene: Phaser.Scene, ctx: GameplayCtx): Game
     const key = [...seats].sort((a, b) => a - b).join(',');
     if (key !== spotsKey) {
       spotsKey = key;
-      spots = circleSpots(L, seats);
+      spots = circleSpots(currentLayout(), seats);
     }
     return spots;
   };
   const mySeat = (view: GameView | null): number | null => (view?.kind === 'player' ? view.you.seat : null);
   const homeDoorOf = (seat: number) => {
-    const b = homeBuilding(L, seat);
-    return b ? tileCenterPx(L, b.door) : null;
+    const b = homeBuilding(currentLayout(), seat);
+    return b ? tileCenterPx(currentLayout(), b.door) : null;
   };
-  const centre = circleCentre(L);
+  const centre = circleCentre(currentLayout());
   const votingNomination = (view: GameView): NominationView | null => view.day?.nominations.find((n) => n.status === 'voting') ?? null;
 
   const publish = (next: GameplayState) => {
@@ -297,7 +296,7 @@ export function createGameplayLayer(scene: Phaser.Scene, ctx: GameplayCtx): Game
     const outdoors = me.location === 'outdoors';
     const gathering = !!view?.gathering && !NIGHT.has(view.phase);
     const seated = gathering && outdoors && !!ownSpot && Math.hypot(me.x - ownSpot.x, me.y - ownSpot.y) <= CIRCLE_SEATED_PX;
-    const home = homeBuilding(L, seat);
+    const home = homeBuilding(currentLayout(), seat);
     const atHome = !!home && me.location === `bld:${home.id}`;
     const ctl = driver.control;
     publish({

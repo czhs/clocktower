@@ -13,7 +13,7 @@
 // (generated/presets/<id>-portrait.png); fallback = their initial in a coloured circle. Ghosts
 // (publicly dead) are drawn pale.
 import type * as Phaser from 'phaser';
-import { townLayout } from '@ct/assets';
+import { currentLayout } from '../../net/layout'; // (v3) the lobby's layout
 import { tileCenterPx, type DoorTag, type LobbyRoomView } from '@ct/protocol';
 import { createStore } from '../../net/store';
 import { UPRIGHT_Y } from '../render/projection';
@@ -123,10 +123,10 @@ export function createDoorTags(scene: Phaser.Scene): DoorTagLayer {
   }
 
   function build(buildingId: string, view: DoorBoardView): Board {
-    const b = townLayout.buildings.find((x) => x.id === buildingId);
+    const b = currentLayout().buildings.find((x) => x.id === buildingId);
     const board: Board = { key: '', objs: [] };
     if (!b || !view.shown.length) return board;
-    const door = tileCenterPx(townLayout, b.door);
+    const door = tileCenterPx(currentLayout(), b.door);
     const shown = view.shown;
     const w = PAD * 2 + shown.length * ICON + (shown.length - 1) * GAP + (view.overflow > 0 ? 10 : 0);
     const h = ICON + PAD * 2;

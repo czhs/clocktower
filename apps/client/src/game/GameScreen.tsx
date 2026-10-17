@@ -1,9 +1,9 @@
 import type { ComponentChildren } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { townLayout } from '@ct/assets';
-import { tileCenterPx, type AccountView, type BuildingDef } from '@ct/protocol';
+import { tileCenterPx, type AccountView, type BuildingDef, type WorldId } from '@ct/protocol';
 import { localPlayer, type LocalPlayerState } from '../net/localPlayer';
 import type { RoomConnection } from '../net/room';
+import { currentLayout } from '../net/layout'; // (v3) the lobby's layout
 import { shallowEqual, useStore, useStoreSelector } from '../net/store';
 import { HowToPlayHost, openHelp } from '../ui/common/HowToPlay';
 import { applyAmbientVolume, SettingsButton } from '../ui/common/Settings';
@@ -14,6 +14,10 @@ import { TrailingGate, type GateResult } from './hudRate';
 import { ClockChip, Notebook, SocialPalette, Story } from '../ui/common/lazyTown';
 import { AbortGame } from '../ui/clock/AbortGame';
 import { LobbySafety } from '../ui/lobby/moderation'; // (v2.3 OPS-6) in-game report / mute / remove
+// (v3 WP0) renderer choice: static, three-free (the 3D town itself is the lazy chunk town3d)
+import { chooseRendererHere, onGraphicsChange, rememberAutoFallback } from '../game3d/select';
+import { resetBootGuard } from '../game3d/bootGuard';
+import type { FallbackReason, RendererKind, Tier, TownBridge3d, TownHandle } from '../game3d/contract';
 import './game.css';
 
 // Mounts the Phaser town for this lobby; renders `children` (HUD, Storyteller panel, voice panel,
@@ -32,31 +36,100 @@ export function GameScreen(props: { conn: RoomConnection; account: AccountView; 
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const touch = useTouchDevice();
 
+  // (v3 WP0) which renderer draws the town: chooseRenderer (game3d/select.ts) on mount, then in-place swaps
+  // (crash / perf fallback, Graphics setting). The lobby's world is fixed, so it is read once.
+  const world = props.conn.lobbyView.get()?.world ?? props.conn.lobbyView.get()?.lobby.world;
+  const [render, setRender] = useState<Render>(() => pickRenderer(world));
+  const [notice, setNotice] = useState<GraphicsNoticeKind | null>(() => (render.row === 4 ? 'boot-guard' : null));
+  useEffect(
+    () =>
+      onGraphicsChange(() => {
+        const c = pickRenderer(world);
+        setRender((r) => (r.kind === c.kind && r.tier === c.tier ? r : c));
+      }),
+    [world],
+  );
+
+  // Effect A (per connection): ambience + sound + the audio unlock. A renderer swap never restarts it.
   useEffect(() => {
-    const el = host.current;
-    if (!el) return;
-    let game: { destroy(): void } | null = null;
-    let cancelled = false;
-    import('./TownGame')
-      .then(({ createTownGame }) => {
-        if (cancelled) return;
-        game = createTownGame(el, { conn: props.conn, setPrompt, setCaption, setInside, registerLeave: (fn) => (leaveRef.current = fn) });
-        setStatus('ready');
-      })
-      .catch(() => !cancelled && setStatus('error'));
     applyAmbientVolume();
     const detachSound = attachSound(props.conn);
     const gesture = () => unlockAudio();
     window.addEventListener('pointerdown', gesture);
     window.addEventListener('keydown', gesture);
     return () => {
-      cancelled = true;
       window.removeEventListener('pointerdown', gesture);
       window.removeEventListener('keydown', gesture);
       detachSound();
-      game?.destroy();
     };
   }, [props.conn]);
+
+  // Effect B (per connection + renderer): load and mount the town; destroy() on swap / unmount.
+  useEffect(() => {
+    const el = host.current;
+    if (!el) return;
+    let game: TownHandle | null = null;
+    let cancelled = false;
+    setStatus('loading');
+    const fallback = (reason: FallbackReason) => {
+      if (cancelled) return;
+      if (reason === 'perf') rememberAutoFallback();
+      setNotice(reason === 'perf' ? 'perf' : 'error');
+      setRender({ kind: 'classic', tier: 'low', row: 0 });
+    };
+    const bridge: TownBridge3d = {
+      conn: props.conn,
+      setPrompt,
+      setCaption,
+      setInside,
+      registerLeave: (fn) => (leaveRef.current = fn),
+      requestFallback: fallback,
+    };
+    const mount =
+      render.kind === 'v3'
+        ? importTown3d().then(({ createTownGame3d }) => () => createTownGame3d(el, bridge, { tier: render.tier }))
+        : import('./TownGame').then(({ createTownGame }) => () => createTownGame(el, bridge));
+    mount
+      .then((create) => {
+        if (cancelled) return;
+        try {
+          game = create();
+        } catch (e) {
+          if (render.kind === 'v3') {
+            console.error('[town3d] mount failed', e);
+            return fallback('error');
+          }
+          throw e;
+        }
+        // the 3D build + shader warm-up stay behind "Lighting the lamps…" (INTEGRATION.md §1.2/§1.3); a
+        // rejected `ready` already requested the Classic fallback, which re-runs this effect
+        const ready = game.ready;
+        if (!ready) return setStatus('ready');
+        ready.then(
+          () => {
+            if (!cancelled) setStatus('ready');
+          },
+          () => undefined,
+        );
+      })
+      .catch((e: unknown) => {
+        if (cancelled) return;
+        if (render.kind === 'v3') {
+          console.error('[town3d] chunk failed', e);
+          return fallback('error');
+        }
+        setStatus('error');
+      });
+    return () => {
+      cancelled = true;
+      game?.destroy();
+      // every renderer's opt-in debug hooks go with it (a swap must not leave the other renderer's members
+      // behind; the DEV-only hooks never exist in production builds, tests/security/web-client.test.ts)
+      const w = window as unknown as Record<string, unknown>;
+      delete w.__ctCamera;
+      delete w.__ctSocial;
+    };
+  }, [props.conn, render]);
 
   return (
     <div class={`ct-game${touch ? ' ct-touch' : ''}`}>
@@ -97,6 +170,17 @@ export function GameScreen(props: { conn: RoomConnection; account: AccountView; 
       <Toolbar conn={props.conn} />
       <ErrorToasts conn={props.conn} />
       <ConnectionBanner conn={props.conn} />
+      {notice && (
+        <GraphicsNotice
+          kind={notice}
+          onClose={() => setNotice(null)}
+          onTryV3={() => {
+            resetBootGuard();
+            setNotice(null);
+            setRender(pickRenderer(world));
+          }}
+        />
+      )}
       {props.children}
       <HowToPlayHost touch={touch} />
     </div>
@@ -153,7 +237,7 @@ function FirstSteps({ touch }: { touch: boolean }) {
         faded = true;
         setYouFaded(true);
       }
-      if (moved > 3 * townLayout.tileSize) {
+      if (moved > 3 * currentLayout().tileSize) {
         if (!marked) markHint(MOVE_HINT_KEY);
         marked = true;
         // (as before: the hint goes 1.2 s after the last move beyond 3 tiles)
@@ -238,8 +322,6 @@ function Toolbar({ conn }: { conn: RoomConnection }) {
 
 // ------------------------------------------------------------------------------------ home compass
 
-const L = townLayout;
-
 /** What the compass shows, from the per-frame local position: re-render only when it changes
  * (whole steps, the arrow angle in 5° steps, home / inside / outdoors). */
 type CompassFix = { at: 'home' } | { at: 'inside' } | { at: 'out'; steps: number; deg: number } | null;
@@ -247,6 +329,7 @@ function compassFix(me: LocalPlayerState, house: BuildingDef | undefined): Compa
   if (!me.pid || !house) return null;
   if (me.location === `bld:${house.id}`) return { at: 'home' };
   if (me.location !== 'outdoors') return { at: 'inside' };
+  const L = currentLayout();
   const door = tileCenterPx(L, house.door);
   const dx = door.x - me.x;
   const dy = door.y - me.y;
@@ -284,7 +367,7 @@ function HomeCompass({ conn }: { conn: RoomConnection }) {
     (g) => (g && g.kind === 'player' && g.phase !== 'finished' ? { seat: g.you.seat, bedtime: g.phase === 'bedtime' } : null),
     shallowEqual,
   );
-  const house = game ? L.buildings.find((b) => b.houseIndex === game.seat) : undefined;
+  const house = game ? currentLayout().buildings.find((b) => b.houseIndex === game.seat) : undefined;
   const fix = useCompassFix(house);
   if (!game || !house || !fix) return null;
   const bedtime = game.bedtime;
@@ -319,6 +402,46 @@ function HomeCompass({ conn }: { conn: RoomConnection }) {
       <span>
         {bedtime ? 'Go home' : 'Your home'} <small>· {steps <= 1 ? 'here' : `${steps} steps`}</small>
       </span>
+    </div>
+  );
+}
+
+// ------------------------------------------------------------------------------------ graphics (v3)
+
+type Render = { kind: RendererKind; tier: Tier; row: number };
+function pickRenderer(world: WorldId | undefined): Render {
+  const c = chooseRendererHere(world);
+  return { kind: c.renderer, tier: c.tier, row: c.row };
+}
+
+/** The 3D town chunk; a chunk-load error (usually deploy skew) is retried once after 1 s. */
+function importTown3d(): Promise<typeof import('../game3d/TownGame3d')> {
+  return import('../game3d/TownGame3d').catch(() => new Promise<void>((r) => setTimeout(r, 1000)).then(() => import('../game3d/TownGame3d')));
+}
+
+type GraphicsNoticeKind = 'boot-guard' | 'perf' | 'error';
+const GRAPHICS_NOTICE: Record<GraphicsNoticeKind, string> = {
+  'boot-guard': 'v3 graphics stopped last time — showing the Classic town.',
+  perf: 'Switched to Classic graphics for speed.',
+  error: 'The 3D town failed — switched to Classic graphics.',
+};
+
+/** A toast after a renderer fallback (row 4 boot guard, perf, crash). */
+function GraphicsNotice({ kind, onClose, onTryV3 }: { kind: GraphicsNoticeKind; onClose: () => void; onTryV3: () => void }) {
+  useEffect(() => {
+    if (kind === 'boot-guard') return;
+    const t = setTimeout(onClose, 8000);
+    return () => clearTimeout(t);
+  }, [kind]);
+  return (
+    <div class="ct-toasts" aria-live="polite">
+      <div class="ct-toast" role="status">
+        <span>{GRAPHICS_NOTICE[kind]}</span>
+        {kind === 'boot-guard' && <button onClick={onTryV3}>Try v3</button>}
+        <button aria-label="Dismiss" onClick={onClose}>
+          ✕
+        </button>
+      </div>
     </div>
   );
 }

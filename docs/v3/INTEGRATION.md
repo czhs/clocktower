@@ -55,10 +55,12 @@ both: createTownGame(parent: HTMLElement, bridge: TownBridge): { destroy(): void
   - The v3 layout data (`@ct/assets/hollowmere`, §2.2) is its own lazy chunk too (§2.4 "Layout loading").
   - Budgets are in **brotli KiB** to match `scripts/perf/budgets.mjs` (`*BrKiB`, e.g. `lobbyChunkBrKiB` max 72,
     v2.4 63.8, `budgets.mjs:30`): main/entry growth ≤ 1 KiB br, lobby chunk growth ≤ 2 KiB br (§7).
-- **Prefetch.** `warmTown()` (`ui/lobby/LobbyRoute.tsx:38-41`) runs before the `RoomConnection` exists (`:53-54`), so
-  it cannot know the lobby's world. It prefetches from the prefs + WebGL probe only: if the pref/probe allow v3, it
-  prefetches **both** `TownGame` and `TownGame3d` (cheap: dynamic import, no execution). The v3 layout chunk is fetched
-  when `lobby:view` arrives with `world: 'v3'`.
+- **Prefetch.** `warmTown()` (`ui/lobby/LobbyRoute.tsx`) runs before the `RoomConnection` exists, so it cannot know
+  the lobby's world; it keeps prefetching only `TownGame` (Classic). The 3D chunk `town3d` and the v3 layout chunk are
+  fetched when the first `lobby:view` says `world: 'v3'` (`useLobbyLayout`, gated on `mayUseV3()` = prefs + boot guard
+  + WebGL probe), so a v2 join never downloads three.js (WP0 change, §11).
+- **Mount gate (WP0).** `InLobby` waits for the first `lobby:view`, then `ensureLayout(world)` (v2: synchronous), and
+  only then mounts `GameScreen`; a v3 lobby whose layout cannot load shows "This town could not be loaded".
 
 ### 1.2 Renderer choice and fallback (`game3d/select.ts`, `game3d/perf.ts`, `game3d/bootGuard.ts`)
 
@@ -76,7 +78,8 @@ both: createTownGame(parent: HTMLElement, bridge: TownBridge): { destroy(): void
 | 8 | Phone policy | `auto` on a coarse-pointer device whose shorter side is ≤ 500 CSS px → Classic. An explicit `v3` is honoured on any device, at the `low` tier. |
 | 9 | Starting tier | Chosen **before** building: `low` when `fx/quality` says low, the device is a tablet (coarse pointer, any size), or `UNMASKED_RENDERER` matches `/Intel\|UHD\|Iris\|Mali\|Adreno\|PowerVR\|Apple GPU/i` (integrated/mobile). Otherwise `high`. `auto` may promote low → high only after a clean sample (below) and only at a safe moment. |
 
-**Boot guard** (`game3d/bootGuard.ts`). Before `new Engine(...)`, write `localStorage['ct.graphics.booting'] =
+**Boot guard** (`game3d/bootGuard.ts`). Reading the guard (`bootGuardState`, main bundle) lives in `bootGuard.ts`; writing it (`markBooting`, `markStable`,
+`BootTracker`) in `bootMark.ts`, which only the lazy 3D chunk imports. Before `new Engine(...)`, write `localStorage['ct.graphics.booting'] =
 <ISO time>` and append the time to `ct.graphics.boots` (last 10 min). Clear `booting` after 10 s of stable frames or on
 a clean `destroy()`. On mount, a leftover `booting` flag, or ≥ 2 unclean boots in 10 min, picks Classic (row 4). This
 covers OOM / GPU-process kills on iOS Safari and low-memory Android, which reload the tab with no JS error.
@@ -227,11 +230,13 @@ covers OOM / GPU-process kills on iOS Safari and low-memory Android, which reloa
 ```
 TownGame3d.ts      createTownGame3d(parent, bridge) — composition root, loop, destroy order
 select.ts          chooseRenderer(), probe, prefs (static import; no three)
-bootGuard.ts       crash-loop guard (static; no three)
+bootGuard.ts       crash-loop guard, read side (static; no three)
+bootMark.ts        crash-loop guard, write side (boot marks, BootTracker; lazy chunk only)
 perf.ts            rAF sampler, safe-moment scheduler
 contract.ts        shared interfaces below (no three types leak out of game3d)
 coords.ts          px <-> metres, interior affine maps (§2.3), projection maths (§1.5) — pure, no three import
-vendor/            engineHost.ts, town.ts, characters.ts, interiors.ts, time.ts  (only importers of @pixel3d)
+vendor/            engineHost.ts, town.ts, characters.ts, interiors.ts, time.ts  (only importers of @pixel3d;
+                   WP0 ships minimal town.ts / characters.ts stubs that WP3 / WP2 then own)
 world/             town build, doors, boarded houses, interiors switching, time-of-day, dais, clock tower  (WP3)
 avatars/           local + remote characters, cast map, ghosts, deaths, talk, carried lanterns, NPCs   (WP2)
 overlay/           world-anchored UI: labels, bubbles, pins, emotes, boards, house names, markers, hints (WP4)
@@ -438,6 +443,13 @@ px:      x_px = X * 16        y_px = Z * 16
 (`createModules`). A mid-lobby world switch would need all modules rebuilt and every entity respawned. Choosing the
 world at creation avoids that. (Q9 asks whether the host needs to change it later; then the option is "allowed only
 while WAITING, rebuild modules, teleport everyone with reason `'spawn'`, clients remount".)
+
+**Server (WP0).** `apps/server/src/rooms/worldLayout.ts` (`worldAvailable`, `layoutForWorld`) is the single place that maps
+a world to its layout. Until WP5a sets its `V3_LAYOUT` to `townLayoutV3`, `worldAvailable('v3')` is false: the directory
+answers `POST /api/lobbies {world:'v3'}` with 409 `conflict` ("The v3 town is not available on this server yet") and no
+room is created. `GameRoom` resolves `this.layout` once in `onCreate`, `host.layout()` returns it, and `createModules`
+passes it to the default game/world/voice/social factories (injected test factories keep `(host)`). The lobby summary and
+every `lobby:view` carry `world`.
 
 **Layout loading (client).** `net/layout.ts`:
 
@@ -705,6 +717,17 @@ dynamic `import('./v3atlas')` gated on v3, so `emotes.json` (23 KB), `portraits.
 
 ---
 
+
+> **Update 2026-10-17 (lead): more UI groups are finished and now in the tree** — wire them into the game (WP6 for
+> DOM/Preact chrome, WP4 for in-world overlays, WP3 for the tower clock where relevant):
+> `v3/assets/ui/` now has `hud` (+`-night`), `hud-font`, `panels` (+`panels.css`), `events` (+`-night`: game-event
+> effects), `notebook` (+`-night`, `notebook.css`), `social` (combined social bake), besides kit/markers/indicators/
+> portraits/cast-portraits/emotes. Sources and the contract for each group: `v3/pixel3d/src/ui/{hud,panels,events,notebook}/`,
+> `v3/pixel3d/docs/UI.md` (frame names, 9-slices, colour tokens, night variants, CSS classes). These are drop-in
+> replacements for the v2 HUD/panels/notebook/event visuals; apply them in v3 lobbies (and as the "v3 skin"), keep v2
+> lobbies on the v2 look. Some groups may still change (the UI session is running); re-run `scripts/v3/import-assets.sh`
+> and merge `v3-dev` to refresh.
+
 ## 6. Hooks, tests, hosting
 
 ### 6.1 Debug hooks (keep compatible)
@@ -853,7 +876,7 @@ Every agent runs code only via `CT_AGENT=v3-<name> scripts/remote.sh …`. Ad-ho
 
 | Agent | Ports |
 |---|---|
-| v3-lead | 3450-3454 |
+| v3-lead | 3450-3453 ad hoc; 3454 reserved for `apps/server/test/lobby.world.test.ts` (part of `pnpm test`) |
 | v3-core | 3455-3459 |
 | v3-qa harness server | 3460 |
 | v3-avatars | 3461-3464 |
@@ -876,11 +899,11 @@ the order is WP0 (extraction) → WP0s (layer splits) → WP5b (layout injection
 
 | WP | Owner | Checkpoint | Last commit | Blocking |
 |---|---|---|---|---|
-| WP0 | v3-lead | C0 | — | — |
-| WP0s | v3-core | C0b | — | WP0 |
-| WP5a | v3-world | C0b | — | WP0 (protocol fields) |
+| WP0 | v3-lead | C0 | **C0 passed, committed** as "v3 C0: …" on `v3-game` (gate `v3-gate`, 2026-10-17): `pnpm -r run typecheck`, `pnpm build`, `pnpm test` (126 files / 1393 tests pass, 1 file / 3 tests skipped), C0 smoke `scripts/v3/smoke-mount.mjs` (5 mount/destroy + 1 injected crash, exit 0, Vite dev + SwiftShader); lead also ran e2e `doors` + `chat-bubbles` (2 passed). Known gaps: stub draws no interiors/remote avatars; context loss falls back to Classic (WP1 adds rebuild); the 5x cycle used `smoke-mount.mjs`, not the WP7 harness | — |
+| WP0s | v3-core | C0b | — (next; unblocked by C0) | — |
+| WP5a | v3-world | C0b | — (next; unblocked by C0). Until it lands the server answers `world: 'v3'` with 409 and client `currentLayout()` throws for v3 | — |
 | WP1-4, WP5b, WP6 | see below | C1 | — | C0b |
-| WP7 | v3-qa | C2 | — | C1 (harness may start after C0) |
+| WP7 | v3-qa | C2 | — (harness may start now; take over `scripts/v3/smoke-mount.mjs`) | C1 |
 
 ### Phase 0: WP0 Foundation (`v3-lead`), checkpoint **C0**
 
@@ -923,7 +946,15 @@ the order is WP0 (extraction) → WP0s (layer splits) → WP5b (layout injection
 - **Owns:** `scripts/v3/export-hollowmere.mjs`, `packages/assets/src/hollowmere/**` (world-art sign-off),
   `packages/assets/test/hollowmere*.test.ts`, parameterising `layout.test.ts`/`navigation.test.ts` by layout, the
   `@ct/assets/hollowmere` subpath export in `packages/assets/package.json`, `apps/server/test/world.v3.test.ts`.
-- **Deliverables:** generated JSON, `townLayoutV3`, `townMapV3`, `layoutFor`.
+- **Deliverables:** generated JSON, `townLayoutV3`, `townMapV3`, `layoutFor`. Wire the two WP0 hooks (marked
+  `CONTRACT-REQUEST(WP5a)`): `V3_LAYOUT` in `apps/server/src/rooms/worldLayout.ts` and `importV3Layout()` in
+  `apps/client/src/net/layout.ts`; then flip the "v3 refused" assertions in `apps/server/test/lobby.world.test.ts` and
+  `apps/client/test/game3d/layoutRules.test.ts`.
+- **Also (review round 2):** `apps/client/src/game/sound/areas.ts` (world-art sign-off) still builds its `water`,
+  `forest` and `square` fields, `fountains` and `ground` at module load from the v2 `townMap` (WP0 only moved
+  `townBounds` and the tavern door to `currentLayout()`). Once `townMapV3` exists, derive them from the current
+  world's map lazily, cached per `WorldId`, so v3 ambience and footstep surfaces follow Hollowmere. Test: one
+  assertion per field that a v3 point (e.g. the Hollowmere fountain) reads the v3 surface.
 - **Tests:** §2.2 assets tests, server test.
 - **Accept:** every door reachable; band/collision invariants; v2 layout byte-identical (hash of
   `JSON.stringify(townLayout)`).
@@ -1106,6 +1137,15 @@ isolated behind one constant/setting so a later answer is a small change.
 
 ## 10. How to continue (for future agents)
 
+- **Current state (2026-10-17, after C0):** WP0 is committed on `v3-game`. Next: C0b = WP0s (`v3-core`) and WP5a
+  (`v3-world`) in parallel; WP7 may start the harness. Open WP0 follow-ups: the two `CONTRACT-REQUEST(WP5a)` hooks
+  (`apps/server/src/rooms/worldLayout.ts`, `apps/client/src/net/layout.ts`) and the "v3 refused" assertions to flip
+  (`apps/server/test/lobby.world.test.ts`, `apps/client/test/game3d/layoutRules.test.ts`); `sound/areas.ts` v3 fields
+  (WP5a, §8). Summary for humans: `docs/progress.md` "v3 status".
+- **Running things on the host from a v3 worktree:** `remote.sh` quotes each argument, so wrap lock/pipe chains in
+  `sh -c '…'` and use `$HOME` (not `~`) inside it, e.g.
+  `CT_AGENT=v3-<name> scripts/remote.sh sh -c 'flock $HOME/clocktower/v3-heavy.lock pnpm test'`.
+  `tests/security/web-client.test.ts` reads the built `apps/client/dist`: run `pnpm build` before `pnpm test`.
 - **Where state lives:** this file (contract; §8 Status table), `docs/progress.md` (lead), `docs/test-results.md`
   (qa), §11 decision log, `grep -rn "CONTRACT-REQUEST" apps/client/src/game3d`.
 - **Refreshing the vendor copies.**
@@ -1146,6 +1186,24 @@ isolated behind one constant/setting so a later answer is a small change.
 - 2026-10-17 (rev 2): v3 layout loaded lazily (`@ct/assets/hollowmere`) before GameScreen mounts; budgets in br.
 - 2026-10-17 (rev 2): Perf comes from real devices via `ct.debug.v3perf`; a separate render host only after Q10.
 - 2026-10-17 (rev 2): Server speed stays 150 px/s pending Q1 (options re-framed on the vendor's `gameSpeed`).
+- 2026-10-17 (WP0): `warmTown` no longer prefetches the 3D chunk before the world is known; it is fetched on the first
+  `lobby:view` with `world: 'v3'` (a v2 join must not download three.js). LobbyRoute waits for that first view and
+  `ensureLayout` before mounting GameScreen.
+- 2026-10-17 (WP0): the server refuses `world: 'v3'` lobbies (409) until WP5a's layout exists, instead of creating a room
+  that cannot build its modules; client `currentLayout()` throws "v3 layout not built" meanwhile.
+- 2026-10-17 (WP0): boot guard split into `bootGuard.ts` (read, main bundle) and `bootMark.ts` (write, lazy chunk), to keep
+  the lobby chunk inside its +2 KiB br budget (measured +1.9).
+- 2026-10-17 (WP0): `GameScreen` deletes `window.__ctCamera` / `__ctSocial` after every renderer's `destroy()` (Classic's
+  TownScene never removed its hook); the DEV-only `__town` is left to TownScene (its name must not appear in production
+  bundles, `tests/security/web-client.test.ts`).
+- 2026-10-17 (WP0): the 3D entry chunk is named `town3d` by module id in `chunkFileNames` (rollup leaves its
+  `facadeModuleId` null). Measured: `town3d` 222 KiB br (budget 230), entry +0.2 KiB br, lobby +1.9 KiB br.
+- 2026-10-17 (C0): gate passed (typecheck, build, full `pnpm test`, smoke-mount); WP0 committed by `v3-gate`. Owner
+  sign-offs for WP0's minimal edits in other owners' files (qa-deploy: `tests/security/leakage.test.ts` `world` key,
+  `.github/dependabot.yml` three ignore; lobby-auth: GameRoom/directory/fakeHost; world-art: TownScene, GameScreen,
+  gameplay/sound; rules-storyteller: hints/script/stage) are recorded in the C0 commit message.
+- 2026-10-17 (WP0): the extracted rules live in `apps/client/src/game/rules/{input,doors,movement,cast}.ts`; `castKey`
+  is split into the renderer-free `castIdentity` (rules/cast.ts) and TownScene's sheet-key lookup.
 
 ## 12. Review log (round 1)
 

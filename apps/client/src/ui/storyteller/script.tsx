@@ -11,7 +11,7 @@
 // except where the server would reject the payload.
 import type { ComponentChildren } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { townLayout } from '@ct/assets';
+import { currentLayout } from '../../net/layout'; // (v3) the lobby's layout
 import { CHARACTER_INFO, type BuildingDef, type GrimoireEntry, type NightStepView, type StorytellerGameView } from '@ct/protocol';
 import { CastPortrait } from '../common/castPortrait';
 import { charName, Countdown, nameOf } from '../hud/shared';
@@ -32,7 +32,7 @@ const isNight = (p: StorytellerGameView['phase']) => p === 'first_night' || p ==
 const TARGET_STEPS: readonly string[] = ['monk', 'poisoner', 'imp', 'butler'];
 
 export function houseOf(seat: number): BuildingDef | undefined {
-  return townLayout.buildings.find((b) => b.houseIndex === seat);
+  return currentLayout().buildings.find((b) => b.houseIndex === seat);
 }
 
 const name = (view: StorytellerGameView, seat: number) => nameOf(view.players, seat);
@@ -81,7 +81,7 @@ function goTo(send: Send, seat: number): void {
 
 /** Back outside, on the square (the server picks the nearest free spot). */
 function toSquare(send: Send): void {
-  const sq = townLayout.square;
+  const sq = currentLayout().square;
   send({ type: 'teleport_self', to: { kind: 'point', x: Math.round(sq.cx), y: Math.round(sq.cy + sq.r * 0.55) } });
 }
 

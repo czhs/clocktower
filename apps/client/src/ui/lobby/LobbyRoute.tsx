@@ -17,6 +17,9 @@ import { navigate } from '../common/route';
 import { LoadingScreen, lobbyErrorCopy, StatusScreen } from '../common/StatusScreen';
 import { errorText } from './finder';
 import { WaitingRoom } from './WaitingRoom';
+import { ensureLayout, selectLayoutIfLoaded } from '../../net/layout';
+import { mayUseV3 } from '../../game3d/select';
+import type { WorldId } from '@ct/protocol';
 
 // A tab older than the last deploys may find this chunk gone: say so (the seat is kept) instead of
 // silently showing a Storyteller no controls. Reloading restores the seat via the reconnect token.
@@ -34,7 +37,9 @@ const StorytellerPanel = lazyComponent(
 );
 
 /** Start fetching Phaser + the town code now, in parallel with the join (GameScreen imports it too),
- * and the in-town panels' chunk (v2.4: notebook, story, social palette, clock chip, storyline). */
+ * and the in-town panels' chunk (v2.4: notebook, story, social palette, clock chip, storyline).
+ * (v3) The 3D town chunk is fetched once lobby:view says the lobby is a v3 world (useLobbyLayout), not
+ * here: a v2 join never downloads three.js. */
 const warmTown = () => {
   void import('../../game/TownGame').catch(() => undefined);
   void preloadTownParts();
@@ -105,7 +110,49 @@ export function LobbyRoute({ id, intent, account }: { id: string; intent: 'playe
   return <InLobby conn={conn} account={account} />;
 }
 
+/**
+ * (v3 WP0) The lobby's world is known from its first lobby:view: load that world's layout before the town
+ * mounts (net/layout.ts: every consumer reads currentLayout() synchronously). v2 is immediate.
+ */
+function useLobbyLayout(conn: RoomConnection): 'pending' | 'ready' | 'error' {
+  const world = useStoreSelector(conn.lobbyView, (l): WorldId | null => (l ? (l.world ?? l.lobby.world ?? 'v2') : null));
+  const [state, setState] = useState<'pending' | 'ready' | 'error'>(() => (world && selectLayoutIfLoaded(world) ? 'ready' : 'pending'));
+  useEffect(() => {
+    if (!world) return;
+    if (selectLayoutIfLoaded(world)) return setState('ready');
+    let alive = true;
+    setState('pending');
+    if (world === 'v3' && mayUseV3()) void import('../../game3d/TownGame3d').catch(() => undefined); // prefetch
+    ensureLayout(world).then(
+      () => alive && setState('ready'),
+      () => alive && setState('error'),
+    );
+    return () => {
+      alive = false;
+    };
+  }, [world]);
+  return state;
+}
+
 function InLobby({ conn, account }: { conn: RoomConnection; account: AccountView }) {
+  const layout = useLobbyLayout(conn);
+  if (layout === 'error')
+    return (
+      <StatusScreen
+        icon="⚠"
+        title="This town could not be loaded"
+        message="The lobby uses a town this page cannot load (the server may have just been updated). Your seat is kept."
+        actions={[
+          { label: 'Try again', primary: true, onClick: () => location.reload() },
+          { label: 'Back to lobbies', onClick: () => navigate({ name: 'home' }) },
+        ]}
+      />
+    );
+  if (layout !== 'ready') return <LoadingScreen text="Joining lobby…" />;
+  return <InLobbyTown conn={conn} account={account} />;
+}
+
+function InLobbyTown({ conn, account }: { conn: RoomConnection; account: AccountView }) {
   // (selectors: this shell re-renders only when the waiting sheet comes or goes, not on every view)
   const hasGame = useStoreSelector(conn.gameView, (g) => !!g);
   const lobbyWaiting = useStoreSelector(conn.lobbyView, (l) => !l || l.lobby.phase === 'waiting');

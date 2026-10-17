@@ -11,6 +11,7 @@
 // Nothing here is ever sent to the server.
 import { PIN_COLORS, type PinColor } from '@ct/protocol';
 import { FX_QUALITY_KEY, type FxQualityPref } from '../../game/fx/quality';
+import { GRAPHICS_KEY, parseGraphicsPref, type GraphicsPref } from '../../game3d/select'; // (v3) renderer choice, three-free
 import { TALK_OUTLINE_KEY, type TalkOutlineMode } from '../../game/fx/talkingPref';
 import { REDUCED_MOTION_KEY } from '../../game/fx/motion';
 import { AMBIENT_DEFAULT, AMBIENT_KEY, SFX_DEFAULT, SFX_KEY } from '../../game/sound/prefs';
@@ -80,6 +81,13 @@ export const PREFS = {
     },
     serialize: (v) => v,
   } as PrefDef<FxQualityPref>,
+  /** (v3) Graphics: 'auto' (3D where it runs well) | 'v3' (always 3D) | 'classic' (2D). game3d/select.ts row 3. */
+  graphics: {
+    key: GRAPHICS_KEY,
+    def: 'auto',
+    parse: parseGraphicsPref,
+    serialize: (v) => v,
+  } as PrefDef<GraphicsPref>,
   talkOutline: {
     key: TALK_OUTLINE_KEY,
     def: 'behind',

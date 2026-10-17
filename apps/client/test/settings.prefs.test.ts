@@ -41,7 +41,7 @@ const blocked: PrefStorage = {
 describe('defaults', () => {
   it('empty storage reads every default', () => {
     expect(readPrefs(mem())).toEqual(PREF_DEFAULTS);
-    expect(PREF_DEFAULTS).toEqual({ ambientVolume: 0.25, sfxVolume: 0.7, fxQuality: 'auto', talkOutline: 'behind', reducedMotion: 'system', pinColor: 'gold' });
+    expect(PREF_DEFAULTS).toEqual({ ambientVolume: 0.25, sfxVolume: 0.7, fxQuality: 'auto', graphics: 'auto', talkOutline: 'behind', reducedMotion: 'system', pinColor: 'gold' });
   });
   it('null / blocked storage falls back to defaults and never throws', () => {
     expect(readPrefs(null)).toEqual(PREF_DEFAULTS);

@@ -38,6 +38,12 @@ export interface BuildingDef {
   bed?: TilePoint;
   /** Houses: where the Storyteller stands during a night visit. */
   visitPoint?: TilePoint;
+  /**
+   * (additive, v3 world) Unit vector pointing OUT of the building through its door, in tile axes
+   * (x right, y down). Rotated v3 houses set it; the client's "inward" door rule is its negation.
+   * Absent (v2): inward follows from where the door tile lies relative to the footprint.
+   */
+  doorNormal?: [number, number];
 }
 
 export interface TownLayout {
@@ -59,7 +65,28 @@ export interface TownLayout {
    * (additive, gameplay) Optional nomination-circle ring in PIXELS (feet positions). When absent
    * the ring is derived from `square` (circleCentre / circleRadii).
    */
-  circle?: { cx: number; cy: number; rx: number; ry: number; startDeg?: number; sweepDeg?: number };
+  circle?: {
+    cx: number;
+    cy: number;
+    rx: number;
+    ry: number;
+    startDeg?: number;
+    sweepDeg?: number;
+    /**
+     * (additive, v3 world) Fixed seat stones on the ring (the 3D dais has 15). When set, seat k of n
+     * (ascending order) sits at stone round(k·stones/n) % stones, angle start + 2π·stone/stones.
+     */
+    stones?: number;
+  };
+}
+
+/** (additive, v3) Which town a lobby uses: 'v2' = the classic layout, 'v3' = Hollowmere (pixel3d). Fixed at lobby creation. */
+export const WORLDS = ['v2', 'v3'] as const;
+export type WorldId = (typeof WORLDS)[number];
+
+/** Seat stone (0..stones-1) of the k-th seat (ascending) of n, the rule circleSpots uses when circle.stones is set. */
+export function stoneOfSeatIndex(k: number, n: number, stones: number): number {
+  return Math.round((k * stones) / Math.max(1, n)) % stones;
 }
 
 /** 'outdoors' or the id of the building whose interior contains the point. */
@@ -243,7 +270,9 @@ export function circleSpots(layout: TownLayout, seats: readonly number[]): Circl
   sorted.forEach((seat, i) => {
     // Default: an open north arc leaves a landmark behind the gathering. A layout may instead give
     // the arc (v2 square: a full ring around the fountain). Vote order always runs clockwise.
-    const th = arc.full ? arc.start + (arc.sweep * i) / Math.max(1, n) : arc.start + (arc.sweep * i) / Math.max(1, n - 1);
+    // (v3 world) fixed stones: seat i of n sits on stone round(i·stones/n), the 3D dais' own spots
+    const stones = layout.circle?.stones;
+    const th = stones ? arc.start + (2 * Math.PI * stoneOfSeatIndex(i, n, stones)) / stones : arc.full ? arc.start + (arc.sweep * i) / Math.max(1, n) : arc.start + (arc.sweep * i) / Math.max(1, n - 1);
     const ix = Math.round(c.x + Math.sin(th) * rx);
     const iy = Math.round(c.y - Math.cos(th) * ry);
     let best = { x: ix, y: iy };

@@ -48,7 +48,10 @@ import {
   type AutoTimings,
   type StorytellerMode,
   type StorylineId, // (v2.2)
+  type TownLayout, // (v3)
+  type WorldId, // (v3)
 } from '@ct/protocol';
+import { layoutForWorld } from './worldLayout.js'; // (v3)
 import { isAutoCapable } from '../auto/index.js'; // (auto-st) automatic games + the town clock
 import { getServices, type Services } from '../services.js';
 import { createGameModule } from '../game/index.js';
@@ -173,7 +176,10 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
   private services!: Services;
   private log!: Logger;
   lobbyId = '';
-  private settings!: { name: string; description: string; script: ScriptId; maxPlayers: number; storytellerMode: StorytellerMode; autoTimings: AutoTimings; autoStoryline: StorylineId | null; autoStorylinePublic: boolean };
+  /** `world` (v3) is fixed at creation: lobby:settings has no world field (docs/v3/INTEGRATION.md §2.4). */
+  private settings!: { name: string; description: string; script: ScriptId; maxPlayers: number; storytellerMode: StorytellerMode; autoTimings: AutoTimings; autoStoryline: StorylineId | null; autoStorylinePublic: boolean; readonly world: WorldId };
+  /** (v3) The lobby's town layout (from settings.world), resolved once at creation. */
+  private layout!: TownLayout;
   private createdAt = 0;
   private creatorAccountId = '';
   private creatorName = '';
@@ -239,7 +245,9 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
       autoTimings: { ...AUTO_DEFAULTS },
       autoStoryline: null, // (v2.2) automatic games: the storyline fate deals (null = random)
       autoStorylinePublic: false,
+      world: init.world ?? 'v2', // (v3) immutable
     };
+    this.layout = layoutForWorld(this.settings.world);
     this.createdAt = init.createdAt;
     this.creatorAccountId = init.creatorAccountId;
     this.creatorName = init.creatorName;
@@ -1020,10 +1028,13 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
   private createModules() {
     // Factories must not call each other synchronously (host getters resolve lazily).
     const f = this.services.options.moduleFactories ?? {};
-    this.game = (f.game ?? createGameModule)(this.host);
-    this.world = (f.world ?? createWorldModule)(this.host);
-    this.voice = (f.voice ?? createVoiceModule)(this.host);
-    this.social = createSocialModule(this.host); // (v2, social-server) fresh per match: rematch clears pins
+    // (v3) the default modules get the lobby's layout (host.layout(), fixed per lobby); injected test
+    // factories keep the `(host)` signature and read host.layout() themselves if they need it.
+    const layout = this.host.layout();
+    this.game = (f.game ?? ((h: RoomHost) => createGameModule(h, { layout })))(this.host);
+    this.world = (f.world ?? ((h: RoomHost) => createWorldModule(h, { layout })))(this.host);
+    this.voice = (f.voice ?? ((h: RoomHost) => createVoiceModule(h, { layout })))(this.host);
+    this.social = createSocialModule(this.host, { layout }); // (v2, social-server) fresh per match: rematch clears pins
   }
 
   private createHost(): RoomHost {
@@ -1035,6 +1046,7 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
       },
       env: this.services.config.env,
       log: this.log,
+      layout: () => room.layout, // (v3)
       now: () => Date.now(),
       members: () => [...room.seats.values()].map((s) => s.member),
       member: (pid) => room.seats.get(pid)?.member,
@@ -1349,6 +1361,7 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
           youPid: s.member.pid,
           canStart: (this.isAuto() ? s.member.isHost : s.member.role === 'storyteller') && blockers.length === 0, // (auto-st) auto: the host
           startBlockers: blockers,
+          world: this.settings.world, // (v3)
         };
         // (v2.2) private extras: the seated Storyteller's pre-game settings; the auto host's storyline pick.
         if (s.member.role === 'storyteller' && !this.isAuto() && isAutoCapable(this.game) && this.game.prepareView) view.stPrepare = this.game.prepareView();
@@ -1523,6 +1536,7 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
       updatedAt: Date.now(),
       storytellerMode: this.settings.storytellerMode, // (auto-st)
       chatFilter: this.mod.chatFilter, // (v2.3 OPS-6)
+      world: this.settings.world, // (v3)
       ...(this.isAuto() ? { autoTimings: { ...this.settings.autoTimings } } : {}),
       // (v2.2) the storyline is secret unless the host announces it (it reveals the characters in play)
       ...(this.isAuto() ? { autoStoryline: this.settings.autoStoryline === null ? 'random' : this.settings.autoStorylinePublic ? this.settings.autoStoryline : 'secret' } : {}),

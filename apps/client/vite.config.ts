@@ -1,4 +1,9 @@
+import { createRequire } from 'node:module';
+import { existsSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { defineConfig, type Plugin } from 'vite';
+import { pixel3dImports } from './build/pixel3dImports';
 import { BASE_CHUNK, baseBeforeTheme, baseChunkFor, lazyIndexName, renamedCss, checkCssChunks, CSS_ORDER, markThemeLink, patchPreloadHelper, srcCss, type ChunkCss } from './build/cssOrder';
 
 // (v2.3, Trusted Types) msgpackr (via colyseus) probes `new Function('')` at load to decide whether it
@@ -85,6 +90,25 @@ function cssOrder(): Plugin {
   };
 }
 
+// (v3 WP0) The pixel3d vendor tree (v3/pixel3d/src, read-only) is not a workspace package and has no
+// node_modules: its bare `three` / `three/addons/*` imports would never reach apps/client/node_modules
+// (pnpm does not hoist). Resolve them explicitly to the ONE three@0.170.0 of this package (exact pin =
+// v3/pixel3d/package.json), and expose the vendor as '@pixel3d/' and the baked UI atlases as
+// '@v3assets/'. Only apps/client/src/game3d/vendor/** may import '@pixel3d/*' (boundary test).
+export const repoRoot = fileURLToPath(new URL('../..', import.meta.url));
+function packageDir(name: string): string {
+  let d = path.dirname(createRequire(import.meta.url).resolve(name));
+  while (!existsSync(path.join(d, 'package.json'))) d = path.dirname(d);
+  return d;
+}
+export const threeDir = packageDir('three');
+export const v3Aliases = [
+  { find: /^three$/, replacement: path.join(threeDir, 'build/three.module.js') },
+  { find: /^three\/addons\/(.*)$/, replacement: path.join(threeDir, 'examples/jsm/$1') },
+  { find: /^@pixel3d\//, replacement: path.join(repoRoot, 'v3/pixel3d/src/') },
+  { find: /^@v3assets\//, replacement: path.join(repoRoot, 'v3/assets/ui/') },
+];
+
 // The production server (apps/server) serves dist/ on the same origin as the API and
 // WebSockets. In dev, `pnpm --filter @ct/client dev` proxies API/WS to the dev server on 3001.
 //
@@ -94,13 +118,16 @@ function cssOrder(): Plugin {
 // and typechecks against the full protocol; importing a schema at runtime fails this build
 // ("… is not exported by …/client.ts").
 export default defineConfig({
-  plugins: [msgpackrNoEval(), cssOrder()],
+  plugins: [msgpackrNoEval(), pixel3dImports(), cssOrder()],
   define: { __CT_CSS_ORDER__: JSON.stringify(CSS_ORDER) },
   esbuild: { jsx: 'automatic', jsxImportSource: 'preact' },
-  resolve: { alias: [{ find: /^@ct\/protocol$/, replacement: '@ct/protocol/client' }] },
+  resolve: { alias: [{ find: /^@ct\/protocol$/, replacement: '@ct/protocol/client' }, ...v3Aliases], dedupe: ['three'] },
+  // (v3) pre-bundle the three addons the vendor imports, so the dev server does not reload the page mid-boot
+  optimizeDeps: { include: ['three', 'three/addons/utils/BufferGeometryUtils.js', 'three/addons/geometries/ConvexGeometry.js'] },
   server: {
     host: '127.0.0.1',
     port: 5173,
+    fs: { allow: [repoRoot] },
     proxy: {
       '/api': 'http://127.0.0.1:3001',
       '/healthz': 'http://127.0.0.1:3001',
@@ -117,7 +144,9 @@ export default defineConfig({
         manualChunks: baseChunkFor,
         // (v2.4 P2) lazy chunks entered at a directory's index.tsx are named after the directory (their
         // CSS asset is renamed to match in cssOrder's generateBundle)
-        chunkFileNames: (c) => `assets/${lazyIndexName(c) ?? '[name]'}-[hash].js`,
+        // (v3 WP0) the 3D town's entry chunk is "town3d" (budget key town3dChunkBrKiB, docs/v3/INTEGRATION.md §7)
+        // (facadeModuleId is null for that chunk: match its module list)
+        chunkFileNames: (c) => `assets/${c.moduleIds.some((id) => /[\\/]game3d[\\/]TownGame3d\.ts$/.test(id)) ? 'town3d' : (lazyIndexName(c) ?? '[name]')}-[hash].js`,
       },
     },
   },

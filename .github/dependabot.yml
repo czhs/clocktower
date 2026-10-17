@@ -19,6 +19,11 @@ updates:
         dependency-type: "development"
         update-types: ["minor", "patch"]
     # Security updates are not grouped and arrive as soon as an advisory is published.
+    # (v3) three.js is pinned to the exact version the pixel3d vendor tree is built against
+    # (v3/pixel3d/package.json; apps/client/test/game3d/boundary.test.ts): it moves only with a vendor drop.
+    ignore:
+      - dependency-name: "three"
+      - dependency-name: "@types/three"
 
   - package-ecosystem: "github-actions"
     directory: "/"

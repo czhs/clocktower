@@ -17,15 +17,12 @@
 //   ambience   chimney smoke, flickering lamps, fireflies, a few plain townsfolk by day —
 //              all derived from time + the PUBLIC phase only (never from other entities)
 import * as Phaser from 'phaser';
-import { castById, PLAYABLE, PLAZA, townLayout, townMap } from '@ct/assets';
+import { PLAZA, townLayout, townMap } from '@ct/assets';
 import objectsAtlas from '@ct/assets/generated/objects.json';
 import castJson from '@ct/assets/generated/cast.json';
 import { castGhostsUrl, castHdUrl, castUrl, decorUrl, lightsUrl, objectsUrl, squarePropsUrl, terrainUrl, townJsonUrl } from '@ct/assets/runtime';
 import {
-  isBlockedPx,
   locationAt,
-  PLAYER_SPEED,
-  STORYTELLER_MAX_SPEED_MULT,
   tileCenterPx,
   type BuildingDef,
   type Facing,
@@ -52,25 +49,18 @@ import { reducedMotion } from './fx/motion';
 import { createTalkingLayer, type TalkingLayer } from './fx/talking';
 import { createBoardTokenLayer, type BoardTokenLayer } from './gameplay/boardTokens';
 import { createHouseNameLayer, houseOwners, type HouseLabelInput, type HouseNameLayer } from './gameplay/houseNames';
+// (v3 WP0) renderer-free rules shared with the 3D town (game3d/)
+import { dir8, fromFacing, isTyping, keyDir, keyVector, toFacing, type Dir8 } from './rules/input';
+import { autoEnterDoor, doorInward, doorLocked as doorLockedRule, doorPrompt, DOOR_OPEN_RANGE, houseInUse as houseInUseRule, lockText as lockTextRule, tapTarget as tapTargetRule, type DoorRuleCtx } from './rules/doors';
+import { castIdentity } from './rules/cast';
+import { integrateStep, interpolate, INTERP_DELAY_MS, LOCAL_PUBLISH_MS, MOVE_HZ, moveSpeed, poseChanged, pushSample, remoteDir, REMOTE_STALE_MS, routeStep, ST_JUMP_PX, wirePx, type Sample } from './rules/movement';
 
 const L = townLayout;
 const TS = L.tileSize;
 const TOWN = { x: L.townBounds.x * TS, y: L.townBounds.y * TS, w: L.townBounds.w * TS, h: L.townBounds.h * TS };
-const MOVE_HZ = 15;
-const INTERP_DELAY_MS = 110;
-/** Within this distance of a door tile, pushing toward the door enters (px). */
-const DOOR_TRIGGER = 11;
-/**
- * (v2.2.1, Isaac's doors.spec) A STRAIGHT push (within ~25° of the door's inward direction) also
- * enters from up to this far, so an approach 10 px off-centre still goes in; still inside the server's
- * DOOR_RANGE_PX (22). Diagonal walks past a doorway keep the tight DOOR_TRIGGER (no accidental entry).
- */
-const DOOR_TRIGGER_STRAIGHT = 20;
-/** Doors swing open for you within this distance (px). */
-const DOOR_OPEN_RANGE = 34;
+// MOVE_HZ, INTERP_DELAY_MS, the door trigger distances and DOOR_OPEN_RANGE live in ./rules (v3 WP0).
 /** The square's preset view (world px): the whole circle plus the clock tower's face above it. */
 const SQUARE_VIEW = { x: PLAZA.cx - 200, y: 56, w: 400, h: PLAZA.cy + PLAZA.ry + 18 - 56 };
-const LOCKED: ReadonlySet<string> = new Set(['first_night', 'night', 'dawn']);
 const NIGHT: ReadonlySet<string> = new Set(['first_night', 'night']);
 /** Phases with daytime life on the square (townsfolk, boards). */
 const DAYLIKE: ReadonlySet<string> = new Set(['waiting', 'setup', 'day', 'finished']);
@@ -107,20 +97,7 @@ interface CastHdManifest {
   walkFps: number;
 }
 const CAST_HD = Object.values(import.meta.glob('../../../../packages/assets/generated/cast-hd.json', { eager: true, import: 'default' }) as Record<string, CastHdManifest>)[0];
-type Dir8 = 'down' | 'down-right' | 'right' | 'up-right' | 'up' | 'up-left' | 'left' | 'down-left';
-const DIR8: readonly Dir8[] = ['right', 'down-right', 'down', 'down-left', 'left', 'up-left', 'up', 'up-right'];
-const fromFacing = (f: Facing): Dir8 => f;
-/** 8-way direction of a vector (screen coords). */
-function dir8(vx: number, vy: number): Dir8 {
-  const a = Math.atan2(vy, vx);
-  const k = ((Math.round(a / (Math.PI / 4)) % 8) + 8) % 8;
-  return DIR8[k]!;
-}
-/** Server facing (4-way) for an 8-way direction. */
-function toFacing(d: Dir8, vx: number, vy: number): Facing {
-  if (d === 'left' || d === 'right' || d === 'up' || d === 'down') return d;
-  return Math.abs(vx) > Math.abs(vy) + 0.01 ? (vx < 0 ? 'left' : 'right') : vy < 0 ? 'up' : 'down';
-}
+// Dir8 / dir8 / toFacing / fromFacing: ./rules/input (v3 WP0).
 
 // ---------------------------------------------------------------------------------------
 // Square props / ambient FX (generated/square-props.*, drawn by the fx art agent). Optional:
@@ -195,8 +172,6 @@ const LIGHT_TINT: Record<string, number> = { warm: 0xffb868, cool: 0x8a9ad0, fir
 const LABEL_FONT = '"Alegreya Sans", "Segoe UI", system-ui, sans-serif';
 /** Lamp / window / hearth flicker is stepped at 12 Hz (the light layer is re-stamped only on change). */
 const FLICKER_MS = 1000 / 12;
-/** localPlayer store notifications (HUD subscribers) at most this often; get() is always current. */
-const LOCAL_PUBLISH_MS = 100;
 
 interface LightSrc {
   x: number;
@@ -220,13 +195,6 @@ interface AreaLight {
   k: number;
   /** Flicker phase seed. */
   seed: number;
-}
-interface Sample {
-  t: number;
-  x: number;
-  y: number;
-  facing: Facing;
-  moving: boolean;
 }
 interface DoorObj {
   b: BuildingDef;
@@ -875,8 +843,7 @@ export class TownScene extends Phaser.Scene {
     }
     for (const b of L.buildings) {
       const at = tileCenterPx(L, b.door);
-      const f = b.footprint;
-      const inward = b.door.y >= f.y + f.h ? { x: 0, y: -1 } : b.door.x >= f.x + f.w ? { x: -1, y: 0 } : b.door.x < f.x ? { x: 1, y: 0 } : { x: 0, y: -1 };
+      const inward = doorInward(b);
       const d: DoorObj = { b, at, inward, open: 0 };
       const o = art.get(b.id);
       const leaf = o ? String(prop(o, 'leaf') ?? '') : '';
@@ -918,24 +885,19 @@ export class TownScene extends Phaser.Scene {
 
   /** A cottage is "in use" when it has a resident (game running) — empty cottages stay boarded. */
   private houseInUse(b: BuildingDef): boolean {
-    const g = this.gview;
-    if (!g) return true; // waiting room: every cottage is a room
-    return g.players.some((p) => p.seat === b.houseIndex);
+    return houseInUseRule(this.gview, b);
+  }
+
+  private doorRuleCtx(): DoorRuleCtx {
+    return { layout: L, amStoryteller: this.amStoryteller(), phase: this.phase, mySeat: this.mySeat(), override: (id) => this.gameplay?.doorOverride(id) };
   }
 
   private doorLocked(b: BuildingDef, exit: boolean): boolean {
-    if (this.amStoryteller()) return false;
-    const o = this.gameplay?.doorOverride(b.id);
-    if (o !== null && o !== undefined) return o;
-    if (!LOCKED.has(this.phase)) return false;
-    const seat = this.mySeat();
-    const home = seat === null ? null : L.buildings.find((x) => x.houseIndex === seat)?.id;
-    return exit ? b.id === home : b.id !== home;
+    return doorLockedRule(this.doorRuleCtx(), b, exit);
   }
 
   private lockText(b: BuildingDef, exit: boolean): string {
-    if (LOCKED.has(this.phase) && this.gameplay?.doorOverride(b.id) == null) return exit ? 'You stay home until morning' : 'Locked for the night';
-    return `${b.name} is locked by the Storyteller`;
+    return lockTextRule(this.doorRuleCtx(), b, exit);
   }
 
   private enter(b: BuildingDef) {
@@ -979,20 +941,13 @@ export class TownScene extends Phaser.Scene {
 
   /** Walking into a doorway enters — only while pushing toward the door (brushing past does not). */
   private checkAutoEnter(vx: number, vy: number) {
-    if (this.me.location !== 'outdoors' || (vx === 0 && vy === 0)) return;
-    const len = Math.hypot(vx, vy);
-    for (const d of this.doors) {
-      const dist = Math.hypot(this.me.x - d.at.x, this.me.y - d.at.y);
-      if (dist > DOOR_TRIGGER_STRAIGHT) continue;
-      const toward = (vx * d.inward.x + vy * d.inward.y) / len;
-      if (toward < (dist > DOOR_TRIGGER ? 0.9 : 0.6)) continue;
-      if (!this.houseInUse(d.b) && !this.amStoryteller()) {
-        this.flashPrompt('Nobody lives here', true);
-        return;
-      }
-      this.enter(d.b);
+    const d = autoEnterDoor(this.me, vx, vy, this.doors);
+    if (!d) return;
+    if (!this.houseInUse(d.b) && !this.amStoryteller()) {
+      this.flashPrompt('Nobody lives here', true);
       return;
     }
+    this.enter(d.b);
   }
 
   /** Name labels at the current zoom (also for avatars created after the last fitCamera: inside a room the zoom is ~2x the outdoor one). */
@@ -1051,12 +1006,7 @@ export class TownScene extends Phaser.Scene {
 
   /** What a tap at a world point means: a cottage (its sprite or doorstep) or a spot on the ground. */
   private tapTarget(x: number, y: number): { x: number; y: number; enter: string | null } {
-    for (const d of this.doors) {
-      const f = d.b.footprint;
-      const inSprite = x >= f.x * TS && x < (f.x + f.w) * TS && y >= (f.y - 1) * TS && y < (f.y + f.h) * TS;
-      if (inSprite || Math.hypot(x - d.at.x, y - d.at.y) < 14) return { x: d.at.x, y: d.at.y, enter: d.b.id };
-    }
-    return { x, y, enter: null };
+    return tapTargetRule(L, this.doors, x, y);
   }
 
   private goTo(t: { x: number; y: number; enter: string | null }) {
@@ -1071,28 +1021,16 @@ export class TownScene extends Phaser.Scene {
   // appearances
 
   private castKey(pid: string): { key: string; name: string; st: boolean; lantern: boolean; ghost: boolean } {
-    const m = this.lobby?.members.find((x) => x.pid === pid);
-    const st = m?.role === 'storyteller' || (this.gview?.kind === 'storyteller' && pid === this.myPid);
-    const name = m?.displayName ?? '…';
-    if (st) return { key: 'storyteller', name, st: true, lantern: true, ghost: false };
-    const picked = castById(m?.cosmetics.preset ?? null);
-    let id: string;
-    if (picked && (picked.kind === 'villager' || picked.kind === 'mascot')) id = picked.id;
-    else {
-      // Unknown / legacy: a stable stand-in until the server assigns a character.
-      let h = 0;
-      for (const c of pid) h = (h * 31 + c.charCodeAt(0)) >>> 0;
-      id = PLAYABLE[h % PLAYABLE.length]!.id;
-    }
-    const pub = this.gview?.players.find((p) => p.pid === pid);
-    const dead = pub ? !pub.alive : false;
+    const c = castIdentity(pid, this.lobby, this.gview, this.myPid);
+    if (c.st) return { key: 'storyteller', name: c.name, st: true, lantern: true, ghost: false };
+    const id = c.id;
     let key = id;
-    if (dead) {
-      const g = pub!.ghostVoteAvailable ? `${id}/ghost` : `${id}/ghost-spent`;
+    if (c.dead) {
+      const g = c.ghostVoteAvailable ? `${id}/ghost` : `${id}/ghost-spent`;
       key = hasCastSheet(g) ? g : hasCastSheet(`${id}/ghost`) ? `${id}/ghost` : id;
     }
     if (!hasCastSheet(key)) key = Object.keys(CAST.sheets)[0]!;
-    return { key, name, st: false, lantern: !!castById(id)?.lantern, ghost: dead };
+    return { key, name: c.name, st: false, lantern: c.lantern, ghost: c.dead };
   }
 
   private refreshAppearances() {
@@ -1193,7 +1131,7 @@ export class TownScene extends Phaser.Scene {
         a.location = e.location;
       }
       const lastS = a.samples[a.samples.length - 1];
-      if (lastS && a.isST && Math.hypot(lastS.x - e.x, lastS.y - e.y) > 48) {
+      if (lastS && a.isST && Math.hypot(lastS.x - e.x, lastS.y - e.y) > ST_JUMP_PX) {
         // a Storyteller jump (teleport): poof out, poof in, no sliding across the square
         if (a.location === this.me.location) {
           this.poof(lastS.x, lastS.y);
@@ -1201,8 +1139,7 @@ export class TownScene extends Phaser.Scene {
         }
         a.samples = [];
       }
-      a.samples.push({ t: now, x: e.x, y: e.y, facing: e.facing, moving: e.moving });
-      if (a.samples.length > 12) a.samples.splice(0, a.samples.length - 12);
+      pushSample(a.samples, { t: now, x: e.x, y: e.y, facing: e.facing, moving: e.moving });
     }
     for (const [pid, a] of this.avatars)
       if (!seen.has(pid)) {
@@ -1767,21 +1704,13 @@ export class TownScene extends Phaser.Scene {
       this.publishLocal(false);
       return;
     }
-    let vx = 0;
-    let vy = 0;
-    if (this.keys.has('left')) vx -= 1;
-    if (this.keys.has('right')) vx += 1;
-    if (this.keys.has('up')) vy -= 1;
-    if (this.keys.has('down')) vy += 1;
+    let { vx, vy } = keyVector(this.keys);
     let following = false;
     if (vx === 0 && vy === 0 && this.route) {
-      const next = this.route.pts[0];
-      // A door at the end of the route waits out the anti-bounce cooldown (a tap right after
-      // leaving would otherwise be dropped silently; Isaac's doors.spec), then goes through.
-      if (!next && this.route.enter && performance.now() < this.enterCooldownUntil) {
-        // hold position until the cooldown ends
-      } else if (!next) {
-        const enter = this.route.enter;
+      // A door at the end of the route waits out the anti-bounce cooldown (rules/movement routeStep).
+      const r = routeStep(this.route, this.me, performance.now() < this.enterCooldownUntil);
+      if (r.kind === 'arrived') {
+        const enter = r.enter;
         this.route = null;
         if (enter && this.currentBuilding()?.id === enter) {
           // inside: a tap on the doorway walked us to the door spot; now out
@@ -1794,16 +1723,10 @@ export class TownScene extends Phaser.Scene {
             this.enter(d0.b);
           }
         }
-      } else {
-        const dx = next.x - this.me.x;
-        const dy = next.y - this.me.y;
-        const dd = Math.hypot(dx, dy);
-        if (dd < 2) this.route.pts.shift();
-        else {
-          vx = dx / dd;
-          vy = dy / dd;
-          following = true;
-        }
+      } else if (r.kind === 'follow') {
+        vx = r.vx;
+        vy = r.vy;
+        following = true;
       }
     }
     const len = Math.hypot(vx, vy);
@@ -1811,36 +1734,29 @@ export class TownScene extends Phaser.Scene {
     if (len > 0) {
       vx /= len;
       vy /= len;
-      const mult = this.amStoryteller() && this.gview?.kind === 'storyteller' ? Math.min(STORYTELLER_MAX_SPEED_MULT, Math.max(1, this.gview.travelSpeedMult)) : 1;
-      let step = PLAYER_SPEED * mult * dt;
+      let step = moveSpeed(this.amStoryteller() && this.gview?.kind === 'storyteller' ? this.gview.travelSpeedMult : null) * dt;
       if (following) {
         const next = this.route?.pts[0];
         if (next) step = Math.min(step, Math.hypot(next.x - this.me.x, next.y - this.me.y));
       }
-      const nx = this.me.x + vx * step;
-      const ny = this.me.y + vy * step;
-      const x0 = this.me.x;
-      const y0 = this.me.y;
-      if (!isBlockedPx(L, nx, this.me.y) && locationAt(L, nx, this.me.y) === this.me.location) this.me.x = nx;
-      if (!isBlockedPx(L, this.me.x, ny) && locationAt(L, this.me.x, ny) === this.me.location) this.me.y = ny;
+      moving = integrateStep(L, this.me, vx, vy, step).moved;
       this.myDir = dir8(vx, vy);
       this.me.facing = toFacing(this.myDir, vx, vy);
-      moving = Math.hypot(this.me.x - x0, this.me.y - y0) > 0.01;
       if (following && !moving) this.route = null; // blocked: give up quietly
       if (!following) this.checkAutoEnter(vx, vy);
     }
     if (this.me.location !== 'outdoors') this.tryWalkOut(following ? 0 : vx, following ? 0 : vy);
     this.me.moving = moving;
     this.myAvatar!.setPose(this.me.x, this.me.y, this.myDir, moving);
-    const changed = Math.abs(this.me.x - this.lastSent.x) > 0.05 || Math.abs(this.me.y - this.lastSent.y) > 0.05 || moving !== this.lastSent.moving || this.me.facing !== this.lastSent.facing;
+    const changed = poseChanged({ x: this.me.x, y: this.me.y, moving, facing: this.me.facing }, this.lastSent);
     if (changed && now - this.lastSentAt >= 1000 / MOVE_HZ) this.sendMove(now, moving);
     this.publishLocal(false);
   }
 
   private sendMove(now: number, moving: boolean) {
     this.seq++;
-    const x = Math.round(this.me.x * 100) / 100;
-    const y = Math.round(this.me.y * 100) / 100;
+    const x = wirePx(this.me.x);
+    const y = wirePx(this.me.y);
     this.bridge.conn.send('move', { seq: this.seq, x, y, facing: this.me.facing, moving });
     this.lastSent = { x: this.me.x, y: this.me.y, moving, facing: this.me.facing };
     this.lastSentAt = now;
@@ -1875,33 +1791,12 @@ export class TownScene extends Phaser.Scene {
     const renderAt = nowMs - INTERP_DELAY_MS;
     for (const a of this.avatars.values()) {
       const s = a.samples;
-      if (!s.length) continue;
-      let x = s[s.length - 1]!.x;
-      let y = s[s.length - 1]!.y;
-      let ref = s[s.length - 1]!;
-      for (let i = s.length - 1; i > 0; i--) {
-        const s0 = s[i - 1]!;
-        const s1 = s[i]!;
-        if (s0.t <= renderAt && renderAt <= s1.t) {
-          const k = s1.t === s0.t ? 1 : (renderAt - s0.t) / (s1.t - s0.t);
-          x = s0.x + (s1.x - s0.x) * k;
-          y = s0.y + (s1.y - s0.y) * k;
-          ref = s1;
-          break;
-        }
-        if (i === 1 && renderAt < s0.t) {
-          x = s0.x;
-          y = s0.y;
-          ref = s0;
-        }
-      }
-      const stale = nowMs - s[s.length - 1]!.t > 600;
+      const at = interpolate(s, renderAt);
+      if (!at) continue;
+      const { x, y, ref } = at;
+      const stale = nowMs - s[s.length - 1]!.t > REMOTE_STALE_MS;
       const moving = ref.moving && !stale;
-      let d = a.dir;
-      const mx = x - a.last.x;
-      const my = y - a.last.y;
-      if (moving && Math.hypot(mx, my) > 0.25) d = dir8(mx, my);
-      else if (!moving && (d === 'left' || d === 'right' || d === 'up' || d === 'down') && d !== ref.facing) d = fromFacing(ref.facing);
+      const d = remoteDir(a.dir, moving, x - a.last.x, y - a.last.y, ref.facing);
       a.setPose(x, y, d, moving);
       a.setVisible(a.location === this.me.location);
       const e = remoteEntities.get(a.pid);
@@ -1918,16 +1813,16 @@ export class TownScene extends Phaser.Scene {
     let text: string | null = null;
     let locked = false;
     if (this.ready && this.me.location === 'outdoors' && !this.route) {
-      for (const d of this.doors) {
-        if (Math.hypot(this.me.x - d.at.x, this.me.y - d.at.y) > 20) continue;
-        if (!this.houseInUse(d.b) && !this.amStoryteller()) {
-          text = 'Nobody lives here';
-          locked = true;
-        } else if (this.doorLocked(d.b, false)) {
-          text = this.lockText(d.b, false);
-          locked = true;
-        } else text = `Walk in: ${this.houseTitle(d.b)}`;
-        break;
+      const p = doorPrompt(this.me, this.doors, {
+        amStoryteller: this.amStoryteller(),
+        inUse: (b) => this.houseInUse(b),
+        locked: (b) => this.doorLocked(b, false),
+        lockText: (b) => this.lockText(b, false),
+        title: (b) => this.houseTitle(b),
+      });
+      if (p) {
+        text = p.text;
+        locked = p.locked;
       }
     }
     const key = text ? `${text}|${locked}` : '';
@@ -2086,37 +1981,6 @@ function prop(o: Phaser.Types.Tilemaps.TiledObject, name: string): unknown {
   if (Array.isArray(p)) return (p as { name: string; value: unknown }[]).find((x) => x.name === name)?.value;
   if (p && typeof p === 'object') return (p as Record<string, unknown>)[name];
   return undefined;
-}
-
-function keyDir(code: string): 'up' | 'down' | 'left' | 'right' | null {
-  switch (code) {
-    case 'KeyW':
-    case 'ArrowUp':
-      return 'up';
-    case 'KeyS':
-    case 'ArrowDown':
-      return 'down';
-    case 'KeyA':
-    case 'ArrowLeft':
-      return 'left';
-    case 'KeyD':
-    case 'ArrowRight':
-      return 'right';
-    default:
-      return null;
-  }
-}
-
-function isTyping(e: KeyboardEvent): boolean {
-  if (e.ctrlKey || e.metaKey || e.altKey) return true;
-  const el = (e.target as HTMLElement | null) ?? (document.activeElement as HTMLElement | null);
-  const a = document.activeElement as HTMLElement | null;
-  for (const n of [el, a]) {
-    if (!n) continue;
-    const tag = n.tagName;
-    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || n.isContentEditable) return true;
-  }
-  return false;
 }
 
 /** The outdoor camera zoom for a w x h canvas: the square's preset view (circle + clock face) fits. */

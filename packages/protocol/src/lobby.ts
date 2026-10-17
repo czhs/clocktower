@@ -4,6 +4,7 @@ import { Cosmetics } from './cosmetics.js';
 import { LobbyDescription, LobbyName } from './text.js';
 import { STORYLINE_IDS } from './storylines.js';
 import { CHAT_FILTER_MODES } from './moderationShared.js';
+import { WORLDS } from './world.js';
 
 // Lobby directory (all require a signed-in session):
 //   GET  /api/lobbies                      -> { lobbies: LobbySummary[] }
@@ -50,6 +51,8 @@ export interface LobbySummary {
   autoStoryline?: 'random' | 'secret' | import('./storylines.js').StorylineId;
   /** (v2.3 OPS-6) The host's chat filter for this lobby (absent = default 'slurs'). */
   chatFilter?: import('./moderationShared.js').ChatFilterMode;
+  /** (v3) The town this lobby uses, fixed at creation (absent = 'v2'). */
+  world?: import('./world.js').WorldId;
 }
 
 export type DirectoryEvent =
@@ -66,6 +69,8 @@ export const CreateLobbyRequest = z.object({
   takeStoryteller: z.boolean().default(false),
   /** (v2.1) 'auto' = no Storyteller seat; the server runs the game (clock.ts). */
   storytellerMode: z.enum(['human', 'auto']).optional(),
+  /** (v3) The town: 'v2' (classic, the default) or 'v3' (Hollowmere). Immutable after creation. */
+  world: z.enum(WORLDS).optional(),
 });
 export type CreateLobbyRequest = z.infer<typeof CreateLobbyRequest>;
 
@@ -118,6 +123,8 @@ export interface LobbyRoomView {
   autoStorylineChoice?: import('./storylines.js').StorylineId | null;
   /** (v2.3 OPS-6) ONLY in the host's / seated Storyteller's own view: members removed from this lobby (for unban). */
   removed?: import('./moderation.js').RemovedMemberView[];
+  /** (v3) The lobby's town (= lobby.world; absent = 'v2'). Picks the layout and, with the Graphics setting, the renderer. */
+  world?: import('./world.js').WorldId;
 }
 
 // Lobby C2S payloads

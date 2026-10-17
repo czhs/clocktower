@@ -62,7 +62,7 @@ describe.skipIf(!features.rooms)(`credential & identity secrecy${pending(feature
       }
     const list = await bots[0]!.api.listLobbies();
     // (v2.1) storytellerMode / autoTimings are optional public lobby settings
-    const OPTIONAL: string[] = ['storytellerMode', 'autoTimings', 'chatFilter']; // (v2.3 OPS-6) chatFilter: public host setting
+    const OPTIONAL: string[] = ['storytellerMode', 'autoTimings', 'chatFilter', 'world']; // (v2.3 OPS-6) chatFilter: public host setting; (v3) world: the lobby's town, public
     for (const l of list.body.lobbies) expect(Object.keys(l).filter((k) => !OPTIONAL.includes(k)).sort()).toEqual([...SUMMARY_KEYS].sort());
     expect(findLeaks([{ label: 'api', messages: [{ json: list.text } as RecordedMessage] } as any], needles)).toEqual([]);
   });

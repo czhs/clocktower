@@ -87,6 +87,12 @@ export const SCRIPTS = ['trouble-brewing'] as const;
 
 // ------------------------------------------------------------------------------ world.ts
 
+export const WORLDS = ['v2', 'v3'] as const;
+
+export function stoneOfSeatIndex(k: number, n: number, stones: number): number {
+  return Math.round((k * stones) / Math.max(1, n)) % stones;
+}
+
 export function tileIndex(layout: TownLayout, tx: number, ty: number): number {
   return ty * layout.widthTiles + tx;
 }
@@ -171,7 +177,9 @@ export function circleSpots(layout: TownLayout, seats: readonly number[]): Circl
   sorted.forEach((seat, i) => {
     // Default: an open north arc leaves a landmark behind the gathering. A layout may instead give
     // the arc (v2 square: a full ring around the fountain). Vote order always runs clockwise.
-    const th = arc.full ? arc.start + (arc.sweep * i) / Math.max(1, n) : arc.start + (arc.sweep * i) / Math.max(1, n - 1);
+    // (v3 world) fixed stones: seat i of n sits on stone round(i·stones/n), the 3D dais' own spots
+    const stones = layout.circle?.stones;
+    const th = stones ? arc.start + (2 * Math.PI * stoneOfSeatIndex(i, n, stones)) / stones : arc.full ? arc.start + (arc.sweep * i) / Math.max(1, n) : arc.start + (arc.sweep * i) / Math.max(1, n - 1);
     const ix = Math.round(c.x + Math.sin(th) * rx);
     const iy = Math.round(c.y - Math.cos(th) * ry);
     let best = { x: ix, y: iy };

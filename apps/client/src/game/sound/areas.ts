@@ -1,4 +1,5 @@
-import { townLayout, townMap } from '@ct/assets';
+import { townMap } from '@ct/assets';
+import { currentLayout } from '../../net/layout'; // (v3) the lobby's layout
 import type { LocationId } from '@ct/protocol';
 import type { LoopId } from './catalog';
 
@@ -73,8 +74,10 @@ function field(isSource: (tx: number, ty: number) => boolean): Float32Array {
 }
 
 const ground = (tx: number, ty: number) => townMap.ground[ty]?.[tx] ?? ' ';
-const tb = townLayout.townBounds;
-const inTown = (tx: number, ty: number) => tx >= tb.x && ty >= tb.y && tx < tb.x + tb.w && ty < tb.y + tb.h;
+const inTown = (tx: number, ty: number) => {
+  const tb = currentLayout().townBounds;
+  return tx >= tb.x && ty >= tb.y && tx < tb.x + tb.w && ty < tb.y + tb.h;
+};
 
 interface Fields {
   water: Float32Array;
@@ -102,8 +105,10 @@ function at(f: Float32Array, x: number, y: number): number {
 }
 
 const fountains = townMap.objects.filter((o) => o.kind === 'fountain').map((o) => ({ x: (o.x + 1.5) * TS, y: (o.y + 0.5) * TS }));
-const tavern = townLayout.buildings.find((b) => b.kind === 'tavern');
-const tavernDoor = tavern ? { x: (tavern.door.x + 0.5) * TS, y: (tavern.door.y + 0.5) * TS } : null;
+const tavernDoor = () => {
+  const tavern = currentLayout().buildings.find((b) => b.kind === 'tavern');
+  return tavern ? { x: (tavern.door.x + 0.5) * TS, y: (tavern.door.y + 0.5) * TS } : null;
+};
 
 function distPts(pts: { x: number; y: number }[], x: number, y: number): number {
   let best = Infinity;
@@ -166,7 +171,7 @@ export function ambientMix(location: LocationId, x: number, y: number, phase: st
   const m = silent();
   if (location !== 'outdoors') {
     const id = location.slice(4);
-    const b = townLayout.buildings.find((bb) => bb.id === id);
+    const b = currentLayout().buildings.find((bb) => bb.id === id);
     const kind = b?.kind ?? 'house';
     if (kind === 'tavern') {
       m.tavern = { level: 0.85 * day + 0.1, lowpass: 9000 };
@@ -189,7 +194,8 @@ export function ambientMix(location: LocationId, x: number, y: number, phase: st
   const forest = at(f.forest, x, y);
   const square = at(f.square, x, y);
   const fountain = distPts(fountains, x, y);
-  const door = tavernDoor ? Math.hypot(tavernDoor.x - x, tavernDoor.y - y) / TS : Infinity;
+  const td = tavernDoor();
+  const door = td ? Math.hypot(td.x - x, td.y - y) / TS : Infinity;
   const inSquare = near(square, 0, 4);
   const woods = near(forest, 1, 8);
 

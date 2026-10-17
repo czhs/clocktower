@@ -23,6 +23,7 @@ import type {
   StSelfTarget,
   StSettings,
   StorytellerGameView,
+  TownLayout,
   WorldSnapshot,
 } from '@ct/protocol';
 
@@ -64,6 +65,11 @@ export interface RoomHost {
   /** 'development' | 'production' — used for LiveKit room namespacing. */
   readonly env: string;
   readonly log: Logger;
+  /**
+   * (v3) The lobby's town layout, fixed at creation from its world ('v2' classic | 'v3' Hollowmere,
+   * apps/server/src/rooms/worldLayout.ts). Modules read it when they are created.
+   */
+  layout(): TownLayout;
   now(): number;
   members(): readonly RoomMember[];
   member(pid: string): RoomMember | undefined;

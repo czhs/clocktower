@@ -1,7 +1,8 @@
-import { normalizeLobbyId, wordLobbyId, type CreateLobbyRequest, type DirectoryEvent, type JoinTicketResponse, type LobbySummary } from '@ct/protocol';
+import { normalizeLobbyId, wordLobbyId, type CreateLobbyRequest, type DirectoryEvent, type JoinTicketResponse, type LobbySummary, type WorldId } from '@ct/protocol';
 import type { AccountRecord } from '@ct/db';
 import { randomId } from '../auth/crypto.js';
 import type { Logger } from '../rooms/modules.js';
+import { worldAvailable } from '../rooms/worldLayout.js';
 import type { JoinIntent, TicketService } from './tickets.js';
 
 /** Per-account cap on simultaneously existing lobbies that the account created. */
@@ -45,6 +46,8 @@ export interface LobbyInit {
   createdAt: number;
   /** (v2.1, auto-st) 'auto' = no Storyteller seat; the server runs the game. */
   storytellerMode?: 'human' | 'auto';
+  /** (v3) The town, fixed for the lobby's lifetime (absent = 'v2'). */
+  world?: WorldId;
 }
 
 /** Live view of a GameRoom used by the directory (same process; never serialised). */
@@ -134,6 +137,8 @@ export class LobbyDirectory {
       if (ip && [...this.entries.values()].filter((e) => e.creatorIp === ip).length >= ipLimit) {
         throw new DirectoryError(409, 'lobby_limit', `At most ${ipLimit} open lobbies can be created from one network`);
       }
+      const world: WorldId = req.world ?? 'v2';
+      if (!worldAvailable(world)) throw new DirectoryError(409, 'conflict', 'The v3 town is not available on this server yet');
       const t = this.now();
       const id = this.freshId(t);
       const init: LobbyInit = {
@@ -147,6 +152,7 @@ export class LobbyDirectory {
         creatorTakesStoryteller: req.takeStoryteller && req.storytellerMode !== 'auto',
         createdAt: t,
         storytellerMode: req.storytellerMode ?? 'human', // (auto-st)
+        world, // (v3)
       };
       const entry: Entry = {
         id,
@@ -170,6 +176,7 @@ export class LobbyDirectory {
           createdAt: t,
           updatedAt: t,
           storytellerMode: init.storytellerMode ?? 'human', // (auto-st)
+          world, // (v3)
         },
       };
       this.entries.set(id, entry);
