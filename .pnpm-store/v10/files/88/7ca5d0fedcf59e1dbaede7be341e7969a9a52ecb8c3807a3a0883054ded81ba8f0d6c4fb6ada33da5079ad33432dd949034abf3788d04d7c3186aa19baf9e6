@@ -1,7 +1,0 @@
-{
-  "version": 3,
-  "sources": ["../src/TimerClearedError.ts"],
-  "sourcesContent": ["import type { ClockTimer as Clock } from \"./ClockTimer.js\";\n/**\n * An error that occurs when the promise of a {@link Clock.duration} is rejected because the timer has been cleared by the clock instance.\n */\nexport class TimerClearedError extends Error {\n  constructor() {\n    super(\"Timer has been cleared\");\n  }\n}\n"],
-  "mappings": ";AAIO,IAAM,oBAAN,cAAgC,MAAM;AAAA,EAC3C,cAAc;AACZ,UAAM,wBAAwB;AAAA,EAChC;AACF;",
-  "names": []
-}

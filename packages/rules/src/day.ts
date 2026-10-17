@@ -149,7 +149,16 @@ export function setHand(s: GameState, _op: Op, seat: number, nominationId: strin
 function lockVote(s: GameState, op: Op, n: NominationState, seat: number): void {
   const v = s.day!.vote!;
   const p = mustPlayer(s, seat);
-  const yes = v.hands.includes(seat) && canVote(s, seat);
+  let yes = v.hands.includes(seat) && canVote(s, seat);
+  // (auto-st) automatic games: a healthy Butler's vote only counts if their master votes too.
+  if (yes && s.adjudicator?.enforceButler && p.character === 'butler' && p.alive && !impaired(p)) {
+    const m = p.butlerMasterSeat;
+    const masterVotes = m === null ? false : m in n.votes ? n.votes[m] === true : v.hands.includes(m);
+    if (!masterVotes) {
+      yes = false;
+      log(s, op, `Butler ${who(p)} raised a hand without their master: the vote does not count`);
+    }
+  }
   n.votes[seat] = yes;
   v.hands = v.hands.filter((x) => x !== seat);
   if (!yes) return;

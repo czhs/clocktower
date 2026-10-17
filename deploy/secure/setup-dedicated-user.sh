@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# One-time hardening of the Clocktower Town hosting on hshi-u1 (lead). Run ON hshi-u1:
+# One-time hardening of the Clocktower Town hosting on the host (lead). Run ON the host:
 #     sudo bash setup-dedicated-user.sh            # dry run: prints what it would do
 #     sudo bash setup-dedicated-user.sh --apply    # performs it
 #

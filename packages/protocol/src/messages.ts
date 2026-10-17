@@ -19,10 +19,12 @@ import {
 import { StCommand, type StorytellerGameView } from './storyteller.js';
 import { VoiceAnnounceMsg, VoiceStatusMsg, type VoiceGrant, type VoiceRevoke, type VoiceUnavailable } from './voice.js';
 import { MoveMsg, UseDoorMsg, type WorldSnapshot, type WorldTeleport } from './world.js';
+import type { Snap2Frame } from './snapshotCodec.js';
 import { EmoteMsg, PinClearMsg, PinDropMsg, PinRemoveMsg, type EmoteEvent } from './social.js';
 import { ClockProposeMsg, ClockVoteMsg } from './clock.js';
 import { StoryGetMsg, StoryPamphletsMsg, StoryReleaseMsg, type Pamphlet, type StoryStView } from './story.js';
 import { NotebookLoadMsg, NotebookSaveMsg, type NotebookDataMsg, type NotebookUnavailableMsg } from './notebook.js';
+import { LobbyMuteMsg, LobbyUnbanMsg, ReportPlayerMsg, type ReportAck } from './moderation.js';
 
 /**
  * Every client -> server Colyseus message type and its Zod schema. The GameRoom validates
@@ -38,10 +40,15 @@ export const C2S = {
   'lobby:releaseStoryteller': EmptyMsg,
   'lobby:transferStoryteller': LobbyPidMsg, // host or current ST; target must be a member
   'lobby:transferHost': LobbyPidMsg,
-  'lobby:kick': LobbyPidMsg, // host only, waiting phase only
+  'lobby:kick': LobbyPidMsg, // (v2.3 OPS-6) host any time / seated Storyteller in game; bans account + network from this lobby
   'lobby:settings': LobbySettingsMsg, // host only, waiting phase only
-  'lobby:start': EmptyMsg, // storyteller only
+  'lobby:start': EmptyMsg, // storyteller only (automatic games: the host)
   'lobby:leave': EmptyMsg,
+  'lobby:abort': EmptyMsg, // (v2.1, auto-st) automatic games: the host ends the running game (abandoned record) -> waiting room
+  // (v2.3 OPS-6) moderation: host/ST mute + unban; any member reports (see moderation.ts)
+  'lobby:mute': LobbyMuteMsg,
+  'lobby:unban': LobbyUnbanMsg,
+  'report:player': ReportPlayerMsg,
   // world
   move: MoveMsg,
   'world:useDoor': UseDoorMsg,
@@ -81,7 +88,7 @@ export type C2SPayload<T extends C2SType> = z.input<(typeof C2S)[T]>;
 export type C2SParsed<T extends C2SType> = z.output<(typeof C2S)[T]>;
 
 export interface ServerErrorMsg {
-  code: 'invalid' | 'forbidden' | 'phase' | 'rate_limited' | 'not_found' | 'internal';
+  code: 'invalid' | 'forbidden' | 'phase' | 'rate_limited' | 'not_found' | 'internal' | 'muted' | 'duplicate'; // (v2.3) muted / duplicate: chat:send only
   message: string;
   /** The C2S type that caused the error, if any. */
   for?: string;
@@ -93,6 +100,8 @@ export interface S2CMessages {
   /** Exactly one of these per client, depending on their seat. */
   'game:view': PlayerGameView | StorytellerGameView;
   'world:snapshot': WorldSnapshot;
+  /** (v2.2, WP4) Compact snapshot frame, only to clients that joined with `snap: SNAP_CAPABILITY` (see snapshotCodec.ts). */
+  'world:snap2': Snap2Frame;
   'world:teleport': WorldTeleport;
   /** (v2) Someone you can see made a gesture (only sent to viewers who can see them). */
   'social:emote': EmoteEvent;
@@ -115,6 +124,8 @@ export interface S2CMessages {
   'voice:unavailable': VoiceUnavailable;
   error: ServerErrorMsg;
   kicked: { reason: string };
+  /** (v2.3 OPS-6) Reply to report:player. */
+  'report:ack': ReportAck;
   pong: { t: number };
 }
 export type S2CType = keyof S2CMessages;
@@ -128,5 +139,11 @@ export const CLOSE_CODES = {
   replaced: 4102, // same account joined from another device (newest connection wins)
   lobbyClosed: 4103,
   unauthorized: 4104,
+  // (v2.3 sec-host HOST-11 / sec-secrecy SEC-7) connection closed for abusive traffic (frame/byte budget
+  // or message-violation score). Terminal: the client must not auto-reconnect.
+  abuse: 4105,
+  // (v2.3 sec-auth AUTH-1) the account's session was revoked (sign out [everywhere], passphrase
+  // rotation, account deletion). Terminal: the client shows "You were signed out".
+  signedOut: 4106,
 } as const;
 export const TERMINAL_CLOSE_CODES: readonly number[] = Object.values(CLOSE_CODES);

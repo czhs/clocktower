@@ -1,4 +1,4 @@
-import { eq, lt } from 'drizzle-orm';
+import { desc, eq, lt } from 'drizzle-orm';
 import type { Database } from '../database.js';
 import { sessions } from '../schema.js';
 
@@ -33,6 +33,22 @@ export function createSessionsRepo({ db }: Database) {
     },
     deleteExpired(now: number): number {
       return db.delete(sessions).where(lt(sessions.expiresAt, now)).run().changes;
+    },
+    /** (v2.3 AUTH-10) Keeps the account's `keep` newest sessions; returns the hashes it deleted. */
+    pruneForAccount(accountId: string, keep: number): string[] {
+      const rows = db
+        .select({ tokenHash: sessions.tokenHash })
+        .from(sessions)
+        .where(eq(sessions.accountId, accountId))
+        .orderBy(desc(sessions.createdAt), desc(sessions.lastUsedAt))
+        .all();
+      const drop = rows.slice(keep).map((r) => r.tokenHash);
+      for (const h of drop) db.delete(sessions).where(eq(sessions.tokenHash, h)).run();
+      return drop;
+    },
+    /** (v2.3 AUTH-5) The account's sessions, newest first (export / "your devices"). */
+    listForAccount(accountId: string): SessionRecord[] {
+      return db.select().from(sessions).where(eq(sessions.accountId, accountId)).orderBy(desc(sessions.createdAt)).all();
     },
   };
 }

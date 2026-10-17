@@ -36,6 +36,7 @@ export const CAST: readonly CastMember[] = [
   { id: 'snail', name: 'Tinker Pell', blurb: 'Fixes clocks. Slowly. Perfectly.', kind: 'villager' },
   { id: 'toad', name: 'Toadley', blurb: 'Merchant of fine goods and finer excuses.', kind: 'villager' },
   { id: 'green-hood', name: 'Wisp', blurb: 'A small wanderer in a green hood. Eyes like lanterns.', kind: 'villager' },
+  { id: 'nicksong', name: 'Nick Song', blurb: 'Shaggy hair, sly smirk, never looks up from his phone. Suspiciously pleased.', kind: 'villager' },
   { id: 'brianbi', name: 'brianbi', blurb: 'Lost his right shoe somewhere in town. Will not say where.', kind: 'villager', hd: true },
   // CMU course mascots
   { id: 'honk', name: 'Honk', blurb: 'A grey goose with contracts to check.', kind: 'mascot', course: '15-122' },

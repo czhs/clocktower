@@ -4,6 +4,8 @@ import { goTo } from '../lobby/finder';
 import { AccountsTab } from './AccountsTab';
 import { AuditTab, LobbiesTab, SystemTab } from './OverviewTabs';
 import { GamesTab } from './GamesTab'; // (records)
+import { ReportsTab, SafetyTab } from './SafetyTab'; // (v2.3 OPS)
+import { SettingsTab } from './SettingsTab'; // (v2.3 settings registry)
 import '../auth/auth.css';
 import '../lobby/lobby.css';
 import './admin.css';
@@ -11,18 +13,23 @@ import './admin.css';
 // Admin console at /admin. The server enforces ADMIN_ACCOUNT_IDS on every /api/admin/* route;
 // this page only hides itself from non-admins (friendly message, no API calls).
 
-type Tab = 'accounts' | 'lobbies' | 'games' | 'system' | 'audit';
+type Tab = 'system' | 'accounts' | 'lobbies' | 'games' | 'reports' | 'settings' | 'panic' | 'audit';
+// (v2.3) Layout: day-to-day first (overview, people, lobbies, games, reports), then the server's
+// knobs ("Security & limits") and the emergency switches ("Panic"), then the audit trail.
 const TABS: { id: Tab; label: string }[] = [
+  { id: 'system', label: 'Overview' },
   { id: 'accounts', label: 'Accounts' },
   { id: 'lobbies', label: 'Lobbies' },
   { id: 'games', label: 'Games' },
-  { id: 'system', label: 'System' },
+  { id: 'reports', label: 'Reports' },
+  { id: 'settings', label: 'Security & limits' },
+  { id: 'panic', label: 'Panic' },
   { id: 'audit', label: 'Audit log' },
 ];
 
 function tabFromHash(): Tab {
   const h = location.hash.replace('#', '');
-  return (TABS.find((t) => t.id === h)?.id ?? 'accounts') as Tab;
+  return (TABS.find((t) => t.id === h)?.id ?? (h === 'safety' ? 'panic' : 'system')) as Tab;
 }
 
 export function AdminScreen({ account }: { account: AccountView }) {
@@ -110,6 +117,9 @@ export function AdminScreen({ account }: { account: AccountView }) {
         {tab === 'games' && <GamesTab onForbidden={onForbidden} />}
         {tab === 'system' && <SystemTab onForbidden={onForbidden} />}
         {tab === 'audit' && <AuditTab onForbidden={onForbidden} />}
+        {tab === 'settings' && <SettingsTab notify={notify} onForbidden={onForbidden} />}
+        {tab === 'panic' && <SafetyTab notify={notify} onForbidden={onForbidden} />}
+        {tab === 'reports' && <ReportsTab notify={notify} onForbidden={onForbidden} />}
       </div>
     </div>
   );

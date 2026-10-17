@@ -2,16 +2,20 @@
 // test port with a temp DB, serves /healthz and security headers, and two isolated instances can run
 // side by side (as dev and prod do on hshi-u1).
 import { describe, expect, it } from 'vitest';
-import { startServer } from '../support/server.js';
+import { startServer, TEST_PORT_MAX, TEST_PORT_MIN } from '../support/server.js';
 import { suiteServer } from '../support/suite.js';
 
 const { server } = await suiteServer();
 
 describe('test harness / server baseline', () => {
-  it('serves /healthz with env=test and the injected version', async () => {
+  it('serves /healthz ({ok:true}) and the injected version on loopback-only /internal/version (HOST-07)', async () => {
     const res = await fetch(`${server.url}/healthz`);
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true, env: 'test', version: server.env.CT_VERSION });
+    expect(await res.json()).toEqual({ ok: true });
+    const v = await fetch(`${server.url}/internal/version`);
+    expect(await v.json()).toEqual({ ok: true, env: 'test', version: server.env.CT_VERSION });
+    // a proxied request (as through the tunnel) never sees it
+    expect((await fetch(`${server.url}/internal/version`, { headers: { 'X-Forwarded-For': '203.0.113.7' } })).status).toBe(404);
     expect(server.env.CT_VERSION).toMatch(/^test-[0-9a-f]{12}$/);
   });
 
@@ -23,9 +27,9 @@ describe('test harness / server baseline', () => {
     expect(res.headers.get('x-powered-by')).toBeNull();
   });
 
-  it('binds loopback only (port in the qa range, never 3000/3001)', () => {
-    expect(server.port).toBeGreaterThanOrEqual(3350);
-    expect(server.port).toBeLessThanOrEqual(3399);
+  it('binds loopback only (port in the random test range, never 3000/3001)', () => {
+    expect(server.port).toBeGreaterThanOrEqual(TEST_PORT_MIN);
+    expect(server.port).toBeLessThanOrEqual(TEST_PORT_MAX);
     expect(server.url.startsWith('http://127.0.0.1:')).toBe(true);
   });
 

@@ -1,0 +1,10 @@
+# v2.3 OPS-4 (sec-ops): OnFailure= target of the backup units. Writes a CRITICAL journal entry
+# (visible with `journalctl -p crit`) and a failed marker. Hook a push notification here if wanted
+# (e.g. ExecStart=-/usr/bin/curl -fsS -m 10 -d "%i failed" https://ntfy.sh/<your-private-topic>).
+[Unit]
+Description=Clocktower ops alert for %i
+
+[Service]
+Type=oneshot
+DynamicUser=yes
+ExecStart=/usr/bin/logger -p daemon.crit -t clocktower-alert "%i failed: check journalctl -u %i"

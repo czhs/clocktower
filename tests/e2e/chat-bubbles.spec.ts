@@ -1,5 +1,8 @@
 // One real browser + five lightweight room clients: chat privacy, bubble lifetime, and walking
 // around furniture inside a cottage. Uses the real HTTP/WS stack and the normal chat input.
+// (v2.2.1 merge) Isaac's spec, adapted to the kept v2.2 bubbles (game/social/bubbles.ts + speech.ts):
+// Phaser text, ONE bubble per speaker (a new message replaces it), lifetime scaled with length
+// (SPEECH.minMs..maxMs). They are read through the opt-in camera debug hook (`__ctCamera.bubbles()`).
 import { expect, test, type Page } from '@playwright/test';
 import { townLayout } from '../../packages/assets/src/index';
 import { tileCenterPx, type PlayerGameView } from '../../packages/protocol/src/index';
@@ -28,6 +31,7 @@ test('speech bubbles follow indoor movement and keep room chat private in every 
     localStorage.setItem('ct.hint.move.v1', '1');
     localStorage.setItem('ct.hint.social.v1', '1');
     localStorage.setItem('ct.debug.fps', '30');
+    localStorage.setItem('ct.debug.camera', '1');
   });
   const page = await ctx.newPage();
   const errors: string[] = [];
@@ -43,23 +47,25 @@ test('speech bubbles follow indoor movement and keep room chat private in every 
     const pid = await tap.until(() => tap.last('lobby:view')?.youPid as string | undefined);
     const me = () => tap.last('world:snapshot')?.entities.find((e: { id: string }) => e.id === pid) as { x: number; y: number; location: string } | undefined;
     await tap.until(() => me());
-    const bubble = page.locator(`.ct-chat-bubble[data-pid="${pid}"]`);
+    type Bubble = { pid: string; text: string; alpha: number; box: { x: number; y: number; width: number; height: number } };
+    const bubbles = () => page.evaluate(() => ((window as any).__ctCamera?.bubbles?.() ?? []) as Bubble[]);
+    const flat = (t: string) => t.replace(/\s+/g, ' ').trim();
+    /** The bubble text over `who` (wrapped lines joined), or null when there is none. */
+    const bubbleOf = async (who: string) => {
+      const b = (await bubbles()).find((x) => x.pid === who);
+      return b ? flat(b.text) : null;
+    };
+    const bubbleBox = async (who: string) => (await bubbles()).find((x) => x.pid === who)?.box ?? null;
 
-    // Up to three messages; each expires five seconds after it was sent, independently.
+    // A bubble appears over the speaker; a new message replaces it; it expires on its own.
     await say(page, 'Hello from the square!');
-    await expect(bubble).toHaveText('Hello from the square!');
-    await page.waitForTimeout(3500);
-    await expect(bubble).toBeVisible();
+    await expect.poll(() => bubbleOf(pid)).toBe('Hello from the square!');
+    await page.waitForTimeout(2000);
+    expect(await bubbleOf(pid)).toBe('Hello from the square!');
     await say(page, 'A second thought.');
-    await say(page, 'And a third.');
-    await expect(bubble).toHaveText(['Hello from the square!', 'A second thought.', 'And a third.']);
-    await page.waitForTimeout(1800);
-    await expect(bubble).toHaveText(['A second thought.', 'And a third.']);
-    await say(page, 'One more.');
-    await say(page, 'Keep the newest three.');
-    await expect(bubble).toHaveText(['And a third.', 'One more.', 'Keep the newest three.']);
-    await expect(bubble).toHaveText(['One more.', 'Keep the newest three.'], { timeout: 4000 });
-    await expect(bubble).toHaveCount(0, { timeout: 6000 });
+    await expect.poll(() => bubbleOf(pid)).toBe('A second thought.');
+    expect((await bubbles()).filter((b) => b.pid === pid)).toHaveLength(1);
+    await expect.poll(() => bubbleOf(pid), { timeout: 15_000 }).toBeNull();
 
     // Waiting-room cottages are private, including when LiveKit itself is not connected.
     await foldChat(page);
@@ -71,32 +77,32 @@ test('speech bubbles follow indoor movement and keep room chat private in every 
     await tap.until(() => tap.last('world:snapshot')?.entities.some((e: { id: string }) => e.id === st!.pid));
     const privateText = '<img src=x onerror=alert(1)> A private word.';
     await say(page, privateText);
-    await expect(bubble).toHaveText(privateText);
-    await expect(bubble.locator('img')).toHaveCount(0);
+    await expect.poll(() => bubbleOf(pid)).toBe(privateText); // drawn as text, never markup
+    expect(await page.locator('img[src="x"]').count()).toBe(0);
     await st!.waitFor<{ text: string }>('chat:message', (m) => m.text === privateText);
     await page.waitForTimeout(250);
     for (const bot of others) expect(bot.recorder.messages.some((m) => m.type === 'chat:message' && (m.payload as { text: string }).text === privateText)).toBe(false);
+    // The Storyteller's messages are 'storyteller' scope: shown in the chat panel, never bubbled.
     st!.send('chat:send', { text: 'A private reply from your visitor.' });
-    const visitorBubble = page.locator(`.ct-chat-bubble-st[data-pid="${st!.pid}"]`);
-    await expect(visitorBubble).toHaveText('A private reply from your visitor.');
+    await tap.until(() => tap.received('chat:message').find((m: { text: string }) => m.text === 'A private reply from your visitor.'));
     await foldChat(page);
     await page.waitForTimeout(200);
     await page.screenshot({ path: info.outputPath('private-cottage.png') });
+    expect(await bubbleOf(st!.pid!)).toBeNull();
     st!.send('world:useDoor', { buildingId: house.id });
-    await expect(visitorBubble).toHaveCount(0);
 
     // Keys walk rather than immediately leaving; bubble tracks the actual rendered position.
     await say(page, 'Room to wander.');
     await foldChat(page);
     const before = { ...me()! };
-    const walkingBubble = bubble.filter({ hasText: 'Room to wander.' });
-    const beforeBubble = (await walkingBubble.boundingBox())!;
+    await expect.poll(() => bubbleOf(pid)).toBe('Room to wander.');
+    const beforeBubble = (await bubbleBox(pid))!;
     await page.keyboard.down('ArrowUp');
     await page.waitForTimeout(320);
     await page.keyboard.up('ArrowUp');
     await expect.poll(() => Math.hypot(me()!.x - before.x, me()!.y - before.y)).toBeGreaterThan(10);
     expect(me()!.location).toBe(`bld:${house.id}`);
-    await expect.poll(async () => Math.abs((await walkingBubble.boundingBox())!.y - beforeBubble.y)).toBeGreaterThan(10);
+    await expect.poll(async () => Math.abs((await bubbleBox(pid))!.y - beforeBubble.y)).toBeGreaterThan(10);
 
     // A floor click follows a collision-safe path, and works at phone camera sizes too.
     await page.setViewportSize({ width: 390, height: 844 });
@@ -108,18 +114,19 @@ test('speech bubbles follow indoor movement and keep room chat private in every 
     await say(page, 'A little cottage conversation, comfortably wrapped on a phone.');
     await foldChat(page);
     await page.waitForTimeout(200);
-    for (const el of await bubble.all()) {
-      const box = (await el.boundingBox())!;
-      expect(box.x).toBeGreaterThanOrEqual(0);
-      expect(box.x + box.width).toBeLessThanOrEqual(390);
+    await expect.poll(() => bubbleOf(pid)).toBe('A little cottage conversation, comfortably wrapped on a phone.');
+    for (const b of await bubbles()) {
+      expect(b.box.x).toBeGreaterThanOrEqual(0);
+      expect(b.box.x + b.box.width).toBeLessThanOrEqual(390);
     }
     await page.screenshot({ path: info.outputPath('phone-cottage.png') });
+    // (a 390 px DESKTOP window: the voice panel covers the Leave button there — back to full size)
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.waitForTimeout(250);
     await page.locator('.ct-inside-leave').click();
     await expect.poll(() => me()?.location).toBe('outdoors');
-    await expect(bubble).toHaveCount(0);
 
     // Start a real game, then check the same privacy rule at night and after its result.
-    await page.setViewportSize({ width: 1280, height: 800 });
     for (const bot of others) bot.send('lobby:ready', { ready: true });
     await inject(page, 'lobby:ready', { ready: true });
     await expect.poll(() => st!.lobbyView?.canStart).toBe(true);
@@ -134,7 +141,7 @@ test('speech bubbles follow indoor movement and keep room chat private in every 
     await tap.until(() => tap.last('world:snapshot')?.entities.some((e: { id: string }) => e.id === st!.pid));
     await page.waitForTimeout(800);
     await say(page, 'Only my visitor should read this.');
-    await expect(bubble.last()).toBeVisible();
+    await expect.poll(() => bubbleOf(pid)).toBe('Only my visitor should read this.');
     await st!.waitFor<{ text: string }>('chat:message', (m) => m.text === 'Only my visitor should read this.');
     await page.keyboard.press('Escape');
     expect(me()!.location).toBe(`bld:${home.id}`);

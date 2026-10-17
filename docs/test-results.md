@@ -1,6 +1,54 @@
 # Test results (executed commands only)
 
-All commands run on **hshi-u1** via `scripts/remote.sh` unless stated otherwise.
+All commands run on **the host** via `scripts/remote.sh` unless stated otherwise.
+
+## 2026-10-16 — v2.4 release gate (lead, hshi-u1, sandbox `lead`, capped remote.sh)
+
+Tree = v2.3 (`28a9d6e`) + v2.4 P1 (client runtime), P2 (load path), P3 (server CPU) + lead fixes
+(admin.css `.ct-set*` scoped under `.ct-admin`; budgets.mjs sums entry CSS; perf results no longer
+record host paths).
+
+| Command | Result |
+|---|---|
+| `pnpm -r --no-bail run typecheck` | 7/7 Done |
+| `pnpm -r --if-present run build` | ✅ |
+| `pnpm test` (first run) | 1263 passed, ❌ 1: `repo-hygiene` REPO-03 — two P2 perf JSONs recorded a host home path (redacted; `client-perf.ts` now writes `dist` repo-relative) |
+| `pnpm test` (final tree) | 118 files passed, 1 skipped; 1264 passed, 3 skipped |
+| e2e (`~/clocktower/work/lead-e2e24.sh`, serialized under the browser lock): `v21-clock v2-social v2-phone v2-look v2-st-ui ux-ready chat-bubbles door-boards door-reconnect doors hd-cast v23-chat v23-settings ops-moderation ops-admin-settings game-chaos ux-walkthrough` | all ✅ |
+| e2e `lobby` | ❌ 1/6 in the gate (`v2 roster…` — "You are … now." not shown within 10 s); ✅ 6/6 on two re-runs → flake |
+| e2e `game-full` | ❌ in the gate (step 3b' test helper: `no path from 1548,97` for a bot's walk home); ✅ on re-run (7.7 m) → flake |
+| `node scripts/perf/budgets.mjs` (bundle-report, `server-profile.ts --snap2 yes --cpuprof no` after one warm-up run, `client-perf.ts --gpu yes` windows + load) | **13/13 ok** → `tests/perf/results/2026-10-16-v2.4.json`. First attempt forgot `--gpu yes` (SwiftShader numbers, 3 over); the header now spells out the flags |
+
+Key numbers: entry CSS 11.4 KiB br (v2.3 24.9), LobbyRoute 63.8 (83.4), town atlases on entry 578 KiB
+(835), server CPU 2.2 % core profiler-off, phone walk main 12.1 %, HUD churn 3.6/s (v2.3 real walk
+≈ 16), Slow-4G town network-idle 16.4 s (21.5).
+
+## 2026-10-16 — v2.2.1 merge of Isaac's GitHub `main` into v2.2 (integration teammate, the host, sandbox `merge-isaac`, capped remote.sh)
+
+All commands via `CT_AGENT=merge-isaac scripts/remote.sh …`; browsers under `flock ~/clocktower/browser.lock`, `CT_E2E_NO_BUILD=1`, `-c tests/e2e/playwright.config.ts`.
+
+| Executed command | Result |
+|---|---|
+| `pnpm assets:generate` (+ `scripts/pull.sh packages/assets/generated`) | All atlases regenerated (cast/cast-portraits/social/cast-hd changed; terrain/decor/objects/lights/square-props byte-identical). |
+| `pnpm -r run typecheck` | Passed (twice: mid-merge and final tree). |
+| `pnpm test` (first) | 1037 passed; failed: `nicksong.test.ts` roster count 27 → 28 (updated) and git-excluded local `tests/security/host-safety.test.ts` (no free port). |
+| `pnpm exec vitest run packages/assets packages/protocol/test/snapshotCodec.test.ts apps/client/test/castPicker.test.ts apps/client/test/npcRoaming.test.ts` | 82 passed, 3 skipped (atlas-encoding incl. cast-hd WebP == PNG, hdCast, nicksong, new ackSeq codec test, castPicker, npcRoaming). |
+| `pnpm test` (final tree) | 101 files passed, 1 skipped; 2 failed = the git-excluded local v2.3 files `tests/security/host-safety.test.ts` and `tests/security/web-render.test.ts` (expected). |
+| `pnpm -r --if-present run build` | Passed (client rebuilt 3× after TownScene fixes). |
+| `playwright test hd-cast doors door-reconnect door-boards chat-bubbles` (first) | 3 passed; chat-bubbles failed (voice panel covers Leave at a 390 px desktop window → spec resizes back first); doors failed at −10 px approach (trigger) → fixed. |
+| `playwright test doors.spec chat-bubbles` | chat-bubbles passed; doors failed on the tap-during-cooldown check → route now waits out the cooldown. |
+| `playwright test doors.spec` | 1 passed. |
+| `playwright test hd-cast doors.spec door-reconnect door-boards chat-bubbles lobby.spec v2-social v2-phone` | **14 passed (7.9m).** |
+| `GAME_RUN=merge1 playwright test game-full` | Failed step 5 (leaveByKey: ArrowDown did not walk out of house-3); not reproduced in later runs. |
+| `GAME_RUN=merge2 playwright test game-chaos` | **1 passed (4.6m).** |
+| `GAME_RUN=merge3 playwright test game-full` | Step 5 passed; failed 8a (ST "↶ Undo" covered by the toolbar ⚙ button; not reproduced later). |
+| `GAME_RUN=merge4 playwright test game-full` | Failed 3b': the keyboard walker entered a neighbour's cottage passing its door diagonally (20 px door trigger) → wide trigger now only for straight pushes. |
+| `playwright test doors.spec door-reconnect` (final build) | **2 passed.** |
+| `GAME_RUN=merge5 playwright test game-full` (final build) | **1 passed (7.4m).** |
+| `GAME_RUN=merge6 playwright test game-chaos` (final build) | **1 passed (4.7m).** |
+| `playwright test hd-cast door-boards chat-bubbles lobby.spec v2-phone v2-social` (final build) | 11 passed; v2-social desktop+phone failed once (pie "Point" gone before the tap). |
+| `playwright test v2-social` (rerun) | **2 passed.** |
+| `bash scripts/secret-scan.sh` (Mac) | Removed a home path from Isaac's test-results row; 5 remaining findings all pre-exist on HEAD (bootstrap.sh / progress.md tailnet name, test-results CGNAT IP + home path, cloudflared example home path). |
 
 ## 2026-10-16 — playable Brianbi and bounded NPC avoidance
 
@@ -85,7 +133,7 @@ sign instead of growing upward over the roof. Existing server privacy rules are 
 
 ## 2026-10-16 — photo-real roster character `brianbi`
 
-Run on the editing Mac (hshi-u1 still does not resolve; user approved local runs). Same Node 24.22.0 /
+Run on the editing Mac (the host still does not resolve; user approved local runs). Same Node 24.22.0 /
 pnpm 10.34.7 `npm exec --offline …` wrapper and Playwright env as the entry below. Art: the user's
 turnaround sheet, right shoe removed with `codex exec -m gpt-6-sol` image edits (raw inputs/outputs in
 gitignored `packages/assets/ai/staging/brianbi/`), cut out with `packages/assets/scripts/hd/brianbi_cutout.py`
@@ -104,7 +152,7 @@ gitignored `packages/assets/ai/staging/brianbi/`), cut out with `packages/assets
 ## 2026-10-16 — local preview, room chat, walkable cottages, and doorway regression
 
 Run on the editing Mac for the user's explicitly requested local preview. The documented SSH alias
-and full hostname for hshi-u1 did not resolve. Native preview: `127.0.0.1:3002`, isolated `data/local`;
+and full hostname for the host did not resolve. Native preview: `127.0.0.1:3002`, isolated `data/local`;
 browser tests: throwaway server/database on `127.0.0.1:3398`. No shared deployment.
 
 Commands below use Node 24.22.0 and pnpm 10.34.7 via
@@ -125,7 +173,7 @@ and use `-c tests/e2e/playwright.config.ts`. Local socket/browser runs required 
 | `pnpm exec playwright test … doors.spec.ts` (initial iterations) | Reproduced the original trigger failure: feet 12px off-centre against the wall, still outdoors. Test setup then exposed seat-dependent stage-teleport offsets and the fountain blocking a straight approach to Ravenscroft. Switched to leaving onto the doorstep and moving sideways. A 30fps frame overshot the requested 10px offset to 15px; that also exposed the intermediate 16px trigger missing at the wall. Final trigger uses 20px, within the unchanged 22px server range. |
 | `pnpm exec playwright test … chat-bubbles.spec.ts doors.spec.ts` (final build) | **2 passed, 52.5s.** Door coverage: Wychwood, Weaver’s House, Ravenscroft, centered and both off-center approaches, immediate leave/re-enter tap during cooldown, no door errors. Chat coverage above passed again, with desktop/phone screenshots inspected. |
 | Collision probe via `pnpm exec tsx -e …`, then `node --import tsx --input-type=module -e …` | First attempt blocked by the sandbox's IPC restriction; loader form succeeded. Confirmed the fountain collision south of Ravenscroft, while the immediate doorstep is clear. |
-| `/Users/isaacsun/.docker/bin/docker compose config --quiet` | Passed. Docker image/runtime not tested: CLI exists, Docker Desktop/daemon is unavailable on this Mac. Native preview runs successfully. |
+| `docker compose config --quiet` | Passed. Docker image/runtime not tested: CLI exists, Docker Desktop/daemon is unavailable on this Mac. Native preview runs successfully. |
 | `curl --fail --silent http://127.0.0.1:3002/healthz` | Passed: development / local-preview / ok. |
 | `git diff --check` | Passed. |
 
@@ -137,9 +185,9 @@ those full suites were not rerun in this session. LiveKit audio was not exercise
 
 | Command | Result |
 |---|---|
-| `ssh hshi-u1 'uname -a; cat /etc/os-release; …'` | ✅ Ubuntu 22.04.5 x86_64, Tailscale 1.102.2, no Node |
+| `ssh <host> 'uname -a; cat /etc/os-release; …'` | ✅ Ubuntu 22.04.5 x86_64, Tailscale 1.102.2, no Node |
 | Node v24.22.0 tarball install (sha256 verified) + `npm i -g pnpm@10` | ✅ node v24.22.0, pnpm 10.34.7 |
-| `scripts/remote.sh node -e …` (first install incl. better-sqlite3 native build) | ✅ `node v24.22.0 on hshi-u1` |
+| `scripts/remote.sh node -e …` (first install incl. better-sqlite3 native build) | ✅ `node v24.22.0 on the host` |
 | `scripts/remote.sh pnpm -r --no-bail run typecheck` | ❌ first run: ` ` literal broke regex in protocol/text.ts; ❌ Emitter generic constraint → fixed; ✅ all 7 packages pass |
 | `pnpm --filter @ct/client build` | ✅ vite build 147 kB js |
 | `pnpm --filter @ct/server build` | ✅ esbuild bundle |
@@ -206,24 +254,24 @@ no Tailscale operator set; memory cgroup delegated to the user manager; `google-
 ## 2026-10-15 — public ingress via Cloudflare Tunnel (lead)
 
 Public URL: **https://clocktower.chrisshi.com** (Cloudflare Tunnel `clocktower`, id 42b1c7f4…, from
-hshi-u1 → 127.0.0.1:3000 only). Funnel not used (tailnet policy approval not granted).
+the host → 127.0.0.1:3000 only). Funnel not used (tailnet policy approval not granted).
 
 | Command | Result |
 |---|---|
-| cloudflared 2026.10.0 binary install on hshi-u1 (sha256 matched GitHub digest) | ✅ |
+| cloudflared 2026.10.0 binary install on the host (sha256 matched GitHub digest) | ✅ |
 | `cloudflared tunnel create clocktower`; `tunnel route dns clocktower clocktower.chrisshi.com` | ✅ CNAME added |
 | `cloudflared tunnel --config … ingress validate` / `ingress rule` | ✅ only clocktower.chrisshi.com → 127.0.0.1:3000; other hosts → 404 |
 | `scripts/deploy-hshi-u1.sh prod c60ba22…` (after setting prod APP_PUBLIC_ORIGIN) | ✅ healthy; dev MainPID unchanged (3740957) |
 | `systemctl --user enable --now clocktower-tunnel` | ✅ active, 4 QUIC connections (sjc) |
 | From the Mac via Cloudflare edge (IPv4 pinned): `/healthz`, `/lobby/<id>` SPA, `/favicon.png`, unauthenticated `/api/lobbies` & `/api/admin/status` | ✅ 200 prod c60ba22 / 200 html / 200 png / 401 / 401; headers nosniff + DENY |
 | First attempt from the Mac with system DNS | ❌ local Tailscale MagicDNS cached the pre-creation NXDOMAIN (only AAAA returned; no IPv6 route) — environment, not server |
-| `nc -z 100.116.187.72 3001`; `ss -ltn` on hshi-u1 | ✅ dev not reachable on tailnet IP; 3000/3001 bound to 127.0.0.1 only |
+| `nc -z <tailscale-ip> 3001`; `ss -ltn` on the host | ✅ dev not reachable on tailnet IP; 3000/3001 bound to 127.0.0.1 only |
 | lobby.spec.ts against public URL | ❌ Node-side API helper hit the same stale-DNS IPv6-only answer (ENETUNREACH); browser steps passed |
 | Throwaway public-check spec (2 Chromium contexts, IPv4 pinned via host-resolver-rules, real TLS/hostname) | ✅ accounts created; cookie Secure+HttpOnly+SameSite=Lax; lobby created; share URL `https://clocktower.chrisshi.com/lobby/…`; both browsers saw both members over WSS; movement; leave. Screenshot: docs/screenshots/public-waiting-room.png. Left 2 `verify-*` accounts in prod DB. |
 
 ## 2026-10-15 — real LiveKit Cloud (lead)
 
-User stored prod credentials via `ssh -t hshi-u1 '~/clocktower/bin/set-livekit.sh prod'` (env file 0600; secret never printed). Dev not yet configured.
+User stored prod credentials via `ssh -t <host> '~/clocktower/bin/set-livekit.sh prod'` (env file 0600; secret never printed). Dev not yet configured.
 
 | Command | Result |
 |---|---|
@@ -232,14 +280,14 @@ User stored prod credentials via `ssh -t hshi-u1 '~/clocktower/bin/set-livekit.s
 
 ## 2026-10-15 — host hardening applied (lead)
 
-User ran `ssh -t hshi-u1 'sudo bash ~/clocktower/hardening/deploy/secure/setup-dedicated-user.sh --apply'` (dry run reviewed first).
+User ran `ssh -t <host> 'sudo bash ~/clocktower/hardening/deploy/secure/setup-dedicated-user.sh --apply'` (dry run reviewed first).
 
 | Check | Result |
 |---|---|
 | prod/dev/tunnel process identity (`/proc/<pid>/status`) | ✅ uid/gid 998 `clocktower`, Groups 998 only (no sudo/adm/lxd), CapEff 0, NoNewPrivs 1, Seccomp 2 |
 | `systemd-analyze security` prod/dev/tunnel | ✅ 1.5 OK each (was 9.6 UNSAFE for the user unit) |
 | `systemctl show clocktower-prod` | ✅ ProtectHome=yes, ProtectSystem=strict, RW only /srv/clocktower/data/prod, other env data/backups/env/tunnel creds inaccessible, MemoryMax 1.5G, CPU 300%, TasksMax 256 |
-| /home/hshi 0750 hshi:hshi, ~/.ssh 0700 | ✅ uid 998 has no access even without the sandbox |
+| /home/<admin> 0750 <admin>:<admin>, ~/.ssh 0700 | ✅ uid 998 has no access even without the sandbox |
 | listening ports | ✅ 3000/3001/20241 on 127.0.0.1 only |
 | `sudo -n -l` as admin | ✅ NOPASSWD only for restart/stop/reset-failed of the 3 units + 2 backup units |
 | public `https://clocktower.chrisshi.com/healthz` | ✅ |
@@ -248,7 +296,7 @@ User ran `ssh -t hshi-u1 'sudo bash ~/clocktower/hardening/deploy/secure/setup-d
 
 ## 2026-10-15 — qa-deploy round 2: M3 browser round, load with real world, public endpoint, resilience, soak, adversity
 
-Everything below ran on hshi-u1 (test instances on 3350-3399 unless stated otherwise).
+Everything below ran on the host (test instances on 3350-3399 unless stated otherwise).
 
 | Command | Result |
 |---|---|
@@ -278,7 +326,7 @@ All against a private test server (prefix `voicetest`), never dev/prod. Fake mic
 
 ## 2026-10-15 — core gameplay finalized (lead)
 
-Commit **16042fe** (prod + dev). Verified on hshi-u1 against that exact commit (clean `git archive` tree):
+Commit **16042fe** (prod + dev). Verified on the host against that exact commit (clean `git archive` tree):
 
 | Check | Result |
 |---|---|
@@ -292,7 +340,7 @@ Commit **16042fe** (prod + dev). Verified on hshi-u1 against that exact commit (
 
 ## 2026-10-15 — v2 e2e (one-screen town, automatic doors, tap-a-cottage, roster, st-ui script panel) — e2e agent
 
-All on hshi-u1 via `CT_AGENT=e2e scripts/remote.sh …`, throwaway server on 127.0.0.1:3398 (playwright webServer), ≤ 6 browser contexts per suite, one suite at a time. Client/server built from the working tree at HEAD **b83afac** (+ uncommitted test changes) at 15:10; earlier runs (marked †) used the 13:00 build of the pre-`7c4ec91` tree. The e2e server now gets **fake LiveKit credentials** (`tests/e2e/playwright.config.ts`, opt-out `E2E_VOICE=0`) so the real voice coordinator mints zone grants that specs decode (nobody connects).
+All on the host via `CT_AGENT=e2e scripts/remote.sh …`, throwaway server on 127.0.0.1:3398 (playwright webServer), ≤ 6 browser contexts per suite, one suite at a time. Client/server built from the working tree at HEAD **b83afac** (+ uncommitted test changes) at 15:10; earlier runs (marked †) used the 13:00 build of the pre-`7c4ec91` tree. The e2e server now gets **fake LiveKit credentials** (`tests/e2e/playwright.config.ts`, opt-out `E2E_VOICE=0`) so the real voice coordinator mints zone grants that specs decode (nobody connects).
 
 What changed in the suites: `helpers.ts` (v2 sign-up picker "Choose your character"; camera-model tap helpers `tapCottage` / `tapLockedCottage` / `planCottageTap` mirroring TownScene's camera, every tap verified by its effect; `leaveByButton` / `leaveByKey`; `walkIntoDoor` (keyboard + automatic door, no E); frame-precise fine positioning `holdFrames` for 150 px/s; `voiceZone` / `zonesGranted`; `storytellerToolsMode` / `stPanelMode` for the st-ui panel), `game-full`, `game-chaos`, `lobby`, `ux-walkthrough` updated, new `v2-phone.spec.ts`.
 
@@ -328,3 +376,45 @@ Clean `git archive e5d31ef` + the new helpers.ts (sandbox `e2e-head`), build ✅
 | `v2-phone` | ❌ landscape: the open lobby chat (`.ct-chat-list` / chat input) intercepted the tap on "Change character…" in the waiting-room sheet (real bug; lead fixed in 9fd63ec — not re-run here at the lead's request) |
 | `game-full` GAME_RUN=h1 | ✅ (12.3 min); every tap resolved through the hook (0 "no camera hook" fallbacks in `game-full-steps-h1.json`) |
 | `lobby` | ✅ 6/6 — the roster test now passes (B1 fixed: the Storyteller's character is no longer shown as taken) |
+
+### 2026-10-15 — v2.1 (town clock + automatic games), lead
+
+| Command (the host, sandbox `lead`) | Result |
+|---|---|
+| `pnpm -r run typecheck` | ✅ |
+| `pnpm test` | ❌ 1/724: `tests/security/leakage.test.ts` lobby summary keys did not allow the new optional `storytellerMode`/`autoTimings` (public lobby settings) — test updated; `vitest run tests/security` ✅ 70/70 |
+| `playwright test … v21-clock` | human test ✅; automatic test ❌ after the host's abort the players' clients kept showing the aborted game (client only dropped a *finished* game's view) — fixed in `net/room.ts` (drop the game view when the lobby goes back to waiting) |
+| `playwright test … v21-clock -g automatic` (×2) | ✅ (2.8 min): create automatic lobby, finder badge, auto deal → day clock, chip + tower dial, +2 min proposal voted through (clock +120 s), phone chip/vote card, host abort → waiting room. Second run after moving HUD toasts below an open clock card (the proposal toast covered the vote card's title) |
+
+## 2026-10-15/16 — v2.2 release gate (lead, the host, sandbox `lead`, capped remote.sh)
+
+| Command | Result |
+|---|---|
+| `pnpm -r --no-bail run typecheck` (merged tree) | ✅ 7/7 |
+| `pnpm -r --if-present run build` | ✅ |
+| `pnpm test` (1st merged run) | ❌ 1 file: `playtest.refresh` EADDRINUSE 3384 — new `tests/security/hostile-client.test.ts` used the same fixed port → moved to 3391; both pass (18 + 4 expected-fail) |
+| `pnpm test` (final tree) | 1037 passed, 34 expected-fail, 5 skipped; ❌ 2 local-only v2.3 audit files: `web-render` (port 3387 clash in the parallel run; ✅ 2/2 alone) and `ops-restore-drill` (fails in the merged tree; server boots and serves fine by hand — test-harness issue, owned by v2.3/ops; file is git-excluded) |
+| `tests/perf/server-profile.ts --snap2 no/yes` | 13 986 → 1 487 B/s per client (docs/perf-v2.2-results.md) |
+| `tests/perf/client-perf.ts` runtime / load / no-GPU | table in docs/perf-v2.2-results.md |
+| `node scripts/perf/budgets.mjs …` | ✅ 13/13 (`tests/perf/results/2026-10-15-v2.2.json`) |
+| e2e gate run 1 (22:3x, merged snapshot) | lobby ✅ v21-clock ✅ v2-social ✅ v2-phone ✅ v2-look ✅ v2-st-ui ✅ ux-ready ✅ game-chaos ✅; game-full ❌ (helper walked into its own doorway → interiors are walkable now; helpers fixed by world-art, `GAME_RUN=v22fix5` ✅ 7.8 m); ux-walkthrough ❌ (waiting room visible after 10 s on the loaded host → 60 s timeouts) |
+| e2e gate run 2 (23:5x–00:33, final tree) | lobby ✅ v21-clock ✅ v2-social ✅ v2-phone ✅ v2-look ✅ ux-ready ✅ game-full ✅ game-chaos ✅ ux-walkthrough ✅ (8.1 m); v2-st-ui ❌ race ("Next visit" re-rendered between count() and click) → spec made race-tolerant → ✅ (1.2 m) |
+| prod hotfix `scripts/deploy-hshi-u1.sh prod 8fbad32` (own avatar missing after fast reload) | ✅ healthy, verified by the user in a live lobby |
+
+Agents' own runs (feature work, all via `scripts/remote.sh`): see their sections in docs/perf-v2.2-results.md
+and the v2.2 release notes; each feature agent ran typecheck + its unit tests + a browser check under the lock.
+
+## 2026-10-16 — v2.3 release gate (lead, hshi-u1, sandbox `lead`, capped remote.sh, quiet host)
+
+| Command | Result |
+|---|---|
+| `pnpm -r run typecheck` | ✅ 7/7 |
+| `pnpm -r --if-present run build` | ✅ |
+| `pnpm test` | 110/111 files ✅; ❌ `tests/integration/harness.test.ts` asserted the old random-port range → random test ports moved to 3400-3449 (`tests/support/server.ts`; no file hardcodes ports there) and the assertion uses the shared constants → ✅ 6/6 |
+| e2e (16 suites): lobby, v21-clock, v2-phone, v2-look, v2-st-ui, ux-ready, chat-bubbles, door-boards, door-reconnect, doors, hd-cast, v23-chat, v23-settings, ops-moderation, ops-admin-settings, game-chaos (`GAME_RUN=v23b`) | ✅ all |
+| e2e v2-social | ❌ (1) a Trusted Types console violation from msgpackr's `new Function('')` probe → removed at build time (vite plugin `ct-msgpackr-no-eval`, the library's documented no-eval replacement); (2) pie-menu tap timing (seen once before) → re-run ✅ both tests |
+| e2e game-full (`GAME_RUN=v23a`) | ❌ ST "Grimoire" tab click timed out (random deal took the visit-from-Grimoire path; artifacts overwritten) → re-run `GAME_RUN=v23c` ✅ 8.1 m; not reproduced, noted as a possible flake |
+| e2e ux-walkthrough | ❌ "joystick pushed down moves the player down": the phone player's cottage was on the bottom map edge (random deal) → the check now tries down / left / right and requires movement in an open direction → ✅ 7.2 m |
+| `pnpm exec tsc -p tests/tsconfig.json --noEmit` | ✅ |
+
+Feature/security agents' own runs are listed in their reports (private audit notes) and summarised in docs/security-v2.3.md.

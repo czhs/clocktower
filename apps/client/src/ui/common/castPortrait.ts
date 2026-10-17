@@ -1,6 +1,10 @@
 // Cast portraits (v2 roster): draws one frame of a character's sheet from the generated
 // packages/assets/generated/cast.png (+ cast.json) onto a canvas, pixel-crisp. Shared by the
 // character picker, the waiting room and anything else outside the Phaser scene that shows "who".
+// (v2.2 perf) 'down' frames come from the small portrait strip (cast-portraits.*: every 'down' frame
+// of the playable cast + the idle 'down' frame of everyone else and every ghost, the same pixels), so
+// the DOM UI never downloads the full game sheet; any other frame still loads cast.* on demand
+// ((v2.4) ghost variants: cast-ghosts.*, one cell per direction, hover frames as row offsets).
 //
 //   <CastPortrait id="frog" size={48} />               square box, sprite fitted (integer scale)
 //   <CastPortrait id="frog" size={120} crop="frame" animate />   whole 32x40 frame, walking in place
@@ -9,9 +13,11 @@
 //
 // Until the sheet has loaded (or for an id the sheet does not have yet) a small silhouette in the
 // character's own colour is drawn instead, so layouts never jump and nothing is ever blank.
-// The sheet is looked up with import.meta.glob, so a checkout without generated art still builds.
+// The manifest is looked up with import.meta.glob; the image URLs (WebP or PNG) come from @ct/assets/runtime.
 import { h } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
+import { atlasFormat, castGhostsUrl, castHdPortraitsUrl, castHdUrl, castUrl, portraitsUrl } from '@ct/assets/runtime';
+import portraitStrip from '@ct/assets/generated/cast-portraits.json';
 // CONTRACT-REQUEST(lobby-ui -> lead/world-art): export the cast roster from '@ct/assets' (src/index.ts)
 // so clients can `import { CAST, PLAYABLE, castById } from '@ct/assets'`; until then the source is
 // imported directly (it has no imports of its own).
@@ -24,37 +30,56 @@ export interface CastManifest {
   frameHeight: number;
   directions: readonly string[];
   frames: readonly string[];
-  /** Sheet key (`<id>`, `<id>/ghost`, `<id>/ghost-spent`) -> top-left of its 5x8 frame block. */
+  /** Living sheet key (`<id>`) -> top-left of its 5x8 frame block. */
   sheets: Record<string, { x: number; y: number }>;
+  /** (v2.4) Ghost variants (`<id>/ghost`, `<id>/ghost-spent`) in cast-ghosts.*: one column of 8 cells. */
+  ghosts?: { cellHeight: number; rowOffset: readonly number[]; sheets: Record<string, { x: number; y: number }> };
   /** Ids still drawn as generator placeholders. */
   placeholders?: string[];
 }
 
-const MANIFESTS = import.meta.glob('../../../../../packages/assets/generated/cast.json', { eager: true, import: 'default' }) as Record<string, CastManifest>;
-const SHEET_URLS = import.meta.glob('../../../../../packages/assets/generated/cast.png', { eager: true, query: '?url', import: 'default' }) as Record<string, string>;
-const MANIFEST: CastManifest | null = Object.values(MANIFESTS)[0] ?? null;
-const SHEET_URL: string | null = Object.values(SHEET_URLS)[0] ?? null;
+/** cast-portraits.json: sheet key -> its idle 'down' cell in the strip; `frames` cells follow. */
+interface PortraitStrip {
+  dir: string;
+  sheets: Record<string, { x: number; y: number; frames: number }>;
+}
 
-// Photo-real members (CastMember.hd) also have high-res animation rows in cast-hd.png; they
-// are drawn from it smoothed (not pixel-crisp), cropped with the same frame-local boxes x scale.
+const MANIFESTS = import.meta.glob('../../../../../packages/assets/generated/cast.json', { eager: true, import: 'default' }) as Record<string, CastManifest>;
+const MANIFEST: CastManifest | null = Object.values(MANIFESTS)[0] ?? null;
+const STRIP = portraitStrip as PortraitStrip;
+const STRIP_ROW = CAST_DIRS.indexOf(STRIP.dir as CastDir);
+
+// Photo-real members (CastMember.hd) also have high-res animation rows in cast-hd.* (WebP or PNG via
+// @ct/assets/runtime, like every atlas); they are drawn from it smoothed (not pixel-crisp), cropped
+// with the same frame-local boxes x CAST_HD_SCALE. Only loaded when such a portrait is drawn, and
+// (v2.4) a 'down' portrait only loads the sheet's 'down' column (cast-hd-portraits.*, ~92 KB) instead
+// of the 740 KB sheet; the low-res frame is shown until it is there.
 const HD_MANIFEST = (Object.values(import.meta.glob('../../../../../packages/assets/generated/cast-hd.json', { eager: true, import: 'default' }))[0] ?? null) as {
   rows: Record<string, number>;
+  portraits?: { dir: string };
 } | null;
-const HD_URL = (Object.values(import.meta.glob('../../../../../packages/assets/generated/cast-hd.png', { eager: true, query: '?url', import: 'default' }))[0] ?? null) as string | null;
 let hdSheet: HTMLImageElement | null = null;
 let hdPromise: Promise<HTMLImageElement | null> | null = null;
+let hdStrip: HTMLImageElement | null = null;
+let hdStripPromise: Promise<HTMLImageElement | null> | null = null;
 function loadHdSheet(): Promise<HTMLImageElement | null> {
   if (hdPromise) return hdPromise;
-  if (!HD_URL || typeof Image === 'undefined') return (hdPromise = Promise.resolve(null));
-  hdPromise = new Promise((resolve) => {
-    const img = new Image();
-    img.decoding = 'async';
-    img.onload = () => resolve((hdSheet = img));
-    img.onerror = () => resolve(null);
-    img.src = HD_URL;
-  });
-  return hdPromise;
+  if (!HD_MANIFEST || typeof Image === 'undefined') return (hdPromise = Promise.resolve(null));
+  return (hdPromise = loadImage(() => castHdUrl).then((img) => (hdSheet = img)));
 }
+function loadHdStrip(): Promise<HTMLImageElement | null> {
+  if (hdStripPromise) return hdStripPromise;
+  if (!HD_MANIFEST?.portraits || typeof Image === 'undefined') return (hdStripPromise = Promise.resolve(null));
+  return (hdStripPromise = loadImage(() => castHdPortraitsUrl).then((img) => (hdStrip = img)));
+}
+/** The decoded HD image for direction row `r` and its column there (the strip is one column), or null. */
+function hdSource(r: number): { img: HTMLImageElement; col: number } | null {
+  if (hdSheet) return { img: hdSheet, col: r };
+  if (hdStrip && HD_MANIFEST?.portraits && CAST_DIRS[r] === HD_MANIFEST.portraits.dir) return { img: hdStrip, col: 0 };
+  return null;
+}
+/** Load the HD art direction row `r` needs: the 'down' strip when it covers it, else the full sheet. */
+const loadHdFor = (r: number): Promise<unknown> => (HD_MANIFEST?.portraits && CAST_DIRS[r] === HD_MANIFEST.portraits.dir ? loadHdStrip().then((s) => s ?? loadHdSheet()) : loadHdSheet());
 const isHd = (key: string): boolean => HD_MANIFEST?.rows[key] !== undefined;
 
 /** The cast manifest, or null when this build has no generated cast art. */
@@ -62,21 +87,45 @@ export const castManifest = (): CastManifest | null => MANIFEST;
 
 let sheet: HTMLImageElement | null = null;
 let sheetPromise: Promise<HTMLImageElement | null> | null = null;
+let ghosts: HTMLImageElement | null = null;
+let ghostsPromise: Promise<HTMLImageElement | null> | null = null;
+const GHOSTS = MANIFEST?.ghosts ?? null;
+let strip: HTMLImageElement | null = null;
+let stripPromise: Promise<HTMLImageElement | null> | null = null;
 
-/** Load cast.png once (resolves null when there is no sheet or it fails to load). */
+/** Decode one image (WebP or PNG, whichever @ct/assets/runtime settled on); null on failure. */
+function loadImage(url: () => string): Promise<HTMLImageElement | null> {
+  return atlasFormat.then(
+    () =>
+      new Promise((resolve) => {
+        const img = new Image();
+        img.decoding = 'async';
+        img.onload = () => resolve(img);
+        img.onerror = () => resolve(null);
+        img.src = url();
+      }),
+  );
+}
+
+/** Load the full cast sheet once (resolves null when there is no sheet or it fails to load). */
 export function loadCastSheet(): Promise<HTMLImageElement | null> {
   if (sheetPromise) return sheetPromise;
-  if (!MANIFEST || !SHEET_URL || typeof Image === 'undefined') return (sheetPromise = Promise.resolve(null));
-  sheetPromise = new Promise((resolve) => {
-    const img = new Image();
-    img.decoding = 'async';
-    img.onload = () => resolve((sheet = img));
-    img.onerror = () => resolve(null);
-    img.src = SHEET_URL;
-  });
-  return sheetPromise;
+  if (!MANIFEST || typeof Image === 'undefined') return (sheetPromise = Promise.resolve(null));
+  return (sheetPromise = loadImage(() => castUrl).then((img) => (sheet = img)));
 }
-/** True once cast.png is decoded (drawing is then synchronous). */
+/** Load the ghost atlas once (resolves null when there is none or it fails to load). */
+function loadGhostSheet(): Promise<HTMLImageElement | null> {
+  if (ghostsPromise) return ghostsPromise;
+  if (!GHOSTS || typeof Image === 'undefined') return (ghostsPromise = Promise.resolve(null));
+  return (ghostsPromise = loadImage(() => castGhostsUrl).then((img) => (ghosts = img)));
+}
+/** Load the portrait strip once (resolves null when it fails to load). */
+function loadPortraitStrip(): Promise<HTMLImageElement | null> {
+  if (stripPromise) return stripPromise;
+  if (!MANIFEST || typeof Image === 'undefined') return (stripPromise = Promise.resolve(null));
+  return (stripPromise = loadImage(() => portraitsUrl).then((img) => (strip = img)));
+}
+/** True once the full cast sheet is decoded. */
 export const castSheetReady = (): boolean => sheet !== null;
 
 export type CastCrop = 'frame' | 'fit' | 'bust';
@@ -211,39 +260,91 @@ function drawFallback(canvas: HTMLCanvasElement, id: string, opts: CastPortraitO
   g.restore();
 }
 
+/** Which frame `opts` asks for: sheet key (a missing ghost variant falls back to the living sheet), row, frame. */
+interface FrameReq {
+  key: string;
+  r: number;
+  f: number;
+}
+function frameReq(id: string, opts: CastPortraitOpts): FrameReq | null {
+  const k = castSheetKey(id, opts.ghost);
+  const key = MANIFEST?.sheets[k] || GHOSTS?.sheets[k] ? k : MANIFEST?.sheets[id] ? id : null;
+  if (!key) return null;
+  const r = Math.max(0, CAST_DIRS.indexOf(opts.dir ?? 'down'));
+  const f = Math.min(CAST_FRAMES.length - 1, Math.max(0, Math.round(opts.frame ?? 0)));
+  return { key, r, f };
+}
+const inStrip = (q: FrameReq): boolean => q.r === STRIP_ROW && q.f < (STRIP.sheets[q.key]?.frames ?? 0);
+
+/**
+ * The decoded image holding the frame, its top-left (sx, sy) and the top-left of the same row's
+ * idle frame (ix, iy) — or null while neither the strip (when it has the frame) nor the sheet is ready.
+ */
+function source(q: FrameReq): { img: HTMLImageElement; sx: number; sy: number; ix: number; iy: number } | null {
+  const p = STRIP.sheets[q.key];
+  if (strip && p && inStrip(q)) return { img: strip, sx: p.x + q.f * CAST_FW, sy: p.y, ix: p.x, iy: p.y };
+  const o = MANIFEST?.sheets[q.key];
+  if (sheet && o) return { img: sheet, sx: o.x + q.f * CAST_FW, sy: o.y + q.r * CAST_FH, ix: o.x, iy: o.y + q.r * CAST_FH };
+  const g = GHOSTS?.sheets[q.key];
+  if (ghosts && g) {
+    const cell = g.y + q.r * GHOSTS!.cellHeight;
+    return { img: ghosts, sx: g.x, sy: cell + (GHOSTS!.rowOffset[q.f] ?? 0), ix: g.x, iy: cell + (GHOSTS!.rowOffset[0] ?? 0) };
+  }
+  return null;
+}
+/** Load whatever `q` needs: the strip if it has the frame (the full sheet if the strip fails), else the sheet. */
+async function loadFor(q: FrameReq): Promise<void> {
+  if (inStrip(q) && (await loadPortraitStrip())) return;
+  if (GHOSTS?.sheets[q.key]) await loadGhostSheet();
+  else await loadCastSheet();
+}
+
 /**
  * Draw a character onto `canvas` (sizing its backing store, see `CastPortraitOpts.size`).
- * Draws the fallback silhouette straight away if the sheet is not decoded yet, then the real
+ * Draws the fallback silhouette straight away if the art is not decoded yet, then the real
  * frame once it is. Resolves true when real art was drawn, false for the fallback.
  */
 export async function drawCastPortrait(canvas: HTMLCanvasElement, id: string, opts: CastPortraitOpts = {}): Promise<boolean> {
-  const placeholder = !castSheetReady();
+  const q = frameReq(id, opts);
+  const placeholder = !q || !source(q);
   if (placeholder) drawFallback(canvas, id, opts);
-  const img = await loadCastSheet();
-  if (!img && placeholder) return false;
-  if (isHd(castSheetKey(id, opts.ghost)) || isHd(id)) await loadHdSheet();
-  return paint(canvas, id, opts, img);
+  if (!q) return false;
+  if (placeholder) await loadFor(q);
+  if (!source(q) && placeholder) return false;
+  if (isHd(q.key) || isHd(id)) {
+    // (v2.4) the regular frame first, the smoothed HD one once its (small) strip has arrived
+    if (!hdSource(q.r)) {
+      paint(canvas, id, opts);
+      await loadHdFor(q.r);
+    }
+  }
+  return paint(canvas, id, opts);
 }
 
-function paint(canvas: HTMLCanvasElement, id: string, opts: CastPortraitOpts, img: HTMLImageElement | null): boolean {
-  const key = castSheetKey(id, opts.ghost);
-  const origin = MANIFEST?.sheets[key] ?? MANIFEST?.sheets[id];
-  if (!img || !origin) {
+function paint(canvas: HTMLCanvasElement, id: string, opts: CastPortraitOpts): boolean {
+  const q = frameReq(id, opts);
+  const src0 = q && source(q);
+  if (!q || !src0) {
     drawFallback(canvas, id, opts);
     return false;
   }
-  const r = Math.max(0, CAST_DIRS.indexOf(opts.dir ?? 'down'));
-  const f = Math.min(CAST_FRAMES.length - 1, Math.max(0, Math.round(opts.frame ?? 0)));
-  const sx = origin.x + f * CAST_FW;
-  const sy = origin.y + r * CAST_FH;
+  const { img, sx, sy } = src0;
   const crop = opts.crop ?? 'fit';
-  // A fixed union of all poses prevents animated portraits cropping swinging hands/feet.
-  const boxes = (isHd(key) && !opts.ghost ? CAST_FRAMES : [0]).map((_, i) => frameBounds(img, origin.x + i * CAST_FW, sy, `${key}|${r}|${i}`));
-  const x0 = Math.min(...boxes.map((b) => b.x)), y0 = Math.min(...boxes.map((b) => b.y));
-  const bounds = { x: x0, y: y0, w: Math.max(...boxes.map((b) => b.x + b.w)) - x0, h: Math.max(...boxes.map((b) => b.y + b.h)) - y0 };
+  const { key, r, f } = q;
+  // Crop from the idle frame's bounds so walk frames don't make the box breathe; photo-real members
+  // swing their arms/feet much wider, so they use a fixed union of all their poses instead.
+  const n = isHd(key) && !opts.ghost && (img === sheet || inStrip({ key, r, f: CAST_FRAMES.length - 1 })) ? CAST_FRAMES.length : 1;
+  let bounds = frameBounds(img, src0.ix, src0.iy, `${key}|${r}`);
+  for (let i = 1; i < n; i++) {
+    const b = frameBounds(img, src0.ix + i * CAST_FW, src0.iy, `${key}|${r}|${i}`);
+    const x0 = Math.min(bounds.x, b.x);
+    const y0 = Math.min(bounds.y, b.y);
+    bounds = { x: x0, y: y0, w: Math.max(bounds.x + bounds.w, b.x + b.w) - x0, h: Math.max(bounds.y + bounds.h, b.y + b.h) - y0 };
+  }
   const src = cropRect(bounds, crop, isHd(key));
   const hdKey = isHd(key) ? key : isHd(id) ? id : null;
-  const hd = hdKey !== null && hdSheet ? hdSheet : null;
+  const hdSrc = hdKey !== null ? hdSource(r) : null;
+  const hd = hdSrc?.img ?? null;
   const { k, dx, dy } = layout(canvas, src.w, src.h, { ...opts, crop }, !!hd);
   const g = canvas.getContext('2d');
   if (!g) return false;
@@ -258,7 +359,7 @@ function paint(canvas: HTMLCanvasElement, id: string, opts: CastPortraitOpts, im
   if (cx1 <= cx0 || cy1 <= cy0) return true;
   if (hd) {
     const K = CAST_HD_SCALE;
-    const hx = r * CAST_FW * K;
+    const hx = hdSrc!.col * CAST_FW * K;
     const hy = (HD_MANIFEST!.rows[hdKey!]! + (hdKey!.includes('/ghost') ? 0 : f)) * CAST_FH * K;
     g.drawImage(hd, hx + cx0 * K, hy + cy0 * K, (cx1 - cx0) * K, (cy1 - cy0) * K, dx + (cx0 - src.x) * k, dy + (cy0 - src.y) * k, (cx1 - cx0) * k, (cy1 - cy0) * k);
     return true;
@@ -306,10 +407,15 @@ export function CastPortrait({
     if (!animate) return () => void (live = false);
     let i = 0;
     const t = setInterval(() => {
-      if (!castSheetReady() || !ref.current) return;
+      if (!ref.current) return;
       const still = reducedMotion();
-      i = (i + 1) % WALK.length;
-      paint(ref.current, id, { ghost, crop, dir, size, frame: still ? 0 : WALK[i] }, sheet);
+      const next = (i + 1) % WALK.length;
+      const opts = { ghost, crop, dir, size, frame: still ? 0 : WALK[next] };
+      const q = frameReq(id, opts);
+      if (!q) return;
+      if (!source(q)) return void loadFor(q); // not decoded yet (e.g. a frame only the full sheet has)
+      i = next;
+      paint(ref.current, id, opts);
     }, 140);
     return () => {
       live = false;

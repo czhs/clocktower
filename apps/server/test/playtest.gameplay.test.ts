@@ -84,7 +84,7 @@ async function useDoor(p: Player, buildingId: string, expectLoc: string) {
 function noStageLeak(g: Game) {
   for (const p of g.players)
     for (const v of p.c.of('game:view')) {
-      const j = JSON.stringify(v);
+      const j = JSON.stringify({ ...v, clock: null }); // (v2.1, auto-st) the public town clock has its own `stage` field
       expect(j).not.toContain('"stage"');
       expect(j).not.toContain('presence');
       expect(j).not.toContain('timerHeld');

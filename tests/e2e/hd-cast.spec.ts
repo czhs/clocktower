@@ -1,6 +1,7 @@
 // Photo-real cast member (brianbi, CastMember.hd): picked through the real waiting-room picker,
 // rendered from the smoothed cast-hd texture outdoors, walking, indoors and as a ghost, with
 // screenshots for review. One real browser + five lightweight room clients.
+// (v2.2.1 merge) Adapted to v2.2: interiors keep the outdoor world size; the HD sheet loads as WebP.
 import { expect, test } from '@playwright/test';
 import { townLayout } from '../../packages/assets/src/index';
 import type { PlayerGameView } from '../../packages/protocol/src/index';
@@ -38,7 +39,7 @@ test('brianbi can be picked and is drawn from the HD sheet in town, indoors and 
     await page.goto(`${url}/lobby/${id}`);
     const pid = await tap.until(() => tap.last('lobby:view')?.youPid as string | undefined);
     const me = () => tap.last('world:snapshot')?.entities.find((e: { id: string }) => e.id === pid) as { x: number; y: number; location: string } | undefined;
-    const avatar = () => page.evaluate((id) => (window as any).__ctCamera.avatar(id) as { texture: string; frame: string; scale: number; width: number; height: number; x: number; y: number } | null, pid);
+    const avatar = () => page.evaluate((id) => (window as any).__ctCamera.avatar(id) as { texture: string; frame: string; width: number; height: number; x: number; y: number } | null, pid);
     await tap.until(() => me());
 
     // The real picker: brianbi is a villager tile, drawn smoothed from the HD sheet.
@@ -55,7 +56,7 @@ test('brianbi can be picked and is drawn from the HD sheet in town, indoors and 
     await page.waitForTimeout(500);
     await page.screenshot({ path: info.outputPath('town.png') });
 
-    expect(await avatar()).toMatchObject({ texture: 'cast-hd', scale: 1, width: 32, height: 40 });
+    expect(await avatar()).toMatchObject({ texture: 'cast-hd', width: 32, height: 40 });
 
     // Regression: clicking the torso used to hit the person behind Brianbi because HD
     // texture scale (1/5) was incorrectly reused as the world-space interaction scale.
@@ -110,13 +111,12 @@ test('brianbi can be picked and is drawn from the HD sheet in town, indoors and 
     for (const n of wanderers) expect(Math.hypot(n.x - n.home.x, n.y - n.home.y)).toBeLessThanOrEqual(48.01);
     await page.screenshot({ path: info.outputPath('npc-avoidance.png') });
 
-    // Indoors (2/3 scale, close camera).
+    // Indoors (v2.2 walkable rooms: same world size as outdoors, the camera zooms in).
     const house = townLayout.buildings.find((b) => b.kind === 'house')!;
     await tapCottage(player, pid, house.id);
     await expect.poll(() => me()?.location).toBe(`bld:${house.id}`);
     await page.waitForTimeout(600);
-    expect((await avatar())?.scale).toBeCloseTo(2 / 3);
-    expect((await avatar())?.height).toBeCloseTo(40 * 2 / 3);
+    expect(await avatar()).toMatchObject({ texture: 'cast-hd', width: 32, height: 40 });
     await page.screenshot({ path: info.outputPath('indoors.png') });
     await leaveByButton(player, pid);
 
@@ -136,7 +136,8 @@ test('brianbi can be picked and is drawn from the HD sheet in town, indoors and 
     expect((await avatar())?.frame).toMatch(/^brianbi\/ghost\|.+\|0$/);
     await page.screenshot({ path: info.outputPath('ghost.png') });
 
-    expect(hdRequests.some((u) => u.includes('.png'))).toBe(true);
+    // the HD sheet comes through @ct/assets/runtime like every atlas: lossless WebP here (PNG fallback)
+    expect(hdRequests.some((u) => /\.(webp|png)(\?|$)/.test(u))).toBe(true);
     expect(errors).toEqual([]);
   } finally {
     await ctx.close();

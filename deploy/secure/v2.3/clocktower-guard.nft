@@ -1,0 +1,27 @@
+#!/usr/sbin/nft -f
+# v2.3 HOST-02 (sec-host): per-UID egress policy for the Clocktower services. Loaded by
+# clocktower-guard.service BEFORE the game/tunnel units start. Requires the users from HOST-01
+# (ct-prod, ct-dev, ct-tunnel) and HOST-12 (ct-build). Only packets from sockets owned by those UIDs are matched: the admin
+# (hshi), ufw's own tables and every other service are unaffected. A separate `inet` table: a reject
+# here or in ufw's tables drops the packet; nothing here accepts traffic ufw would refuse.
+table inet clocktower_guard
+delete table inet clocktower_guard
+table inet clocktower_guard {
+  chain output {
+    type filter hook output priority filter; policy accept;
+    # replies on accepted connections (prod/dev answering cloudflared or the admin's curl)
+    meta skuid { "ct-prod", "ct-dev", "ct-tunnel", "ct-build" } ct state established,related accept
+    # DNS through systemd-resolved
+    meta skuid { "ct-prod", "ct-dev", "ct-tunnel", "ct-build" } ip daddr 127.0.0.53 meta l4proto { tcp, udp } th dport 53 accept
+    # the tunnel may reach prod's port only
+    meta skuid "ct-tunnel" ip daddr 127.0.0.1 tcp dport 3000 accept
+    # the build sandbox (HOST-12) may reach only its own test servers (127.0.0.1:3300-3399)
+    meta skuid "ct-build" ip daddr 127.0.0.1 tcp dport 3300-3399 accept
+    # nothing else on this machine: ollama 11434, Minecraft 25565/RCON 25575, CUPS 631,
+    # cloudflared metrics 20241, the other environment's port, other agents' test servers …
+    meta skuid { "ct-prod", "ct-dev", "ct-tunnel", "ct-build" } oifname "lo" counter reject with icmpx type admin-prohibited
+    # LAN / tailnet / link-local (also enforced per unit by IPAddressDeny= in 20-egress.conf)
+    meta skuid { "ct-prod", "ct-dev", "ct-tunnel", "ct-build" } ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10, 169.254.0.0/16 } counter reject with icmpx type admin-prohibited
+    meta skuid { "ct-prod", "ct-dev", "ct-tunnel", "ct-build" } ip6 daddr { fc00::/7, fe80::/10 } counter reject with icmpx type admin-prohibited
+  }
+}

@@ -125,6 +125,11 @@ function setup(o: SetupOpts = {}) {
     roomService: rs,
     layout: L,
     tuning: { zoneDebounceMs: o.debounceMs ?? 0 },
+    // (v2.3) these legacy tests predate opt-in / caps / idle / room epochs: switch them off here;
+    // tests/security/voice-cost.test.ts covers them.
+    limits: { autoOptIn: true, maxPerLobby: 0, maxConcurrent: 0, maxPerIp: 0, idleMs: 0, waitingMaxMs: 0 },
+    roomEpochs: false,
+    isDisabled: () => false,
   });
   host.setModules({ world: world.w, game: game.g, voice });
 

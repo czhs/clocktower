@@ -94,7 +94,9 @@ export interface ConfirmSpec {
   danger?: boolean;
   /** Second step: the confirm button only appears after ticking this acknowledgement. */
   acknowledge?: string;
-  run: () => Promise<void>;
+  /** (v2.3 AUTH-8) Ask for the admin's own passphrase (step-up); passed to run(). */
+  passphrase?: boolean;
+  run: (passphrase?: string) => Promise<void>;
 }
 
 /** Confirmation dialog for every admin mutation; shows its own progress and error. */
@@ -102,11 +104,12 @@ export function ConfirmDialog({ spec, onClose }: { spec: ConfirmSpec; onClose: (
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ack, setAck] = useState(!spec.acknowledge);
+  const [pass, setPass] = useState('');
   const go = async () => {
     setBusy(true);
     setError(null);
     try {
-      await spec.run();
+      await spec.run(spec.passphrase ? pass : undefined);
       onClose();
     } catch (e) {
       setError(errorText(e));
@@ -122,6 +125,18 @@ export function ConfirmDialog({ spec, onClose }: { spec: ConfirmSpec; onClose: (
           <span>{spec.acknowledge}</span>
         </label>
       )}
+      {spec.passphrase && (
+        <label class="ct-adm-ack">
+          <span>Your own passphrase (confirms it is you)</span>
+          <input
+            type="password"
+            autoComplete="current-password"
+            value={pass}
+            onInput={(e) => setPass((e.target as HTMLInputElement).value)}
+            disabled={busy}
+          />
+        </label>
+      )}
       {error && (
         <p class="ct-error" role="alert">
           {error}
@@ -131,7 +146,7 @@ export function ConfirmDialog({ spec, onClose }: { spec: ConfirmSpec; onClose: (
         <button type="button" onClick={onClose} disabled={busy} data-autofocus>
           Cancel
         </button>
-        <button type="button" class={spec.danger ? 'ct-danger-btn ct-adm-danger-solid' : 'primary'} disabled={busy || !ack} onClick={() => void go()}>
+        <button type="button" class={spec.danger ? 'ct-danger-btn ct-adm-danger-solid' : 'primary'} disabled={busy || !ack || (spec.passphrase && pass.trim().length < 10)} onClick={() => void go()}>
           {busy ? 'Working…' : spec.confirmLabel}
         </button>
       </div>

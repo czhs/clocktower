@@ -28,12 +28,16 @@
 // emoter can see there — the point is then snapped to the target's server position) and delivered
 // ONLY to members who can currently see the emoter (incl. the emoter). Nobody else learns of it.
 //
+// 'nick-face' (v2.2): Nick Song's head becomes a 😝 for a moment. Only the player whose lobby character
+// is 'nicksong' may send it ('invalid' otherwise); same rate limit and same viewer rule as pointing.
+//
 // Errors go to the sender only and are identical for "no such pin" and "not your pin".
 import { townLayout } from '@ct/assets';
 import {
   homeBuilding,
   locationAt,
   MAX_PINS_PER_MEMBER,
+  NICK_FACE_CHARACTER,
   type C2SParsed,
   type EmoteEvent,
   type GamePhase,
@@ -55,6 +59,13 @@ export const PIN_OPS_LIMIT = { capacity: 6, refillPerSec: 3 } as const;
 const TOWN_MARGIN_PX = 24;
 
 const NIGHT_PHASES: ReadonlySet<GamePhase> = new Set(['first_night', 'night']);
+/**
+ * (security v2.3, SEC-3) Pins dropped in these phases vanish when they end. Dawn is still "the night"
+ * for this purpose (homes are locked and the Storyteller may still be inside one); a pin the ST leaves
+ * in a cottage at dawn must not show the next day's visitors where the ST was. Visibility (NIGHT_PHASES)
+ * is unchanged: at dawn, like the world snapshot, members see their own location.
+ */
+const EPHEMERAL_PHASES: ReadonlySet<GamePhase> = new Set(['first_night', 'night', 'dawn']);
 
 type SocialType = 'social:emote' | 'social:pin' | 'social:unpin' | 'social:clearPins';
 
@@ -89,6 +100,7 @@ export function createSocialModule(host: RoomHost, opts: SocialOptions = {}): So
 
   const isST = (pid: string) => host.member(pid)?.role === 'storyteller' || host.storytellerPid() === pid;
   const isNight = () => phase !== null && NIGHT_PHASES.has(phase);
+  const isEphemeral = () => phase !== null && EPHEMERAL_PHASES.has(phase);
   const loc = (pid: string): LocationId | null => (host.member(pid) ? host.world.locationOf(pid) : null);
 
   function homeLoc(pid: string): LocationId | null {
@@ -131,8 +143,17 @@ export function createSocialModule(host: RoomHost, opts: SocialOptions = {}): So
   /** Validate / clamp a point in `where`. null = not allowed. */
   function placePoint(where: LocationId, x: number, y: number): { x: number; y: number } | null {
     const r1 = (v: number) => Math.round(v * 10) / 10;
-    if (where !== 'outdoors') return { x: r1(x), y: r1(y) }; // interiors: fixed room view, any room coords
     const ts = layout.tileSize;
+    if (where !== 'outdoors') {
+      // (security v2.3, SEC-8) Interiors are walkable rooms in world coordinates (v2.2): a point must
+      // lie in (or just next to, then clamped into) the room it is dropped in.
+      const r = layout.buildings.find((b) => `bld:${b.id}` === where)?.interior;
+      if (!r) return null;
+      const [rx0, ry0, rx1, ry1] = [r.x * ts, r.y * ts, (r.x + r.w) * ts - 0.5, (r.y + r.h) * ts - 0.5];
+      if (x < rx0 - TOWN_MARGIN_PX || x > rx1 + TOWN_MARGIN_PX || y < ry0 - TOWN_MARGIN_PX || y > ry1 + TOWN_MARGIN_PX) return null;
+      const q = { x: r1(Math.min(rx1, Math.max(rx0, x))), y: r1(Math.min(ry1, Math.max(ry0, y))) };
+      return locationAt(layout, q.x, q.y) === where ? q : null;
+    }
     const tb = layout.townBounds;
     const x0 = tb.x * ts;
     const y0 = tb.y * ts;
@@ -175,6 +196,7 @@ export function createSocialModule(host: RoomHost, opts: SocialOptions = {}): So
   function emote(pid: string, msg: C2SParsed<'social:emote'>) {
     const type = 'social:emote';
     if (!emoteLimiter.take(`${pid}:`, host.now())) return fail(pid, type, 'rate_limited', 'Easy there: one point at a time.');
+    if (msg.kind === 'nick-face') return nickFace(pid);
     const here = gestureLocation(pid);
     if (!here) return fail(pid, type, 'forbidden', "You can't point at anything right now.");
     let point: { x: number; y: number } | null;
@@ -188,6 +210,20 @@ export function createSocialModule(host: RoomHost, opts: SocialOptions = {}): So
     } else point = placePoint(here, msg.x, msg.y);
     if (!point) return fail(pid, type, 'invalid', 'Point at something in town.');
     const ev: EmoteEvent = { pid, kind: msg.kind, x: point.x, y: point.y, ...(target !== undefined ? { target } : {}), at: host.now() };
+    for (const m of host.members()) if (canSee(m.pid, pid)) host.send(m.pid, 'social:emote', ev);
+  }
+
+  /**
+   * 'nick-face' (v2.2): only a PLAYER whose lobby character is NICK_FACE_CHARACTER may send it (the
+   * Storyteller never, whatever their preset). No target, no point: the event carries the emoter's own
+   * position and goes, like every emote, only to members who can currently see the emoter.
+   */
+  function nickFace(pid: string) {
+    const type = 'social:emote';
+    if (isST(pid) || host.member(pid)?.cosmetics.preset !== NICK_FACE_CHARACTER) return fail(pid, type, 'invalid', 'Only Nick Song can pull that face.');
+    const p = host.world.positionOf(pid);
+    if (loc(pid) === null || !p) return fail(pid, type, 'forbidden', "You can't do that right now.");
+    const ev: EmoteEvent = { pid, kind: 'nick-face', x: Math.round(p.x * 10) / 10, y: Math.round(p.y * 10) / 10, at: host.now() };
     for (const m of host.members()) if (canSee(m.pid, pid)) host.send(m.pid, 'social:emote', ev);
   }
 
@@ -207,7 +243,7 @@ export function createSocialModule(host: RoomHost, opts: SocialOptions = {}): So
     // Evict this member's oldest pins beyond the cap (Map order = drop order).
     const mine = [...pins.values()].filter((p) => p.by === pid);
     for (let i = 0; i <= mine.length - MAX_PINS_PER_MEMBER; i++) pins.delete(mine[i]!.id);
-    const pin: Pin = { id: newPinId(), by: pid, character: characterOf(pid), color: msg.color, target, location: here, at: host.now(), night: isNight() };
+    const pin: Pin = { id: newPinId(), by: pid, character: characterOf(pid), color: msg.color, target, location: here, at: host.now(), night: isEphemeral() };
     pins.set(pin.id, pin);
   }
 
@@ -228,9 +264,9 @@ export function createSocialModule(host: RoomHost, opts: SocialOptions = {}): So
   }
 
   function onPhase(next: GamePhase) {
-    const wasNight = isNight();
+    const wasNight = isEphemeral();
     phase = next;
-    if (wasNight && !isNight()) removeWhere((p) => p.night);
+    if (wasNight && !isEphemeral()) removeWhere((p) => p.night);
   }
 
   return {

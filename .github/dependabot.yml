@@ -1,0 +1,30 @@
+# Dependency update PRs (qa-deploy). Every PR still has to pass .github/workflows/security.yml and
+# the normal test suite on hshi-u1 before merge; never auto-merge.
+version: 2
+updates:
+  - package-ecosystem: "npm" # pnpm workspace: reads pnpm-lock.yaml + every package.json
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    # Hold back brand-new releases for a few days (compromised-publish window).
+    cooldown:
+      default-days: 5
+    groups:
+      prod-minor-patch:
+        dependency-type: "production"
+        update-types: ["minor", "patch"]
+      dev-minor-patch:
+        dependency-type: "development"
+        update-types: ["minor", "patch"]
+    # Security updates are not grouped and arrive as soon as an advisory is published.
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    groups:
+      actions:
+        patterns: ["*"]

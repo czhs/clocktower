@@ -1,17 +1,19 @@
 import type { ComponentChildren } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { townLayout } from '@ct/assets';
-import { tileCenterPx, type AccountView } from '@ct/protocol';
-import { localPlayer } from '../net/localPlayer';
+import { tileCenterPx, type AccountView, type BuildingDef } from '@ct/protocol';
+import { localPlayer, type LocalPlayerState } from '../net/localPlayer';
 import type { RoomConnection } from '../net/room';
-import { useStore } from '../net/store';
+import { shallowEqual, useStore, useStoreSelector } from '../net/store';
 import { HowToPlayHost, openHelp } from '../ui/common/HowToPlay';
 import { applyAmbientVolume, SettingsButton } from '../ui/common/Settings';
 import { goTo } from '../ui/lobby/finder';
 import { attachSound, unlockAudio } from './audio';
-import { SocialPalette } from '../ui/social/SocialPalette';
-import { Notebook } from '../ui/notebook/Notebook';
-import { Story } from '../ui/story/Story';
+import { TrailingGate, type GateResult } from './hudRate';
+// (v2.4 perf P2) lazy: one chunk with the in-town panels, prefetched by LobbyRoute next to Phaser
+import { ClockChip, Notebook, SocialPalette, Story } from '../ui/common/lazyTown';
+import { AbortGame } from '../ui/clock/AbortGame';
+import { LobbySafety } from '../ui/lobby/moderation'; // (v2.3 OPS-6) in-game report / mute / remove
 import './game.css';
 
 // Mounts the Phaser town for this lobby; renders `children` (HUD, Storyteller panel, voice panel,
@@ -85,12 +87,13 @@ export function GameScreen(props: { conn: RoomConnection; account: AccountView; 
         </div>
       )}
       {inside && <InsidePanel inside={inside} prompt={prompt} onLeave={() => leaveRef.current?.()} />}
-      {touch && status === 'ready' && !inside && <TouchControls />}
+      {touch && status === 'ready' && <TouchControls />}
       {status === 'ready' && <SocialPalette conn={props.conn} touch={touch} />}
       {status === 'ready' && <Notebook conn={props.conn} touch={touch} />}
       {status === 'ready' && <Story conn={props.conn} touch={touch} />}
       {status === 'ready' && <FirstSteps touch={touch} />}
       <HomeCompass conn={props.conn} />
+      {status === 'ready' && <ClockChip conn={props.conn} />}
       <Toolbar conn={props.conn} />
       <ErrorToasts conn={props.conn} />
       <ConnectionBanner conn={props.conn} />
@@ -119,10 +122,11 @@ const markHint = (k: string) => {
 };
 
 /** First visit: a "this is you" marker over your character and a controls hint that fade once
- * you have walked a few steps (remembered per browser). */
+ * you have walked a few steps (remembered per browser). The per-frame localPlayer store is read in
+ * a subscription, not rendered: this re-renders only when the marker / hint change. */
 function FirstSteps({ touch }: { touch: boolean }) {
-  const me = useStore(localPlayer);
   const [done, setDone] = useState(() => hintSeen(MOVE_HINT_KEY));
+  const hasPid = useStoreSelector(localPlayer, (lp) => !done && !!lp.pid);
   const start = useRef<{ x: number; y: number } | null>(null);
   const [youFaded, setYouFaded] = useState(false);
   // The Storyteller mostly fast-travels, so the "walked 3 tiles" dismissal may never fire: fade anyway.
@@ -137,17 +141,34 @@ function FirstSteps({ touch }: { touch: boolean }) {
     return () => clearTimeout(t);
   }, [done]);
   useEffect(() => {
-    if (done || !me.pid) return;
-    if (!start.current) start.current = { x: me.x, y: me.y };
-    const moved = Math.hypot(me.x - start.current.x, me.y - start.current.y);
-    if (moved > 8 && !youFaded) setYouFaded(true);
-    if (moved > 3 * townLayout.tileSize) {
-      markHint(MOVE_HINT_KEY);
-      const t = setTimeout(() => setDone(true), 1200);
-      return () => clearTimeout(t);
-    }
-  }, [me, done, youFaded]);
-  if (done || !me.pid) return null;
+    if (done || !hasPid) return;
+    let t: ReturnType<typeof setTimeout> | undefined;
+    let marked = false;
+    let faded = false;
+    const step = (me: LocalPlayerState) => {
+      if (!me.pid) return;
+      if (!start.current) start.current = { x: me.x, y: me.y };
+      const moved = Math.hypot(me.x - start.current.x, me.y - start.current.y);
+      if (moved > 8 && !faded) {
+        faded = true;
+        setYouFaded(true);
+      }
+      if (moved > 3 * townLayout.tileSize) {
+        if (!marked) markHint(MOVE_HINT_KEY);
+        marked = true;
+        // (as before: the hint goes 1.2 s after the last move beyond 3 tiles)
+        clearTimeout(t);
+        t = setTimeout(() => setDone(true), 1200);
+      }
+    };
+    step(localPlayer.get());
+    const off = localPlayer.subscribe(step);
+    return () => {
+      off();
+      clearTimeout(t);
+    };
+  }, [done, hasPid]);
+  if (done || !hasPid) return null;
   return (
     <>
       {!youFaded && (
@@ -166,7 +187,7 @@ function FirstSteps({ touch }: { touch: boolean }) {
             <b>Click a cottage</b> to go in, or walk with <kbd>W</kbd>
             <kbd>A</kbd>
             <kbd>S</kbd>
-            <kbd>D</kbd> — walk into a door to enter · <kbd>Enter</kbd> to chat
+            <kbd>D</kbd> — walk into a door to enter · <kbd>Enter</kbd> to chat · <kbd>?</kbd> all keys
           </>
         )}
         <button class="ct-hint-close" aria-label="Dismiss hint" onClick={() => (markHint(MOVE_HINT_KEY), setDone(true))}>
@@ -182,7 +203,7 @@ function FirstSteps({ touch }: { touch: boolean }) {
 /** Top-right: How to play, Leave / Back to lobbies, and Play again (ST or host) after a game. */
 function Toolbar({ conn }: { conn: RoomConnection }) {
   const lobby = useStore(conn.lobbyView);
-  const game = useStore(conn.gameView);
+  const game = useStoreSelector(conn.gameView, (g) => (g ? { phase: g.phase } : null), shallowEqual);
   const me = lobby?.members.find((m) => m.pid === lobby.youPid);
   const finished = game?.phase === 'finished' || lobby?.lobby.phase === 'finished';
   const canRematch = !!game && finished && !!me && (me.role === 'storyteller' || me.isHost);
@@ -196,8 +217,10 @@ function Toolbar({ conn }: { conn: RoomConnection }) {
           Play again
         </button>
       )}
-      <SettingsButton onLeave={game ? leave : undefined} leaveLabel={finished ? 'Back to lobbies' : 'Leave game'} />
-      <button class="ct-tb-icon" onClick={openHelp} aria-label="How to play" title="How to play">
+      <AbortGame conn={conn} />
+      <LobbySafety conn={conn} />
+      <SettingsButton conn={conn} onLeave={game ? leave : undefined} leaveLabel={finished ? 'Back to lobbies' : 'Leave game'} />
+      <button class="ct-tb-icon" onClick={openHelp} aria-label="How to play" title="How to play · keyboard shortcuts (?)">
         ?
       </button>
       {/* While waiting, the lobby sheet has its own Leave button. */}
@@ -217,17 +240,55 @@ function Toolbar({ conn }: { conn: RoomConnection }) {
 
 const L = townLayout;
 
+/** What the compass shows, from the per-frame local position: re-render only when it changes
+ * (whole steps, the arrow angle in 5° steps, home / inside / outdoors). */
+type CompassFix = { at: 'home' } | { at: 'inside' } | { at: 'out'; steps: number; deg: number } | null;
+function compassFix(me: LocalPlayerState, house: BuildingDef | undefined): CompassFix {
+  if (!me.pid || !house) return null;
+  if (me.location === `bld:${house.id}`) return { at: 'home' };
+  if (me.location !== 'outdoors') return { at: 'inside' };
+  const door = tileCenterPx(L, house.door);
+  const dx = door.x - me.x;
+  const dy = door.y - me.y;
+  const steps = Math.round(Math.hypot(dx, dy) / L.tileSize);
+  const deg = Math.round((Math.atan2(dy, dx) * 180) / Math.PI / 5) * 5;
+  return { at: 'out', steps, deg };
+}
+
+/** v2.4: the compass while walking changes ≤ 2x/s (game/hudRate.ts); home / inside / outdoors at once. */
+const COMPASS_MIN_MS = 500;
+function useCompassFix(house: BuildingDef | undefined): CompassFix {
+  const [fix, setFix] = useState<CompassFix>(() => compassFix(localPlayer.get(), house));
+  useEffect(() => {
+    const gate = new TrailingGate<CompassFix>(compassFix(localPlayer.get(), house), COMPASS_MIN_MS, shallowEqual, (a, b) => a?.at !== b?.at);
+    setFix(gate.value);
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const apply = (r: GateResult<CompassFix>) => {
+      if (r.emit) setFix(r.value);
+      if (timer) clearTimeout(timer);
+      timer = r.wakeInMs > 0 ? setTimeout(() => apply(gate.flush(performance.now())), r.wakeInMs) : null;
+    };
+    const off = localPlayer.subscribe((lp) => apply(gate.offer(compassFix(lp, house), performance.now())));
+    return () => {
+      off();
+      if (timer) clearTimeout(timer);
+    };
+  }, [house]);
+  return fix;
+}
+
 /** Points from the local player to their own cottage door (players only, outdoors). */
 function HomeCompass({ conn }: { conn: RoomConnection }) {
-  const game = useStore(conn.gameView);
-  const me = useStore(localPlayer);
-  if (!game || game.kind !== 'player' || game.phase === 'finished' || !me.pid) return null;
-  const seat = game.you.seat;
-  const house = L.buildings.find((b) => b.houseIndex === seat);
-  if (!house) return null;
-  const bedtime = game.phase === 'bedtime';
-  const homeLoc = `bld:${house.id}`;
-  if (me.location === homeLoc) {
+  const game = useStoreSelector(
+    conn.gameView,
+    (g) => (g && g.kind === 'player' && g.phase !== 'finished' ? { seat: g.you.seat, bedtime: g.phase === 'bedtime' } : null),
+    shallowEqual,
+  );
+  const house = game ? L.buildings.find((b) => b.houseIndex === game.seat) : undefined;
+  const fix = useCompassFix(house);
+  if (!game || !house || !fix) return null;
+  const bedtime = game.bedtime;
+  if (fix.at === 'home') {
     if (!bedtime) return null;
     return (
       <div class="ct-compass ct-compass-home" role="status">
@@ -238,7 +299,7 @@ function HomeCompass({ conn }: { conn: RoomConnection }) {
       </div>
     );
   }
-  if (me.location !== 'outdoors') {
+  if (fix.at === 'inside') {
     if (!bedtime) return null;
     return (
       <div class="ct-compass urgent" role="status">
@@ -249,13 +310,9 @@ function HomeCompass({ conn }: { conn: RoomConnection }) {
       </div>
     );
   }
-  const door = tileCenterPx(L, house.door);
-  const dx = door.x - me.x;
-  const dy = door.y - me.y;
-  const steps = Math.round(Math.hypot(dx, dy) / L.tileSize);
-  const deg = (Math.atan2(dy, dx) * 180) / Math.PI;
+  const { steps, deg } = fix;
   return (
-    <div class={`ct-compass${bedtime ? ' urgent' : ''}`} role="status" aria-label={`Your home, ${house.name}: ${steps} steps`}>
+    <div class={`ct-compass${bedtime ? ' urgent' : ''}`} role="status" aria-label={`Your home, ${house.name}`}>
       <span class="ct-compass-arrow" aria-hidden="true" style={{ transform: `rotate(${deg}deg)` }}>
         ➜
       </span>
@@ -276,7 +333,7 @@ function ErrorToasts({ conn }: { conn: RoomConnection }) {
     let n = 0;
     return conn.events.on('error', (e) => {
       const f = e.for ?? '';
-      if (f.startsWith('game:') || f.startsWith('st:') || f.startsWith('chat:')) return;
+      if (f.startsWith('game:') || f.startsWith('st:') || f.startsWith('chat:') || f.startsWith('clock:')) return;
       const waiting = !conn.gameView.get() && conn.lobbyView.get()?.lobby.phase === 'waiting';
       if (waiting && (!f || f.startsWith('lobby:'))) return;
       const id = ++n;
@@ -436,15 +493,14 @@ function InsidePanel({ inside, prompt, onLeave }: { inside: Inside; prompt: Prom
       <div class="ct-inside-who">
         {others.length ? (
           <>
-            In here with <b>{others.join(', ')}</b> — voice and text stay in this room
+            In here with <b>{others.join(', ')}</b> — only you {others.length === 1 ? 'two' : 'here'} can hear each other
           </>
         ) : (
-          <>Nobody else is here — voice and text stay in this room</>
+          <>Nobody else is here — only people inside can hear you</>
         )}
       </div>
-      <div class="ct-inside-note">Walk with WASD / arrows, or tap the floor.</div>
       {prompt?.locked && prompt.text && <div class="ct-inside-note">{prompt.text}</div>}
-      <button class="primary ct-inside-leave" disabled={!inside.canLeave} title={inside.canLeave ? 'Leave the cottage (Escape)' : inside.lockedReason} onClick={onLeave}>
+      <button class="primary ct-inside-leave" disabled={!inside.canLeave} title={inside.canLeave ? 'Walk back out (or walk down through the doorway)' : inside.lockedReason} onClick={onLeave}>
         {inside.canLeave ? 'Leave' : inside.lockedReason ?? 'Locked'}
       </button>
     </div>

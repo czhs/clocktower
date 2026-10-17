@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# git pre-push hook (qa-deploy): refuse to push commits that add secrets or private-infra details.
+# Install with scripts/install-hooks.sh. Runs on the editing Mac: bash + git only, no node.
+# Uses gitleaks (with .gitleaks.toml) when installed, else scripts/secret-scan.sh.
+# Bypass for a reviewed false positive only: CT_SKIP_SECRET_SCAN=1 git push …  (then fix the
+# allowlist in .gitleaks.toml and scripts/secret-scan.sh).
+set -uo pipefail
+[[ ${CT_SKIP_SECRET_SCAN:-} == 1 ]] && { echo "pre-push: secret scan SKIPPED (CT_SKIP_SECRET_SCAN=1)" >&2; exit 0; }
+
+ROOT=$(git rev-parse --show-toplevel) || exit 1
+ZERO=0000000000000000000000000000000000000000
+remote="${1:-origin}"
+STATUS=0
+
+# stdin: <local ref> <local sha> <remote ref> <remote sha>
+while read -r lref lsha rref rsha; do
+  [[ -z ${lsha:-} || $lsha == "$ZERO" ]] && continue # branch deletion
+  # Scan exactly the commits this push would newly publish: those not reachable from ANY
+  # remote-tracking ref of this remote. Commits already on the remote (e.g. a collaborator's merged
+  # PR that our branch merges in) are public already and are not re-scanned.
+  new=$(git rev-list --reverse "$lsha" --not --remotes="$remote" 2>/dev/null)
+  if [[ -z $new ]]; then echo "pre-push: $lref has no unpublished commits" >&2; continue; fi
+  echo "pre-push: scanning $lref ($(echo "$new" | wc -l | tr -d ' ') unpublished commit(s))" >&2
+  if command -v gitleaks >/dev/null 2>&1; then
+    gitleaks git --config "$ROOT/.gitleaks.toml" --redact --no-banner -v --log-opts="$lsha --not --remotes=$remote" "$ROOT" || STATUS=1
+  else
+    # secret-scan.sh --range A..B scans lines ADDED by those commits (merge commits contribute no
+    # diff of their own; their unpublished parents are scanned individually here).
+    while read -r c; do
+      if git rev-parse --verify --quiet "${c}^2" >/dev/null; then
+        # A merge: `parent..merge` would re-list the merged-in branch's commits (public already, or
+        # scanned on their own in this loop). Scan from the merged-in side instead: that covers this
+        # side's commits; git log shows no diff for the merge commit itself (its conflict resolutions
+        # went through the staged scan at commit time).
+        bash "$ROOT/scripts/secret-scan.sh" --range "${c}^2..${c}" >/dev/null 2>"$ROOT/.git/ct-scan.err" || { cat "$ROOT/.git/ct-scan.err" >&2; STATUS=1; }
+      elif git rev-parse --verify --quiet "${c}^" >/dev/null; then
+        bash "$ROOT/scripts/secret-scan.sh" --range "${c}^..${c}" >/dev/null 2>"$ROOT/.git/ct-scan.err" || { cat "$ROOT/.git/ct-scan.err" >&2; STATUS=1; }
+      else
+        bash "$ROOT/scripts/secret-scan.sh" --history || STATUS=1 # root commit: scan everything
+      fi
+    done <<< "$new"
+    rm -f "$ROOT/.git/ct-scan.err"
+    [[ $STATUS -eq 0 ]] && echo "secret-scan: clean ($(echo "$new" | wc -l | tr -d ' ') unpublished commit(s))" >&2
+  fi
+done
+
+if [[ $STATUS -ne 0 ]]; then
+  echo "pre-push: BLOCKED — the commits above add a secret or private host detail." >&2
+  echo "  Remove it (amend/rebase before pushing; the repo is public)." >&2
+fi
+exit $STATUS

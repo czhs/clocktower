@@ -1,10 +1,12 @@
 import os from 'node:os';
-import express, { type Request, type RequestHandler } from 'express';
+import express, { type Request, type RequestHandler, type Response } from 'express';
 import type { AdminStatusView } from '@ct/protocol';
 import { createAdminRepo, type AccountRecord, type AdminAccountRow } from '@ct/db';
 import type { Services } from '../services.js';
 import { getRecentErrors } from '../log.js';
-import { currentAccount, handler, HttpError, isReservedName, parseBody, rateLimit, requireAccount, sendError } from '../auth/http.js';
+import { diskView } from '../guard/disk.js';
+import { accountModerationView, opsView, registerModerationAdmin } from '../moderation/admin.js'; // (v2.3 OPS)
+import { clientRange, currentAccount, handler, HttpError, isReservedName, parseBody, rateLimit, requireAccount, sendError } from '../auth/http.js';
 import { RateLimiter } from '../auth/rateLimit.js';
 import { randomId } from '../auth/crypto.js';
 import type { LobbyDirectory, LobbyRoomHandle } from '../directory/service.js';
@@ -58,6 +60,9 @@ import type {
 const VERSION = process.env.CT_VERSION ?? 'dev';
 const startedAt = Date.now();
 
+/** (v2.3 AUTH-8) Account takeover / deletion needs a sign-in this recent, or the passphrase again. */
+export const STEP_UP_MS = 15 * 60_000;
+
 /** Per-admin mutation budget: burst 30, then one every 2 s. */
 export const ADMIN_MUTATION_LIMIT = { capacity: 30, refillPerSec: 0.5 };
 
@@ -92,10 +97,32 @@ export function adminRouter(services: Services): express.Router {
   const mutationLimiter = new RateLimiter(ADMIN_MUTATION_LIMIT, 1000);
   const now = () => Date.now();
 
-  const requireAdmin: RequestHandler = (_req, res, next) => {
+  // (v2.3 AUTH-9) refused admin attempts leave a (rate-limited) trace: who probed which path.
+  const deniedLog = new RateLimiter({ capacity: 5, refillPerSec: 1 / 60 }, 1000);
+  const requireAdmin: RequestHandler = (req, res, next) => {
     res.setHeader('Cache-Control', 'no-store');
-    if (!services.auth.isAdmin(currentAccount(res).id)) return sendError(res, 403, 'forbidden', 'Admins only');
+    const id = currentAccount(res).id;
+    if (!services.auth.isAdmin(id)) {
+      if (deniedLog.take(id)) services.log.warn('admin access denied', { accountId: id, method: req.method, path: req.originalUrl.split('?')[0]!.slice(0, 80) });
+      return sendError(res, 403, 'forbidden', 'Admins only');
+    }
     next();
+  };
+
+  /**
+   * (v2.3 AUTH-8) Step-up for actions that take over or destroy accounts: the admin signed in within
+   * the last STEP_UP_MS, or re-enters their own passphrase now (checked through the scrypt gate).
+   */
+  const stepUp = async (req: Request, res: Response, passphrase: string | undefined): Promise<void> => {
+    const me = currentAccount(res);
+    if (passphrase !== undefined) {
+      const ok = await services.scryptGate.run(clientRange(req), () => services.auth.verifyPassphrase(me.id, passphrase));
+      if (ok) return;
+      throw new HttpError(401, 'reauth_required', 'That is not your passphrase');
+    }
+    const since = res.locals.sessionCreatedAt as number | undefined;
+    if (since !== undefined && now() - since < STEP_UP_MS) return;
+    throw new HttpError(401, 'reauth_required', 'Confirm with your own passphrase to do this');
   };
   // Gate for the whole /admin subtree (also turns unknown /api/admin/* paths into 401/403 for
   // non-admins instead of revealing which routes exist).
@@ -114,12 +141,13 @@ export function adminRouter(services: Services): express.Router {
     isAdmin: services.auth.isAdmin(row.id),
     isYou: row.id === me.id,
     lobby: lobbyOf(entries, row.id),
+    ...accountModerationView(services, row.id), // (v2.3 OPS-1) suspension + whether a network is known
   });
 
   const audit = (
     admin: AccountRecord,
     action: string,
-    target: { type: 'account' | 'lobby'; id: string; name?: string | null },
+    target: { type: 'account' | 'lobby' | 'game'; id: string; name?: string | null },
     detail?: Record<string, unknown>,
   ) => {
     repo.appendAudit({
@@ -205,7 +233,9 @@ export function adminRouter(services: Services): express.Router {
         uptimeSec: Math.round((Date.now() - startedAt) / 1000),
         memory: { rssMb: Math.round(mem.rss / 1048576), heapUsedMb: Math.round(mem.heapUsed / 1048576) },
         cpu: { load1: Math.round((os.loadavg()[0] ?? 0) * 100) / 100, cores: os.cpus().length },
+        disk: diskView(services.config.databasePath), // v2.3 HOST-04
       },
+      ops: opsView(services), // (v2.3 OPS-2/4) panic switches, open reports, last backup marker
       totals: {
         ...t,
         lobbies: lobbies.length,
@@ -285,6 +315,8 @@ export function adminRouter(services: Services): express.Router {
       const q = parseBody(GameQuery, req.query);
       const json = p.success ? recordsRepo(services.database).getRecordJson(p.data) : null;
       if (!p.success || !json) throw new HttpError(404, 'not_found', 'Game not found');
+      // (v2.3 AUTH-8) full records hold every grimoire and night info: who looked is audited.
+      audit(currentAccount(res), q.download === '1' ? 'game.download' : 'game.view', { type: 'game', id: p.data });
       if (q.download === '1') res.setHeader('Content-Disposition', `attachment; filename="clocktower-game-${p.data}.json"`);
       res.type('application/json').send(json);
     }),
@@ -295,9 +327,10 @@ export function adminRouter(services: Services): express.Router {
   r.post(
     '/admin/accounts/bulk-delete',
     limited,
-    handler((req, res) => {
+    handler(async (req, res) => {
       const body = parseBody(BulkDeleteBody, req.body);
       const me = currentAccount(res);
+      await stepUp(req, res, body.passphrase); // (v2.3 AUTH-8)
       const entries = directoryEntries(services.directory);
       const out: AdminBulkDeleteResponse = { deleted: [], skipped: [] };
       for (const id of new Set(body.ids)) {
@@ -311,6 +344,7 @@ export function adminRouter(services: Services): express.Router {
           out.skipped.push({ id, displayName: row.displayName, reason: blocker.reason });
           continue;
         }
+        services.auth.revokeAll(id, 'account_deleted'); // (v2.3 AUTH-1) open streams / sockets too
         if (repo.deleteAccountAnonymised(id, tombstone())) {
           out.deleted.push({ id, displayName: row.displayName });
           audit(me, 'account.delete', { type: 'account', id, name: row.displayName }, { bulk: true });
@@ -345,6 +379,7 @@ export function adminRouter(services: Services): express.Router {
       const body = parseBody(ConfirmSelfBody, req.body);
       const me = currentAccount(res);
       const row = loadTarget(id);
+      await stepUp(req, res, body.passphrase); // (v2.3 AUTH-8)
       if (id !== me.id && services.auth.isAdmin(id)) {
         throw new HttpError(403, 'forbidden', 'Another admin’s passphrase cannot be rotated from here');
       }
@@ -375,13 +410,15 @@ export function adminRouter(services: Services): express.Router {
   r.post(
     '/admin/accounts/:id/delete',
     limited,
-    handler((req, res) => {
+    handler(async (req, res) => {
       const id = accountParam(req);
-      parseBody(DeleteBody, req.body);
+      const body = parseBody(DeleteBody, req.body);
       const me = currentAccount(res);
       const row = loadTarget(id);
       const blocker = deleteBlocker(row, me, directoryEntries(services.directory));
       if (blocker) throw new HttpError(blocker.status, blocker.status === 409 ? 'conflict' : 'forbidden', blocker.reason);
+      await stepUp(req, res, body.passphrase); // (v2.3 AUTH-8)
+      services.auth.revokeAll(id, 'account_deleted'); // (v2.3 AUTH-1) open streams / sockets too
       if (!repo.deleteAccountAnonymised(id, tombstone())) throw new HttpError(404, 'not_found', 'Account not found');
       audit(me, 'account.delete', { type: 'account', id, name: row.displayName }, { gamesPlayed: row.gamesPlayed });
       res.json({ ok: true });
@@ -405,6 +442,9 @@ export function adminRouter(services: Services): express.Router {
       res.json({ ok: true });
     }),
   );
+
+  // (v2.3 OPS-1/2/6) suspend / network blocks / panic switches / reports (moderation/admin.ts)
+  registerModerationAdmin(r, services, { audit, limited, isAdmin: (id) => services.auth.isAdmin(id), stepUp });
 
   return r;
 }

@@ -181,6 +181,7 @@ test('M3: Storyteller-guided round with 1 ST + 5 players', async ({ browser }) =
       await st.page.getByLabel('Nominations open').check();
       await nominator.tap.until(() => gv(nominator)?.day?.nominationsOpen, 10_000, 'nominations open');
       await nominator.page.locator('.cth-players li', { hasText: nominee.name }).getByRole('button', { name: 'Nominate' }).click();
+      await nominator.page.locator('.cth-players li', { hasText: nominee.name }).getByRole('button', { name: /^Confirm nominating/ }).click(); // (qol) two-step
       await st.tap.until(() => gv(st)?.day?.nominations?.length === 1, 10_000, 'nomination recorded');
     }, `${nominator.name} nominated ${nominee.name} (${nomineeEntry.character})`);
 

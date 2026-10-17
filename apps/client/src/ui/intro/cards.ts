@@ -30,7 +30,7 @@ export const CARDS: TourCard[] = [
     id: 'point',
     clip: 'point',
     title: 'Point, and pin your suspects',
-    lines: ['Right-click (or long-press) to point at someone.', 'Press F to pin a person or a spot with your face on it.'],
+    lines: ['Right-click (or long-press) to point; right-drag for a pin menu.', 'Press F to pin a person or a spot with your face on it.'],
     glyph: '☝',
   },
   {

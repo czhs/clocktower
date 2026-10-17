@@ -8,6 +8,7 @@
 // Without it every texture is drawn here as small pixel art, so the layer always works.
 import type * as Phaser from 'phaser';
 import type { PinColor } from '@ct/protocol';
+import { socialUrl } from '@ct/assets/runtime';
 import { drawCastPortrait } from '../../ui/common/castPortrait';
 import { PIN_HEX } from './logic';
 
@@ -26,10 +27,12 @@ export interface SocialSheet {
     fps?: Record<string, number>;
     point?: { sequence?: number[]; vectors?: Record<string, [number, number]>; offset?: number };
     icons?: string[];
+    /** The 'nick-face' emote: hide avatar frame rows above cropY; nick_face's anchor goes at feet + neck. */
+    nickFace?: { cropY?: number; neck?: Pt };
   };
 }
 
-const ART_PNG = Object.values(import.meta.glob('../../../../../packages/assets/generated/social.png', { eager: true, query: '?url', import: 'default' }) as Record<string, string>)[0];
+const ART_PNG: string | undefined = socialUrl;
 const ART_JSON = Object.values(import.meta.glob('../../../../../packages/assets/generated/social.json', { eager: true, import: 'default' }) as Record<string, unknown>)[0] as SocialSheet | undefined;
 /** For the DOM (dock / radial): the sheet URL + manifest, when the art exists. */
 export const SOCIAL_SHEET: { url: string; json: SocialSheet } | null = ART_PNG && ART_JSON ? { url: ART_PNG, json: ART_JSON } : null;
@@ -75,6 +78,8 @@ export interface SocialArt {
   drop(): (Piece & { anim: string }) | null;
   badge(): string;
   shadow(): Piece;
+  /** Nick Song's 😝 head (null until the sheet is loaded): anchor = the neck. */
+  nickFace(): (Piece & { cropY: number; neck: Pt }) | null;
   destroy(): void;
 }
 
@@ -236,6 +241,12 @@ export function createSocialArt(scene: Phaser.Scene, onChange: () => void): Soci
       return { key: SHEET, frame: 'pin_drop_0', ...anchor('pin_drop', f, { x: f.w / 2, y: f.h - 2 }), w: f.w, h: f.h, anim: 'social#drop' };
     },
     badge: () => patternTexture(scene, 'social-badge', BADGE, BADGE_PAL),
+    nickFace() {
+      const f = ART_JSON?.frames.nick_face;
+      if (!f || !has('nick_face')) return null;
+      const nf = M?.nickFace ?? {};
+      return { key: SHEET, frame: 'nick_face', ...anchor('nick_face', f, { x: f.w / 2, y: f.h - 1 }), w: f.w, h: f.h, cropY: nf.cropY ?? 24, neck: nf.neck ?? { x: 0, y: -13 } };
+    },
     shadow() {
       const f = ART_JSON?.frames.pin_shadow;
       if (has('pin_shadow') && f) return { key: SHEET, frame: 'pin_shadow', ...anchor('pin_shadow', f, { x: f.w / 2, y: f.h / 2 }), w: f.w, h: f.h };

@@ -25,6 +25,7 @@ import { createStore, Emitter } from '../../net/store';
 import type { RoomConnection } from '../../net/room';
 import { GameScreen } from '../GameScreen';
 import { CosmeticPreview } from '../CosmeticPreview';
+import { PLAYABLE } from '@ct/assets';
 import '../../ui/common/theme.css';
 
 const params = new URLSearchParams(location.search);
@@ -34,7 +35,7 @@ const N = Number(params.get('bots') ?? 6);
 
 const pick = <T,>(a: readonly T[], i: number) => a[i % a.length]!;
 const members: RoomMember[] = [];
-const me: RoomMember = { pid: 'me', accountId: 'a', displayName: asST ? 'The Storyteller' : 'You', role: asST ? 'storyteller' : 'player', seat: asST ? null : 0, connected: true, cosmetics: { ...DEFAULT_COSMETICS, accessory: 'lantern' }, isHost: true };
+const me: RoomMember = { pid: 'me', accountId: 'a', displayName: asST ? 'The Storyteller' : 'You', role: asST ? 'storyteller' : 'player', seat: asST ? null : 0, connected: true, cosmetics: { ...DEFAULT_COSMETICS, accessory: 'lantern', preset: 'frog' }, isHost: true };
 members.push(me);
 for (let i = 0; i < N; i++)
   members.push({
@@ -52,6 +53,7 @@ for (let i = 0; i < N; i++)
       palette: pick(OUTFIT_PALETTES, i * 5),
       accessory: pick(ACCESSORIES, i + 3),
       ghost: pick(GHOST_STYLES, i),
+      preset: PLAYABLE[(i + 1) % PLAYABLE.length]!.id,
     },
     isHost: false,
   });
@@ -116,6 +118,26 @@ function publishViews() {
 }
 let speed = 1;
 publishViews();
+// ?phase=day|night|… starts a game in that phase; ?fill=1 puts the bots inside a few houses
+// (door boards: 1, 2, 3, 4 and 4+N occupants) and marks one of them dead (a ghost token).
+const startPhase = params.get('phase') as GamePhase | null;
+if (startPhase || params.get('fill'))
+  setTimeout(() => {
+    if (startPhase) setPhase(startPhase === 'night' || startPhase === 'first_night' ? 'day' : startPhase);
+    if (params.get('fill')) {
+      const bots = members.filter((m) => m.pid !== 'me' && m.role === 'player');
+      // ?fill=all: every one of the 15 houses gets 1..6 (cycling) occupants, as far as the bots go
+      const plan: (readonly [string, number])[] =
+        params.get('fill') === 'all'
+          ? Array.from({ length: 15 }, (_, h) => [`house-${h}`, [1, 2, 3, 4, 6][h % 5]!] as const)
+          : [['house-0', 1], ['house-1', 2], ['house-2', 3], ['house-4', 6], ['house-3', 4]];
+      let k = 0;
+      for (const [id, n] of plan) for (let j = 0; j < n && k < bots.length; j++) world.teleportToBuilding(bots[k++]!.pid, id, 'storyteller');
+      for (const b of [bots[1], bots[4]]) if (b) (dead.add(b.pid), world.onEvent({ type: 'alive_changed', pid: b.pid, alive: false } as RoomEvent));
+      publishViews();
+    }
+    if (startPhase === 'night' || startPhase === 'first_night') setTimeout(() => setPhase(startPhase), 300);
+  }, 600);
 
 const conn = {
   lobbyId: 'sandbox',

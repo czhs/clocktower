@@ -1,4 +1,5 @@
 import type { Database } from '../database.js';
+import { scrubAccountFromRecord } from './scrub.js'; // (v2.3 AUTH-7)
 
 // Admin console queries (owned by the admin agent). Read-mostly aggregates over accounts /
 // sessions / match stats, account deletion with history anonymisation, and the append-only
@@ -95,6 +96,26 @@ export function createAdminRepo({ sqlite }: Database) {
     sqlite.prepare('DELETE FROM sessions WHERE account_id = ?').run(id);
     // (v2) private notebooks go with the account (they are owner-only and never anonymised)
     sqlite.prepare('DELETE FROM notebooks WHERE account_id = ?').run(id);
+    // (v2.3 AUTH-6) the account's last network key (moderation table, migration 6) is personal data too.
+    if (sqlite.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'account_ips'").get()) {
+      sqlite.prepare('DELETE FROM account_ips WHERE account_id = ?').run(id);
+    }
+    // (v2.3 AUTH-7) saved game records: the header column and every mention inside the JSON.
+    sqlite.prepare('UPDATE match_records SET storyteller_account_id = ? WHERE storyteller_account_id = ?').run(tombstone, id);
+    const recs = sqlite
+      .prepare('SELECT match_id AS matchId, record_json AS json FROM match_records WHERE instr(record_json, ?) > 0')
+      .all(JSON.stringify(id)) as { matchId: string; json: string }[];
+    const write = sqlite.prepare('UPDATE match_records SET record_json = ? WHERE match_id = ?');
+    for (const r of recs) {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(r.json);
+      } catch {
+        continue;
+      }
+      const out = scrubAccountFromRecord(parsed as Parameters<typeof scrubAccountFromRecord>[0], id, tombstone);
+      if (out.changed) write.run(JSON.stringify(out.record), r.matchId);
+    }
     return sqlite.prepare('DELETE FROM accounts WHERE id = ?').run(id).changes > 0;
   });
 

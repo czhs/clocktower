@@ -12,6 +12,7 @@ import type { Logger } from '../rooms/modules.js';
 import { buildGameRecord, recordRow, type BuildOptions, type MatchMeta } from './build.js';
 import { recorderOf, recordsRepo } from './registry.js';
 import type { GameRecordV1 } from './types.js';
+import { capRecordBytes } from '../guard/recordCaps.js';
 
 export * from './types.js';
 export { GameRecorder, diffLog, type PublicItem, type RecordTrigger } from './recorder.js';
@@ -42,12 +43,12 @@ export function writeFinished<T>(database: Database, record: GameRecordV1, write
   const repo = recordsRepo(database);
   return database.sqlite.transaction(() => {
     const out = writeSummary();
-    repo.saveRecord(recordRow(record));
+    repo.saveRecord(recordRow(capRecordBytes(record))); // v2.3 HOST-04 size backstop
     return out;
   })();
 }
 
 /** An abandoned game (no summary to finalise). Returns false if this match already had a record. */
 export function writeAbandoned(database: Database, record: GameRecordV1): boolean {
-  return recordsRepo(database).saveRecord(recordRow(record));
+  return recordsRepo(database).saveRecord(recordRow(capRecordBytes(record))); // v2.3 HOST-04
 }

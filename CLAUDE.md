@@ -3,28 +3,37 @@
 Browser-based gothic pixel-art social-deduction town (Trouble Brewing rules, human Storyteller,
 multiple passwordless lobbies, LiveKit proximity/private voice). Authoritative spec:
 `docs/spec/CLOCKTOWER_TOWN_SPEC.md`. Architecture and contracts: `docs/architecture.md`.
-**Product vision (read first): `docs/vision.md`.** Status: `docs/progress.md`. Executed tests: `docs/test-results.md`.
+**New here? Start with `docs/HANDOFF.md`** (rules, map, current state). **Product vision: `docs/vision.md`.**
+**The GitHub repo is public:** never pull from GitHub, work on a local branch, push only through the secret scan. Status: `docs/progress.md`. Executed tests: `docs/test-results.md`.
 
 ## Where things run (non-negotiable)
 
-- **Everything executes on `hshi-u1`** (Ubuntu 22.04, RTX 3060, user `hshi`, Node 24 in
-  `~/.local/share/node`, sourced via `~/clocktower/env.sh`). Do **not** run node/pnpm/tests on the
-  editing machine. Do not use `hshi` (4090). The Mac only edits files and syncs.
+- **Everything executes on the host** — the single build + production machine (Ubuntu 22.04,
+  Node 24 sourced via `~/clocktower/env.sh`). Do **not** run node/pnpm/tests on the editing
+  machine; it only edits files and syncs. Host-specific details (SSH alias, user, hardware, other
+  machines) live in the gitignored `CLAUDE.local.md` and `ops.local.env` (copy `ops.example.env`);
+  never write them into tracked files — the repo is public and `scripts/secret-scan.sh` /
+  gitleaks (`.gitleaks.toml`) block tailnet names, Tailscale IPs and home-directory paths.
 - Run commands through `scripts/remote.sh` — it rsyncs this tree to
-  `hshi-u1:~/clocktower/work/$CT_AGENT/`, installs deps if manifests changed, and runs the command:
+  `<host>:~/clocktower/work/$CT_AGENT/`, installs deps from the frozen lockfile if manifests
+  changed, and runs the command:
   ```
   CT_AGENT=rules scripts/remote.sh pnpm vitest run packages/rules
   CT_AGENT=rules scripts/remote.sh --no-sync pnpm -r run typecheck
   CT_AGENT=world-art scripts/pull.sh packages/assets/generated   # copy generated files back
+  CT_AGENT=lead scripts/remote.sh pnpm install     # deliberate dependency change; lockfile comes back
   ```
-- Ports on hshi-u1: **3000 = production (Funnel), 3001 = dev service** — never bind these in tests.
+- Ports on the host: **3000 = production (Cloudflare Tunnel), 3001 = dev service** — never bind these in tests.
   Ad-hoc test servers: lead 3300-3309, rules 3310-3319, world-art 3320-3329, lobby-auth 3330-3339,
-  voice 3340-3349, qa-deploy 3350-3399. Always bind 127.0.0.1.
+  voice 3340-3349, qa-deploy 3350-3399; 3400-3449 = random ports picked by `tests/support/server.ts`
+  `pickPort()` (never hardcode a port there). Always bind 127.0.0.1.
 - Runtime (since 2026-10-15): services are SYSTEM units `clocktower-{prod,dev,tunnel}.service` running as the
   unprivileged `clocktower` user from `/srv/clocktower` (sandboxed; see docs/security.md). Deploy only via
   `scripts/deploy-hshi-u1.sh`; the admin may only restart/stop these units via a narrow sudoers rule.
   `~/clocktower/work/*` sandboxes are for builds/tests only. Logs: `journalctl -u clocktower-prod -f`.
-- Never touch unrelated services on hshi-u1 (ollama, cups, minecraft/playit, etc.). No other sudo — ask the user.
+- Never touch services on the host that are not ours. No other sudo — ask the user.
+- Never run code from an unreviewed branch/PR on the host (it runs as the admin account): review
+  manifests, lockfile, scripts and workflows as text first.
 
 ## Commands (run via scripts/remote.sh)
 

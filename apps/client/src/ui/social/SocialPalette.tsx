@@ -9,14 +9,15 @@
 //   tooltip  "<name>'s pin on <target>" over the hovered pin
 import { useEffect, useState } from 'preact/hooks';
 import { castById, PLAYABLE } from '@ct/assets';
-import { PIN_COLORS, type PinColor } from '@ct/protocol';
+import { NICK_FACE_CHARACTER, PIN_COLORS, type PinColor } from '@ct/protocol';
 import type { RoomConnection } from '../../net/room';
-import { useStore } from '../../net/store';
+import { useStore, useStoreSelector } from '../../net/store';
 import { CastPortrait } from '../common/castPortrait';
 import { SOCIAL_SHEET } from '../../game/social/art';
 import { isPinColor, PIN_HEX, savePinColor } from '../../game/social/logic';
 import { socialActions, socialHover, socialInfo, socialMode, socialRadial } from '../../game/social/state';
 import './social.css';
+import { PieMenu } from './PieMenu';
 
 const OPEN_KEY = 'ct.social.dockOpen';
 
@@ -72,6 +73,7 @@ export function SocialPalette(props: { conn: RoomConnection; touch: boolean }) {
     <>
       <Dock conn={props.conn} touch={props.touch} />
       <Radial />
+      <PieMenu />
       <Tooltip />
     </>
   );
@@ -79,14 +81,16 @@ export function SocialPalette(props: { conn: RoomConnection; touch: boolean }) {
 
 function Dock({ conn, touch }: { conn: RoomConnection; touch: boolean }) {
   const lobby = useStore(conn.lobbyView);
-  const game = useStore(conn.gameView);
+  const stView = useStoreSelector(conn.gameView, (g) => g?.kind === 'storyteller');
   const mode = useStore(socialMode);
   const info = useStore(socialInfo);
   const [open, setOpen] = useState(() => readFlag(OPEN_KEY) === '1');
   const [hint, setHint] = useState(() => readFlag(HINT_KEY) !== '1');
   const meM = lobby?.members.find((m) => m.pid === lobby.youPid);
-  const st = game?.kind === 'storyteller' || meM?.role === 'storyteller';
+  const st = stView || meM?.role === 'storyteller';
   const character = st ? 'storyteller' : meM ? castIdFor(meM.pid, meM.cosmetics.preset) : null;
+  /** (v2.2) Only Nick Song gets the 'nick-face' emote (the server checks the same lobby character). */
+  const nick = !st && meM?.cosmetics.preset === NICK_FACE_CHARACTER;
   const color = mode.color;
 
   // sit beside the voice panel (desktop: to its left; touch: above it), whatever its size
@@ -167,6 +171,11 @@ function Dock({ conn, touch }: { conn: RoomConnection; touch: boolean }) {
             <button type="button" class={`cts-act${mode.mode === 'pin' ? ' on' : ''}`} aria-pressed={mode.mode === 'pin'} onClick={() => arm('pin')} title={touch ? 'Then tap a person or a spot' : 'Or press F over a person or a spot'}>
               <PinGlyph color={color} /> Pin
             </button>
+            {nick && (
+              <button type="button" class="cts-act cts-nick" onClick={() => socialActions.get()?.nickFace?.()} title="Nick face: your head becomes a 😝 for a few seconds">
+                {hasFrame('nick_face') ? <SheetIcon frame="nick_face" scale={touch ? 2 : 1} /> : <span aria-hidden="true">😝</span>} Face
+              </button>
+            )}
           </div>
           <div class="cts-swatches" role="radiogroup" aria-label="Pin colour">
             {PIN_COLORS.map((c) => (
@@ -198,11 +207,11 @@ function Dock({ conn, touch }: { conn: RoomConnection; touch: boolean }) {
           <p class="cts-tip">
             {touch ? (
               <>
-                <b>Hold</b> a finger on the town to point or pin · tap your pin to remove it
+                <b>Hold</b> a finger on the town, then slide to point or pick a pin colour · tap your pin to remove it
               </>
             ) : (
               <>
-                <kbd>Right-click</kbd> point · <kbd>F</kbd> pin · click your pin to remove
+                <kbd>Right-click</kbd> point · <kbd>Right-drag</kbd> point / pin menu · <kbd>F</kbd> pin · click your pin to remove
               </>
             )}
           </p>
@@ -213,7 +222,7 @@ function Dock({ conn, touch }: { conn: RoomConnection; touch: boolean }) {
         class="cts-toggle"
         aria-expanded={open}
         aria-label={open ? 'Close point and pins' : 'Point and pins'}
-        title={touch ? 'Point & pins — or hold a finger on the town' : 'Point & pins — right-click to point, F to pin'}
+        title={touch ? 'Point & pins — or hold a finger on the town' : 'Point & pins — right-click to point, right-drag for the pin menu, F to pin'}
         style={{ borderColor: hex.fill, boxShadow: `0 0 0 2px ${hex.dark}, 0 3px 10px #000a` }}
         onClick={toggle}
       >
@@ -234,7 +243,7 @@ function Dock({ conn, touch }: { conn: RoomConnection; touch: boolean }) {
             </>
           ) : (
             <>
-              <b>New:</b> <kbd>Right-click</kbd> to point · <kbd>F</kbd> to drop a pin
+              <b>New:</b> <kbd>Right-click</kbd> to point · <kbd>Right-drag</kbd> to pick point or a pin
             </>
           )}
           <button type="button" aria-label="Dismiss" onClick={() => (writeFlag(HINT_KEY, '1'), setHint(false))}>

@@ -1,0 +1,5 @@
+# /etc/sudoers.d/clocktower-build (0440; installed by deploy/secure/v2.3/apply.sh after visudo -cf).
+# v2.3 HOST-12 (sec-host): the admin may run commands as the unprivileged build user ONLY through the
+# sandboxing wrapper (root-owned, not writable by anyone else). The wrapper always drops to ct-build
+# inside a systemd sandbox; it cannot be used to run anything as root.
+__ADMIN__ ALL=(root) NOPASSWD: /usr/local/sbin/ct-build-run

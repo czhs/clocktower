@@ -29,6 +29,13 @@ export class RateLimiter {
     return true;
   }
 
+  /** Tokens currently available for `key` (does not consume; v2.3 tiered limits). */
+  available(key: string, now = Date.now()): number {
+    const b = this.buckets.get(key);
+    if (!b) return this.spec.capacity;
+    return Math.min(this.spec.capacity, b.tokens + ((now - b.at) / 1000) * this.spec.refillPerSec);
+  }
+
   /** Seconds until one token is available (for Retry-After). */
   retryAfterSec(key: string, now = Date.now()): number {
     const b = this.buckets.get(key);

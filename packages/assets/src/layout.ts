@@ -387,7 +387,9 @@ function doorOf(h: { facing: Facing3 }, fp: TileRect): TilePoint {
   return { x: h.facing === 'east' ? fp.x + fp.w : fp.x - 1, y: fp.y + fp.h - 1 };
 }
 
-// --- Interiors (walkable pixel rooms, with furniture collision and a south-facing doorway) ---
+// --- Interiors (small walkable pixel rooms, v2.2): walls ('W'), the doorway gap in the bottom wall
+// ('D', blocked: walking down into it leaves) and furniture collide; the rest of the floor is walkable.
+// Spawn = interiorDoor (just above the doorway); bed / visitPoint are free floor tiles beside the bed.
 
 function paintRoom(r: TileRect, floor: string) {
   rect(r.x, r.y, r.w, r.h, G.iwall);

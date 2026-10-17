@@ -18,3 +18,4 @@ apps/client/landing-staging/
 **/_staging/
 packages/assets/ai/
 packages/assets/eggs/
+pnpm-lock.yaml.remote*

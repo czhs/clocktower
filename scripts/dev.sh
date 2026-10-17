@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
-# Private access to the dev service on hshi-u1 (127.0.0.1:3001) through an SSH port forward.
-# The dev service is never exposed via Funnel; this tunnel is the only way in.
+# Private access to the dev service on the host (127.0.0.1:3001) through an SSH port forward.
+# The dev service is never exposed publicly; this tunnel is the only way in.
 #
-#   scripts/dev.sh            # forward localhost:3001 -> hshi-u1:127.0.0.1:3001 (foreground, Ctrl-C to stop)
+#   scripts/dev.sh            # forward localhost:3001 -> <host>:127.0.0.1:3001 (foreground, Ctrl-C to stop)
 #   LOCAL_PORT=4001 scripts/dev.sh
 #   scripts/dev.sh --status   # show dev unit status + health (no tunnel)
 #   scripts/dev.sh --logs     # follow dev logs (journald)
 set -euo pipefail
-HOST="${CT_HOST:-hshi-u1}"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+. "$ROOT/scripts/lib/ops-env.sh"; ct_load_ops_env "$ROOT"
+HOST="$(ct_require_host)"
 LOCAL_PORT="${LOCAL_PORT:-3001}"
 
 # Unit scope: CT_SYSTEMD_SCOPE=system|user|auto (auto: the system unit if it exists, else --user).

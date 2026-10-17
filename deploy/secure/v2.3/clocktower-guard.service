@@ -1,0 +1,17 @@
+# v2.3 HOST-02 (sec-host): loads the per-UID egress policy before the Clocktower units.
+# Install: deploy/secure/v2.3/apply.sh --apply (copies the rules to /etc/clocktower/guard.nft).
+[Unit]
+Description=Clocktower Town egress guard (nftables, per service UID)
+Before=clocktower-prod.service clocktower-dev.service clocktower-tunnel.service
+After=nftables.service ufw.service
+Wants=network-pre.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/nft -f /etc/clocktower/guard.nft
+ExecStop=/usr/sbin/nft delete table inet clocktower_guard
+
+[Install]
+WantedBy=multi-user.target
+RequiredBy=clocktower-prod.service clocktower-dev.service clocktower-tunnel.service

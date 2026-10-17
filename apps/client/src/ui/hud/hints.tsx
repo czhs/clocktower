@@ -10,6 +10,7 @@ import { circleSpots, CIRCLE_SEATED_PX, type BuildingDef, type PlayerGameView, t
 import { localPlayer, type LocalPlayerState } from '../../net/localPlayer';
 import type { RoomConnection } from '../../net/room';
 import { Countdown } from './shared';
+import { townSays } from '../clock/logic';
 
 /** Own avatar control from world snapshots; re-renders only when mode/goal change. */
 function useSelfControl(conn: RoomConnection): Pick<SelfControl, 'mode' | 'goal'> | null {
@@ -160,7 +161,7 @@ export function MoveHint({ view, conn }: { view: PlayerGameView; conn: RoomConne
   const pill = stage === 'pill';
   return (
     <div class={`cth-hint ${tone}${pill ? ' pill' : sticky ? '' : ' fade'}`} role="status" aria-live="polite" title={pill ? text : undefined}>
-      <span>{pill && short ? short : text}</span>
+      <span>{townSays(pill && short ? short : text, view.storytellerMode)}</span>
       {countdown && view.phaseEndsAt !== null && <Countdown endsAt={view.phaseEndsAt} />}
     </div>
   );

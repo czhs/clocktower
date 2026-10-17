@@ -33,6 +33,7 @@ import {
 } from './day.js';
 import { buildNightQueue, findStep, openStepFor, resolveStep } from './night.js';
 import { ROLES } from './roles.js';
+import { commandLabel } from './labels.js';
 import {
   applyAssignment,
   completeAssignment,
@@ -41,6 +42,7 @@ import {
   validateAssignment,
   type Assignment,
 } from './setup.js';
+import { dealBag, presetAssignment } from './presets.js';
 import {
   RuleError,
   type CommandResult,
@@ -66,6 +68,7 @@ import {
   sound,
   typeOf,
   who,
+  mulberry32,
   type Op,
 } from './util.js';
 
@@ -176,7 +179,7 @@ export function createGame(opts: CreateGameOptions): GameState {
 
 function serializeCore(s: GameState): string {
   return JSON.stringify(s, function (this: unknown, key: string, value: unknown) {
-    if (this === s && (key === 'rng' || key === 'history')) return undefined;
+    if (this === s && (key === 'rng' || key === 'history' || key === 'adjudicator')) return undefined;
     return value;
   });
 }
@@ -328,7 +331,7 @@ function startBedtime(s: GameState, op: Op, first = false): void {
     s.bedtimePausedRemainingMs = ms;
   }
   sound(op, 'bell');
-  announce(s, op, 'phase', `The bell tolls. Return to your homes within ${s.bedtimeSeconds} seconds.`);
+  announce(s, op, 'phase', `The bell tolls. Return to your homes within ${s.bedtimeSeconds} seconds.${s.bedtimeNote ? ` ${s.bedtimeNote}` : ''}`);
 }
 
 function advance(s: GameState, op: Op, to: 'day' | 'bedtime' | 'night' | 'dawn'): void {
@@ -553,7 +556,37 @@ function assign(s: GameState, op: Op, cmd: Extract<StCommand, { type: 'assign_ch
   if (v.warnings.length && !cmd.allowNonstandard) throw new RuleError('invalid', `${v.warnings.join('; ')} (set allowNonstandard to accept)`);
   for (const w of v.warnings) alert(s, op, w);
   applyAssignment(s, full);
+  s.deal = { method: 'manual' };
   log(s, op, 'Characters assigned manually');
+}
+
+/** (v2.2) A seed gives a reproducible deal; otherwise the game's RNG. */
+function dealRng(s: GameState, seed: number | undefined): Rng {
+  return seed === undefined ? s.rng : mulberry32(seed);
+}
+
+function dealPreset(s: GameState, op: Op, cmd: Extract<StCommand, { type: 'deal_preset' }>): void {
+  const { def, assignment } = presetAssignment(s.players.map((p) => p.seat), cmd.storyline, dealRng(s, cmd.seed));
+  applyAssignment(s, assignment);
+  s.deal = { method: 'storyline', storyline: def.id };
+  log(s, op, `Storyline "${def.title}" dealt at random`);
+}
+
+function dealOwnBag(s: GameState, op: Op, cmd: Extract<StCommand, { type: 'deal_bag' }>): void {
+  if (cmd.drunkBelieves !== undefined) {
+    if (!cmd.characters.includes('drunk')) throw new RuleError('invalid', 'There is no Drunk in the bag');
+    if (CHARACTER_INFO[cmd.drunkBelieves].type !== 'townsfolk' || cmd.characters.includes(cmd.drunkBelieves))
+      throw new RuleError('invalid', 'The Drunk must believe in a Townsfolk that is not in the bag');
+  }
+  const { assignment, validation } = dealBag(s.players.map((p) => p.seat), cmd.characters, dealRng(s, cmd.seed), {
+    ...(cmd.drunkBelieves ? { drunkBelieves: cmd.drunkBelieves } : {}),
+    ...(cmd.demonBluffs ? { demonBluffs: cmd.demonBluffs } : {}),
+  });
+  if (validation.warnings.length && !cmd.allowNonstandard) throw new RuleError('invalid', `${validation.warnings.join('; ')} (set allowNonstandard to accept)`);
+  for (const w of validation.warnings) alert(s, op, w);
+  applyAssignment(s, assignment);
+  s.deal = { method: 'bag' };
+  log(s, op, `Your bag of ${cmd.characters.length} characters dealt at random`);
 }
 
 /** While a detected game end awaits the ST, nothing may move the game forward. */
@@ -582,9 +615,20 @@ function stCommand(s: GameState, op: Op, cmd: StCommand): void {
     case 'random_setup': {
       requirePhase(s, 'setup');
       applyAssignment(s, randomAssignment(s.players.map((p) => p.seat), s.rng, s.script));
+      s.deal = { method: 'random' };
       log(s, op, 'Random characters assigned');
       return;
     }
+    case 'deal_preset':
+      requirePhase(s, 'setup');
+      dealPreset(s, op, cmd);
+      return;
+    case 'deal_bag':
+      requirePhase(s, 'setup');
+      dealOwnBag(s, op, cmd);
+      return;
+    case 'prepare':
+      throw new RuleError('phase', 'Pre-game settings are set in the waiting room');
     case 'assign_characters':
       requirePhase(s, 'setup');
       assign(s, op, cmd);
@@ -920,7 +964,15 @@ export function applyStCommand(s: GameState, cmd: StCommand, ctx: Ctx): CommandR
   const presenceOnly = cmd.type === 'visit_home' || cmd.type === 'leave_home' || cmd.type === 'set_travel_speed';
   // Confirming a game end is final (the game finishes), so it is not undoable either.
   const final = cmd.type === 'confirm_result' || cmd.type === 'declare_winner';
-  return run(s, ctx.now, (op) => stCommand(s, op, cmd), isUndo || presenceOnly || final ? 'none' : 'push', !isUndo);
+  const push = !(isUndo || presenceOnly || final);
+  // (st-qol) Name what Undo would revert; computed before the command runs (names/steps still exist).
+  const label = push ? commandLabel(s, cmd) : null;
+  const r = run(s, ctx.now, (op) => stCommand(s, op, cmd), push ? 'push' : 'none', !isUndo);
+  if (r.ok && label) {
+    const top = s.history.at(-1);
+    if (top) top.label = label;
+  }
+  return r;
 }
 
 // --------------------------------------------------------------------------- player actions
@@ -975,7 +1027,8 @@ function promptResponse(s: GameState, op: Op, p: PlayerState, a: Extract<PlayerA
 
 /** Apply a player action from `seat` (caller maps pid -> seat). */
 export function applyPlayerAction(s: GameState, seat: number, a: PlayerAction, ctx: Ctx): CommandResult {
-  const r = run(s, ctx.now, (op) => playerAction(s, op, seat, a), 'none', a.type !== 'vote');
+  // (SEC-2) while a result is pending every action may be refused after it ran: always roll back then.
+  const r = run(s, ctx.now, (op) => playerAction(s, op, seat, a), 'none', a.type !== 'vote' || s.resultPending);
   // Recorded against the ST's last undoable command so undo_last can replay it.
   if (r.ok) s.history.at(-1)?.replay.push({ seat, action: a, now: ctx.now });
   return r;
@@ -983,21 +1036,27 @@ export function applyPlayerAction(s: GameState, seat: number, a: PlayerAction, c
 
 function playerAction(s: GameState, op: Op, seat: number, a: PlayerAction): void {
   const p = mustPlayer(s, seat);
-  if (s.resultPending) throw new RuleError('phase', 'Please wait for the Storyteller.');
+  const wasPending = s.resultPending; // (an action may itself propose the end, e.g. the Slayer's shot)
+  // (security v2.3, SEC-2) Validate FIRST: a blanket "pending result" refusal before validation let
+  // any player probe for an unconfirmed game end (e.g. at night, with a junk prompt id). Invalid
+  // actions now get their ordinary error whatever is pending; a prompt answer is simply recorded (it
+  // is moot if the Storyteller confirms the end); a VALID day action is refused (and rolled back, see
+  // applyPlayerAction) while the Storyteller decides.
   switch (a.type) {
     case 'nominate':
       nominate(s, op, seat, a.nomineeSeat);
-      return;
+      break;
     case 'vote':
       setHand(s, op, seat, a.nominationId, a.vote);
-      return;
+      break;
     case 'promptResponse':
       promptResponse(s, op, p, a);
       return;
     case 'slayerShot':
       slayerShot(s, op, seat, a.targetSeat);
-      return;
+      break;
   }
+  if (wasPending) throw new RuleError('phase', 'Please wait for the Storyteller.');
 }
 
 // ------------------------------------------------------------------------- timers/presence

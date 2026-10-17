@@ -48,9 +48,10 @@ describe('refresh during a vote (B1)', () => {
       await waitFor(() => p.c.of('game:view').length > 0 && p.c.of('world:snapshot').length > 0, 1000, 'views + snapshots resume');
       const v = p.c.last('game:view') as PlayerGameView;
       expect(v.day?.nominations.find((n) => n.id === id)?.status).toBe('voting');
-      // and they keep flowing (a few snapshots/second, the clock hand's view updates)
+      // and they keep flowing (a few snapshots/second, the clock hand's view updates). (v2.2 WP4: the
+      // compact stream sends 12 Hz only while something visible changes, else a 2 Hz keepalive.)
       await sleep(1500);
-      expect(p.c.of('world:snapshot').length).toBeGreaterThan(8);
+      expect(p.c.of('world:snapshot').length).toBeGreaterThanOrEqual(3);
       expect(Date.now() - t0).toBeLessThan(3000);
       // the player can still raise a hand
       p.c.send('game:vote', { nominationId: id, vote: true });

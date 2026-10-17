@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'preact/hooks';
-import { DISPLAY_NAME_MAX, type AccountView, type StatsView } from '@ct/protocol';
+import { DISPLAY_NAME_MAX, type AccountView } from '@ct/protocol';
 import { api } from '../../net/api';
 import { CharacterPicker, characterOf } from './CharacterPicker';
 import { LobbyFinder } from './LobbyFinder';
+import { StatsPanel } from './StatsPanel'; // (v2.2 stats)
+import { AccountPanel } from './AccountPanel'; // (v2.3 AUTH-5/6)
 import { HowToPlayHost, openHelp } from '../common/HowToPlay';
 import { signOutAll } from '../common/http';
 import { errorText, goTo } from './finder';
@@ -28,10 +30,11 @@ export function HomeScreen({
       <div class="ct-home-grid">
         <aside class="ct-home-side">
           <AppearancePanel account={account} onAccountChange={onAccountChange} />
-          <StatsPanel />
+          <AccountPanel account={account} onDeleted={onSignedOut} />
         </aside>
         <main class="ct-home-main">
           <LobbyFinder onJoin={onJoin} />
+          <StatsPanel />
         </main>
       </div>
       <HowToPlayHost />
@@ -171,63 +174,5 @@ function AppearancePanel({ account, onAccountChange }: { account: AccountView; o
         Account id: <code>{account.id}</code>
       </p>
     </section>
-  );
-}
-
-function StatsPanel() {
-  const [stats, setStats] = useState<StatsView | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    api
-      .stats()
-      .then(setStats)
-      .catch((e) => setError(errorText(e)));
-  }, []);
-  return (
-    <section class="panel ct-side-panel">
-      <h3>Record</h3>
-      {error && <p class="ct-error">{error}</p>}
-      {!stats && !error && <p class="muted">Loading…</p>}
-      {stats && (
-        <>
-          <dl class="ct-stats">
-            <Stat label="Games played" value={stats.matchesPlayed} />
-            <Stat label="Completed" value={stats.matchesCompleted} />
-            <Stat label="Wins" value={stats.wins} />
-            <Stat label="Losses" value={stats.losses} />
-            <Stat label="Good wins" value={stats.goodWins} />
-            <Stat label="Evil wins" value={stats.evilWins} />
-            <Stat label="Executed" value={stats.timesExecuted} />
-            <Stat label="Died" value={stats.timesDied} />
-            <Stat label="Nominations" value={stats.nominationsMade} />
-            <Stat label="Ghost votes" value={stats.ghostVotesUsed} />
-            <Stat label="Storytold" value={stats.gamesStorytold} />
-          </dl>
-          {stats.roleHistory.length > 0 && (
-            <>
-              <h4>Recent characters</h4>
-              <ul class="ct-history">
-                {stats.roleHistory.slice(0, 8).map((r) => (
-                  <li key={r.matchId}>
-                    <span class={r.alignment === 'good' ? 'ct-good' : 'ct-evil'}>{r.character.replace(/_/g, ' ')}</span>
-                    <span class={r.won ? 'ct-ok' : 'muted'}>{r.won ? 'won' : 'lost'}</span>
-                    <span class="muted">{new Date(r.endedAt).toLocaleDateString()}</span>
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
-        </>
-      )}
-    </section>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: number }) {
-  return (
-    <div class="ct-stat">
-      <dt>{label}</dt>
-      <dd>{value}</dd>
-    </div>
   );
 }

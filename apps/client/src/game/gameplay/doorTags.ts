@@ -6,7 +6,8 @@
 // bedtime through dawn, never for the Storyteller (apps/server/src/world/index.ts doorTags()),
 // enriched with public lobby data (name, preset). Door positions: layout buildings[].door.
 //
-// `createDoorTags` is only a minimal PLACEHOLDER renderer of that store; the art session replaces it.
+// The in-world board is drawn by TownScene + boardTokens.ts (v2.2: pinned character tokens, names
+// only as hover / tap tooltips). `createDoorTags` below is the old placeholder renderer, unused.
 //
 // Up to MAX_ICONS portraits per door, then "+N". Portrait = the player's preset portrait
 // (generated/presets/<id>-portrait.png); fallback = their initial in a coloured circle. Ghosts
@@ -16,6 +17,7 @@ import { townLayout } from '@ct/assets';
 import { tileCenterPx, type DoorTag, type LobbyRoomView } from '@ct/protocol';
 import { createStore } from '../../net/store';
 import { UPRIGHT_Y } from '../render/projection';
+import { fillDiscBands } from '../render/roundRect';
 
 /** Icons per door before "+N". */
 export const MAX_ICONS = 4;
@@ -147,7 +149,8 @@ export function createDoorTags(scene: Phaser.Scene): DoorTagLayer {
         board.objs.push(img);
       } else {
         const col = t.ghost ? SPIRIT : FALLBACK_COLOURS[hash(t.pid) % FALLBACK_COLOURS.length]!;
-        g.fillStyle(col, t.ghost ? 0.55 : 1).fillCircle(cx, cy, ICON / 2);
+        g.fillStyle(col, t.ghost ? 0.55 : 1);
+        fillDiscBands(g, cx, cy, ICON / 2, 0.5); // v2.4: no per-frame earcut (render/roundRect.ts)
         const initial = t.name.trim().charAt(0).toUpperCase() || '?';
         board.objs.push(
           scene.add

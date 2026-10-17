@@ -129,3 +129,28 @@ button.ct-danger-btn.ct-adm-danger-solid:hover:not(:disabled) { background: #6e2
 .ct-adm-seats th, .ct-adm-seats td { text-align: left; padding: 2px 8px; border-bottom: 1px solid var(--border); }
 .ct-adm-seats tr.good td:nth-child(3) { color: var(--good); }
 .ct-adm-seats tr.evil td:nth-child(3) { color: var(--evil); }
+
+/* (v2.3 OPS) Safety + Reports tabs, account suspend / block network */
+.ct-adm-radio { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
+.ct-adm-inline { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+.ct-adm-inline input { flex: 1 1 160px; min-width: 0; }
+.ct-adm-report { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+.ct-adm-lines { margin: 0; padding-left: 18px; max-height: 12em; overflow-y: auto; }
+.ct-adm-safety { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 8px; }
+
+/* (v2.3) admin layout: 8 tabs scroll sideways on phones; "Security & limits" rows */
+.ct-adm-tabs { overflow-x: auto; scrollbar-width: thin; }
+.ct-adm-tabs button { white-space: nowrap; }
+.ct-admin .ct-set { display: flex; flex-direction: column; gap: 12px; }
+.ct-admin .ct-set-filter { max-width: 360px; }
+.ct-admin .ct-set-group > summary { display: flex; align-items: baseline; gap: 8px; cursor: pointer; list-style: none; }
+.ct-admin .ct-set-group > summary h3 { margin: 0; }
+.ct-admin .ct-set-list { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.ct-admin .ct-set-row { border-top: 1px solid var(--border); padding-top: 8px; }
+.ct-admin .ct-set-row.locked { opacity: 0.8; }
+.ct-admin .ct-set-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.ct-admin .ct-set-row p { margin: 4px 0; }
+.ct-admin .ct-set-ctl { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.ct-admin .ct-set-ctl input:not([type='checkbox']), .ct-admin .ct-set-ctl select { flex: 0 1 220px; min-width: 0; }
+.ct-admin .ct-set-switch { display: inline-flex; gap: 6px; align-items: center; }
+@media (max-width: 640px) { .ct-admin .ct-set-ctl input:not([type='checkbox']), .ct-admin .ct-set-ctl select { flex: 1 1 100%; } }

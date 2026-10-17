@@ -1,4 +1,7 @@
-// Real room occupancy -> public snapshot -> the actual Phaser sign text and its drawn bounds.
+// Real room occupancy -> public snapshot -> the actual Phaser door board and its drawn bounds.
+// (v2.2.1 merge) Isaac's spec, adapted to v2.2's boards: occupants are character TOKENS (name on
+// hover), at most MAX_ICONS (4) of them, then a "+N" badge; the owner's name is a separate callout.
+// So "every occupant is kept" = the shown tokens + the badge count always add up to everyone inside.
 import { expect, test } from '@playwright/test';
 import { townLayout } from '../../packages/assets/src/index';
 import type { PlayerGameView } from '../../packages/protocol/src/index';
@@ -21,8 +24,15 @@ test('house signs keep every occupant as players enter and leave', async ({ brow
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   const tap = new FrameTap('Sign reader', page);
-  type SignText = { text: string; visible: boolean; bounds: { x: number; y: number; width: number; height: number } };
-  const signs = () => page.evaluate(() => (window as any).__ctCamera?.doorBoards()) as Promise<Record<string, SignText[]>>;
+  type Board = { tokens: string[]; badge: string | null; visible: boolean; rect: { x: number; y: number; w: number; h: number } };
+  const signs = () => page.evaluate(() => (window as any).__ctCamera?.doorBoards()) as Promise<Record<string, Board>>;
+  const MAX = 4;
+  /** What a board must show for these occupants (server order = arrival order here). */
+  const expectShown = (names: string[]) => ({ tokens: names.slice(0, MAX), badge: names.length > MAX ? `+${names.length - MAX}` : null });
+  const shownOf = async (houseId: string) => {
+    const b = (await signs())?.[houseId];
+    return b ? { tokens: b.tokens, badge: b.badge } : null;
+  };
   try {
     const id = await st!.createLobby('House signs', 15, true);
     await st!.join(id, 'storyteller');
@@ -48,26 +58,25 @@ test('house signs keep every occupant as players enter and leave', async ({ brow
         await expect(page.locator('.ct-inside-leave')).toBeVisible();
         await page.locator('.ct-inside-leave').click();
         await expect(page.locator('.ct-inside-leave')).toBeHidden();
-        // Each arrival must retain the earlier names; the fifth must not be hidden by an icon cap.
+        // Each arrival keeps the earlier ones: tokens for the first four, then "+N" for the rest.
         for (let n = 1; n <= guests.length; n++) {
           st!.send('st:command', { type: 'teleport', who: [guests[n - 1]!.seat], to: { kind: 'building', buildingId: house.id } });
-          const expected = guests.slice(0, n).map((p) => p.name).join('\n');
-          await expect.poll(async () => (await signs())?.[house.id]?.at(-1)?.text).toBe(expected);
-          const card = (await signs())[house.id]!.at(-1)!;
-          const zoom = await page.evaluate(() => (window as any).__ctCamera.view().zoom);
-          expect(card.visible).toBe(true);
-          // A list whose lines overlap can contain every name yet only show the last one.
-          expect(card.bounds.height * zoom).toBeGreaterThanOrEqual(n * 10);
+          const names = guests.slice(0, n).map((p) => p.name);
+          await expect.poll(() => shownOf(house.id)).toEqual(expectShown(names));
+          const board = (await signs())[house.id]!;
+          expect(board.visible).toBe(true);
+          expect(board.tokens.length + (board.badge ? Number(board.badge.slice(1)) : 0)).toBe(n);
         }
         await page.screenshot({ path: info.outputPath(`${house.id}-occupied.png`) });
-        // Leave through the real door, then re-enter; it must not replace the other guests.
+        // Leave through the real door, then re-enter: the count follows, nobody else is replaced.
         const leaver = visitors.find((bot) => bot.pid === guests[1]!.pid)!;
         leaver.send('world:useDoor', { buildingId: house.id });
-        await expect.poll(async () => (await signs())[house.id]?.at(-1)?.text).toBe(guests.filter((_, i) => i !== 1).map((p) => p.name).join('\n'));
+        await expect.poll(async () => (await shownOf(house.id))?.badge).toBe(`+${guests.length - 1 - MAX}`);
+        expect((await shownOf(house.id))!.tokens).not.toContain(guests[1]!.name);
         leaver.send('world:useDoor', { buildingId: house.id });
-        await expect.poll(async () => (await signs())[house.id]?.at(-1)?.text).toBe(guests.map((p) => p.name).join('\n'));
+        await expect.poll(async () => (await shownOf(house.id))?.badge).toBe(`+${guests.length - MAX}`);
         st!.send('st:command', { type: 'teleport', who: guests.map((p) => p.seat), to: { kind: 'square' } });
-        await expect.poll(async () => (await signs())[house.id]?.map((t) => t.text)).toEqual([players.find((p) => p.seat === index)!.name]);
+        await expect.poll(() => shownOf(house.id)).toBeNull();
       });
     }
 
@@ -78,13 +87,13 @@ test('house signs keep every occupant as players enter and leave', async ({ brow
     await page.locator('.ct-inside-leave').click();
     await expect(page.locator('.ct-inside-leave')).toBeHidden();
     await page.setViewportSize({ width: 390, height: 844 });
-    await expect.poll(async () => (await signs())[house.id]?.at(-1)?.text).toBe(guests.map((p) => p.name).join('\n'));
+    await expect.poll(async () => (await shownOf(house.id))?.badge).toBe(`+${guests.length - MAX}`);
     await page.waitForTimeout(500);
-    const card = (await signs())[house.id]!.at(-1)!;
-    const box = await page.evaluate(({ x, y, width, height }) => {
+    const card = (await signs())[house.id]!;
+    const box = await page.evaluate(({ x, y, w, h }) => {
       const cam = (window as any).__ctCamera;
-      return { ...cam.worldToScreen(x, y), width: width * cam.view().zoom, height: height * cam.view().zoom };
-    }, card.bounds);
+      return { ...cam.worldToScreen(x, y), width: w * cam.view().zoom, height: h * cam.view().zoom };
+    }, card.rect);
     expect(box.x).toBeGreaterThanOrEqual(0);
     expect(box.y).toBeGreaterThanOrEqual(0);
     expect(box.x + box.width).toBeLessThanOrEqual(390);
@@ -94,15 +103,17 @@ test('house signs keep every occupant as players enter and leave', async ({ brow
     // The roster still follows the server's public visibility rules.
     st!.send('st:command', { type: 'teleport_self', to: { kind: 'building', buildingId: house.id } });
     await expect.poll(() => st!.location).toBe(`bld:${house.id}`);
-    expect((await signs())[house.id]!.at(-1)!.text).toBe(guests.map((p) => p.name).join('\n'));
+    // the Storyteller is never on a board
+    await page.waitForTimeout(500);
+    expect((await shownOf(house.id))?.badge).toBe(`+${guests.length - MAX}`);
     st!.send('st:command', { type: 'set_setting', settings: { doorTags: false } });
-    await expect.poll(async () => (await signs())[house.id]?.length).toBe(1);
+    await expect.poll(() => shownOf(house.id)).toBeNull();
     st!.send('st:command', { type: 'set_setting', settings: { doorTags: true } });
-    await expect.poll(async () => (await signs())[house.id]?.at(-1)?.text).toBe(guests.map((p) => p.name).join('\n'));
+    await expect.poll(async () => (await shownOf(house.id))?.badge).toBe(`+${guests.length - MAX}`);
     st!.send('st:command', { type: 'random_setup' });
     st!.send('st:command', { type: 'force_phase', to: 'night' });
     await tap.until(() => tap.last('game:view')?.phase === 'first_night');
-    await expect.poll(async () => Object.values(await signs()).flat().length).toBe(0);
+    await expect.poll(async () => Object.keys(await signs()).length).toBe(0);
     expect(errors).toEqual([]);
   } finally {
     await ctx.close();

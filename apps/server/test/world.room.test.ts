@@ -193,9 +193,10 @@ describe('night edge cases through the real GameRoom (world-audit)', () => {
       expect(new Set(qs), p.pid).toEqual(new Set([canonical]));
       expect(new Set(bs), p.pid).toEqual(new Set([canonical]));
       // and at the same fixed cadence (SNAPSHOT_HZ), independent of what the ST did
+      // (v2.2 WP4: a still home gets the compact stream's 2 Hz keepalive/keyframes, so allow the
+      // +-1 frame a window boundary can add or drop.)
       const rq = qs.length / quietDur;
-      const rb = bs.length / busyDur;
-      expect(Math.abs(rb - rq) / rq, `${p.pid} snapshot rate`).toBeLessThan(0.3);
+      expect(Math.abs(bs.length - rq * busyDur), `${p.pid} snapshot rate`).toBeLessThan(Math.max(0.3 * rq * busyDur, 1.5));
     }
 
     // ---- reconnect at night: drop seat 3, reconnect with a fresh ticket -> own home, own view only

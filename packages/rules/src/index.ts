@@ -34,6 +34,7 @@ export {
   type SetupCounts,
   type Assignment,
 } from './setup.js';
+export { storylineBag, dealBag, presetAssignment, type BagDealOptions } from './presets.js';
 export {
   ROLES,
   FIRST_NIGHT_ORDER,
@@ -88,3 +89,4 @@ export {
   type CustomScript,
   type CustomScriptValidation,
 } from './customScript.js';
+export { commandLabel } from './labels.js';

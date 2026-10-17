@@ -3,7 +3,7 @@
 // so tests exercise the same HTTP stack as production.
 import http from 'node:http';
 import path from 'node:path';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import express from 'express';
 import { Server, matchMaker } from '@colyseus/core';
 import { WebSocketTransport } from '@colyseus/ws-transport';
@@ -11,6 +11,11 @@ import type { AppConfig } from './config.js';
 import type { Logger } from './rooms/modules.js';
 import { createServices, registerHttpRoutes, type ServiceOptions, type Services } from './services.js';
 import { GameRoom } from './rooms/GameRoom.js';
+import { securityHeaders } from './securityHeaders.js';
+import { registerInternalRoutes } from './guard/internal.js';
+import { installSocketBudget, type RawSocketServer } from './guard/socketBudget.js';
+import { getHostLimits, onHostLimitsChange, type HostLimits } from './guard/hostLimits.js';
+import { staticQueryGuard } from './cost/staticQuery.js';
 
 export interface RunningServer {
   port: number;
@@ -28,20 +33,6 @@ export interface AppServerOptions extends ServiceOptions {
   greet?: boolean;
 }
 
-const CSP = [
-  "default-src 'self'",
-  "script-src 'self'",
-  "style-src 'self'",
-  "img-src 'self' data: blob:",
-  "media-src 'self' blob:",
-  "font-src 'self'",
-  "connect-src 'self' wss://*.livekit.cloud https://*.livekit.cloud",
-  "worker-src 'self' blob:",
-  "object-src 'none'",
-  "base-uri 'none'",
-  "form-action 'self'",
-  "frame-ancestors 'none'",
-].join('; ');
 
 /**
  * SR-1: Colyseus reads /matchmake request bodies into memory without a size limit (and before
@@ -118,61 +109,128 @@ export async function startAppServer(config: AppConfig, log: Logger, options: Ap
   app.disable('x-powered-by');
   // Funnel / SSH forwarding terminate on loopback; trust only loopback proxies.
   app.set('trust proxy', 'loopback');
-  const https = config.publicOrigin.startsWith('https://');
-  app.use((_req, res, next) => {
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('Referrer-Policy', 'same-origin');
-    res.setHeader('X-Frame-Options', 'DENY');
-    // SR-7: strict CSP (verified against the built client incl. Phaser + Colyseus; LiveKit
-    // signalling/API on *.livekit.cloud). Fonts/images must be self-hosted.
-    res.setHeader('Content-Security-Policy', CSP);
-    res.setHeader('Permissions-Policy', 'camera=(), geolocation=(), payment=(), microphone=(self)');
-    if (https) res.setHeader('Strict-Transport-Security', 'max-age=31536000');
-    next();
-  });
+  // SR-7 + v2.3 WEB-2/3/4: CSP (LiveKit pinned to LIVEKIT_URL), COOP/CORP, Permissions-Policy, HSTS.
+  // Trusted Types (WEB-2): verified by tests/security/web-tt.test.ts against the built client.
+  app.use(securityHeaders({ publicOrigin: config.publicOrigin, livekitUrl: config.livekit.url, trustedTypes: () => services.settings.get<boolean>('web.trustedTypes') })); // (v2.3 sec-ops) live admin setting
   app.use(express.json({ limit: '32kb' }));
-  app.get('/healthz', (_req, res) => {
-    res.json({ ok: true, env: config.env, version });
-  });
-  // Host-only: lets the deploy script refuse to restart prod mid-game (games live in memory).
-  // Requests through the tunnel carry X-Forwarded-For (req.ip = the real client), so they get 404.
-  app.get('/internal/active-games', (req, res) => {
-    const loopback = req.ip === '127.0.0.1' || req.ip === '::1' || req.ip === '::ffff:127.0.0.1';
-    if (!loopback || req.headers['x-forwarded-for'] || req.headers['cf-connecting-ip']) {
-      res.status(404).json({ error: 'not_found', message: 'No such route' });
-      return;
-    }
-    const activeGames = services.directory.list().filter((l) => l.phase !== 'waiting' && l.phase !== 'finished').length;
-    res.json({ activeGames });
+  // v2.3 HOST-07: public /healthz is `{ok:true}` only; the exact version and the deploy guard's
+  // active-game count are on loopback-only /internal/* routes (404 through the tunnel).
+  registerInternalRoutes(app, {
+    env: config.env,
+    version,
+    activeGames: () => services.directory.list().filter((l) => l.phase !== 'waiting' && l.phase !== 'finished').length,
   });
 
   registerHttpRoutes(app, services);
 
-  // Static SPA. Unknown non-API GETs fall back to index.html so /lobby/<id> share links work.
+  // Standalone static demos (e.g. the pixel3d art demo at /v3-art-demo/), synced into DEMOS_DIR
+  // separately from releases (ported from deploy/v3-art-demo f1bad49). Only allow-listed names are
+  // served; they get their own CSP (WebGL demo, module scripts from 'self', inline styles for its UI;
+  // it replaces the app CSP set above for these paths only) and are always revalidated.
+  const DEMOS = ['v3-art-demo'];
+  const DEMO_CSP = [
+    "default-src 'self'",
+    "script-src 'self'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob:",
+    "media-src 'self' blob:",
+    "font-src 'self' data:",
+    "connect-src 'self'",
+    "worker-src 'self' blob:",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'none'",
+    "frame-ancestors 'none'",
+  ].join('; ');
+  if (config.demosDir) {
+    for (const name of DEMOS) {
+      const dir = path.resolve(config.demosDir, name);
+      app.use(`/${name}`, (_req, res, next) => {
+        if (!existsSync(dir)) return next();
+        res.setHeader('Content-Security-Policy', DEMO_CSP);
+        res.setHeader('Cache-Control', 'no-cache');
+        next();
+      });
+      app.use(`/${name}`, express.static(dir, { index: 'index.html', redirect: true, cacheControl: false, dotfiles: 'ignore' }));
+    }
+  }
+
+  // Static SPA (v2.2 WP6). Cache policy:
+  // - /assets/* are Vite's content-hashed outputs: immutable for a year (Cloudflare keeps the
+  //   longer origin TTL). The deploy keeps the previous release's assets for one more release so
+  //   open tabs can still lazy-load their old chunks.
+  // - other public/ files (/landing, /audio, /tutorial, /art, favicon) keep their names across
+  //   releases: one day, then served stale for up to a week while revalidating (ETag).
+  //   JSON manifests and index.html are always revalidated.
+  // - Unknown paths fall back to index.html only for navigations (no file extension, HTML
+  //   acceptable) so /lobby/<id> share links work; a missing file (e.g. an old chunk) is a real,
+  //   uncacheable 404 instead of an HTML page that the edge would cache under a .js URL.
+  // /api, /healthz, /matchmake and /internal never reach these handlers' caching.
   if (clientDist && existsSync(clientDist)) {
-    app.use(express.static(clientDist, { index: false, maxAge: '1h' }));
-    app.get(/^(?!\/(api|healthz|matchmake|internal)\b).*/, (_req, res) => {
-      res.setHeader('Cache-Control', 'no-cache');
-      res.sendFile(path.join(clientDist, 'index.html'));
+    const root = path.resolve(clientDist); // serve-static hands setHeaders absolute paths
+    const assetsDir = path.join(root, 'assets') + path.sep;
+    const indexHtml = path.join(root, 'index.html');
+    // Link previews (Open Graph / Twitter card) need absolute URLs, so index.html carries a
+    // %PUBLIC_ORIGIN% placeholder that is filled from APP_PUBLIC_ORIGIN when served (no host is
+    // baked into the client build). Read once; a deploy restarts the server.
+    const indexBody = readFileSync(indexHtml, 'utf8').replaceAll('%PUBLIC_ORIGIN%', config.publicOrigin);
+    app.use(staticQueryGuard(root)); // (v2.3 VOICE-12) no cache-busting query strings on static files
+    app.use(
+      express.static(root, {
+        index: false,
+        cacheControl: false,
+        setHeaders(res, filePath) {
+          let cc: string;
+          if (filePath.startsWith(assetsDir)) cc = 'public, max-age=31536000, immutable';
+          else if (filePath === indexHtml || filePath.endsWith('.json')) cc = 'no-cache';
+          else cc = 'public, max-age=86400, stale-while-revalidate=604800';
+          res.setHeader('Cache-Control', cc);
+        },
+      }),
+    );
+    const notOurs = /^\/(api|healthz|matchmake|internal)\b/;
+    app.use((req, res, next) => {
+      if ((req.method !== 'GET' && req.method !== 'HEAD') || notOurs.test(req.path)) return next();
+      const navigation = !path.posix.extname(req.path) && !req.path.startsWith('/assets/') && req.accepts('html') === 'html';
+      if (navigation) {
+        res.setHeader('Cache-Control', 'no-cache');
+        res.type('html').send(indexBody);
+        return;
+      }
+      res.setHeader('Cache-Control', 'no-store');
+      res.status(404).type('text/plain').send('Not found');
     });
   } else if (clientDist) {
     log.warn('client dist not found; API-only mode', { clientDist });
   }
 
   const server = http.createServer(app);
+  // v2.3 HOST-09: tighter than Node's defaults (60 s / 300 s). WS upgrades and SSE responses are not
+  // subject to requestTimeout (it bounds receiving the request only).
+  // Live settings (guard/hostLimits.ts): re-applied on change; timeouts affect new connections.
+  const applyHttpLimits = (l: HostLimits) => {
+    server.headersTimeout = l.httpHeadersTimeoutMs;
+    server.requestTimeout = l.httpRequestTimeoutMs;
+    server.maxConnections = l.httpMaxConnections;
+  };
+  applyHttpLimits(getHostLimits());
+  const offHttpLimits = onHostLimitsChange(applyHttpLimits);
+  const transport = new WebSocketTransport({
+    server,
+    pingInterval: 5000,
+    pingMaxRetries: 3,
+    // (v2, notebook — CONTRACT-REQUEST for lead review) was 4096: one 'notebook:save' frame carries a
+    // whole private notebook (NOTEBOOK_MAX_BYTES = 20 KiB of JSON + msgpack framing). Every message
+    // is still Zod-capped per field and token-bucket rate-limited per pid.
+    maxPayload: 24 * 1024,
+    // (No verifyClient pre-check: rejecting at the HTTP upgrade breaks colyseus.js's reconnect
+    // retry after a network drop. Seat reservations are still enforced by the transport, and the
+    // rate-limited logger below absorbs the log noise from junk upgrades — SR-4.)
+  });
+  // v2.3 HOST-11: per-socket frame/byte budget, metered before Colyseus decodes anything.
+  installSocketBudget((transport as unknown as { wss: RawSocketServer }).wss, log);
   const gameServer = new Server({
-    transport: new WebSocketTransport({
-      server,
-      pingInterval: 5000,
-      pingMaxRetries: 3,
-      // (v2, notebook — CONTRACT-REQUEST for lead review) was 4096: one 'notebook:save' frame carries a
-      // whole private notebook (NOTEBOOK_MAX_BYTES = 20 KiB of JSON + msgpack framing). Every message
-      // is still Zod-capped per field and token-bucket rate-limited per pid.
-      maxPayload: 24 * 1024,
-      // (No verifyClient pre-check: rejecting at the HTTP upgrade breaks colyseus.js's reconnect
-      // retry after a network drop. Seat reservations are still enforced by the transport, and the
-      // rate-limited logger below absorbs the log noise from junk upgrades — SR-4.)
-    }),
+    transport,
     greet,
     logger: colyseusLogger(log),
   });
@@ -191,6 +249,7 @@ export async function startAppServer(config: AppConfig, log: Logger, options: Ap
     services,
     gameServer,
     async close() {
+      offHttpLimits();
       await gameServer.gracefullyShutdown(false).catch(() => undefined);
       await services.close();
     },

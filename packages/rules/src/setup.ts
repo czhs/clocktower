@@ -1,5 +1,6 @@
 import {
   CHARACTER_INFO,
+  TB_DISTRIBUTION,
   charactersOfScript,
   isSeatedType,
   type CharacterId,
@@ -25,23 +26,11 @@ const TYPE_LABEL: Partial<Record<string, string>> = {
 };
 
 /**
- * Base distribution by player count. The three official scripts share this table; characters
- * change it through their own `setupModifier` hook (Baron: +2 Outsiders, and the Bad Moon Rising /
- * Sects & Violets equivalents).
+ * Base distribution by player count. The three official scripts share this table (it lives in
+ * @ct/protocol storylines.ts so the client can use it); characters change it through their own
+ * `setupModifier` hook (Baron: +2 Outsiders, and the Bad Moon Rising / Sects & Violets equivalents).
  */
-export const SETUP_TABLE: Readonly<Record<number, SetupCounts>> = {
-  5: { townsfolk: 3, outsiders: 0, minions: 1, demons: 1 },
-  6: { townsfolk: 3, outsiders: 1, minions: 1, demons: 1 },
-  7: { townsfolk: 5, outsiders: 0, minions: 1, demons: 1 },
-  8: { townsfolk: 5, outsiders: 1, minions: 1, demons: 1 },
-  9: { townsfolk: 5, outsiders: 2, minions: 1, demons: 1 },
-  10: { townsfolk: 7, outsiders: 0, minions: 2, demons: 1 },
-  11: { townsfolk: 7, outsiders: 1, minions: 2, demons: 1 },
-  12: { townsfolk: 7, outsiders: 2, minions: 2, demons: 1 },
-  13: { townsfolk: 9, outsiders: 0, minions: 3, demons: 1 },
-  14: { townsfolk: 9, outsiders: 1, minions: 3, demons: 1 },
-  15: { townsfolk: 9, outsiders: 2, minions: 3, demons: 1 },
-};
+export const SETUP_TABLE: Readonly<Record<number, SetupCounts>> = TB_DISTRIBUTION;
 
 /**
  * Distribution for `n` players after every in-play character's setup modifier.
@@ -138,7 +127,12 @@ function believerOf(chars: readonly CharacterId[]): CharacterId | null {
   return chars.find((c) => ROLES[c]?.believesOther) ?? null;
 }
 
-function pickRedHerring(rng: Rng, bySeat: Map<number, CharacterId>): number | null {
+/** A Trouble Brewing Drunk's believed Townsfolk (used by the storyline presets). */
+export function pickDrunkBelief(rng: Rng, chars: readonly CharacterId[]): CharacterId {
+  return pickBelief(rng, chars, DEFAULT_SCRIPT, 'drunk');
+}
+
+export function pickRedHerring(rng: Rng, bySeat: Map<number, CharacterId>): number | null {
   const good = [...bySeat.entries()].filter(([, c]) => CHARACTER_INFO[c].alignment === 'good').map(([s]) => s);
   return good.length ? pick(rng, good) : null;
 }
@@ -156,7 +150,7 @@ function pickBluffs(
 }
 
 /** Any in-play character that needs a falsely-registering good player (Fortune Teller). */
-function needsRedHerring(bySeat: Map<number, CharacterId>, believes: CharacterId | null): boolean {
+export function needsRedHerring(bySeat: Map<number, CharacterId>, believes: CharacterId | null): boolean {
   const chars = [...bySeat.values(), ...(believes ? [believes] : [])];
   return chars.some((c) => ROLES[c]?.wantsRedHerring);
 }

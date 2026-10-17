@@ -148,9 +148,9 @@ describe('SR-ERR: production error responses', () => {
     expect(logLines()).toBe(before);
   });
 
-  it('/healthz exposes only ok/env/version', async () => {
+  it('/healthz exposes only ok (v2.3 HOST-07: env/version moved to loopback-only /internal/version)', async () => {
     const r = await raw('GET', '/healthz');
-    expect(Object.keys(JSON.parse(r.body)).sort()).toEqual(['env', 'ok', 'version']);
+    expect(Object.keys(JSON.parse(r.body)).sort()).toEqual(['ok']);
   });
 
   it('security headers present on SPA and API responses', async () => {

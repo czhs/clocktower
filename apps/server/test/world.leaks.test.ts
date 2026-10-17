@@ -7,10 +7,13 @@
 // ordered per-member stream. Two runs that differ ONLY in what the Storyteller does at night
 // (visits, prompts, info, walking around) must produce byte-identical streams for every player
 // the ST did not visit (snapshot `t` zeroed).
+// (v2.2, WP4) Each member's snapshots also go through a per-member SnapshotEncoder exactly as the
+// room does for 'world:snap2' clients; those frames land in the same stream (before the snapshot of
+// the same tick) and must be byte-identical too (they carry the real, deterministic fake-clock `t`).
 import { describe, expect, it } from 'vitest';
 import { townLayout } from '@ct/assets';
 import type { CharacterId, PlayerGameView, StCommand, StorytellerGameView } from '@ct/protocol';
-import { tileCenterPx } from '@ct/protocol';
+import { isBlockedPx, SnapshotEncoder, tileCenterPx } from '@ct/protocol';
 import { MemoryVoiceUsageStore } from '@ct/voice';
 import { createGameModule } from '../src/game/index.js';
 import { createVoiceModule } from '../src/voice/index.js';
@@ -45,6 +48,8 @@ async function build(): Promise<Rig> {
     roomService: { removeParticipant: async () => undefined, listParticipants: async () => [] },
     usage: new MemoryVoiceUsageStore(),
     monthlyMinutes: 1_000_000,
+    limits: { autoOptIn: true, idleMs: 0, waitingMaxMs: 0 }, // (v2.3 VOICE-4/7) grants for every member, as before
+    roomEpochs: false, // (v2.3 VOICE-9) random room epochs would differ between the two compared runs
   });
   host.setModules({ game, world, voice });
   host.emit({ type: 'member_joined', pid: 'st' });
@@ -57,6 +62,7 @@ async function build(): Promise<Rig> {
     'st',
   );
   const lastView = new Map<string, string>();
+  const encoders = new Map<string, SnapshotEncoder>();
   const push = (pid: string, type: string, payload: unknown) => {
     const list = host.sent.get(pid) ?? [];
     list.push({ type: type as never, payload: JSON.parse(JSON.stringify(payload)) });
@@ -89,7 +95,11 @@ async function build(): Promise<Rig> {
           lastView.set(m.pid, json);
           push(m.pid, 'game:view', v);
         }
-        push(m.pid, 'world:snapshot', { ...world.snapshotFor(m.pid), t: 0 });
+        const snap = world.snapshotFor(m.pid);
+        const enc = encoders.get(m.pid) ?? encoders.set(m.pid, new SnapshotEncoder()).get(m.pid)!;
+        const frame = enc.encode(snap);
+        if (frame) push(m.pid, 'world:snap2', frame);
+        push(m.pid, 'world:snapshot', { ...snap, t: 0 });
       }
     },
     streams() {
@@ -103,6 +113,15 @@ async function build(): Promise<Rig> {
 }
 
 const noop: Step = () => undefined;
+
+/** (v2.2 walkable interiors) A player takes a small step inside their own home at night (any free direction). */
+const homeStep =
+  (pid: string, seq: number): Step =>
+  (r) => {
+    const p = r.world.positionOf(pid)!;
+    const to = [[4, 0], [-4, 0], [0, -4], [0, 4]].map(([dx, dy]) => ({ x: p.x + dx!, y: p.y + dy! })).find((q) => !isBlockedPx(townLayout, q.x, q.y))!;
+    r.world.handleMove(pid, { seq, x: to.x, y: to.y, facing: 'left', moving: true });
+  };
 
 async function run(night: Step[]): Promise<Map<string, string[]>> {
   const r = await build();
@@ -154,9 +173,13 @@ const busyNight: Step[] = [
   (r) => r.st({ type: 'visit_home', seat: 1 }), // a second visit to the same home
   (r) => r.st({ type: 'prompt_player', seat: 1, prompt: { kind: 'acknowledge', title: 'Sleep well.' } }),
   (r) => r.st({ type: 'visit_home', seat: 2 }), // mid-prompt: leaves seat 1 with an open prompt
+  homeStep('p1', 1), // (v2.2) the visited player walks about at home: only the ST (now away) and p1 may see it
+  homeStep('p2', 1), // ... and the player the ST is with right now
   (r) => r.st({ type: 'set_travel_speed', mult: 1 }),
+  homeStep('p3', 1), // a non-visited player walks about at home in both runs (identical, seen by nobody else)
+  homeStep('p3', 2),
 ];
-const quietNight: Step[] = busyNight.map(() => noop);
+const quietNight: Step[] = busyNight.map((s, i) => (i >= busyNight.length - 2 ? s : noop));
 const VISITED = new Set(['p1', 'p2']);
 
 describe('night-visit secrecy with the real modules (world-audit)', () => {
@@ -172,8 +195,12 @@ describe('night-visit secrecy with the real modules (world-audit)', () => {
       expect(busy.get(pid)).not.toEqual(quiet.get(pid));
       expect(busy.get(pid)!.some((m) => m === 'sound {"cue":"visit"}')).toBe(true);
       expect(busy.get(pid)!.some((m) => m.startsWith('world:snapshot') && m.includes('"id":"st"'))).toBe(true);
+      expect(busy.get(pid)!.some((m) => m.startsWith('world:snap2') && m.includes('"st"'))).toBe(true);
     }
     expect(quiet.get('p1')!.some((m) => m.includes('"cue":"visit"'))).toBe(false);
+    // (v2.2) the in-house steps were real accepted moves (acked), not corrections
+    for (const s of [quiet, busy]) expect(s.get('p3')!.some((m) => m.startsWith('world:snapshot') && m.includes('"ackSeq":2'))).toBe(true);
+    expect(busy.get('p3')!.some((m) => m.includes('"reason":"correction"'))).toBe(false);
   });
 
   it('nothing a non-visited player receives during the night mentions the storyteller or a house other than their own', async () => {
@@ -187,6 +214,7 @@ describe('night-visit secrecy with the real modules (world-audit)', () => {
       expect(nightStart).toBeGreaterThan(0);
       for (const m of s.slice(nightStart, dawn)) {
         expect(m, pid).not.toContain('"id":"st"');
+        if (m.startsWith('world:snap2')) expect(m, pid).not.toContain('"st"'); // compact frames: the id string table
         expect(m, pid).not.toContain('"cue":"visit"');
         expect(m.replaceAll(`house-${seat}`, ''), pid).not.toMatch(/house-\d/);
         expect(m, pid).not.toContain('"storytellerVisitingYou":true');

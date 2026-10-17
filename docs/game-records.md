@@ -11,6 +11,10 @@ everyone left, server shut the lobby down) are both recorded.
 - Admin API: `GET /api/admin/games?limit&before&accountId` (list) and
   `GET /api/admin/games/:id[?download=1]` (full JSON). Admin console → **Games** tab (play-by-play +
   Download JSON).
+- Player-facing stats (v2.2): `GET /api/me/stats` (own account only; home screen "Your record").
+  Win/loss, streaks and characters come from `matches`/`match_players` (finished games); the recent
+  list joins `match_records` for abandoned games and lobby names; `match_players.avatar_id`
+  (migration 5) holds the roster character. Abandoned games show only the believed character.
 - **Never in a record:** voice data, chat contents, private notebooks, passphrases, session tokens,
   cookies. Display names are copied **as they were** at game start; account ids join with `accounts`.
 
@@ -114,8 +118,9 @@ interface GameRecordV1 {
   exactly what the player was shown.
 - `PromptRecord`: `{id, seat, kind, title, body?, min/maxTargets?, characterOptions?, stepId,
   response {at, seats?, character?, yes?} | null}`.
-- `setup`: `{at, method: 'random' | 'manual' | 'mixed', characters [{seat, character, alignment,
-  believedCharacter}], demonBluffs, redHerringSeat}`.
+- `setup`: `{at, method: 'random' | 'manual' | 'mixed' | 'storyline' | 'bag', storyline?, characters [{seat, character, alignment,
+  believedCharacter}], demonBluffs, redHerringSeat}`. (v2.2) `storyline` = `deal_preset` (with `storyline`
+  = its id, kept when the seats are then re-assigned by hand: `mixed`); `bag` = `deal_bag`.
 
 ### Result
 

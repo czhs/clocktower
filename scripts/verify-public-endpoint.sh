@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Verify the PUBLIC production endpoint from outside hshi-u1 (read-only + one WSS upgrade), and
+# Verify the PUBLIC production endpoint from outside the host (read-only + one WSS upgrade), and
 # verify the dev service is not exposed.
 #
 #   scripts/verify-public-endpoint.sh [public-url] [--expect-version <sha>] [--resolver <ip>]
@@ -14,7 +14,8 @@
 # Checks
 #   1. public DNS A record
 #   2. TLS: certificate valid for the name (curl verifies the chain) + subject/issuer/expiry
-#   3. GET /healthz -> ok, env=production (+ version if given); CDN headers reported
+#   3. GET /healthz -> {ok:true} only (no env/version); /internal/version 404 publicly; the local
+#      127.0.0.1:3000/internal/version -> env=production (+ version if given); CDN headers reported
 #   4. GET / -> SPA shell; security headers survive the proxy (nosniff, X-Frame-Options)
 #   5. WebSocket Upgrade on the Colyseus path (/<processId>/<roomId>) -> HTTP 101 (WSS works)
 #   6. dev is private:
@@ -38,7 +39,9 @@ done
 URL="${URL%/}"
 NAME=$(sed -E 's#^https?://([^/:]+).*#\1#' <<<"$URL")
 [[ $URL == https://* ]] || { echo "public URL must be https://" >&2; exit 2; }
-SSH_HOST="${CT_HOST:-hshi-u1}"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+. "$ROOT/scripts/lib/ops-env.sh"; ct_load_ops_env "$ROOT"
+SSH_HOST="$(ct_require_host)"
 FAILS=0; SKIPS=0
 pass() { printf '  PASS  %s\n' "$*"; }
 fail() { printf '  FAIL  %s\n' "$*"; FAILS=$((FAILS + 1)); }
@@ -66,10 +69,20 @@ if [[ -n $IP ]]; then
   if curl -sS -o /dev/null --max-time 15 "${RES[@]}" "$URL/healthz"; then pass "TLS certificate valid for $NAME ($CERT)"
   else fail "TLS/HTTPS failed for $NAME via $IP"; fi
   # 3. /healthz -------------------------------------------------------------------------------
+  # v2.3 HOST-07: publicly only {"ok":true}; the exact version is checked on the host's loopback
+  # /internal/version (this script runs on hshi-u1), which must 404 through the tunnel.
   HDR=$(mktemp); H=$(curl -sS --max-time 15 -D "$HDR" "${RES[@]}" "$URL/healthz" 2>&1)
-  if python3 -c 'import json,sys; d=json.loads(sys.argv[1]); sys.exit(0 if d.get("ok") and d.get("env")=="production" and (not sys.argv[2] or d.get("version")==sys.argv[2]) else 1)' "$H" "$EXPECT_VERSION" 2>/dev/null; then
+  if python3 -c 'import json,sys; d=json.loads(sys.argv[1]); sys.exit(0 if d.get("ok") and "version" not in d and "env" not in d else 1)' "$H" 2>/dev/null; then
     pass "/healthz: $H"
-  else fail "/healthz: ${H:0:200} (expected env=production${EXPECT_VERSION:+, version $EXPECT_VERSION})"; fi
+  else fail "/healthz: ${H:0:200} (expected {\"ok\":true} without env/version)"; fi
+  IV=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 "${RES[@]}" "$URL/internal/version" 2>/dev/null)
+  [[ $IV == 404 ]] && pass "/internal/version not reachable publicly (404)" || fail "/internal/version via the tunnel -> $IV (expected 404)"
+  if [[ -n $EXPECT_VERSION ]]; then
+    LV=$(ssh -o BatchMode=yes "$SSH_HOST" "curl -fsS --max-time 5 http://127.0.0.1:${CT_PROD_PORT:-3000}/internal/version" 2>/dev/null)
+    if python3 -c 'import json,sys; d=json.loads(sys.argv[1]); sys.exit(0 if d.get("env")=="production" and d.get("version")==sys.argv[2] else 1)' "$LV" "$EXPECT_VERSION" 2>/dev/null; then
+      pass "local /internal/version: $LV"
+    else fail "local /internal/version: ${LV:-no answer via ssh $SSH_HOST} (expected env=production, version $EXPECT_VERSION)"; fi
+  fi
   CDN=$(tr -d '\r' <"$HDR" | grep -iE '^(server|cf-ray):' | tr '\n' ' ')
   info "edge headers: ${CDN:-none}"
   rm -f "$HDR"
@@ -148,7 +161,7 @@ else
   if [[ -n $FH ]]; then
     FIP=$(dig +short @1.1.1.1 "$FH" A | grep -E '^[0-9.]+$' | head -1)
     B=$(curl -sS --max-time 10 ${FIP:+--resolve "$FH:443:$FIP"} "https://$FH/healthz" 2>/dev/null)
-    [[ $B == *'"env":"production"'* ]] && pass "Funnel https://$FH/healthz: $B" || fail "Funnel https://$FH/healthz: ${B:-no answer}"
+    [[ $B == *'"ok":true'* ]] && pass "Funnel https://$FH/healthz: $B" || fail "Funnel https://$FH/healthz: ${B:-no answer}"
   else skip "Funnel status present but no AllowFunnel host"; fi
 fi
 

@@ -52,6 +52,8 @@ export const matchPlayers = sqliteTable(
     died: integer('died', { mode: 'boolean' }).notNull().default(false),
     nominations: integer('nominations').notNull().default(0),
     ghostVoteUsed: integer('ghost_vote_used', { mode: 'boolean' }).notNull().default(false),
+    /** Migration 5 (v2.2 stats): roster character (Cosmetics.preset) used in this match. */
+    avatarId: text('avatar_id'),
   },
   (t) => [primaryKey({ columns: [t.matchId, t.accountId] })],
 );

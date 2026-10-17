@@ -12,7 +12,7 @@
 //       pinColorHex: { <color>: '#rrggbb' },// swatch colour for UI buttons
 //       pinIcon: { x, y, r, left, top },    // icon disc in the pin frame: centre (x,y), radius r;
 //                                           //   draw icon_<id> at (left, top) of the pin frame
-//       anchors: { pin, pin_shadow, pin_drop, point, ping, icon }: {x,y} each — the pixel that sits
+//       anchors: { pin, pin_shadow, pin_drop, point, ping, icon, nick_face }: {x,y} each — the pixel that sits
 //                on the placement point (pin: the needle tip; pin_shadow / ping / pin_drop: the
 //                ground spot; point: the fist centre; icon: the centre),
 //       fps: { pin_drop, point, ping },
@@ -25,6 +25,7 @@ import { CAST } from '../../src/cast.js';
 import { Img } from '../lib/img.js';
 import { buildIcons, ICON } from './icons.js';
 import { buildPins, DROP_ANCHOR, PIN_ANCHOR, PIN_BASE, PIN_ICON, PIN_SHADOW_ANCHOR } from './pins.js';
+import { buildNickFace, NICK_FACE_ANCHOR, NICK_FACE_CROP_Y, NICK_FACE_NECK } from './nickface.js';
 import { buildPoint, PING_ANCHOR, POINT_CENTER, POINT_DIRS, POINT_SIZE, POINT_VEC } from './point.js';
 import { reviewSheet } from './review.js';
 
@@ -64,6 +65,7 @@ export function buildSocial(castImg: Img, castManifest: unknown, opts: { review?
   const frames: [string, Img][] = [];
   frames.push(...buildPins());
   frames.push(...buildPoint());
+  frames.push(['nick_face', buildNickFace()]);
   for (const c of CAST) frames.push([`icon_${c.id}`, icons.get(c.id)!]);
   const { img, rects } = pack(frames, 256);
   const manifest = {
@@ -82,6 +84,7 @@ export function buildSocial(castImg: Img, castManifest: unknown, opts: { review?
         pin_shadow: PIN_SHADOW_ANCHOR,
         pin_drop: DROP_ANCHOR,
         point: POINT_CENTER,
+        nick_face: NICK_FACE_ANCHOR,
         ping: PING_ANCHOR,
         icon: { x: ICON / 2, y: ICON / 2 },
       },
@@ -95,6 +98,9 @@ export function buildSocial(castImg: Img, castManifest: unknown, opts: { review?
         offset: 14,
       },
       headCrops: crops,
+      // the 'nick-face' emote: hide the avatar frame's rows above cropY, draw nick_face with
+      // anchors.nick_face at feet + neck (world px)
+      nickFace: { cropY: NICK_FACE_CROP_Y, neck: NICK_FACE_NECK },
       place: {
         pin: 'Place-pin: draw pin_shadow (anchor) on the spot, then pin_<color> with anchors.pin on the spot, then icon_<castId> at (pinIcon.left, pinIcon.top) inside the pin frame. Person-pin: same, with the tip ~2 px above the target\'s head (a gentle 1 px bob looks nice; no shadow). Play pin_drop_0..3 once at the spot when a pin lands (fps.pin_drop).',
         point:

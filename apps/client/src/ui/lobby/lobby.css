@@ -76,6 +76,10 @@
 .ct-pick-chip { font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.02em; color: #c9bfd6; padding: 0 5px; border: 1px solid #5d5470; border-radius: 3px; }
 .ct-pick-blurb { font-size: 0.9rem; font-style: italic; line-height: 1.3; color: var(--text); min-height: 2.6em; }
 .ct-pick-state { min-height: 1.3em; }
+/* every character's text in the same cell: the cell takes the tallest, only .ct-pick-shown is visible */
+.ct-pick-text { display: grid; }
+.ct-pick-text > * { grid-area: 1 / 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ct-pick-sizer { visibility: hidden; pointer-events: none; }
 .ct-pick-grid { display: flex; flex-direction: column; gap: 8px; }
 .ct-pick-head { font-size: 0.8rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin: 0 0 4px 2px; }
 .ct-pick-head .muted { text-transform: none; letter-spacing: 0; }
@@ -149,6 +153,12 @@ button.ct-ready-on { border-color: #3d6b3a; color: #bfe0b9; }
 .ct-waiting-tip { margin: 10px 0 0; }
 .ct-share { display: flex; gap: 6px; margin: 10px 0 0; }
 .ct-share input { flex: 1; min-width: 0; font-family: var(--mono); font-size: 0.8rem; }
+.ct-share-code { margin: 10px 0 0; font-size: 0.85rem; }
+.ct-share-code strong { font-family: var(--mono); color: var(--accent); font-weight: normal; letter-spacing: 0.02em; }
+.ct-field > label { font-size: 0.9rem; color: var(--muted); }
+.ct-name-row { display: flex; gap: 6px; }
+.ct-name-row input { flex: 1; min-width: 0; }
+.ct-reroll { flex: none; min-width: 40px; padding: 0 10px; font-size: 1.1rem; line-height: 1; }
 .ct-start { font-size: 1.05rem; }
 .ct-blockers { margin: 8px 0 0; padding-left: 18px; color: var(--muted); font-size: 0.85rem; }
 .ct-waiting-newbie {
@@ -186,3 +196,108 @@ button.ct-ready-on { border-color: #3d6b3a; color: #bfe0b9; }
 .ct-notice { margin-top: 10px; }
 .ct-nudge { animation: ct-nudge 1.6s ease-in-out infinite; }
 @keyframes ct-nudge { 50% { box-shadow: 0 0 0 4px #d5b56a44; } }
+
+/* (v2.1, clock-client) game mode: Storyteller vs Automatic, automatic timings, finder badge */
+.ct-modes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+@media (max-width: 420px) { .ct-modes { grid-template-columns: 1fr; } }
+.ct-mode-opt {
+  position: relative; display: flex; flex-direction: column; gap: 2px; padding: 9px 11px; cursor: pointer;
+  border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel-sunk);
+}
+.ct-mode-opt:hover { border-color: #5a4b70; }
+.ct-mode-opt.on { border-color: var(--accent); background: #2c2418; box-shadow: inset 0 0 0 1px #d5b56a33; }
+.ct-mode-opt.disabled { opacity: 0.6; cursor: default; }
+.ct-mode-opt input { position: absolute; opacity: 0; pointer-events: none; }
+.ct-mode-opt:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ct-mode-title { font-family: var(--font-display); font-size: 1.1rem; color: var(--text); }
+.ct-mode-opt.on .ct-mode-title { color: var(--accent); }
+.ct-mode-sub { font-size: 0.875rem; color: var(--text); }
+.ct-mode-line { font-size: 0.8rem; color: var(--muted); line-height: 1.3; }
+
+.ct-mode-badge { font-size: 0.8rem; line-height: 1.2; padding: 1px 6px; border-radius: 3px; border: 1px solid var(--border); color: var(--muted); }
+.ct-mode-badge-auto { color: #c8d4f6; border-color: #4a5590; background: #232a4a66; }
+
+.ct-mode-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.ct-mode-head h3 { margin-bottom: 6px; }
+.ct-mode-seg { display: inline-flex; margin-bottom: 6px; }
+.ct-mode-seg button { border-radius: 0; padding: 3px 10px; font-size: 0.85rem; min-height: 28px; }
+.ct-mode-seg button:first-child { border-radius: var(--radius) 0 0 var(--radius); }
+.ct-mode-seg button:last-child { border-radius: 0 var(--radius) var(--radius) 0; border-left-width: 0; }
+.ct-mode-seg button.on { background: var(--accent-deep); border-color: var(--accent); color: #f6ecd2; }
+.ct-auto-box { margin-bottom: 10px; }
+.ct-auto-box p { margin: 0 0 6px; line-height: 1.35; }
+
+.ct-timings { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+@media (max-width: 380px) { .ct-timings { grid-template-columns: 1fr; } }
+.ct-timing { display: flex; flex-direction: column; gap: 3px; padding: 6px 8px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel-sunk); }
+.ct-timing-label { font-size: 0.875rem; color: var(--text); display: flex; flex-direction: column; }
+.ct-timing-label small { color: var(--muted); font-size: 0.75rem; }
+.ct-timing-step { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
+.ct-timing-step b { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ct-timing-step button { min-width: 32px; min-height: 30px; padding: 0 8px; font-size: 1rem; }
+
+/* (v2.2 stats) "Your record" on the home screen, under the Lobby finder (StatsPanel.tsx). */
+.ct-home-main { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.ct-rec-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 10px; margin-bottom: 12px; }
+.ct-rec-head h2 { margin: 0; color: var(--accent); font-weight: normal; }
+.ct-rec-badge { font-size: 0.85rem; color: var(--accent); border: 1px solid var(--accent-deep); background: #2d2410; border-radius: 999px; padding: 1px 10px; }
+.ct-rec h3 { margin: 0 0 8px; font-size: 1rem; color: var(--muted); font-family: var(--font); font-weight: normal; letter-spacing: 0.06em; text-transform: uppercase; }
+.ct-rec-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; margin: 0 0 14px; }
+.ct-rec-tile { background: var(--panel-sunk); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; min-height: 72px; box-sizing: border-box; }
+.ct-rec-tile dt { font-size: 0.8rem; color: var(--muted); letter-spacing: 0.04em; text-transform: uppercase; }
+.ct-rec-tile dd { margin: 2px 0 0; display: flex; flex-direction: column; gap: 2px; }
+.ct-rec-value { font-family: var(--font-display); font-size: 1.7rem; line-height: 1.1; color: var(--parchment); font-variant-numeric: tabular-nums; }
+.ct-rec-sub { font-size: 0.8rem; color: var(--muted); }
+.ct-rec-meter { display: block; height: 4px; margin-top: 4px; border-radius: 2px; background: var(--border); overflow: hidden; }
+.ct-rec-meter > span { display: block; height: 100%; background: var(--accent); }
+.ct-rec-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 14px; }
+.ct-rec-block { min-width: 0; }
+.ct-rec-split { display: flex; height: 10px; border-radius: 5px; overflow: hidden; border: 1px solid var(--border); background: var(--panel-sunk); gap: 2px; }
+.ct-rec-split-good { background: var(--good); }
+.ct-rec-split-evil { background: var(--evil); }
+.ct-rec-teams { display: flex; justify-content: space-between; gap: 8px; margin-top: 6px; font-size: 0.9rem; }
+.ct-rec-teams strong { font-weight: 600; }
+.ct-rec-favs { display: flex; flex-wrap: wrap; gap: 8px; }
+.ct-rec-fav { display: flex; align-items: center; gap: 8px; padding: 4px 10px 4px 4px; background: var(--panel-raised); border: 1px solid var(--border); border-radius: var(--radius); min-width: 0; }
+.ct-rec-fav canvas { border-radius: 3px; background: #1a1823; flex: none; }
+.ct-rec-fav > span:last-child { display: flex; flex-direction: column; line-height: 1.2; font-size: 0.9rem; }
+.ct-rec-fav small { font-size: 0.75rem; }
+.ct-rec-recent { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.ct-rec-game { display: flex; align-items: center; gap: 10px; padding: 6px 8px; background: var(--panel-raised); border: 1px solid var(--border); border-left: 3px solid var(--border-strong); border-radius: var(--radius); min-width: 0; }
+.ct-rec-game--won { border-left-color: var(--ok); }
+.ct-rec-game--lost { border-left-color: var(--danger); }
+.ct-rec-game--told { border-left-color: var(--accent); }
+.ct-rec-game-icon { flex: none; width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; }
+.ct-rec-st { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; border: 1px solid var(--accent-deep); color: var(--accent); font-size: 1.1rem; }
+.ct-rec-game-main { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.25; }
+.ct-rec-game-role { font-size: 0.95rem; }
+.ct-rec-game-meta { font-size: 0.8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ct-rec-game-end { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; font-size: 0.75rem; }
+.ct-rec-pill { padding: 0 8px; border-radius: 999px; border: 1px solid var(--border-strong); font-size: 0.75rem; line-height: 1.5; color: var(--muted); }
+.ct-rec-pill--won { color: var(--ok); border-color: #3d6b3a; }
+.ct-rec-pill--lost { color: var(--danger); border-color: #6b3a32; }
+.ct-rec-pill--told { color: var(--accent); border-color: var(--accent-deep); }
+.ct-rec-empty { display: flex; gap: 12px; align-items: center; padding: 12px; background: var(--panel-sunk); border: 1px dashed var(--border-strong); border-radius: var(--radius); }
+.ct-rec-empty p { margin: 0; }
+.ct-rec-error { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; }
+.ct-rec-skeleton .ct-rec-tile { min-height: 72px; }
+.ct-rec-line { height: 14px; border-radius: 3px; margin-top: 10px; }
+.ct-rec-shimmer { background: linear-gradient(90deg, var(--panel-sunk) 0%, var(--panel-raised) 50%, var(--panel-sunk) 100%); background-size: 200% 100%; border: 1px solid var(--border); }
+@media (prefers-reduced-motion: no-preference) { .ct-rec-shimmer { animation: ct-rec-shimmer 1.4s ease-in-out infinite; } }
+@keyframes ct-rec-shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+@media (max-width: 420px) { .ct-rec-tiles { grid-template-columns: repeat(2, 1fr); } .ct-rec-value { font-size: 1.45rem; } }
+
+/* (v2.3 AUTH-5/6) home-screen Account section */
+.ct-account-panel .ct-row { gap: 8px; flex-wrap: wrap; align-items: center; }
+.ct-account-delete { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.ct-account-delete label { display: flex; flex-direction: column; gap: 4px; }
+.ct-account-delete label:has(input[type='checkbox']) { flex-direction: row; align-items: center; gap: 6px; }
+
+/* (v2.3 OPS-6) moderation: report dialog, removed list, chat filter, in-game "People" button */
+.ct-report-form { display: flex; flex-direction: column; gap: 10px; }
+.ct-report-form label { display: flex; flex-direction: column; gap: 4px; }
+.ct-report-form textarea { resize: vertical; }
+.ct-modal .ct-actions { flex-direction: row; justify-content: flex-end; }
+.ct-modal .ct-actions > button { width: auto; }
+.ct-removed { margin: 6px 0; }
+.ct-chat-filter { display: flex; align-items: center; gap: 8px; margin: 6px 0; }

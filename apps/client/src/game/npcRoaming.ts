@@ -23,11 +23,23 @@ export function createNpcRoamer(home: NpcPoint, seed: number): NpcRoamer {
 const distance = (a: NpcPoint, b: NpcPoint) => Math.hypot(a.x - b.x, a.y - b.y);
 const inRange = (n: NpcRoamer, p: NpcPoint) => distance(n.home, p) <= NPC_ROAM_RADIUS;
 
-/** Step a bounded wanderer; returns its actual displacement for the facing/walk animation. */
-export function stepNpcRoamer(n: NpcRoamer, dt: number, now: number, brianbis: readonly NpcPoint[], clear: ClearPath): NpcPoint {
-  const start = { x: n.x, y: n.y };
-  const nearest = [...brianbis].sort((a, b) => distance(n, a) - distance(n, b))[0];
-  const avoiding = !!nearest && distance(n, nearest) < (n.avoiding ? CALM_RADIUS : NPC_NOTICE_RADIUS);
+/** Scratch point for the per-frame step (the town calls this every frame: no allocations there). */
+const scratch: NpcPoint = { x: 0, y: 0 };
+
+/**
+ * Step a bounded wanderer; returns its actual displacement for the facing/walk animation (written
+ * into `out` when given, so the per-frame caller allocates nothing).
+ */
+export function stepNpcRoamer(n: NpcRoamer, dt: number, now: number, brianbis: readonly NpcPoint[], clear: ClearPath, out: NpcPoint = { x: 0, y: 0 }): NpcPoint {
+  const sx = n.x;
+  const sy = n.y;
+  let nearest: NpcPoint | undefined;
+  let nd = Infinity;
+  for (const b of brianbis) {
+    const d = distance(n, b);
+    if (d < nd) (nd = d), (nearest = b);
+  }
+  const avoiding = !!nearest && nd < (n.avoiding ? CALM_RADIUS : NPC_NOTICE_RADIUS);
   if (avoiding !== n.avoiding) {
     n.avoiding = avoiding;
     n.target = avoiding ? null : { ...n.home };
@@ -62,7 +74,9 @@ export function stepNpcRoamer(n: NpcRoamer, dt: number, now: number, brianbis: r
   if (n.target && (avoiding || now >= n.waitUntil)) {
     const d = distance(n, n.target);
     const step = Math.min(d, (avoiding ? 44 : 24) * Math.max(0, Math.min(dt, 0.1)));
-    const p = d > 0 ? { x: n.x + (n.target.x - n.x) / d * step, y: n.y + (n.target.y - n.y) / d * step } : start;
+    const p = scratch;
+    p.x = d > 0 ? n.x + (n.target.x - n.x) / d * step : sx;
+    p.y = d > 0 ? n.y + (n.target.y - n.y) / d * step : sy;
     if (inRange(n, p) && clear(n, p)) { n.x = p.x; n.y = p.y; }
     else { n.target = null; n.nextTurnAt = 0; }
     if (n.target && d <= step + 0.01) {
@@ -70,5 +84,7 @@ export function stepNpcRoamer(n: NpcRoamer, dt: number, now: number, brianbis: r
       n.waitUntil = now + 1200 + (n.turn % 3) * 600;
     }
   }
-  return { x: n.x - start.x, y: n.y - start.y };
+  out.x = n.x - sx;
+  out.y = n.y - sy;
+  return out;
 }

@@ -177,6 +177,12 @@ export const TB_ROLES: ScriptRoleDefs = {
         executeOnTheSpot(s, op, nominator.seat);
         return 'cancelled';
       }
+      if (nominator.character === 'spy' && !impaired(nominator) && s.adjudicator?.spyRegistersAsTownsfolk?.(nominator, p)) {
+        // (auto-st) automatic games: the Spy registered as a Townsfolk.
+        log(s, op, `Spy ${who(nominator)} registers as a Townsfolk for the Virgin`);
+        executeOnTheSpot(s, op, nominator.seat);
+        return 'cancelled';
+      }
       if (nominator.character === 'spy' && !impaired(nominator)) {
         alert(
           s,
@@ -201,6 +207,12 @@ export const TB_ROLES: ScriptRoleDefs = {
           return 'Nothing happens.';
         }
         if (typeOf(t.character) === 'demon') {
+          killPlayer(s, op, t, 'slayer');
+          return `${t.name} has been slain and is dead.`;
+        }
+        if (t.character === 'recluse' && !impaired(t) && s.adjudicator?.recluseRegistersAsDemon?.(t, shooter)) {
+          // (auto-st) automatic games: the Recluse registered as the Demon.
+          log(s, op, `Recluse ${who(t)} registers as the Demon for the Slayer`);
           killPlayer(s, op, t, 'slayer');
           return `${t.name} has been slain and is dead.`;
         }

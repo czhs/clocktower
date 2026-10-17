@@ -61,7 +61,9 @@ describe.skipIf(!features.rooms)(`credential & identity secrecy${pending(feature
         expect(collectKeys(v).has('accountId')).toBe(false);
       }
     const list = await bots[0]!.api.listLobbies();
-    for (const l of list.body.lobbies) expect(Object.keys(l).sort()).toEqual([...SUMMARY_KEYS].sort());
+    // (v2.1) storytellerMode / autoTimings are optional public lobby settings
+    const OPTIONAL: string[] = ['storytellerMode', 'autoTimings', 'chatFilter']; // (v2.3 OPS-6) chatFilter: public host setting
+    for (const l of list.body.lobbies) expect(Object.keys(l).filter((k) => !OPTIONAL.includes(k)).sort()).toEqual([...SUMMARY_KEYS].sort());
     expect(findLeaks([{ label: 'api', messages: [{ json: list.text } as RecordedMessage] } as any], needles)).toEqual([]);
   });
 });

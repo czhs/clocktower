@@ -1,4 +1,4 @@
-import type { CreateLobbyRequest, DirectoryEvent, JoinTicketResponse, LobbySummary } from '@ct/protocol';
+import { normalizeLobbyId, wordLobbyId, type CreateLobbyRequest, type DirectoryEvent, type JoinTicketResponse, type LobbySummary } from '@ct/protocol';
 import type { AccountRecord } from '@ct/db';
 import { randomId } from '../auth/crypto.js';
 import type { Logger } from '../rooms/modules.js';
@@ -11,7 +11,16 @@ export const PER_ACCOUNT_LOBBY_LIMIT = 1;
 export const PER_IP_LOBBY_LIMIT = 2;
 
 const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
+/** Length of the fallback random id (pre-v2.2 format), used only if word ids keep colliding. */
 export const LOBBY_ID_LENGTH = 10;
+/** Word-id attempts before falling back to a random id (~1.5M word ids vs. <= LOBBY_MAX_COUNT live). */
+export const LOBBY_ID_WORD_ATTEMPTS = 64;
+/**
+ * A removed lobby's id is not handed out again for this long, so stale links, reconnect tokens and
+ * per-lobby voice rooms / audits (LiveKit token TTL + refresh) of the old lobby never meet a new one.
+ */
+export const RETIRED_LOBBY_ID_MS = 60 * 60_000;
+const RETIRED_LOBBY_ID_MAX = 10_000;
 
 export class DirectoryError extends Error {
   constructor(
@@ -34,6 +43,8 @@ export interface LobbyInit {
   creatorName: string;
   creatorTakesStoryteller: boolean;
   createdAt: number;
+  /** (v2.1, auto-st) 'auto' = no Storyteller seat; the server runs the game. */
+  storytellerMode?: 'human' | 'auto';
 }
 
 /** Live view of a GameRoom used by the directory (same process; never serialised). */
@@ -45,6 +56,8 @@ export interface LobbyRoomHandle {
   summary(): LobbySummary;
   /** Admin action: disconnect everyone and dispose the room (the room then calls remove()). */
   close?(): void;
+  /** (v2.3 AUTH-1) The account's sessions (or the one session `sid`) were revoked: drop its connection. */
+  revokeAccount?(accountId: string, sid?: string): void;
 }
 
 interface Entry {
@@ -81,6 +94,8 @@ export interface DirectoryDeps {
   perAccountLimit?: number;
   perIpLimit?: number;
   now?: () => number;
+  /** (v2.2) New-lobby id source; defaults to simple-word ids (`amber-fox-lantern`). Tests inject collisions. */
+  newLobbyId?: () => string;
 }
 
 /**
@@ -93,6 +108,8 @@ export class LobbyDirectory {
   private subscribers = new Set<(e: DirectoryEvent) => void>();
   private mutex = new Mutex();
   private now: () => number;
+  /** Recently removed lobby ids -> removal time (insertion-ordered; see RETIRED_LOBBY_ID_MS). */
+  private retired = new Map<string, number>();
 
   constructor(private deps: DirectoryDeps) {
     this.now = deps.now ?? Date.now;
@@ -117,9 +134,8 @@ export class LobbyDirectory {
       if (ip && [...this.entries.values()].filter((e) => e.creatorIp === ip).length >= ipLimit) {
         throw new DirectoryError(409, 'lobby_limit', `At most ${ipLimit} open lobbies can be created from one network`);
       }
-      let id = randomId(LOBBY_ID_LENGTH);
-      while (this.entries.has(id)) id = randomId(LOBBY_ID_LENGTH);
       const t = this.now();
+      const id = this.freshId(t);
       const init: LobbyInit = {
         lobbyId: id,
         name: req.name,
@@ -128,8 +144,9 @@ export class LobbyDirectory {
         maxPlayers: Math.min(req.maxPlayers, this.deps.playerMaxPerLobby),
         creatorAccountId: account.id,
         creatorName: account.displayName,
-        creatorTakesStoryteller: req.takeStoryteller,
+        creatorTakesStoryteller: req.takeStoryteller && req.storytellerMode !== 'auto',
         createdAt: t,
+        storytellerMode: req.storytellerMode ?? 'human', // (auto-st)
       };
       const entry: Entry = {
         id,
@@ -146,12 +163,13 @@ export class LobbyDirectory {
           maxPlayers: init.maxPlayers,
           playerCount: 0,
           storytellerName: null,
-          storytellerSeatOpen: true,
+          storytellerSeatOpen: init.storytellerMode !== 'auto',
           phase: 'waiting',
           joinable: true,
           hostName: account.displayName,
           createdAt: t,
           updatedAt: t,
+          storytellerMode: init.storytellerMode ?? 'human', // (auto-st)
         },
       };
       this.entries.set(id, entry);
@@ -200,6 +218,9 @@ export class LobbyDirectory {
 
   remove(lobbyId: string): void {
     if (!this.entries.delete(lobbyId)) return;
+    this.retired.delete(lobbyId);
+    this.retired.set(lobbyId, this.now());
+    if (this.retired.size > RETIRED_LOBBY_ID_MAX) this.retired.delete(this.retired.keys().next().value!);
     this.deps.log.info('lobby removed', { lobbyId });
     this.publish({ type: 'remove', id: lobbyId });
   }
@@ -212,6 +233,34 @@ export class LobbyDirectory {
   get(lobbyId: string): LobbySummary | null {
     const e = this.entries.get(lobbyId);
     return e?.roomId ? e.summary : null;
+  }
+
+  /**
+   * Canonical id of a live lobby for an incoming (URL) id: exact match first (older random ids are
+   * case-sensitive), then the case-folded simple-word form (`Amber-Fox-Lantern`). Unknown -> as given.
+   */
+  resolveId(lobbyId: string): string {
+    if (this.entries.has(lobbyId)) return lobbyId;
+    const n = normalizeLobbyId(lobbyId);
+    return this.entries.has(n) ? n : lobbyId;
+  }
+
+  /** A new id that is unique among live lobbies and not recently retired (called inside the mutex). */
+  private freshId(now: number): string {
+    for (const [id, at] of this.retired) {
+      if (now - at < RETIRED_LOBBY_ID_MS) break;
+      this.retired.delete(id);
+    }
+    const taken = (id: string) => this.entries.has(id) || this.retired.has(id);
+    const next = this.deps.newLobbyId ?? (() => wordLobbyId());
+    for (let i = 0; i < LOBBY_ID_WORD_ATTEMPTS; i++) {
+      const id = next();
+      if (!taken(id)) return id;
+    }
+    this.deps.log.warn('lobby word ids exhausted; using a random id');
+    let id = randomId(LOBBY_ID_LENGTH);
+    while (taken(id)) id = randomId(LOBBY_ID_LENGTH);
+    return id;
   }
 
   subscribe(fn: (e: DirectoryEvent) => void): () => void {
@@ -227,7 +276,7 @@ export class LobbyDirectory {
    * Issues a join ticket after advisory checks (the room re-checks everything atomically in
    * onJoin). Existing members may always obtain a ticket — that is how a seat is restored.
    */
-  issueTicket(account: AccountRecord, lobbyId: string, intent: JoinIntent): JoinTicketResponse {
+  issueTicket(account: AccountRecord, lobbyId: string, intent: JoinIntent, sid?: string): JoinTicketResponse {
     const e = this.entries.get(lobbyId);
     if (!e || !e.roomId) throw new DirectoryError(404, 'not_found', 'Lobby not found');
     const h = e.handle;
@@ -237,11 +286,36 @@ export class LobbyDirectory {
       const s = e.summary;
       if (intent === 'reconnect') throw new DirectoryError(409, 'conflict', 'You have no seat to restore in this lobby');
       if (s.phase !== 'waiting') throw new DirectoryError(409, 'lobby_started', 'This game has already started');
-      if (intent === 'storyteller' && !s.storytellerSeatOpen) throw new DirectoryError(409, 'conflict', 'The Storyteller seat is taken');
-      if (intent === 'player' && s.playerCount >= s.maxPlayers) throw new DirectoryError(409, 'lobby_full', 'This lobby is full');
+      // (auto-st) automatic lobbies have no Storyteller seat: a 'storyteller' ticket joins as a player.
+      const auto = s.storytellerMode === 'auto';
+      if (intent === 'storyteller' && !auto && !s.storytellerSeatOpen) throw new DirectoryError(409, 'conflict', 'The Storyteller seat is taken');
+      if ((intent === 'player' || auto) && s.playerCount >= s.maxPlayers) throw new DirectoryError(409, 'lobby_full', 'This lobby is full');
     }
-    const t = this.deps.tickets.issue({ accountId: account.id, lobbyId, intent });
+    const t = this.deps.tickets.issue({ accountId: account.id, lobbyId, intent, sid });
     return { lobbyId, roomId: e.roomId, ticket: t.ticket, expiresAt: t.expiresAt };
+  }
+
+  /** (v2.3 AUTH-6) Name of a live lobby the account holds a seat in (null = none). */
+  lobbyOfAccount(accountId: string): { id: string; name: string } | null {
+    for (const e of this.entries.values()) {
+      try {
+        if (e.handle?.isMember(accountId)) return { id: e.id, name: e.summary.name };
+      } catch {
+        // a room mid-dispose: not a member
+      }
+    }
+    return null;
+  }
+
+  /** (v2.3 AUTH-1) Revoked sessions: every lobby room drops the account's connection (or that session's). */
+  revokeAccount(accountId: string, sid?: string): void {
+    for (const e of this.entries.values()) {
+      try {
+        e.handle?.revokeAccount?.(accountId, sid);
+      } catch (err) {
+        this.deps.log.warn('revoke in lobby failed', { lobbyId: e.id, err: err instanceof Error ? err.message : String(err) });
+      }
+    }
   }
 
   /** Admin: close a lobby (everyone is disconnected; the room disposes and removes itself). */

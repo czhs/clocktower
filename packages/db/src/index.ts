@@ -23,6 +23,16 @@ export {
 } from './repos/records.js'; // (records) full game records (match_records)
 // (v2, notebook) private per-game notebooks (owner-only).
 export { createNotebooksRepo, type NotebookPutResult, type NotebookRow, type NotebooksRepo } from './repos/notebooks.js';
+// (v2.3 OPS) moderation: suspensions, network blocks, ops switches, reports.
+export {
+  createModerationRepo,
+  type IpBlock,
+  type ModerationRepo,
+  type NewReport,
+  type ReportRow,
+  type ReportStatus,
+  type Suspension,
+} from './repos/moderation.js';
 export {
   createAdminRepo,
   type AdminAccountQuery,

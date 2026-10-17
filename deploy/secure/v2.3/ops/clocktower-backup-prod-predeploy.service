@@ -1,0 +1,42 @@
+# v2.3 OPS-4 (sec-ops): the pre-deploy backup, TAGGED 'predeploy' so it lands in its own retention
+# bucket (newest 10, <= 30 days) instead of using up the daily backups. Started by
+# deploy/bin/install-release.sh via the sudoers rule. Same sandbox as clocktower-backup-prod.service;
+# apply.sh copies that unit's drop-ins (user, hardening, marker) to this one.
+[Unit]
+Description=Clocktower Town prod DB backup (pre-deploy)
+
+[Service]
+Type=oneshot
+ExecStart=/srv/clocktower/bin/backup-db.sh prod predeploy
+Environment=CT_ROOT=/srv/clocktower
+User=clocktower
+Group=clocktower
+UMask=0077
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RemoveIPC=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+ReadWritePaths=/srv/clocktower/backups/prod
+ReadOnlyPaths=/srv/clocktower/data/prod
+InaccessiblePaths=/srv/clocktower/env /srv/clocktower/cloudflared
+MemoryMax=512M
+CPUQuota=100%

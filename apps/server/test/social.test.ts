@@ -8,6 +8,7 @@ import {
   DEFAULT_COSMETICS,
   homeBuilding,
   MAX_PINS_PER_MEMBER,
+  NICK_FACE_CHARACTER,
   PIN_COLORS,
   type EmoteEvent,
   type GamePhase,
@@ -144,8 +145,18 @@ describe('social: pins basics', () => {
     r.social.handle('p0', 'social:pin', { target: { kind: 'place', x: -10, y: 40 }, color: 'gold' });
     expect(r.pins('p0')[0]!.target).toEqual({ kind: 'place', x: 0, y: 40 });
     r.enter('p1', 1);
-    r.social.handle('p1', 'social:pin', { target: { kind: 'place', x: 12, y: 30 }, color: 'green' });
-    expect(r.social.allPins().find((p) => p.by === 'p1')).toMatchObject({ location: `bld:${H(1)}`, target: { kind: 'place', x: 12, y: 30 } });
+    // (v2.2 walkable interiors, security v2.3 SEC-8) interior points are world coordinates inside that
+    // room: inside = kept, a small overshoot = clamped into the room, anything else = refused.
+    const room = L.buildings.find((b) => b.id === H(1))!.interior;
+    const ts = L.tileSize;
+    const [cx, cy] = [(room.x + room.w / 2) * ts, (room.y + room.h / 2) * ts];
+    r.social.handle('p1', 'social:pin', { target: { kind: 'place', x: cx, y: cy }, color: 'green' });
+    expect(r.social.allPins().find((p) => p.by === 'p1')).toMatchObject({ location: `bld:${H(1)}`, target: { kind: 'place', x: cx, y: cy } });
+    r.social.handle('p1', 'social:pin', { target: { kind: 'place', x: room.x * ts - 10, y: cy }, color: 'teal' });
+    expect(r.social.allPins().find((p) => p.color === 'teal')).toMatchObject({ target: { kind: 'place', x: room.x * ts, y: cy } });
+    r.social.handle('p1', 'social:pin', { target: { kind: 'place', x: 12, y: 30 }, color: 'violet' });
+    expect(r.errors('p1').at(-1)).toMatchObject({ code: 'invalid', for: 'social:pin' });
+    expect(r.social.allPins().find((p) => p.color === 'violet')).toBeUndefined();
   });
 });
 
@@ -271,6 +282,12 @@ describe('social: pin visibility (secrecy)', () => {
 
     r.exit('st');
     r.phase('dawn');
+    // (security v2.3, SEC-3) dawn counts as night for pins: the Storyteller still in a cottage at dawn
+    // leaves no trace for the next day's visitors either.
+    r.enter('st', 2);
+    r.pinHere('st', 'violet');
+    expect(r.pins('st').map((p) => p.color)).toContain('violet');
+    r.exit('st');
     r.phase('day');
     // Night pins are gone (they would tell daytime visitors of home 0 that the ST was there); the
     // daytime pins survive.
@@ -290,7 +307,7 @@ describe('social: pin visibility (secrecy)', () => {
     expect(r.emotes('p2')).toEqual([]);
     expect(r.emotes('p3')).toEqual([]);
     // Inside: only the people in that cottage (+ the Storyteller).
-    r.point('p2', 20, 20);
+    r.point('p2', r.pos('p2').x, r.pos('p2').y); // (SEC-8) interior points are room coordinates
     for (const v of ['p2', 'p3', 'st']) expect(r.emotes(v).at(-1)!.pid, v).toBe('p2');
     expect(r.emotes('p0').map((e) => e.pid)).toEqual(['p0']);
     expect(r.emotes('p1').map((e) => e.pid)).toEqual(['p0']);
@@ -306,8 +323,8 @@ describe('social: pin visibility (secrecy)', () => {
     r.start();
     r.phase('first_night');
     r.enter('st', 2);
-    r.point('st', 30, 30);
-    r.point('p1', 30, 30); // a player alone at home
+    r.point('st', r.pos('st').x, r.pos('st').y);
+    r.point('p1', r.pos('p1').x, r.pos('p1').y); // a player alone at home
     expect(r.emotes('p2').map((e) => e.pid)).toEqual(['st']);
     expect(r.emotes('st').map((e) => e.pid)).toEqual(['st', 'p1']);
     expect(r.emotes('p1').map((e) => e.pid)).toEqual(['p1']);
@@ -398,5 +415,71 @@ describe('social: rate limits', () => {
     r.tick(340);
     r.pinHere('p0');
     expect(r.social.allPins()).toHaveLength(1);
+  });
+});
+
+describe("social: Nick Song's 'nick-face' emote (v2.2)", () => {
+  const asNick = (r: Rig, pid: string) => {
+    r.host.member(pid)!.cosmetics = { ...DEFAULT_COSMETICS, preset: NICK_FACE_CHARACTER };
+  };
+  const nickFace = (r: Rig, pid: string) => r.social.handle(pid, 'social:emote', { kind: 'nick-face' });
+
+  it('the C2S schema accepts { kind: "nick-face" } and still rejects unknown kinds', () => {
+    expect(C2S['social:emote'].safeParse({ kind: 'nick-face' }).success).toBe(true);
+    expect(C2S['social:emote'].safeParse({ kind: 'dab' }).success).toBe(false);
+  });
+
+  it('only the player whose lobby character is nicksong may send it (else invalid, delivered to nobody)', () => {
+    const r = rig();
+    nickFace(r, 'p0'); // hero-0, not Nick
+    expect(r.errors('p0').map((e) => [e.code, e.for])).toEqual([['invalid', 'social:emote']]);
+    // a Storyteller whose account preset is nicksong is still not Nick in this lobby
+    asNick(r, 'st');
+    nickFace(r, 'st');
+    expect(r.errors('st').map((e) => e.code)).toEqual(['invalid']);
+    for (const v of ['p0', 'p1', 'p2', 'p3', 'st']) expect(r.emotes(v), v).toEqual([]);
+    asNick(r, 'p1');
+    nickFace(r, 'p1');
+    expect(r.errors('p1')).toEqual([]);
+    const ev = r.emotes('p1')[0]!;
+    const p = r.pos('p1');
+    expect(ev).toEqual({ pid: 'p1', kind: 'nick-face', x: Math.round(p.x * 10) / 10, y: Math.round(p.y * 10) / 10, at: r.host.clock.now });
+  });
+
+  it('is relayed only to members who can see him', () => {
+    const r = rig();
+    asNick(r, 'p0');
+    r.enter('p2', 2);
+    nickFace(r, 'p0');
+    for (const v of ['p0', 'p1', 'p3', 'st']) expect(r.emotes(v).map((e) => e.kind), v).toEqual(['nick-face']);
+    expect(r.emotes('p2')).toEqual([]); // inside a cottage: cannot see him
+    // he goes inside: only that cottage (+ the Storyteller) sees it
+    r.tick(1000);
+    r.enter('p0', 2);
+    nickFace(r, 'p0');
+    expect(r.emotes('p2').map((e) => e.pid)).toEqual(['p0']);
+    expect(r.emotes('st')).toHaveLength(2);
+    expect(r.emotes('p1')).toHaveLength(1);
+    expect(r.emotes('p3')).toHaveLength(1);
+    // at night only his own home sees it (nobody else is there)
+    r.exit('p0');
+    r.start();
+    r.phase('night');
+    r.tick(1000);
+    nickFace(r, 'p0');
+    expect(r.emotes('p1')).toHaveLength(1);
+    expect(r.emotes('p2')).toHaveLength(1);
+    expect(r.emotes('st')).toHaveLength(3);
+  });
+
+  it('shares the emote rate limit with pointing', () => {
+    const r = rig();
+    asNick(r, 'p0');
+    const p = r.pos('p0');
+    for (let i = 0; i < 3; i++) r.point('p0', p.x, p.y);
+    nickFace(r, 'p0');
+    nickFace(r, 'p0');
+    expect(r.emotes('p0').map((e) => e.kind)).toEqual(['point', 'point', 'point', 'nick-face']);
+    expect(r.errors('p0').at(-1)).toMatchObject({ code: 'rate_limited', for: 'social:emote' });
   });
 });

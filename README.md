@@ -61,12 +61,11 @@ npm exec --yes --package=node@24 --package=pnpm@10.34.7 -- pnpm preview:local
 ## Development notes
 
 - [Product vision](docs/vision.md), [architecture](docs/architecture.md), [v2 release notes](docs/RELEASE-v2.md).
-- Each character shows up to three recent chat bubbles, oldest above newest. Each lasts five
-  seconds; a fourth replaces the oldest. Existing chat and ping rate limits are unchanged.
-- Voice and text stay within the current room in every phase, including the waiting room and
-  after a game; there is no direct-message inbox.
-- Walk indoors with WASD/arrows or tap the floor. Walk into the south doorway, use Leave, or press
+- Chat shows as a speech bubble over the speaker (one per person: a new message replaces it; it
+  fades after 5–7 s, scaled with its length). Existing chat and ping rate limits are unchanged.
+- Voice and text stay within the current area in every phase, including the waiting room and
+  after a game: the square, or the cottage you are in. There is no direct-message inbox.
+- Walk indoors with WASD/arrows or tap the floor. Walk down through the doorway, use Leave, or press
   Escape to exit. Night locks and Storyteller movement controls still apply.
-- Characters use two-thirds of their outdoor size inside houses, with labels and gestures aligned.
 - Shared-host builds, tests, and deployments follow [CLAUDE.md](CLAUDE.md). The local preview above
   is a separate, explicitly requested workflow.

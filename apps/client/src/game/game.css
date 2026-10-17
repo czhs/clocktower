@@ -156,3 +156,19 @@
   /* short landscape: while the waiting-room sheet is open it owns the left side (tap the map to walk) */
   body:has(.ct-waiting-body) .ct-touch-stick { display: none; }
 }
+
+/* v2.2 walkable interiors: the joystick stays inside a cottage on touch devices, so the "Inside …"
+   panel moves beside it (bottom right) instead of the bottom centre. */
+@media (max-width: 640px) {
+  .ct-touch .ct-inside {
+    /* between the joystick and the right-hand column (social button, voice pill) */
+    left: calc(154px + var(--safe-left, 0px)); right: calc(62px + var(--safe-right, 0px)); transform: none;
+    bottom: calc(52px + var(--safe-bottom, 0px));
+    max-width: none; padding: 8px 10px 10px;
+  }
+  .ct-touch .ct-inside-who { font-size: 12.5px; }
+  .ct-touch .ct-inside-leave { min-width: 0; width: 100%; }
+}
+@media (max-height: 460px) {
+  .ct-touch .ct-inside { left: auto; right: calc(12px + var(--safe-right, 0px)); bottom: calc(52px + var(--safe-bottom, 0px)); transform: none; max-width: min(420px, calc(100vw - 280px)); }
+}

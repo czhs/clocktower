@@ -20,6 +20,10 @@ export interface AdminAccountView {
   isYou: boolean;
   /** Lobby the account currently holds a seat in (live, in-memory). */
   lobby: { id: string; name: string } | null;
+  /** (v2.3 OPS-1) Suspension in force (null = none). */
+  suspended?: { reason: string; until: string | null; at: string } | null;
+  /** (v2.3 OPS-1) A last network is known (enables "Block network"); the address itself is never shown here. */
+  networkKnown?: boolean;
 }
 
 export interface AdminAccountsPage {
@@ -55,6 +59,8 @@ export interface AdminOverview {
   lobbies: AdminLobbyView[];
   voice: VoiceUsageView;
   recentErrors: { at: number; message: string }[];
+  /** (v2.3 OPS-2/4) */
+  ops?: AdminOpsView;
 }
 
 export interface AdminAuditView {
@@ -125,4 +131,79 @@ export interface AdminGameRecord {
   result: { winner: Alignment; reason: string } | null;
   abandon: { reason: string } | null;
   timeline: StoryEntry[];
+}
+
+/** (v2.3 OPS-2/4) Panic switches + safety status (GET /api/admin/ops, AdminOverview.ops). */
+export interface AdminOpsView {
+  signups: { mode: 'open' | 'code' | 'closed'; codeSet: boolean; fromEnv: boolean };
+  maintenance: { on: boolean; message: string; fromEnv: boolean };
+  /** sec-voice kill switch (VOICE_DISABLED env wins). */
+  voice: { on: boolean; disabledBy: 'env' | 'admin' | 'unknown' | null; reason: string | null };
+  openReports: number;
+  /** From the backup unit's `.last-backup` marker next to the DB (null = never written). */
+  lastBackup: { at: string; ok: boolean; detail: string } | null;
+}
+
+export interface AdminIpBlockView {
+  key: string;
+  at: string | null;
+  until: string | null;
+  reason: string;
+  adminAccountId: string;
+}
+
+export interface AdminReportLine {
+  id: string;
+  fromName: string;
+  text: string;
+  scope: string;
+  at: number;
+  fromAccountId: string;
+}
+
+export interface AdminReportView {
+  id: number;
+  at: string | null;
+  reason: string;
+  note: string | null;
+  lobbyId: string;
+  reporter: { accountId: string; name: string | null };
+  target: { accountId: string; name: string | null; suspended: boolean };
+  context: {
+    lobby?: { id: string; name: string; phase: string };
+    members?: { pid: string; name: string }[];
+    lines?: AdminReportLine[];
+  } | null;
+  status: 'open' | 'resolved';
+  resolvedAt: string | null;
+  resolution: string | null;
+}
+
+/** (v2.3 sec-ops) GET /api/admin/settings ("Security & limits"). Mirrors apps/server/src/settings/registry.ts SettingView. */
+export interface AdminSettingView {
+  id: string;
+  group: string;
+  label: string;
+  help: string;
+  type: 'bool' | 'enum' | 'int' | 'duration' | 'string';
+  value: boolean | number | string | null;
+  default: boolean | number | string | null;
+  min?: number;
+  max?: number;
+  options?: readonly string[];
+  unit?: string;
+  locked: boolean;
+  envVar?: string;
+  isSet?: boolean;
+  sensitive: boolean;
+  dangerous: boolean;
+  applies: 'live' | 'restart';
+  owner: string;
+  isDefault: boolean;
+}
+
+export interface AdminSettingsPage {
+  groups: { id: string; label: string }[];
+  settings: AdminSettingView[];
+  degraded: boolean;
 }

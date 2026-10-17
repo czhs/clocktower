@@ -1,0 +1,13 @@
+# v2.3 HOST-12 (sec-host): every build-sandbox run (ct-build-run) lands here. Caps the whole fleet of
+# builds/tests so they can never starve prod on the same machine (each run is capped at 300 % / 4 GiB).
+[Unit]
+Description=Clocktower build sandbox (all ct-build-run jobs)
+Before=slices.target
+
+[Slice]
+CPUQuota=600%
+MemoryMax=7G
+MemorySwapMax=0
+CPUWeight=10
+IOWeight=10
+TasksMax=8192

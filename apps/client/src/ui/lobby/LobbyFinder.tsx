@@ -8,8 +8,12 @@ import {
   SCRIPTS,
   type LobbySummary,
   type ScriptId,
+  type StorytellerMode,
+  wordLobbyName,
 } from '@ct/protocol';
 import { api, subscribeDirectory } from '../../net/api';
+import { modeOf } from '../clock/logic';
+import { ModeBadge, ModeChoice } from './ModeSettings';
 import { applyDirectoryEvent, DEFAULT_FILTERS, errorText, filterLobbies, PHASE_LABEL, SCRIPT_LABEL, sortLobbies, type FinderFilters } from './finder';
 
 const FILTER_KEY = 'ct.finder.filters';
@@ -197,19 +201,21 @@ export function LobbyFinder({ onJoin }: { onJoin: (lobbyId: string, intent: 'pla
 
 function LobbyRow({ lobby: l, onJoin }: { lobby: LobbySummary; onJoin: (id: string, intent: 'player' | 'storyteller') => void }) {
   const waiting = l.phase === 'waiting';
+  const auto = modeOf(l) === 'auto';
   return (
     <div class={`ct-lobby ${l.joinable ? '' : 'ct-lobby-closed'}`} role="listitem">
       <div class="ct-lobby-main">
         <div class="ct-lobby-name">
           {l.name}
           <span class={`ct-phase ct-phase-${l.phase}`}>{PHASE_LABEL[l.phase]}</span>
+          <ModeBadge lobby={l} />
         </div>
         {l.description && <div class="ct-lobby-desc muted">{l.description}</div>}
         <div class="ct-lobby-meta muted">
           <span title="Players seated / seats">
             {l.playerCount}/{l.maxPlayers} players
           </span>
-          <span>{l.storytellerName ? `Storyteller: ${l.storytellerName}` : 'Storyteller seat open'}</span>
+          <span>{auto ? 'No Storyteller: runs itself' : l.storytellerName ? `Storyteller: ${l.storytellerName}` : 'Storyteller seat open'}</span>
           <span>{SCRIPT_LABEL[l.script] ?? l.script}</span>
           <span>Host: {l.hostName}</span>
         </div>
@@ -220,7 +226,7 @@ function LobbyRow({ lobby: l, onJoin }: { lobby: LobbySummary; onJoin: (id: stri
             <button class="primary" disabled={!l.joinable} onClick={() => onJoin(l.id, 'player')}>
               {l.joinable ? 'Join' : 'Full'}
             </button>
-            {l.storytellerSeatOpen && <button onClick={() => onJoin(l.id, 'storyteller')}>Join as Storyteller</button>}
+            {l.storytellerSeatOpen && !auto && <button onClick={() => onJoin(l.id, 'storyteller')}>Join as Storyteller</button>}
           </>
         ) : (
           <button title="Only players seated in this game can return" onClick={() => onJoin(l.id, 'player')}>
@@ -233,11 +239,14 @@ function LobbyRow({ lobby: l, onJoin }: { lobby: LobbySummary; onJoin: (id: stri
 }
 
 export function CreateLobbyModal({ onClose, onCreated }: { onClose: () => void; onCreated: (l: LobbySummary, takeStoryteller: boolean) => void }) {
-  const [name, setName] = useState('');
-  const [maxPlayers, setMaxPlayers] = useState(10);
+  // (v2.2) prefilled with a simple-words name; ↻ suggests another; left blank -> the suggestion.
+  const [suggested, setSuggested] = useState(wordLobbyName);
+  const [name, setName] = useState(suggested);
+  const [maxPlayers, setMaxPlayers] = useState(MAX_PLAYERS); // a full town by default (15)
   const [script, setScript] = useState<ScriptId>('trouble-brewing');
   const [description, setDescription] = useState('');
   const [takeSt, setTakeSt] = useState(true);
+  const [mode, setMode] = useState<StorytellerMode>('human');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -249,12 +258,14 @@ export function CreateLobbyModal({ onClose, onCreated }: { onClose: () => void; 
 
   const submit = async (e: Event) => {
     e.preventDefault();
-    if (name.trim().length < LOBBY_NAME_MIN) return setError(`Name must be at least ${LOBBY_NAME_MIN} characters`);
+    const finalName = name.trim() || suggested;
+    if (finalName.length < LOBBY_NAME_MIN) return setError(`Name must be at least ${LOBBY_NAME_MIN} characters`);
     setBusy(true);
     setError(null);
     try {
-      const { lobby } = await api.createLobby({ name: name.trim(), maxPlayers, script, description: description.trim(), takeStoryteller: takeSt });
-      onCreated(lobby, takeSt);
+      const st = mode === 'human' && takeSt;
+      const { lobby } = await api.createLobby({ name: finalName, maxPlayers, script, description: description.trim(), takeStoryteller: st, ...(mode === 'auto' ? { storytellerMode: 'auto' as const } : {}) });
+      onCreated(lobby, st);
     } catch (err) {
       setError(errorText(err));
       setBusy(false);
@@ -265,10 +276,33 @@ export function CreateLobbyModal({ onClose, onCreated }: { onClose: () => void; 
     <div class="ct-modal-backdrop" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <form class="panel ct-modal" onSubmit={submit} role="dialog" aria-modal="true" aria-labelledby="ct-create-title">
         <h2 id="ct-create-title">Create lobby</h2>
-        <label class="ct-field">
-          <span>Lobby name</span>
-          <input value={name} maxLength={LOBBY_NAME_MAX} autoFocus onInput={(e) => setName((e.currentTarget as HTMLInputElement).value)} />
-        </label>
+        <div class="ct-field">
+          <label for="ct-create-name">Lobby name</label>
+          <div class="ct-name-row">
+            <input
+              id="ct-create-name"
+              value={name}
+              placeholder={suggested}
+              maxLength={LOBBY_NAME_MAX}
+              autoFocus
+              onFocus={(e) => (e.currentTarget as HTMLInputElement).select()}
+              onInput={(e) => setName((e.currentTarget as HTMLInputElement).value)}
+            />
+            <button
+              type="button"
+              class="ct-reroll"
+              title="Suggest another name"
+              aria-label="Suggest another name"
+              onClick={() => {
+                const next = wordLobbyName();
+                setSuggested(next);
+                setName(next);
+              }}
+            >
+              ↻
+            </button>
+          </div>
+        </div>
         <div class="ct-modal-grid">
           <label class="ct-field">
             <span>Player seats ({MIN_PLAYERS}–{MAX_PLAYERS})</span>
@@ -300,10 +334,18 @@ export function CreateLobbyModal({ onClose, onCreated }: { onClose: () => void; 
             onInput={(e) => setDescription((e.currentTarget as HTMLTextAreaElement).value)}
           />
         </label>
-        <label class="ct-check">
-          <input type="checkbox" checked={takeSt} onChange={(e) => setTakeSt((e.currentTarget as HTMLInputElement).checked)} />
-          <span>Take the Storyteller seat (not counted as a player)</span>
-        </label>
+        <div class="ct-field">
+          <span>Who runs the game?</span>
+          <ModeChoice value={mode} onChange={setMode} name="ct-create-mode" />
+        </div>
+        {mode === 'human' ? (
+          <label class="ct-check">
+            <input type="checkbox" checked={takeSt} onChange={(e) => setTakeSt((e.currentTarget as HTMLInputElement).checked)} />
+            <span>Take the Storyteller seat (not counted as a player)</span>
+          </label>
+        ) : (
+          <p class="muted ct-small">You play too. Adjust the day and night timings in the waiting room.</p>
+        )}
         <p class="muted ct-small">Lobbies are public on this server — anyone signed in can see and join. No password needed.</p>
         {error && <p class="ct-error" role="alert">{error}</p>}
         <div class="ct-row">

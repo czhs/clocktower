@@ -1,0 +1,138 @@
+/* OWNED BY clock-client (v2.1). Town-clock chip (top centre; second row on narrow screens), the
+   inline "+ time" tray, the extension vote card and its result line. Sits just under the HUD layer
+   (z 19 < .cth 20) so an opened character card or a dawn toast may briefly cover it. */
+.ctc {
+  position: fixed; z-index: 19; top: calc(10px + var(--safe-top, 0px)); left: 50%; transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none;
+  max-width: calc(100vw - 24px); font-size: 13px;
+}
+.ctc > * { pointer-events: auto; }
+.ctc button { min-height: 0; box-shadow: none; }
+
+.ctc-chip {
+  display: flex; align-items: center; gap: 7px; padding: 3px 4px 3px 7px; white-space: nowrap;
+  background: #1b1724e6; border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 2px 10px #0008;
+  color: var(--text); line-height: 1.25;
+}
+.ctc-chip:not(:has(.ctc-plus)) { padding-right: 11px; }
+.ctc-label { font-variant: small-caps; letter-spacing: 0.05em; }
+.ctc-time { font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--accent); font-weight: 600; }
+.ctc-discussion { border-color: #d5b56a77; }
+.ctc-nominations { border-color: #c0413b99; }
+.ctc-nominations .ctc-time { color: #f08a7c; }
+.ctc-bedtime { border-color: #6f7fd099; }
+.ctc-bedtime .ctc-time { color: #aebcf2; }
+.ctc-paused { border-style: dashed; color: var(--muted); }
+.ctc-paused .ctc-time { color: var(--muted); }
+.ctc-due .ctc-label { color: #f1e2b8; }
+
+/* last 30 s: a calm pulse (no motion when the user asked for less) */
+.ctc-urgent { border-color: var(--danger); }
+.ctc-urgent .ctc-time { color: #ff9a86; }
+@media (prefers-reduced-motion: no-preference) {
+  .ctc-urgent { animation: ctc-pulse 1.6s ease-in-out infinite; }
+}
+@keyframes ctc-pulse { 50% { box-shadow: 0 0 0 4px #e0645038, 0 2px 10px #0008; } }
+
+/* mini dial */
+.ctc-dial { flex: none; display: block; }
+.ctc-face { fill: #17151f; stroke: #d5b56a; stroke-width: 1.1; }
+.ctc-wedge { fill: #d5b56a; opacity: 0.75; }
+.ctc-nominations .ctc-wedge { fill: #e0625a; }
+.ctc-bedtime .ctc-wedge { fill: #8597e6; }
+.ctc-paused .ctc-wedge { opacity: 0.35; }
+.ctc-hand { stroke: #f1e2b8; stroke-width: 1.2; stroke-linecap: round; }
+.ctc-bars { fill: #e4d8ba; }
+
+/* "+ time" */
+.ctc .ctc-plus {
+  padding: 1px 9px; font-size: 12px; border-radius: 11px; line-height: 1.4;
+  background: #3a2f1ccc; border: 1px solid #d5b56a88; color: #f1e2b8;
+}
+.ctc .ctc-plus:hover, .ctc .ctc-plus.on { background: #665032; border-color: var(--accent); }
+.ctc .ctc-plus[aria-disabled='true'] { opacity: 0.5; background: none; border-color: var(--border); color: var(--muted); cursor: default; }
+
+.ctc-tray, .ctc-vote, .ctc-result, .ctc-note {
+  background: #1f1a2af2; border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 6px 18px #000a;
+  animation: ctc-in 160ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) { .ctc-tray, .ctc-vote, .ctc-result, .ctc-note { animation: none; } }
+@keyframes ctc-in { from { opacity: 0; transform: translateY(-4px); } }
+
+.ctc-tray { display: flex; align-items: center; gap: 5px; padding: 5px 6px 5px 10px; }
+.ctc-tray-q { color: var(--muted); font-size: 12px; margin-right: 2px; }
+.ctc-tray button { padding: 4px 10px; font-size: 13px; min-height: 32px; }
+
+.ctc-vote { width: min(280px, calc(100vw - 24px)); box-sizing: border-box; padding: 7px 10px 0; border-color: #d5b56a99; overflow: hidden; }
+.ctc-vote.passing { border-color: #8fbf7a99; }
+.ctc-vote-title { color: #f1e2b8; font-size: 13.5px; margin-bottom: 5px; }
+.ctc-vote-row { display: flex; align-items: center; gap: 6px; padding-bottom: 7px; }
+.ctc-vote-row button { min-width: 58px; min-height: 34px; padding: 4px 12px; font-size: 14px; }
+.ctc .ctc-yes.on { background: #2f4a2a; border-color: var(--ok); color: #dff0d6; }
+.ctc .ctc-no.on { background: #4a1f1a; border-color: #c0413b; color: #f6d9cf; }
+.ctc-vote-meta { margin-left: auto; color: var(--muted); font-size: 12px; white-space: nowrap; }
+.ctc-vote-meta b { color: var(--text); font-weight: 600; }
+.ctc-drain { height: 3px; margin: 0 -10px; background: #ffffff10; }
+.ctc-drain i { display: block; height: 100%; background: var(--accent); transform-origin: left; transition: transform 250ms linear; }
+.ctc-vote.passing .ctc-drain i { background: var(--ok); }
+
+.ctc-result { padding: 4px 12px; font-size: 13px; color: var(--text); }
+.ctc-result.ok { border-color: #8fbf7a99; color: #dff0d6; }
+.ctc-result.no { color: var(--muted); }
+.ctc-note { padding: 4px 12px; font-size: 12px; color: #f6d9cf; border-color: #a0473a; max-width: 280px; text-align: center; }
+
+.ctc-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* The Story / Pamphlets button also lives at the top centre (always for the Storyteller, for players
+   once pamphlets exist): sit just right of it. (Relies on <ClockChip> being mounted after <Story> in
+   the same parent, GameScreen.) */
+.cty-root ~ .ctc { left: calc(50% + 84px); transform: none; align-items: flex-start; }
+
+/* Narrower screens: the top row belongs to the character card and the toolbar, so the chip takes
+   the second row on the left (the phase pill is on the right of that row). */
+@media (max-width: 900px) {
+  .ctc, .cty-root ~ .ctc { top: calc(52px + var(--safe-top, 0px)); left: calc(12px + var(--safe-left, 0px)); transform: none; align-items: flex-start; }
+  .ctc-chip { font-size: 12.5px; }
+}
+/* Phones: the Story / Pamphlets button drops to the second row centre, so the chip takes the third. */
+@media (max-width: 600px) {
+  .cty-root ~ .ctc { top: calc(88px + var(--safe-top, 0px)); }
+}
+/* The Storyteller's panel owns the left column: put the chip on the right, under the toolbar. */
+@media (max-width: 1180px) {
+  .ctc.ctc-st { top: calc(48px + var(--safe-top, 0px)); left: auto; right: calc(12px + var(--safe-right, 0px)); transform: none; align-items: flex-end; }
+}
+@media (max-width: 600px) {
+  .cty-root ~ .ctc.ctc-st { top: calc(88px + var(--safe-top, 0px)); }
+}
+@media (max-height: 460px) and (min-width: 641px) {
+  /* phone landscape: the top centre (between the card and the toolbar) is free */
+  .ctc:not(.ctc-st) { top: calc(8px + var(--safe-top, 0px)); left: 50%; transform: translateX(-50%); align-items: center; }
+  .cty-root ~ .ctc:not(.ctc-st) { left: calc(50% + 84px); transform: none; align-items: flex-start; }
+  .ctc-vote-row button { min-height: 30px; }
+}
+
+/* Storyteller script panel: the compact clock control (inside .cts, reuses .cts-timer) */
+.ctc-stctl { flex-direction: column; align-items: stretch; gap: 4px; }
+.ctc-stctl-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.ctc-stctl-now { font-variant: small-caps; letter-spacing: 0.03em; }
+.ctc-stctl-now b { font-family: var(--mono); font-variant: normal; color: var(--accent); font-weight: 600; }
+.ctc-stctl-now.ctc-nominations b { color: #f08a7c; }
+.ctc-stctl-now.ctc-bedtime b { color: #aebcf2; }
+.ctc-stctl-now.ctc-paused { color: var(--muted); }
+.ctc-stctl-now.ctc-urgent-text b { color: #ff9a86; }
+.ctc-stctl-step { display: inline-flex; align-items: center; gap: 2px; }
+.ctc-stctl-step b { min-width: 46px; text-align: center; font-weight: 600; }
+.cts .ctc-stctl-step button { padding: 0 7px; min-width: 24px; }
+
+/* "Abort game" (host, automatic games) in the in-game toolbar */
+.ct-toolbar .ct-tb-abort { border-color: #a0473a99; }
+.ct-toolbar .ct-tb-abort .ct-tb-glyph { color: #f08a7c; }
+
+/* (lead) an open clock card sits where the HUD toasts appear: push the toasts below it */
+body:has(.ctc-vote) .cth-toasts { top: 132px; }
+body:has(.ctc-tray, .ctc-result, .ctc-note):not(:has(.ctc-vote)) .cth-toasts { top: 88px; }
+@media (max-width: 600px) {
+  body:has(.ctc-vote) .cth-toasts { top: 172px; }
+  body:has(.ctc-tray, .ctc-result, .ctc-note):not(:has(.ctc-vote)) .cth-toasts { top: 128px; }
+}

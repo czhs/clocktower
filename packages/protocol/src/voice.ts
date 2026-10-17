@@ -30,20 +30,36 @@ export interface VoiceGrant {
 export interface VoiceRevoke {
   purpose: 'zone' | 'announce';
   room: string;
-  /** 'announce_end' (voice, 2026-10-14): the Storyteller's announcement overlay ended. */
-  reason: 'zone_change' | 'left' | 'phase' | 'quota' | 'kicked' | 'announce_end';
+  /**
+   * 'announce_end' (voice, 2026-10-14): the Storyteller's announcement overlay ended.
+   * (v2.3 sec-voice, additive) 'disabled': the host switched voice off (kill switch);
+   * 'idle': voice was switched off after a long time without activity (VOICE-7).
+   */
+  reason: 'zone_change' | 'left' | 'phase' | 'quota' | 'kicked' | 'announce_end' | 'disabled' | 'idle';
 }
 
 export interface VoiceUnavailable {
-  reason: 'not_configured' | 'quota_exhausted' | 'provider_error';
+  /**
+   * (v2.3 sec-voice, additive) 'disabled': voice switched off by the host (kill switch, grants come
+   * back by themselves when it is switched on again); 'busy': a voice capacity limit is reached
+   * (retried automatically); 'idle': voice was turned off after a long time without activity —
+   * the client turns its voice off and the player presses "Enable voice" again.
+   */
+  reason: 'not_configured' | 'quota_exhausted' | 'provider_error' | 'disabled' | 'busy' | 'idle';
   message: string;
 }
 
-/** Client heartbeat (every ~30s and on change) used for quota accounting + debug overlay. */
+/**
+ * Client heartbeat (every ~30s and on change): debug overlay, idle tracking and (fallback) quota
+ * accounting. (v2.3 sec-voice, additive) `wanted`: the player switched voice on (true) / off
+ * (false). The server mints LiveKit tokens only for members that want voice (VOICE-4); a status
+ * without `wanted` (pre-v2.3 client) counts as wanted.
+ */
 export const VoiceStatusMsg = z.object({
   connected: z.boolean(),
   publishing: z.boolean(),
   room: z.string().max(200).optional(),
+  wanted: z.boolean().optional(),
 });
 export type VoiceStatusMsg = z.infer<typeof VoiceStatusMsg>;
 
@@ -58,4 +74,16 @@ export interface VoiceUsageView {
   level: 'ok' | 'warn' | 'critical' | 'exhausted';
   activeParticipants: number;
   byEnv: Record<string, number>;
+  // (v2.3 sec-voice, additive)
+  /** Participants LiveKit itself reports as connected in this env's rooms (null: not measured yet / LiveKit unreachable). */
+  liveParticipants?: number | null;
+  /** Usage is measured from LiveKit room listings (true) or estimated from client heartbeats (false). */
+  measured?: boolean;
+  /** Voice kill switch state. */
+  disabled?: boolean;
+  disabledBy?: 'env' | 'admin' | 'unknown' | null;
+  disabledReason?: string | null;
+  disabledAt?: number | null;
+  /** Hard caps (participants). */
+  caps?: { concurrent: number; perLobby: number; perIp: number; idleMinutes: number; waitingMaxMinutes: number };
 }

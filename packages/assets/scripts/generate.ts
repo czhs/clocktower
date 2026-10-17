@@ -9,10 +9,12 @@ import { drawBuildings } from './buildings.js';
 import { ANCHOR, DIRS, drawCharacters, FH, FRAMES, FW } from './characters.js';
 import { DECAL_NAMES, drawDecals, drawFavicon, drawLights } from './decals.js';
 import { renderGround, sliceTiles } from './ground.js';
+import { losslessWebP, optimisedPNG } from './lib/encode.js';
 import { Img } from './lib/img.js';
 import { drawProps } from './props.js';
 import { buildCast } from './cast/index.js';
-import { buildCastHd } from './cast/hd.js';
+import { buildPortraits, type CastManifestForPortraits } from './cast/portraits.js';
+import { buildCastHd, hdPortraitStrip } from './cast/hd.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const OUT = join(here, '..', 'generated');
@@ -26,6 +28,11 @@ const log = (m: string) => console.log(`[assets ${((Date.now() - t0) / 1000).toF
 const write = (name: string, data: Buffer | string) => {
   writeFileSync(join(OUT, name), data);
   log(`wrote ${name} (${(Buffer.byteLength(data) / 1024).toFixed(0)} KiB)`);
+};
+/** A runtime atlas: lossless WebP + re-optimised PNG fallback, same pixels (scripts/lib/encode.ts). */
+const writeAtlas = async (name: string, img: Img) => {
+  write(`${name}.png`, optimisedPNG(img));
+  write(`${name}.webp`, await losslessWebP(img));
 };
 
 // ---------------------------------------------------------------------------------------
@@ -58,13 +65,13 @@ log('rendering ground…');
 const groundImg = renderGround();
 const { tileset: terrainImg, indices, count } = sliceTiles(groundImg);
 log(`ground: ${count} unique tiles`);
-write('terrain.png', terrainImg.toPNG());
+await writeAtlas('terrain', terrainImg);
 
 // 2. Decor
 const decals = drawDecals();
 const decorImg = new Img(DECAL_NAMES.length * TS, TS);
 DECAL_NAMES.forEach((n, i) => decorImg.copy(decals.get(n)!, i * TS, 0));
-write('decor.png', decorImg.toPNG());
+await writeAtlas('decor', decorImg);
 const collisionTile = new Img(TS, TS);
 collisionTile.rect(0, 0, TS, TS, [200, 40, 60, 110]);
 write('collision.png', collisionTile.toPNG());
@@ -86,7 +93,7 @@ for (const [id, b] of buildings) {
 }
 // --- end doors (buildings agent) ---
 const atlas = pack(frames, 1024);
-write('objects.png', atlas.img.toPNG());
+await writeAtlas('objects', atlas.img);
 write('objects.json', JSON.stringify({ image: 'objects.png', width: atlas.img.w, height: atlas.img.h, frames: atlas.rects }, null, 0));
 
 // 4. Characters
@@ -141,12 +148,21 @@ write('characters.json', JSON.stringify(charManifest, null, 0));
 // 4b. The v2 cast (8-direction characters, one module per character in scripts/cast/).
 {
   const cast = await buildCast();
-  write('cast.png', cast.img.toPNG());
+  await writeAtlas('cast', cast.img);
+  // (v2.4 perf P2) the ghost variants: their own small atlas, loaded on the first death
+  await writeAtlas('cast-ghosts', cast.ghosts);
   write('cast.json', JSON.stringify(cast.manifest, null, 0));
   if (review) writeFileSync(join(REVIEW, 'cast-x4.png'), cast.review.toPNG());
+  // the DOM UI's slim 'down'-row strip (scripts/cast/portraits.ts)
+  const portraits = buildPortraits(cast.img, cast.ghosts, cast.manifest as CastManifestForPortraits);
+  await writeAtlas('cast-portraits', portraits.img);
+  write('cast-portraits.json', JSON.stringify(portraits.manifest, null, 0));
+  // photo-real ("hd") cast members' full-resolution sheet (scripts/cast/hd.ts), same WebP + PNG pair,
+  // plus (v2.4 perf P2) its 'down' column alone for the DOM portraits (the picker never needs the rest)
   const hd = buildCastHd();
   if (hd) {
-    write('cast-hd.png', hd.img.toPNG());
+    await writeAtlas('cast-hd', hd.img);
+    await writeAtlas('cast-hd-portraits', hdPortraitStrip(hd.img));
     write('cast-hd.json', JSON.stringify(hd.manifest, null, 0));
   }
 }
@@ -159,7 +175,7 @@ write('characters.json', JSON.stringify(charManifest, null, 0));
   const castImg = Img.fromPNG(readFileSync(join(OUT, 'cast.png')));
   const castManifest: unknown = JSON.parse(readFileSync(join(OUT, 'cast.json'), 'utf8'));
   const social = buildSocial(castImg, castManifest, { review });
-  write('social.png', social.img.toPNG());
+  await writeAtlas('social', social.img);
   write('social.json', JSON.stringify(social.manifest, null, 0));
   if (review && social.review) writeFileSync(join(REVIEW, 'social-x4.png'), social.review.toPNG());
 }
@@ -169,7 +185,7 @@ write('characters.json', JSON.stringify(charManifest, null, 0));
 try {
   const fx = (await import('./fx/index.js')) as { buildFx(): { img: Img; manifest: unknown; review?: Img } };
   const out = fx.buildFx();
-  write('square-props.png', out.img.toPNG());
+  await writeAtlas('square-props', out.img);
   write('square-props.json', JSON.stringify(out.manifest, null, 0));
   if (review && out.review) writeFileSync(join(REVIEW, 'square-props-x4.png'), out.review.toPNG());
 } catch (e) {
@@ -178,7 +194,7 @@ try {
 }
 
 // 5. Lights + favicon
-write('lights.png', drawLights().toPNG());
+await writeAtlas('lights', drawLights());
 write('favicon.png', drawFavicon().toPNG());
 
 // 6. Tiled map

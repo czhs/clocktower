@@ -306,7 +306,10 @@ export interface AnnouncementRecord {
 
 export interface SetupRecord {
   at: number;
-  method: 'random' | 'manual' | 'mixed';
+  /** (v2.2) + 'storyline' (deal_preset) / 'bag' (deal_bag): the server shuffled a bag onto the seats. */
+  method: 'random' | 'manual' | 'mixed' | 'storyline' | 'bag';
+  /** (v2.2) The storyline dealt (method 'storyline', or 'mixed' after one). */
+  storyline?: string | null;
   characters: { seat: number; character: CharacterId; alignment: Alignment; believedCharacter: CharacterId }[];
   demonBluffs: CharacterId[];
   redHerringSeat: number | null;
@@ -372,4 +375,4 @@ export interface GameRecordV1 {
   warnings: string[];
 }
 
-export type AbandonReason = 'closed_by_admin' | 'idle_timeout' | 'room_disposed';
+export type AbandonReason = 'closed_by_admin' | 'idle_timeout' | 'room_disposed' | 'aborted_by_host'; // (auto-st) automatic games: the host ended it

@@ -369,3 +369,80 @@
 @media (max-width: 1100px) { .cts-head .cts-title { display: none; } }
 .cts-votecount-t { font-family: var(--font); font-size: 12px; color: var(--muted); }
 .cts-armed { text-align: left; }
+
+/* (st-qol) Undo names what it reverts; tonight at a glance; true/false info pick; seat markers */
+.cts-undo { max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cts-undo-what { color: var(--muted); font-size: 10.5px; }
+@media (max-width: 520px) { .cts-undo-what { display: none; } }
+.cts-glance { list-style: none; margin: 4px 0 6px; padding: 4px 7px; border: 1px solid var(--border); border-radius: 5px; background: #120f1880; font-size: 12px; }
+.cts-glance li { margin: 1px 0; }
+.cts-glance li.warn { color: #e0a14a; }
+.cts-glance li.bad { color: #f0b3a8; }
+.cts-falsepick { display: inline-flex; gap: 0; }
+.cts-falsepick button { border-radius: 0; font-size: 11px !important; }
+.cts-falsepick button:first-child { border-radius: 4px 0 0 4px; }
+.cts-falsepick button:last-child { border-radius: 0 4px 4px 0; }
+.cts-seatcell-m { letter-spacing: -1px; }
+
+/* (st-qol) Short screens (phone landscape, 390-520 px tall): the panel was capped at 100vh - 200px
+   (≈ 190 px, header + cues only). Use the height, keeping the bottom corners' buttons free. */
+@media (max-height: 520px) {
+  .cts, .cts.cts-mode-script { top: 6px; max-height: calc(100vh - 64px); width: min(400px, 48vw); }
+  .cts .cts-cue { min-height: 32px; }
+  .cts-head { padding: 3px 6px; }
+}
+
+/* ---- (v2.2) "How do you want to deal?": Random · Storyline · Pick characters · By hand ----------- */
+.cts-deal { margin: 2px 0 6px; }
+.cts-deal-q { margin: 0 0 4px; font-size: 12px; color: var(--muted); font-variant: small-caps; letter-spacing: 0.06em; }
+.cts-dealmodes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; margin-bottom: 6px; }
+.cts .cts-dealmodes button { border-radius: 0; padding: 4px 2px; font-size: 11.5px; min-height: 40px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; line-height: 1.15; }
+.cts .cts-dealmodes button:first-child { border-radius: 5px 0 0 5px; }
+.cts .cts-dealmodes button:last-child { border-radius: 0 5px 5px 0; }
+.cts-dealmode-icon { font-size: 15px; line-height: 1; }
+.cts-stories { list-style: none; margin: 0 0 4px; padding: 0; display: grid; gap: 4px; max-height: 260px; overflow: auto; }
+.cts .cts-story { width: 100%; text-align: left; display: flex; flex-direction: column; gap: 2px; padding: 5px 8px; border-radius: 5px; background: #120f1880; }
+.cts .cts-story.on { background: #3a2c14; border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
+.cts .cts-story.off { opacity: 0.45; }
+.cts-story-head { display: flex; align-items: baseline; gap: 6px; }
+.cts-story-title { font-family: var(--font-display); font-weight: normal; font-size: 14px; color: var(--text); }
+.cts-story-level { margin-left: auto; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+.cts-story-level.beginner { color: var(--ok); }
+.cts-story-level.tricky { color: #e0a14a; }
+.cts-story-blurb { font-size: 12px; color: #d9cfb8; font-style: italic; }
+.cts-story-meta { font-size: 11px; color: var(--muted); }
+.cts-bag-type { display: flex; gap: 6px; align-items: flex-start; margin: 3px 0; }
+.cts-bag-label { flex: 0 0 86px; font-size: 11px; color: var(--muted); padding-top: 3px; }
+.cts-bag-chips { display: flex; flex-wrap: wrap; gap: 3px; }
+.cts .cts-bagchip { font-size: 11px; padding: 1px 7px; border-radius: 9px; color: var(--muted); }
+.cts .cts-bagchip.on.good { color: #fff; background: #27406a; border-color: #5d8fd6; }
+.cts .cts-bagchip.on.evil { color: #fff; background: #5a1e1b; border-color: #c0413b; }
+@media (max-height: 520px), (max-width: 520px) {
+  .cts-stories { max-height: 150px; }
+  .cts .cts-dealmodes button { min-height: 34px; font-size: 10.5px; }
+  .cts-story-blurb { display: none; }
+  .cts .cts-story.on .cts-story-blurb { display: inline; }
+  .cts-bag-label { flex-basis: 64px; }
+}
+
+/* ---- (v2.2) Prepare mode (waiting room) + practice ------------------------------------------- */
+.cts.cts-prep, .cts.cts-practice { z-index: 45; top: 52px; max-height: calc(100dvh - 140px); }
+.cts .cts-toggle { white-space: nowrap; }
+.cts-prep .cts-script-h { margin-top: 10px; }
+.cts-prep-step { display: flex; align-items: center; gap: 6px; margin: 4px 0; }
+.cts-prep-label { flex: 0 0 86px; color: var(--muted); font-size: 12px; }
+.cts-prep-val { min-width: 84px; text-align: center; font-family: var(--mono); font-size: 12px; }
+.cts .cts-prep-step button { min-width: 30px; min-height: 28px; }
+.cts-practice-banner {
+  display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; padding: 5px 8px;
+  background: repeating-linear-gradient(135deg, #3b2f12, #3b2f12 10px, #33290f 10px, #33290f 20px);
+  color: #f1dca2; border-bottom: 1px solid #c9a24a77; font-size: 12px;
+}
+.cts-practice-note { flex-basis: 100%; color: #fff3cf; font-style: italic; }
+.cts-practice-banner .cts-link { margin-left: auto; }
+@media (max-width: 640px) {
+  .cts.cts-prep, .cts.cts-practice { left: 8px; right: 8px; width: auto; top: 48px; max-height: calc(100dvh - 120px); }
+}
+@media (max-height: 520px) {
+  .cts.cts-prep, .cts.cts-practice { top: 44px; max-height: calc(100dvh - 52px); width: min(420px, 52vw); }
+}

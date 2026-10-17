@@ -1,0 +1,112 @@
+/* (v2.3) ⚙ Settings dialog (ui/common/Settings.tsx). Lazy chunk CSS: every selector is ct-set-* /
+   ct-seg / ct-switch, so loading after theme.css changes nothing else. Desktop: left nav + one
+   section. Phones: full-height sheet, chip row, all sections with sticky headers. */
+.ct-set-backdrop {
+  position: fixed; inset: 0; z-index: 70; background: #05030acc; display: flex; align-items: center; justify-content: center;
+  padding: calc(12px + var(--safe-top)) calc(12px + var(--safe-right)) calc(12px + var(--safe-bottom)) calc(12px + var(--safe-left));
+}
+.ct-set {
+  display: grid; padding: 0; overflow: hidden; color: var(--text); font-size: 15px;
+  background: linear-gradient(#2a2736, #15111c); box-shadow: 0 20px 60px #000d;
+}
+.ct-set-desk {
+  width: min(780px, 100%); height: min(600px, 100%);
+  grid-template: 'head head' auto 'nav body' 1fr 'foot foot' auto / 196px 1fr;
+}
+.ct-set-phone { width: 100%; height: 100%; grid-template: 'head' auto 'nav' auto 'body' 1fr 'foot' auto / 100%; }
+.ct-set-head { grid-area: head; display: flex; align-items: baseline; gap: 12px; padding: 14px 12px 8px 20px; border-bottom: 1px solid var(--border); }
+.ct-set-head h2 { margin: 0; color: var(--accent); font-family: var(--font-display); font-weight: normal; font-size: 1.6rem; }
+.ct-set-sub { font-size: 0.85rem; flex: 1; }
+.ct-set-close { background: none; border-color: transparent; color: var(--muted); font-size: 1.1rem; padding: 2px 10px; min-height: 36px; }
+.ct-set-close:hover { color: var(--text); }
+
+.ct-set-nav { grid-area: nav; display: flex; gap: 2px; }
+.ct-set-desk .ct-set-nav { flex-direction: column; padding: 10px 8px; border-right: 1px solid var(--border); background: #0000001f; }
+.ct-set-phone .ct-set-nav { overflow-x: auto; padding: 6px 10px; border-bottom: 1px solid var(--border); scrollbar-width: none; }
+.ct-set-nav button {
+  display: flex; align-items: center; gap: 10px; text-align: left; white-space: nowrap; background: none; border: 1px solid transparent;
+  color: var(--muted); padding: 8px 10px; min-height: 38px; border-radius: var(--radius); font-size: 15px; box-shadow: none;
+}
+.ct-set-nav button:hover { color: var(--text); background: #ffffff0a; }
+.ct-set-nav button.on { color: var(--accent); background: #d5b56a14; border-color: #d5b56a55; }
+.ct-set-phone .ct-set-nav button { padding: 4px 10px; min-height: 34px; font-size: 14px; }
+.ct-set-glyph { width: 18px; text-align: center; color: var(--accent); opacity: 0.85; }
+
+.ct-set-body { grid-area: body; overflow-y: auto; overscroll-behavior: contain; padding: 4px 20px 16px; }
+.ct-set-section + .ct-set-section { margin-top: 10px; }
+.ct-set-h {
+  margin: 0 -20px 4px; padding: 12px 20px 6px; font-family: var(--font-display); font-weight: normal; font-size: 1.25rem; color: var(--parchment);
+}
+.ct-set-phone .ct-set-h { position: sticky; top: 0; z-index: 1; background: #1d1a26f2; border-bottom: 1px solid #45425088; }
+.ct-set-sub-h { margin: 16px 0 2px; font-size: 0.8rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); font-weight: 600; }
+
+/* One setting: name left, control right, help underneath (stacked on narrow screens). */
+.ct-set-row {
+  display: grid; grid-template-columns: minmax(130px, 34%) 1fr; column-gap: 16px; align-items: center;
+  padding: 10px 0; border-bottom: 1px solid #45425066;
+}
+.ct-set-label { color: var(--text); }
+.ct-set-ctl { min-width: 0; display: flex; justify-content: flex-start; }
+.ct-set-help { grid-column: 2; margin: 6px 0 0; color: var(--muted); font-size: 0.85rem; line-height: 1.35; }
+.ct-set-wide { grid-template-columns: 1fr; }
+.ct-set-wide .ct-set-help { grid-column: 1; }
+.ct-set-wide .ct-set-ctl { margin-top: 6px; }
+.ct-set-phone .ct-set-row { grid-template-columns: 1fr; }
+.ct-set-phone .ct-set-ctl { margin-top: 6px; }
+.ct-set-phone .ct-set-help { grid-column: 1; }
+.ct-set-note { margin: 10px 0 4px; color: var(--muted); font-size: 0.85rem; line-height: 1.4; }
+.ct-set-body kbd {
+  font-family: var(--mono); font-size: 0.85rem; padding: 1px 6px; border-radius: 3px; border: 1px solid var(--border-strong);
+  background: var(--panel-sunk); color: var(--text);
+}
+.ct-set-body button { box-shadow: none; }
+
+/* Controls */
+.ct-seg { display: flex; flex-wrap: wrap; }
+.ct-seg button { flex: 1 1 auto; border-radius: 0; padding: 5px 12px; font-size: 14px; min-height: 34px; box-shadow: none; }
+.ct-seg button:first-child { border-radius: var(--radius) 0 0 var(--radius); }
+.ct-seg button:last-child { border-radius: 0 var(--radius) var(--radius) 0; }
+.ct-seg button + button { border-left-width: 0; }
+.ct-seg button.on { background: var(--accent-deep); border-color: var(--accent); color: #f6ecd2; }
+.ct-set-slider { display: flex; align-items: center; gap: 10px; width: 100%; max-width: 360px; }
+.ct-set-slider input[type='range'] { flex: 1; accent-color: var(--accent); padding: 0; background: none; border: none; min-height: 28px; }
+.ct-set-slider output { width: 3.2em; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; font-size: 0.9rem; }
+.ct-switch {
+  display: inline-flex; align-items: center; gap: 8px; padding: 3px 10px 3px 4px; min-height: 32px; border-radius: 16px; font-size: 14px;
+  background: var(--panel-sunk); border: 1px solid var(--border-strong); color: var(--muted);
+}
+.ct-switch-knob { width: 22px; height: 22px; border-radius: 50%; background: #6a6478; transition: transform 120ms; }
+.ct-switch.on { color: #f6ecd2; border-color: var(--accent); background: var(--accent-deep); }
+.ct-switch.on .ct-switch-knob { background: var(--accent); }
+.ct-set-key { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; }
+.ct-set-key.binding { border-color: var(--accent); color: var(--accent); }
+.ct-set-swatches { display: flex; flex-wrap: wrap; gap: 6px; }
+.ct-set-swatch { width: 30px; height: 30px; min-height: 30px; padding: 0; border-radius: 50%; border: 2px solid; }
+.ct-set-swatch.on { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ct-set-inline { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.ct-set-inline select { min-width: 10em; }
+.ct-set-list { margin: 6px 0 4px; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; color: var(--text); font-size: 0.92rem; line-height: 1.4; }
+.ct-set-people { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.ct-set-keys { width: 100%; border-collapse: collapse; margin: 6px 0 4px; }
+.ct-set-keys td { padding: 6px 4px; border-bottom: 1px solid #45425066; vertical-align: middle; }
+.ct-set-keys td:first-child { white-space: nowrap; width: 1%; padding-right: 18px; }
+.ct-set-about { line-height: 1.5; }
+/* Voice device pickers reuse the voice panel component inside the dialog. */
+.ct-set .ctv-devices { width: 100%; }
+.ct-set .ctv-device { max-width: 100%; }
+
+.ct-set-foot { grid-area: foot; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 16px 12px 20px; border-top: 1px solid var(--border); }
+.ct-set-foot .primary { padding: 7px 22px; }
+.ct-set-spacer { flex: 1; }
+.ct-set-confirm { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 0.9rem; }
+.ct-danger-btn { border-color: var(--danger); color: #f6d9cf; background: #3a1714; }
+.ct-set-phone .ct-set-foot { padding-bottom: calc(12px + var(--safe-bottom)); }
+/* The toolbar's Leave button hides on phones; Leave then lives in the settings footer. */
+.ct-settings-leave { display: none; }
+@media (max-width: 640px) {
+  .ct-settings-leave { display: inline-block; }
+}
+@media (max-width: 719px) {
+  .ct-set-backdrop { padding: 0; }
+  .ct-set { border-radius: 0; }
+}

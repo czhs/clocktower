@@ -1,8 +1,8 @@
-// Playwright E2E (qa-deploy). Runs ON hshi-u1 (scripts/remote.sh pnpm test:e2e).
+// Playwright E2E (qa-deploy). Runs ON the build host (scripts/remote.sh pnpm test:e2e).
 //
 // By default the config builds the app and starts a throwaway server on 127.0.0.1:3398 with a temp
 // SQLite DB and random secrets (webServer below). To run against an existing deployment instead:
-//   E2E_BASE_URL=http://127.0.0.1:3001 pnpm test:e2e      # dev service (on hshi-u1)
+//   E2E_BASE_URL=http://127.0.0.1:3001 pnpm test:e2e      # dev service (on the host)
 //   E2E_PUBLIC=1 E2E_RESOLVE_IP=$(dig +short @1.1.1.1 clocktower.chrisshi.com A | head -1) pnpm test:e2e
 //       # public endpoint: public.spec.ts only (creates 2 accounts on prod — run sparingly)
 // CT_E2E_NO_BUILD=1 skips the build step (use a dist you just built).
@@ -19,7 +19,7 @@ const PORT = 3398;
 // (default https://clocktower.chrisshi.com). E2E_RESOLVE_IP pins the hostname for Chromium
 // (--host-resolver-rules), for hosts whose local resolver is stale.
 const PUBLIC = process.env.E2E_PUBLIC === '1';
-const external = process.env.E2E_BASE_URL ?? (PUBLIC ? 'https://clocktower.chrisshi.com' : undefined);
+const external = process.env.E2E_BASE_URL ?? (PUBLIC ? (process.env.CT_PUBLIC_URL ?? 'https://clocktower.chrisshi.com') : undefined);
 const pinnedHost = external ? new URL(external).hostname : '';
 const resolveArgs = process.env.E2E_RESOLVE_IP ? [`--host-resolver-rules=MAP ${pinnedHost} ${process.env.E2E_RESOLVE_IP}`] : [];
 const baseURL = external ?? `http://127.0.0.1:${PORT}`;
@@ -75,7 +75,14 @@ export default defineConfig({
           // (logged as warnings). E2E_VOICE=0 runs without voice (voice:unavailable).
           ...(process.env.E2E_VOICE === '0'
             ? {}
-            : { LIVEKIT_URL: 'wss://e2e-fake.livekit.invalid', LIVEKIT_API_KEY: 'APIe2efakekey', LIVEKIT_API_SECRET: randomBytes(24).toString('hex') }),
+            : {
+                LIVEKIT_URL: 'wss://e2e-fake.livekit.invalid',
+                LIVEKIT_API_KEY: 'APIe2efakekey',
+                LIVEKIT_API_SECRET: randomBytes(24).toString('hex'),
+                // (v2.3 VOICE-4) grants without "Enable voice" so specs can keep reading zones from voice:grant frames.
+                VOICE_TEST_AUTO_OPT_IN: '1',
+                VOICE_MAX_CONCURRENT: '0', // parallel specs share one server: no process-wide voice cap
+              }),
           LOG_DIR: path.join(dataDir, 'logs'),
           CT_VERSION: 'e2e',
         },

@@ -154,6 +154,8 @@ export interface GameState {
   settings: import('@ct/protocol').StSettings;
   storytellerConnected: boolean;
   assigned: boolean;
+  /** (v2.2) How the current characters were dealt (Storyteller-only; absent = not dealt yet / older state). */
+  deal?: import('@ct/protocol').DealInfo;
   rolesRevealed: boolean;
   demonBluffs: CharacterId[];
   redHerringSeat: number | null;
@@ -194,8 +196,29 @@ export interface GameState {
   voteStepMs: number;
   /** Injected RNG (not part of snapshots). */
   rng: Rng;
+  /**
+   * (auto-st, additive) Optional rulings for automatic (Storyteller-less) games. Absent in human
+   * games: the engine then only raises alerts and the Storyteller decides. Not part of snapshots.
+   */
+  adjudicator?: Adjudicator;
+  /** (st-qol, automatic games) Extra public sentence appended to the bedtime bell announcement. */
+  bedtimeNote?: string;
   /** Undo entries (newest last; not part of snapshots). */
   history: HistoryEntry[];
+}
+
+/**
+ * (auto-st, additive) Storyteller judgement calls the engine can ask for when there is no human
+ * Storyteller (apps/server/src/auto). Each hook is optional; without it the engine behaves exactly
+ * as before (alert for the Storyteller).
+ */
+export interface Adjudicator {
+  /** A healthy Spy nominated a healthy, living Virgin (first nomination): does the Spy register as a Townsfolk (executed on the spot)? */
+  spyRegistersAsTownsfolk?(spy: PlayerState, virgin: PlayerState): boolean;
+  /** A real, healthy Slayer shot a healthy Recluse: does the Recluse register as the Demon (and die)? */
+  recluseRegistersAsDemon?(recluse: PlayerState, slayer: PlayerState): boolean;
+  /** A healthy living Butler's raised hand counts as "no" when their master is not voting (instead of an alert). */
+  enforceButler?: boolean;
 }
 
 /**
@@ -204,6 +227,8 @@ export interface GameState {
  */
 export interface HistoryEntry {
   snap: string;
+  /** (additive, st-qol) Short label of the command this entry reverts ("kill Alice"); ST-only. */
+  label?: string;
   replay: { seat: number; action: import('./engine.js').PlayerAction; now: number }[];
 }
 

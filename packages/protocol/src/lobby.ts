@@ -3,6 +3,8 @@ import { MAX_PLAYERS, MIN_PLAYERS } from './constants.js';
 import { Cosmetics } from './cosmetics.js';
 import { SCRIPT_IDS, type ScriptId } from './characters/types.js';
 import { LobbyDescription, LobbyName } from './text.js';
+import { STORYLINE_IDS } from './storylines.js';
+import { CHAT_FILTER_MODES } from './moderationShared.js';
 
 // Lobby directory (all require a signed-in session):
 //   GET  /api/lobbies                      -> { lobbies: LobbySummary[] }
@@ -37,6 +39,18 @@ export interface LobbySummary {
   hostName: string;
   createdAt: number;
   updatedAt: number;
+  /** (v2.1, auto-st) 'auto' = no Storyteller seat: the server runs the game (clock.ts). Absent = 'human'. */
+  storytellerMode?: import('./clock.js').StorytellerMode;
+  /** (v2.1, auto-st) Automatic-game timings (present when storytellerMode is 'auto'). */
+  autoTimings?: import('./clock.js').AutoTimings;
+  /**
+   * (v2.2) Automatic games: the storyline fate deals. 'random' = an ordinary random setup; 'secret'
+   * = the host picked a storyline but has not announced it; a StorylineId = announced by the host.
+   * Absent in human games (the Storyteller's choice is never public).
+   */
+  autoStoryline?: 'random' | 'secret' | import('./storylines.js').StorylineId;
+  /** (v2.3 OPS-6) The host's chat filter for this lobby (absent = default 'slurs'). */
+  chatFilter?: import('./moderationShared.js').ChatFilterMode;
 }
 
 export type DirectoryEvent =
@@ -89,6 +103,8 @@ export interface MemberView {
   connected: boolean;
   isHost: boolean;
   cosmetics: Cosmetics;
+  /** (v2.3 OPS-6) The host/Storyteller muted this member's chat in this lobby (public moderation act). */
+  muted?: boolean;
 }
 
 export interface LobbyRoomView {
@@ -97,6 +113,12 @@ export interface LobbyRoomView {
   youPid: string;
   canStart: boolean;
   startBlockers: string[];
+  /** (v2.2) ONLY in the seated Storyteller's own view: their pre-game settings ('prepare'). */
+  stPrepare?: import('./storyteller.js').StPrepareView;
+  /** (v2.2) ONLY in the host's own view of an automatic lobby: the storyline they picked (null = random). */
+  autoStorylineChoice?: import('./storylines.js').StorylineId | null;
+  /** (v2.3 OPS-6) ONLY in the host's / seated Storyteller's own view: members removed from this lobby (for unban). */
+  removed?: import('./moderation.js').RemovedMemberView[];
 }
 
 // Lobby C2S payloads
@@ -113,5 +135,11 @@ export const LobbySettingsMsg = z.object({
     .object({ discussionMin: z.number().min(1).max(30), nominationsMin: z.number().min(1).max(20), bedtimeSec: z.number().int().min(15).max(180), nightSec: z.number().int().min(20).max(300) })
     .partial()
     .optional(),
+  /** (v2.2) automatic games: the storyline fate deals (null = random). Host only, waiting phase only. */
+  autoStoryline: z.enum(STORYLINE_IDS).nullable().optional(),
+  /** (v2.2) automatic games: announce the chosen storyline in the public lobby summary (default false). */
+  autoStorylinePublic: z.boolean().optional(),
+  /** (v2.3 OPS-6) chat filter (host only, waiting phase only). */
+  chatFilter: z.enum(CHAT_FILTER_MODES).optional(),
 });
 export const EmptyMsg = z.object({}).strict();
