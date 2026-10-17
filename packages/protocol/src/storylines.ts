@@ -13,6 +13,7 @@
 // Storyteller-only in human games; in automatic games the host's pick is 'secret' in the public
 // lobby summary unless the host announces it (see docs/auto-storyteller.md).
 import type { CharacterId, CharacterType } from './game.js';
+import { TB_CHARACTER_IDS } from './characters/tb.js';
 
 export interface TbCounts {
   townsfolk: number;
@@ -154,8 +155,12 @@ export type CharacterTypes = Readonly<Record<CharacterId, { type: CharacterType 
 
 const TYPES: CharacterType[] = ['minion', 'outsider', 'townsfolk'];
 
+/**
+ * Storylines are Trouble Brewing setups: their random fill draws only from the Trouble Brewing
+ * pool, even though `info` (CHARACTER_INFO) now holds every script's characters.
+ */
 function ofType(info: CharacterTypes, t: CharacterType): CharacterId[] {
-  return (Object.keys(info) as CharacterId[]).filter((c) => info[c].type === t);
+  return (TB_CHARACTER_IDS as readonly CharacterId[]).filter((c) => info[c]?.type === t);
 }
 
 /** Why `def` cannot be dealt for `n` players (null = it can). Deterministic. */

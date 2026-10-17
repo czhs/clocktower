@@ -1,3 +1,4 @@
+import { SCRIPT_INFO } from '@ct/protocol';
 import type { DirectoryEvent, LobbySummary, ScriptId } from '@ct/protocol';
 
 // Pure lobby-finder logic (sorting/filtering happens client-side over the public summaries).
@@ -73,7 +74,12 @@ export const PHASE_LABEL: Record<LobbySummary['phase'], string> = {
   finished: 'Finished',
 };
 
-export const SCRIPT_LABEL: Record<ScriptId, string> = { 'trouble-brewing': 'Trouble Brewing' };
+export const SCRIPT_LABEL: Record<ScriptId, string> = {
+  'trouble-brewing': SCRIPT_INFO['trouble-brewing'].name,
+  'bad-moon-rising': SCRIPT_INFO['bad-moon-rising'].name,
+  'sects-and-violets': SCRIPT_INFO['sects-and-violets'].name,
+  custom: SCRIPT_INFO.custom.name,
+};
 
 export function shareUrl(lobbyId: string): string {
   return `${location.origin}/lobby/${encodeURIComponent(lobbyId)}`;

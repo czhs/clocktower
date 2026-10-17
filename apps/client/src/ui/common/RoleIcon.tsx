@@ -1,5 +1,5 @@
 // Role icon by CharacterId (assets/art lead). Renders the original pixel-art plaque from
-// packages/assets/generated/roles/<id>.png (gpt-6-astra art, post-processed on hshi-u1; 32x32 native)
+// packages/assets/generated/roles/<id>.png (drawn by packages/assets/scripts/roles; 32x32 native)
 // with nearest-neighbour scaling. Until an icon exists it falls back to a CSS plaque with the
 // role's initial and the team ring colour, so it is always safe to render.
 //

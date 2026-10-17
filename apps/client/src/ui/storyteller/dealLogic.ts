@@ -15,6 +15,7 @@ import {
   tbCounts,
   type CharacterId,
   type CharacterType,
+  type SeatedType,
   type GrimoireEntry,
   type NightStepView,
   type PublicPlayerView,
@@ -56,7 +57,7 @@ export function coreLine(def: StorylineDef): string {
 
 // ------------------------------------------------------------------------------ bag builder
 
-export const TYPE_ORDER: CharacterType[] = ['townsfolk', 'outsider', 'minion', 'demon'];
+export const TYPE_ORDER: SeatedType[] = ['townsfolk', 'outsider', 'minion', 'demon'];
 
 export function charactersOf(t: CharacterType): CharacterId[] {
   return (Object.keys(CHARACTER_INFO) as CharacterId[]).filter((c) => CHARACTER_INFO[c].type === t);

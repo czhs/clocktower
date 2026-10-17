@@ -13,6 +13,7 @@ import {
 import { useStore } from '../../net/store';
 import type { RoomConnection } from '../../net/room';
 import { helpSeen, openHelp } from '../common/HowToPlay';
+import { openRulebook } from '../rulebook';
 import { CastPortrait } from '../common/castPortrait';
 import { CharacterPicker, characterOf, takenBy } from './CharacterPicker';
 import { copyText, SCRIPT_LABEL, shareUrl } from './finder';
@@ -94,7 +95,14 @@ export function WaitingRoom({ conn, onLeave }: { conn: RoomConnection; account: 
           <h2>{view.lobby.name}</h2>
           <div class="muted ct-small">
             {players.length}/{view.lobby.maxPlayers} players · {readyCount} ready
-            {!collapsed && <> · {SCRIPT_LABEL[view.lobby.script]}</>}
+            {!collapsed && (
+              <>
+                {' · '}
+                <button class="ct-link ct-waiting-script" onClick={openRulebook} title="Open the rulebook on this script">
+                  {SCRIPT_LABEL[view.lobby.script]}
+                </button>
+              </>
+            )}
             {auto && <> · Automatic</>}
             {status === 'reconnecting' && <span class="ct-error"> · {navigator.onLine === false ? 'offline, waiting for network…' : 'reconnecting…'}</span>}
           </div>
@@ -195,6 +203,9 @@ export function WaitingRoom({ conn, onLeave }: { conn: RoomConnection; account: 
             {me && <LobbyCharacter conn={conn} view={view} me={me} open={pickOpen} setOpen={setPickOpen} error={pickError} setError={setPickError} />}
             <button class="ct-link" onClick={openHelp}>
               How to play
+            </button>
+            <button class="ct-link" onClick={openRulebook}>
+              Rulebook
             </button>
           </div>
           <p class="muted ct-small ct-waiting-tip">Walk around while you wait — WASD / arrow keys{narrow() ? ' or the joystick' : ''}.</p>

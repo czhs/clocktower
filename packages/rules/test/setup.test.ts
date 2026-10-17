@@ -1,4 +1,4 @@
-import { CHARACTER_INFO, type CharacterId } from '@ct/protocol';
+import { CHARACTER_INFO, charactersOfScript, type CharacterId } from '@ct/protocol';
 import { describe, expect, it } from 'vitest';
 import {
   countTypes,
@@ -144,8 +144,10 @@ describe('setup table', () => {
     expect(stErr(s, { type: 'begin_first_night' })).toMatch(/Assign/);
   });
 
-  it('defines all 22 characters as modular plugins with night orders', () => {
-    expect(Object.keys(ROLES)).toHaveLength(22);
+  it('defines every Trouble Brewing character as a modular plugin with night orders', () => {
+    // ROLES spans every script now; the TB pool is still exactly 22 and its order is unchanged.
+    expect(charactersOfScript('trouble-brewing')).toHaveLength(22);
+    for (const c of charactersOfScript('trouble-brewing')) expect(ROLES[c]).toBeDefined();
     expect(FIRST_NIGHT_ORDER).toEqual([
       'poisoner',
       'washerwoman',

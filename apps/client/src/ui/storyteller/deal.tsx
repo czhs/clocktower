@@ -7,7 +7,7 @@
 // Grimoire" -> edit -> Assign) and the cast can be re-dealt (a confirm guards an existing deal).
 // Nothing here reveals anything to players: they only ever see their own character, at nightfall.
 import { useState } from 'preact/hooks';
-import { CHARACTER_INFO, type CharacterId, type CharacterType, type StorylineId, type StorytellerGameView } from '@ct/protocol';
+import { CHARACTER_INFO, type CharacterId, type SeatedType, type StorylineId, type StorytellerGameView } from '@ct/protocol';
 import { charName, CharacterSelect } from '../hud/shared';
 import { ConfirmButton, type Send } from './stage';
 import { charactersOf, checkBag, coreLine, countsLine, storylineOptions, storylineTitle, TYPE_ORDER } from './dealLogic';
@@ -77,7 +77,7 @@ function BagBuilder({ view, send, confirmRedeal }: { view: StorytellerGameView; 
   const check = checkBag(bag, n);
   const toggle = (c: CharacterId) => setBag((b) => (b.includes(c) ? b.filter((x) => x !== c) : [...b, c]));
   const want = check.want;
-  const typeCount: Record<CharacterType, [number, number | null]> = {
+  const typeCount: Record<SeatedType, [number, number | null]> = {
     townsfolk: [check.counts.townsfolk, want?.townsfolk ?? null],
     outsider: [check.counts.outsiders, want?.outsiders ?? null],
     minion: [check.counts.minions, want?.minions ?? null],

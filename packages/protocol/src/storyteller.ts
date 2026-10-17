@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { DayClockCommand } from './clock.js';
 import {
+  CHARACTER_COUNT,
   CharacterIdSchema,
   PROMPT_KINDS,
   type Alignment,
@@ -216,7 +217,7 @@ export const PromptSpec = z.object({
   maxTargets: z.number().int().min(0).max(15).optional(),
   allowSelf: z.boolean().optional(),
   allowDead: z.boolean().optional(),
-  characterOptions: z.array(CharacterIdSchema).max(22).optional(),
+  characterOptions: z.array(CharacterIdSchema).max(CHARACTER_COUNT).optional(),
   stepId: z.string().max(64).optional(),
 });
 export type PromptSpecInput = z.input<typeof PromptSpec>;
@@ -224,7 +225,7 @@ export type PromptSpecInput = z.input<typeof PromptSpec>;
 export const InfoSpec = z.object({
   text: stText(1, 500),
   seats: z.array(Seat).max(15).optional(),
-  characters: z.array(CharacterIdSchema).max(22).optional(),
+  characters: z.array(CharacterIdSchema).max(CHARACTER_COUNT).optional(),
   number: z.number().int().min(0).max(99).optional(),
   yes: z.boolean().optional(),
   stepId: z.string().max(64).optional(),
@@ -349,6 +350,12 @@ export const StCommand = z.discriminatedUnion('type', [
     starpassSeat: Seat.optional(),
     /** (additive) Mayor bounce: the player who dies instead of the Mayor. */
     redirectSeat: Seat.optional(),
+    /**
+     * (additive, multi-script) A character the resolution needs: the Courtier's and Gambler's
+     * guesses, the character the Pit-Hag creates, the character the Cerenovus makes someone mad
+     * about, the ability the Philosopher takes.
+     */
+    character: CharacterIdSchema.optional(),
   }),
   z.object({ type: z.literal('skip_step'), stepId: z.string().max(64) }),
   z.object({ type: z.literal('visit_home'), seat: Seat }),
