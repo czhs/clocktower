@@ -12,6 +12,7 @@ import { useEffect, useMemo, useState } from 'preact/hooks';
 import { PLAYABLE_IDS } from '@ct/assets';
 import {
   CHARACTER_INFO,
+  type CharacterType,
   PROMPT_KINDS,
   type AccountView,
   type C2SPayload,
@@ -25,7 +26,7 @@ import {
 } from '@ct/protocol';
 import type { RoomConnection } from '../../net/room';
 import { useStore } from '../../net/store';
-import { charName, CharacterSelect, Countdown, friendlyError, phaseTitle, seatLabel, VoteClock } from '../hud/shared';
+import { charName, CharacterSelect, Countdown, friendlyError, phaseTitle, ScriptCtx, scriptPool, seatLabel, VoteClock } from '../hud/shared';
 import { ConfirmButton, deathEffects, EVERYONE, noExecutionEffects, only, PickBanner, StageBar, StageTab, StatusBadges, Toggle } from './stage';
 import { PhaseStageBar, ScriptView, type CastOf, type OpenTools } from './script';
 import { reducedMotion } from '../../game/fx/motion';
@@ -187,6 +188,8 @@ export function StPanel({ view, conn, practice }: { view: StorytellerGameView; c
 
   const offline = view.players.filter((x) => !x.connected);
   return (
+    // Every character picker inside the panel lists this lobby's script first (ScriptCtx).
+    <ScriptCtx.Provider value={lobby?.lobby.script}>
     <aside class={`cts dock-${dock} ${tools ? 'cts-mode-tools' : 'cts-mode-script'}${reducedMotion() ? ' cts-still' : ''}${practice ? ' cts-practice' : ''}`} aria-label={practice ? 'Storyteller (practice)' : 'Storyteller'}>
       <header class="cts-head">
         <span class="cts-title">Storyteller</span>
@@ -287,6 +290,7 @@ export function StPanel({ view, conn, practice }: { view: StorytellerGameView; c
         {tools ? '◂ Back to the script' : '☰ Grimoire & tools'}
       </button>
     </aside>
+    </ScriptCtx.Provider>
   );
 }
 
@@ -579,7 +583,14 @@ function SetupTab({ view, send }: { view: StorytellerGameView; send: Send }) {
   const [bluffs, setBluffs] = useState<(CharacterId | '')[]>(['', '', '']);
   const [nonstandard, setNonstandard] = useState(false);
   const chosen = Object.values(assign).filter((c): c is CharacterId => !!c);
-  const counts = { townsfolk: 0, outsider: 0, minion: 0, demon: 0 };
+  const counts: Record<CharacterType, number> = {
+    townsfolk: 0,
+    outsider: 0,
+    minion: 0,
+    demon: 0,
+    traveller: 0,
+    fabled: 0,
+  };
   for (const c of chosen) counts[CHARACTER_INFO[c].type]++;
   const base = view.setupCounts;
   const viewHasBaron = view.grimoire.some((g) => g.character === 'baron');
@@ -645,7 +656,7 @@ function SetupTab({ view, send }: { view: StorytellerGameView; send: Send }) {
             value={drunkBelieves}
             allowEmpty
             onChange={setDrunkBelieves}
-            only={(Object.keys(CHARACTER_INFO) as CharacterId[]).filter((c) => CHARACTER_INFO[c].type === 'townsfolk' && !chosen.includes(c))}
+            only={scriptPool(lobbyScript).filter((c) => CHARACTER_INFO[c].type === 'townsfolk' && !chosen.includes(c))}
           />
           <small class="muted">(empty = random)</small>
         </label>
@@ -670,7 +681,7 @@ function SetupTab({ view, send }: { view: StorytellerGameView; send: Send }) {
             key={i}
             value={b}
             allowEmpty
-            only={(Object.keys(CHARACTER_INFO) as CharacterId[]).filter(
+            only={scriptPool(lobbyScript).filter(
               (c) => CHARACTER_INFO[c].alignment === 'good' && !chosen.includes(c) && (c === b || !bluffs.includes(c)),
             )}
             onChange={(c) => setBluffs((x) => x.map((y, j) => (j === i ? c : y)))}
@@ -836,7 +847,7 @@ function GrimoireRow({ g, view, send, openComposer }: { g: GrimoireEntry; view: 
           {g.character === 'drunk' && (
             <CharacterSelect
               value={g.believedCharacter}
-              only={(Object.keys(CHARACTER_INFO) as CharacterId[]).filter((c) => CHARACTER_INFO[c].type === 'townsfolk')}
+              only={scriptPool(lobbyScript).filter((c) => CHARACTER_INFO[c].type === 'townsfolk')}
               onChange={(c) => c && CHARACTER_INFO[c].type === 'townsfolk' && send({ type: 'set_drunk_belief', seat: g.seat, character: c })}
             />
           )}

@@ -70,6 +70,7 @@ const host: RoomHost = {
   env: 'dev',
   log: console as unknown as RoomHost['log'],
   now: () => Date.now(),
+  script: () => 'trouble-brewing',
   members: () => members,
   member: (pid) => members.find((m) => m.pid === pid),
   storytellerPid: () => members.find((m) => m.role === 'storyteller')?.pid ?? null,

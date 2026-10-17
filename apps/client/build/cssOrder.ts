@@ -35,6 +35,7 @@ export const CSS_ORDER = [
   'ui/voice/voice.css',
   'ui/chat/chat.css',
   'ui/social/pie.css',
+  'ui/rulebook/rulebook.css', // rulebook Grimoire (lazy chunk)
   'ui/common/theme.css',
   // late: loaded after the theme since they were added (lazy dialogs); they rely on it
   'ui/common/Settings.css',

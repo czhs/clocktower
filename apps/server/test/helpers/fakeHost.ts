@@ -1,6 +1,6 @@
 // LEAD-OWNED test helper: an in-memory RoomHost for unit-testing one module (or several wired
 // together) without Colyseus. Captures every message sent per pid for secrecy assertions.
-import type { S2CMessages, S2CType } from '@ct/protocol';
+import type { S2CMessages, S2CType, ScriptId } from '@ct/protocol';
 import { DEFAULT_COSMETICS } from '@ct/protocol';
 import type { GameModule, Logger, RoomEvent, RoomHost, RoomMember, VoiceModule, WorldModule } from '../../src/rooms/modules.js';
 
@@ -10,6 +10,8 @@ export interface FakeHost extends RoomHost {
   addMember(m: Partial<RoomMember> & { pid: string }): RoomMember;
   setModules(m: { game?: GameModule; world?: WorldModule; voice?: VoiceModule }): void;
   clock: { now: number };
+  /** Mutable script holder: set `scriptRef.id` before starting a game to test another script. */
+  scriptRef: { id: ScriptId };
   flush(): void;
 }
 
@@ -21,6 +23,8 @@ export function createFakeHost(lobbyId = 'lobbyA'): FakeHost {
   const queue: RoomEvent[] = [];
   const events: RoomEvent[] = [];
   const clock = { now: 1_000_000 };
+  // Tests may switch the script before starting a game: `host.script.id = 'bad-moon-rising'`.
+  const script: { id: ScriptId } = { id: 'trouble-brewing' };
   let mods: { game?: GameModule; world?: WorldModule; voice?: VoiceModule } = {};
   let flushing = false;
   const host: FakeHost = {
@@ -28,9 +32,11 @@ export function createFakeHost(lobbyId = 'lobbyA'): FakeHost {
     env: 'test',
     log: quiet,
     now: () => clock.now,
+    script: () => script.id,
     clock,
     sent,
     events,
+    scriptRef: script,
     members: () => [...members.values()],
     member: (pid) => members.get(pid),
     storytellerPid: () => [...members.values()].find((m) => m.role === 'storyteller')?.pid ?? null,

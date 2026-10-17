@@ -1,4 +1,14 @@
-import { CHARACTER_INFO, DEFAULT_BEDTIME_SECONDS, DEFAULT_ST_SETTINGS, MAX_PLAYERS, MIN_PLAYERS, type CharacterId, type ForcePhase, type StCommand } from '@ct/protocol';
+import {
+  CHARACTER_INFO,
+  DEFAULT_BEDTIME_SECONDS,
+  DEFAULT_ST_SETTINGS,
+  MAX_PLAYERS,
+  MIN_PLAYERS,
+  type CharacterId,
+  type ForcePhase,
+  type ScriptId,
+  type StCommand,
+} from '@ct/protocol';
 import { checkVictory, endPoisonerPoison, finish, killPlayer, publish } from './deaths.js';
 import {
   cancelNomination,
@@ -27,6 +37,7 @@ import { commandLabel } from './labels.js';
 import {
   applyAssignment,
   completeAssignment,
+  DEFAULT_SCRIPT,
   randomAssignment,
   validateAssignment,
   type Assignment,
@@ -69,6 +80,8 @@ const HISTORY_LIMIT = 30;
 export interface CreateGameOptions {
   players: { pid: string; seat: number; name: string }[];
   rng: Rng;
+  /** Script to draw characters from (default: Trouble Brewing). */
+  script?: ScriptId;
   now?: number;
   bedtimeSeconds?: number;
   /** Time the clock hand spends on each seat while voting. */
@@ -77,7 +90,7 @@ export interface CreateGameOptions {
 
 export function createGame(opts: CreateGameOptions): GameState {
   const n = opts.players.length;
-  if (n < MIN_PLAYERS || n > MAX_PLAYERS) throw new RuleError('invalid', `Trouble Brewing needs 5-15 players (got ${n})`);
+  if (n < MIN_PLAYERS || n > MAX_PLAYERS) throw new RuleError('invalid', `A game needs 5-15 players (got ${n})`);
   const seats = new Set(opts.players.map((p) => p.seat));
   if (seats.size !== n) throw new RuleError('invalid', 'Duplicate seats');
   for (const p of opts.players)
@@ -121,6 +134,7 @@ export function createGame(opts: CreateGameOptions): GameState {
     }));
   return {
     version: 1,
+    script: opts.script ?? DEFAULT_SCRIPT,
     players,
     phase: 'setup',
     dayNumber: 0,
@@ -142,6 +156,9 @@ export function createGame(opts: CreateGameOptions): GameState {
     stepSeq: 0,
     day: null,
     lastExecutedDiedSeat: null,
+    lastDay: null,
+    exile: null,
+    exileSeq: 0,
     visitingSeat: null,
     travelSpeedMult: 1,
     announcements: [],
@@ -245,6 +262,20 @@ function startNight(s: GameState, op: Op, first: boolean, reason: 'bedtime' | 'n
   s.nightNumber += 1;
   s.phaseEndsAt = null;
   clearStage(s);
+  // Keep a summary of the day for the night's information characters before dropping it.
+  if (s.day) {
+    const nominatorSeats = s.day.nominations.filter((n) => n.status !== 'cancelled').map((n) => n.nominatorSeat);
+    const voterSeats = [
+      ...new Set(
+        s.day.nominations.flatMap((n) =>
+          Object.entries(n.votes)
+            .filter(([, yes]) => yes === true)
+            .map(([seat]) => Number(seat)),
+        ),
+      ),
+    ];
+    s.lastDay = { nominatorSeats: [...new Set(nominatorSeats)], voterSeats, executionOccurred: s.day.executionOccurred };
+  }
   s.day = null;
   for (const p of s.players) {
     if (p.poisonedBy === 'poisoner') p.poisonedBy = null;
@@ -516,6 +547,7 @@ function assign(s: GameState, op: Op, cmd: Extract<StCommand, { type: 'assign_ch
     drunkBelieves: cmd.drunkBelievesSeatCharacter ?? null,
     redHerringSeat: cmd.redHerringSeat ?? null,
     demonBluffs: [...cmd.demonBluffs],
+    script: s.script,
   };
   const full = completeAssignment(draft, s.rng);
   const seats = s.players.map((p) => p.seat);
@@ -582,7 +614,7 @@ function stCommand(s: GameState, op: Op, cmd: StCommand): void {
   switch (cmd.type) {
     case 'random_setup': {
       requirePhase(s, 'setup');
-      applyAssignment(s, randomAssignment(s.players.map((p) => p.seat), s.rng));
+      applyAssignment(s, randomAssignment(s.players.map((p) => p.seat), s.rng, s.script));
       s.deal = { method: 'random' };
       log(s, op, 'Random characters assigned');
       return;
@@ -730,10 +762,11 @@ function stCommand(s: GameState, op: Op, cmd: StCommand): void {
     case 'resolve_step': {
       notSetupOrFinished(s);
       const st = findStep(s, cmd.stepId);
-      const input: { seats?: number[]; starpassSeat?: number; redirectSeat?: number } = {};
+      const input: { seats?: number[]; starpassSeat?: number; redirectSeat?: number; character?: CharacterId } = {};
       if (cmd.seats) input.seats = cmd.seats;
       if (cmd.starpassSeat !== undefined) input.starpassSeat = cmd.starpassSeat;
       if (cmd.redirectSeat !== undefined) input.redirectSeat = cmd.redirectSeat;
+      if (cmd.character !== undefined) input.character = cmd.character;
       resolveStep(s, op, st, input);
       for (const p of s.players) p.prompts = p.prompts.filter((q) => q.stepId !== st.id);
       return;

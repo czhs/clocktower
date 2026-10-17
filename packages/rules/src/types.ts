@@ -4,6 +4,7 @@ import type {
   Alignment,
   AnnouncementView,
   CharacterId,
+  ScriptId,
   EvilTeamView,
   GamePhase,
   GameResult,
@@ -132,6 +133,8 @@ export interface DayState {
 
 export interface GameState {
   version: 1;
+  /** The script this game is being run on (selects the character pool). */
+  script: ScriptId;
   players: PlayerState[];
   phase: GamePhase;
   dayNumber: number;
@@ -161,6 +164,21 @@ export interface GameState {
   day: DayState | null;
   /** Seat that died by execution on the most recent day (Undertaker). */
   lastExecutedDiedSeat: number | null;
+  /**
+   * Summary of the day that just ended, captured when the night starts (`day` itself is cleared).
+   * Night information characters need it: the Flowergirl asks whether the Demon voted, the Town
+   * Crier whether a Minion nominated, and the Vortox whether anybody was executed.
+   */
+  lastDay: {
+    /** Seats that made a nomination that was not withdrawn. */
+    nominatorSeats: number[];
+    /** Seats that voted yes on any nomination. */
+    voterSeats: number[];
+    executionOccurred: boolean;
+  } | null;
+  /** Running / most recent Traveller exile vote (see exile.ts). */
+  exile: import('./exile.js').ExileState | null;
+  exileSeq: number;
   visitingSeat: number | null;
   travelSpeedMult: number;
   announcements: AnnouncementView[];

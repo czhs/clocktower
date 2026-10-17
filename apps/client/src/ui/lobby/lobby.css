@@ -301,3 +301,5 @@ button.ct-ready-on { border-color: #3d6b3a; color: #bfe0b9; }
 .ct-modal .ct-actions > button { width: auto; }
 .ct-removed { margin: 6px 0; }
 .ct-chat-filter { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+/* The lobby's script name in the waiting-room header opens the rulebook on it. */
+button.ct-link.ct-waiting-script { padding: 0; font-size: inherit; color: inherit; text-decoration-style: dotted; }
