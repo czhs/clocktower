@@ -13,7 +13,129 @@
 // oak dado; the CANDLES are the key light day and night (small warm 'fire' pools at the lectern, the coffin-bench and
 // the desk), pale grey smoke curling up from them; solemn, gothic.
 import * as THREE from 'three';
-import { bareShell, polyWalls, polyFloor, blockOutside, inPoly, onSeg, segPoint, motes, at, sunMask, ditherCanvas, ditherWall } from './house-0.js';
+import { ramp } from '../palette.js';
+import { bareShell, polyWalls, polyFloor, blockOutside, inPoly, onSeg, segPoint, motes, at, sunMask } from './house-0.js';
+
+// ---- polish pass (2026-10-16): violet stone, and candle pools that know the hour
+/** paintRamp, but the shadow tone sinks toward a deep VIOLET instead of the kit's slate (the shuttered nave is all
+ *  shadow, and the slate lerp read blue - worst at night under the moon's blue fill). LORE: violet stone. */
+function violetRamp(paintRamp, hexIn, o, shade = '#3C2252') {
+  const r = paintRamp(hexIn, o);
+  const sh = new THREE.Color(r[1]).multiplyScalar(0.62).lerp(new THREE.Color(shade), 0.35);
+  return [r[0], r[1], '#' + sh.getHexString().toUpperCase()];
+}
+const BAYER4 = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+/** A dither canvas like house-0's ditherCanvas, drawn ONCE for night and day: by day (the sun up, golden hour and
+ *  19:15 included) the pools drop to `dayK` of their density - on an ordered dither the day cells are an exact subset
+ *  of the night cells, so the night-only quads just collapse - and their colours lean toward the stone (`dayTo`, by
+ *  `dayMix`), so the candle glow on the lit violet floor stays glow and never reads as rust speckle. No extra
+ *  geometry: the same quads, re-coloured and collapsed when the hour flips. */
+function hourCanvas({ plane = 'floor', cw = 0.034, ch = plane === 'floor' ? 0.068 : 0.04, y = 0.006, z = 0.004, dayK = 0.6, dayTo, dayMix = 0.55 }) {
+  const cells = new Map();
+  const toward = new THREE.Color(dayTo);
+  return {
+    pool({ x = 0, v = 0, r = 1, r2 = r, color, inner = null, peak = 0.5, power = 1.4, clip = null, k = 0.62 }) {
+      const i0 = Math.floor((x - r) / cw), i1 = Math.ceil((x + r) / cw), j0 = Math.floor((v - r2) / ch), j1 = Math.ceil((v + r2) / ch);
+      for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+        const u = (i + 0.5) * cw, w = (j + 0.5) * ch;
+        const d2 = ((u - x) / r) ** 2 + ((w - v) / r2) ** 2;
+        if (d2 >= 1 || (clip && !clip(u, w))) continue;
+        const f = peak * (1 - d2) ** power, col = inner && f > peak * k ? inner : color;
+        const key = i + ',' + j, c = cells.get(key);
+        if (!c) cells.set(key, { i, j, f, col, fm: f });
+        else { c.f = 1 - (1 - c.f) * (1 - f); if (f > c.fm) { c.fm = f; c.col = col; } }
+      }
+      return this;
+    },
+    /** -> quads [{v0, day (shown by day), dayCol THREE.Color}] (glass-layer vertex indices in b) */
+    draw(b) {
+      const rows = new Map(), quads = [];
+      for (const c of cells.values()) {
+        const t = (BAYER4[(((c.j % 4) + 4) % 4) * 4 + (((c.i % 4) + 4) % 4)] + 0.5) / 16;
+        if (c.f <= t) continue;
+        c.day = c.f * dayK > t;
+        (rows.get(c.j) ?? rows.set(c.j, []).get(c.j)).push(c);
+      }
+      for (const [j, row] of rows) {
+        row.sort((p, q) => p.i - q.i);
+        for (let a = 0; a < row.length;) {
+          let e = a;
+          while (e + 1 < row.length && row[e + 1].i === row[e].i + 1 && row[e + 1].col === row[a].col && row[e + 1].day === row[a].day) e++;
+          const x0 = row[a].i * cw, x1 = (row[e].i + 1) * cw, v0 = j * ch, v1 = (j + 1) * ch;
+          const P = plane === 'floor'
+            ? [x0, y, v0, x0, y, v1, x1, y, v1, x0, y, v0, x1, y, v1, x1, y, v0]
+            : [x0, v0, z, x1, v0, z, x1, v1, z, x0, v0, z, x1, v1, z, x0, v1, z];
+          quads.push({ v0: (b.layers.glass?.pos.length ?? 0) / 3, day: row[a].day, dayCol: new THREE.Color(row[a].col).lerp(toward, dayMix) });
+          b.tris(P, { tones: 'glass', layer: 'glass', glow: row[a].col, glowKind: 1 });
+          a = e + 1;
+        }
+      }
+      return quads;
+    },
+  };
+}
+/** Day / night switch for hourCanvas quads inside a built mesh (call after the mesh exists; update() every frame). */
+function hourSwitch(room, mesh, quads) {
+  const pos = mesh.geometry.getAttribute('position'), glow = mesh.geometry.getAttribute('aGlow');
+  const vs = quads.flatMap((q) => Array.from({ length: 6 }, (_, k) => q.v0 + k));
+  const P0 = vs.map((v) => [pos.getX(v), pos.getY(v), pos.getZ(v)]), G0 = vs.map((v) => [glow.getX(v), glow.getY(v), glow.getZ(v)]);
+  const sun = room.engine.uniforms?.uSunDir?.value, sunC = room.engine.uniforms?.uSunColor?.value;
+  // "day" = the sun is up and warm (the same test as houses 10-14's masks): golden hour and 19:15 are day here,
+  // although the kit's window glow (isNight) is already on then
+  const isDay = () => !!sun && sun.y >= 0.08 && !(sunC && sunC.b > sunC.r + 0.02);
+  let last = null;
+  const fn = () => {
+    const d = isDay();
+    if (d === last) return;
+    last = d;
+    quads.forEach((q, n) => {
+      for (let k = 0; k < 6; k++) {
+        const i = n * 6 + k, v = q.v0 + k, p = d && !q.day ? P0[n * 6] : P0[i];
+        pos.setXYZ(v, p[0], p[1], p[2]);
+        // (glow colours are stored linear, like THREE.Color's components)
+        if (d) glow.setXYZ(v, q.dayCol.r, q.dayCol.g, q.dayCol.b); else glow.setXYZ(v, G0[i][0], G0[i][1], G0[i][2]);
+      }
+    });
+    pos.needsUpdate = true; glow.needsUpdate = true;
+  };
+  fn.isDay = isDay;
+  return fn;
+}
+
+/** Night palette swap for the violet stone. Under the moon the toon shader desaturates tones (toneSat 0.6), strips
+ *  "cool" ones (blue above red: violet counts) and multiplies by a blue ramp (0.17, 0.24, 0.48): any violet that
+ *  reads violet by day comes out navy. So at night the room's violet SHADOW tones (the whole shuttered nave is in
+ *  shadow) are re-hued to a red-heavy plum of the same luminance, which that blue ramp turns back into violet. Only
+ *  vertices whose shadow tone has the chroma of `ramps` (any tint) are touched; written once per day / night flip. */
+function nightStone(root, prefix, ramps, isDay, plum = [0.1, 0.016, 0.05], gain = 1.3) {
+  const lum = (r, g, b) => 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  const keys = ramps.map((t) => { const c = new THREE.Color(t[2]), q = c.r + c.g + c.b; return [c.r / q, c.g / q]; });
+  const pl = lum(...plum);
+  const sets = [];
+  root.traverse((m) => {
+    if (!m.isMesh || !m.name.startsWith(prefix)) return;
+    const a = m.geometry.getAttribute('toneSh');
+    if (!a || m.geometry.getAttribute('aGlow')) return;
+    const idx = [], night = [];
+    for (let v = 0; v < a.count; v++) {
+      const r = a.getX(v), g = a.getY(v), b = a.getZ(v), q = r + g + b;
+      if (q <= 0 || !keys.some(([kr, kg]) => Math.abs(r / q - kr) < 0.02 && Math.abs(g / q - kg) < 0.02)) continue;
+      const f = (lum(r, g, b) / pl) * gain;   // (gain: the blue ramp passes less of a red-heavy tone)
+      idx.push(v); night.push(r, g, b, plum[0] * f, plum[1] * f, plum[2] * f);
+    }
+    if (idx.length) sets.push({ a, idx, night });
+  });
+  let last = null;
+  return () => {
+    const d = isDay();
+    if (d === last) return;
+    last = d;
+    for (const { a, idx, night } of sets) {
+      idx.forEach((v, n) => { const o = n * 6 + (d ? 0 : 3); a.setXYZ(v, night[o], night[o + 1], night[o + 2]); });
+      a.needsUpdate = true;
+    }
+  };
+}
 
 /** Room size / walls (index.js reads ROOM before build): a wide, shallow nave; the apse is part of the depth. */
 export const ROOM = {
@@ -27,14 +149,14 @@ export default function build(room, ctx) {
   const { FURNITURE: F, CLOTH, GLOW, TOWN_PALETTE: TP, paintRamp } = ctx;
   const W = room.W, D = room.D, H = room.H, T = room.T;
   const X = W / 2, Z = D / 2, NB = -1.9, AW = 1.5, AI = 1.0;    // nave back wall z; apse mouth half-width, back half-width
-  const VIOLET = paintRamp('#3a3050', { lightness: 0.3 });
+  const VIOLET = violetRamp(paintRamp, '#3f2d55', { lightness: 0.3 });   // (was #3a3050 + the slate shadow: read blue)
   const OAK = paintRamp('#3a2828', { lightness: 0.24 });
-  const FLAGS = paintRamp('#34303e', { lightness: 0.27 });
+  const FLAGS = violetRamp(paintRamp, '#3a2c46', { lightness: 0.27 });
   const CANDLE = '#FFB85C';                                    // warm, a touch more amber than the town lamp (no pink on violet)
-  const DARK = paintRamp('#241c2c', { lightness: 0.16 });
+  const DARK = violetRamp(paintRamp, '#281a32', { lightness: 0.16 });
   const PLUM = paintRamp(TP.plum[1], { lightness: 0.36 });
   const WAX = paintRamp(TP.bannerRed, { lightness: 0.42 });
-  const LANCET = '#8C80BC';
+  const LANCET = '#9680C4';
   bareShell(room);
 
   // ---- the nave + apse
@@ -230,33 +352,44 @@ export default function build(room, ctx) {
   // night: the shutters keep the sun out): dithered amber pools - round the lectern and up the apse, in each niche,
   // under the coffin-bench candle, the desk, the candelabra and the door lantern - soft islands in the violet dark
   const inside = (u, w) => inPoly(poly, u, w);
+  const pools = [];
   const smoke = motes(room, {
     n: 26, seed: 33, sources: [[-0.72, -2.3, 1.68], [0.72, -2.3, 1.68], [cbx + 0.55, cbz, 0.78], [dx + 0.45, dz + 0.15, 1.02]], jitter: 0.05,
     box: { y0: 0, y1: 1.3 }, size: 0.045, glow: '#8E8A96', mode: 'steam', speed: 0.16, sway: 0.06, name: 'smoke',
     still: (b) => {
-      const fl = ditherCanvas({ plane: 'floor' });
+      const fl = hourCanvas({ plane: 'floor', dayTo: '#4A3A5C' });
       fl.pool({ x: 0, v: -2.05, r: 1.45, r2: 1.05, color: '#8A5C48', inner: '#C88A5A', peak: 0.5, power: 1.1, clip: inside });   // the lectern + prickets
       fl.pool({ x: cbx + 0.5, v: cbz + 0.15, r: 0.9, r2: 0.65, color: '#8A5C48', inner: '#C08458', peak: 0.38, clip: inside });   // the coffin-bench candle
       fl.pool({ x: dx + 0.45, v: dz + 0.3, r: 0.85, r2: 0.6, color: '#8A5C48', inner: '#C08458', peak: 0.36, clip: inside });   // the desk
       fl.pool({ x: -2.1, v: -1.25, r: 0.85, r2: 0.6, color: '#7E5646', inner: '#B07A52', peak: 0.34, clip: inside });   // the candelabra
       fl.pool({ x: -1.1, v: 2.15, r: 0.7, r2: 0.5, color: '#7E5646', inner: '#B07A52', peak: 0.3, clip: inside });   // the door lantern
-      fl.draw(b);
+      pools.push(...fl.draw(b));
       // up the apse's back wall between the prickets, and a halo in every niche
-      ditherWall(b, apseBack, [{ x: 0, v: 1.35, r: 1.05, r2: 0.95, color: '#7A4C46', inner: '#B07058', peak: 0.42, power: 1.1 }], { z: 0.01 });
-      for (const [sg, u, w] of niches) ditherWall(b, sg, [{ x: u + (w ? 0.2 : 0), v: 1.7, r: 0.36, r2: 0.42, color: '#8A5444', inner: '#C8845A', peak: 0.55, power: 1.0 }], { z: 0.02 });
-      ditherWall(b, navL, [{ x: -2.1 - navL.mid[0], v: 1.45, r: 0.6, r2: 0.55, color: '#6E4A48', inner: '#9A6656', peak: 0.3 }], { z: 0.01 });
+      const onWall = (sg, z, list) => {
+        const c = hourCanvas({ plane: 'wall', z, dayTo: '#4E3866' });
+        for (const p of list) c.pool(p);
+        b.push({ at: [sg.mid[0], 0, sg.mid[1]], ry: sg.ry });
+        pools.push(...c.draw(b));
+        b.pop();
+      };
+      onWall(apseBack, 0.01, [{ x: 0, v: 1.35, r: 1.05, r2: 0.95, color: '#7A4C46', inner: '#B07058', peak: 0.42, power: 1.1 }]);
+      for (const [sg, u, w] of niches) onWall(sg, 0.02, [{ x: u + (w ? 0.2 : 0), v: 1.7, r: 0.36, r2: 0.42, color: '#8A5444', inner: '#C8845A', peak: 0.55, power: 1.0 }]);
+      onWall(navL, 0.01, [{ x: -2.1 - navL.mid[0], v: 1.45, r: 0.6, r2: 0.55, color: '#6E4A48', inner: '#9A6656', peak: 0.3 }]);
     },
     night: (b) => {
       // a faint violet moon in the two lancets (the panes alone go black at night)
       for (const [sg, u, w, h] of [[apseBack, 0, 0.36, 1.1], [navR, 3.45 - navR.mid[0], 0.34, 0.95]]) {
         b.push({ at: [sg.mid[0], 0, sg.mid[1]], ry: sg.ry });
-        b.box(w, h, 0.004, { at: [u, 1.6, -T * 0.55 + 0.016], tones: 'glass', layer: 'glass', glow: '#4C4278', glowKind: 1 });
+        b.box(w, h, 0.004, { at: [u, 1.6, -T * 0.55 + 0.016], tones: 'glass', layer: 'glass', glow: '#56407E', glowKind: 1 });
         b.pop();
       }
     },
   });
   // ---- the sun stays out: a shadow-only mask over the whole room (the lancets only glow)
   const mask = sunMask(room, { name: 'house-3-shutter', cell: 0.5, margin: 14 });
+  const hour = hourSwitch(room, smoke.mesh, pools);
+  hour();
+  let stone = null;
 
   room.spot('lectern', 0, -1.35, Math.PI);
   room.spot('coffin', cbx, cbz + 0.75, Math.PI);
@@ -266,7 +399,14 @@ export default function build(room, ctx) {
     bed: { x: bx, z: bz - 0.6, y: 0.55, facing: 0 },
     visit: { x: bx - 0.95, z: bz + 0.45, facing: Math.PI / 2 },
     extras: [smoke.group, mask.group],
-    update(t) { smoke.update(t); mask.update(); },
+    update(t) {
+      smoke.update(t); mask.update(); hour();
+      // (the room's meshes are only reachable once buildInterior has parented the extras)
+      if (!stone && smoke.group.parent) { let r = smoke.group.parent; while (r.parent && !r.parent.isScene) r = r.parent; const a = nightStone(r, room.id, [VIOLET, FLAGS, DARK, PLUM], hour.isDay), c = nightStone(r, room.id, [ramp('stone')], hour.isDay, [0.085, 0.03, 0.06], 1.15);
+        stone = () => { a(); c(); };   // (the columns, arch and caps: a greyer violet)
+      }
+      stone?.();
+    },
     bedRect: bed.rect,
   };
 }

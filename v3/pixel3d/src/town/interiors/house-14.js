@@ -87,14 +87,16 @@ const BAYER4 = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
  * `cols` (dim -> bright) that dissolve into the surface through a 4x4 Bayer pattern instead of ending in a hard disc.
  * plane 'floor' (y up) or 'back' | 'left' | 'right' (the wall's inner face); (x, y, z) = the centre, r / rv the radii
  * along the plane's u (x, or z on side walls) and v (z on the floor, y on walls). peak 0..1 scales the brightness,
- * fall the falloff exponent, cell the dither cell (u metres; v is stretched for the 30 deg camera). keep(u, v) clips.
+ * fall the falloff exponent, cell the dither cell (u metres; v is stretched for the 30 deg camera). keep(u, v) clips;
+ * fade(u, v) -> 0..1 scales the brightness (a soft edge where a hard clip would show); off: the wall decal's distance
+ * from the wall face (in front of wall-mounted boards).
  * stipple: a hashed (random-looking) threshold instead of the Bayer matrix - mist and haze, not light.
  */
-function ditherPool(b, layer, { x = 0, y = 0.006, z = 0, r, rv = r, cols, peak = 1, fall = 1.6, cell = 0.036, plane = 'floor', kind = 1, keep = null, stipple = false, room }) {
+function ditherPool(b, layer, { x = 0, y = 0.006, z = 0, r, rv = r, cols, peak = 1, fall = 1.6, cell = 0.036, plane = 'floor', kind = 1, keep = null, fade = null, off = 0.012, stipple = false, room }) {
   const cu = cell, cv = plane === 'floor' ? cell * 2 : cell * 1.15;
   const U = plane === 'floor' ? [1, 0, 0] : plane === 'back' ? [1, 0, 0] : plane === 'left' ? [0, 0, -1] : [0, 0, 1];
   const V = plane === 'floor' ? [0, 0, -1] : [0, 1, 0];
-  const o = plane === 'floor' ? [x, y, z] : plane === 'back' ? [x, y, -room.D / 2 + 0.012] : plane === 'left' ? [-room.W / 2 + 0.012, y, z] : [room.W / 2 - 0.012, y, z];
+  const o = plane === 'floor' ? [x, y, z] : plane === 'back' ? [x, y, -room.D / 2 + off] : plane === 'left' ? [-room.W / 2 + off, y, z] : [room.W / 2 - off, y, z];
   const n = cols.length, ni = Math.ceil(r / cu), nj = Math.ceil(rv / cv);
   const P = (u, v) => [o[0] + U[0] * u + V[0] * v, o[1] + U[1] * u + V[1] * v, o[2] + U[2] * u + V[2] * v];
   const quad = (u0, u1, v0, v1, lvl) => b.tris([...P(u0, v0), ...P(u1, v0), ...P(u1, v1), ...P(u0, v0), ...P(u1, v1), ...P(u0, v1)],
@@ -105,8 +107,9 @@ function ditherPool(b, layer, { x = 0, y = 0.006, z = 0, r, rv = r, cols, peak =
       let lvl = -1;
       if (i < ni) {
         const u = (i + 0.5) * cu, v = (j + 0.5) * cv, d2 = (u / r) ** 2 + (v / rv) ** 2;
-        if (d2 < 1 && (!keep || keep(u, v))) {
-          const I = peak * Math.pow(1 - d2, fall) * n, lo = Math.floor(I);
+        const f = d2 < 1 && fade ? Math.max(0, Math.min(1, fade(u, v))) : 1;
+        if (d2 < 1 && f > 0 && (!keep || keep(u, v))) {
+          const I = peak * f * Math.pow(1 - d2, fall) * n, lo = Math.floor(I);
           const th = stipple ? (((Math.sin(i * 12.9898 + j * 78.233) * 43758.5453) % 1) + 1) % 1 : (BAYER4[((j & 3) << 2) | (i & 3)] + 0.5) / 16;
           lvl = Math.min(n, lo + (I - lo > th ? 1 : 0)) - 1;
         }
@@ -397,7 +400,10 @@ export default function build(room, ctx) {
   const HONEY = ['#4a3a28', '#7a5e3a', '#b08a52', '#dcbc80'];
   const night = (b, layer) => {
     ditherPool(b, layer, { room, x: -2.35, z: 1.45, y: 0.03, r: 1.55, rv: 1.05, cols: HONEY, peak: 0.85, fall: 1.4, cell: 0.05 });
-    ditherPool(b, layer, { room, x: 1.15, z: 1.75, y: 0.03, r: 1.45, rv: 0.9, cols: HONEY, peak: 0.8, fall: 1.4, cell: 0.05 });
+    // the lantern by the bin: its pool dims out before the flour bin's side (it used to run on under the bin and end in
+    // a straight cut along the bin's left face)
+    ditherPool(b, layer, { room, x: 1.05, z: 1.75, y: 0.03, r: 1.3, rv: 0.9, cols: HONEY, peak: 0.85, fall: 1.4, cell: 0.05,
+      fade: (u) => (fbx - 0.66 - (1.05 + u)) / 0.6 });
     ditherPool(b, layer, { room, x: 0.45, z: hz1 - 0.15, y: hy + 0.01, r: 1.25, rv: 0.6, cols: HONEY.slice(0, 3), peak: 0.7, cell: 0.05,
       keep: (u, v) => -v + hz1 - 0.15 < hz1 - 0.02 });                                                // up over the hurst's front edge
     ditherPool(b, layer, { room, plane: 'back', x: 1.35, y: 1.55, r: 1.7, rv: 1.15, cols: ['#6a5a44', '#94785a', '#c09c6c'], peak: 0.85, fall: 1.3, cell: 0.05,

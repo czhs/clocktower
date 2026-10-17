@@ -13,7 +13,7 @@
 // colourful threads everywhere; patient, watchful.
 import * as THREE from 'three';
 import { Builder } from '../kit.js';
-import { bareShell, polyWalls, polyFloor, blockOutside, inPoly, onSeg, motes, at, ditherCanvas, ditherWall, sunMask, flatQuad } from './house-0.js';
+import { bareShell, polyWalls, polyFloor, blockOutside, inPoly, onSeg, motes, at, ditherCanvas, sunMask, flatQuad } from './house-0.js';
 
 /** Room size / walls (index.js reads ROOM before build): the tall shop floor; the bay is part of the depth. */
 export const ROOM = {
@@ -76,22 +76,22 @@ export default function build(room, ctx) {
       const a = Math.PI / 2 - (k / 15) * Math.PI * 2, r = 0.82;
       const hx = cx + Math.cos(a) * r, hy = cy + Math.sin(a) * r * 0.92;
       const black = k === BLACK;
-      b.box(0.15, 0.12, 0.012, { at: [hx, hy - 0.08, 0.058], tones: black ? 'crow' : 'cream' });
+      flatQuad(b, hx, hy - 0.02, 0.064, 0.15, 0.12, { tones: black ? 'crow' : 'cream' });          // (paint: 2 tris, not a 12-tri box)
       b.prism([[-0.1, 0], [0.1, 0], [0, 0.1]], 0.012, { at: [hx, hy + 0.04, 0.058], tones: black ? 'crow' : roofs[k] });
-      if (!black) b.box(0.04, 0.04, 0.01, { at: [hx, hy - 0.06, 0.066], tones: CLOTH.gold });
+      if (!black) flatQuad(b, hx, hy - 0.04, 0.068, 0.04, 0.04, { tones: CLOTH.gold });
       else {
         // the cut threads: black strands from the house down past the hem
         for (let q = 0; q < 5; q++) {                     // a splayed fan of loose black threads, frayed at the ends
           const len = hy - 0.08 + 0.06 + ((q * 37) % 7) * 0.04, a = (q - 2) * 0.11, x0 = hx - 0.06 + q * 0.03, y0 = hy - 0.08;
-          b.box(0.016, len, 0.01, { at: [x0 + Math.sin(a) * len / 2, y0 - Math.cos(a) * len / 2, 0.062], rz: a, tones: 'crow', origin: 'center' });
-          b.box(0.028, 0.03, 0.01, { at: [x0 + Math.sin(a) * len, y0 - Math.cos(a) * len, 0.062], rz: a * 2, tones: 'crow', origin: 'center' });
+          flatQuad(b, x0 + Math.sin(a) * len / 2, y0 - Math.cos(a) * len / 2, 0.067, 0.016, len, { rz: a, tones: 'crow' });
+          flatQuad(b, x0 + Math.sin(a) * len, y0 - Math.cos(a) * len, 0.068, 0.028, 0.03, { rz: a * 2, tones: 'crow' });
         }
       }
     }
     // lanes between the houses and the square (cream threads)
     for (let k = 0; k < 5; k++) { const a = Math.PI / 2 - (k / 5) * Math.PI * 2 - 0.2; flatQuad(b, cx + Math.cos(a) * 0.56, cy + Math.sin(a) * 0.56 - 0.16, 0.064, 0.02, 0.32, { rz: a - Math.PI / 2, tones: 'cream' }); }
     // a fringe of tassels on the hem
-    for (let q = 0; q < 14; q++) b.box(0.03, 0.12, 0.02, { at: [-tw / 2 + 0.1 + (q * (tw - 0.2)) / 13, -0.12, 0.04], tones: CLOTH.gold });
+    for (let q = 0; q < 14; q++) flatQuad(b, -tw / 2 + 0.1 + (q * (tw - 0.2)) / 13, -0.06, 0.05, 0.03, 0.12, { tones: CLOTH.gold });   // (paint, not relief: 2 tris each)
   });
 
   // ---- the MEZZANINE LOFT over the left third: deck, joists, posts, railing; bales and rolled cloth up there
@@ -234,32 +234,34 @@ export default function build(room, ctx) {
   // patches dithered across the boards, the loom lamp's cream pool, the candles' small warm pools
   const inside = (u, w) => inPoly(poly, u, w);
   const lint = motes(room, {
-    n: 30, seed: 22, box: { x0: 0.6, x1: 4.2, y0: 0.4, y1: 3.0, z0: -3.0, z1: 0.6 }, size: 0.04, glow: '#FFF6E2', mode: 'drift', speed: 0.12, sway: 0.2, name: 'lint',
+    n: 24, seed: 22, box: { x0: 0.6, x1: 4.2, y0: 0.4, y1: 3.0, z0: -3.0, z1: 0.6 }, size: 0.04, glow: '#FFF6E2', mode: 'drift', speed: 0.12, sway: 0.2, name: 'lint',
     night: (b) => {
       // the moonlit glazing (the panes alone go navy): an overlay just inside each bay pane, with its round head
       for (const [k, u, w, h, y] of [[1, 0, 0.5, 2.0, 0.7], [2, -0.47, 0.76, 2.35, 0.55], [2, 0.47, 0.76, 2.35, 0.55], [3, 0, 0.5, 2.0, 0.7]]) {
         const sg = segs[k], gz = -T * 0.55 + 0.016;
         b.push({ at: [sg.mid[0], 0, sg.mid[1]], ry: sg.ry });
-        b.box(w, h, 0.004, { at: [u, y, gz], tones: 'glass', layer: 'glass', glow: '#56689E', glowKind: 1 });
+        flatQuad(b, u, y + h / 2, gz + 0.002, w, h, { tones: 'glass', layer: 'glass', glow: '#56689E', glowKind: 1 });
         b.prism(Array.from({ length: 9 }, (_, q) => { const a = (q / 8) * Math.PI; return [Math.cos(a) * w / 2, Math.sin(a) * w / 2]; }), 0.004, { at: [u, y + h + 0.06, 0.02], tones: 'glass', layer: 'glass', glow: '#62749E', glowKind: 1 });
         b.pop();
       }
-      const fl = ditherCanvas({ plane: 'floor' });
-      // each window throws a long silver streak from its sill into the room (densest at the sill, thinning out)
-      for (const [x0, z0, dx] of [[1.2, -2.75, -0.2], [2.03, -3.0, -0.12], [2.97, -3.0, 0.12], [3.8, -2.75, 0.2]]) {
-        for (let q = 0; q < 3; q++) {
-          const f = q / 2, w = x0 === 2.03 || x0 === 2.97 ? 0.34 : 0.24;
-          fl.pool({ x: x0 + dx * q * 1.4, v: z0 + 0.35 + q * 0.55, r: w + f * 0.08, r2: 0.5, color: '#7080B0', inner: '#A8B8E0', peak: 0.55 - f * 0.25, power: 1.0, clip: inside });
-        }
-      }
-      fl.pool({ x: 3.05, v: -1.75, r: 1.0, r2: 0.75, color: '#A89070', inner: '#DCC092', peak: 0.38, clip: inside });   // the loom lamp
-      fl.pool({ x: -2.85, v: 0.95, r: 0.9, r2: 0.7, color: '#A88456', inner: '#D8A866', peak: 0.36, clip: inside });   // the lantern
-      fl.pool({ x: -0.75, v: BZ + 1.05, r: 0.85, r2: 0.6, color: '#A88456', inner: '#D8A866', peak: 0.34, clip: inside });   // the candle-stand
-      fl.pool({ x: 2.25, v: 0.95, r: 0.7, r2: 0.55, color: '#A88456', inner: '#D8A866', peak: 0.32, clip: (u, w) => inside(u, w) && !(u < 2.05 && w > -0.2 && w < 2.0) });   // the table candle (floor)
+      // (polish pass: FEWER, LARGER pools on a 1-texel lattice. At the room's camera (vh 7.33 over 360 low-res rows) a
+      //  texel is 0.0204 m across and 0.0407 m deep on the floor (sin 30 deg), 0.0235 m tall on a wall (cos 30 deg): a
+      //  cell of exactly one texel always covers exactly one pixel centre, so the pools read as a clean 1-px checker
+      //  instead of the old 1.7-texel cells' ragged 1-2 px blobs. The moon's panes on the boards are the lid's real
+      //  moonlight now - the 12 dithered streaks are gone; one faint silver wash ties them together.)
+      const TX = 7.33 / 360;
+      const fl = ditherCanvas({ plane: 'floor', cw: TX, ch: TX * 2 });
+      fl.pool({ x: 2.5, v: -2.25, r: 1.15, r2: 0.62, color: '#7080B0', inner: '#A8B8E0', peak: 0.24, power: 1.6, clip: inside });   // the moon's wash under the bay
+      fl.pool({ x: 3.05, v: -1.6, r: 0.9, r2: 0.7, color: '#A89070', inner: '#DCC092', peak: 0.36, power: 2, clip: inside });   // the loom lamp
+      fl.pool({ x: -2.85, v: 0.95, r: 0.85, r2: 0.65, color: '#A88456', inner: '#D8A866', peak: 0.34, power: 2, clip: inside });   // the lantern
+      fl.pool({ x: -0.85, v: BZ + 1.1, r: 0.8, r2: 0.6, color: '#A88456', inner: '#D8A866', peak: 0.32, power: 2, clip: inside });   // the candle-stand
       fl.draw(b);
-      ditherCanvas({ plane: 'floor', y: 0.03 }).pool({ x: 2.1, v: 0.95, r: 0.7, r2: 0.55, color: '#A88456', inner: '#D8A866', peak: 0.32, clip: (u, w) => u < 2.05 && w > -0.2 && w < 2.0 }).draw(b);
       // the candle-stand's glow on the tapestry's lower left corner and the dado under it (in front of the cloth)
-      ditherWall(b, back, [{ x: -1.0 - back.mid[0], v: 1.45, r: 0.75, r2: 0.6, color: '#9C8058', inner: '#D0A868', peak: 0.3 }], { z: 0.075 });
+      const wl = ditherCanvas({ plane: 'wall', cw: TX, ch: TX * 1.1547, z: 0.075 });
+      wl.pool({ x: -1.0 - back.mid[0], v: 1.45, r: 0.7, r2: 0.55, color: '#9C8058', inner: '#D0A868', peak: 0.3, power: 1.6 });
+      b.push({ at: [back.mid[0], 0, back.mid[1]], ry: back.ry });
+      wl.draw(b);
+      b.pop();
     },
   });
 

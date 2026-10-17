@@ -43,6 +43,16 @@ function motes(room, ctx, name, n, colorOf, size, pos) {
   update(0);
   return { group: grp, update };
 }
+/** A +z-facing quad w x h centred on (x, y), turned rz, at depth z (wall-frame chalk, ticks: their sides never read). */
+function quadZ(b, w, h, x, y, z, rz, opts) {
+  const c = Math.cos(rz), sn = Math.sin(rz), p = (u, v) => [x + u * c - v * sn, y + u * sn + v * c, z];
+  b.tris([...p(-w / 2, -h / 2), ...p(w / 2, -h / 2), ...p(w / 2, h / 2), ...p(-w / 2, -h / 2), ...p(w / 2, h / 2), ...p(-w / 2, h / 2)], opts);
+}
+/** An upward-facing quad w x d centred on (x, z) at height y, turned ry (floor chalk). */
+function quadY(b, w, d, x, y, z, ry, opts) {
+  const c = Math.cos(ry), sn = Math.sin(ry), q = (u, v) => [x + u * c + v * sn, y, z - u * sn + v * c];
+  b.tris([...q(-w / 2, d / 2), ...q(w / 2, d / 2), ...q(w / 2, -d / 2), ...q(-w / 2, d / 2), ...q(w / 2, -d / 2), ...q(-w / 2, -d / 2)], opts);
+}
 const hash = (k) => { const h = Math.sin(k * 127.1 + 311.7) * 43758.5453; return h - Math.floor(h); };
 /** Clock-hand angle (radians clockwise from 12) for h:m. */
 // ---- night light pools (night pass 2026-10-16; the critic's "hard-edged coloured discs"): the toon point-light pools are
@@ -194,11 +204,11 @@ export default function build(room, ctx) {
     wg.pop();
     for (let k = 0; k < 12; k++) {
       const a = (k / 12) * Math.PI * 2, big = k % 3 === 0;
-      full.box(big ? 0.07 : 0.045, big ? 0.22 : 0.14, 0.02, { at: [DX + Math.sin(a) * DR * 0.8, DY + Math.cos(a) * DR * 0.8, 0.125], rz: -a, origin: 'center', tones: 'crow', pattern: 'none' });
+      quadZ(full, big ? 0.07 : 0.045, big ? 0.22 : 0.14, DX + Math.sin(a) * DR * 0.8, DY + Math.cos(a) * DR * 0.8, 0.135, -a, { tones: 'crow', pattern: 'none' });
     }
     for (let k = 0; k < 24; k++) {
       const a = (k / 24) * Math.PI * 2;
-      full.box(0.2, 0.02, 0.02, { at: [DX + Math.sin(a) * DR * 0.94, DY + Math.cos(a) * DR * 0.94, 0.122], rz: -a + Math.PI / 2, origin: 'center', tones: 'brass', pattern: 'none', tint: 0.94 });
+      quadZ(full, 0.2, 0.02, DX + Math.sin(a) * DR * 0.94, DY + Math.cos(a) * DR * 0.94, 0.132, -a + Math.PI / 2, { tones: 'brass', pattern: 'none', tint: 0.94 });
     }
     hand(full, DX, DY, 0.14, HOUR(11, 55), DR * 0.52, 0.09);                       // 11:55
     hand(full, DX, DY, 0.16, MIN(55), DR * 0.82, 0.06);
@@ -218,8 +228,8 @@ export default function build(room, ctx) {
     full.pop();
     for (let k = 0; k < 20; k++) {
       const a = (k / 20) * Math.PI * 2;
-      full.box(0.11, 0.02, 0.01, { at: [EX + Math.cos(a) * ER, EY + Math.sin(a) * ER, 0.01], rz: a + Math.PI / 2, origin: 'center', tones: CHALK, pattern: 'none' });
-      if (k % 2 === 0) full.box(0.025, 0.07, 0.01, { at: [EX + Math.cos(a) * (ER + 0.05), EY + Math.sin(a) * (ER + 0.05), 0.012], rz: a - Math.PI / 2, origin: 'center', tones: CHALK, pattern: 'none' });
+      quadZ(full, 0.11, 0.02, EX + Math.cos(a) * ER, EY + Math.sin(a) * ER, 0.015, a + Math.PI / 2, { tones: CHALK, pattern: 'none' });
+      if (k % 2 === 0) quadZ(full, 0.025, 0.07, EX + Math.cos(a) * (ER + 0.05), EY + Math.sin(a) * (ER + 0.05), 0.017, a - Math.PI / 2, { tones: CHALK, pattern: 'none' });
     }
     for (const s of [-1, 1]) full.box(0.2, 0.025, 0.01, { at: [EX + 0.28 * s + 0.62, EY + 0.32, 0.012], rz: s * 0.6, origin: 'center', tones: CHALK, pattern: 'none' });  // a chalk "?"-ish mark
     // the tower schematics (blueprints), pinned up on the left
@@ -243,8 +253,8 @@ export default function build(room, ctx) {
     // chalk tallies: the days counted, in fives
     for (let gi = 0; gi < 7; gi++) {
       const gx = -4.3 + (gi % 4) * 0.26, gy = 2.92 + Math.floor(gi / 4) * 0.3;
-      for (let k = 0; k < 4; k++) full.box(0.018, 0.2, 0.01, { at: [gx + k * 0.045, gy, 0.01], tones: CHALK, pattern: 'none' });
-      full.box(0.22, 0.018, 0.01, { at: [gx + 0.07, gy + 0.1, 0.012], rz: 0.6, origin: 'center', tones: CHALK, pattern: 'none' });
+      for (let k = 0; k < 4; k++) quadZ(full, 0.018, 0.2, gx + k * 0.045, gy + 0.1, 0.015, 0, { tones: CHALK, pattern: 'none' });
+      quadZ(full, 0.22, 0.018, gx + 0.07, gy + 0.1, 0.017, 0.6, { tones: CHALK, pattern: 'none' });
     }
     // the wall regulator (right of the dial): a small dial and a glazed case (its pendulum swings, below)
     const RX = 2.75, RY = 1.25;
@@ -314,26 +324,48 @@ export default function build(room, ctx) {
   });
   // the hot lamp's pool is pulled forward off the back wall (it lit the oxblood panelling as a red disc): it lights the
   // bench top, the stool and the floor in front
-  room.light({ pos: [BXc + 0.12, BT + 0.35, BZc + 1.25], color: '#FFE8B8', r: 1.8, kind: 'fire', intensity: 1.9 });
+  // (polish: and kept short - at r 1.8 it drew a hard toon ellipse on the flags in front of the bench; now it is a small
+  // hot spot under the shade, and the spill onto the floor is the painted night field)
+  room.light({ pos: [BXc + 0.12, BT + 0.3, BZc + 0.24], color: '#FFE8B8', r: 0.62, kind: 'fire', intensity: 1.5, hug: false });
   F.stool(room, { x: BXc + 0.15, z: BZc + 0.75 });
 
-  // ---- the great pendulum under the dial (still swinging) and the regulator's (quick); separate meshes
-  const pendulum = (name, len, bob, w) => {
-    const pb = new Builder(room.engine, { name });
-    pb.box(w, len, w, { at: [0, -len, 0], tones: 'brass', pattern: 'none' });
-    pb.push(M({ at: [0, -len, 0], rx: Math.PI / 2 }));
-    pb.cylinder(bob, bob, 0.06, { at: [0, -0.03, 0], tones: 'brass', segments: 12 });
-    pb.cylinder(bob * 0.6, bob * 0.6, 0.08, { at: [0, -0.04, 0], tones: 'brass', segments: 12, tint: 1.06 });
-    pb.pop();
-    return pb.build({ name });
+  // ---- the great pendulum under the dial (still swinging) and the regulator's (quick)
+  // (polish mesh budget: both pendulums in ONE mesh; update() swings each one's vertices about its own pivot)
+  const PIV = [[DX, DY - DR - 0.1, BZ + 0.32], [2.75, 1.25 + 0.68, BZ + 0.2]];
+  const pb2 = new Builder(room.engine, { name: 'house-9-pendulums' });
+  const nv = () => (pb2.layers.solid?.pos.length ?? 0) / 3;
+  const addPend = ([px, py, pz], len, bob, w) => {
+    pb2.push(M({ at: [px, py, pz] }));
+    pb2.box(w, len, w, { at: [0, -len, 0], tones: 'brass', pattern: 'none' });
+    pb2.push(M({ at: [0, -len, 0], rx: Math.PI / 2 }));
+    pb2.cylinder(bob, bob, 0.06, { at: [0, -0.03, 0], tones: 'brass', segments: 12 });
+    pb2.cylinder(bob * 0.6, bob * 0.6, 0.08, { at: [0, -0.04, 0], tones: 'brass', segments: 12, tint: 1.06 });
+    pb2.pop(); pb2.pop();
   };
-  const great = new THREE.Group();
-  great.position.set(DX, DY - DR - 0.1, BZ + 0.32);
-  great.add(pendulum('house-9-pendulum', 1.12, 0.2, 0.05));
+  addPend(PIV[0], 1.12, 0.2, 0.05);
+  const split = nv();
+  addPend(PIV[1], 0.5, 0.07, 0.02);
+  const pendGrp = pb2.build({ name: 'house-9-pendulums' });
+  const pendMesh = pendGrp.children[0];
+  pendMesh.frustumCulled = false;
+  const pPos = pendMesh.geometry.getAttribute('position'), pNrm = pendMesh.geometry.getAttribute('normal');
+  const pBase = Float32Array.from(pPos.array), nBase = Float32Array.from(pNrm.array);
+  let pendLast = -1;
+  const swingPend = (k) => {
+    if (k === pendLast) return;
+    pendLast = k;
+    const ang = [Math.sin(k * Math.PI) * 0.16, Math.sin(k * Math.PI * 2) * 0.2];   // a 2 s beat, a 1 s beat
+    for (let v = 0; v < pPos.count; v++) {
+      const q = v < split ? 0 : 1, c = Math.cos(ang[q]), sn = Math.sin(ang[q]), [px, py] = PIV[q];
+      const x = pBase[v * 3] - px, y = pBase[v * 3 + 1] - py;
+      pPos.array[v * 3] = px + x * c - y * sn; pPos.array[v * 3 + 1] = py + x * sn + y * c;
+      const nx = nBase[v * 3], ny = nBase[v * 3 + 1];
+      pNrm.array[v * 3] = nx * c - ny * sn; pNrm.array[v * 3 + 1] = nx * sn + ny * c;
+    }
+    pPos.needsUpdate = true; pNrm.needsUpdate = true;
+  };
+  swingPend(0);
   b.box(0.3, 0.12, 0.3, { at: [DX, DY - DR - 0.16, BZ + 0.15], tones: 'iron', pattern: 'none' });         // its suspension block
-  const reg = new THREE.Group();
-  reg.position.set(2.75, 1.25 + 0.68, BZ + 0.2);
-  reg.add(pendulum('house-9-regulator', 0.5, 0.07, 0.02));
 
   // ---- the drafting table in the middle: the tower's plan unrolled, compasses, a brass gear set down, a candle
   const TX = 0.55, TZ = 0.45;
@@ -366,8 +398,8 @@ export default function build(room, ctx) {
     const cx = [-1.9, 2.0, -0.9][n], cz = [1.3, 1.6, 2.2][n], r = [0.42, 0.34, 0.28][n];
     for (let k = 0; k < 16; k++) {
       const a = (k / 16) * Math.PI * 2;
-      b.box(0.15 * r / 0.4, 0.006, 0.02, { at: [cx + Math.cos(a) * r, 0.002, cz + Math.sin(a) * r], ry: -a + Math.PI / 2, tones: CHALK, pattern: 'none', tint: 0.94 });
-      if (k % 2 === 0) b.box(0.025, 0.006, 0.06, { at: [cx + Math.cos(a) * (r + 0.04), 0.003, cz + Math.sin(a) * (r + 0.04)], ry: -a + Math.PI / 2, tones: CHALK, pattern: 'none', tint: 0.94 });
+      quadY(b, 0.15 * r / 0.4, 0.02, cx + Math.cos(a) * r, 0.008, cz + Math.sin(a) * r, -a + Math.PI / 2, { tones: CHALK, pattern: 'none', tint: 0.94 });
+      if (k % 2 === 0) quadY(b, 0.025, 0.06, cx + Math.cos(a) * (r + 0.04), 0.009, cz + Math.sin(a) * (r + 0.04), -a + Math.PI / 2, { tones: CHALK, pattern: 'none', tint: 0.94 });
     }
   }
 
@@ -411,7 +443,12 @@ export default function build(room, ctx) {
     },
   };
   const night = lightPools(room, ctx, 'house-9-night', {
-    floor: [shaft, pool(BXc + 0.12, BZc + 1.05, 1.35, HOT, { peak: 1.05, sz: 0.85 })],
+    // (polish: the lamp's pool was a crisp ringed ellipse under the bench that read as a rug - now the brightest light is
+    // on the bench top (tops) and only a dim, widely dithered spill reaches the flags in front)
+    floor: [shaft, pool(BXc + 0.12, BZc - 0.02, 1.05, HOT, { peak: 1.0, sx: 1.35, sz: 0.36, pow: 1.4 }),   // (the bench top only)
+      pool(BXc + 0.12, BZc + 0.95, 1.6, HOT, { peak: 0.3, sx: 1.2, sz: 0.8, pow: 1.5 })],
+    tops: [{ in: (u, v) => Math.abs(u - BXc) < BW / 2 - 0.01 && Math.abs(v - BZc) < 0.34, y: 0.866, cols: ['#6E5E4E', '#A88E6A', '#ECD6A8'] }],
+    band: 0.8, cell: 2.5,
     back: [ring(DX, DY, DR + 0.04, 0.5, ['#4C6862', '#7C9A86', '#CCDCB8'], { peak: 0.85 })],
     y: 0.003, tone: flagJoints(ctx),
   });
@@ -423,11 +460,10 @@ export default function build(room, ctx) {
   return {
     bed: { x: CX, z: CZ - 0.6, y: 0.55, facing: 0 },
     visit: { x: CX - 0.95, z: CZ, facing: Math.PI / 2 },
-    extras: [great, reg, motesW.group, night.group],
+    extras: [pendGrp, motesW.group, night.group],
     update(t) {
       const k = Math.floor(t * 8) / 8;
-      great.rotation.z = Math.sin(k * Math.PI) * 0.16;                         // a 2 s beat
-      reg.rotation.z = Math.sin(k * Math.PI * 2) * 0.2;                        // a 1 s beat
+      swingPend(k);
       motesW.update(t);
       night.update();
     },

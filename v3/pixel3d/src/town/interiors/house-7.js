@@ -42,6 +42,13 @@ function motes(room, ctx, name, n, colorOf, size, pos) {
   update(0);
   return { group: grp, update };
 }
+/** A flat upward-facing n-gon of radius r at height y (current frame): thin discs whose rims never read (tri budget). */
+function disc(b, r, n, [x, y, z], opts) {
+  const p = (k) => { const a = (k / n) * Math.PI * 2; return [x + Math.cos(a) * r, y, z + Math.sin(a) * r]; };
+  const out = [];
+  for (let k = 1; k < n - 1; k++) out.push(...p(0), ...p(k + 1), ...p(k));
+  b.tris(out, opts);
+}
 const hash = (k) => { const h = Math.sin(k * 127.1 + 311.7) * 43758.5453; return h - Math.floor(h); };
 
 // ---- night light pools (night pass 2026-10-16; the critic's "hard-edged coloured discs"): the toon point-light pools are
@@ -171,9 +178,9 @@ export default function build(room, ctx) {
   room.wallFrame('back', ({ full }) => {
     for (const x of WX) {
       const cx = x, cy = WY + WS / 2, R = WS * 0.62;
-      for (let k = 0; k < 16; k++) {
-        const a = (k / 16) * Math.PI * 2;
-        full.box(0.17, 0.11, 0.1, { at: [cx + Math.cos(a) * R, cy + Math.sin(a) * R, 0.03], rz: a + Math.PI / 2, origin: 'center', tones: 'timber', pattern: 'none' });
+      for (let k = 0; k < 12; k++) {
+        const a = (k / 12) * Math.PI * 2;
+        full.box(0.215, 0.11, 0.1, { at: [cx + Math.cos(a) * R, cy + Math.sin(a) * R, 0.03], rz: a + Math.PI / 2, origin: 'center', tones: 'timber', pattern: 'none' });
       }
       for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
         full.prism([[0, 0], [0.14 * sx, 0], [0, 0.14 * sy]], 0.06, { at: [cx + sx * (WS / 2 + 0.01), cy + sy * (WS / 2 + 0.01), 0.0], rz: 0, tones: 'plaster' });
@@ -217,8 +224,8 @@ export default function build(room, ctx) {
     if (Math.abs(x) < 1.0 && z > 1.2) continue;
     const r = 0.22 + hash(i + 2) * 0.2;
     b.push({ at: [x, 0, z], ry: a, s: [1, 1, 0.6] });
-    b.cylinder(r, r, 0.012, { at: [0, 0, 0], tones: 'moss', segments: 7, tint: [0.95, 1, 1.05][i % 3] });
-    b.cylinder(r * 0.55, r * 0.55, 0.02, { at: [r * 0.3, 0, 0.05], tones: 'mossTuft', segments: 6 });
+    disc(b, r, 7, [0, 0.012, 0], { tones: 'moss', tint: [0.95, 1, 1.05][i % 3] });
+    disc(b, r * 0.55, 6, [r * 0.3, 0.02, 0.05], { tones: 'mossTuft' });
     b.pop();
     b.box(0.07, 0.04, 0.06, { at: [x + r + 0.1, 0, z + 0.05], ry: a, tones: 'stone', pattern: 'none' });
   }
@@ -250,8 +257,9 @@ export default function build(room, ctx) {
   caps.forEach(([cx, cz, c], i) => {
     for (let k = 0; k < 3; k++) {
       const x = cx + (hash(i * 3 + k + 200) - 0.5) * 0.3, z = cz + (hash(i * 3 + k + 230) - 0.5) * 0.24, s = 0.6 + hash(i * 3 + k + 260) * 0.6;
-      b.box(0.025 * s, 0.1 * s, 0.025 * s, { at: [x, 0, z], tones: 'cream', pattern: 'none' });
-      g.cylinder(0.065 * s, 0.025 * s, 0.05 * s, { at: [x, 0.1 * s, z], tones: 'glass', layer: 'glass', glow: c, glowKind: 2, segments: 6 });
+      const hw = 0.0125 * s, hh = 0.1 * s;                          // the stem: a front quad (tri budget; it is 1-2 px wide)
+      b.tris([x - hw, 0, z, x + hw, 0, z, x + hw, hh, z, x - hw, 0, z, x + hw, hh, z, x - hw, hh, z], { tones: 'cream', pattern: 'none' });
+      g.cylinder(0.065 * s, 0.025 * s, 0.05 * s, { at: [x, 0.1 * s, z], tones: 'glass', layer: 'glass', glow: c, glowKind: 2, segments: 5 });
     }
   });
   room.light({ pos: [-2.7, 1.0, BZ + 1.15], color: CYAN, r: 1.15, kind: 'fire', intensity: 1.0 });
@@ -305,7 +313,7 @@ export default function build(room, ctx) {
   for (let k = 0; k < 6; k++) {
     const a = (k / 6) * Math.PI * 2 + Math.PI / 6;
     // place settings on the cap: a tiny plate + an acorn cup
-    b.cylinder(0.06, 0.06, 0.012, { at: [QX + Math.cos(a) * 0.36, 0.75, QZ + Math.sin(a) * 0.36], tones: k === 4 ? 'crow' : 'cream', segments: 8 });
+    disc(b, 0.06, 8, [QX + Math.cos(a) * 0.36, 0.762, QZ + Math.sin(a) * 0.36], { tones: k === 4 ? 'crow' : 'cream' });
     b.cylinder(0.025, 0.02, 0.03, { at: [QX + Math.cos(a) * 0.25, 0.75, QZ + Math.sin(a) * 0.25], tones: SHELL, segments: 8 });
     const sx = QX + Math.cos(a) * 0.9, sz = QZ + Math.sin(a) * 0.9;
     if (k === 1) {                                                          // the knocked-over stool
@@ -323,8 +331,8 @@ export default function build(room, ctx) {
 
   // ---- the FAIRY RING on the floor (front-left), the small buckled shoe in the middle
   const RX = -1.75, RZ = 1.45, RR = 0.68;
-  b.cylinder(RR + 0.14, RR + 0.14, 0.012, { at: [RX, 0, RZ], tones: 'mossTuft', segments: 16, tint: 0.94 });
-  b.cylinder(RR - 0.14, RR - 0.14, 0.016, { at: [RX, 0, RZ], tones: FLOOR, segments: 16, tint: 0.94 });
+  disc(b, RR + 0.14, 16, [RX, 0.012, RZ], { tones: 'mossTuft', tint: 0.94 });
+  disc(b, RR - 0.14, 16, [RX, 0.016, RZ], { tones: FLOOR, tint: 0.94 });
   for (let k = 0; k < 11; k++) {
     const a = (k / 11) * Math.PI * 2, x = RX + Math.cos(a) * RR, z = RZ + Math.sin(a) * RR, s = 0.8 + hash(k + 60) * 0.5;
     b.cylinder(0.035 * s, 0.03 * s, 0.13 * s, { at: [x, 0, z], tones: 'cream', segments: 8 });
@@ -378,8 +386,8 @@ export default function build(room, ctx) {
   room.light({ pos: [LX, LY + 0.1, LZ + 0.2], color: '#C8F098', r: 1.5, kind: 'lantern', intensity: 0.9 });
   // a round woven mat by the door
   b.push({ at: [0, 0.002, D / 2 - 0.45], s: [0.55, 1, 0.3] });
-  b.cylinder(1, 1, 0.02, { at: [0, 0, 0], tones: 'thatch', segments: 12 });
-  b.cylinder(0.65, 0.65, 0.025, { at: [0, 0, 0], tones: RED, segments: 12, tint: 0.95 });
+  disc(b, 1, 12, [0, 0.02, 0], { tones: 'thatch' });
+  disc(b, 0.65, 12, [0, 0.025, 0], { tones: RED, tint: 0.95 });
   b.pop();
 
   // ---- spores drifting and rising through the burrow (stepped 8 fps)
@@ -404,7 +412,48 @@ export default function build(room, ctx) {
       pool(LX, LZ + 0.1, 0.75, BG, { peak: 0.42 }),
     ],
     back: [pool(2.2, 0.32, 0.6, GD, { peak: 0.85 })],
+    // the back banks' colliders (axis rects) reach past the curved face: the floor in front of the curve, inside them,
+    // is still painted (it used to stay as a dark moon-shadow band at the bank's foot)
+    tops: [-1, 1].map((sx) => ({
+      in: (u, v) => {
+        const Cx = sx * (W / 2 - 1.35), Cz = BZ + 1.35;
+        return sx * u > W / 2 - 1.35 && v < Cz && Math.hypot(u - Cx, v - Cz) < 1.33;
+      },
+      y: 0.006, cols: sx < 0 ? CY : PK,
+    })),
     extra: (pb, tx) => {
+      // (polish 2026-10-16) the left back bank: its earthen foot sat in the moon shadow as a hard black dome. The cyan
+      // shelf-fungi on it now light their own bank: a Bayer-dithered field on the curved face (arc length s, height y),
+      // brightest around the fungi, dissolving toward the corner and the floor (no hard edge, never black)
+      {
+        const R = 1.35 * 0.985, Cx = -W / 2 + 1.35, Cz = BZ + 1.35, L = R * Math.PI / 2, cs = tx * 1.25, cy = tx * 1.4;
+        const BK = ['#2E3E4C', '#3A5A62', '#4E8282'];
+        const at = (t) => [Cx - R * Math.cos(t), Cz - R * Math.sin(t)];
+        const I = (sv, y) => {
+          const d = Math.hypot((sv - L * 0.52) / (L * 0.62), (y - 1.05) / 1.25);
+          return Math.max(0.45 * Math.max(0, 1 - y / 1.9), d >= 1 ? 0 : 0.62 * (1 - d) ** 1.2);   // + a floor-up base wash
+        };
+        const SEG = 0.22;                                              // runs split every 22 cm of arc: chords hug the curve
+        for (let j = 0; (j + 0.5) * cy < H - 0.25; j++) {
+          const y0 = j * cy, y1 = y0 + cy, yc = y0 + cy / 2;
+          let run = null;
+          const flush = () => {
+            if (!run) return;
+            const [xa, za] = at(run.a / R), [xb, zb] = at(run.b / R);
+            pb.tris([xa, y0, za, xb, y0, zb, xb, y1, zb, xa, y0, za, xb, y1, zb, xa, y1, za], { tones: 'glass', layer: 'glass', glow: BK[run.lev - 1], glowKind: 1 });
+            run = null;
+          };
+          for (let i = 0; (i + 0.5) * cs < L; i++) {
+            const sv = (i + 0.5) * cs, v = I(sv, yc) * 3, lo = Math.floor(v);
+            const f = Math.min(1, Math.max(0, (v - lo - 0.5 + 0.22) / 0.44));        // dithered only mid-step (few runs)
+            const lev = Math.min(3, lo + (f > BAYER[(j & 3) * 4 + (i & 3)] ? 1 : 0));
+            const a = i * cs, bnd = Math.min(L, a + cs);
+            if (run && run.lev === lev && Math.floor(a / SEG) === Math.floor(run.a / SEG)) run.b = bnd;
+            else { flush(); if (lev) run = { a, b: bnd, lev }; }
+          }
+          flush();
+        }
+      }
       for (let i = 0; i < 46; i++) {
         const x = (hash(i + 400) - 0.5) * (W - 1.4), z = (hash(i + 450) - 0.5) * (D - 1.0), c = [CYAN, '#9AF0C8', PINK][i % 3];
         if (Math.hypot(x - QX, z - QZ) < 0.6) continue;

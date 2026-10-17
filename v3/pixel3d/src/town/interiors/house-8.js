@@ -215,14 +215,17 @@ export default function build(room, ctx) {
     const f = (i + 1) / 4;
     room.solid(-W / 2, BZ, -W / 2 + 2 * ext * f + 0.35, BZ + 2 * ext * (1 - f) + 0.6);
   }
-  const fire = [Fx + NX * 0.9, 0.25, Fz + NZ * 0.9];
+  const fire = [Fx + NX * 0.02, 0.55, Fz + NZ * 0.02];                       // (at the mouth: a spill on the slab, no floor disc)
   // the hearth is THE key light: fire anchors out in front of the mouth warm the slab, the pelt, the logs and the table
   // (night pass: short reaches, kept off the walls and the hearth face, so the toon pools never draw a disc; the soft fan
   // across the floor and up the logs is painted by lightPools below); the far right (bed, woodpile) is left to the dark
-  room.light({ pos: fire, color: '#FF7A2A', r: 1.1, kind: 'fire', intensity: 2.0 });
-  room.light({ pos: [Fx + NX * 1.6, 0.9, Fz + NZ * 1.6], color: '#FF8A30', r: 1.8, kind: 'fire', intensity: 1.4 });
-  room.light({ pos: [Fx + NX * 3.1, 1.9, Fz + NZ * 3.1], color: '#FF9A40', r: 2.2, kind: 'lantern', intensity: 1.2 });
-  room.light({ pos: [-W / 2 + 1.2, 1.1, Fz + 2.6], color: '#FF8030', r: 1.4, kind: 'lantern', intensity: 1.1 });
+  // (polish 2026-10-16: by day / golden hour - no painted pools then - the r 1.8 / 2.2 / 1.4 anchors left flat red hard
+  // circles on the planks. Now only the fire anchor reaches down, onto the raised slab; the others stop short of the
+  // floor and warm the hearth face, the mantel, the logs and the pelt's edge; the floor fan is painted at night)
+  room.light({ pos: fire, color: '#FF7A2A', r: 0.62, kind: 'fire', intensity: 1.2, hug: false });
+  room.light({ pos: [Fx + NX * 1.6, 1.45, Fz + NZ * 1.6], color: '#FF8A30', r: 1.4, kind: 'fire', intensity: 1.2 });
+  room.light({ pos: [Fx + NX * 3.1, 1.9, Fz + NZ * 3.1], color: '#FF9A40', r: 1.75, kind: 'lantern', intensity: 1.1 });
+  room.light({ pos: [-W / 2 + 1.2, 1.15, Fz + 2.6], color: '#FF8030', r: 1.05, kind: 'lantern', intensity: 1.0 });
   F.logs(room, { x: -1.55, z: BZ + 0.45, ry: 0.2 });
 
   // ---- the back wall: the BOARDED WINDOW with CLAW MARKS, the hunter's SKETCHES of the beast, the lantern
@@ -307,7 +310,8 @@ export default function build(room, ctx) {
       bb.box(0.18, 0.04, 0.06, { at: [0.6, top, -0.18], ry: 0.3, tones: 'stone', pattern: 'none' });    // whetstone
     },
   });
-  room.light({ pos: [TX + 0.35, 1.05, TZ + 0.3], color: GLOW.candle, r: 1.1, kind: 'lantern', intensity: 0.8 });
+  // (polish: no point light for the candle stub - it painted a hard half-ellipse on the top and an amber patch on the
+  // floor; its glow on the tabletop is a dithered `tops` field at night, lightPools below)
   b.box(1.5, 0.07, 0.3, { at: [TX, 0.42, TZ - 0.65], tones: 'plank', pattern: 'none' });
   for (const s of [-1, 1]) b.box(0.08, 0.42, 0.26, { at: [TX + s * 0.6, 0, TZ - 0.65], tones: 'timber', pattern: 'none' });
   room.solid(TX - 0.76, TZ - 0.82, TX + 0.76, TZ - 0.48);
@@ -351,7 +355,7 @@ export default function build(room, ctx) {
 
   // ---- night: the roaring hearth paints a dithered orange fan across the planks (flickering at its core) and up the
   // back wall's logs; the lantern by the boarded window a small amber halo; the far right corner is left to the dark
-  const EMB = ['#5E443E', '#8A5236', '#B86A34'], ROAR = ['#A0582C', '#D07A34', '#F4A048'], AMB = ['#5A4840', '#7E5E40', '#A88048'];
+  const CNDL = ['#5E4A3A', '#8E6A44', '#D8A458'], EMB = ['#5E443E', '#8A5236', '#B86A34'], ROAR = ['#A0582C', '#D07A34', '#F4A048'], AMB = ['#5A4840', '#7E5E40', '#A88048'];
   const peltLocal = (u, v) => { const c = Math.cos(0.9), s = Math.sin(0.9), du = u + 1.55, dv = v + 0.05; return [du * c - dv * s, du * s + dv * c]; };
   const inPelt = (u, v) => {                                    // the wolf pelt's own outline (+ its head), re-lit by the fire
     const [x, z] = peltLocal(u, v);
@@ -372,10 +376,12 @@ export default function build(room, ctx) {
     floor: [
       pool(Fx + NX * 1.0, Fz + NZ * 1.0, 1.7, ROAR, { kind: 2, peak: 1.05 }),
       pool(Fx + NX * 1.5, Fz + NZ * 1.5, 5.0, EMB, { peak: 0.95, sx: 1.25 }),
-      pool(0.45, BZ + 0.45, 1.1, AMB, { peak: 0.5, sz: 0.8 }),
+      pool(0.45, BZ + 0.5, 1.3, AMB, { peak: 0.34, sz: 0.75, pow: 1.6 }),        // (polish: dim + wide: no hard amber block)
+      pool(TX + 0.35, TZ + 0.15, 0.62, CNDL, { peak: 0.85, sx: 1.25, kind: 2 }),          // the candle stub on the table
     ],
     back: [pool(-3.3, 0.6, 3.0, EMB, { peak: 1.0, sx: 1.1 }), pool(0.45, 1.75, 0.8, AMB, { peak: 0.7 })],
-    tops: [{ in: inSlab, y: 0.104, cols: ['#6A5048', '#9A6A50', '#D09060'], kind: 2 }, { in: inFur, y: 0.04, cols: ['#5E5050', '#7A6058', '#9A7464'] }, { in: inPelt, y: 0.04, cols: ['#7A6A64', '#A68474', '#C8A084'] }],
+    tops: [{ in: (u, v) => Math.abs(u - TX) < 0.79 && Math.abs(v - TZ) < 0.39, y: 0.766, cols: ['#5A4436', '#8A6442', '#C8964E'], kind: 2 },
+      { in: inSlab, y: 0.104, cols: ['#6A5048', '#9A6A50', '#D09060'], kind: 2 }, { in: inFur, y: 0.04, cols: ['#5E5050', '#7A6058', '#9A7464'] }, { in: inPelt, y: 0.04, cols: ['#7A6A64', '#A68474', '#C8A084'] }],
     raise: [{ x0: -0.5, z0: D / 2 - 0.68, x1: 0.5, z1: D / 2 - 0.12, y: 0.026 }],
     seams: { z: 0.3, x: 0 },
   });

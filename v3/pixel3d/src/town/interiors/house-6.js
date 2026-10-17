@@ -18,11 +18,17 @@ import { Builder } from '../kit.js';
 export const ROOM = { w: 9, d: 6, h: 3.8, wall: 'brick', pal: 2, floor: 'flags' };
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
+/** A flat, upward-facing w x d quad at y, turned ry (thin panes and sheets whose edges never read: tri budget). */
+function flat(b, w, d, [x, y, z], ry, opts) {
+  const c = Math.cos(ry), s = Math.sin(ry), q = (u, v) => [x + u * c + v * s, y, z - u * s + v * c];
+  b.tris([...q(-w / 2, d / 2), ...q(w / 2, d / 2), ...q(w / 2, -d / 2), ...q(-w / 2, d / 2), ...q(w / 2, -d / 2), ...q(-w / 2, -d / 2)], opts);
+}
 
-/** One mesh of n tiny glowing boxes whose centres follow pos(k, t) -> [x, y, z, scale] (room-local), stepped 8 fps. */
-function motes(room, ctx, name, n, colorOf, size, pos) {
+/** One mesh of n tiny glowing boxes whose centres follow pos(k, t) -> [x, y, z, scale] (room-local), stepped 8 fps.
+ *  sizeOf(k) -> [w, h, d] / kindOf(k) -> glowKind: a mote may be a bigger box (the great lantern's swinging core). */
+function motes(room, ctx, name, n, colorOf, size, pos, { sizeOf = null, kindOf = null } = {}) {
   const pb = new Builder(room.engine, { name });
-  for (let k = 0; k < n; k++) pb.box(size, size, size, { at: [0, 0, 0], origin: 'center', tones: 'glass', layer: 'glass', glow: colorOf(k), glowKind: 1 });
+  for (let k = 0; k < n; k++) pb.box(...(sizeOf?.(k) ?? [size, size, size]), { at: [0, 0, 0], origin: 'center', tones: 'glass', layer: 'glass', glow: colorOf(k), glowKind: kindOf?.(k) ?? 1 });
   const grp = pb.build({ name, castShadow: false });
   const mesh = grp.children[0];
   mesh.material = ctx.kit.interiorGlowMaterial(room.engine);
@@ -162,10 +168,11 @@ export default function build(room, ctx) {
   const LAMP = [['cream', TP.lampGlow], [TP.pumpkin, TP.fireGlow], [TP.flowerRed, '#FF7A6A'], [TP.bannerGold, '#FFD27A'], [TP.flowerViolet, '#C89CFF'], ['cream', TP.glow[0]]];
 
   /** A tin lantern with its bottom at y. glow: 'night' (kit night glass), 'always' (interior glow), null (dark glass). */
-  const tinLantern = (bb, gg, x, y, z, { lit = 'night', s = 1, color = TP.lampGlow, ring = true } = {}) => {
+  // (polish tri budget: only the two front posts - the back ones hide behind the glass core; the hanging ring is opt-in)
+  const tinLantern = (bb, gg, x, y, z, { lit = 'night', s = 1, color = TP.lampGlow, ring = false } = {}) => {
     const h = 0.25 * s, w = 0.17 * s;
     bb.box(w + 0.03, 0.035, w + 0.03, { at: [x, y, z], tones: 'iron', pattern: 'none' });
-    for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) bb.box(0.025, h, 0.025, { at: [x + sx * w / 2, y + 0.035, z + sz * w / 2], tones: 'iron', pattern: 'none' });
+    for (const sx of [-1, 1]) bb.box(0.025, h, 0.025, { at: [x + sx * w / 2, y + 0.035, z + w / 2], tones: 'iron', pattern: 'none' });
     bb.hexa([V(x - w / 2 - 0.02, y + h + 0.035, z - w / 2 - 0.02), V(x + w / 2 + 0.02, y + h + 0.035, z - w / 2 - 0.02), V(x - 0.03, y + h + 0.12 * s, z - 0.03), V(x + 0.03, y + h + 0.12 * s, z - 0.03),
       V(x - w / 2 - 0.02, y + h + 0.035, z + w / 2 + 0.02), V(x + w / 2 + 0.02, y + h + 0.035, z + w / 2 + 0.02), V(x - 0.03, y + h + 0.12 * s, z + 0.03), V(x + 0.03, y + h + 0.12 * s, z + 0.03)], { tones: 'iron' });
     if (ring) bb.box(0.05, 0.05, 0.015, { at: [x, y + h + 0.12 * s, z], tones: 'iron' });
@@ -177,10 +184,10 @@ export default function build(room, ctx) {
   /** A paper lantern (two cones of coloured paper that glow at night, dark caps) with its bottom at y. */
   const paperLantern = (x, y, z, k, s = 1) => {
     const [tone, glow] = LAMP[k % LAMP.length];
-    b.cylinder(0.05 * s, 0.07 * s, 0.03 * s, { at: [x, y - 0.02 * s, z], tones: 'crow', segments: 6 });
+    b.box(0.11 * s, 0.03 * s, 0.11 * s, { at: [x, y - 0.02 * s, z], tones: 'crow', pattern: 'none' });          // (caps: boxes, tri budget)
     b.cylinder(0.1 * s, 0.14 * s, 0.12 * s, { at: [x, y, z], tones: tone, layer: 'glass', glow, glowKind: 2, segments: 6 });
     b.cylinder(0.14 * s, 0.1 * s, 0.12 * s, { at: [x, y + 0.12 * s, z], tones: tone, layer: 'glass', glow, glowKind: 2, segments: 6 });
-    b.cylinder(0.07 * s, 0.05 * s, 0.03 * s, { at: [x, y + 0.24 * s, z], tones: 'crow', segments: 6 });
+    b.box(0.1 * s, 0.03 * s, 0.1 * s, { at: [x, y + 0.24 * s, z], tones: 'crow', pattern: 'none' });
   };
 
   // ---- shell: soot-black brick over warm brick, a small iron-framed window back-right, a high loft window, flags
@@ -238,12 +245,14 @@ export default function build(room, ctx) {
   b.box(LW - 0.2, 0.04, 0.04, { at: [LCX, LY - 0.46, LZ1 - 0.12], tones: 'iron', pattern: 'none' });
   for (let i = 0; i < HOOKS; i++) {
     const x = HOOK0 + i * HS, z = LZ1 - 0.12;
-    b.box(0.02, 0.1, 0.02, { at: [x, LY - 0.56, z], tones: 'iron', pattern: 'none' });
-    b.box(0.07, 0.04, 0.012, { at: [x, LY - 0.43, z + 0.03], tones: 'cream', pattern: 'none' });                  // the number plate
+    b.tris([x - 0.012, LY - 0.56, z + 0.01, x + 0.012, LY - 0.56, z + 0.01, x + 0.012, LY - 0.46, z + 0.01,
+      x - 0.012, LY - 0.56, z + 0.01, x + 0.012, LY - 0.46, z + 0.01, x - 0.012, LY - 0.46, z + 0.01], { tones: 'iron', pattern: 'none' });   // the hook (a front quad)
+    b.tris([x - 0.035, LY - 0.43, z + 0.036, x + 0.035, LY - 0.43, z + 0.036, x + 0.035, LY - 0.39, z + 0.036,
+      x - 0.035, LY - 0.43, z + 0.036, x + 0.035, LY - 0.39, z + 0.036, x - 0.035, LY - 0.39, z + 0.036], { tones: 'cream', pattern: 'none' });   // the number plate
     if (i === 13) continue;
     tinLantern(b, g, x, LY - 0.93, z, { s: 0.85, color: LAMP[i % LAMP.length][1] });
   }
-  room.light({ pos: [-1.7, 1.3, LZ1 + 0.35], color: '#FFAA48', r: 2.4, kind: 'lantern', intensity: 1.9 });
+  room.light({ pos: [-1.7, 1.3, LZ1 + 0.35], color: '#FFAA48', r: 1.25, kind: 'lantern', intensity: 1.5 });
   // under the loft: crates of glass and tin, oil cans
   b.box(0.7, 0.42, 0.5, { at: [-3.6, 0, BZ + 0.4], tones: 'plank', pattern: 'boards', scale: 0.6 });
   b.box(0.6, 0.36, 0.45, { at: [-2.8, 0, BZ + 0.35], tones: 'plank', pattern: 'boards', scale: 0.6, tint: 0.94 });
@@ -275,7 +284,7 @@ export default function build(room, ctx) {
   b.box(0.2, 0.08, 0.14, { at: [ANX, 0.6, ANZ], tones: 'iron', tint: 1.06 });
   b.prism([[0, 0], [0.2, 0.04], [0, 0.1]], 0.12, { at: [ANX + 0.2, 0.58, ANZ], tones: 'iron' });
   room.solid(ANX - 0.27, ANZ - 0.25, ANX + 0.27, ANZ + 0.25);
-  room.light({ pos: [FXc - 0.2, 1.05, BZ + 1.3], color: '#FF7A30', r: 1.6, kind: 'fire', intensity: 2.2 });
+  room.light({ pos: [FXc - 0.2, 1.05, BZ + 1.3], color: '#FF7A30', r: 1.15, kind: 'fire', intensity: 1.7 });
 
   // ---- the back wall: the lamplighter's route map, the calendar with the circled date
   const MX = 1.6, MY = 1.55, MW = 1.36, MH = 1.05;
@@ -324,12 +333,12 @@ export default function build(room, ctx) {
     extra: (bb, gg, top) => {
       // snips, a stack of panes, a coil of wire, the test lantern (lit day and night)
       bb.box(0.22, 0.02, 0.03, { at: [0.25, top, 0.18], ry: 0.5, tones: 'iron' });
-      for (let i = 0; i < 4; i++) bb.box(0.2, 0.012, 0.16, { at: [0.35, top + i * 0.013, -0.15], ry: i * 0.06, tones: 'glass', pattern: 'none' });
+      for (let i = 0; i < 4; i++) flat(bb, 0.2, 0.16, [0.35, top + 0.012 + i * 0.013, -0.15], i * 0.06, { tones: 'glass', pattern: 'none' });
       bb.cylinder(0.07, 0.07, 0.04, { at: [0.6, top, 0.1], tones: 'brass', segments: 8 });
       tinLantern(bb, gg, 0.72, top, -0.12, { lit: 'always', s: 1.1 });
     },
   });
-  room.light({ pos: [WBX + 0.72, 1.45, WBZ + 0.3], color: '#FFB050', r: 1.9, kind: 'lantern', intensity: 1.8 });
+  room.light({ pos: [WBX + 0.72, 1.45, WBZ + 0.3], color: '#FFB050', r: 0.85, kind: 'lantern', intensity: 1.2 });
   F.stool(room, { x: WBX - 0.3, z: WBZ + 0.7 });
 
   // ---- the SMASHED lantern, big, on the open floor in front of the bench: a bent cage on its side, its hood knocked
@@ -350,7 +359,9 @@ export default function build(room, ctx) {
   b.box(0.08, 0.08, 0.025, { at: [SLX - 0.66, 0.2, SLZ - 0.13], tones: 'iron' });
   for (let i = 0; i < 14; i++) {                                                                                        // glass shards
     const a = hash(i + 70) * Math.PI * 2, r = 0.35 + hash(i + 80) * 0.55;
-    b.box(0.1 + hash(i + 90) * 0.08, 0.016, 0.06 + hash(i + 95) * 0.05, { at: [SLX + Math.cos(a) * r, 0.003, SLZ + Math.sin(a) * r * 0.7], ry: a * 3, tones: 'cream', pattern: 'none', tint: i % 2 ? 1.05 : 0.97 });
+    const sw = 0.05 + hash(i + 90) * 0.04, sd = 0.03 + hash(i + 95) * 0.025, sx = SLX + Math.cos(a) * r, sz = SLZ + Math.sin(a) * r * 0.7, c = Math.cos(a * 3), sn = Math.sin(a * 3);
+    const q = (u, v) => [sx + u * c + v * sn, 0.012, sz - u * sn + v * c];                                            // a flat shard (top face only)
+    b.tris([...q(-sw, sd), ...q(sw, sd), ...q(sw, -sd), ...q(-sw, sd), ...q(sw, -sd), ...q(-sw, -sd)], { tones: 'cream', pattern: 'none', tint: i % 2 ? 1.05 : 0.97 });
   }
   // the tag: a big cream card leaning back against the cage, facing the room; a red thread back to the cage ring
   const TGX = SLX + 0.42, TGZ = SLZ + 0.3;
@@ -369,9 +380,9 @@ export default function build(room, ctx) {
   F.table(room, {
     x: PTX, z: PTZ, w: 1.35, d: 0.72, items: false,
     extra: (bb, gg, top) => {
-      for (let r = 0; r < 4; r++) {                                   // the rib globe: four meridian hoops of cane
-        bb.push({ at: [-0.2, top + 0.24, 0], ry: (r / 4) * Math.PI });
-        for (let k = 0; k < 10; k++) { const a = (k / 10) * Math.PI * 2; bb.box(0.14, 0.016, 0.016, { at: [Math.cos(a) * 0.21, Math.sin(a) * 0.21, 0], rz: a + Math.PI / 2, origin: 'center', tones: TP.thatch, pattern: 'none' }); }
+      for (let r = 0; r < 3; r++) {                                   // the rib globe: three meridian hoops of cane
+        bb.push({ at: [-0.2, top + 0.24, 0], ry: (r / 3) * Math.PI });
+        for (let k = 0; k < 8; k++) { const a = (k / 8) * Math.PI * 2; bb.box(0.17, 0.016, 0.016, { at: [Math.cos(a) * 0.21, Math.sin(a) * 0.21, 0], rz: a + Math.PI / 2, origin: 'center', tones: TP.thatch, pattern: 'none' }); }
         bb.pop();
       }
       bb.cylinder(0.06, 0.08, 0.03, { at: [-0.2, top, 0], tones: 'timber', segments: 8 });
@@ -394,7 +405,7 @@ export default function build(room, ctx) {
   ];
   for (const s of strings) {
     const yAt = (x) => s.y0 - s.sag * (1 - ((2 * (x - s.x0)) / (s.x1 - s.x0) - 1) ** 2);
-    const seg = 10;
+    const seg = 6;
     for (let i = 0; i < seg; i++) {
       const xa = s.x0 + ((s.x1 - s.x0) * i) / seg, xb = s.x0 + ((s.x1 - s.x0) * (i + 1)) / seg, ya = yAt(xa), yb = yAt(xb);
       b.box(Math.hypot(xb - xa, yb - ya), 0.02, 0.02, { at: [(xa + xb) / 2, (ya + yb) / 2, s.z], rz: Math.atan2(yb - ya, xb - xa), origin: 'center', tones: 'crow', pattern: 'none' });
@@ -403,19 +414,21 @@ export default function build(room, ctx) {
       const x = s.x0 + ((s.x1 - s.x0) * (i + 0.7 + (i % 2) * 0.15)) / (s.n + 0.4), y = yAt(x);
       const k = s.k0 + i, drop = 0.18 + (k % 3) * 0.1;
       b.box(0.014, drop, 0.014, { at: [x, y - drop, s.z], tones: 'crow', pattern: 'none' });
-      if (k % 3 === 1) tinLantern(b, g, x, y - drop - 0.3, s.z, { s: 1.0, color: LAMP[k % LAMP.length][1] });
+      if (k % 3 === 1) tinLantern(b, g, x, y - drop - 0.3, s.z, { s: 1.0, color: LAMP[k % LAMP.length][1], ring: true });
       else paperLantern(x, y - drop - 0.34, s.z, k, 1.3);
     }
   }
-  room.light({ pos: [-2.4, 2.5, 1.55], color: '#FFA040', r: 3.0, kind: 'lantern', intensity: 1.8 });
-  room.light({ pos: [2.4, 2.6, 0.0], color: '#FFB050', r: 3.0, kind: 'lantern', intensity: 1.8 });
-  room.light({ pos: [1.2, 2.3, 1.9], color: '#FF9A3C', r: 2.7, kind: 'lantern', intensity: 1.8 });
+  // (polish: these used to reach the flags as big hard-banded discs that overlapped the painted pools - the "ellipse
+  // outlines"; now they stop short of the floor and only warm the strings, the loft and the upper walls)
+  room.light({ pos: [-2.4, 2.5, 1.55], color: '#FFA040', r: 2.1, kind: 'lantern', intensity: 1.5 });
+  room.light({ pos: [2.4, 2.6, 0.0], color: '#FFB050', r: 2.1, kind: 'lantern', intensity: 1.5 });
+  room.light({ pos: [1.2, 2.3, 1.9], color: '#FF9A3C', r: 1.9, kind: 'lantern', intensity: 1.5 });
 
   // ---- front of the room: the lamp-oil barrel, a crate of panes, the lamplighter's pole; crates of packed lanterns
   F.barrel(room, { x: -W / 2 + 0.45, z: D / 2 - 0.55 });
   b.box(0.06, 0.08, 0.14, { at: [-W / 2 + 0.45, 0.45, D / 2 - 0.22], tones: 'brass' });
   b.box(0.62, 0.34, 0.42, { at: [-2.85, 0, D / 2 - 0.42], tones: 'plank', pattern: 'boards', scale: 0.6 });
-  for (let i = 0; i < 5; i++) b.box(0.5, 0.012, 0.32, { at: [-2.85, 0.34 + i * 0.013, D / 2 - 0.42], ry: (i % 2) * 0.05, tones: 'glass', pattern: 'none' });
+  for (let i = 0; i < 5; i++) flat(b, 0.5, 0.32, [-2.85, 0.352 + i * 0.013, D / 2 - 0.42], (i % 2) * 0.05, { tones: 'glass', pattern: 'none' });
   room.solidAt(-2.85, D / 2 - 0.42, 0.62, 0.42);
   b.hexa([V(-W / 2 + 0.1, 0, 0.35), V(-W / 2 + 0.15, 0, 0.35), V(-W / 2 + 0.1, 3.1, 0.75), V(-W / 2 + 0.15, 3.1, 0.75),
     V(-W / 2 + 0.1, 0, 0.4), V(-W / 2 + 0.15, 0, 0.4), V(-W / 2 + 0.1, 3.1, 0.8), V(-W / 2 + 0.15, 3.1, 0.8)], { tones: 'timber' });   // the pole
@@ -430,7 +443,7 @@ export default function build(room, ctx) {
 
   // ---- the great brass lantern on its chain, swinging (stepped 8 fps); its pool is static
   const GX = -1.3, GZ = 0.75, GY = 2.15;
-  const gb = new Builder(room.engine, { name: 'house-6-great' }), gg2 = new Builder(room.engine, { name: 'house-6-great-glow' });
+  const gb = new Builder(room.engine, { name: 'house-6-great' });
   gb.box(0.025, H - GY - 0.45, 0.025, { at: [0, -(H - GY - 0.45), 0], tones: 'iron', pattern: 'none' });
   const ly = -(H - GY);
   gb.box(0.32, 0.05, 0.32, { at: [0, ly, 0], tones: 'brass', pattern: 'none' });
@@ -438,37 +451,41 @@ export default function build(room, ctx) {
   gb.hexa([V(-0.19, ly + 0.39, -0.19), V(0.19, ly + 0.39, -0.19), V(-0.04, ly + 0.55, -0.04), V(0.04, ly + 0.55, -0.04),
     V(-0.19, ly + 0.39, 0.19), V(0.19, ly + 0.39, 0.19), V(-0.04, ly + 0.55, 0.04), V(0.04, ly + 0.55, 0.04)], { tones: 'brass' });
   gb.cylinder(0.04, 0.04, 0.05, { at: [0, ly + 0.55, 0], tones: 'brass', segments: 8 });
-  gg2.box(0.24, 0.3, 0.24, { at: [0, ly + 0.06, 0], tones: 'glass', layer: 'glass', glow: TP.lampGlow, glowKind: 2 });
+  // (polish mesh budget: its glowing core is the last mote of the forge-sparks mesh, swung with the same pendulum)
   const great = new THREE.Group();
   great.position.set(GX, H, GZ);
   great.add(gb.build({ name: 'house-6-great' }));
-  const gglow = gg2.build({ name: 'house-6-great-glow', castShadow: false });
-  gglow.traverse((o) => { if (o.isMesh) { o.material = ctx.kit.interiorGlowMaterial(room.engine); o.castShadow = false; } });
-  great.add(gglow);
-  room.light({ pos: [GX, GY + 0.1, GZ + 0.1], color: '#FFB860', r: 2.7, kind: 'lantern', intensity: 2.0 });
+  const swing = (k) => [Math.sin(k * 1.9) * 0.1, Math.sin(k * 1.3 + 1) * 0.04];       // [rot z, rot x], stepped time k
+  const coreL = ly + 0.06 + 0.15;
+  room.light({ pos: [GX, GY + 0.1, GZ + 0.1], color: '#FFB860', r: 1.9, kind: 'lantern', intensity: 1.7 });
 
   // ---- sparks spitting up from the forge coals (ballistic, stepped 8 fps)
   // ---- night: a hive of small lights. Every lantern pools gold on the sandstone flags (dithered, overlapping), the
   // forge throws a flickering orange fan and climbs the sooty brick behind it, the rack of fifteen glows under the loft,
   // (the loft candle keeps a small toon pool on the bed)
-  const GOLD = ['#8A6444', '#C28C4A', '#F4C268'], AMBR = ['#8A5A3C', '#C27840', '#F0A452'], FORGE = ['#8E4C34', '#CC6634', '#F8944A'];
+  const GOLD = ['#8A6444', '#C28C4A', '#F4C268'], FORGE = ['#8E4C34', '#CC6634', '#F8944A'];
   const night = lightPools(room, ctx, 'house-6-night', {
     floor: [
       pool(FXc - 0.35, BZ + 1.35, 2.0, FORGE, { peak: 1.0, sx: 1.1, kind: 2 }),
-      pool(GX + 0.1, GZ + 0.25, 1.9, GOLD, { peak: 0.95, sx: 1.2 }),
-      pool(2.1, 0.75, 1.5, AMBR, { peak: 0.7, sz: 1.2 }),
-      pool(-1.75, -1.0, 1.3, GOLD, { peak: 0.75, sx: 1.5, sz: 0.65 }),
+      // (polish: one broad gold pool for the great lantern + the strings + the rack instead of three overlapping ones -
+      // where two pools met, the switch of dominant source drew an ellipse outline)
+      pool(-0.5, 0.25, 3.1, GOLD, { peak: 0.86, sx: 1.4, sz: 0.85, pow: 1.25 }),
     ],
     back: [pool(FXc - 0.2, 1.1, 1.5, FORGE, { peak: 0.85, sz: 1.3 })],
-    tone: flagJoints(ctx), band: 0.4,
+    tone: flagJoints(ctx), band: 0.3, cell: 2.5,
   });
   const SC = ['#FFE08A', '#FFA040', '#FFF4C8', '#FF8A30'];
-  const sparks = motes(room, ctx, 'house-6-sparks', 16, (k) => SC[k % 4], 0.04, (k, t) => {
+  const NSP = 16;
+  const sparks = motes(room, ctx, 'house-6-sparks', NSP + 1, (k) => (k === NSP ? TP.lampGlow : SC[k % 4]), 0.04, (k, t) => {
+    if (k === NSP) {                                               // the great lantern's core: Euler XYZ of (0, coreL, 0)
+      const [rz, rx] = swing(t), L = coreL;
+      return [GX - L * Math.sin(rz), H + L * Math.cos(rz) * Math.cos(rx), GZ + L * Math.cos(rz) * Math.sin(rx)];
+    }
     const P = 1.1 + hash(k) * 0.7, a = (((t + hash(k + 9) * P) % P) + P) % P, life = P * 0.8;
     if (a > life) return [FXc, -1, BZ + 0.4, 0];
     const vx = (hash(k + 3) - 0.5) * 0.9, vz = 0.15 + hash(k + 5) * 0.55, vy = 1.4 + hash(k + 7) * 1.1;
     return [FXc + vx * a, 0.95 + vy * a - 2.2 * a * a, BZ + 0.45 + vz * a, 1 - (a / life) * 0.6];
-  });
+  }, { sizeOf: (k) => (k === NSP ? [0.24, 0.3, 0.24] : null), kindOf: (k) => (k === NSP ? 2 : 1) });
 
   room.spot('forge', FXc - 0.4, -1.0, Math.PI);
   room.spot('workbench', WBX, WBZ + 0.75, Math.PI);
@@ -480,8 +497,7 @@ export default function build(room, ctx) {
     extras: [great, sparks.group, night.group],
     update(t) {
       const k = Math.floor(t * 8) / 8;
-      great.rotation.z = Math.sin(k * 1.9) * 0.1;
-      great.rotation.x = Math.sin(k * 1.3 + 1) * 0.04;
+      [great.rotation.z, great.rotation.x] = swing(k);
       sparks.update(t);
       night.update();
     },

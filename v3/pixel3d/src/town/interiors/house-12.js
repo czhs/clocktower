@@ -85,14 +85,16 @@ const BAYER4 = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
  * `cols` (dim -> bright) that dissolve into the surface through a 4x4 Bayer pattern instead of ending in a hard disc.
  * plane 'floor' (y up) or 'back' | 'left' | 'right' (the wall's inner face); (x, y, z) = the centre, r / rv the radii
  * along the plane's u (x, or z on side walls) and v (z on the floor, y on walls). peak 0..1 scales the brightness,
- * fall the falloff exponent, cell the dither cell (u metres; v is stretched for the 30 deg camera). keep(u, v) clips.
+ * fall the falloff exponent, cell the dither cell (u metres; v is stretched for the 30 deg camera). keep(u, v) clips;
+ * fade(u, v) -> 0..1 scales the brightness (a soft edge where a hard clip would show); off: the wall decal's distance
+ * from the wall face (in front of wall-mounted boards).
  * stipple: a hashed (random-looking) threshold instead of the Bayer matrix - mist and haze, not light.
  */
-function ditherPool(b, layer, { x = 0, y = 0.006, z = 0, r, rv = r, cols, peak = 1, fall = 1.6, cell = 0.036, plane = 'floor', kind = 1, keep = null, stipple = false, room }) {
+function ditherPool(b, layer, { x = 0, y = 0.006, z = 0, r, rv = r, cols, peak = 1, fall = 1.6, cell = 0.036, plane = 'floor', kind = 1, keep = null, fade = null, off = 0.012, stipple = false, room }) {
   const cu = cell, cv = plane === 'floor' ? cell * 2 : cell * 1.15;
   const U = plane === 'floor' ? [1, 0, 0] : plane === 'back' ? [1, 0, 0] : plane === 'left' ? [0, 0, -1] : [0, 0, 1];
   const V = plane === 'floor' ? [0, 0, -1] : [0, 1, 0];
-  const o = plane === 'floor' ? [x, y, z] : plane === 'back' ? [x, y, -room.D / 2 + 0.012] : plane === 'left' ? [-room.W / 2 + 0.012, y, z] : [room.W / 2 - 0.012, y, z];
+  const o = plane === 'floor' ? [x, y, z] : plane === 'back' ? [x, y, -room.D / 2 + off] : plane === 'left' ? [-room.W / 2 + off, y, z] : [room.W / 2 - off, y, z];
   const n = cols.length, ni = Math.ceil(r / cu), nj = Math.ceil(rv / cv);
   const P = (u, v) => [o[0] + U[0] * u + V[0] * v, o[1] + U[1] * u + V[1] * v, o[2] + U[2] * u + V[2] * v];
   const quad = (u0, u1, v0, v1, lvl) => b.tris([...P(u0, v0), ...P(u1, v0), ...P(u1, v1), ...P(u0, v0), ...P(u1, v1), ...P(u0, v1)],
@@ -103,8 +105,9 @@ function ditherPool(b, layer, { x = 0, y = 0.006, z = 0, r, rv = r, cols, peak =
       let lvl = -1;
       if (i < ni) {
         const u = (i + 0.5) * cu, v = (j + 0.5) * cv, d2 = (u / r) ** 2 + (v / rv) ** 2;
-        if (d2 < 1 && (!keep || keep(u, v))) {
-          const I = peak * Math.pow(1 - d2, fall) * n, lo = Math.floor(I);
+        const f = d2 < 1 && fade ? Math.max(0, Math.min(1, fade(u, v))) : 1;
+        if (d2 < 1 && f > 0 && (!keep || keep(u, v))) {
+          const I = peak * f * Math.pow(1 - d2, fall) * n, lo = Math.floor(I);
           const th = stipple ? (((Math.sin(i * 12.9898 + j * 78.233) * 43758.5453) % 1) + 1) % 1 : (BAYER4[((j & 3) << 2) | (i & 3)] + 0.5) / 16;
           lvl = Math.min(n, lo + (I - lo > th ? 1 : 0)) - 1;
         }
@@ -300,9 +303,11 @@ export default function build(room, ctx) {
 
   // ---- the desk along the right wall: clippings, scissors, paste pot, quill; the green-shaded lamp = the key light
   const dx = W / 2 - 0.5, dz = -0.15;
+  let deskTop = 0.76;
   F.table(room, {
     x: dx, z: dz, w: 0.8, d: 1.5, items: false,
     extra: (b, g, top) => {
+      deskTop = top;
       for (const [x, z, ry] of [[-0.1, 0.3, 0.3], [0.05, -0.1, -0.2], [-0.15, -0.45, 0.6], [0.12, 0.55, 1.2]]) b.box(0.24, 0.008, 0.3, { at: [x, top + 0.004, z], ry, tones: news });
       b.cylinder(0.06, 0.06, 0.08, { at: [-0.2, top, 0.05], tones: 'cream', segments: 8 });             // paste pot
       b.box(0.16, 0.012, 0.02, { at: [0.05, top + 0.01, 0.15], ry: 0.7, tones: 'iron' });                 // scissors
@@ -360,7 +365,10 @@ export default function build(room, ctx) {
     b.box(0.09, 0.09, 0.09, { at: [cx + 0.06, cy + 0.27, cz + 0.08], ry: 0.6, tones: 'crow' });
     b.box(0.05, 0.03, 0.08, { at: [cx + 0.1, cy + 0.29, cz + 0.15], ry: 0.6, tones: TP.cream });
   }
-  F.hangingLantern(room, { x: 0.95, z: 0.35, y: 2.2 });
+  // the Lantern-maker's lantern hangs in the gap between the pegged sheets (at 0.95 / 2.2 m a drying sheet hid it, and
+  // its floor pool had no visible source)
+  const lanX = 0.72, lanZ = 0.35;
+  F.hangingLantern(room, { x: lanX, z: lanZ, y: 2.0 });
   Wl.sconce(room, { wall: 'back', x: 1.32, y: 2.0, r: 2.8 });                // lights the board at night
   F.doormat(room, { x: 0, z: D / 2 - 0.4 });
 
@@ -388,16 +396,35 @@ export default function build(room, ctx) {
     },
   });
   // ---- NIGHT: ink-dark, with newsprint-cream light in pools. The green-shaded desk lamp throws a hard-working cream
-  //      pool over the desk corner and its litter of clippings (a green cast at its heart); one sconce keeps the
-  //      SUSPICION BOARD lit in the dark - a warm halo round the frame - the cot's candle a small pool, the hanging
-  //      lantern a dim one on the inky boards. Paranoid: the board is the brightest thing in the house at midnight.
+  //      pool over the desk top and the boards before it (a green cast at its heart); one sconce keeps the
+  //      SUSPICION BOARD lit in the dark - amber on the cork, a warm halo round the frame - and the hanging lantern
+  //      is a lone flame between the drying sheets (its point light warms the boards under it).
+  //      Paranoid: the board is the warmest thing in the house at midnight.
   const nightGlow = particles(room, ctx, {
     name: 'house-12-night', n: 0, dayParticles: false, make: () => {}, path: () => [0, 0, 0],
     night: (b, layer) => {
-      ditherPool(b, layer, { room, x: dx - 0.55, z: dz - 0.35, r: 1.5, rv: 1.05, cols: ['#6a7058', '#9a9c78', '#c8c69c', '#ecead0'], peak: 0.9, fall: 1.4, cell: 0.05 });
-      ditherPool(b, layer, { room, plane: 'back', x: bx + 0.25, y: by - 0.05, r: 1.9, rv: 1.25, cols: ['#6e5e4c', '#a08a68', '#ccb48a'], peak: 0.8, fall: 1.2, cell: 0.05 });
-      ditherPool(b, layer, { room, x: bedX + 0.85, z: -D / 2 + 0.75, r: 0.8, rv: 0.5, cols: ['#8a6a44', '#c09460'], peak: 0.8, cell: 0.05 });
-      ditherPool(b, layer, { room, x: 0.95, z: 0.5, r: 0.9, rv: 0.6, cols: ['#7a6a54', '#a89070'], peak: 0.75, cell: 0.05 });
+      // the lamp lights its own desk top (inside the top's rect: the papers sit on it, the dark under the desk stays dark)
+      const dtx = dx, dtz = dz - 0.3;
+      ditherPool(b, layer, { room, x: dtx, z: dtz, y: deskTop + 0.002, r: 0.62, rv: 1.0, cols: ['#8a8c6c', '#bcbc94', '#e4e2c0'], peak: 1.0, fall: 1.1, cell: 0.05,
+        keep: (u, v) => Math.abs(dtx + u - dx) < 0.38 && Math.abs(dtz - v - dz) < 0.73 });
+      // ... and spills onto the boards in front of it, dimming out before the desk's edge (no straight cut at the desk)
+      ditherPool(b, layer, { room, x: dx - 0.95, z: dz - 0.25, r: 1.25, rv: 0.95, cols: ['#6a7058', '#9a9c78', '#c8c69c', '#ecead0'], peak: 0.9, fall: 1.4, cell: 0.05,
+        fade: (u) => (dx - 0.42 - (dx - 0.95 + u)) / 0.5 });
+      // the SUSPICION BOARD: a warm halo round the frame, and the sconce's amber poured over the cork itself (a decal
+      // just in front of the cork, under the notes and the string), brightest on the sconce's side
+      ditherPool(b, layer, { room, plane: 'back', x: bx + 0.25, y: by - 0.05, r: 1.9, rv: 1.25, cols: ['#6e5440', '#9c7a52', '#c89c64'], peak: 0.8, fall: 1.2, cell: 0.05 });
+      ditherPool(b, layer, { room, plane: 'back', off: 0.066, x: bx, y: by, r: 1.75, rv: 1.05, cols: ['#6a4a30', '#92683e', '#b8884c'], peak: 1.15, fall: 0.9, cell: 0.055,
+        keep: (u, v) => Math.abs(u) < bw / 2 - 0.02 && Math.abs(v) < bh / 2 - 0.02, fade: (u) => 0.72 + 0.28 * (u / (bw / 2)) });
+      // the fifteen pinned notes catch that light too: a pale paper glow on each (just in front of the note, under its
+      // ink line, its pin and its black X), so the ring of suspects reads as paper on the lit cork
+      const zN = -D / 2 + 0.0765, paperQuad = (x, y, w, h, hex) => b.tris([x - w / 2, y - h / 2, zN, x + w / 2, y - h / 2, zN, x + w / 2, y + h / 2, zN,
+        x - w / 2, y - h / 2, zN, x + w / 2, y + h / 2, zN, x - w / 2, y + h / 2, zN], { tones: 'glass', layer, glow: hex, glowKind: 1 });
+      for (let i = 0; i < 16; i++) {                                   // 15 notes + the sketch of the dais in the middle
+        const a = (i / 15) * Math.PI * 2 + 0.2, mid = i === 15, big = i === 6;
+        const x = mid ? bx : bx + Math.cos(a) * 1.05, y = mid ? by : by + Math.sin(a) * 0.58;
+        const w = (mid ? 0.36 : big ? 0.3 : 0.22) * 0.82, h = (mid ? 0.28 : big ? 0.26 : 0.18) * 0.78, lit = 0.8 + 0.2 * ((x - bx) / (bw / 2));
+        paperQuad(x, y, w, h, '#' + new THREE.Color('#9a8a6c').multiplyScalar(lit).getHexString());
+      }
     },
   });
   // point lights only warm what is right by them (short, gentle: the pools are the dithered decals)

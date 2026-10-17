@@ -93,14 +93,16 @@ const BAYER4 = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
  * `cols` (dim -> bright) that dissolve into the surface through a 4x4 Bayer pattern instead of ending in a hard disc.
  * plane 'floor' (y up) or 'back' | 'left' | 'right' (the wall's inner face); (x, y, z) = the centre, r / rv the radii
  * along the plane's u (x, or z on side walls) and v (z on the floor, y on walls). peak 0..1 scales the brightness,
- * fall the falloff exponent, cell the dither cell (u metres; v is stretched for the 30 deg camera). keep(u, v) clips.
+ * fall the falloff exponent, cell the dither cell (u metres; v is stretched for the 30 deg camera). keep(u, v) clips;
+ * fade(u, v) -> 0..1 scales the brightness (a soft edge where a hard clip would show); off: the wall decal's distance
+ * from the wall face (in front of wall-mounted boards).
  * stipple: a hashed (random-looking) threshold instead of the Bayer matrix - mist and haze, not light.
  */
-function ditherPool(b, layer, { x = 0, y = 0.006, z = 0, r, rv = r, cols, peak = 1, fall = 1.6, cell = 0.036, plane = 'floor', kind = 1, keep = null, stipple = false, room }) {
+function ditherPool(b, layer, { x = 0, y = 0.006, z = 0, r, rv = r, cols, peak = 1, fall = 1.6, cell = 0.036, plane = 'floor', kind = 1, keep = null, fade = null, off = 0.012, stipple = false, room }) {
   const cu = cell, cv = plane === 'floor' ? cell * 2 : cell * 1.15;
   const U = plane === 'floor' ? [1, 0, 0] : plane === 'back' ? [1, 0, 0] : plane === 'left' ? [0, 0, -1] : [0, 0, 1];
   const V = plane === 'floor' ? [0, 0, -1] : [0, 1, 0];
-  const o = plane === 'floor' ? [x, y, z] : plane === 'back' ? [x, y, -room.D / 2 + 0.012] : plane === 'left' ? [-room.W / 2 + 0.012, y, z] : [room.W / 2 - 0.012, y, z];
+  const o = plane === 'floor' ? [x, y, z] : plane === 'back' ? [x, y, -room.D / 2 + off] : plane === 'left' ? [-room.W / 2 + off, y, z] : [room.W / 2 - off, y, z];
   const n = cols.length, ni = Math.ceil(r / cu), nj = Math.ceil(rv / cv);
   const P = (u, v) => [o[0] + U[0] * u + V[0] * v, o[1] + U[1] * u + V[1] * v, o[2] + U[2] * u + V[2] * v];
   const quad = (u0, u1, v0, v1, lvl) => b.tris([...P(u0, v0), ...P(u1, v0), ...P(u1, v1), ...P(u0, v0), ...P(u1, v1), ...P(u0, v1)],
@@ -111,8 +113,9 @@ function ditherPool(b, layer, { x = 0, y = 0.006, z = 0, r, rv = r, cols, peak =
       let lvl = -1;
       if (i < ni) {
         const u = (i + 0.5) * cu, v = (j + 0.5) * cv, d2 = (u / r) ** 2 + (v / rv) ** 2;
-        if (d2 < 1 && (!keep || keep(u, v))) {
-          const I = peak * Math.pow(1 - d2, fall) * n, lo = Math.floor(I);
+        const f = d2 < 1 && fade ? Math.max(0, Math.min(1, fade(u, v))) : 1;
+        if (d2 < 1 && f > 0 && (!keep || keep(u, v))) {
+          const I = peak * f * Math.pow(1 - d2, fall) * n, lo = Math.floor(I);
           const th = stipple ? (((Math.sin(i * 12.9898 + j * 78.233) * 43758.5453) % 1) + 1) % 1 : (BAYER4[((j & 3) << 2) | (i & 3)] + 0.5) / 16;
           lvl = Math.min(n, lo + (I - lo > th ? 1 : 0)) - 1;
         }
@@ -371,6 +374,10 @@ export default function build(room, ctx) {
     ditherPool(b, layer, { room, x: wbx - 0.1, z: wbz + 0.2, y: 0.04, r: 1.95, rv: 1.4, cols: AMBER, peak: 0.82, fall: 1.3, cell: 0.05, keep: underBench });
     ditherPool(b, layer, { room, x: sx + 0.55, z: sz + 0.2, r: 1.1, rv: 0.8, cols: ['#4e2416', '#8a3c1c', '#c86428'], peak: 0.85, kind: 2, cell: 0.05 });
     ditherPool(b, layer, { room, plane: 'back', x: -2.05, y: 1.6, r: 0.75, rv: 0.85, cols: ['#4a2c22', '#6e4430', '#94603a'], peak: 0.85, cell: 0.05 });
+    // a faint warm fill behind the shoe rack (in front of its backing board, behind the shoes): the pairs stand out as
+    // silhouettes against warm leather-brown instead of sinking into navy
+    ditherPool(b, layer, { room, plane: 'back', off: 0.05, x: (rx0 + rx1) / 2, y: 1.0, r: 2.2, rv: 0.9, cols: ['#3e2619'], peak: 3, fall: 1, cell: 0.08,
+      keep: (u, v) => 1.0 + v > shelfY[0] - 0.02 && 1.0 + v < 1.72 && Math.abs(u) < (rx1 - rx0) / 2 + 0.02 });
     ditherPool(b, layer, { room, x: 1.0, z: D / 2 - 0.85, r: 0.8, rv: 0.55, cols: ['#4a3022', '#7a5230'], peak: 0.85, cell: 0.05 });
     for (const [x, z, ry] of ashSteps) b.box(0.2, 0.004, 0.07, { at: [x, 0.02, z], ry, tones: 'glass', layer, glow: '#5c5a68', glowKind: 1 });
   };

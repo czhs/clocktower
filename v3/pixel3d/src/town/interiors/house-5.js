@@ -28,6 +28,12 @@ function tube(b, p, q, r, opts, seg = 8) {
   b.pop();
 }
 
+/** A flat +z-facing quad (w x h, bottom-centre `at`): labels and plates whose sides / back never show (tri budget). */
+function plate(b, w, h, at, opts) {
+  const [x, y, z] = at, x0 = x - w / 2, x1 = x + w / 2, y1 = y + h;
+  b.tris([x0, y, z, x1, y, z, x1, y1, z, x0, y, z, x1, y1, z, x0, y1, z], opts);
+}
+
 /** One mesh of n tiny glowing boxes whose centres follow pos(k, t) -> [x, y, z, scale] (room-local), stepped 8 fps. */
 function motes(room, ctx, name, n, colorOf, size, pos) {
   const pb = new Builder(room.engine, { name });
@@ -218,8 +224,8 @@ export default function build(room, ctx) {
       const tall = (r + c) % 2 === 0;
       b.box(0.1, tall ? 0.24 : 0.19, 0.1, { at: [x, y + 0.03, z], tones: BOT[(r * 4 + c) % 3], pattern: 'none' });
       b.box(0.04, 0.06, 0.04, { at: [x, y + 0.03 + (tall ? 0.24 : 0.19), z], tones: BOT[(r * 4 + c) % 3], pattern: 'none' });
-      b.box(0.07, 0.06, 0.01, { at: [x, y + 0.1, z + 0.055], tones: 'cream', pattern: 'none' });          // label
-      b.box(0.025, 0.025, 0.01, { at: [x, y + 0.115, z + 0.062], tones: 'crow', pattern: 'none' });       // the mark
+      plate(b, 0.07, 0.06, [x, y + 0.1, z + 0.052], { tones: 'cream', pattern: 'none' });                 // label
+      plate(b, 0.025, 0.025, [x, y + 0.115, z + 0.056], { tones: 'crow', pattern: 'none' });              // the mark
     }
   }
   b.box(0.04, PH - 0.1, 0.03, { at: [PX, PY + 0.08, PZ + PD + 0.01], tones: 'brass', pattern: 'none' });    // glazing bars
@@ -235,7 +241,7 @@ export default function build(room, ctx) {
   glow(g, 0.3, 0.26, 0.02, [DXc, 1.38, LZ1 + 0.052], '#7CDCA0', 1);
   for (const s of [-1, 0, 1]) b.box(0.025, 0.3, 0.03, { at: [DXc + s * 0.08, 1.36, LZ1 + 0.07], tones: 'iron' });
   b.box(0.12, 0.16, 0.05, { at: [DXc - 0.28, 0.9, LZ1 + 0.08], tones: 'iron' });
-  room.light({ pos: [DXc, 1.45, LZ1 + 0.35], color: '#8CF0A8', r: 0.9, kind: 'lantern', intensity: 0.9, hug: false });
+  room.light({ pos: [DXc, 1.4, LZ1 + 0.3], color: '#8CF0A8', r: 0.45, kind: 'lantern', intensity: 0.8, hug: false });   // (short: a glow round the grille, no disc on the door)
 
   // ---- the back wall: the window with its two show globes (teal + amber: the key light)
   room.wallFrame('back', ({ full, glow: wg }) => {
@@ -248,7 +254,7 @@ export default function build(room, ctx) {
       full.cylinder(0.06, 0.04, 0.07, { at: [x, 1.44, 0.04], tones: 'brass', segments: 8 });
     }
   });
-  room.light({ pos: [WINX + 0.1, 1.35, BZ + 1.2], color: '#58DCC8', r: 1.6, kind: 'fire', intensity: 1.8, hug: false });   // (off the wall: the globes' halo is painted)
+  room.light({ pos: [WINX + 0.1, 1.35, BZ + 1.2], color: '#58DCC8', r: 0.95, kind: 'fire', intensity: 1.0, hug: false });   // (short: no teal disc over the bed + drawers)   // (off the wall: the globes' halo is painted)
 
   // ---- the wall of drawers + jewel bottles behind the counter (x -2.05 .. 1.7), a rolling ladder
   const DX0 = -2.05, DX1 = LX0, DW = DX1 - DX0, DC = (DX0 + DX1) / 2, DD = 0.42;
@@ -258,7 +264,7 @@ export default function build(room, ctx) {
   for (let i = 0; i < NC; i++) for (let j = 0; j < NR; j++) {
     const x = DX0 + 0.05 + cw * (i + 0.5), y = 0.06 + rh * j;
     b.box(cw - 0.045, rh - 0.045, 0.025, { at: [x, y, BZ + DD + 0.012], tones: TEAL, tint: (i + j) % 2 ? 0.94 : 1.05, pattern: 'none' });
-    b.box(0.12, 0.05, 0.012, { at: [x, y + rh * 0.55, BZ + DD + 0.03], tones: 'cream', pattern: 'none' });
+    plate(b, 0.12, 0.05, [x, y + rh * 0.55, BZ + DD + 0.026], { tones: 'cream', pattern: 'none' });
     b.box(0.04, 0.04, 0.04, { at: [x, y + rh * 0.25, BZ + DD + 0.035], tones: 'brass', pattern: 'none' });
   }
   const UD = 0.28;
@@ -275,7 +281,7 @@ export default function build(room, ctx) {
       if (lit) glow(g, w, h, w, [x, y0, BZ + 0.15], GLINT[hue], 2);
       else b.box(w, h, w, { at: [x, y0, BZ + 0.15], tones: POTIONS[hue], pattern: 'none' });
       b.box(0.035, 0.05, 0.035, { at: [x, y0 + h, BZ + 0.15], tones: POTIONS[hue], tint: 0.94, pattern: 'none' });
-      b.box(w * 0.75, 0.05, 0.01, { at: [x, y0 + h * 0.35, BZ + 0.15 + w / 2 + 0.005], tones: 'cream', pattern: 'none' });
+      plate(b, w * 0.75, 0.05, [x, y0 + h * 0.35, BZ + 0.15 + w / 2 + 0.005], { tones: 'cream', pattern: 'none' });
       x += w + 0.075 + (k % 5 === 4 ? 0.06 : 0);
     }
   }
@@ -342,7 +348,9 @@ export default function build(room, ctx) {
   b.cylinder(0.06, 0.09, 0.08, { at: [AX, T + 0.05, KZ], tones: 'brass', segments: 8 });
   glow(g, 0.09, 0.2, 0.09, [AX, T + 0.13, KZ], '#FFC060', 2);
   b.cylinder(0.06, 0.04, 0.03, { at: [AX, T + 0.33, KZ], tones: 'brass', segments: 8 });
-  room.light({ pos: [AX, T + 0.4, KZ + 0.2], color: '#FFB050', r: 1.7, kind: 'fire', intensity: 1.5 });
+  // (polish 2026-10-16: a short, gentle reach - the r 1.7 / 1.5 light painted a hard amber ellipse on the countertop; at
+  // night the counter's lamp glow is a dithered `tops` field instead)
+  room.light({ pos: [AX, T + 0.32, KZ + 0.1], color: '#FFB050', r: 0.6, kind: 'lantern', intensity: 0.7, hug: false });
   b.cylinder(0.06, 0.035, 0.07, { at: [0.45, T, KZ + 0.1], tones: 'brass', segments: 8 });                 // the shop bell
   b.box(0.02, 0.04, 0.02, { at: [0.45, T + 0.07, KZ + 0.1], tones: 'brass' });
   // drying herbs on a rack over the counter (lavender, nightshade, sage)
@@ -405,7 +413,7 @@ export default function build(room, ctx) {
   room.solid(PGX, PGZ - 0.2, PGX + 0.25, PGZ + 0.2);
   F.doormat(room, { x: 0, z: D / 2 - 0.4 });
   // the Lantern-maker's lantern over the shop floor
-  F.hangingLantern(room, { x: -1.15, z: 0.85, y: 2.2, r: 2.4, intensity: 1.15 });
+  F.hangingLantern(room, { x: -1.15, z: 0.85, y: 2.2, r: 2.4, intensity: 0.9 });
   // side walls (read at yaw 45): a jar shelf on the left, a framed botanical of foxglove on the right
   Wl.shelf(room, { wall: 'left', x: -0.6, y: 1.55, w: 1.1, items: ['jar', 'potion', 'jar', 'potion'] });
   Wl.frame(room, { wall: 'right', x: 1.6, y: 1.5, w: 0.5, h: 0.65, tones: CLOTH.linen });
@@ -425,15 +433,20 @@ export default function build(room, ctx) {
   const GRN = ['#406A56', '#5A9A72', '#8CDCA0'], BLU = ['#45587A', '#5A78AE', '#8CB0F0'];
   const night = lightPools(room, ctx, 'house-5-night', {
     floor: [
-      pool(WINX + 0.05, -1.3, 1.9, TEALC, { peak: 1.05, sx: 1.3 }),
-      pool(-0.45, 0.35, 1.75, AMB, { peak: 0.95, sx: 1.35, sz: 0.95 }),
+      // (polish: the teal window pool stays on the open floor left of the counter - it no longer wedges up past the bed
+      // foot and the nightstand; the amber pool sits in front of the counter, smaller, so it reads as light, not a rug)
+      pool(-3.2, -0.1, 1.15, TEALC, { peak: 0.62, sx: 1.1, sz: 1.15, pow: 1.6 }),
+      pool(-0.55, 0.75, 1.25, AMB, { peak: 0.72, sx: 1.4, sz: 0.95, pow: 1.7 }),
+      pool(AX, KZ, 0.95, AMB, { peak: 0.9, sx: 1.6, sz: 0.8 }),     // the counter lamp (painted on the countertop via tops)
       pool(PX, LZ1 + 0.55, 0.95, VIO, { peak: 0.75, sx: 1.2 }),
       pool(DXc, LZ1 + 0.45, 0.75, GRN, { peak: 0.55 }),
       pool(TX - 0.3, TZ + 0.65, 0.85, BLU, { peak: 0.6, sx: 1.3 }),
     ],
     back: [pool(WINX - 0.27, 1.12, 0.7, TEALC, { peak: 0.8 }), pool(WINX + 0.27, 1.12, 0.7, AMB, { peak: 0.8 })],
     panes: [{ x0: WINX - 0.56, x1: WINX + 0.56, y0: 0.93, y1: 2.9 }],
-    y: 0.016,
+    y: 0.016, cell: 2.5,
+    holes: [(u, v) => u < -3.3 && v < -0.5, (u, v) => v < -1.75 && u < -2.0],   // the bed nook + behind the counter: no wedge
+    tops: [{ in: (u, v) => u > -2.2 && u < KX1 + 0.03 && v > KZ - KD / 2 - 0.03 && v < KZ + KD / 2 + 0.03, y: T + 0.006, cols: ['#6A5444', '#9A7450', '#D8A462'] }],
     tone: {                                                      // the harlequin: dark teal diamonds stay dark in the light
       at: (u, v) => (Math.abs(u - Math.round(u / DG) * DG) + Math.abs(v - Math.round(v / DG) * DG) < DG / 2 ? 1 : 0),
       mul: [[1, 1, 1], [0.46, 0.66, 0.7]],

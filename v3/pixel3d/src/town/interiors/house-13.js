@@ -86,14 +86,16 @@ const BAYER4 = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
  * `cols` (dim -> bright) that dissolve into the surface through a 4x4 Bayer pattern instead of ending in a hard disc.
  * plane 'floor' (y up) or 'back' | 'left' | 'right' (the wall's inner face); (x, y, z) = the centre, r / rv the radii
  * along the plane's u (x, or z on side walls) and v (z on the floor, y on walls). peak 0..1 scales the brightness,
- * fall the falloff exponent, cell the dither cell (u metres; v is stretched for the 30 deg camera). keep(u, v) clips.
+ * fall the falloff exponent, cell the dither cell (u metres; v is stretched for the 30 deg camera). keep(u, v) clips;
+ * fade(u, v) -> 0..1 scales the brightness (a soft edge where a hard clip would show); off: the wall decal's distance
+ * from the wall face (in front of wall-mounted boards).
  * stipple: a hashed (random-looking) threshold instead of the Bayer matrix - mist and haze, not light.
  */
-function ditherPool(b, layer, { x = 0, y = 0.006, z = 0, r, rv = r, cols, peak = 1, fall = 1.6, cell = 0.036, plane = 'floor', kind = 1, keep = null, stipple = false, room }) {
+function ditherPool(b, layer, { x = 0, y = 0.006, z = 0, r, rv = r, cols, peak = 1, fall = 1.6, cell = 0.036, plane = 'floor', kind = 1, keep = null, fade = null, off = 0.012, stipple = false, room }) {
   const cu = cell, cv = plane === 'floor' ? cell * 2 : cell * 1.15;
   const U = plane === 'floor' ? [1, 0, 0] : plane === 'back' ? [1, 0, 0] : plane === 'left' ? [0, 0, -1] : [0, 0, 1];
   const V = plane === 'floor' ? [0, 0, -1] : [0, 1, 0];
-  const o = plane === 'floor' ? [x, y, z] : plane === 'back' ? [x, y, -room.D / 2 + 0.012] : plane === 'left' ? [-room.W / 2 + 0.012, y, z] : [room.W / 2 - 0.012, y, z];
+  const o = plane === 'floor' ? [x, y, z] : plane === 'back' ? [x, y, -room.D / 2 + off] : plane === 'left' ? [-room.W / 2 + off, y, z] : [room.W / 2 - off, y, z];
   const n = cols.length, ni = Math.ceil(r / cu), nj = Math.ceil(rv / cv);
   const P = (u, v) => [o[0] + U[0] * u + V[0] * v, o[1] + U[1] * u + V[1] * v, o[2] + U[2] * u + V[2] * v];
   const quad = (u0, u1, v0, v1, lvl) => b.tris([...P(u0, v0), ...P(u1, v0), ...P(u1, v1), ...P(u0, v0), ...P(u1, v1), ...P(u0, v1)],
@@ -104,8 +106,9 @@ function ditherPool(b, layer, { x = 0, y = 0.006, z = 0, r, rv = r, cols, peak =
       let lvl = -1;
       if (i < ni) {
         const u = (i + 0.5) * cu, v = (j + 0.5) * cv, d2 = (u / r) ** 2 + (v / rv) ** 2;
-        if (d2 < 1 && (!keep || keep(u, v))) {
-          const I = peak * Math.pow(1 - d2, fall) * n, lo = Math.floor(I);
+        const f = d2 < 1 && fade ? Math.max(0, Math.min(1, fade(u, v))) : 1;
+        if (d2 < 1 && f > 0 && (!keep || keep(u, v))) {
+          const I = peak * f * Math.pow(1 - d2, fall) * n, lo = Math.floor(I);
           const th = stipple ? (((Math.sin(i * 12.9898 + j * 78.233) * 43758.5453) % 1) + 1) % 1 : (BAYER4[((j & 3) << 2) | (i & 3)] + 0.5) / 16;
           lvl = Math.min(n, lo + (I - lo > th ? 1 : 0)) - 1;
         }
@@ -355,18 +358,44 @@ export default function build(room, ctx) {
         keep: (u) => Math.abs(mx + u) < sx + 0.25 });                                                 // over the water only
     }
     ditherPool(b, layer, { room, x: lx - 0.35, z: lz - 0.05, y: 0.006, r: 0.95, rv: 0.6, cols: ['#4a3424', '#7a5634', '#a8763e'], peak: 0.8, cell: 0.05 });
+    // the river's cold spill on the right walkway (the right half used to sink to black): faint blue-grey, brightest at
+    // the slip's edge and dimming out across the boards
+    ditherPool(b, layer, { room, x: sx + 0.2, z: -1.1, y: 0.006, r: 1.9, rv: 1.9, cols: ['#2c3652'], peak: 0.8, fall: 1.0, cell: 0.06,
+      keep: (u) => u > 0.05 });
   };
-  const NR = 16, NG = 12;
+  // RIPPLE PATCHES: broad soft blue-grey patches of river light (one-colour dithered ellipses) that sway across the
+  // back wall either side of the water-door and along both side walls - the walls breathe with the water instead of
+  // sinking to black. Window-kind by day (they follow the daylight), pale moon-teal at night.
+  const PATCH = [
+    ['back', 2.05, 1.05, 0], ['back', 2.75, 1.9, 0], ['back', 3.55, 1.25, 0], ['back', 3.85, 2.3, 0], ['back', 2.3, 2.55, 0],
+    ['back', -2.05, 1.15, 0], ['back', -2.8, 2.05, 0], ['back', -3.6, 1.35, 0], ['back', -3.75, 2.4, 0], ['back', -2.3, 2.6, 0],
+    ['left', 0, 1.3, -2.0], ['left', 0, 2.0, -0.6], ['right', 0, 1.4, -1.8], ['right', 0, 2.1, -0.4],
+  ];
+  const NR = 16, NG = 12, NP = PATCH.length, P0 = 1 + NR + NG;
   const fx = particles(room, ctx, {
-    name: 'house-13-river-light', n: 1 + NR + NG, night,
-    nightColor: (i) => (i === 0 ? null : i <= NR ? (i % 2 ? '#5E8494' : '#86AEB8') : '#A8C8D0'),
+    name: 'house-13-river-light', n: P0 + NP, night,
+    nightColor: (i) => (i === 0 ? null : i <= NR ? (i % 2 ? '#5E8494' : '#86AEB8') : i < P0 ? '#A8C8D0' : (i % 2 ? '#3A5462' : '#4A6878')),
     make: (b, i, layer) => {
       if (i === 0) return b.box(0.05, 0.07, 0.05, { at: [lx - 0.45, candleY + 0.15, lz - 0.2], tones: 'glass', layer, glow: GLOW.candle, glowKind: 2 });
+      if (i >= P0) {
+        // a caustic cluster: three thin wavering bands, offset like light off moving water
+        const [plane, x, y, z] = PATCH[i - P0], k = i - P0, col = k % 2 ? '#8AA6BC' : '#A0BACC';       // day (x window light); the night tone is nightColor
+        for (const [du, dv, rr] of [[0, 0, 0.42], [0.16 - (k % 3) * 0.1, 0.13, 0.3], [-0.12 + (k % 2) * 0.2, -0.12, 0.26]]) {
+          const along = plane === 'back' ? { x: x + du, z } : { x, z: z + (plane === 'left' ? -du : du) };
+          ditherPool(b, layer, { room, plane, ...along, y: y + dv, off: 0.02, r: rr + (k % 3) * 0.05, rv: 0.05, cols: [col], peak: 1.4, fall: 1, cell: 0.04, kind: 3 });
+        }
+        return;
+      }
       if (i <= NR) return b.box(0.16 + (i % 3) * 0.08, 0.025, 0.01, { at: [0, 0, 0], tones: 'glass', layer, glow: i % 2 ? '#6C88A0' : '#8AA6BC', glowKind: 3 });
       return b.box(0.14, 0.01, 0.03, { at: [0, 0, 0], tones: 'glass', layer, glow: '#A8C4D8', glowKind: 3 });
     },
     path: (i, t) => {
       if (i === 0) return [0, 0, 0];
+      if (i >= P0) {                                                    // sway along the wall, a slow bob, stepped
+        const k = i - P0, plane = PATCH[k][0], a = Math.sin(t * 0.55 + k * 1.9) * 0.22 + Math.sin(t * 1.4 + k) * 0.05;
+        const dy = Math.sin(t * 0.8 + k * 2.3) * 0.05;
+        return plane === 'back' ? [a, dy, 0] : [0, dy, plane === 'left' ? -a : a];
+      }
       if (i <= NR) {
         const sxw = i % 2 ? 1 : -1, x0 = sxw * (1.75 + ((i * 0.37) % 1) * 2.0), y0 = 0.6 + ((i * 0.61) % 1) * 1.7;
         return [x0 + Math.sin(t * 0.9 + i * 1.3) * 0.15, y0 + Math.sin(t * 1.3 + i) * 0.05, -D / 2 + 0.015];
