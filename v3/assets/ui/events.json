@@ -1,0 +1,768 @@
+{
+ "image": "events.png",
+ "width": 256,
+ "height": 274,
+ "frames": {
+  "poof_0": {
+   "x": 1,
+   "y": 1,
+   "w": 32,
+   "h": 40
+  },
+  "poof_1": {
+   "x": 34,
+   "y": 1,
+   "w": 32,
+   "h": 40
+  },
+  "poof_2": {
+   "x": 67,
+   "y": 1,
+   "w": 32,
+   "h": 40
+  },
+  "poof_3": {
+   "x": 100,
+   "y": 1,
+   "w": 32,
+   "h": 40
+  },
+  "poof_4": {
+   "x": 133,
+   "y": 1,
+   "w": 32,
+   "h": 40
+  },
+  "poof_5": {
+   "x": 166,
+   "y": 1,
+   "w": 32,
+   "h": 40
+  },
+  "glow_warm": {
+   "x": 199,
+   "y": 1,
+   "w": 32,
+   "h": 32
+  },
+  "glow_cool": {
+   "x": 1,
+   "y": 42,
+   "w": 32,
+   "h": 32
+  },
+  "seat_stone": {
+   "x": 34,
+   "y": 42,
+   "w": 18,
+   "h": 12
+  },
+  "seat_you_0": {
+   "x": 53,
+   "y": 42,
+   "w": 18,
+   "h": 12
+  },
+  "seat_you_1": {
+   "x": 72,
+   "y": 42,
+   "w": 18,
+   "h": 12
+  },
+  "seat_you_2": {
+   "x": 91,
+   "y": 42,
+   "w": 18,
+   "h": 12
+  },
+  "seat_you_3": {
+   "x": 110,
+   "y": 42,
+   "w": 18,
+   "h": 12
+  },
+  "seat_dead_0": {
+   "x": 129,
+   "y": 42,
+   "w": 18,
+   "h": 20
+  },
+  "seat_dead_1": {
+   "x": 148,
+   "y": 42,
+   "w": 18,
+   "h": 20
+  },
+  "seat_nominee": {
+   "x": 167,
+   "y": 42,
+   "w": 18,
+   "h": 12
+  },
+  "vote_pulse_0": {
+   "x": 186,
+   "y": 42,
+   "w": 32,
+   "h": 19
+  },
+  "vote_pulse_1": {
+   "x": 219,
+   "y": 42,
+   "w": 32,
+   "h": 19
+  },
+  "vote_pulse_2": {
+   "x": 1,
+   "y": 75,
+   "w": 32,
+   "h": 19
+  },
+  "nominee_ring": {
+   "x": 34,
+   "y": 75,
+   "w": 32,
+   "h": 19
+  },
+  "vote_hub": {
+   "x": 67,
+   "y": 75,
+   "w": 7,
+   "h": 5
+  },
+  "vote_tip_right": {
+   "x": 75,
+   "y": 75,
+   "w": 7,
+   "h": 7
+  },
+  "vote_tip_down-right": {
+   "x": 83,
+   "y": 75,
+   "w": 7,
+   "h": 7
+  },
+  "vote_tip_down": {
+   "x": 91,
+   "y": 75,
+   "w": 7,
+   "h": 7
+  },
+  "vote_tip_down-left": {
+   "x": 99,
+   "y": 75,
+   "w": 7,
+   "h": 7
+  },
+  "vote_tip_left": {
+   "x": 107,
+   "y": 75,
+   "w": 7,
+   "h": 7
+  },
+  "vote_tip_up-left": {
+   "x": 115,
+   "y": 75,
+   "w": 7,
+   "h": 7
+  },
+  "vote_tip_up": {
+   "x": 123,
+   "y": 75,
+   "w": 7,
+   "h": 7
+  },
+  "vote_tip_up-right": {
+   "x": 131,
+   "y": 75,
+   "w": 7,
+   "h": 7
+  },
+  "hand_pop": {
+   "x": 139,
+   "y": 75,
+   "w": 10,
+   "h": 13
+  },
+  "hand_raised_0": {
+   "x": 150,
+   "y": 75,
+   "w": 10,
+   "h": 13
+  },
+  "hand_raised_1": {
+   "x": 161,
+   "y": 75,
+   "w": 10,
+   "h": 13
+  },
+  "hand_locked": {
+   "x": 172,
+   "y": 75,
+   "w": 10,
+   "h": 13
+  },
+  "hand_ghost": {
+   "x": 183,
+   "y": 75,
+   "w": 10,
+   "h": 13
+  },
+  "hand_ghost_locked": {
+   "x": 194,
+   "y": 75,
+   "w": 10,
+   "h": 13
+  },
+  "hand_lock_0": {
+   "x": 205,
+   "y": 75,
+   "w": 19,
+   "h": 16
+  },
+  "hand_lock_1": {
+   "x": 225,
+   "y": 75,
+   "w": 19,
+   "h": 16
+  },
+  "hand_lock_2": {
+   "x": 1,
+   "y": 95,
+   "w": 19,
+   "h": 16
+  },
+  "vc_face": {
+   "x": 21,
+   "y": 95,
+   "w": 61,
+   "h": 61
+  },
+  "vc_seat_idle": {
+   "x": 83,
+   "y": 95,
+   "w": 11,
+   "h": 11
+  },
+  "vc_seat_yes": {
+   "x": 95,
+   "y": 95,
+   "w": 11,
+   "h": 11
+  },
+  "vc_seat_no": {
+   "x": 107,
+   "y": 95,
+   "w": 11,
+   "h": 11
+  },
+  "vc_seat_raised0": {
+   "x": 119,
+   "y": 95,
+   "w": 11,
+   "h": 11
+  },
+  "vc_seat_raised1": {
+   "x": 131,
+   "y": 95,
+   "w": 11,
+   "h": 11
+  },
+  "vc_seat_dead": {
+   "x": 143,
+   "y": 95,
+   "w": 11,
+   "h": 11
+  },
+  "vc_seat_nominee": {
+   "x": 155,
+   "y": 95,
+   "w": 11,
+   "h": 11
+  },
+  "vc_seat_current": {
+   "x": 167,
+   "y": 95,
+   "w": 11,
+   "h": 11
+  },
+  "caption_end": {
+   "x": 179,
+   "y": 95,
+   "w": 7,
+   "h": 15
+  },
+  "caption_mid": {
+   "x": 187,
+   "y": 95,
+   "w": 1,
+   "h": 15
+  },
+  "glyph_moon": {
+   "x": 189,
+   "y": 95,
+   "w": 9,
+   "h": 9
+  },
+  "glyph_sun": {
+   "x": 199,
+   "y": 95,
+   "w": 9,
+   "h": 9
+  },
+  "glyph_bell": {
+   "x": 209,
+   "y": 95,
+   "w": 9,
+   "h": 9
+  },
+  "glyph_candle": {
+   "x": 219,
+   "y": 95,
+   "w": 9,
+   "h": 9
+  },
+  "glyph_hand": {
+   "x": 229,
+   "y": 95,
+   "w": 9,
+   "h": 9
+  },
+  "veil_0": {
+   "x": 239,
+   "y": 95,
+   "w": 4,
+   "h": 4
+  },
+  "veil_1": {
+   "x": 244,
+   "y": 95,
+   "w": 4,
+   "h": 4
+  },
+  "veil_2": {
+   "x": 249,
+   "y": 95,
+   "w": 4,
+   "h": 4
+  },
+  "veil_3": {
+   "x": 1,
+   "y": 157,
+   "w": 4,
+   "h": 4
+  },
+  "toll_0": {
+   "x": 6,
+   "y": 157,
+   "w": 41,
+   "h": 19
+  },
+  "toll_1": {
+   "x": 48,
+   "y": 157,
+   "w": 41,
+   "h": 19
+  },
+  "toll_2": {
+   "x": 90,
+   "y": 157,
+   "w": 41,
+   "h": 19
+  },
+  "toll_3": {
+   "x": 132,
+   "y": 157,
+   "w": 41,
+   "h": 19
+  },
+  "bell_0": {
+   "x": 174,
+   "y": 157,
+   "w": 13,
+   "h": 12
+  },
+  "bell_1": {
+   "x": 188,
+   "y": 157,
+   "w": 13,
+   "h": 12
+  },
+  "bell_2": {
+   "x": 202,
+   "y": 157,
+   "w": 13,
+   "h": 12
+  },
+  "wisp_0": {
+   "x": 216,
+   "y": 157,
+   "w": 32,
+   "h": 40
+  },
+  "wisp_1": {
+   "x": 1,
+   "y": 198,
+   "w": 32,
+   "h": 40
+  },
+  "wisp_2": {
+   "x": 34,
+   "y": 198,
+   "w": 32,
+   "h": 40
+  },
+  "wisp_3": {
+   "x": 67,
+   "y": 198,
+   "w": 32,
+   "h": 40
+  },
+  "wisp_4": {
+   "x": 100,
+   "y": 198,
+   "w": 32,
+   "h": 40
+  },
+  "wisp_5": {
+   "x": 133,
+   "y": 198,
+   "w": 32,
+   "h": 40
+  },
+  "reveal_0": {
+   "x": 166,
+   "y": 198,
+   "w": 33,
+   "h": 34
+  },
+  "reveal_1": {
+   "x": 200,
+   "y": 198,
+   "w": 33,
+   "h": 34
+  },
+  "reveal_2": {
+   "x": 1,
+   "y": 239,
+   "w": 33,
+   "h": 34
+  },
+  "reveal_3": {
+   "x": 35,
+   "y": 239,
+   "w": 33,
+   "h": 34
+  },
+  "candle_0": {
+   "x": 69,
+   "y": 239,
+   "w": 7,
+   "h": 13
+  },
+  "candle_1": {
+   "x": 77,
+   "y": 239,
+   "w": 7,
+   "h": 13
+  },
+  "candle_2": {
+   "x": 85,
+   "y": 239,
+   "w": 7,
+   "h": 13
+  },
+  "ghost_halo_0": {
+   "x": 93,
+   "y": 239,
+   "w": 11,
+   "h": 5
+  },
+  "ghost_halo_1": {
+   "x": 105,
+   "y": 239,
+   "w": 11,
+   "h": 5
+  },
+  "banner_end": {
+   "x": 117,
+   "y": 239,
+   "w": 12,
+   "h": 34
+  },
+  "banner_mid": {
+   "x": 130,
+   "y": 239,
+   "w": 1,
+   "h": 34
+  },
+  "banner_end_parchment": {
+   "x": 132,
+   "y": 239,
+   "w": 12,
+   "h": 34
+  },
+  "banner_mid_parchment": {
+   "x": 145,
+   "y": 239,
+   "w": 1,
+   "h": 34
+  },
+  "emblem_start": {
+   "x": 147,
+   "y": 239,
+   "w": 21,
+   "h": 21
+  },
+  "emblem_good": {
+   "x": 169,
+   "y": 239,
+   "w": 21,
+   "h": 21
+  },
+  "emblem_evil": {
+   "x": 191,
+   "y": 239,
+   "w": 21,
+   "h": 21
+  }
+ },
+ "meta": {
+  "fps": {
+   "poof": 15
+  },
+  "anchors": {
+   "poof": {
+    "x": 16,
+    "y": 38
+   },
+   "glow_warm": {
+    "x": 16,
+    "y": 16
+   },
+   "glow_cool": {
+    "x": 16,
+    "y": 16
+   }
+  },
+  "newStyle": {
+   "events": {
+    "tod": "noon",
+    "v2fps": {
+     "poof": 14
+    },
+    "v2ms": {
+     "nightOut": 650,
+     "nightIn": 1600,
+     "dawnFlash": 900,
+     "captionNight": 4200,
+     "captionBell": 4200,
+     "captionDawn": 3500,
+     "poofFrameMs": 71.42857142857143
+    },
+    "fps": {
+     "poof": 15,
+     "vote_pulse": 5,
+     "hand_raised": 2.5,
+     "hand_lock": 15,
+     "seat_you": 2.5,
+     "seat_dead": 2,
+     "toll": 10,
+     "bell": 7.5,
+     "wisp": 10,
+     "reveal": 15,
+     "candle": 7.5,
+     "ghost_halo": 2
+    },
+    "anchors": {
+     "poof": {
+      "x": 16,
+      "y": 38
+     },
+     "glow_warm": {
+      "x": 16,
+      "y": 16
+     },
+     "glow_cool": {
+      "x": 16,
+      "y": 16
+     },
+     "seat": {
+      "x": 9,
+      "y": 5
+     },
+     "seat_you": {
+      "x": 9,
+      "y": 5
+     },
+     "seat_dead": {
+      "x": 9,
+      "y": 13
+     },
+     "vote_pulse": {
+      "x": 16,
+      "y": 9
+     },
+     "nominee_ring": {
+      "x": 16,
+      "y": 9
+     },
+     "vote_hub": {
+      "x": 3,
+      "y": 2
+     },
+     "vote_tip": {
+      "x": 3,
+      "y": 3
+     },
+     "hand": {
+      "x": 4,
+      "y": 12
+     },
+     "hand_lock": {
+      "x": 9,
+      "y": 11
+     },
+     "vc_seat": {
+      "x": 5,
+      "y": 5
+     },
+     "caption_end": {
+      "x": 0,
+      "y": 0
+     },
+     "glyph": {
+      "x": 4,
+      "y": 4
+     },
+     "toll": {
+      "x": 20,
+      "y": 9
+     },
+     "bell": {
+      "x": 6,
+      "y": 0
+     },
+     "wisp": {
+      "x": 16,
+      "y": 38
+     },
+     "reveal": {
+      "x": 16,
+      "y": 30
+     },
+     "candle": {
+      "x": 3,
+      "y": 11
+     },
+     "banner_end": {
+      "x": 0,
+      "y": 0
+     },
+     "emblem": {
+      "x": 10,
+      "y": 10
+     },
+     "ghost_halo": {
+      "x": 5,
+      "y": 2
+     }
+    },
+    "timing": {
+     "night": {
+      "outF": 20,
+      "inF": 48,
+      "outHold": 2,
+      "inHold": 3,
+      "band": 72,
+      "levels": 4
+     },
+     "dawn": {
+      "f": 27,
+      "coverF": 2,
+      "coverA": 214,
+      "hold": 2,
+      "band": 18,
+      "alpha": [
+       96,
+       64,
+       36
+      ]
+     },
+     "caption": {
+      "nightF": 126,
+      "bellF": 126,
+      "dawnF": 105,
+      "popF": 2,
+      "outHold": 2
+     },
+     "poof": {
+      "hold": 2,
+      "frames": 6,
+      "hideAt": 2,
+      "showAt": 3
+     },
+     "vote": {
+      "perVoterF": 36,
+      "turnDrawings": 4,
+      "turnHold": 2,
+      "lockAtF": 15,
+      "popF": 2
+     },
+     "banner": {
+      "unfurlDrawings": 4,
+      "unfurlHold": 2,
+      "holdF": 105,
+      "outHold": 2
+     },
+     "execution": {
+      "tollsAtF": [
+       0,
+       24,
+       48
+      ],
+      "dieAtF": 30,
+      "wispAtF": 96,
+      "ghostAtF": 108,
+      "dimInF": 6,
+      "dimOutAtF": 126,
+      "bellOutAtF": 126,
+      "captionF": 126
+     }
+    },
+    "tiers": {
+     "poof": "A over the Storyteller feet (hide the sprite at poof_2, show at poof_3; pixel3d also plays the appear clip at poof_2)",
+     "glow": "additive light stamps, banded (3 alpha steps); pixel3d uses PointLights instead",
+     "seat": "Ag (ground, hidden under characters): the plaque sits 0.9 m toward the camera from the seat spot (clear of the feet); digits = kit tiny font at anchor - (0, 2), parchment on stone / nominee, redrawn above the rings",
+     "vote": "Ag: nominee_ring + vote_pulse centred on the seat spot (around the feet); the hand = a 1-px shaft (gold by day, goldSh at night) + a 1-px goldLine shadow side, vote_tip_<dir> (5x5) at its end, vote_hub at the centre",
+     "hand": "A: wrist at anchors.hand BESIDE the name label (right; left of it when the talk glyph is on the right), wrist on the label bottom row; tilt + 1-px bob at 2.5 fps while raised; hand_pop for 2 grid frames on raise; hand_lock_0..2 at 15 fps when counted; a counted ghost vote = hand_ghost_locked (gold hand, pale cuff) and the ghost turns ghost-spent (no halo) from that frame",
+     "vc": "S: vc_face + vc_seat_<state> pips at radius 23, hand drawn from the centre to the current pip",
+     "caption": "S: caption_end + caption_mid tile + flipped caption_end, glyph_<name> at the left, body text centred",
+     "veil": "S, under every HUD element: veil_0..3 (Bayer 4/16..16/16) in a moving 72-px leading band: falls from the top (650 ms), lifts bottom first (1600 ms) (TIMING.night)",
+     "dawn": "A (L.world) under labels: 2 grid frames of full cream cover (preset swap under it), then the light pulls back to the top edge with a dithered, wobbling leading edge, 3 alpha steps (TIMING.dawn)",
+     "death": "toll_* Ag at the condemned feet; bell_* A over the label; wisp_* A from the body (execution) or the seat spot at head height (night death), dissolved before it overlaps a shown name label; reveal_* A at the ghost feet; candle_* A beside a dead seat",
+     "banner": "S: banner_end + banner_mid tile + flipped banner_end, emblem_* centred above the title; top at y 42 (upper third, under the caption slot)",
+     "ghostSpent": "ghost_halo_* only while the ghost vote is unspent (draw.js spentSeats / scheduleGhostSpent)"
+    },
+    "dirs": [
+     "right",
+     "down-right",
+     "down",
+     "down-left",
+     "left",
+     "up-left",
+     "up",
+     "up-right"
+    ],
+    "notes": {
+     "poof": "v2 14 fps -> 15 fps (2 grid frames per drawing, 400 ms total).",
+     "nightFall": "v2 cam.fadeOut(650)+fadeIn(1600) -> a veil descending from the top in 4 dither levels (650 ms, 15 fps), then lifting bottom first behind the same moving band (1600 ms, 10 fps). The scene swaps to the night preset while fully covered.",
+     "dawn": "v2 cam.flash(900, 70,40,50) -> 2 frames of cream cover (hides the preset swap), then light pulling back to the far (top) edge: violet in the top 6 % rows, rose to 15 %, gold to a dithered, wobbling edge that moves up every 2 frames, alpha 96/64/36; drawn under the labels.",
+     "hands": "v2 colours kept: parchment + gold cuff = raised (not counted yet), solid gold = locked yes; hand_ghost = a ghost spending its vote.",
+     "nonGraphic": "Executions and night deaths show a toll, a dim and the ghost rising: no gore, no hurt flash."
+    }
+   }
+  },
+  "bakedBy": "pixel3d tools/uibake",
+  "tod": "noon"
+ }
+}

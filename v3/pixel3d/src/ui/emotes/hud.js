@@ -19,6 +19,8 @@ import { ANCHORS as MARKER_ANCHORS } from '../markers/art.js';
  * Storyteller is the staff finial, so its pop floated ~20 texels over the hood and read as Ada's.
  */
 export function stackTop(hud, m, L) {
+  // CONTRACT-REQUEST (lead): a shared stack allocator (labels < bubble < pins < pop); used as soon as it lands
+  if (hud.stack?.top) return hud.stack.top(m, L, 'pop');
   if (hud.indicators?.stackTop) return hud.indicators.stackTop(m, L);
   const top = VISUAL_TOP_M[m.id];
   const h = top !== undefined ? m.feet().clone().setY(m.feet().y + Math.min(top, m.height) + 0.1) : m.head();

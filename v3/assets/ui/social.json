@@ -1,0 +1,2857 @@
+{
+ "image": "social.png",
+ "width": 256,
+ "height": 117,
+ "frames": {
+  "pin_gold": {
+   "x": 1,
+   "y": 1,
+   "w": 18,
+   "h": 26
+  },
+  "pin_crimson": {
+   "x": 20,
+   "y": 1,
+   "w": 18,
+   "h": 26
+  },
+  "pin_violet": {
+   "x": 39,
+   "y": 1,
+   "w": 18,
+   "h": 26
+  },
+  "pin_teal": {
+   "x": 58,
+   "y": 1,
+   "w": 18,
+   "h": 26
+  },
+  "pin_green": {
+   "x": 77,
+   "y": 1,
+   "w": 18,
+   "h": 26
+  },
+  "pin_orange": {
+   "x": 96,
+   "y": 1,
+   "w": 18,
+   "h": 26
+  },
+  "pin_white": {
+   "x": 115,
+   "y": 1,
+   "w": 18,
+   "h": 26
+  },
+  "pin_black": {
+   "x": 134,
+   "y": 1,
+   "w": 18,
+   "h": 26
+  },
+  "pin_shadow": {
+   "x": 153,
+   "y": 1,
+   "w": 12,
+   "h": 5
+  },
+  "pin_drop_0": {
+   "x": 166,
+   "y": 1,
+   "w": 26,
+   "h": 16
+  },
+  "pin_drop_1": {
+   "x": 193,
+   "y": 1,
+   "w": 26,
+   "h": 16
+  },
+  "pin_drop_2": {
+   "x": 220,
+   "y": 1,
+   "w": 26,
+   "h": 16
+  },
+  "pin_drop_3": {
+   "x": 1,
+   "y": 28,
+   "w": 26,
+   "h": 16
+  },
+  "point_right_0": {
+   "x": 28,
+   "y": 28,
+   "w": 20,
+   "h": 20
+  },
+  "point_right_1": {
+   "x": 49,
+   "y": 28,
+   "w": 20,
+   "h": 20
+  },
+  "point_right_2": {
+   "x": 70,
+   "y": 28,
+   "w": 20,
+   "h": 20
+  },
+  "point_down-right_0": {
+   "x": 91,
+   "y": 28,
+   "w": 20,
+   "h": 20
+  },
+  "point_down-right_1": {
+   "x": 112,
+   "y": 28,
+   "w": 20,
+   "h": 20
+  },
+  "point_down-right_2": {
+   "x": 133,
+   "y": 28,
+   "w": 20,
+   "h": 20
+  },
+  "point_down_0": {
+   "x": 154,
+   "y": 28,
+   "w": 20,
+   "h": 20
+  },
+  "point_down_1": {
+   "x": 175,
+   "y": 28,
+   "w": 20,
+   "h": 20
+  },
+  "point_down_2": {
+   "x": 196,
+   "y": 28,
+   "w": 20,
+   "h": 20
+  },
+  "point_down-left_0": {
+   "x": 217,
+   "y": 28,
+   "w": 20,
+   "h": 20
+  },
+  "point_down-left_1": {
+   "x": 1,
+   "y": 49,
+   "w": 20,
+   "h": 20
+  },
+  "point_down-left_2": {
+   "x": 22,
+   "y": 49,
+   "w": 20,
+   "h": 20
+  },
+  "point_left_0": {
+   "x": 43,
+   "y": 49,
+   "w": 20,
+   "h": 20
+  },
+  "point_left_1": {
+   "x": 64,
+   "y": 49,
+   "w": 20,
+   "h": 20
+  },
+  "point_left_2": {
+   "x": 85,
+   "y": 49,
+   "w": 20,
+   "h": 20
+  },
+  "point_up-left_0": {
+   "x": 106,
+   "y": 49,
+   "w": 20,
+   "h": 20
+  },
+  "point_up-left_1": {
+   "x": 127,
+   "y": 49,
+   "w": 20,
+   "h": 20
+  },
+  "point_up-left_2": {
+   "x": 148,
+   "y": 49,
+   "w": 20,
+   "h": 20
+  },
+  "point_up_0": {
+   "x": 169,
+   "y": 49,
+   "w": 20,
+   "h": 20
+  },
+  "point_up_1": {
+   "x": 190,
+   "y": 49,
+   "w": 20,
+   "h": 20
+  },
+  "point_up_2": {
+   "x": 211,
+   "y": 49,
+   "w": 20,
+   "h": 20
+  },
+  "point_up-right_0": {
+   "x": 232,
+   "y": 49,
+   "w": 20,
+   "h": 20
+  },
+  "point_up-right_1": {
+   "x": 1,
+   "y": 70,
+   "w": 20,
+   "h": 20
+  },
+  "point_up-right_2": {
+   "x": 22,
+   "y": 70,
+   "w": 20,
+   "h": 20
+  },
+  "ping_0": {
+   "x": 43,
+   "y": 70,
+   "w": 28,
+   "h": 14
+  },
+  "ping_1": {
+   "x": 72,
+   "y": 70,
+   "w": 28,
+   "h": 14
+  },
+  "ping_2": {
+   "x": 101,
+   "y": 70,
+   "w": 28,
+   "h": 14
+  },
+  "ping_3": {
+   "x": 130,
+   "y": 70,
+   "w": 28,
+   "h": 14
+  },
+  "emote_point": {
+   "x": 159,
+   "y": 70,
+   "w": 14,
+   "h": 14
+  },
+  "icon_frog": {
+   "x": 174,
+   "y": 70,
+   "w": 12,
+   "h": 12
+  },
+  "icon_mushroom": {
+   "x": 187,
+   "y": 70,
+   "w": 12,
+   "h": 12
+  },
+  "icon_fox": {
+   "x": 200,
+   "y": 70,
+   "w": 12,
+   "h": 12
+  },
+  "icon_owl": {
+   "x": 213,
+   "y": 70,
+   "w": 12,
+   "h": 12
+  },
+  "icon_crow": {
+   "x": 226,
+   "y": 70,
+   "w": 12,
+   "h": 12
+  },
+  "icon_moth": {
+   "x": 239,
+   "y": 70,
+   "w": 12,
+   "h": 12
+  },
+  "icon_goat": {
+   "x": 1,
+   "y": 91,
+   "w": 12,
+   "h": 12
+  },
+  "icon_skeleton-chef": {
+   "x": 14,
+   "y": 91,
+   "w": 12,
+   "h": 12
+  },
+  "icon_rabbit": {
+   "x": 27,
+   "y": 91,
+   "w": 12,
+   "h": 12
+  },
+  "icon_mole": {
+   "x": 40,
+   "y": 91,
+   "w": 12,
+   "h": 12
+  },
+  "icon_snail": {
+   "x": 53,
+   "y": 91,
+   "w": 12,
+   "h": 12
+  },
+  "icon_toad": {
+   "x": 66,
+   "y": 91,
+   "w": 12,
+   "h": 12
+  },
+  "icon_green-hood": {
+   "x": 79,
+   "y": 91,
+   "w": 12,
+   "h": 12
+  },
+  "icon_honk": {
+   "x": 92,
+   "y": 91,
+   "w": 12,
+   "h": 12
+  },
+  "icon_chonk": {
+   "x": 105,
+   "y": 91,
+   "w": 12,
+   "h": 12
+  },
+  "icon_polly": {
+   "x": 118,
+   "y": 91,
+   "w": 12,
+   "h": 12
+  },
+  "icon_clarabelle": {
+   "x": 131,
+   "y": 91,
+   "w": 12,
+   "h": 12
+  },
+  "icon_requin": {
+   "x": 144,
+   "y": 91,
+   "w": 12,
+   "h": 12
+  },
+  "icon_progress": {
+   "x": 157,
+   "y": 91,
+   "w": 12,
+   "h": 12
+  },
+  "icon_preservation": {
+   "x": 170,
+   "y": 91,
+   "w": 12,
+   "h": 12
+  },
+  "icon_opal": {
+   "x": 183,
+   "y": 91,
+   "w": 12,
+   "h": 12
+  },
+  "icon_cilantro": {
+   "x": 196,
+   "y": 91,
+   "w": 12,
+   "h": 12
+  },
+  "icon_mincut": {
+   "x": 209,
+   "y": 91,
+   "w": 12,
+   "h": 12
+  },
+  "icon_maxflow": {
+   "x": 222,
+   "y": 91,
+   "w": 12,
+   "h": 12
+  },
+  "icon_theo-rem": {
+   "x": 235,
+   "y": 91,
+   "w": 12,
+   "h": 12
+  },
+  "icon_greenting": {
+   "x": 1,
+   "y": 104,
+   "w": 12,
+   "h": 12
+  },
+  "icon_storyteller": {
+   "x": 14,
+   "y": 104,
+   "w": 12,
+   "h": 12
+  },
+  "icon_npc-sweeper": {
+   "x": 27,
+   "y": 104,
+   "w": 12,
+   "h": 12
+  },
+  "icon_npc-vendor": {
+   "x": 40,
+   "y": 104,
+   "w": 12,
+   "h": 12
+  },
+  "icon_npc-elder": {
+   "x": 53,
+   "y": 104,
+   "w": 12,
+   "h": 12
+  },
+  "icon_npc-porter": {
+   "x": 66,
+   "y": 104,
+   "w": 12,
+   "h": 12
+  }
+ },
+ "meta": {
+  "iconSize": 12,
+  "icons": [
+   "frog",
+   "mushroom",
+   "fox",
+   "owl",
+   "crow",
+   "moth",
+   "goat",
+   "skeleton-chef",
+   "rabbit",
+   "mole",
+   "snail",
+   "toad",
+   "green-hood",
+   "honk",
+   "chonk",
+   "polly",
+   "clarabelle",
+   "requin",
+   "progress",
+   "preservation",
+   "opal",
+   "cilantro",
+   "mincut",
+   "maxflow",
+   "theo-rem",
+   "greenting",
+   "storyteller",
+   "npc-sweeper",
+   "npc-vendor",
+   "npc-elder",
+   "npc-porter"
+  ],
+  "pinColors": [
+   "gold",
+   "crimson",
+   "violet",
+   "teal",
+   "green",
+   "orange",
+   "white",
+   "black"
+  ],
+  "pinColorHex": {
+   "gold": "#e6b632",
+   "crimson": "#c42c3c",
+   "violet": "#8a52cc",
+   "teal": "#22a6b4",
+   "green": "#5cb23a",
+   "orange": "#e8701e",
+   "white": "#ece6da",
+   "black": "#2c2636"
+  },
+  "pinIcon": {
+   "x": 9,
+   "y": 9,
+   "r": 6,
+   "left": 3,
+   "top": 3
+  },
+  "anchors": {
+   "pin": {
+    "x": 8,
+    "y": 25
+   },
+   "pin_shadow": {
+    "x": 6,
+    "y": 2
+   },
+   "pin_drop": {
+    "x": 13,
+    "y": 12
+   },
+   "point": {
+    "x": 10,
+    "y": 10
+   },
+   "ping": {
+    "x": 14,
+    "y": 7
+   },
+   "icon": {
+    "x": 6,
+    "y": 6
+   },
+   "icon_frog": {
+    "x": 6,
+    "y": 6
+   },
+   "icon_mushroom": {
+    "x": 6,
+    "y": 6
+   },
+   "icon_fox": {
+    "x": 6,
+    "y": 6
+   },
+   "icon_owl": {
+    "x": 6,
+    "y": 6
+   },
+   "icon_crow": {
+    "x": 6,
+    "y": 6
+   },
+   "icon_moth": {
+    "x": 6,
+    "y": 6
+   },
+   "icon_goat": {
+    "x": 6,
+    "y": 6
+   },
+   "icon_skeleton-chef": {
+    "x": 6,
+    "y": 6
+   },
+   "icon_rabbit": {
+    "x": 6,
+    "y": 6
+   },
+   "icon_mole": {
+    "x": 6,
+    "y": 6
+   },
+   "icon_snail": {
+    "x": 6,
+    "y": 6
+   },
+   "icon_toad": {
+    "x": 6,
+    "y": 6
+   },
+   "icon_green-hood": {
+    "x": 6,
+    "y": 6
+   },
+   "icon_honk": {
+    "x": 6,
+    "y": 6
+   },
+   "icon_chonk": {
+    "x": 6,
+    "y": 6
+   },
+   "icon_polly": {
+    "x": 6,
+    "y": 6
+   },
+   "icon_clarabelle": {
+    "x": 6,
+    "y": 6
+   },
+   "icon_requin": {
+    "x": 6,
+    "y": 6
+   },
+   "icon_progress": {
+    "x": 6,
+    "y": 6
+   },
+   "icon_preservation": {
+    "x": 6,
+    "y": 6
+   },
+   "icon_opal": {
+    "x": 6,
+    "y": 6
+   },
+   "icon_cilantro": {
+    "x": 6,
+    "y": 6
+   },
+   "icon_mincut": {
+    "x": 6,
+    "y": 6
+   },
+   "icon_maxflow": {
+    "x": 6,
+    "y": 6
+   },
+   "icon_theo-rem": {
+    "x": 6,
+    "y": 6
+   },
+   "icon_greenting": {
+    "x": 6,
+    "y": 6
+   },
+   "icon_storyteller": {
+    "x": 6,
+    "y": 6
+   },
+   "icon_npc-sweeper": {
+    "x": 6,
+    "y": 6
+   },
+   "icon_npc-vendor": {
+    "x": 6,
+    "y": 6
+   },
+   "icon_npc-elder": {
+    "x": 6,
+    "y": 6
+   },
+   "icon_npc-porter": {
+    "x": 6,
+    "y": 6
+   }
+  },
+  "fps": {
+   "pin_drop": 15,
+   "point": 7.5,
+   "ping": 10
+  },
+  "point": {
+   "dirs": [
+    "right",
+    "down-right",
+    "down",
+    "down-left",
+    "left",
+    "up-left",
+    "up",
+    "up-right"
+   ],
+   "frames": 3,
+   "sequence": [
+    0,
+    1,
+    2,
+    1
+   ],
+   "vectors": {
+    "right": [
+     1,
+     0
+    ],
+    "down-right": [
+     0.7071,
+     0.7071
+    ],
+    "down": [
+     0,
+     1
+    ],
+    "down-left": [
+     -0.7071,
+     0.7071
+    ],
+    "left": [
+     -1,
+     0
+    ],
+    "up-left": [
+     -0.7071,
+     -0.7071
+    ],
+    "up": [
+     0,
+     -1
+    ],
+    "up-right": [
+     0.7071,
+     -0.7071
+    ]
+   },
+   "size": 20,
+   "offset": 14
+  },
+  "place": {
+   "pin": "Place-pin: draw pin_shadow (anchors.pin_shadow) on the spot, then pin_<color> with anchors.pin on the spot, then icon_<castId> at (pinIcon.left, pinIcon.top) inside the pin frame, on the INNER disc only (radius 5: leave the 1-px socket ring of the frame visible). Depth-sort place pins with characters/props by the spot (pixel3d: depth-tested pass, src/ui/markers/pinPass.js). Person-pin: same without the shadow, tip 1 px above the target's name label box, 1 px bob at 2 fps, fanned (never rotated). Play pin_drop_0..3 once at the spot when a pin lands (fps.pin_drop, held 2 grid frames each), under the pin body.",
+   "point": "Pick the dir whose vector is closest to (target - emoter). Draw point_<dir>_<f> with anchors.point at emoterHead + vector * point.offset (pixel3d emoterHead = feet + 0.72 x height; v2 feet - 26 px), looping point.sequence at fps.point for EMOTE_POINT_MS. Loop ping_0..3 at the pointed spot (anchors.ping) at fps.ping, under characters; for a person target at their feet. Trail dots (trail_0/1) every 6 px from the fingertip to the aim point, drawn BELOW name labels and chat bubbles; the finger above them.",
+   "icon": "icon_<castId> is a round 12x12 portrait (transparent outside the disc), baked by the portraits group (out/ui/portraits.json). Also usable as a UI avatar; emote_point (emotes group) is the palette button icon."
+  },
+  "headCrops": {
+   "frog": {
+    "x": 10,
+    "y": 15,
+    "size": 12,
+    "face": {
+     "x": 16,
+     "y": 21
+    }
+   },
+   "mushroom": {
+    "x": 10,
+    "y": 14,
+    "size": 12,
+    "face": {
+     "x": 16,
+     "y": 19.8
+    }
+   },
+   "fox": {
+    "x": 11,
+    "y": 14,
+    "size": 12,
+    "face": {
+     "x": 17,
+     "y": 20.4
+    }
+   },
+   "owl": {
+    "x": 10,
+    "y": 15,
+    "size": 12,
+    "face": {
+     "x": 16,
+     "y": 20.8
+    }
+   },
+   "crow": {
+    "x": 10,
+    "y": 14,
+    "size": 12,
+    "face": {
+     "x": 16,
+     "y": 20
+    }
+   },
+   "moth": {
+    "x": 10,
+    "y": 13,
+    "size": 12,
+    "face": {
+     "x": 16,
+     "y": 19
+    }
+   },
+   "goat": {
+    "x": 10,
+    "y": 12,
+    "size": 12,
+    "face": {
+     "x": 16,
+     "y": 17.6
+    }
+   },
+   "skeleton-chef": {
+    "x": 10,
+    "y": 14,
+    "size": 12,
+    "face": {
+     "x": 16,
+     "y": 20.2
+    }
+   },
+   "rabbit": {
+    "x": 10,
+    "y": 14,
+    "size": 12,
+    "face": {
+     "x": 16,
+     "y": 20
+    }
+   },
+   "mole": {
+    "x": 13,
+    "y": 16,
+    "size": 12,
+    "face": {
+     "x": 19,
+     "y": 22.4
+    }
+   },
+   "snail": {
+    "x": 10,
+    "y": 21,
+    "size": 12,
+    "face": {
+     "x": 16,
+     "y": 27
+    }
+   },
+   "toad": {
+    "x": 10,
+    "y": 18,
+    "size": 12,
+    "face": {
+     "x": 16,
+     "y": 23.8
+    }
+   },
+   "green-hood": {
+    "x": 10,
+    "y": 18,
+    "size": 12,
+    "face": {
+     "x": 16,
+     "y": 24.2
+    }
+   },
+   "honk": {
+    "x": 10,
+    "y": 12,
+    "size": 12,
+    "face": {
+     "x": 16,
+     "y": 18.2
+    }
+   },
+   "chonk": {
+    "x": 10,
+    "y": 12,
+    "size": 12,
+    "face": {
+     "x": 16,
+     "y": 17.8
+    }
+   },
+   "polly": {
+    "x": 10,
+    "y": 13,
+    "size": 12,
+    "face": {
+     "x": 16,
+     "y": 18.6
+    }
+   },
+   "clarabelle": {
+    "x": 11,
+    "y": 13,
+    "size": 12,
+    "face": {
+     "x": 16.5,
+     "y": 18.6
+    }
+   },
+   "requin": {
+    "x": 9,
+    "y": 13,
+    "size": 12,
+    "face": {
+     "x": 15,
+     "y": 19
+    }
+   },
+   "progress": {
+    "x": 10,
+    "y": 16,
+    "size": 12,
+    "face": {
+     "x": 16,
+     "y": 21.6
+    }
+   },
+   "preservation": {
+    "x": 10,
+    "y": 17,
+    "size": 12,
+    "face": {
+     "x": 16,
+     "y": 23.4
+    }
+   },
+   "opal": {
+    "x": 10,
+    "y": 14,
+    "size": 12,
+    "face": {
+     "x": 16,
+     "y": 20
+    }
+   },
+   "cilantro": {
+    "x": 9,
+    "y": 3,
+    "size": 12,
+    "face": {
+     "x": 14.5,
+     "y": 9.2
+    }
+   },
+   "mincut": {
+    "x": 9,
+    "y": 13,
+    "size": 12,
+    "face": {
+     "x": 15,
+     "y": 19.2
+    }
+   },
+   "maxflow": {
+    "x": 5,
+    "y": 11,
+    "size": 12,
+    "face": {
+     "x": 11,
+     "y": 16.8
+    }
+   },
+   "theo-rem": {
+    "x": 10,
+    "y": 19,
+    "size": 12,
+    "face": {
+     "x": 16,
+     "y": 25.4
+    }
+   },
+   "greenting": {
+    "x": 10,
+    "y": 17,
+    "size": 12,
+    "face": {
+     "x": 16,
+     "y": 22.6
+    }
+   },
+   "storyteller": {
+    "x": 5,
+    "y": 9,
+    "size": 12,
+    "face": {
+     "x": 11,
+     "y": 14.8
+    }
+   },
+   "npc-sweeper": {
+    "x": 10,
+    "y": 16,
+    "size": 12,
+    "face": {
+     "x": 16,
+     "y": 21.8
+    }
+   },
+   "npc-vendor": {
+    "x": 10,
+    "y": 12,
+    "size": 12,
+    "face": {
+     "x": 16,
+     "y": 17.8
+    }
+   },
+   "npc-elder": {
+    "x": 10,
+    "y": 17,
+    "size": 12,
+    "face": {
+     "x": 16,
+     "y": 22.6
+    }
+   },
+   "npc-porter": {
+    "x": 10,
+    "y": 14,
+    "size": 12,
+    "face": {
+     "x": 16,
+     "y": 20.2
+    }
+   }
+  },
+  "newStyle": {
+   "markers": {
+    "anchors": {
+     "pin_remove": {
+      "x": 4,
+      "y": 4
+     },
+     "trail": {
+      "x": 1,
+      "y": 1
+     },
+     "ping_mark": {
+      "x": 4,
+      "y": 5
+     },
+     "pick": {
+      "x": 12,
+      "y": 12
+     }
+    },
+    "fps": {
+     "pick": 7.5
+    },
+    "markers": {
+     "tod": "noon",
+     "v2fps": {
+      "pin_drop": 14,
+      "point": 8,
+      "ping": 10
+     },
+     "timing": {
+      "EMOTE_POINT_MS": 3500,
+      "DROP_MS": 460,
+      "POP_MS": 170,
+      "SETTLE_MS": 900,
+      "DROP_PX": 16,
+      "LAND_K": 0.68,
+      "TRAIL_GAP": 6,
+      "OUT_FRAMES": 6,
+      "POP_FRAMES": 5
+     },
+     "tiers": {
+      "pin": "place: W-billboard (depth-tested pin pass, order 301: over L.ground decals, under every L.world texel) / person: A (L.world)",
+      "pin_shadow": "with the place pin (depth-tested, under its body)",
+      "pin_drop": "with the place pin (under its body); person pins: A",
+      "point": "A (z 30)",
+      "ping": "Ag (L.ground)",
+      "trail": "A below labels/bubbles (z 15)",
+      "pin_remove": "with its pin",
+      "ping_mark": "A",
+      "pick": "A"
+     },
+     "pinMid": {
+      "gold": "#e6b632",
+      "crimson": "#c42c3c",
+      "violet": "#8a52cc",
+      "teal": "#22a6b4",
+      "green": "#5cb23a",
+      "orange": "#e8701e",
+      "white": "#DCD3C4",
+      "black": "#2c2636"
+     },
+     "pinMidNote": "baked body mid per colour; equal to pinColorHex except white (#DCD3C4: v2 #ece6da was brighter than the cream rim/text tokens, so the ramp keeps the cream highlight on top)",
+     "pinIconInner": "icons go on the 12x12 disc minus its 1-px edge (radius 5); the edge is the socket ring (upper-left parchmentSh, lower-right parchmentHi; white pin: its own line/shade) that separates any icon from any pin colour",
+     "extras": {
+      "pin_remove": "9x9 remove badge (v2 art.ts BADGE), anchor = centre; shown on hover/tap of your own pin, centre at pin frame (15,2)",
+      "trail_0": "trail dot (bright), every 6 px from the fingertip to the aim point, marching 1 px per 7.5 fps step",
+      "trail_1": "trail dot (dim), the first dot next to the hand",
+      "ping_mark": "chevron over a pointed PLACE, tip 4 px above the spot, 1 px bob at 2 fps",
+      "pick_0": "Storyteller pick crosshair (v2 gameplay stagePick), frames 0..2, sequence [0,1,2,1] at 7.5 fps; label right-below"
+     },
+     "emoterHead": "feet + 0.72 x character height (v2: feet - 26 px)",
+     "personAim": "target feet + 0.4 x height (v2: feet - 14 px)",
+     "personPin": "tip 1 px above the name label box (label top = head anchor - 11); fan dx = k * 18 * min(.62, 2.4/n), dy = |k| * 1.5, never rotated"
+    }
+   },
+   "emotes": {
+    "anchors": {
+     "emote_pop_point_0": {
+      "x": 7,
+      "y": 18
+     },
+     "emote_pop_point_1": {
+      "x": 7,
+      "y": 18
+     },
+     "emote_pop_point_2": {
+      "x": 7,
+      "y": 18
+     },
+     "emote_pop_point_3": {
+      "x": 7,
+      "y": 18
+     },
+     "emote_pop_point_4": {
+      "x": 7,
+      "y": 18
+     },
+     "emote_pop_pin_gold_0": {
+      "x": 7,
+      "y": 18
+     },
+     "emote_pop_pin_gold_1": {
+      "x": 7,
+      "y": 18
+     },
+     "emote_pop_pin_gold_2": {
+      "x": 7,
+      "y": 18
+     },
+     "emote_pop_pin_gold_3": {
+      "x": 7,
+      "y": 18
+     },
+     "emote_pop_pin_gold_4": {
+      "x": 7,
+      "y": 18
+     },
+     "emote_pop_pin_crimson_0": {
+      "x": 7,
+      "y": 18
+     },
+     "emote_pop_pin_crimson_1": {
+      "x": 7,
+      "y": 18
+     },
+     "emote_pop_pin_crimson_2": {
+      "x": 7,
+      "y": 18
+     },
+     "emote_pop_pin_crimson_3": {
+      "x": 7,
+      "y": 18
+     },
+     "emote_pop_pin_crimson_4": {
+      "x": 7,
+      "y": 18
+     },
+     "emote_pop_pin_violet_0": {
+      "x": 7,
+      "y": 18
+     },
+     "emote_pop_pin_violet_1": {
+      "x": 7,
+      "y": 18
+     },
+     "emote_pop_pin_violet_2": {
+      "x": 7,
+      "y": 18
+     },
+     "emote_pop_pin_violet_3": {
+      "x": 7,
+      "y": 18
+     },
+     "emote_pop_pin_violet_4": {
+      "x": 7,
+      "y": 18
+     },
+     "emote_pop_pin_teal_0": {
+      "x": 7,
+      "y": 18
+     },
+     "emote_pop_pin_teal_1": {
+      "x": 7,
+      "y": 18
+     },
+     "emote_pop_pin_teal_2": {
+      "x": 7,
+      "y": 18
+     },
+     "emote_pop_pin_teal_3": {
+      "x": 7,
+      "y": 18
+     },
+     "emote_pop_pin_teal_4": {
+      "x": 7,
+      "y": 18
+     },
+     "emote_pop_pin_green_0": {
+      "x": 7,
+      "y": 18
+     },
+     "emote_pop_pin_green_1": {
+      "x": 7,
+      "y": 18
+     },
+     "emote_pop_pin_green_2": {
+      "x": 7,
+      "y": 18
+     },
+     "emote_pop_pin_green_3": {
+      "x": 7,
+      "y": 18
+     },
+     "emote_pop_pin_green_4": {
+      "x": 7,
+      "y": 18
+     },
+     "emote_pop_pin_orange_0": {
+      "x": 7,
+      "y": 18
+     },
+     "emote_pop_pin_orange_1": {
+      "x": 7,
+      "y": 18
+     },
+     "emote_pop_pin_orange_2": {
+      "x": 7,
+      "y": 18
+     },
+     "emote_pop_pin_orange_3": {
+      "x": 7,
+      "y": 18
+     },
+     "emote_pop_pin_orange_4": {
+      "x": 7,
+      "y": 18
+     },
+     "emote_pop_pin_white_0": {
+      "x": 7,
+      "y": 18
+     },
+     "emote_pop_pin_white_1": {
+      "x": 7,
+      "y": 18
+     },
+     "emote_pop_pin_white_2": {
+      "x": 7,
+      "y": 18
+     },
+     "emote_pop_pin_white_3": {
+      "x": 7,
+      "y": 18
+     },
+     "emote_pop_pin_white_4": {
+      "x": 7,
+      "y": 18
+     },
+     "emote_pop_pin_black_0": {
+      "x": 7,
+      "y": 18
+     },
+     "emote_pop_pin_black_1": {
+      "x": 7,
+      "y": 18
+     },
+     "emote_pop_pin_black_2": {
+      "x": 7,
+      "y": 18
+     },
+     "emote_pop_pin_black_3": {
+      "x": 7,
+      "y": 18
+     },
+     "emote_pop_pin_black_4": {
+      "x": 7,
+      "y": 18
+     },
+     "emote_pop_alert_0": {
+      "x": 7,
+      "y": 18
+     },
+     "emote_pop_alert_1": {
+      "x": 7,
+      "y": 18
+     },
+     "emote_pop_alert_2": {
+      "x": 7,
+      "y": 18
+     },
+     "emote_pop_alert_3": {
+      "x": 7,
+      "y": 18
+     },
+     "emote_pop_alert_4": {
+      "x": 7,
+      "y": 18
+     },
+     "emote_pop_question_0": {
+      "x": 7,
+      "y": 18
+     },
+     "emote_pop_question_1": {
+      "x": 7,
+      "y": 18
+     },
+     "emote_pop_question_2": {
+      "x": 7,
+      "y": 18
+     },
+     "emote_pop_question_3": {
+      "x": 7,
+      "y": 18
+     },
+     "emote_pop_question_4": {
+      "x": 7,
+      "y": 18
+     },
+     "emote_pin_gold": {
+      "x": 4,
+      "y": 11
+     },
+     "emote_pin_s_gold": {
+      "x": 3,
+      "y": 8
+     },
+     "emote_pin_crimson": {
+      "x": 4,
+      "y": 11
+     },
+     "emote_pin_s_crimson": {
+      "x": 3,
+      "y": 8
+     },
+     "emote_pin_violet": {
+      "x": 4,
+      "y": 11
+     },
+     "emote_pin_s_violet": {
+      "x": 3,
+      "y": 8
+     },
+     "emote_pin_teal": {
+      "x": 4,
+      "y": 11
+     },
+     "emote_pin_s_teal": {
+      "x": 3,
+      "y": 8
+     },
+     "emote_pin_green": {
+      "x": 4,
+      "y": 11
+     },
+     "emote_pin_s_green": {
+      "x": 3,
+      "y": 8
+     },
+     "emote_pin_orange": {
+      "x": 4,
+      "y": 11
+     },
+     "emote_pin_s_orange": {
+      "x": 3,
+      "y": 8
+     },
+     "emote_pin_white": {
+      "x": 4,
+      "y": 11
+     },
+     "emote_pin_s_white": {
+      "x": 3,
+      "y": 8
+     },
+     "emote_pin_black": {
+      "x": 4,
+      "y": 11
+     },
+     "emote_pin_s_black": {
+      "x": 3,
+      "y": 8
+     }
+    },
+    "fps": {
+     "emote_pop": 15,
+     "emote_pie_open": 30,
+     "emote_pie_close": 15,
+     "emote_pie_hub_idle": 7.5
+    },
+    "emotePop": {
+     "kinds": [
+      "point",
+      "pin",
+      "alert",
+      "question"
+     ],
+     "frames": {
+      "pop": [
+       0
+      ],
+      "hold": [
+       1
+      ],
+      "dissolve": [
+       2,
+       3,
+       4
+      ]
+     },
+     "ms": 3500,
+     "bob": {
+      "px": 1,
+      "fps": 2
+     },
+     "names": "emote_pop_<point|alert|question>_<f>, emote_pop_pin_<color>_<f> (the dropped pin colour)",
+     "place": "tail tip 1 px above the label stack top: hud.indicators.stackTop(m) (visual top, ghost lift, You chevron); a shared stack allocator (labels < bubble < pins < pop) is pending (lead)"
+    },
+    "pie": {
+     "geometry": {
+      "mouse": {
+       "R": 36,
+       "r0": 12,
+       "dead": 10,
+       "rm": 25
+      },
+      "touch": {
+       "R": 46,
+       "r0": 16,
+       "dead": 14,
+       "rm": 32
+      }
+     },
+     "v2": {
+      "radius": {
+       "mouse": 84,
+       "touch": 104
+      },
+      "dead": {
+       "mouse": 20,
+       "touch": 28
+      }
+     },
+     "scale": "texels at x2 (1280x720): R = round(cssRadius / 2) - 6; dead zone = css / 2",
+     "mouse9": {
+      "centre": {
+       "x": 39,
+       "y": 39
+      },
+      "wedges": [
+       "point",
+       "pin:gold",
+       "pin:crimson",
+       "pin:violet",
+       "pin:teal",
+       "pin:green",
+       "pin:orange",
+       "pin:white",
+       "pin:black"
+      ],
+      "offsets": {
+       "emote_pie_mouse9_hot_0": {
+        "x": -12,
+        "y": -39
+       },
+       "emote_pie_mouse9_hot_1": {
+        "x": 5,
+        "y": -36
+       },
+       "emote_pie_mouse9_hot_2": {
+        "x": 11,
+        "y": -18
+       },
+       "emote_pie_mouse9_hot_3": {
+        "x": 9,
+        "y": 3
+       },
+       "emote_pie_mouse9_hot_4": {
+        "x": 1,
+        "y": 10
+       },
+       "emote_pie_mouse9_hot_5": {
+        "x": -23,
+        "y": 10
+       },
+       "emote_pie_mouse9_hot_6": {
+        "x": -38,
+        "y": 3
+       },
+       "emote_pie_mouse9_hot_7": {
+        "x": -39,
+        "y": -18
+       },
+       "emote_pie_mouse9_hot_8": {
+        "x": -33,
+        "y": -36
+       },
+       "emote_pie_mouse9_off_0": {
+        "x": -11,
+        "y": -36
+       },
+       "emote_pie_mouse9_off_1": {
+        "x": 5,
+        "y": -33
+       },
+       "emote_pie_mouse9_off_2": {
+        "x": 11,
+        "y": -16
+       },
+       "emote_pie_mouse9_off_3": {
+        "x": 9,
+        "y": 3
+       },
+       "emote_pie_mouse9_off_4": {
+        "x": 1,
+        "y": 10
+       },
+       "emote_pie_mouse9_off_5": {
+        "x": -22,
+        "y": 10
+       },
+       "emote_pie_mouse9_off_6": {
+        "x": -35,
+        "y": 3
+       },
+       "emote_pie_mouse9_off_7": {
+        "x": -36,
+        "y": -16
+       },
+       "emote_pie_mouse9_off_8": {
+        "x": -30,
+        "y": -33
+       }
+      }
+     },
+     "mouse10": {
+      "centre": {
+       "x": 39,
+       "y": 39
+      },
+      "wedges": [
+       "point",
+       "pin:gold",
+       "pin:crimson",
+       "pin:violet",
+       "pin:teal",
+       "unpin",
+       "pin:green",
+       "pin:orange",
+       "pin:white",
+       "pin:black"
+      ],
+      "offsets": {
+       "emote_pie_mouse10_hot_0": {
+        "x": -10,
+        "y": -39
+       },
+       "emote_pie_mouse10_hot_1": {
+        "x": 5,
+        "y": -36
+       },
+       "emote_pie_mouse10_hot_2": {
+        "x": 11,
+        "y": -21
+       },
+       "emote_pie_mouse10_hot_3": {
+        "x": 11,
+        "y": 1
+       },
+       "emote_pie_mouse10_hot_4": {
+        "x": 5,
+        "y": 8
+       },
+       "emote_pie_mouse10_hot_5": {
+        "x": -10,
+        "y": 12
+       },
+       "emote_pie_mouse10_hot_6": {
+        "x": -31,
+        "y": 8
+       },
+       "emote_pie_mouse10_hot_7": {
+        "x": -38,
+        "y": 1
+       },
+       "emote_pie_mouse10_hot_8": {
+        "x": -38,
+        "y": -21
+       },
+       "emote_pie_mouse10_hot_9": {
+        "x": -31,
+        "y": -36
+       },
+       "emote_pie_mouse10_off_0": {
+        "x": -10,
+        "y": -36
+       },
+       "emote_pie_mouse10_off_1": {
+        "x": 5,
+        "y": -33
+       },
+       "emote_pie_mouse10_off_2": {
+        "x": 11,
+        "y": -20
+       },
+       "emote_pie_mouse10_off_3": {
+        "x": 11,
+        "y": 1
+       },
+       "emote_pie_mouse10_off_4": {
+        "x": 5,
+        "y": 8
+       },
+       "emote_pie_mouse10_off_5": {
+        "x": -10,
+        "y": 12
+       },
+       "emote_pie_mouse10_off_6": {
+        "x": -28,
+        "y": 8
+       },
+       "emote_pie_mouse10_off_7": {
+        "x": -35,
+        "y": 1
+       },
+       "emote_pie_mouse10_off_8": {
+        "x": -35,
+        "y": -20
+       },
+       "emote_pie_mouse10_off_9": {
+        "x": -28,
+        "y": -33
+       }
+      }
+     },
+     "touch9": {
+      "centre": {
+       "x": 49,
+       "y": 49
+      },
+      "wedges": [
+       "point",
+       "pin:gold",
+       "pin:crimson",
+       "pin:violet",
+       "pin:teal",
+       "pin:green",
+       "pin:orange",
+       "pin:white",
+       "pin:black"
+      ],
+      "offsets": {
+       "emote_pie_touch9_hot_0": {
+        "x": -15,
+        "y": -49
+       },
+       "emote_pie_touch9_hot_1": {
+        "x": 7,
+        "y": -45
+       },
+       "emote_pie_touch9_hot_2": {
+        "x": 15,
+        "y": -23
+       },
+       "emote_pie_touch9_hot_3": {
+        "x": 12,
+        "y": 4
+       },
+       "emote_pie_touch9_hot_4": {
+        "x": 1,
+        "y": 14
+       },
+       "emote_pie_touch9_hot_5": {
+        "x": -30,
+        "y": 14
+       },
+       "emote_pie_touch9_hot_6": {
+        "x": -47,
+        "y": 4
+       },
+       "emote_pie_touch9_hot_7": {
+        "x": -49,
+        "y": -23
+       },
+       "emote_pie_touch9_hot_8": {
+        "x": -41,
+        "y": -45
+       },
+       "emote_pie_touch9_off_0": {
+        "x": -14,
+        "y": -46
+       },
+       "emote_pie_touch9_off_1": {
+        "x": 7,
+        "y": -42
+       },
+       "emote_pie_touch9_off_2": {
+        "x": 15,
+        "y": -22
+       },
+       "emote_pie_touch9_off_3": {
+        "x": 12,
+        "y": 4
+       },
+       "emote_pie_touch9_off_4": {
+        "x": 1,
+        "y": 14
+       },
+       "emote_pie_touch9_off_5": {
+        "x": -28,
+        "y": 14
+       },
+       "emote_pie_touch9_off_6": {
+        "x": -45,
+        "y": 4
+       },
+       "emote_pie_touch9_off_7": {
+        "x": -46,
+        "y": -22
+       },
+       "emote_pie_touch9_off_8": {
+        "x": -39,
+        "y": -42
+       }
+      }
+     },
+     "touch10": {
+      "centre": {
+       "x": 49,
+       "y": 49
+      },
+      "wedges": [
+       "point",
+       "pin:gold",
+       "pin:crimson",
+       "pin:violet",
+       "pin:teal",
+       "unpin",
+       "pin:green",
+       "pin:orange",
+       "pin:white",
+       "pin:black"
+      ],
+      "offsets": {
+       "emote_pie_touch10_hot_0": {
+        "x": -13,
+        "y": -49
+       },
+       "emote_pie_touch10_hot_1": {
+        "x": 6,
+        "y": -46
+       },
+       "emote_pie_touch10_hot_2": {
+        "x": 14,
+        "y": -27
+       },
+       "emote_pie_touch10_hot_3": {
+        "x": 14,
+        "y": 1
+       },
+       "emote_pie_touch10_hot_4": {
+        "x": 6,
+        "y": 11
+       },
+       "emote_pie_touch10_hot_5": {
+        "x": -13,
+        "y": 16
+       },
+       "emote_pie_touch10_hot_6": {
+        "x": -39,
+        "y": 11
+       },
+       "emote_pie_touch10_hot_7": {
+        "x": -48,
+        "y": 1
+       },
+       "emote_pie_touch10_hot_8": {
+        "x": -48,
+        "y": -27
+       },
+       "emote_pie_touch10_hot_9": {
+        "x": -39,
+        "y": -46
+       },
+       "emote_pie_touch10_off_0": {
+        "x": -13,
+        "y": -46
+       },
+       "emote_pie_touch10_off_1": {
+        "x": 6,
+        "y": -43
+       },
+       "emote_pie_touch10_off_2": {
+        "x": 14,
+        "y": -25
+       },
+       "emote_pie_touch10_off_3": {
+        "x": 14,
+        "y": 1
+       },
+       "emote_pie_touch10_off_4": {
+        "x": 6,
+        "y": 11
+       },
+       "emote_pie_touch10_off_5": {
+        "x": -13,
+        "y": 16
+       },
+       "emote_pie_touch10_off_6": {
+        "x": -36,
+        "y": 11
+       },
+       "emote_pie_touch10_off_7": {
+        "x": -45,
+        "y": 1
+       },
+       "emote_pie_touch10_off_8": {
+        "x": -45,
+        "y": -25
+       },
+       "emote_pie_touch10_off_9": {
+        "x": -36,
+        "y": -43
+       }
+      }
+     },
+     "hubIdleOffset": {
+      "x": -9,
+      "y": -9
+     },
+     "open": "grid frame 0: open_0 (pop), 1..2: open_1/open_2, >= 3: base; wedges fan in from Point (0, 1, n-1, 2, n-2, ...)",
+     "commit": "15 fps: 0 others 50 % dissolved (hub + chosen hot wedge solid), 1 the chosen wedge alone (its back sector, no hub well), 2 / 3 that at 50 / 75 %, gone",
+     "cancel": "3-step Bayer dissolve at 15 fps",
+     "hot": "emote_pie_<k>_hot_<i> overlay (pops out 2 px over the back ring, icon 1 px out/up); pin wedges in the pin ramp, Point in gold, Remove in danger",
+     "notch": "emote_pie_notch_<color> at radius R-3, on the wedge centre line (v2 .ctp-current): the current pin colour"
+    },
+    "timing": {
+     "RIGHT_HOLD_MS": 250,
+     "LONG_PRESS_MS": 450,
+     "PIE_STICKY_MS": 8000,
+     "RIGHT_DRAG_PX": 6,
+     "PIE_OPEN_FRAMES": 4,
+     "PIE_COMMIT_FRAMES": 8,
+     "PIE_CANCEL_FRAMES": 6,
+     "DOCK_OPEN_FRAMES": 2,
+     "DOCK_CLOSE_FRAMES": 6,
+     "EMOTE_POP_MS": 3500,
+     "MAX_PINS_PER_MEMBER": 6
+    },
+    "emote_point_9": "9x9 Point glyph (art bottom-aligned)",
+    "emote_point_11": "11x11 Point glyph (emote pop)",
+    "emote_kbd*": "key chips RIGHT / DRAG / F (dock hints)",
+    "emote_pin_<c>": "mini map pins 9x12 (tip anchor)",
+    "emote_pin_s_<c>": "mini pins 7x9",
+    "emote_remove": "Remove wedge glyph",
+    "emote_clear": "clear my pins glyph",
+    "emote_alert": "pop '!'",
+    "emote_question": "pop '?'",
+    "emote_pop_<kind>_<f>": "in-world emote pop above a character",
+    "emote_pie_*": "radial pie menu (screen tier)",
+    "emote_dock_*": "social dock parts",
+    "paletteAudit": {
+     "colours": 56,
+     "untraced": []
+    },
+    "skipped": [
+     "nick_face (user decision)"
+    ]
+   },
+   "portraits": {
+    "anchors": {
+     "avatar_frog": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_frog/ghost": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_frog/ghost": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_frog/ghost-spent": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_frog/ghost-spent": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_frog/dead": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_frog/dead": {
+      "x": 12,
+      "y": 12
+     },
+     "avatar_mushroom": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_mushroom/ghost": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_mushroom/ghost": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_mushroom/ghost-spent": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_mushroom/ghost-spent": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_mushroom/dead": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_mushroom/dead": {
+      "x": 12,
+      "y": 12
+     },
+     "avatar_fox": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_fox/ghost": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_fox/ghost": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_fox/ghost-spent": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_fox/ghost-spent": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_fox/dead": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_fox/dead": {
+      "x": 12,
+      "y": 12
+     },
+     "avatar_owl": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_owl/ghost": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_owl/ghost": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_owl/ghost-spent": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_owl/ghost-spent": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_owl/dead": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_owl/dead": {
+      "x": 12,
+      "y": 12
+     },
+     "avatar_crow": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_crow/ghost": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_crow/ghost": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_crow/ghost-spent": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_crow/ghost-spent": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_crow/dead": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_crow/dead": {
+      "x": 12,
+      "y": 12
+     },
+     "avatar_moth": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_moth/ghost": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_moth/ghost": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_moth/ghost-spent": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_moth/ghost-spent": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_moth/dead": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_moth/dead": {
+      "x": 12,
+      "y": 12
+     },
+     "avatar_goat": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_goat/ghost": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_goat/ghost": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_goat/ghost-spent": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_goat/ghost-spent": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_goat/dead": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_goat/dead": {
+      "x": 12,
+      "y": 12
+     },
+     "avatar_skeleton-chef": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_skeleton-chef/ghost": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_skeleton-chef/ghost": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_skeleton-chef/ghost-spent": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_skeleton-chef/ghost-spent": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_skeleton-chef/dead": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_skeleton-chef/dead": {
+      "x": 12,
+      "y": 12
+     },
+     "avatar_rabbit": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_rabbit/ghost": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_rabbit/ghost": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_rabbit/ghost-spent": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_rabbit/ghost-spent": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_rabbit/dead": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_rabbit/dead": {
+      "x": 12,
+      "y": 12
+     },
+     "avatar_mole": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_mole/ghost": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_mole/ghost": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_mole/ghost-spent": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_mole/ghost-spent": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_mole/dead": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_mole/dead": {
+      "x": 12,
+      "y": 12
+     },
+     "avatar_snail": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_snail/ghost": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_snail/ghost": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_snail/ghost-spent": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_snail/ghost-spent": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_snail/dead": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_snail/dead": {
+      "x": 12,
+      "y": 12
+     },
+     "avatar_toad": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_toad/ghost": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_toad/ghost": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_toad/ghost-spent": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_toad/ghost-spent": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_toad/dead": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_toad/dead": {
+      "x": 12,
+      "y": 12
+     },
+     "avatar_green-hood": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_green-hood/ghost": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_green-hood/ghost": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_green-hood/ghost-spent": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_green-hood/ghost-spent": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_green-hood/dead": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_green-hood/dead": {
+      "x": 12,
+      "y": 12
+     },
+     "avatar_honk": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_honk/ghost": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_honk/ghost": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_honk/ghost-spent": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_honk/ghost-spent": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_honk/dead": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_honk/dead": {
+      "x": 12,
+      "y": 12
+     },
+     "avatar_chonk": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_chonk/ghost": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_chonk/ghost": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_chonk/ghost-spent": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_chonk/ghost-spent": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_chonk/dead": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_chonk/dead": {
+      "x": 12,
+      "y": 12
+     },
+     "avatar_polly": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_polly/ghost": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_polly/ghost": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_polly/ghost-spent": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_polly/ghost-spent": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_polly/dead": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_polly/dead": {
+      "x": 12,
+      "y": 12
+     },
+     "avatar_clarabelle": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_clarabelle/ghost": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_clarabelle/ghost": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_clarabelle/ghost-spent": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_clarabelle/ghost-spent": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_clarabelle/dead": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_clarabelle/dead": {
+      "x": 12,
+      "y": 12
+     },
+     "avatar_requin": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_requin/ghost": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_requin/ghost": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_requin/ghost-spent": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_requin/ghost-spent": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_requin/dead": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_requin/dead": {
+      "x": 12,
+      "y": 12
+     },
+     "avatar_progress": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_progress/ghost": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_progress/ghost": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_progress/ghost-spent": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_progress/ghost-spent": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_progress/dead": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_progress/dead": {
+      "x": 12,
+      "y": 12
+     },
+     "avatar_preservation": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_preservation/ghost": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_preservation/ghost": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_preservation/ghost-spent": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_preservation/ghost-spent": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_preservation/dead": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_preservation/dead": {
+      "x": 12,
+      "y": 12
+     },
+     "avatar_opal": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_opal/ghost": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_opal/ghost": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_opal/ghost-spent": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_opal/ghost-spent": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_opal/dead": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_opal/dead": {
+      "x": 12,
+      "y": 12
+     },
+     "avatar_cilantro": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_cilantro/ghost": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_cilantro/ghost": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_cilantro/ghost-spent": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_cilantro/ghost-spent": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_cilantro/dead": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_cilantro/dead": {
+      "x": 12,
+      "y": 12
+     },
+     "avatar_mincut": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_mincut/ghost": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_mincut/ghost": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_mincut/ghost-spent": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_mincut/ghost-spent": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_mincut/dead": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_mincut/dead": {
+      "x": 12,
+      "y": 12
+     },
+     "avatar_maxflow": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_maxflow/ghost": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_maxflow/ghost": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_maxflow/ghost-spent": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_maxflow/ghost-spent": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_maxflow/dead": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_maxflow/dead": {
+      "x": 12,
+      "y": 12
+     },
+     "avatar_theo-rem": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_theo-rem/ghost": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_theo-rem/ghost": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_theo-rem/ghost-spent": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_theo-rem/ghost-spent": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_theo-rem/dead": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_theo-rem/dead": {
+      "x": 12,
+      "y": 12
+     },
+     "avatar_greenting": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_greenting/ghost": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_greenting/ghost": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_greenting/ghost-spent": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_greenting/ghost-spent": {
+      "x": 12,
+      "y": 12
+     },
+     "icon_greenting/dead": {
+      "x": 6,
+      "y": 6
+     },
+     "avatar_greenting/dead": {
+      "x": 12,
+      "y": 12
+     },
+     "avatar_storyteller": {
+      "x": 12,
+      "y": 12
+     },
+     "avatar_npc-sweeper": {
+      "x": 12,
+      "y": 12
+     },
+     "avatar_npc-vendor": {
+      "x": 12,
+      "y": 12
+     },
+     "avatar_npc-elder": {
+      "x": 12,
+      "y": 12
+     },
+     "avatar_npc-porter": {
+      "x": 12,
+      "y": 12
+     }
+    },
+    "tod": "noon",
+    "variants": {
+     "/ghost": "players: the alive bust remapped (value-preserving, 5 steps) onto the shared ghost ramp + a gold halo arc on the ring top",
+     "/ghost-spent": "players: the alive bust on the darker spent ramp, plain ring (no halo: the vote is used)",
+     "/dead": "players: the alive bust on the warm memorial (parchment stone) ramp + a cracked ring (notch upper right)"
+    },
+    "ramps": {
+     "ghost": [
+      "#3a5696",
+      "#617bb0",
+      "#8aa0c9",
+      "#b5c7e1",
+      "#e2eefa"
+     ],
+     "spent": [
+      "#3a4260",
+      "#505976",
+      "#67708c",
+      "#7f89a3",
+      "#98a2ba"
+     ],
+     "dead": [
+      "#2b2126",
+      "#7C6546",
+      "#9f8a66",
+      "#C2AE86",
+      "#E6D7B2"
+     ]
+    },
+    "avatar": {
+     "size": 24,
+     "fit": {
+      "headW": 15,
+      "minPpm": 18,
+      "maxPpm": 44,
+      "chinRow": 15
+     },
+     "frame": "notched outline + bevel lit from the upper left; ghost = gold top edge, dead = cracked corner",
+     "anchor": [
+      12,
+      12
+     ]
+    },
+    "icon": {
+     "fit": {
+      "headW": 13,
+      "minPpm": 12,
+      "maxPpm": 34,
+      "centre": 0.72
+     },
+     "disc": "r6: 1-px ring, r5 backdrop (hi crescent upper left, shadow lower right); tokens(tod).inkRaised for alive"
+    },
+    "headBoxes": {
+     "frog": {
+      "x": 5,
+      "y": 9,
+      "size": 22,
+      "iconPpm": 12
+     },
+     "mushroom": {
+      "x": 6,
+      "y": 8,
+      "size": 20,
+      "iconPpm": 16
+     },
+     "fox": {
+      "x": 8,
+      "y": 9,
+      "size": 19,
+      "iconPpm": 24
+     },
+     "owl": {
+      "x": 7,
+      "y": 10,
+      "size": 18,
+      "iconPpm": 18
+     },
+     "crow": {
+      "x": 6,
+      "y": 8,
+      "size": 20,
+      "iconPpm": 16
+     },
+     "moth": {
+      "x": 6,
+      "y": 7,
+      "size": 20,
+      "iconPpm": 16
+     },
+     "goat": {
+      "x": 4,
+      "y": 4,
+      "size": 24,
+      "iconPpm": 14
+     },
+     "skeleton-chef": {
+      "x": 5,
+      "y": 7,
+      "size": 22,
+      "iconPpm": 28
+     },
+     "rabbit": {
+      "x": 6,
+      "y": 8,
+      "size": 20,
+      "iconPpm": 14
+     },
+     "mole": {
+      "x": 12,
+      "y": 14,
+      "size": 14,
+      "iconPpm": 24
+     },
+     "snail": {
+      "x": 8,
+      "y": 18,
+      "size": 16,
+      "iconPpm": 22
+     },
+     "toad": {
+      "x": 7,
+      "y": 14,
+      "size": 18,
+      "iconPpm": 20
+     },
+     "green-hood": {
+      "x": 5,
+      "y": 11,
+      "size": 22,
+      "iconPpm": 24
+     },
+     "honk": {
+      "x": 10,
+      "y": 12,
+      "size": 12,
+      "iconPpm": 34
+     },
+     "chonk": {
+      "x": 7,
+      "y": 7,
+      "size": 18,
+      "iconPpm": 20
+     },
+     "polly": {
+      "x": 8,
+      "y": 9,
+      "size": 16,
+      "iconPpm": 28
+     },
+     "clarabelle": {
+      "x": 3,
+      "y": 4,
+      "size": 27,
+      "iconPpm": 16
+     },
+     "requin": {
+      "x": 7,
+      "y": 10,
+      "size": 16,
+      "iconPpm": 22
+     },
+     "progress": {
+      "x": 6,
+      "y": 10,
+      "size": 20,
+      "iconPpm": 16
+     },
+     "preservation": {
+      "x": 7,
+      "y": 13,
+      "size": 18,
+      "iconPpm": 18
+     },
+     "opal": {
+      "x": 8,
+      "y": 11,
+      "size": 16,
+      "iconPpm": 22
+     },
+     "cilantro": {
+      "x": 8,
+      "y": 2,
+      "size": 13,
+      "iconPpm": 26
+     },
+     "mincut": {
+      "x": 7,
+      "y": 9,
+      "size": 17,
+      "iconPpm": 24
+     },
+     "maxflow": {
+      "x": 0,
+      "y": 3,
+      "size": 23,
+      "iconPpm": 18
+     },
+     "theo-rem": {
+      "x": 10,
+      "y": 19,
+      "size": 12,
+      "iconPpm": 34
+     },
+     "greenting": {
+      "x": 10,
+      "y": 16,
+      "size": 12,
+      "iconPpm": 16
+     },
+     "storyteller": {
+      "x": 0,
+      "y": 1,
+      "size": 23,
+      "iconPpm": 22
+     },
+     "npc-sweeper": {
+      "x": 10,
+      "y": 14,
+      "size": 13,
+      "iconPpm": 34
+     },
+     "npc-vendor": {
+      "x": 10,
+      "y": 10,
+      "size": 13,
+      "iconPpm": 34
+     },
+     "npc-elder": {
+      "x": 10,
+      "y": 16,
+      "size": 12,
+      "iconPpm": 34
+     },
+     "npc-porter": {
+      "x": 10,
+      "y": 13,
+      "size": 12,
+      "iconPpm": 28
+     }
+    },
+    "portraitCell": {
+     "w": 32,
+     "h": 40,
+     "fx": 16,
+     "fy": 39
+    },
+    "skipped": [
+     "icon_nicksong",
+     "icon_brianbi"
+    ]
+   }
+  },
+  "bakedBy": "pixel3d tools/uibake",
+  "tod": "noon"
+ }
+}

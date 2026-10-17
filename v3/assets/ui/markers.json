@@ -293,6 +293,7 @@
   }
  },
  "meta": {
+  "iconSize": 12,
   "pinColors": [
    "gold",
    "crimson",
@@ -310,8 +311,8 @@
    "teal": "#22a6b4",
    "green": "#5cb23a",
    "orange": "#e8701e",
-   "white": "#DCD3C4",
-   "black": "#3A3346"
+   "white": "#ece6da",
+   "black": "#2c2636"
   },
   "pinIcon": {
    "x": 9,
@@ -419,6 +420,11 @@
    "size": 20,
    "offset": 14
   },
+  "place": {
+   "pin": "Place-pin: draw pin_shadow (anchors.pin_shadow) on the spot, then pin_<color> with anchors.pin on the spot, then icon_<castId> at (pinIcon.left, pinIcon.top) inside the pin frame, on the INNER disc only (radius 5: leave the 1-px socket ring of the frame visible). Depth-sort place pins with characters/props by the spot (pixel3d: depth-tested pass, src/ui/markers/pinPass.js). Person-pin: same without the shadow, tip 1 px above the target's name label box, 1 px bob at 2 fps, fanned (never rotated). Play pin_drop_0..3 once at the spot when a pin lands (fps.pin_drop, held 2 grid frames each), under the pin body.",
+   "point": "Pick the dir whose vector is closest to (target - emoter). Draw point_<dir>_<f> with anchors.point at emoterHead + vector * point.offset (pixel3d emoterHead = feet + 0.72 x height; v2 feet - 26 px), looping point.sequence at fps.point for EMOTE_POINT_MS. Loop ping_0..3 at the pointed spot (anchors.ping) at fps.ping, under characters; for a person target at their feet. Trail dots (trail_0/1) every 6 px from the fingertip to the aim point, drawn BELOW name labels and chat bubbles; the finger above them.",
+   "icon": "icon_<castId> is a round 12x12 portrait (transparent outside the disc), baked by the portraits group (out/ui/portraits.json). Also usable as a UI avatar; emote_point (emotes group) is the palette button icon."
+  },
   "newStyle": {
    "markers": {
     "tod": "noon",
@@ -439,16 +445,28 @@
      "POP_FRAMES": 5
     },
     "tiers": {
-     "pin": "A (L.world)",
-     "pin_shadow": "Ag (L.ground)",
-     "pin_drop": "Ag",
-     "point": "A",
-     "ping": "Ag",
-     "trail": "A",
-     "pin_remove": "A",
+     "pin": "place: W-billboard (depth-tested pin pass, order 301: over L.ground decals, under every L.world texel) / person: A (L.world)",
+     "pin_shadow": "with the place pin (depth-tested, under its body)",
+     "pin_drop": "with the place pin (under its body); person pins: A",
+     "point": "A (z 30)",
+     "ping": "Ag (L.ground)",
+     "trail": "A below labels/bubbles (z 15)",
+     "pin_remove": "with its pin",
      "ping_mark": "A",
      "pick": "A"
     },
+    "pinMid": {
+     "gold": "#e6b632",
+     "crimson": "#c42c3c",
+     "violet": "#8a52cc",
+     "teal": "#22a6b4",
+     "green": "#5cb23a",
+     "orange": "#e8701e",
+     "white": "#DCD3C4",
+     "black": "#2c2636"
+    },
+    "pinMidNote": "baked body mid per colour; equal to pinColorHex except white (#DCD3C4: v2 #ece6da was brighter than the cream rim/text tokens, so the ramp keeps the cream highlight on top)",
+    "pinIconInner": "icons go on the 12x12 disc minus its 1-px edge (radius 5); the edge is the socket ring (upper-left parchmentSh, lower-right parchmentHi; white pin: its own line/shade) that separates any icon from any pin colour",
     "extras": {
      "pin_remove": "9x9 remove badge (v2 art.ts BADGE), anchor = centre; shown on hover/tap of your own pin, centre at pin frame (15,2)",
      "trail_0": "trail dot (bright), every 6 px from the fingertip to the aim point, marching 1 px per 7.5 fps step",

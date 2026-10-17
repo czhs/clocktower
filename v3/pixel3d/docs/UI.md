@@ -83,6 +83,8 @@ character).
 | 39 | base theme | `ui/common/theme.css` | CSS tokens | ink #211f2c (96 %), iron #454250, parchment #e4d8ba, gold #d5b56a, good #7fa8d8, evil #e0625a, 4 px radius | every panel/button | CSS | kit tokens / panels |
 | 40 | lobby + waiting room | `ui/lobby/*.tsx`, `lobby.css` (`.ct-waiting*`, `.ct-member*`, `.ct-badge-*`, `.ct-pick*`, `.ct-rec*`, `.ct-modal*`) | DOM | panels, member rows, badges (You/Host/Not ready/ST), character picker tiles, stats tiles | before the game | CSS | panels |
 | 41 | notebook | `ui/notebook/*`, `notebook.css` (`.ctn-*`) | DOM | rows: portrait, name, seat, ★ ? ✗ toggles, role select, note field | player notes | CSS | panels |
+| 41b | notebook Notes page (free text) | `ui/notebook/Notebook.tsx` (`.ctn-page`, `.ctn-text` textarea, `NOTEBOOK_TEXT_MAX 8000`, status `Saved / Saving… / Offline`, `.ctn-full` > 80 %) | DOM textarea under the seat list | new: a 2nd page behind Seats / Notes glyph tabs (`tab-glyph-seats|notes[-on]` 9x9 on 14x13 tabs): lined parchment sheet `notes-page` (9-slice l14 t3 r7 b5: punched holes every 10 px + rose margin), `notes-rule` (pitch 10), `notes-caret`, `notes-sel`, `notes-scroll-track|thumb`, `notes-quill` (empty state), `notes-status-*` | write anything; autosave (debounce 900 ms) | S + CSS (`out/ui/notebook.css`) | notebook |
+| 41c | "reading the notebook" book (others see it) | (new; v2 has no in-world cue) | — | `book_<dir>_open_0..3`, `_hold_0..2`, `_close_0..2`, `_write_0..3` (quill) + ghost `bookghost_<dir>_*`, 8 dirs (v2 point dir names), 16x16, anchor (8,11) = grip point | shown exactly while that player's notebook is open; quill while typing | A-depth (depth-tested pass, order 302) | notebook |
 | 42 | Storyteller panel | `ui/storyteller/*.tsx`, `storyteller.css` (`.cts-*`: phase stepper NOW/NEXT, seat grid, grimoire, visits, cues, deal) | DOM | dense tool panel | ST controls | CSS | panels |
 | 43 | story / endgame | `ui/story/*`, `story.css` (`.cty-*`), `ui/hud` `.cth-endgame` | DOM | pamphlet, reveal table ("Good wins") | end of game | CSS | panels |
 | 44 | chat | `ui/chat/*`, `chat.css` (`.ct-chat-*`, crier) | DOM | dock, tabs, peek line, unread badge | chat | CSS | panels |
@@ -153,13 +155,19 @@ integer pixel = `L.at(p)` (floor), draw sprites by their v2 anchor so the same a
   9 (10 with an outline). Glyphs 1–5 px wide (most 4). Full ASCII + `· … × — – ← → ↑ ↓ ✓ ≡ ⚙ ♪ ☾`; accented letters
   fold to their base letter (NFD); unknown → `?`. Used for labels, bubbles, panel text, buttons, toasts. Reads like v2's
   ~10 CSS px labels (cap 12 screen px at 720p).
-- **tiny** — 3×5 caps + digits + `- _ . + : / ! ? × % …` (v2 `scripts/fx/font.ts` glyphs, upper-cased), 1-px tracking.
+- **tiny** (= **label**) — 3×5 caps + digits + `- _ . + : / ! ? × % … # , · — – '` (v2 `scripts/fx/font.ts` glyphs,
+  upper-cased), 1-px tracking; **M and W are 5 wide, N 4 wide** (module fix 2026-10-17: the 3-wide M/W/N read as H/H/П,
+  "RMB" → "RHB", "NOMINATIONS" → "NOHINATIONS"). Identical to the hud group's `LABEL`; `FONTS.label` is an alias.
   Badges, seat numbers, counters, small caps captions ("NOMINATIONS IN"). Never for sentences.
 - **display** (hud group delivers): a titling face for "Good wins", "Your home", panel titles, banners — cap 8–9,
-  small-caps or a pixel serif nodding to IM Fell English; same glyph-table format (`G('rows', top)`), registered into
-  `FONTS` through a CONTRACT-REQUEST to the lead (kit.js is shared). Until then titles use body in `gold`.
+  small-caps or a pixel serif nodding to IM Fell English; same glyph-table format (`G('rows', top)`). **Registered**
+  (module fix): `src/ui/fonts.js registerGroupFonts()` puts the hud group's `DISPLAY` (`src/ui/hud/font.js`) into
+  `FONTS.display`; `scenes/ui-hud.js` (so every scene built on `buildHudStage`) and `scenes/ui-bake.js` (every bake) call
+  it before any group module loads. Use `{font: 'display'}` at 1x (never body at 2x). If the face is missing or broken,
+  `drawText` falls back to body and warns once. kit.js never imports group modules (ownership + circular import).
 - API: `drawText(img, x, y, s, {font, color, outline, shadow, align})` (y = cap top), `textWidth`, `wrapText(s, maxW,
-  {maxLines})` (ellipsis). The kit atlas (`out/ui/kit.json meta.bitmapFont`) lists every glyph frame + metrics for a
+  {maxLines})` (ellipsis), `drawRuns(img, x, y, [[text, color], …], {font, outline, shadow, align})` (coloured runs on one
+  line; advances `textWidth(run) + tracking`, so runs never touch), `registerFont(key, font)`. The kit atlas (`out/ui/kit.json meta.bitmapFont`) lists every glyph frame + metrics for a
   Phaser BitmapText / canvas port.
 
 ### 2.5 Frame / 9-slice kit (`FRAMES`, `drawBox`)
@@ -201,6 +209,13 @@ Icons are drawn, not shrunk: no downscaled renders (render the 3D character at t
 | labelText / labelLine | #F2E8CF / #1E1828 | #E4E0D6 / #141325 | in-world names |
 | bubble / bubbleEdge / bubbleHi | #2B2536 / #8C7650 / #3D3548 | #221F33 / #7A6A55 / #33304A | speech bubble |
 | scrim | rgba(20,15,30,150) | rgba(12,11,26,165) | the only translucent token |
+| bedtime | #6F7FD0 | #6874C0 | v2 clock.css bedtime periwinkle (clock wedge / keyline) |
+| parchment / Hi / Sh (night) | (day values above) | #D2C7AD / #E1DCCC / #AF9F82 (`nightTone()`: OKLab L −0.05, cooler; Line unchanged) | world parchment (finger, hands, pin sockets, callouts, '?') a touch dimmer at night; panels drawn with `L.tok` follow |
+Variant ramps (not tokens: arrays): `VARIANT_RAMPS.ghost|spent|dead` / `variantRamps(T)` (dead follows the night
+parchment), 5 steps dark → light, = `src/ui/portraits/style.js variantRamp()`; events / indicators use the same.
+Pins: `PIN_RAMPS.black.line` is a LIGHT tone (#A49CB4, also `rim`) kept for compatibility (emotes uses it as the lit edge
+of a black swatch on ink); art that outlines a pin with its own `line` uses `PIN_LIT` (black = dark body + dark line,
+= markers `PIN_ART.black`).
 `golden` = day with warmer ink/iron/text. World-anchored UI (A/Ag) switches token set with the scene preset (labels a
 touch dimmer and cooler at night, like v2's dimmer house names); screen UI (S) may stay on one set (`day` panels read
 fine at night — see `shots/ui-lead/r2/hud-night.png`). Pins and coloured sprites: `ramp(mid)` gives `{hi, mid, sh,
@@ -237,7 +252,7 @@ line}` in OKLab (light warmer, shadow cooler/violet, line darker+cooler); `PIN_R
 ### 3.1 File ownership
 | owner | files |
 |---|---|
-| UI lead | `docs/UI.md` §0–§5, `src/ui/kit.js`, `src/ui/layer.js`, `src/ui/placeholders.js`, `src/ui/kit-bake.js`, `src/ui/social-bake.js`, `scenes/ui-hud.js`, `scenes/ui-bake.js`, `tools/uibake.{mjs,sh}`, `refs/ui/**`, `shots/ui-lead/`, `out/ui/kit.*`, `out/ui/social.*` |
+| UI lead | `docs/UI.md` §0–§5, `src/ui/kit.js`, `src/ui/layer.js`, `src/ui/placeholders.js`, `src/ui/kit-bake.js`, `src/ui/social-bake.js`, `src/ui/fonts.js`, `scenes/ui-hud.js`, `scenes/ui-bake.js`, `tools/uibake.{mjs,sh}`, `tools/uigif.sh`, `refs/ui/**`, `shots/ui-lead/`, `out/ui/kit.*`, `out/ui/social.*` |
 | group `<g>` ∈ markers, emotes, indicators, portraits, hud, panels, events | `src/ui/<g>/**` (must contain `hud.js` + `bake.js`), `scenes/ui-<g>.js`, `shots/ui-<g>/`, `out/ui/<g>.{png,json}` (+ extra atlases named `out/ui/<g>-*.{png,json}` or the v2 file names listed in §4), append-only notes in §6 |
 | read-only for UI agents | everything else: `src/core`, `src/world`, `src/post`, `src/chars`, `characters/*`, `src/ambient`, `src/town/**` (town session), `scenes/char-stage.js` (import its helpers, never edit) |
 Shared needs (a kit helper, a token, a font glyph, a tool option): put a `CONTRACT-REQUEST:` line in your final report /
@@ -249,18 +264,61 @@ Shared needs (a kit helper, a token, a font glyph, a tool option): put a `CONTRA
   `PIN_COLORS`, `PIN_RAMPS`, `FONTS`, `textWidth`, `wrapText`, `drawText`, `FRAMES`, `drawBox` (returns the content
   rect), `nineSlice`, `GRID_HZ`, `holdsFor`, `frameAt`, `gridTime`, `dissolve`, `envelope`, `packAtlas`, `atlasJson`,
   `toCanvas`, `loadImage`. Pure JS: no three.js, deterministic, no Math.random/Date.
+  Module fix 2026-10-17 (additive): `drawRuns`, `registerFont`, `FONTS.label`, `annulus(img, cx, cy, rx, ry, c, {tx, ty,
+  keep})` (clean elliptic ring, no pole spurs), `shade(img, {hi, mid, sh, line}, {diag})` (upper-left light on a flat
+  `mid` sprite + line; shade after flips), `envelope(t, tIn, tOut, {outMs, holdFrames, popFrames})` (default unchanged:
+  3 steps × 2 grid frames; v2 bubble `outMs: 600` → 6-frame holds), `steps(a, b, n)`, `VARIANT_RAMPS`, `variantRamps`,
+  `PIN_LIT`, token `bedtime`.
 - `layer.js`: `createUILayers(engine, {order 300, tod, timeFn})` → `L` with `L.world`, `L.ground`, `L.screen`
   (PixelImages, cleared every frame), `L.at(p)` / `L.atScreen(p)` (integer pixel of a world point), `L.onScreen(x,y,m)`,
   `L.add(fn(L), z)` / `L.remove(fn)` (draw callbacks, ascending z), `L.tok` (token set), `L.t` (UI clock), `L.enabled`,
   `L.screenEnabled`, `L.setTod(name)`. One `createUILayers` per page (the mock HUD creates it; group scenes get it from
   `buildHudStage`).
+- `layer.js` depth-tested tier (module fix, opt-in): `L.useDepth()` once in setup, then `L.putDepth(src, x, y, d, k?)`
+  with `d = L.depthOf(worldPoint)` (view depth, m) into `L.depthWorld`. Pass `ui-depth` (order 303, after `ui-world` and
+  the group pin passes 301/302) keeps the scene texel where the scene is nearer than `d − L.depthEps` (0.25 m), and every
+  `L.world` texel stays on top; nearer depth texels win. For upright world sprites on the ground (place pins, door
+  tokens, seat signs). Same semantics as `src/ui/markers/pinPass.js`, which can migrate to it. Evidence: a bar 0.8 m
+  behind the Storyteller is hidden by the body, one 0.8 m in front covers it, a label stays on top
+  (module-fix scratch test, `ui-depth:303` in the pass list).
 
 ### 3.3 Scenes and the mock HUD slot
 - `scenes/ui-hud.js` exports `buildHudStage(engine, params, {cast, storyteller, ring})` → `hud` = `{ engine, params, P,
   tod, tok, kit, ui (= L), terrain, place(r, angDeg), seatPos(seat), clock, cast: [{id, name, seat, role, clip, you,
   ghost, pos, height, head(), feet(), actor}], st, you, byId(id), bySeat(n), slots, groups }`. Params: `tod`, `slots=1`,
   `groups=a,b`, `placeholders=0`, `ui=0`, `screen=0`, `grass=0`, `grade=0`, `trees=0`, `cast=0`, `t=<s>` (freezes
-  characters AND UI), `pan=dx,dy`, `vh` (default 12 = the game camera), `yaw`.
+  characters AND UI), `pan=dx,dy`, `vh` (default 12 = the game camera), `yaw`, `strict=1`, `heads=1`.
+- Module fix 2026-10-17 additions to `hud` (all scenes built on `buildHudStage` get them):
+  - `ui=0` is handled IN `buildHudStage`: the layers and every pipeline pass named `ui-*` (talk outline, pin passes,
+    ui-depth) are off, so `?ui=0` is a real A/B for group scenes too (crawl with/without UI: identical 152/12/148 px).
+  - `m.top` = visual top (m) and `m.head()` = feet + `m.top` + 0.1. `VISUAL_TOP_M` (exported) overrides `spec.height`
+    where it is a prop: `storyteller: 1.55` (staff finial 1.91). Measured from the flag buffer at vh 12: frog 1.26–1.30,
+    mushroom cap 1.34 (spec 1.36), fox ears 1.23 (spec 1.32), goat 1.42–1.50, crow 1.38: within ±3 texels of spec, so no
+    other override. `m.height` stays `spec.height` (talk outline rect). `engine.stats.ui.anchors` lists each member's
+    projected head / feet (screen px).
+  - `hud.stack.top(m, L, kind)` — the shared above-the-name stack (v2 order label < bubble < pins < pop): the row the
+    BOTTOM of a `kind` element sits on. 'label'/'bubble' = 1 px above the label (+ ghost lift + "You" chevron); 'pins' =
+    also above the chat bubble (L.world scan in the head column ± 2, gaps ≤ 3 rows bridged); 'pop' and others = also
+    above what sits on that (person pins, bells; scan ± 10, 1-row gaps, ≤ 30 rows). The scan sees what is drawn at a
+    LOWER z (bubbles 20, bells 25, person pins 30): draw at a higher z than what you stack on. `hud.indicators.stackTop`
+    is routed through `stack.top(m, L, 'pins')` (markers' person pins and events' bells now clear bubbles); the
+    label-only original is `hud.indicators.labelStackTop`. Known limit: when two neighbours' stacks touch, a pop can
+    land on the neighbour's bubble (a real layout overlap, not a stack error).
+  - `hud.keepOut(L, {transient, groups, space})` → the HUD slot rects (`placeholders.js keepOutRects`) for world UI /
+    offscreen arrows that must avoid them; `transient: true` adds the briefly shown slots (clock card, vote clock,
+    moment banner, caption, joystick).
+  - `hud.game` = `MOCK_GAME` (day 2, nominations, Ada nominated Cleo, Bram voting, you seat 4, Esme dead): one mock state
+    for every group's mock content. `MOCK_CAST` Esme plays the rabbit's `ghost` clip (her ghost look is a clip).
+  - Group modules are imported only when `src/ui/<g>/hud.js` exists (HEAD request; a 404 in the console is expected for
+    groups without a module). A module that fails to import / set up / draw gets a red error tag (top left) and
+    `engine.stats.ui.groups[g] = 'error (…)'`; the other groups keep rendering. `?strict=1` fails the page instead.
+  - Slots (`placeholders.js SLOTS`, indices are contract, new ones appended): hud[0] role chip w 180 (was 150), hud[4]
+    toasts w 150 (was 170: the column covered Bram's bubble at the game camera), hud[6] voice pill (x −32, y −4, 64×14),
+    hud[7] clock card (centre, y 24, 168×40, transient: under the phase caption while one shows), hud[8] touch joystick
+    (x 4, y −4, 56×56, transient), events[2] vote clock (4, 188, 69×90), events[3] moment banner (centre, y 96, 300×48,
+    transient; world labels under it may be covered for its ~4 s).
+  - `scenes/ui-hud.js` is also the hud group's scene (`?scene=ui-hud&groups=hud&state=…`, §6 hud): the group states live
+    in `src/ui/hud/hud.js`; no separate `scenes/ui-hudgroup.js`.
 - Your slot: `src/ui/<g>/hud.js` → `export default { z?: number, async setup?(hud), draw(hud, L) }`. When it exists the
   mock HUD calls it instead of `PLACEHOLDERS[<g>]` (a module that throws on import fails the page — on purpose).
   Stay inside your `SLOTS[<g>]` rects (`src/ui/placeholders.js`; `?slots=1` draws them); world elements anchor to the
@@ -275,7 +333,10 @@ T, group }`. Frames are `[name, PixelImage]` in the order you want them packed (
 `out/ui/<g>.png` + `.json` (Mac copy = source of truth; the host only writes `shots/ui-<g>/bake/`), a labelled ×4
 `shots/ui-<g>/bake/<g>-sheet.png` (look at it), and prints `coverage: n/m v2 frame names present; MISSING: …` when `v2`
 names a manifest in `refs/ui/_src/` (`social.json`, `square-props.json`, `cast-portraits.json`). `--strict` fails on
-missing names. A second atlas of a group: `src/ui/<g>/<name>.bake.js`, `tools/uibake.sh <g>:<name>` → `out/ui/<name>.*`
+missing names. Extra TEXT outputs (module fix): `files(env, {img, rects, json})` → `{basename: text}` (e.g.
+`{'panels.css': css}`); uibake writes them next to the atlas, lists them in `<name>.files`, and `uibake.sh` copies them
+to `out/ui/`. v2 reference manifests live in `refs/ui/_src/` (`art-ui.json` = the v2 DOM skin names, copied from
+`src/ui/panels/v2-art-ui.json`: use `v2: 'art-ui.json'`). A second atlas of a group: `src/ui/<g>/<name>.bake.js`, `tools/uibake.sh <g>:<name>` → `out/ui/<name>.*`
 (name it after the v2 file it replaces, e.g. `cast-portraits`). Composite drop-ins owned by the lead: `tools/uibake.sh social` (re-packs markers + emotes + portraits
 frames into `out/ui/social.{png,json}` with the v2 meta), `tools/uibake.sh kit`.
 
@@ -283,6 +344,15 @@ frames into `out/ui/social.{png,json}` with the v2 meta), `tools/uibake.sh kit`.
 `shots/ui-<g>/` only (fresh sub-folders per round: `r1/`, `r2/`). Helpers: `shots/ui-lead/zoom.py in out x0 y0 x1 y1 s`
 and `shots/ui-lead/strip.py out x0 y0 x1 y1 s frames…` (run via `tools/remote.sh python3 …`, then rsync back). Crawl:
 `tools/crawl.py` on `?pan=1,1&t=1&grass=0&grade=0&screen=0` captures.
+Module fix 2026-10-17: `tools/remote.sh` now syncs `shots/*/*.{js,mjs,py,sh}` helpers (was js/py only).
+`tools/uigif.sh <scene> <out-dir> <t0> <dur> [x,y,w,h] [--q …] [--size 640x360] [--scale 2]` = 1x capture at
+`t0 + k/30 + 0.001` (the epsilon keeps a frame from rounding into the previous grid frame) → `<out-dir>/anim.gif` (GIF
+delays 30/30/40 ms = 30 fps) + `strip.png` (numbered frames). `tools/shot.mjs` pads frame indices to max(2, digits)
+(unchanged under 101 frames) and serialises `engine.stats` cycle-safe (three.js objects become `[Type]`);
+`tools/sheet.py` sorts frames numerically. `tools/clean.sh` reports the number of remote files it removed.
+Crawl convention (checked): `crawl.py --dx 1 --dy 1` matches `?pan=1,1` captured at consecutive 1/60 s times (expected
+shift = best shift, frames 1–3); pass exactly those times, or the shifts disagree. The PIL hosts lack `Image.Quantize` /
+`Image.Dither` enums: use the numeric constants.
 
 ---------------------------------------------------------------------------------------------------------------------
 
@@ -351,12 +421,44 @@ for `poof_*`, `glow_warm`, `glow_cool`).
   `poof_*` drop into `square-props` (the client builds `fx#poof` from the manifest `meta.fps.poof`; ship 15 so the grid holds stay 2).
 - **Scale**: the v2 town renders at a CSS zoom; new-style art is texel-exact — draw it at an integer zoom with
   `pixelArt: true` / `roundPixels: true` (Phaser) so a texel stays a square of whole device pixels.
+- **Portrait walk cadence**: v2 `ui/common/castPortrait.ts` steps WALK [1,2,3,4] every 140 ms and ignores the manifest;
+  the new cast-portraits walk is one game-speed cycle at 15 fps: step at 67 ms or read `meta.walkStepMs` / `walkFps`
+  (`out/ui/cast-portraits.json`). Preview: `scenes/ui-portraits ?walk=v2`.
+- **Ghost look per species**: some ghosts are a CLIP (rabbit's halo is a key of its `ghost` clip, it ignores
+  `Character.ghost` / `rig.setGhost`); switch clips (`play('ghost' | 'ghost-spent', {at})`) to be safe.
 - **Text**: Phaser labels/bubbles switch from `Text` (Alegreya Sans) to BitmapText built from `out/ui/kit.json
   meta.bitmapFont` (body/tiny) and the hud display font; DOM text may keep the vector fonts (accessibility, i18n) while
   adopting the panel skin, or use the bitmap fonts for headings only.
 - **DOM skin**: `border-image: url(panels.png) 3 3 4 3 fill / calc(3px*var(--px)) …; image-rendering: pixelated` with
   `--px` = the integer UI scale; tokens map 1:1 onto `theme.css` variables (§2.7 table).
 
+- **Notebook (notebook group)**: `out/ui/notebook{,-night}.{png,json}` + `out/ui/notebook.css`. (1) Notes page: keep the v2
+  `<textarea class="ctn-text">` native (IME, a11y, undo). Load `notebook.css` after theme.css/panels.css: page plate as
+  `border-image` (no `fill`, `repeat space`), parchment + `notes-rule` background with `background-attachment: local`,
+  `line-height` = 10 px x `--px` so each line sits on a rule, caret / `::selection` / `::placeholder` / scrollbar in page
+  tokens. **The binding holes are fixed to the page frame; only the rules and the text scroll** (the mock page does the
+  same since r6). **Height is snapped**: border box = (8 + 10 x `--ctn-rows`) texels (default 14 rows, `resize: none`),
+  so the left edge always tiles whole holes (the 9-slice middle = one 10-texel hole period). Never give `.ctn-text` a free
+  height; to fill a flexible box, set `--ctn-rows` from a ResizeObserver: `rows = floor((cssH / px - 8) / 10)`.
+  **Font**: by default the DOM text keeps the v2 vector font at 7 px x `--px` (`shots/ui-notebook/r6/dom-css.png` tile 1),
+  which differs from the mock page (pixel body font). For the game-style look add `.ctn-pixelfont` to `.ctn`: notebook.css
+  carries `@font-face 'CT Pixel Body'`, a TrueType face generated from the kit body bitmap font
+  (`src/ui/notebook/ttf.js`, 1 glyph px = `--px` CSS px at 8 px x `--px`), with `var(--font)` as the fallback, so
+  accents, CJK / IME input and emoji fall back per glyph to the vector font (tiles 2-5, 3 = `--px` 3). Verified in
+  headless Chromium with the real CSS (`shots/ui-notebook/domshot.mjs`; Playwright hides scrollbars, so the scrollbar
+  skin is unverified there). notebook.css is now a bake `files()` output (no `meta.cssText` / mkcss.py step). Move the textarea out of `.ctn-body` into a 2nd page behind a `role="tablist"` (`.ctn-tab-seats`,
+  `.ctn-tab-notes`, `aria-selected`). The Notes tab names the page, so `.ctn-page-label` is hidden. (2) Reading book:
+  **protocol change for the lead**. Add a per-player `notebook: 'closed'|'open'|'writing'` presence flag. The client sets
+  it on drawer open/close, and sets 'writing' while an input event happened in the last 1.5 s (rate-limit to state
+  changes). The server forwards it ONLY to players who can see that avatar (same scope as positions / zone chat). It
+  reveals THAT someone is reading, never WHAT: no notebook data travels. The Storyteller's scratchpad counts too (its
+  owner decides; it may be suppressed for the ST). Each viewer keeps `openAt` / `closeAt` per pid on its own clock
+  and runs `bookState()` (src/ui/notebook/draw.js): open 8 grid frames (15 fps), hold `meta.holdSeq` at 10 fps (seeded
+  per pid so readers never flutter in sync), write 10 fps, close 6 grid frames, dir from the avatar facing.
+  Placement: grip = feet + 0.42 x height + 0.24 m along facing; facing the camera (down, down-left, down-right) 0.36 x
+  height so the top of the face shows above the spread (owl 0.30); facing away 0.32 x height, 0.27 m to the right.
+  Phaser: depth = avatar depth + epsilon (never hidden by its own reader, including a wide hat / cap above the book),
+  under name labels / bubbles / the point finger. Reduced motion: no open/close drawings, no flutter.
 ---------------------------------------------------------------------------------------------------------------------
 
 ## 6. Learnings (append-only; groups add dated bullets)
@@ -485,3 +587,179 @@ for `poof_*`, `glow_warm`, `glow_cool`).
   lower right. Kit `PIN_RAMPS.black` has a LIGHT line, which reads as a grey hollow ring, so the markers art overrides
   it with a dark body. A glove on cobbles of its own value needs a line near labelLine value
   (`ramp(parchment,{line:.58})`) plus a darker shade band. Thin gold specks need a goldLine ring to read on noon grass.
+- 2026-10-17 emotes (r3): a dark pin on a dark panel reads hollow if its OUTLINE is the light tone; make the body solid
+  (black ramp hi + iron-hi lit rim) inside the dark UI outline instead (`shots/ui-emotes/bake/z-glyphs.png`, black pin / dot).
+- 2026-10-17 emotes (r3): a 9–11 px pointing hand reads as a hand only with flat crease rows (parchment-sh) between the
+  finger and the curled fingers; a solid fist + finger block reads as a flag / mitten (`emote_point_9`, `emote_point_11`).
+- 2026-10-17 emotes (r3): never put text labels inside 46-texel pie wedges (they overflowed into the hub and neighbours);
+  v2 draws none, the caption plate names the hot wedge. Commit steps: drop the hub well with the dissolving wedges,
+  otherwise a lone near-black hub disc blinks as a hole (`shots/ui-emotes/r7/anim/s-commit2.png`).
+- 2026-10-17 emotes (r3): don't put the hud slot's own state object into `engine.stats` if it may hold three.js objects
+  (markers context): `shot.mjs` prints stats as JSON and fails with "property 'parent' closes the circle".
+- 2026-10-17 panels: the v2 DOM skin has real frame names — `apps/client/public/art/ui/<name>.png` (panel, panel-parchment,
+  button, button-hover, button-primary, divider + 16 icons). `out/ui/panels.json` keeps all 22 (`uibake --strict` against
+  `src/ui/panels/v2-art-ui.json`, reached through the bake page's `refs/ui/_src/../../../` path). The new `panel` keeps
+  v2's slice 8 (iron corner brackets fill exactly the 8-px corner), so the v2 rule `8 fill / 8px` only changes scale.
+- 2026-10-17 panels: CSS `border-image` cannot crop an atlas rect, so `out/ui/panels.css` inlines every frame as a data
+  URI (80 KB, self-contained). A select's chevron must NOT sit in a 9-slice edge (it tiled 3x on a tall select): frame
+  without `fill` + inkSunk background colour + a positioned chevron (`shots/ui-panels/r1/css-demo.png`). Theme scopes
+  such as `.ct-waiting button:not(...)` out-specify `.ct-switch`, so list skinned non-buttons in the `:not()`.
+- 2026-10-17 panels: iron (#5E566C) glyphs on ink panels read as holes at 16 px; free-standing glyphs use a `steel`
+  ramp (`ramp(ironHi)`), frames keep iron. Off-state marks recoloured with their outline became blobs: render the
+  mask again in steel WITHOUT an outline (`toggle_<n>-off`).
+- 2026-10-17 panels: auto-shading a mask by exposure (top/left open -> hi, bottom/right open -> sh, both -> mid) works
+  for every glyph and for brackets mirrored to all 4 corners (shade after placement), and keeps 1-px strokes at mid.
+- 2026-10-17 panels: timelines driven by `t % cycle` lost a pop frame to capture-time rounding; drive them by whole
+  grid frames (`floor(t*30 + 0.01) % N`): `shots/ui-panels/r2/strip-modal.png` shows the 2-frame pop + 3-step dissolve.
+- 2026-10-17 events: anything stacked ABOVE a name label collides with chat bubbles (indicators' `stackTop` excludes
+  them): the r1 raised hand covered Bram's bubble text (`shots/ui-events/r1/z-hud-bram.png`). Hands now sit BESIDE the
+  label, as v2 drew them beside the head (`draw.js handSpot`: right, or left when the talk glyph is on the right):
+  `shots/ui-events/r2/hud-night.png`. A shared stack helper that includes bubbles would let pins, pops and bells agree.
+- 2026-10-17 events: a full-world Bayer dim (6/16, then 4/16 of the night shadow) reads as a screen door over the
+  square at 1x (`shots/ui-events/gifs/s-exec2-a.png`). The execution hush uses the `scrim` token at 3 stepped
+  strengths, with the hole rim banded at half strength (`gifs/s-exec3.png`). Full-screen transitions that MOVE
+  (the night veil falling in 4 dither levels behind a 72-px leading band, `gifs/s-night-a.png`) carry dither well,
+  because the eye follows the edge.
+- 2026-10-17 events: a dawn wash made of 3 full-width colour stripes looks like a filter (`gifs/s-dawn-c.png`). Light from
+  the horizon (gold / rose / violet bands from the top edge, the far side at this camera, alpha a, 2a/3, a/3) reads as
+  sunrise (`gifs/s-dawn2.png`).
+- 2026-10-17 events: swapping the time-of-day while a full-screen veil covers the frame works at runtime:
+  `applyTimeOfDay` only sets uniforms, + `L.setTod` (scenes/ui-events.js `swapTod`). Lantern meshes and lights keep the
+  preset they were built with. Death moments without a clip switch: a second actor of the member (its `ghost` clip),
+  then toggle `actor.root.visible` from the stage clock in `engine.onUpdate`. `actor.st.at` / `actor.st.base` are live,
+  so the die / appear timing and Storyteller teleports are scriptable. To hide a name label while a member is hidden,
+  move `m.pos.y` above the view (indicators skips members whose feet project above the frame).
+- 2026-10-17 events: tiny procedural motifs need a silhouette check at 1x. A stepped triangle bell read as a tree, a disc
+  with a tip read as a gem, and the poof light column topped by a plus-star read as a sword hilt. Fixes: dome + straight
+  waist + flared lip (bell), a round head with a downward curling tail + 2 eye texels (wisp), a beam that breaks into
+  dashes at the top with its sparks beside it (`shots/ui-events/bake/events-sheet.png`).
+- 2026-10-17 hud: the display face (`src/ui/hud/font.js DISPLAY`, atlas `out/ui/hud-font.*`) reads as a serif at 9 rows only
+  with 2-px main stems + 1-px hairlines/serifs (thick/thin contrast); lower case = 7-row SMALL CAPITALS on the same
+  baseline, figures bold 7-row lining (timers). In a 13-tall chip, use small caps only (`role.toLowerCase()`): a cap-9
+  initial fills the interior edge to edge (`shots/ui-hud/r1/z-tl.png`). `LABEL` = kit tiny + 5-wide M/W, 4-wide N (fixes
+  "NOHINATIONS"), derived from `FONTS.tiny` at import; `—`, `·` added there.
+- 2026-10-17 hud: `kit.frameAt`/a clamped grid index (`Math.max(0, t)`) is wrong for event ages: an element scheduled in
+  the future gets age 0 = its pop frame, so every queued toast/hint showed as a half-stippled ghost
+  (`shots/ui-hud/gif/strip-anim-toasts.png` before/after). Ages need a SIGNED index (`art.sgf`).
+- 2026-10-17 hud: the mini dial as a brass medallion set into the chip's left end (chip box starts at the dial centre)
+  needs a 1-px goldLine inner lip between bezel and face, else a full gold wedge + gold bezel read as one coin and the
+  hand vanishes (`shots/ui-hud/r1/z-tc.png` vs `bake/hud-sheet.png`).
+- 2026-10-17 hud: tower clock (tier W, `src/ui/hud/tower.js`): a mesh 6 mm in front of the town's ivory dial is hidden
+  (the glowing glass face wins the depth test, even a MeshBasicMaterial debug wedge was invisible); at face + 8.8 cm it
+  shows, behind the game hand. Binary "50 %" = Bayer discard on the low-res grid, but `gl_FragCoord` alone is
+  screen-anchored and flips under a whole-texel pan: add the camera's whole-texel position (`round(target·right / texel)`,
+  set in `onBeforeRender`, not `onUpdate`, so it sees this frame's pan). Crawl: 0 px on the dial
+  (`shots/ui-hud/crawl/diff.png`; the magenta arcs are the screen-anchored vignette of the town grade). Gold at half
+  stipple on ivory is too close in value: the tower uses goldSh for discussion.
+- 2026-10-17 hud: the role chip slot (150) cannot hold v2's "ROLE · ⌂ House · badge" for long roles ("Undertaker" +
+  "Ravenscroft" = 168 px): the house name gives way with an ellipsis (`drawRoleChip({maxW})`). The toasts slot (right,
+  y 38) covers chat bubbles of seats 2–3 at the game camera (`shots/ui-hud/r4/hud-tod-noon.png`, Bram) — screen tier
+  over world, as in v2, but the slot sits where bubbles stack.
+- 2026-10-17 hud: `scenes/ui-hud.js` is both the lead's mock HUD and the hud group's `scenes/ui-<g>.js`: the group states
+  live in the slot module (`?scene=ui-hud&groups=hud&state=showcase|anim|clock|vote|st|card|dead|toasts|hints|voice|touch|conn|tower`).
+- 2026-10-17 panels r3: titles now use the hud `DISPLAY` face and every small-caps label the hud `LABEL` face, both
+  imported from `src/ui/hud/font.js` (the kit tiny M/W read as H: MONK -> HONK in the ST grid). A cap-9 title beside
+  body text needs the body line on the display BASELINE (body y = title y + 3), and a display line with a comma has a
+  2-px descender, so the next body line moves down 1 (`shots/ui-panels/r3/lobby-noon.png`). On parchment the title
+  must be the biggest and darkest line (display in the team's dark tone, no shadow), or the hierarchy inverts
+  (`r3/z-endgame-top.png`).
+- 2026-10-17 panels r3: a 9-slice centre tile must be seamless. Auto-shading a mask by exposure gives the end
+  columns of a rolled cap a different tone, and the tile repeats them as a dash every 40 texels. Copy one interior
+  column across the whole centre after rendering (`art.js roll`, `r3/z-endgame-top.png`).
+- 2026-10-17 panels r3: a "pop" drawing is the target state one step smaller (`checkbox-pop`: on, 3x3 tick), never
+  another state's drawing (r1 flashed `checkbox-mixed`). Let the scripted cursor click the LABEL, so the box stays
+  visible in strips (`r3/strip-demo-check.png`, f85-86 pop, f87 on).
+- 2026-10-17 panels r3: stepper and chip labels get a hard width assert (`textWidth(label, LABEL) <= w - 6`, throws):
+  GATHER (23 texels) overflowed a 27-wide step and touched the gold edge; steps are now 29 wide (`r3/z-stepper.png`).
+  Role names in dense grids go in the body font (v2 normal text), dead = sunk row + ghost-vote glyph.
+- 2026-10-17 panels r3: off-state marks on a raised segment need the textDim value (flat, no outline); steel on
+  inkRaised disappears at 1x (`r3/z-nb-marks.png`). CSS skins of `select` need `appearance: none` (+ -webkit/-moz)
+  or Chromium paints its anti-aliased arrow over the baked chevron (`r3/z-css-select.png`). Never `erase()` corners
+  on the screen layer to round a dot: it punches a hole through the panel to the 3D scene; draw the corners empty.
+- 2026-10-17 events r3: smoke built from discs reads as "stones" when every disc is shaded on its own (each disc's sh
+  crescent becomes a dark seam inside the cloud). Paint the puffs back to front with only a light crescent (hi, 2 px) on
+  each puff's upper left, put the cream rim and the sh band on the OUTER silhouette only, and break the cloud into
+  2-3-puff cloudlets (never single balls) as it thins (`src/ui/events/art.js cloud()`, `shots/ui-events/r3/poof-z.png`).
+  A cover effect must be as tall as what it hides at the frame the hide happens (poof_1 / poof_3 ~34 texels for the
+  Storyteller, `r3/poof.png`, `r3/poof-b.png`).
+- 2026-10-17 events r3: visibility toggled at "t < hideT" with float times flickers a frame at exactly the boundary in
+  capture runs; compare grid frames (`gridK(t - t0) < n`) for every show/hide tied to a sprite timeline.
+- 2026-10-17 events r3: Character.play(name, {at}) is scheduled and re-simulated, so a timeline-driven clip change
+  (ghost -> ghost-spent when the ghost vote is counted) belongs at setup with exact times (`draw.js scheduleGhostSpent`),
+  not in a draw function (the pose would lag one frame and a single still capture misses it). A play whose `at` is
+  earlier than the actor's own creation play sorts before it and loses: clamp to creation time + epsilon. Per-species
+  ghosts (rabbit's halo is a clip key, not spec.ghost) ignore `ch.ghost`; the clip is the reliable switch.
+- 2026-10-17 events r3: a full-screen light/dark wash reads as light when it MOVES as a shape: an irregular leading
+  edge (column wobble in whole 2-px steps) dithered over 18 px (dawn) or 72 px (night veil), both ways in and out. A
+  uniform Bayer coverage step over the whole frame is a screen door. Washes that must not tint text go into L.world at
+  a z below the labels and only fill empty texels (`drawDawn`, scene z 2); screen-tier HUD (pills, chips, captions)
+  goes above any veil (veil at z 1 on L.screen): one rule for every HUD element.
+- 2026-10-17 events r3: a ground plaque in front of a character needs ~0.9 m toward the camera (13 texels at vh 12) to
+  clear the feet; rings around a voter go on the seat spot (feet), not between seat and plaque, and the digits are
+  redrawn after the rings (`r3/z-seats.png`). A 3-px gold shaft with an 11-px arrowhead reads as a spear; 1 px + a 1-px
+  shadow side + a 5x5 tip reads as a clock hand, and the night set uses goldSh for it (`r3/all-night.png`).
+
+- 2026-10-17 hud r5: the closed role chip had a house sub-pill (keyline + padding) that cost ~10 px, so the house name was
+  cut first ("Raven…"). The house is the player's way home, so it is now the LAST thing to give way
+  (`art.roleChipLayout`). The order: display role + bare ⌂ house (1-px ironSh divider, no pill), then the role in LABEL
+  caps with the full house, then the house with an ellipsis, all within `ROLE_CHIP_MAX` 180 (CONTRACT-REQUEST: slot 0
+  150 -> 180, and x 4..184 is free because the clock chip starts at x >= 220). Evidence: `shots/ui-hud/r5/z-roles.png`.
+- 2026-10-17 hud r5: a 15-px medallion cannot use the bezel's tone for its fill. A full gold wedge under a gold bezel read
+  as a coin. A goldSh wedge keeps the parchment hand readable at every fraction (`r5/z-dials.png`, `z-clock.png`).
+- 2026-10-17 hud r5: drawing a line in coloured runs (`segLine`) must advance `textWidth(run) + tracking`, because
+  textWidth leaves out the trailing tracking. Without it the next run's first glyph touches the last one, and the ':'
+  in "Cora:" merged into the 'a'. Break round toasts at ' · ' before word wrap, so a highlighted clause ("✓ your vote
+  counted") stays whole on one line (`r5/z-toasts.png`).
+- 2026-10-17 hud r5: a sticky hint becomes visible as a pill only when the label changes. Shrinking padding by 2 px went
+  unnoticed at 1x. v2 `hints.tsx short` labels (glyph + 1-2 words, countdown kept) make the change obvious
+  (`gif/s5-pill.png`, `s5-animpill.png`, `s5-pillnight.png`). Glyph-to-text gap = 3 px (2 px touched the 'S').
+- 2026-10-17 hud r5: DOM drop-ins need empty `*_9s` frames with `meta.nineSlice` insets. Samples with baked text are
+  references only (`*_sample`). A frame with a drop shadow is h + 1 tall and has b inset + 1. The left inset of a toast
+  includes the 2-px kind rule, so the rule tiles down the edge.
+- 2026-10-17 hud r5: a translucent control (the joystick well) uses the `scrim` token, not a 50 % checker. The checker
+  turned into grey mesh noise over grass. Pair it with a SOLID rim ring, so the shape still reads (`r5/z-stick-night.png`).
+  Add `hex(T.scrim)` to the palette audit's allowed set.
+- 2026-10-17 notebook: an upright book (boards toward other players) vanished in the front views. It was a brown V on
+  brown bodies, and the chin of the big chibi heads hid its cream rim (`shots/ui-notebook/r1/z/ada.png`). A book held at
+  the belly with its pages UP shows the cream spread to the high camera from every facing (`r3/z-dirs-noon.png`). The
+  boards still show in the closed / half drawings, so the open reads.
+- 2026-10-17 notebook: a held prop must never be hidden by its own holder. With the plain grip-point depth, 3 of 8
+  facings lost the book behind the reader's body (`r1/z/dov.png`, `esme.png`, `finn.png`). Depth = min(grip depth,
+  reader centre − 0.5 m), tested only against OTHER scene texels (pinPass instance at order 302, eps 0.12). Readers facing
+  away hold it off to their right side at 0.32 H. At 0.6 H it sat on the mushroom cap, at 0.42 H beside the rabbit's
+  head (`r3/z-dirs-noon.png`).
+- 2026-10-17 notebook: the portraits slot (z 75) stamps notebook-row icons at fixed panel spots, whatever page is shown.
+  On the Notes page they printed over the sheet (`r3/live-noon.png`). The notebook slot redraws the page at z 76 until
+  portraits skips them (CONTRACT-REQUEST).
+- 2026-10-17 notebook: a 9-slice whose edge carries a periodic motif (binding holes) must have its middle height = a
+  multiple of the period (notes-page: t 3 + 2 x 10 + b 5), else the holes jump at every tile seam.
+- 2026-10-17 module fix (UI library): see §2.4, §2.7, §3.2–§3.5 for what landed (fonts M/W/N + display registration,
+  night parchment, bedtime, variant ramps, PIN_LIT, drawRuns / annulus / shade / envelope options, depth tier, hud.stack,
+  keepOut, m.top, ui=0, broken-module tags, slots, social meta, uibake files, uigif, tool fixes). A/B of every atlas
+  against a same-code baseline: all day atlases (markers, emotes, indicators, portraits, cast-portraits, hud, hud-font,
+  panels, events) byte-identical; changed = kit (new glyphs / tokens, re-packed), the night atlases (night parchment:
+  markers-night 3194 px, events-night 851, indicators-night 325, hud-night 3226, portraits-night 9914 = the dead
+  variants), social.json meta only (non-v2 keys moved under `newStyle.<group>`; social.png identical).
+- 2026-10-17 module fix: PIL `getbbox()` on an RGBA difference image looks at the ALPHA band only, so an RGB-only change
+  reads as "identical". Compare `tobytes()` (or the RGB difference) in A/B scripts.
+- 2026-10-17 module fix: social.json used to take every group meta key at the top level (later group wins), so groups
+  overwrote each other's `newStyle`. Now v2 keys stay top-level (anchors / fps only for v2 keys or frames in the atlas)
+  and everything else is `meta.newStyle.<group>.*` (markers' notes are at `newStyle.markers.markers`).
+- 2026-10-17 module fix, not done (outside the UI library / owner decision): `scenes/char-stage.js createActor` (loop
+  clips played without `at`; pinned LegGait plans do not step) is read-only for UI and shared with the cast bakes:
+  workarounds stay (`play(clip, {at: 0})`, `move: true`). Town anchors (`anchors.board`, a clocktower dial API) belong to
+  the town session. The talk outline (290) under pin passes (301/302) stays a known overlap until pins move to a tier
+  that the outline pass can read. Portrait icon contrast (rabbit, pale ghosts at 12 px) is portraits/cast work.
+- 2026-10-17 notebook r6: a held prop's depth must beat the reader's whole silhouette, not just the body centre. Once the
+  front grip moved down to 0.36 H (to show the face), the mushroom cap brim was nearer to the high camera than
+  centre − 0.5 m and clipped the book top + quill (`shots/ui-notebook/r6/z/livedov8-noon.png` before the fix). Depth =
+  min(grip, centre − 0.5 m, head top − 0.1 m).
+- 2026-10-17 notebook r6: a tool over a cream page needs one strong silhouette and an angle the page does not have. A
+  6x7 quill with a gold shaft over ink lines turned into dark scribble at 1x (critic); an upright cream quill read as a
+  standing page; a 45-degree 2-texel feather on clean pages reads as "writing" (`shots/ui-notebook/bake/grid-book.png`).
+- 2026-10-17 notebook r6: test a DOM skin in a real browser, not only in the mock. The headless check of `notebook.css`
+  (`shots/ui-notebook/r6/dom-css.png`) showed that a 9-slice middle of 2 periods leaves half-tile gaps under
+  border-image `space` at odd row counts. Make the middle ONE period, then any snapped height tiles whole motifs.
+- 2026-10-17 notebook r6: a kit bitmap font can ship to the DOM as a generated TrueType face (rectangle contours, upm =
+  8 x pixel units, ascent = cap, descent = line − cap). It renders crisp at integer `--px`, and missing glyphs fall back
+  per character to the next family (`src/ui/notebook/ttf.js`).

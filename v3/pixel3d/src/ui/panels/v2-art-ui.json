@@ -1,0 +1,12 @@
+{
+ "source": "pipgws apps/client/public/art/ui/*.png (manifest.json + vote-hand.png): the v2 DOM skin images, one file per frame. Frame names = file names without .png; sizes = v2 px.",
+ "frames": {
+  "alive": { "w": 16, "h": 16 }, "button": { "w": 48, "h": 16 }, "button-hover": { "w": 48, "h": 16 }, "button-primary": { "w": 48, "h": 16 },
+  "dead": { "w": 16, "h": 16 }, "divider": { "w": 64, "h": 8 }, "ghost-vote": { "w": 16, "h": 16 }, "ghost-vote-spent": { "w": 16, "h": 16 },
+  "host": { "w": 16, "h": 16 }, "locked": { "w": 16, "h": 16 }, "muted": { "w": 16, "h": 16 }, "nominate": { "w": 16, "h": 16 },
+  "panel": { "w": 48, "h": 48 }, "panel-parchment": { "w": 48, "h": 48 }, "phase-dawn": { "w": 16, "h": 16 }, "phase-day": { "w": 16, "h": 16 },
+  "phase-dusk": { "w": 16, "h": 16 }, "phase-night": { "w": 16, "h": 16 }, "speaking": { "w": 16, "h": 16 }, "storyteller": { "w": 16, "h": 16 },
+  "vote-hand": { "w": 16, "h": 16 }, "vote-yes": { "w": 16, "h": 16 }
+ },
+ "slices": { "panel": 8, "panel-parchment": 8, "button": 6, "button-hover": 6, "button-primary": 6 }
+}

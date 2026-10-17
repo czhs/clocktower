@@ -10,22 +10,48 @@ import * as THREE from 'three';
 import { PixelImage, drawText, textWidth, wrapText, drawBox, frameAt, PIN_RAMPS, PIN_COLORS, mix } from './kit.js';
 
 /** Screen-space slots (x, y, w, h in the 640x360 screen layer; right/bottom anchored ones resolved by `rect`). */
+// Indices are part of the contract (groups read SLOTS.hud[i]): new slots are APPENDED. Module fix 2026-10-17: role chip
+// 150 -> 180 (v2 'ROLE · ⌂ House · badge' for Undertaker + Ravenscroft needs 168), toasts 170 -> 150 wide (the column
+// covered the north-east seats' chat bubbles at the game camera), + voice pill, clock card, touch joystick (hud), vote
+// clock + moment banner (events). `transient: true` = shown only while that UI is up (not a permanent keep-out).
 export const SLOTS = {
   hud: [
-    { name: 'role chip', x: 4, y: 4, w: 150, h: 13 },
+    { name: 'role chip', x: 4, y: 4, w: 180, h: 13 },
     { name: 'clock chip', x: 'c', y: 4, w: 168, h: 15 },
     { name: 'toolbar', x: -4, y: 4, w: 126, h: 15 },
     { name: 'phase chip', x: -4, y: 22, w: 44, h: 11 },
-    { name: 'toasts', x: -4, y: 38, w: 170, h: 40 },
+    { name: 'toasts', x: -4, y: 38, w: 150, h: 40 },
     { name: 'hint pill', x: 'c', y: -60, w: 120, h: 13 },
+    { name: 'voice pill', x: -32, y: -4, w: 64, h: 14 },
+    { name: 'clock card (vote / tray / result; below the phase caption while one shows)', x: 'c', y: 24, w: 168, h: 40, transient: true },
+    { name: 'touch joystick (phones)', x: 4, y: -4, w: 56, h: 56, transient: true },
   ],
   panels: [{ name: 'side panel (notebook / lobby / storyteller)', x: 4, y: 24, w: 132, h: 158 }],
-  emotes: [{ name: 'social dock', x: -32, y: -34, w: 96, h: 70 }, { name: 'pie menu (at the pointer)', x: 410, y: 214, w: 76, h: 76 }],
+  emotes: [{ name: 'social dock', x: -32, y: -34, w: 96, h: 70 }, { name: 'pie menu (at the pointer)', x: 410, y: 214, w: 76, h: 76, transient: true, pointer: true }],
   portraits: [{ name: 'dock / voice portrait button', x: -4, y: -4, w: 24, h: 24 }],
   indicators: [{ name: 'home compass pill', x: 'c', y: -4, w: 132, h: 14 }, { name: 'labels, bubbles, talking (world)', world: true }],
   markers: [{ name: 'finger, trail, ping, pins (world)', world: true }],
-  events: [{ name: 'phase caption', x: 'c', y: 24, w: 210, h: 13 }, { name: 'seat markers, vote hand, ghost, poof (world)', world: true }],
+  events: [{ name: 'phase caption', x: 'c', y: 24, w: 210, h: 13, transient: true }, { name: 'seat markers, vote hand, ghost, poof (world)', world: true },
+    { name: 'vote clock', x: 4, y: 188, w: 69, h: 90, transient: true },
+    { name: 'moment banner (game start / end, death; world labels under it may be covered for its 4 s)', x: 'c', y: 96, w: 300, h: 48, transient: true }],
 };
+/**
+ * Screen keep-out rects (module fix: indicators / hud request): every screen slot the HUD occupies, resolved to
+ * {x, y, w, h, group, name} in screen coords (space 'world' = L.world coords, + MARGIN). World UI (bubbles, offscreen
+ * arrows) can clamp around them. opts: transient (include slots shown only briefly, default false), groups (filter).
+ */
+export function keepOutRects(W, H, { transient = false, groups = null, space = 'screen', margin = 0 } = {}) {
+  const out = [];
+  for (const [g, list] of Object.entries(SLOTS)) {
+    if (groups && !groups.includes(g)) continue;
+    for (const s of list) {
+      if (s.world || s.pointer || (s.transient && !transient)) continue;
+      const r = rect(s, W, H);
+      out.push({ x: r.x + (space === 'world' ? margin : 0), y: r.y + (space === 'world' ? margin : 0), w: r.w, h: r.h, group: g, name: s.name });
+    }
+  }
+  return out;
+}
 /** Resolve a slot rect against the screen size: x 'c' = centred, negative x / y = from the right / bottom edge. */
 export function rect(s, W, H) {
   const x = s.x === 'c' ? Math.floor((W - s.w) / 2) : s.x < 0 ? W + s.x - s.w : s.x;

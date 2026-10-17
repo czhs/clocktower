@@ -542,7 +542,7 @@
    "offscreen_": {
     "x": "w>>1",
     "y": "h>>1",
-    "note": "disc centre; the tail tip reaches 6 px past the disc ring (pad 8); avatar at (10, 10)"
+    "note": "disc centre; the tail tip reaches 7 px past the disc ring (pad 9); avatar at (11, 11)"
    },
    "offscreen_disc": {
     "x": 14,
