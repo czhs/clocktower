@@ -1,6 +1,6 @@
 {
   "version": 3,
-  "generated": "2026-10-17T02:23:28.941Z",
+  "generated": "2026-10-17T02:45:06.183Z",
   "generator": "tools/demo-roster.mjs",
   "rule": "offered (public) = finished AND playable; wipOffered (demo.html?wip=1 adds them) = playable AND not finished. finished = shipped in docs/CHARACTER_STATUS.md OR the final independent critic verdict in characters/<id>.md ships (>= 19/24, no zeros on 1–3 or 7; docs/CHARACTER_PLAYBOOK.md) OR in src/demo/roster-allow.json. playable = characters/<id>.js loads AND it passed (or has not yet failed) the live idle + walk check",
   "shipBar": {
@@ -376,7 +376,7 @@
       "critic": {
         "score": 17,
         "shipped": false,
-        "src": "docs/CHARACTER_LEARNINGS.md:2288"
+        "src": "docs/CHARACTER_LEARNINGS.md:2296"
       },
       "mtime": 1792191424000,
       "verified": {
@@ -438,7 +438,7 @@
       "critic": {
         "score": 16,
         "shipped": false,
-        "src": "docs/CHARACTER_LEARNINGS.md:2341"
+        "src": "docs/CHARACTER_LEARNINGS.md:2349"
       },
       "mtime": 1792191187000,
       "verified": {
@@ -492,7 +492,7 @@
       "critic": {
         "score": 15,
         "shipped": false,
-        "src": "docs/CHARACTER_LEARNINGS.md:1956"
+        "src": "docs/CHARACTER_LEARNINGS.md:1964"
       },
       "mtime": 1792190684000,
       "verified": {
@@ -554,7 +554,7 @@
       "critic": {
         "score": 16,
         "shipped": false,
-        "src": "docs/CHARACTER_LEARNINGS.md:2797"
+        "src": "docs/CHARACTER_LEARNINGS.md:2805"
       },
       "mtime": 1792191669000,
       "verified": {
@@ -613,7 +613,7 @@
       "critic": {
         "score": 15,
         "shipped": false,
-        "src": "docs/CHARACTER_LEARNINGS.md:3297"
+        "src": "docs/CHARACTER_LEARNINGS.md:3305"
       },
       "mtime": 1792192729000,
       "verified": {
@@ -672,7 +672,7 @@
       "critic": {
         "score": 16,
         "shipped": false,
-        "src": "docs/CHARACTER_LEARNINGS.md:3282"
+        "src": "docs/CHARACTER_LEARNINGS.md:3290"
       },
       "mtime": 1792192485000,
       "verified": {
@@ -726,7 +726,7 @@
       "critic": {
         "score": 15,
         "shipped": false,
-        "src": "docs/CHARACTER_LEARNINGS.md:2772"
+        "src": "docs/CHARACTER_LEARNINGS.md:2780"
       },
       "mtime": 1792191529000,
       "verified": {
@@ -786,7 +786,7 @@
       "critic": {
         "score": 15,
         "shipped": false,
-        "src": "docs/CHARACTER_LEARNINGS.md:2206"
+        "src": "docs/CHARACTER_LEARNINGS.md:2214"
       },
       "mtime": 1792190771000,
       "verified": {
@@ -840,7 +840,7 @@
       "critic": {
         "score": 16,
         "shipped": false,
-        "src": "docs/CHARACTER_LEARNINGS.md:2735"
+        "src": "docs/CHARACTER_LEARNINGS.md:2743"
       },
       "mtime": 1792191666000,
       "verified": {
@@ -902,7 +902,7 @@
       "critic": {
         "score": 16,
         "shipped": false,
-        "src": "docs/CHARACTER_LEARNINGS.md:2262"
+        "src": "docs/CHARACTER_LEARNINGS.md:2270"
       },
       "mtime": 1792191128000,
       "verified": {
@@ -962,7 +962,7 @@
       "critic": {
         "score": 15,
         "shipped": false,
-        "src": "docs/CHARACTER_LEARNINGS.md:2224"
+        "src": "docs/CHARACTER_LEARNINGS.md:2232"
       },
       "mtime": 1792190749000,
       "verified": {
@@ -1021,7 +1021,7 @@
       "critic": {
         "score": 17,
         "shipped": false,
-        "src": "docs/CHARACTER_LEARNINGS.md:3395"
+        "src": "docs/CHARACTER_LEARNINGS.md:3403"
       },
       "mtime": 1792193628000,
       "verified": {
@@ -1081,7 +1081,7 @@
       "critic": {
         "score": 15,
         "shipped": false,
-        "src": "docs/CHARACTER_LEARNINGS.md:2242"
+        "src": "docs/CHARACTER_LEARNINGS.md:2250"
       },
       "mtime": 1792190859000,
       "verified": {
@@ -1143,7 +1143,7 @@
       "critic": {
         "score": 16,
         "shipped": false,
-        "src": "docs/CHARACTER_LEARNINGS.md:2757"
+        "src": "docs/CHARACTER_LEARNINGS.md:2765"
       },
       "mtime": 1792191490000,
       "verified": {
@@ -1202,7 +1202,7 @@
       "critic": {
         "score": 16,
         "shipped": false,
-        "src": "docs/CHARACTER_LEARNINGS.md:3338"
+        "src": "docs/CHARACTER_LEARNINGS.md:3346"
       },
       "mtime": 1792193802000,
       "verified": {
@@ -1264,7 +1264,7 @@
       "critic": {
         "score": 15,
         "shipped": false,
-        "src": "docs/CHARACTER_LEARNINGS.md:3257"
+        "src": "docs/CHARACTER_LEARNINGS.md:3265"
       },
       "mtime": 1792192962000,
       "verified": {
@@ -1323,7 +1323,7 @@
       "critic": {
         "score": 15,
         "shipped": false,
-        "src": "docs/CHARACTER_LEARNINGS.md:3355"
+        "src": "docs/CHARACTER_LEARNINGS.md:3363"
       },
       "mtime": 1792193761000,
       "verified": {
@@ -1383,7 +1383,7 @@
       "critic": {
         "score": 15,
         "shipped": false,
-        "src": "docs/CHARACTER_LEARNINGS.md:3314"
+        "src": "docs/CHARACTER_LEARNINGS.md:3322"
       },
       "mtime": 1792192677000,
       "verified": {
@@ -1442,7 +1442,7 @@
       "critic": {
         "score": 16,
         "shipped": false,
-        "src": "docs/CHARACTER_LEARNINGS.md:3375"
+        "src": "docs/CHARACTER_LEARNINGS.md:3383"
       },
       "mtime": 1792193035000,
       "verified": {
@@ -1496,7 +1496,7 @@
       "critic": {
         "score": 18,
         "shipped": false,
-        "src": "docs/CHARACTER_LEARNINGS.md:1975"
+        "src": "docs/CHARACTER_LEARNINGS.md:1983"
       },
       "mtime": 1792190804000,
       "verified": {
@@ -1558,7 +1558,7 @@
       "critic": {
         "score": 15,
         "shipped": false,
-        "src": "docs/CHARACTER_LEARNINGS.md:2663"
+        "src": "docs/CHARACTER_LEARNINGS.md:2671"
       },
       "mtime": 1792191357000,
       "verified": {
@@ -1612,7 +1612,7 @@
       "critic": {
         "score": 14,
         "shipped": false,
-        "src": "docs/CHARACTER_LEARNINGS.md:2701"
+        "src": "docs/CHARACTER_LEARNINGS.md:2709"
       },
       "mtime": 1792191391000,
       "verified": {
@@ -1674,7 +1674,7 @@
       "critic": {
         "score": 16,
         "shipped": false,
-        "src": "docs/CHARACTER_LEARNINGS.md:2717"
+        "src": "docs/CHARACTER_LEARNINGS.md:2725"
       },
       "mtime": 1792191643000,
       "verified": {
@@ -1727,7 +1727,7 @@
       "fx": true,
       "verdict": null,
       "critic": null,
-      "mtime": 1792203503000,
+      "mtime": 1792205096000,
       "verified": null
     },
     {
@@ -1767,7 +1767,7 @@
       "fx": true,
       "verdict": null,
       "critic": null,
-      "mtime": 1792203721000,
+      "mtime": 1792204949000,
       "verified": null
     },
     {
@@ -1829,7 +1829,7 @@
       "offered": false,
       "complete": false,
       "wipOffered": true,
-      "reason": "work in progress, ?wip=1 only (not in CHARACTER_STATUS shipped; no critic verdict in its sheet; not allow-listed)",
+      "reason": "work in progress, ?wip=1 only (not in CHARACTER_STATUS shipped; latest critic record 18/24 < bar 19 or not ship (characters/storyteller.md:1); not allow-listed)",
       "blurb": "Hooded, lantern-lit, always watching.",
       "bodyPlan": "biped",
       "height": 1.91,
@@ -1851,9 +1851,15 @@
       "emote": "chime",
       "smears": false,
       "fx": true,
-      "verdict": null,
+      "verdict": {
+        "score": 18,
+        "verdict": null,
+        "round": 1,
+        "ships": false,
+        "src": "characters/storyteller.md:1"
+      },
       "critic": null,
-      "mtime": 1792203735000,
+      "mtime": 1792204457000,
       "verified": null
     },
     {
@@ -1868,7 +1874,7 @@
       "offered": false,
       "complete": false,
       "wipOffered": true,
-      "reason": "work in progress, ?wip=1 only (not in CHARACTER_STATUS shipped; no critic verdict in its sheet; not allow-listed)",
+      "reason": "work in progress, ?wip=1 only (not in CHARACTER_STATUS shipped; latest critic record 17/24 < bar 19 or not ship (characters/theo-rem.md:50); not allow-listed)",
       "blurb": "A hedgehog. Q.E.D.",
       "bodyPlan": "uprightAnimal",
       "height": 1.12,
@@ -1891,9 +1897,15 @@
       "emote": "qed",
       "smears": false,
       "fx": true,
-      "verdict": null,
+      "verdict": {
+        "score": 17,
+        "verdict": null,
+        "round": 1,
+        "ships": false,
+        "src": "characters/theo-rem.md:50"
+      },
       "critic": null,
-      "mtime": 1792203730000,
+      "mtime": 1792204408000,
       "verified": null
     }
   ]

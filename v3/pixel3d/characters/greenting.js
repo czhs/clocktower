@@ -17,7 +17,7 @@ export const V_GAME = 3.95 * HEIGHT;        // 4.42 m/s: v2 150 px/s on a 38 px 
 // on the ref hue (no teal-slate / mauve: R W3) and light enough for the pillar shadow (≥ 15 % L over grass shadow).
 // ink = eye dots + smile (the ref's dark outline colour), a dark green-slate, never black.
 export const PALETTE = {
-  jade: ['#66D8A4', '#2EB27E', '#2A8C68'],
+  jade: ['#66D8A4', '#2EB27E', '#2D9670'],
   ink: ['#33433F', '#2A3633', '#222C2B'],
 };
 
@@ -76,6 +76,7 @@ export const EYE_L = headPt(EYE_PHI[0], EYE_BETA, 0.006).p, EYE_R = headPt(EYE_P
 export const MOUTH_P = headPt(SMILE_PHI, SMILE_BETA, 0.004).p;
 const SMILE = [[-11, 3], [0, 0], [11, 3]];                      // [dphi, dbeta] per bead (ends up = a smile)
 const MOUTH_SINK = 0.045;
+const EYE_A = 0.026;                                            // r9: eye bead half size (0.031 rasterised as a 3×3 plus at SE in talk)
 const MOUTH_N = headDir(SMILE_PHI, SMILE_BETA - 7);
 const MOUTH_OPEN = { 'mouthO.p': MOUTH_N.map((v) => v * (MOUTH_SINK + 0.004)) };
 
@@ -120,8 +121,8 @@ export function parts() {
   for (const ph of [28, 52, 72, 86]) { const q = ph * Math.PI / 180; HEAD.push(ring(add3(CAP, U, HEAD_R * Math.sin(q)), HEAD_R * Math.cos(q), V, ph > 80 ? 8 : 16)); }
   add('head', K.hull(local(HEAD.flat(), HEAD_J)), [0, 0, 0], 'jade', { name: 'head' });
   // face: two dot eyes (2×2 texels) + a small smile (7 beads in a U wrapping round the snout end: the ends show at E/W)
-  add('eyeL', bead([0, 0, 0], headDir(EYE_PHI[0], EYE_BETA), 0.031, 0.03), [0, 0, 0], 'ink', { name: 'eyeL' });
-  add('eyeR', bead([0, 0, 0], headDir(EYE_PHI[1], EYE_BETA), 0.031, 0.03), [0, 0, 0], 'ink', { name: 'eyeR' });
+  add('eyeL', bead([0, 0, 0], headDir(EYE_PHI[0], EYE_BETA), EYE_A, EYE_A), [0, 0, 0], 'ink', { name: 'eyeL' });
+  add('eyeR', bead([0, 0, 0], headDir(EYE_PHI[1], EYE_BETA), EYE_A, EYE_A), [0, 0, 0], 'ink', { name: 'eyeR' });
   // r9: a SMALL smile = 3 beads in a shallow curve (≈ 4 texels wide on the 12-texel head)
   for (const [i, [dp, db]] of SMILE.entries()) {
     const { p, n } = headPt(SMILE_PHI + dp, SMILE_BETA + db, 0.004);
@@ -227,7 +228,7 @@ export function make() {
     sockets: { crown: { bone: 'head', at: add3(sub(CAP, HEAD_J), U, HEAD_R + 0.12) } },
     personality: { body: { f: 2, zeta: 1, r: 0 }, head: { f: 2, zeta: 1, r: 0 } },
     locomotion: { plan: 'biped', style: 'bird', plant: 'hold', walkSpeed: V_GAME, runSpeed: 2 * V_GAME, cycleTime: [0.3, 0.267],
-      poses: [4, 4], duty: [0.25, 0.2], roll: [10, 10], headBob: [4, 4], lean: [4, 6], lift: [0.06, 0.08], arms: [0, 0], elbows: [0, 0] },
+      poses: [4, 4], duty: [0.25, 0.2], roll: [5, 5], headBob: [4, 4], lean: [3, 4], lift: [0.06, 0.08], arms: [0, 0], elbows: [0, 0] },
     character: { quant: { yaw: 8, chain: 4 } },
     clips: CLIPS,
     ghost: { hover: 0.14, keepHue: 0.45 },   // r9: the green IS the identity — keep some of it in the ghost ramps

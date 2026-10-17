@@ -327,7 +327,16 @@ with a tiny Python server that sends EXACTLY that CSP header (checked with curl 
 2 characters, 3 interiors, night, then a `?wip=1` load of a WIP character) and `tools/demo-play.mjs` (§9). Every smoke page
 logs `securitypolicyviolation` events from before any page script and fails on any, on a console "Refused to ..." line, a
 missing / different CSP header on a document, or a request outside the prefix. Output: `shots/bundle-final/{smoke,play}/`.
-RESULTPLACEHOLDER
+2026-10-16 (CSP bundle): **162 files, 5,494,988 bytes (5.24 MiB)** (src/town 1.63 MB, vendor/three 1.37 MB, characters
+0.90 MB, src/ambient 0.48 MB, src/demo 0.39 MB, src/chars 0.38 MB, src/world 0.23 MB, rest 0.12 MB); the CSP pass rewrote
+131 of 156 .js files. 32 roster characters shipped as files + mannequin.js; the public page offers the 27 finished ones
+(wanderer, keeper, hound, duelist, owl, skeleton-chef, mushroom, chonk, cilantro, clarabelle, rabbit, fox, honk, moth,
+goat, mincut, crow, mole, opal, polly, preservation, progress, requin, frog, snail, toad, green-hood) and no WIP;
+`?wip=1` adds the 5 WIP characters (greenting loaded and walked in the tour).
+Under the exact CSP: smoke 5/5 (high/low x noon/night at 60 fps + the tour), **0 CSP violations**, header exact on every
+document; playtest all green except the known house-7 grid artefact (§8, not a gameplay or CSP issue). Negative control:
+the same bundle with one inline `<script>` added fails the smoke (script-src-elem + the expected style / data: blocks
+under a stricter policy), so the detector works. Stills + GIF: `shots/bundle-final/` (`smoke/tour-*.png`, `play/`).
 
 ## 7. Lead backlog / known issues (2026-10-16)
 - **Roof-off lifts** are not live in the demo (only the window cut + circle + player box + door-zone house). buildTown
