@@ -43,6 +43,8 @@
 //                      charcheck's per-part masks (signature parts, accents) from the same layout (tools round 05)
 //                      '@<bone>' marks every part on that bone and below (one side of a mirrored part: @footL); solo=1 keeps only
 //                      the marked parts, hide=1 drops them (the body without them: charcheck sig_outside) — module fix wave 3
+//   cover=<part|slot>,… with solo=1: these parts are KEPT in their own colours as occluders (module fix wave 5, T32:
+//                      the face slot + its hair / hood cover → the face px a hair cap or hood rim hides BY DESIGN)
 //   pan=<dx>,<dy>      camera pan: target moves k·(dx,dy) whole texels (right, up) at 60 Hz step k = floor(t·60)
 //                      (engine time; works with a frozen t=…). panPeriod=<n> repeats. charcheck 'pan' row.
 //
@@ -463,7 +465,23 @@ export function specMeta(spec) {
     // hand bone) and the eye slot for face_shimmer (spec.eyeSlot; default the palette slot named eye/eyes/pupil/lens)
     props: spec.props ?? propParts(spec),
     eyeSlot: spec.eyeSlot ?? Object.keys(spec.palette || {}).find((n) => /^(eyes?|pupils?|lens)$/i.test(n)) ?? null,
+    // (module fix, wave 5: T32) parts that cover the face area by design (face_visible exempts the face px they hide)
+    faceCover: spec.faceCover ?? faceCoverParts(spec),
   };
+}
+// default face cover: named parts on the head bone (or below it) whose part name or palette slot reads as hair / hood
+// (hair cap, fringe, bun, hood, hood rim, cowl, wig), never the face slot itself. A hat BRIM is not exempt (T4's case).
+function faceCoverParts(spec) {
+  const skel = Array.isArray(spec.skeleton) ? spec.skeleton : [];
+  const par = new Map(skel.map((b) => [b.name, b.parent]));
+  const head = skel.find((b) => /^head$/.test(b.name))?.name ?? skel.find((b) => /^neck$/.test(b.name))?.name;
+  if (!head) return [];
+  const under = (b) => { for (let x = b, n = 0; x && n < 64; x = par.get(x), n++) if (x === head) return true; return false; };
+  const pal = spec.palette || {};
+  const face = spec.faceSlot && spec.faceSlot in pal ? spec.faceSlot : Object.keys(pal).find((n) => /skin|face/i.test(n));
+  const RX = /hair|hood|fringe|bangs?$|wig|cowl|^bun/i;
+  return [...new Set((spec.parts || []).filter((p) => p.name && under(p.bone) && p.color !== face &&
+    (RX.test(p.name) || (typeof p.color === 'string' && RX.test(p.color)))).map((p) => String(p.name).replace(/[LR]\d*$/, '')))];
 }
 function propParts(spec) {
   const skel = Array.isArray(spec.skeleton) ? spec.skeleton : [];
@@ -475,7 +493,7 @@ function propParts(spec) {
 /** ?mark=<part|slot>,… → a spec copy whose matching parts (by part name — a mirrored part matches with or without its
  *  L/R suffix — or by palette slot) are pure magenta (all three tones #FF00FF): charcheck finds each part's VISIBLE
  *  pixels per facing from the same layout render (hue mask). Line ids change for marked parts; masks only. */
-export function markSpec(spec, names, { solo = false, hide = false } = {}) {   // (module fix T4) solo: only the marked parts are kept (unoccluded px)
+export function markSpec(spec, names, { solo = false, hide = false, cover = [] } = {}) {   // (module fix T4) solo: only the marked parts are kept (unoccluded px)
   const want = new Set(names.filter(Boolean));
   const strip = (n) => String(n || '').replace(/[LR]\d*$/, '');
   // (module fix, wave 3: T16/T25) '@<bone>' marks every part on that bone or below it (a mirrored part counts for the
@@ -499,7 +517,10 @@ export function markSpec(spec, names, { solo = false, hide = false } = {}) {   /
     }
     parts.push(p);
   }
-  const keep = (p) => (hide ? !hit(p) : !solo || hit(p));
+  // (module fix, wave 5: T32) cover: kept unmarked in solo renders (occluders that belong there by design)
+  const cov = new Set(cover.filter(Boolean));
+  const covHit = (p) => cov.size > 0 && !hit(p) && (cov.has(p.name) || cov.has(strip(p.name)) || (typeof p.color === 'string' && cov.has(p.color)));
+  const keep = (p) => (hide ? !hit(p) : !solo || hit(p) || covHit(p));
   return {
     ...spec,
     palette: { ...(spec.palette || {}), __mark: ['#FF00FF', '#FF00FF', '#FF00FF'] },
@@ -612,7 +633,7 @@ export default async function build(engine, params) {
   const C = parseCommon(params);
   const { P } = C;
   const loaded = await loadCharacter(C.name, C.runtime, { testClips: P('testclips', '0') === '1', fx: P('fx', '1') !== '0' });
-  if (params.has('mark')) loaded.spec = markSpec(loaded.spec, P('mark').split(','), { solo: P('solo', '0') === '1', hide: P('hide', '0') === '1' });
+  if (params.has('mark')) loaded.spec = markSpec(loaded.spec, P('mark').split(','), { solo: P('solo', '0') === '1', hide: P('hide', '0') === '1', cover: P('cover', '').split(',') });
   const { spec } = loaded;
   const height = spec.height || 1.4;
   const bg = P('bg', 'meadow');

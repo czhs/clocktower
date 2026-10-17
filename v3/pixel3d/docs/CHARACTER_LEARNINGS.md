@@ -11,11 +11,90 @@ Tags in brackets name who found it and on which character, e.g. `(critic-keeper-
 `shots/char-<name>/` (authors), `shots/critic-<name>[-r<n>]/` (critics), `shots/{look,fx,motion,tools,lead-integrator}/`
 (module owners).
 
-Contents: Score history · Silhouette and signature shapes · Proportions and geometry · Palette, tones and ground
+Contents: **Run 05 close (final state, self-critique evaluation, ranked blockers per owner)** · Score history · Silhouette and signature shapes · Proportions and geometry · Palette, tones and ground
 separation · Look / shading rules · Props and held objects · Poses and actions · Timing and holds · Locomotion and feet ·
 Secondary motion (chains, personality) · Smears and FX · Night, lights and emissives · Quadrupeds · Measurement and tools
-· Process · Body plans · **Module backlog** (priority list at its top) · Integration · Archives (wave-1 to wave-4
+· Process · Body plans · **Module backlog** (priority list at its top) · Integration · Archives (wave-1 to wave-5
 per-agent notes, consolidated; do not append there).
+
+## Run 05 close (character pipeline lead, 2026-10-17)
+
+**State.** 31 cast members built, critiqued and refined (5 waves; `nicksong` skipped). Critic scores 14–18, mean 15.7
+(by wave 15.9 / 15.4 / 15.6 / 16.8 / 15.3); **none ships** (bar 19). Gallery, line-up renders and per-member table:
+`docs/CAST_GALLERY.md` (`shots/cast-gallery/`, new scene `scenes/cast-lineup.js`).
+
+### Did the Stage 7 self-critique close the self vs critic gap? (vs run 04: +3…+7)
+
+Two different numbers circulate; only the first compares the same build.
+
+| comparison | members | mean gap | mean abs gap | range | within ±1 |
+|---|---|---|---|---|---|
+| run 04: author self vs critic r1 (wanderer, hound, keeper) | 3 | +5 | 5 | +5…+5 (3–7 incl. r2) | 0/3 |
+| **run 05: self-score of the build the critic judged** (score-history tables below; wave 1 = last round) | 31 | **+0.55** | **1.0** | −1…+4 | 26/31 |
+|   wave 1 / 2 / 3 / 4 / 5 | 8/7/8/4/4 | +1.0 / +0.4 / −0.1 / +1.0 / +0.75 | | | |
+| run 05: latest self-score after the fix / touch-up round vs the r1 critic (orchestrator list, waves 1–3) | 23 | +3.5 | 3.5 | +1…+5 | 1/23 |
+
+Findings:
+1. **The Stage 7 evidence table worked for first-round honesty**: the gap fell from +5 to +0.55 (|gap| 1.0), and wave 3
+   was slightly *under*-scored. The three outliers — maxflow +4, preservation +3, moth +3 — are the run-04 failure
+   mode exactly: a facing the author never rendered (E/W profile, the vote at E/W, the walk lantern).
+2. **It did not hold after the fix round.** Fix-round prompts asked to "fix every issue" but not to rerun Stage 7, and no
+   critic re-scored 29 of 31 fixed builds. Post-fix self-scores sit +1…+5 above the last critic (mean +3.5 — back in
+   run-04 territory). Where a critic did re-score (wave 1: frog 17 → 18 against a self-claim of 20; mushroom 15 → 15),
+   the fix round bought 0–1 point. **Treat every post-fix self-score as unverified**; do not read them as "nearly
+   shipping".
+3. **Honesty did not raise quality.** Round-1 critic scores stayed 14–18 in every wave. The self-critique made authors
+   score lower, not draw better: from wave 2 on the misses moved from "facings nobody rendered" to "keys/facings the
+   critic's checklist forced and the author skipped", and the R lines written after each wave were broken again in the
+   next one (wave 5 broke every applicable R W4 line).
+4. **Process change for run 06:** (a) the fix round reruns Stage 7 and reports the table again; (b) a critic r2 is
+   mandatory before a member can ship and the orchestrator records `self_r1`, `critic_r1`, `self_fix`, `critic_r2`
+   separately; (c) the self-critique table must list, per R line, the exact still that proves it (8-facing grid of the
+   named key), not a sentence.
+
+### What still blocks shipping — ranked per owner
+
+**Character authors / pipeline (most points; none of these is module work):**
+1. **Game clips missing on 7 wave-3 members** — clarabelle, requin, preservation, opal, cilantro, mincut (point, ghost,
+   ghost-spent) and progress (ghost, ghost-spent): no touch-up round was run for wave 3. A fresh `--preset cast` pack
+   FAILs `cast_clips`; their PASS lines predate the preset fix. Use `spec.ghost` (wave-3 banner), not the old recipe.
+2. **Re-critique every fixed build** (29/31 unverified, finding 2 above) — the real score of the fix rounds is unknown.
+3. **Die (5 waves running)**, **profile face at E/W (9+ members)**, **point aimed sideways / with the far arm**, **vote
+   prop not in a visible raised hand**, **sheet ≠ still** — playbook R W1–W5. All five were still found in wave 5.
+4. **Golden white/cream drift on pre-opt-in members** (seen in `shots/cast-gallery/lineup-golden-dir1-a.png`): chonk
+   → apricot, rabbit → peach, skeleton-chef toque → tan, moth cream → tan, mushroom spots → tan. Add `whiteKeep`
+   (+ `whiteKeepLift`) / `creamKeep` / `hueKeep` — the opt-ins exist, only wave 3+ adopted them.
+5. **25 % look-alike clusters** (`shots/cast-gallery/lineup-sil25.png`, S row): narrow plain columns (skeleton-chef,
+   rabbit, green-hood, npc-vendor, npc-elder, npc-porter) and boxy two-bump blobs (frog, owl, toad, progress,
+   preservation, opal, theo-rem). Only WIDTH changes the S/N outline (R W3 #4): a prop, sleeve, hat or ear that leaves
+   the column. The Storyteller is unmistakable (tallest, staff spike at 4/4 facings, only deep purple) — keep it so.
+6. **Adopt the newer opt-ins on old members** where they fit: `spec.ghost` instead of the copied ghostK recipe (16 of
+   the 23 members with ghost clips still use it), `locomotion.swingFloor: 'gait'` (15 walks run 0.267–0.289 s instead of the
+   authored 0.3 s; prerequisite for flipping the default, motion item 2).
+
+**rig (`src/chars/rig.js`):** 1. per-clip prop attach to a hand socket (vote prop failures W1 #2, W3 #2, W5 #1 — the most
+repeated non-face failure; today hand-maths `<prop>.p`); 2. twist about the parent-rotated axis (storyteller clock
+hands); 3. bone-name validation for zero-length axes (toad NaN).
+
+**motion (`src/chars/{character,locomotion}.js`):** 1. M28 `locomotion.limp` (greenting, maxflow, elder: no asymmetric
+hobble possible); 2. M23 default flip to `swingFloor 'gait'` after the 15 walks are re-checked; 3. M25 real plumb
+constraint for staffs (goat, storyteller); 4. M27 per-drawing leg keys under LegGait 'hold'; 5. M24 roll lurch at SE;
+M29/M19 post-turn settle redraws.
+
+**tools (`tools/*`, `scenes/char-stage.js`):** 1. **T22 `charpack --lineup`** — now has a base: `scenes/cast-lineup.js`
++ `shots/cast-gallery/lineup.py` (one scene, all members, key/plain, any facing; skip.txt honoured); fold it into
+charpack; 2. T39 `key_delta` at 3 facings (vendor); 3. T33 turnaround grid row spacing for ≥ 1.6 m figures + T38
+`prop_area` above the crown; 4. T35 Storyteller exemption in the cast preset; 5. T34 bake side-touch growth; 6. T30
+`shot.sh --x 3` crops; 7. T40 `remote.sh` syncs helpers one level deep only (and only `.js`/`.py`: a `.mjs` helper is
+not synced — hit by the lead on 2026-10-17).
+
+**look (`src/chars/look.js`):** per-clip self-shadow hull (porter vote), `sigLift` floor (polly), x-scaled bead-eye column
+(green-hood). **fx (`src/chars/fx.js`):** `land@` / `poof@` socket positions (recurring 3: storyteller, elder, maxflow),
+non-weapon socket default length 0, per-event wisp colour.
+
+**Process (everyone):** the zsh glob/word-split trap and the Mac `python3` slip recurred to the very end (the lead hit
+both on 2026-10-17: two no-op `python3 -c` on the Mac, and an unquoted `rsync host:dir/*.png` that zsh expanded locally).
+Quote remote globs; run every python through `tools/remote.sh`.
 
 ## Score history (critic scores; ship bar 19/24)
 
@@ -145,6 +224,36 @@ greenting "waddle" = lurch, theo-rem Q.E.D. = vote (4/4 had at least one sheet c
 Process: 2 critics ran a no-op `python3` on the Mac again (recurring W3); 1 hit the zsh word-split trap again.
 Shared code: tools/bake cut the walk from the start-up cycle (maxflow, 3 drawings) — FIXED by the lead (Module backlog,
 "lead, between waves 4 and 5").
+
+Cast wave 5 (4 NPCs, 2026-10-16; critic r1 per member, none shipped; authors then ran a fix round — notes in the
+wave-5 archive):
+
+| cast member | author self | critic | gap | what the critic found that the author missed |
+|---|---|---|---|---|
+| npc-sweeper | 17 | 16 | +1 | vote broom floats 7 texels off the hand, die broom levitates + dot "shut" eyes, no face at E/W under the bob, point = arms spread, golden grey hair → tan |
+| npc-vendor | 16 | 15 | +1 | vote arm behind the head at E, die kneels at E/NE, two callout keys = one drawing at S/E/W, apron slab at SE, 1-texel bun |
+| npc-elder | 15 | 15 | 0 | "hobble" = symmetric bounce (limp 0.1), point sideways, cane through the skull in the vote, nod = ghost pose, die sits at SW + scream mouth |
+| npc-porter | 16 | 15 | +1 | sack too high vs v1 (bun at SW, sack-hat in the vote), face proud of the hood at E/W (snout), dark leg lump at contact, hood drifted purple |
+
+**(recurring, 4/4 wave 5 — lead merge 2026-10-16)** Wave-5 scores 15–16 (bar 19), gaps 0…+1. Nothing new broke —
+**the wave-4 R lines were not applied**, because the key each rule names was never rendered at 8 facings. Promoted to
+playbook **R W5** lines (and `docs/CAST_PORTING.md` §13 "Wave 5"):
+(1) **vote prop not in a visible raised hand** — 4/4 (sweeper `broom.p` slide → 7 texels of air; vendor arm behind the
+head at E; elder cane out of the skull at SE/W; porter sack on the hood at E/W/NE). Recurring with W1 #2 (vote doesn't
+rise) and W3 #2 (flat prop edge-on);
+(2) **die** — 4/4 (sweeper broom in mid-air at SE + seated at S; vendor kneeling at E/NE; elder sitting at SW; porter
+specks) — W2, W3, W4, W5: the most repeated failure after the face;
+(3) **point sideways** — 2/4 (sweeper, elder) one wave after R W4 point was written; on wide robes one arm cannot leave
+the outline at S/SE, a held prop can (elder r2);
+(4) **profile face / face details** — 3/4 (sweeper bob covers the head at E/W, porter face proud of the hood, shut eyes
+= dots, dead mouth = "O"); profile face is now 9 members over waves 3–5;
+(5) **keys that render the same at 8 facings** — 2/4 (elder nod = ghost, vendor callout keys) — key_delta only sees SE;
+(6) **mid-value identity at golden + NPC look-alikes** — grey → tan (sweeper), hood → mauve (porter), all four NPCs one
+lozenge at 25 % S/N;
+(7) **sheet ≠ still** — 4/4 again (W4 #6).
+Process: the Mac `python3 -c 1` slip recurred (elder critic, vendor r2, and once by the lead in this merge — a no-op).
+Shared code: 3/4 bakes without `--cell` wrapped or cut the figure — FIXED by the lead (Module backlog, "lead, between
+waves 5 and 6").
 
 ## Silhouette and signature shapes
 
@@ -282,6 +391,12 @@ Shared code: tools/bake cut the walk from the start-up cycle (maxflow, 3 drawing
   edge-on at 2–3 other facings** (clock at E/SW/W = gold sliver; `sig_outside.clock` SW 0 px). Give it a rim or ring
   proud of both faces (≥ 3 px edge-on), and keep a recessed face prism THICKER than a solid rim prism (prisms are solid:
   the face vanished) and ≥ 0.01 m proud (0.004 m gave a 1 px whole-texel `pan` FAIL).
+- **(recurring, 4/4 wave 5 — lead merge; W3 #4 S/N blob)** The four NPCs and green-hood were one plain lozenge at 25 % S/N
+  (critic line-ups `shots/critic-npc-elder/ce-lineA-0/4.png`, `shots/critic-npc-vendor/vc-lineup-{S,N}.png`,
+  `shots/critic-npc-sweeper/crit-lineup25.png`): elder cane 1 px at 25 % and 0 px at NE, vendor bun a 1-texel bump,
+  sweeper fan 3 px outside at NE, porter sack a tuft at SW. Rule: "deliberately boring" NPCs still need the ONE prop/hair
+  shape ≥ 2 texels outside the blob at 6/8 facings at 25 % — thicken (cane r 0.032 → 0.04), splay (rest tilt 7 → 12°),
+  enlarge (bun r 0.088 → 0.11) or lower to where v1 draws it (sack) — and line up the NPCs against EACH OTHER.
 
 ## Proportions and geometry
 
@@ -364,6 +479,22 @@ Shared code: tools/bake cut the walk from the start-up cycle (maxflow, 3 drawing
   a jagged outline at 8/8 with no part lines (isolated 39 → still the cream tips facing the camera at N). Rules: no
   half-cell ring stagger (chord mismatch = cracks) — skew the APEX of odd rows instead (kills the waffle grid at N);
   make the pole cap plain (12 converging tips = a cream disc). Recolour regions by splitting the same surface.
+
+- **Human hair over a face (npc-vendor, 2026-10-16):** a v1 townsperson head (hair cap + fringe + bun, face window) is
+  cleanest as a 24-sided skin ellipsoid inside a slightly larger lat/lon CELL ellipsoid of hair whose front/lower cells
+  are dropped (keep(lat, az): crown lat > 30° in the centre / 18° at |az| 40–58°, temples lat > 12° to az 96°, back to
+  lat −50°): no proud fringe part, the hairline is the one inner line. The 30° camera eats the forehead: a fringe at
+  lat 16–20° left 3 rows of face at S (face_visible 28 %); lat 30° in the centre doubled it. Eyes on that lathe: az 34°
+  (x 0.1) put the far eye OUTSIDE the contour at SE; az 28° hid it entirely; **az ≈ 22° (x 0.072 of r 0.19)** gives the
+  near eye + a 1-px far sliver inside the face at SE and the eye on the front edge at E/W (`shots/char-npc-vendor/r9/m2-g.png`,
+  `m4-g.png`). An 8-ring/16-side face lathe sags ≈ 0.004–0.007 m between vertices: flush eye boxes vanish or ring —
+  24×12 lets a box sit flush (front −0.002 m).
+- **(recurring, 9 members W3–W5: + sweeper, porter in wave 5) Profile face at E/W** — new wave-5 forms: a bob hair hull
+  covering the whole head at E/W (sweeper: grey dome + chin sliver; fix r8: side rings cut back with `clampZ`
+  −0.12/−0.1/−0.04, eye boxes ON the front/side bevel at x ≈ 0.65 × half-width, 0.045 deep — a thin cheek plate showed 4
+  eyes at S, rejected) and a face box proud of a hood rim (porter: nose 1–2 texels past the outline = snout; fix: face
+  front ≤ rim front 0.222 vs 0.23, thin set-back side bars). Face details (recurring 2: sweeper, elder): shut eyes need
+  widen + flatten (`eye.s [0.6, −0.7]`, a 3×1 dash), a slack dead mouth (MOUTH 0.3) is a scream "O" — close it (0).
 
 ## Palette, tones and ground separation
 
@@ -477,6 +608,8 @@ Shared code: tools/bake cut the walk from the start-up cycle (maxflow, 3 drawing
   golden; a magenta-pushed #F4E2EA went grey-white (identity lost). Rule: cream identity = cool/desaturated hi + a slot
   lift, judged on `scene-golden-crop.png` sun AND shade copies (the shade copy still drifts mauve: look backlog).
 
+- **Tan/burlap signature on golden grass (char-npc-porter):** the v1 sack #A19276 rendered #CF9D59 on golden grass #B6AB4C (sig_ground golden-sun dH 24, dL −2 %: an orange lump on yellow). It is too dark for `creamKeep` (gate: authored mid linear luma > 0.45). Lifting the slot to `#E6DCC6 / #C2B49A / #8E8278` puts the mid inside the gate; `creamKeep [1, 0.85]` then keeps it cream (golden dL +20 %, cream vs yellow by eye), noon dH 30 PASS. Rule: a light-tan prop that must read at golden needs mid luma > 0.45 + creamKeep, not a hue shift. Also: putting a dark hood in `spec.signature` gives it sigLift 0.3 and lifts it off the v1 value — keep dark identity masses out of the signature list.
+
 ## Look / shading rules
 
 - (look) The outline stub `outline: 'char'` fell back to FLAG_FULL (unknown keys default to FULL) → dark silhouette line
@@ -558,9 +691,24 @@ Shared code: tools/bake cut the walk from the start-up cycle (maxflow, 3 drawing
 - (lead, wave-4 merge; critic-greenting) **Ghost with `keepHue` 0 turns a colour-identity character lavender-white**
   (greenting rows 3–4): set `ghost.keepHue` 0.25–0.35 when the colour IS the identity (green, orange, purple), not only
   for dark characters.
+- **(recurring 2, wave 5: sweeper, porter; + vendor apron) Mid greys and mid tans drift at golden and no keep catches
+  them.** Sweeper hair #66667C → tan #856D59 / #8B6C51 (a cooler hair only moved golden-sun hue 32 → 33°), porter burlap
+  #A19276 → #CF9D59 (had to be lightened before `creamKeep`'s authored-mid luma > 0.45 gate applied). whiteKeep gates
+  luma > 0.75, creamKeep > 0.45 + warm — a mid neutral has no option (look backlog hueKeep). Workarounds that worked:
+  a lighter cream + `creamKeep [1, 1]` (vendor apron hi #DCD6C6: golden-sun +14 → +25 %); otherwise report the drift.
+- **(recurring 2: green-hood W2 shade, porter W5) Neutral/dark hoods drift purple = toward the Storyteller.** Porter hood
+  #524858 vs v1 charcoal #3A3438 (night lift added a hue step). Lift charcoal along its OWN hue (#4C4648 / #3E393C /
+  #332E32); the Storyteller is the only deep purple (playbook).
 
 ## Props and held objects
 
+- (char-npc-elder) **A held cane flipped tip-UP for a vote needs the cancel sum + 180 + a lean fix, and a sideways
+  `out` kept equal to the arm's.** Cane on `handL` with the plumb-cancel convention (`cane` = upperArm fwd + forearm fwd,
+  out = arm out): tip-up = that sum + 180; the rest tilt (−16 fwd) flipped leaned it back 30° at E, so +30 more (382 for an
+  arm at 172): 8-facing sweep 300/320/340/370/395 in `shots/char-npc-elder/r4/v8-vote*`. Raising the arm to 172 (not 150)
+  moved the cane off the face at W; an extra cane `out` (+20 over the arm) kept the tip above the crown at NW/W (2–3 texels)
+  instead of tilting toward the camera. A short cane given a FORWARD rest tilt (tip ahead, −16°) is what makes it visible at
+  E (`sig_outside.caneShaft` E 0 → 15 px, r1 → r2); NE stays 0 for a left-hand cane.
 - (char-preservation) **Glasses on a frog = a RING, not a disc, on the head bone.** A dark disc behind a white disc (frog
   r3's rimmed eye) turns into a black lens when the white is squashed for a blink; a 12-box ring (`K.merge` of boxes round
   the circle, hole in the middle) on the HEAD bone + white/pupil on `eyeL/R` keeps the glasses rigid while the eye blinks /
@@ -711,8 +859,48 @@ Shared code: tools/bake cut the walk from the start-up cycle (maxflow, 3 drawing
   went back to** (push f44 returned the crate bone to the hips: poof on the belly, crate vanished 1 m ahead). Fire the poof
   2 frames BEFORE the hide key (f42 for f44: one frame early made strobe 3–4) or from a socket at the prop's last spot.
 
+- **Big back load as a keyed bone (char-npc-porter):** a sack on a chest-child bone (pivot at the shoulder knot) keyed in every clip beats a spring: walk k0/k2 fwd 16° + p y −0.03, k1/k3 −10° + 0.03 rides the bob visibly at 4 H/s; the vote hoists the SAME prop overhead with `sack.p` (chest space) [−0.06, 0.53, 0.26] + right arm out 168 `.l` 0.3 → clears the crown at 8/8 without a stretched arm; in a die whose hips roll 80°, chest-space offsets are rotated — probe 3 `sack.p` values on one 8-facing still (only +x landed it on the ground). Small tied-neck + rope-band parts on a cream lathe drew 6–8 isolated px; one chunky neck frustum + `slots.sack.line tone` → 0–4.
+
+- **A long hand-held prop's `fwd`/`out` adds to a rest geometry that already leans** (char-npc-sweeper): the broom was
+  modelled leaning 24° forward in its own bone frame, so `broom [-48]` + arm 66° fwd made it horizontal at chest height (a
+  spear at 1×) instead of "pushed along the ground". Probe the prop's axes FIRST with four single-channel stills (`fwd ±30`,
+  `out +30`, arm `fwd 30`; `shots/char-npc-sweeper/p1/stack1.png`): fwd + = fan forward, out + = fan out AND up (it pivots
+  at the grip). Sweep strokes = `out ±28` with the arm near rest; a raised prop that must stay readable at W/SW needs the
+  `out` cancelled (`broom [-30, 20, -18]`), else it points at the W camera and vanishes behind the head.
+- **Vote with a broom-length prop: slide the grip with `<prop>.p` along the raised hand** (char-npc-sweeper): raising the
+  arm 165° flips the broom bristles-up by itself; `'broom.p': [0, -0.42, 0]` moves the grip to the stick end so the fan sits
+  10–25 texels over the crown at 8/8 (`self/ev-misc.png` row 3) with no `.s` stretch.
+
+- **Waist bands / apron strings (npc-vendor):** a band only ≈ 1 texel proud of the coat (0.33 vs 0.30 m wide) is cut into
+  a dotted cream line by the inner lines above and below it (isolated apron px 8 at SE, 5 at N). Drop it; tie the apron
+  with ONE chunky bow hull at the back (≥ 0.07 m tall, 0.035 m proud) and overlap the skirt top 0.045 m over the bib bottom
+  (isolated 8 → 3, `shots/char-npc-vendor/r4` vs `r10/g.png`).
+- **(recurring, 4/4 wave 5; W1 #2, W3 #2) The vote prop must sit in a VISIBLE raised hand at S/SE/E/W.** Wave 5: sweeper
+  broom 7 texels off the hand at S (`broom.p` −0.42 slid it off the grip; the broom bone sat 0.07 m beside the hand with the
+  shaft 0.2 m in front of the bone origin — every rotation swung it away; fix r8: bone at the hand centre, shaft through
+  the origin, no `.p`, arm `.l` 0.9/0.8 → fan over the crown 8/8); vendor arm behind the head at E (an `out` raise points
+  the arm at the camera at E and LOWERS the hand on screen; fix r2: `[164, 0, 22]` + `upperArmR.l` 1.7 / `forearmR.l` 1.45
+  + an open hand); elder cane out of the skull at SE/W (raise up-and-OUT on the camera side, out ≥ 35°); porter sack on
+  the hood at E/W/NE (fix r2: prop centre from the arm FK, verified with `mark=@handR`; one facing pair always has the arm
+  along the view ray — choose the pair where the prop lands beside the head). A prop hoisted above the bind hull
+  self-shadows the body: `material.hullMargin` ≈ its height over the crown (porter 0.4).
+- **(recurring 2: porter W5; W1 goat/crow "prop placement") Place a back load where the v1 sprite draws it.** Porter's
+  sack shoulder-to-crown (v1: lower back, top at eye level, centred at N) → a cream bun at SW (sig.sack 17 px) and a
+  sack-hat in the vote; the author's own fix idea ("wider/higher") would have moved it further from v1. Sack x −0.085
+  (near the spine) trades S 30 px vs SW 44 px linearly (porter r2).
+
 ## Poses and actions
 
+- (char-npc-elder) **A die arm on a body lying on its back must be keyed with NEGATIVE fwd.** The rest forearm bend
+  (fwd 55) points UP once the hips are pitched −78°: the arm and its cane stood in the air at 8/8 facings (r4 `v8-die*`
+  four variants) until upperArmL [−40, 0, 30], forearmL [−55], cane = their sum [−95, 0, 30] laid both on the grass
+  (`v8-dieC-x4.png`). Probe die limb poses with an override variant (`shots/char-npc-elder/el_ov.js`: `ov=<clip>~<key>~<json>`,
+  `all=1` carries the override into the following held keys).
+- (char-npc-elder) **Stoop in the REST skeleton puts the far-side shoulder under the chin.** Neck/head joints moved forward
+  (+0.06 z, −0.025 y) made the dark far-half sleeve of the cane arm sit right under the face at SE and read as a dark beard,
+  and hid the mouth plate entirely (`mark=@upperArmL` still `shots/char-npc-elder/r6/mk-x8.png`). Raise the head joint
+  (+0.012 y) and keep the forward shift ≤ 0.055; put a talk mouth ≥ 0.07 m below the nose bottom on a muzzle-less face, or
+  a nose ≥ 2 texels proud hides it from the 30° camera.
 - (char-mincut) **Prop-less chibi vote by stretching the whole arm along its length.** `upperArmR.s` [0.25, 0.95,
   0.25] with a STRAIGHT arm (bent rest forearm undone: `forearmR` [−38, 0, 0]) stretches upper arm + forearm + paw 1.95×
   without gaps (unlike a `.p` telescope, which opens a gap unless a hidden longer sleeve exists); counter-scale the paw
@@ -896,6 +1084,33 @@ Shared code: tools/bake cut the walk from the start-up cycle (maxflow, 3 drawing
   A card held by the FAR paw at SE reads edge-on: twist the prop bone 40° toward the SE camera (`card [0, 40, −60]`).
 - (lead, wave-4 merge; critic-maxflow) Vote hold with a carried crate: paws must TOUCH the prop's lower side edges (lower
   it 0.1 m into the paws); a crate balanced on the skull hides the ear bases.
+
+- **Hooded open face at E/W (char-npc-porter):** a face box inside a hood rim frame vanished at E/W (rim sides as deep as the face). Face box front 0.025 m PAST the rim + octagon chamfer 0.5 on the face box + eyes (0.05 × 0.066 × 0.04) placed at x 0.068 so they straddle the bevel → eye + nose bump read at E and W, 2×2 eyes at S. `face_visible` stays ≈ 34 % (the rim covers the box sides by design: informative, not a failure).
+
+- **Pose triple, measured (npc-vendor, `shots/char-npc-vendor/pr/`):** on a down-pointing arm, `out` is applied before
+  `fwd`, so [150, 0, 48] is a nearly HORIZONTAL sideways arm (out 0.74, up 0.58) — not "up-forward". For a vote hand
+  above the head keep out small: [168, 0, 22] + `.l` 0.8/0.7 clears the bun at 7/8 (only 1–2 px at E); for a held-out
+  emote prop [128, 0, 36] reads at 8/8. Probe 3–4 triples on one 8-facing still before keying.
+- **Lying die vs the bake cell (npc-vendor):** a body lying on its side reaches ≈ 0.6 m from the root toward the camera at
+  some facing; centre it over the root with a root `pos` x/z offset in the DEAD key (x −0.12, z −0.12 for a fall onto the
+  left side), else the auto-grown bake cell (below) clips heads. (Lead, wave-5 merge: the clipped heads were the bake
+  runaway, FIXED — the recentring is still good practice, no longer required for the bake.)
+- **(recurring, W2–W5: 4/4 wave 5) Die reads sitting / kneeling / prop levitating at 1–2 facings.** Wave 5: sweeper broom
+  horizontal at chest height at SE + seated facing the camera at S; vendor kneeling/bowing at E/NE (cause: a pitched hip,
+  hips fwd 30 — fix r2: hips [0, 0, 88] flat on the side + spine/chest curl 25/20); elder sitting at SW, ball at NE.
+  Rules that worked: yaw the lying axis with hips `out`, not `twist` (twist only rolls about the long axis after
+  hips fwd −78; sweeper r8, elder r2: out −34 → SW/NE bad, −70 → W/E bad); put the end-on pair on N/NE and say which;
+  check "flat on the ground" with a `pitch=4` still; the crumpled tip key, not the final hold, carried the speckle (vendor
+  +19 → +6 with a clean 45° tip). Rig: no root-yaw channel for clips (rig backlog).
+- **(recurring, W4 4/4 → W5 2/4: sweeper, elder) Point aimed sideways at S/SE.** On a wide-robed chibi the R W4 recipe
+  (one arm fwd 80–95, out ≤ 10, chest twist +15) leaves 0 px outside the outline at S/SE — it points at the viewer
+  (elder r2 `r8/g8-point`, `v8-ptA/B`). Point with the long held prop (cane forward-up ≈ 35° above level → 6/8 outside),
+  free hand low; two hands on a level stick read as a rifle. Measure with a held-key vs idle silhouette diff.
+- **(recurring 2 in wave 5 + W3 #6/W4 emote = vote) Keys that are one drawing at most facings.** Elder nod = the ghost
+  pose (ON_CANE), keys 6 and 20 identical at 8/8 and face hidden at S/SE/SW (fix r2: cane tap + head-only nod, head ≤ 11°,
+  chest ≤ 5°); vendor callout keys differing only by arm elevation 128 → 150° = one drawing at S/E/W while key_delta
+  passed at SE (68 %). Rule: the emote differs from vote AND ghost, and consecutive emote keys change the silhouette at
+  8 facings, not only at the pack facing.
 
 ## Timing and holds
 
@@ -1197,6 +1412,15 @@ Shared code: tools/bake cut the walk from the start-up cycle (maxflow, 3 drawing
   `'hips.p': [0, 0.035, 0]` on alternate drawings gave 1.5 px.
 - (lead, wave-4 merge; theo-rem r2) Paws carried over the belly draw a dashed grey inner line across it on every contact
   drawing: hold the upper arms out ≈ 22° (an additive `WALK_ARMS` key in walk/run) and cut the arm swing ([30, 40] → [18, 26]).
+- **(recurring: W4 greenting "waddle", maxflow; W5 elder "hobble", sweeper "pushed ahead") A gait word is a number.**
+  LegGait's biped bob is mirror-symmetric (k0 = k2), so `locomotion.bob` can only bounce: elder r1 head_bob 3.9 px on a
+  38 px body, limp 0.1 = a bouncy scurry. Key `pos` per drawing in `clips.walk` (replace mode replaces the bob, the reach
+  drop is kept): light contact −0.008, flights 0, heavy contact −0.044 + chest +10 → head_bob 2.4, limp 1.6 (elder r2;
+  ≈ 0.028 m per texel at H 1.05). A prop "pushed ahead" must cross in front of the feet in the SE walk drawings.
+- **(recurring: W2 #4, W5 porter + vendor) Chibi contact at 4 H/s shows a dark leg lump.** Porter k0/k3 merged boots +
+  trousers, 9-frame cycle holding k3 3 frames; vendor contact foot 2 px at SE. Fix (porter r2): `cycleTime 0.267` (8 grid
+  frames, even 2-frame holds), `contactReach 0.45`, boot mid ≥ 10 % L above the trousers. `foot_slide` stays n/a for
+  'hold' plants (tools T18) — judge `game.feet_visible` + the 1× frames.
 
 ## Secondary motion (chains, personality)
 
@@ -1441,6 +1665,10 @@ Shared code: tools/bake cut the walk from the start-up cycle (maxflow, 3 drawing
 
 ## Measurement and tools
 
+- (char-npc-elder) **Silhouette diff of a held key vs the idle (bg=key 8-facing stills) answers "does the point leave the
+  outline at S/SE/SW/W" in one call**: `shots/char-npc-elder/el_sil.py.js base.png key.png out.png` prints new px per facing and
+  draws them magenta. Elder point: fwd 104–126 aimed "along the facing" stayed inside the outline at SE (arm foreshortened
+  onto the face); chest twist −10 + upperArmR [124, 0, 32] + reach .l 0.45 put it outside at S/SE/W/SW.
 - (lead, wave-2 merge) **(recurring: honk, chonk, green-hood; wave-1 goat, fox)** `die.foot_slide` FAILed on the collapse
   itself (honk 8.94 legs folded before the fall, chonk 8.33 roll, green-hood 3.13 topple): stance is decided by height.
   **Partly fixed (lead, wave 2, `tools/charcheck.py`):** die foot_slide > 1.5 is now WARN with a note, the number kept —
@@ -1559,6 +1787,19 @@ Shared code: tools/bake cut the walk from the start-up cycle (maxflow, 3 drawing
 - (lead, wave-4 merge) **Bake check:** after every bake, `bake/<name>.json` `clips.walk.frames` must equal
   `spec.gameSpeed.drawings` (maxflow shipped 3 of 4); the bake now prints a warning when the start-up cycle was short.
 
+- **(recurring, W3 + npc-vendor)** zsh `for a in "vote 4" …; set -- $a` again rendered nothing useful (6 stills failed):
+  wrap loops in `bash -c '…'`. Also: one stray `python3 -c 1` on the Mac (no-op) — the rule holds, use `tools/remote.sh`.
+- **(recurring, wave 5 — what charcheck does NOT tell you; lead merge)** (a) `prop_area.<prop>` undercounts a prop raised
+  above the crown (sweeper: 0 px at E, 7–8 at S/SE while `raw/prop-1/f.png` shows the fan at 8/8; the per-facing grid cell
+  crops above the head — T38, related T33): judge the raw magenta still. (b) `face_visible` counts face-box area inside a
+  hair cap / hood rim as occluded (sweeper 33 %, vendor 48 %, porter 34 % with faces that read; T32 now recurring 5).
+  (c) `key_delta` / `key_speckle` are measured at the pack facing only and `key_speckle (gN)` names a grid frame (key =
+  gN − 8 idle lead-in; T39). (d) `sig_ground` golden-sun is hue-only: a low-chroma cream on saturated yellow grass WARNs
+  at dH 7–8 while it separates by eye (porter, vendor; T27 recurring). (e) `head_frac` uses the biped band 0.24–0.36 for
+  NPCs; v1 NPC hoods are ≈ 0.38 (T41). (f) `foot_slide` n/a for 'hold' plants (T18, recurring 3 more). (g) A silhouette
+  diff of a held key vs idle on bg=key 8-facing stills answers "does it leave the outline" in one call
+  (`shots/char-npc-elder/el_sil.py.js base.png key.png out.png`).
+
 ## Process
 
 - (lead, wave-2 merge) **(recurring: rabbit, green-hood, mole; wave 1 duelist/keeper)** A claim in the sheet/learnings that
@@ -1656,6 +1897,15 @@ Shared code: tools/bake cut the walk from the start-up cycle (maxflow, 3 drawing
   contradicted (staff "plant", "waddle", poof "at the crate", Q.E.D. distinct from vote) and maxflow scored E/W profile
   criteria without a profile check (+4 gap). A claim about a pose = the 8-facing still of that key named in the evidence
   column; a claim about motion = the 1× GIF frames (`clip-<c>-1x.gif` sheet), not the design intent.
+  **(recurring, 4/4 wave 5 too — lead merge)** sweeper "broom flat beside him" (levitating at SE) and "pushed ahead"
+  (side swish), vendor "clears the head at 7/8" (6/8), elder "hobble" (limp 0.1) and "two deep nods" (one drawing),
+  porter "apron flap" (invisible at 1×). Same root cause every time: the held/final key was never rendered at 8 facings,
+  and a WARN row naming that key (prop_area 0 at E, head_bob limp 0.1) was not acted on.
+- **(recurring, wave 5) Tooling traps:** `tools/remote.sh` syncs helper scripts only one level deep (`shots/<dir>/*.py|*.js`;
+  a helper in `shots/<you>/s2/` fails "No such file") and quotes its arguments (chains need `bash -c '…'`); the PreToolUse
+  hook blocks any Bash command whose text contains the skipped member's name (sweeper, elder) — filter with
+  `grep -vf pipeline/skip.txt`. Line-ups are hand-stitched from each member's `turnaround-silhouette.png` with different
+  cell sizes (porter's script mis-cropped; T22 recurring 3: elder, porter critics).
 
 ## Body plans and cast scale (rig r6)
 
@@ -1713,6 +1963,68 @@ Shared code: tools/bake cut the walk from the start-up cycle (maxflow, 3 drawing
   that reads at 7/8 facings (hidden behind the head at W).
 
 ## Module backlog
+
+**Run 05 close (lead, 2026-10-17):** the ranked open list per owner (rig / motion / tools / look / fx) is in §Run 05
+close at the top of this file; the blocks below are the history (newest first). No module item is a ship blocker on its
+own any more — the top blockers are author/pipeline items (missing wave-3 game clips, un-re-critiqued fix rounds).
+
+**Fixed by the lead between waves 5 and 6 (2026-10-16, render-host RTX 4090; evidence `shots/lead-w5/`):**
+- **tools/bake.py auto cell growth runaway (medium, recurring 3 of 4 wave-5 bakes: npc-sweeper, npc-vendor, npc-elder;
+  related T21/T34)** — cause: when a figure touches the cell bottom, the `below` scan follows connected figure pixels
+  down past the shared edge, and with a raised vote prop / ghost hover in the next row directly underneath it walks
+  into THAT figure (up to 80 rows). The grow branch then set the pad to pad + below + 2 with no cap: elder 58 → cell 80
+  with pad 8 → 57 (anchor y 23 of 80), then 108, 146 — the feet anchor near the top, the head wrapped to the cell
+  bottom, every cell "touching". Fix: in the grow branch the pad is `max(0.14·c, min(wanted, 0.3·c))` (the bottom-only
+  pad branch was already capped at 0.45·c). Repro + result (`--bake <npc> --preset cast`, no `--cell`): elder 146 →
+  80 (trimmed 58×64, anchor [29, 49]), sweeper 152 → 112 (72×85, [36, 64]), vendor 122 → 90 (54×70, [27, 56]); idle,
+  vote, die and ghost rows complete at 8 facings (`shots/lead-w5/base-idle.png` = old wrapped sheet vs
+  `fix-{idle,vote,die,ghost}.png`, `npc-sweeper-{idle,vote,die}.png`, `npc-vendor-die.png`). **A/B** (`shots/lead-w5/ab.py`,
+  baseline = `shots/lead-w5/bake_base.py`, the pre-fix copy): wanderer (`--game 1`), cilantro (the T21 lying-neck case)
+  and npc-porter (`--preset cast --game 1`): sheet PNG, json, preview and shadow byte-identical. The `--cell 90/96/100/128`
+  workarounds can go. Not touched: T34 side-touch growth (greenting/maxflow).
+
+**Module fixes after cast wave 5 (module fixer, 2026-10-16, render-host RTX 4090; evidence `shots/mfx6/`)** — every
+high/medium row cast wave 5 hit (no high rows; medium: hueKeep, T32 face_visible, lying-die yaw (low → medium); the bake
+cell runaway was already fixed by the lead, top block). Developed in an isolated copy (render dir `pixel3d-fix`, baseline
+`pixel3d-base6` = the live tree before the change), copied back in one step. Files: `src/chars/{look,rig}.js`,
+`scenes/char-stage.js`, `tools/{charpack,charcheck}.py`, `docs/CHARACTERS.md` ("Wave-5 module fixes"). **Regression
+A/B:** full `--preset cast` raw packs of all 35 finished members incl. wanderer and the four NPCs (`shots/mfx6/aball.py`,
+`shots/mfx6/ab-final.txt`): **0 differing frames in every job of every member** (1 690 jobs). Report rows that changed
+(`shots/mfx6/rep-final.txt`): only `face_visible` (below). No shared render code touched (src/core, src/materials,
+src/post, src/world unchanged), so no world A/B was needed.
+- **look: `material.hueKeep` (medium, recurring 2) — FIXED (opt-in):** `hueKeep: k | { <slot>: k }`, per palette slot
+  (uniform array by mid-tone index, like ghost.keep). Under the warm golden grade (rampHi r−b, the creamKeep/whiteKeep
+  gate) the pixel is re-hued to its authored band tone at the graded luma, every band, any luma; ghosts skip. Sweeper hair
+  `{ hair: 1 }`: golden tan → blue-grey, shade copy unchanged (`ev-huekeep-sweeper.png`); porter with its v1 mid burlap
+  #A19276 and no creamKeep, `{ sack: 1 }`: orange → khaki burlap, `+ hood: 1` brown → charcoal (`ev-huekeep-porter.png`).
+  Noon and night 0 px (measured on the 4x crops), golden 220–591 px changed.
+- **tools T32 face_visible (medium, recurring 5) — FIXED for hair/hood cover:** new `spec.faceCover` (default: named parts
+  on the head bone or below whose part name / slot matches hair|hood|fringe|bang|wig|cowl|bun, never the face slot; a hat
+  brim is NOT exempt — T4's case) + stage `cover=` (solo renders keep those parts unmarked as occluders) + job
+  `face-cover`; the row's denominator is the face px left visible beside the cover (raw ratio kept in the detail;
+  `faceCover: []` = old row). Same packs: sweeper 43 → 80 % PASS, vendor 53 → 87 % PASS, porter 20 → 61 % PASS, elder
+  85 → 88 %, green-hood 44 → 47 % WARN (its face sits deep in the hood shadow — a real read issue), storyteller 26 → 28 %
+  WARN: its SW tile still holds S's staff/hem (T33 grid spacing, not this row) (`ev-T32-npc-{sweeper,porter}.png`: plain /
+  face alone / face + cover). Not done: `spec.faceParts` (theo-rem's cream spikes/belly in the face slot) — theo-rem
+  already PASSes 67 %.
+- **rig: lying-die yaw (low → medium, recurring 4) — FIXED (opt-in):** pose channel `yaw: [deg]` spins the ROOT bone
+  about the character's vertical axis through its joint after its own triple (mirrorPose → −deg, lerps like a triple,
+  also in `poseToQuaternions`). Elder die with `yaw: [±60]` on the lying keys: the same lying body points another way at
+  every facing (`ev-yaw-elder-die.png`, `shots/mfx6/wvelder.js`); full die pack of the variant
+  (`shots/mfx6/v-elder-y-60/`): deterministic 0 px, off_grid/flicker 0, hold_redraws 0, page_errors 0.
+- Not attempted (low): T38 prop_area above the crown, T33, T22 `--lineup`, T39, T40, T41, T42, M28 limp, M29, fx
+  `land@`, per-clip prop attach to a hand socket, per-clip hull.
+
+**Priority after cast wave 5 (lead, 2026-10-16)** — 4 NPCs, scores 15–16. Almost every lost point was an author rule
+(playbook R W5); module work that would have saved points:
+1. **FIXED opt-in (wave-5 module fixer: `material.hueKeep`, `shots/mfx6/ev-huekeep-*.png`)** **look hueKeep for mid-value neutrals** (medium, recurring 2: sweeper grey hair → tan, porter burlap → orange) —
+   identity drift at golden that no opt-in can stop.
+2. **T32 FIXED (`spec.faceCover` / job face-cover, `shots/mfx6/ev-T32-*.png`; T38/T33 not done)** **tools T32 face_visible exempt hair/hood-covered face area** (now recurring 5; 3/4 NPCs WARN with faces that read) +
+   **T38 prop_area above the crown** (+ T33 grid spacing) — both rows misled authors in wave 5.
+3. **rig per-clip prop attach to a hand socket** (recurring 3: broom, sack, cane votes) + **root/lying yaw for die poses** (FIXED opt-in: `pose.yaw`, `shots/mfx6/ev-yaw-elder-die.png`)
+   (recurring 4) — the two hand-maths workarounds behind the two most repeated failures (vote prop, die).
+4. **tools T22 `charpack --lineup`** (recurring 3 more) and **T39 key_delta at 3 facings** (vendor callout).
+5. **motion M28 limp**, fx `land@` socket (recurring 3), M23 default flip (lead decision still open), T41 NPC head band.
 
 **Module fixes after cast wave 4 (module fixer, 2026-10-16, render-host RTX 4090; evidence `shots/mfx5/`)** — every
 high/medium row cast wave 4 hit (there were no high rows; three medium: inner-line colour, creamKeep, M23). Developed in
@@ -1967,6 +2279,8 @@ Motion — new after cast wave 4 (lead merge 2026-10-16):
 | M25 | low (recurring 2 with M4 "plumb constraint not built": goat W1, storyteller W4) | The plumb-cancel convention (prop fwd = −(upperArm + forearm)) still leans a staff ≈ 17° forward inside LegGait walk drawings | a real plumb constraint for prop bones (`props.<p>.plumb: true`) applied after the gait's body pose | storyteller |
 | M26 | low | A keyed `pos` in a LegGait run clip does not move the head relative to the root (run.head_bob 0.2 px); `hips.p` works | document (M1 says `pos` replaces the plan bob) or apply `pos` before the root-relative measure | storyteller |
 | M27 | low (recurring 2 with the rig "clips cannot key leg bones" row: + greenting) | LegGait 'hold' legs cannot be keyed from `clips.walk`, so a contact drawing with the near stub foot stepping out is impossible from the spec; foot_slide stays n/a | per-drawing leg overrides in clips.walk | greenting |
+| M28 | low (recurring 3: greenting "waddle" W4, maxflow, elder "hobble" W5) | LegGait biped `bob` is mirror-symmetric (k0 = k2): a limp/hobble cannot be expressed through `locomotion.bob`; elder r1 head_bob limp 0.1 | `locomotion.limp: [k0, k2]` (per-contact drop, m) or per-side bob; workaround = keyed `pos` per drawing in `clips.walk` (elder r2 limp 1.6) | npc-elder |
+| M29 | low (wave 5: elder) | Idle turn: a run of near-identical 2-frame redraws while the body settles after a turn (clip-turn f23–f38), turn.foot_slide 4.02; `character.quant.lean` 3 changed nothing (T31-like) | settle the recovery steps in ≤ 2 drawings, re-check T31 audit | npc-elder |
 | (note) | **FIXED opt-in (wave-3 module fixer)**: `clip.legs: 'float'` on any loop clip, and ghost clips under `spec.ghost` float by default (plain `'fk'` on loop clips stays ignored: fox/honk ghosts key it) | Legacy-Gait ghost loop clips still need `pos` +0.1 to cancel the idle leg-IK dip (`legs: 'fk'` ignored on loop clips); on LegGait 'bird' the dip is not there (honk) | honour `legs: 'fk'` on loop clips | polly, honk |
 
 Rig (src/chars/rig.js) — open after cast wave 1:
@@ -1991,9 +2305,10 @@ Rig — new after cast wave 4 (lead merge 2026-10-16):
 
 | sev | issue | fix wanted | seen |
 |---|---|---|---|
-| low | Hips `twist` on a body lying on its side spins it about its own long axis, so a die pose cannot choose its lying direction with twist (workaround fwd + out `[60, 0, 60]`) | document in CHARACTERS.md §4 (lying poses), or a world-yaw channel for the root of a lying pose | greenting |
+| **FIXED (wave-5 module fixer: pose `yaw: [deg]`, `shots/mfx6/ev-yaw-elder-die.png`)** **low → medium (recurring 4: greenting W4; sweeper, vendor, elder W5 — every wave-5 die picked its bad facing pair through hips out/fwd/twist)** | Hips `twist` on a body lying on its side spins it about its own long axis, so a die pose cannot choose its lying direction with twist (workaround fwd + out `[60, 0, 60]`) | document in CHARACTERS.md §4 (lying poses), or a world-yaw channel for the root of a lying pose | greenting |
 | low | A twist-keyed bone keeps the snapped world axis: clock hands on a yawed face leave its plane (workaround ×0.001 variant bones scaled ×1000 per key) | twist about the bone's current (parent-rotated) axis, or document | storyteller |
 | low — DOCUMENT | Which arm is on the camera side: at SE (dir 1) and E the character's RIGHT (−x), at W/SW the LEFT (lead w4 `shots/lead-w4/side-*.png`; theo-rem's note said the opposite) | now in the playbook point rule | theo-rem, lead |
+| low (recurring 3, wave 5: sweeper broom, porter sack, elder cane) | A held prop cannot follow the hand per clip: props live on their own bone, so a vote/hoist needs a hand-computed `<prop>.p` from the arm FK (porter r2) or a bone placed AT the hand with the shaft through its origin (sweeper r8); one facing pair always loses the hand | a per-clip prop attach (`clip.attach: { sack: 'handR' }`) that parents the prop to a hand socket for that clip, keeping the rest bone otherwise | npc-porter, npc-sweeper |
 
 - **FIXED (lead, between waves 4 and 5 — see the top block)** **(tools/motion, medium — char-maxflow 2026-10-16) bake cuts the walk from the START-UP cycle.** `tools/bake.py` takes
   the loop from the 2nd walk drawing to its repeat one cycle later; maxflow's first LegGait walk cycle shows k0, k1, k3
@@ -2021,6 +2336,8 @@ Rig — new after cast wave 4 (lead merge 2026-10-16):
 | ~~low~~ **FIXED opt-in (wave 4, row below)** | outline.js tints FLAG_CHAR inner lines toward blue-grey, so a line on a cream/white part reads as grey specks ("beard" round a muzzle); no per-slot line colour (workaround `material.merge` + flush detail boxes) | per-slot inner-line tone (`material.slots.<x>.line`) or tint toward the part's own sh | cilantro |
 | ~~medium~~ **FIXED opt-in (wave-4 module fixer)**: `material.creamKeep: [1, 0.85]` (authored-mid cream gate, every band, golden only; `shots/mfx5/ev-creamkeep-{maxflow,theo-rem}.png`) — was: **medium (new wave 4, recurring 2: maxflow, theo-rem; W3 requin, W2 rabbit/chonk)** | `whiteKeep` / `whiteKeepLift` never catch CREAM (gate chroma < 0.18 / 0.25; #F8E6C2 ≈ 0.40) and never LIGHTEN: maxflow cream chest #957C7E mauve-grey in the golden sun copy (0 px change at 0.8/0.8), theo-rem cream face apricot; the SHADE copy of a lifted cream still drifts mauve | a `creamKeep` (or widen the gate to high-L, low-saturation warm hi ≥ #F0E0C8) that keeps cream warm-light in the golden grade, sun AND shade; A/B on the cast | maxflow, theo-rem |
 | ~~medium~~ **FIXED opt-in (wave-4 module fixer)**: `material.innerLine: 'tone'` / `slots.<x>.line` (darker adjacent tone, hue kept; `shots/mfx5/ev-innerline-{maxflow,greenting}.png`) — was: **medium (priority raised wave 4, recurring 4: cilantro, maxflow, greenting, theo-rem)** | (same as the outline.js row above) inner lines between same-slot parts draw LIGHT grey-lilac on saturated/unclothed bodies (maxflow neck collar + stitched arms, greenting leg roots, theo-rem quill specks); the only workaround (`material.merge`) costs `inner_lines 0` WARN and merges details | inner-line colour = the darker of the two adjacent slot tones (or `slots.<x>.line`); a per-part opt-out for intended depth steps (quills) | cilantro, maxflow, greenting, theo-rem |
+| **FIXED opt-in (wave-5 module fixer: `material.hueKeep`, `shots/mfx6/ev-huekeep-{sweeper,porter}.png`)** **medium (recurring 2, wave 5: sweeper, porter)** | No keep option for MID-value neutrals: the golden grade warms a mid grey (#66667C, luma < 0.45) to tan #856D59 and a mid burlap #A19276 to orange; `whiteKeep` gates luma > 0.75, `creamKeep` authored-mid luma > 0.45 + warm, so neither applies | `material.hueKeep: k` (per slot): keep the authored hue/chroma of the band tone at the graded luma under the warm grade, any luma; golden only, noon/night 0 px | npc-sweeper, npc-porter |
+| low (wave 5: porter) | The self-shadow hull is measured on the bind pose: a prop hoisted above the crown (vote sack) shades the body unless `material.hullMargin` ≈ 0.4 | per-clip (or per-key) hull, or grow the hull from the clip's union pose | npc-porter |
 | low | `sigLift` keeps the signature at L ≥ 0.3 in the pillar shadow, so the shade copy can't reach −25 % by lowering `sh` (polly noon-shade −7 %) | let `sh` below the lift floor through, or document the floor in the sig_ground note | polly |
 
 ### fx (src/chars/smear.js, fx.js)
@@ -2045,7 +2362,7 @@ Rig — new after cast wave 4 (lead merge 2026-10-16):
 | ~~low~~ **FIXED r2 (opt-in)** (module fix r2: `spec.fx.poof` / `spec.fx.land` { n, speed, radius (m) } override the ring; chonk `land: {radius: 0.5}` moved the plop motes outside the ball (31–86 px change)) — was: low | `poof@<node>` spawns 6 slow motes at the node (eggs under a wide body); `land` ring motes still pass under a 1 m body | spawn radius / speed option scaled by body width | chonk |
 | low | Flap feathers render as detached 1-px grey slashes | motes ≥ 2×2 texels in plumage tones, short life | honk |
 | low — DOCUMENTED r2 (bake an FX-free sheet with `tools/charpack.sh --bake <name> --q fx=0`) | The bake includes FX (speech bubble, sparkles, glyphs) in clip frames: vote/talk sprites carry FX pixels | bake an `fx=0` layer and an FX layer separately (or document) | mole |
-| low (new wave 4) | `land@<socket>` (storyteller `land@staffTip`) draws its dust ring at the character root/feet, not at the named socket (`shots/char-storyteller/p1/clip-chime.png`); `poof@<bone>` on the key that moves the bone fires at the NEW bone position (maxflow push: poof on the belly) | land/poof honour the socket's world position at the event frame; document that events read the pose of their own frame | storyteller, maxflow |
+| low (recurring 3: storyteller W4, elder W5 cane tap; maxflow poof) | `land@<socket>` (storyteller `land@staffTip`) draws its dust ring at the character root/feet, not at the named socket (`shots/char-storyteller/p1/clip-chime.png`); `poof@<bone>` on the key that moves the bone fires at the NEW bone position (maxflow push: poof on the belly) | land/poof honour the socket's world position at the event frame; document that events read the pose of their own frame | storyteller, maxflow |
 | low | No spec-level light; `fx.wisp` colour is per character (the die soul wisp shares the emote flame colour) | per-event colour; see look `spec.lights` | green-hood |
 | ~~low~~ **FIXED r2** (via tools T5: final_hold / hold_redraws come from an fx=0 copy) — was: low (wave 1) | Vote sparkle (≈ 0.8 s) and die soul wisp (1.2 s) outlive the pack window, so a correctly held clip FAILs `final_hold` | fx lifetimes ≤ hold, or tools excludes FX from final_hold (tools row T5) | mushroom |
 
@@ -2081,26 +2398,31 @@ Rig — new after cast wave 4 (lead merge 2026-10-16):
 | T15 **FIXED r2** (module fix r2: `<clip>.key_delta` = smallest px change between consecutive drawings / figure area (authored key changes only, idle/turn skipped, WARN < 1 %; moth lamp 1 %); gaits `<clip>.distinct` = visually distinct drawings (own-bbox crops grouped within 3 %) vs drawing ids: pre-M14 glide snail 3 images / 4 ids WARN → 5 / 4 PASS) — was: medium (recurring 4, wave 2) | No key-to-key difference row: snail's four tinker keys render identically yet `hold_redraws`/`pose_read` PASS (pose_read compares to idle); `game.readable` counts 4/4 pose IDS while 1 drawing is visually distinct (snail walk) | per clip: silhouette/pixel change between consecutive authored keys at dir 1 and S (WARN < 10 %); for gaits, distinct drawings by pixels, not ids | snail, toad, mole, chonk |
 | T16 **FIXED (wave-3 module fixer)**: row `game.feet_visible` (each foot `mark=@<foot bone>` on every game-speed gait drawing at 8 facings, jobs `feet-<k>-<foot>`): chonk WARN (left foot 0 px at SE in 3/4 drawings, `shots/mfx4/ev-T16-feet.png`), opal/polly/mincut PASS. Was: **PARTLY FIXED r2; the open part (visible foot px per contact drawing) is recurring 7 after wave 3** (module fix r2: `<gait>.head_bob` = head height above the root per gait drawing + one-sided limp on alternating biped/bird walks (mirror drawings ≥ 3 px apart WARN; skeleton-chef bob 0.3 px WARN, honk limp 3.3): chonk 27.7/31.9/26.7/33.2 limp 1.3, fox 2.7 px bob limp 0.1. Not built: visible foot px per contact drawing) — was: medium (recurring 3, wave 2) | No contact-drawing foot-visibility row and no per-drawing head-height row: chonk's buried contact feet and one-sided bob (161/162/161/165 px), rabbit boots in the dress, mole one boot at S all passed (`foot_slide` n/a) | per gait drawing at dirs 0/1/2: visible foot px per foot (boot/talon slot, outside other slots) + head-joint screen y (`s.h` from the stage log) | chonk, rabbit, mole |
 | T17 **FIXED at the source r2** (M13: equal-pose last keys no longer redraw) — was: low | `final_hold` / `hold_redraws` miss a pop ON the last key of a one-shot (honk die f60, 105 px) | diff the frame before the last key against the end | honk |
-| T18 low (recurring 7: + polly, requin, progress, opal, mincut, cilantro in wave 3; root cause motion M18) | `game` "60 Hz in-hold" reports root travel (11–14 texels) for a gait whose visible feet are FK (never planted) | n/a when no foot is ever shown planted | rabbit |
+| T18 low (recurring 10: + polly, requin, progress, opal, mincut, cilantro in wave 3; sweeper, elder, porter in wave 5 — foot_slide n/a for every 'hold' biped; root cause motion M18) | `game` "60 Hz in-hold" reports root travel (11–14 texels) for a gait whose visible feet are FK (never planted) | n/a when no foot is ever shown planted | rabbit |
 | T19 low | `face_lit` uses `spec.faceSlot`; for a void face with emissive eyes it reports 100 % (meaningless); `head_frac`/`height_px` bands for bodyPlan 'biped' don't fit a robed chibi | a face metric for void faces (glow share of the opening per facing, want ≤ 35 % at S/SE/SW); plan bands for chibi robes | green-hood |
 | T20 **PARTLY FIXED r2** (module fix r2: `#` in `--q` is sent as %23 (key=#202020 honoured). The `-k` basename failure did not reproduce (g8-k-ring0.png rendered fine)) — was: low (recurring 2) | `tools/shot.sh` fails ("CAPTURE FAILED: unsupported mime type null") when the output basename contains `-k` (g8-k-ring0.png); JSON query params with `#` break (fragment) | fix the extension/mime parse; document `#` | mole, toad |
 | T21 **FIXED (wave-3 module fixer)**: bottom-only touches raise the pad by the measured overflow (a lying die / long neck below the feet anchor was the real cause), a figure crossing into the next row is charged to its own cell, FX no longer size the cell (fx=0 pass → cell + trim box; FX outside cropped, warned; `--fxcell fx` = old); char-bake now honours `fx=0`. Render cell cilantro 234 → 126, polly 136 → 100 (`shots/mfx4/ev-T21-cilantro-die.png`). The run-row 3-drawing period was not re-checked. Was: medium (recurring 10: + every wave-3 bake — polly 74→136, clarabelle 98→182, requin 184, opal 88→162, cilantro 92→234, mincut 96, progress 62→84; the FX (bubble, glyph, dust) count in the figure bounds) | Bake: auto-cell starts small and re-bakes (80 → 108 → 146 for toad shrug + glyph; 72 → 98 for rabbit ears) and the `run` row finds 3 drawings for a 4-drawing run clip (snail period 6, chonk `frames run:3`; suspected run weight still ramping in the bake window) | start the cell from the stage bbox of all clips; bake run after a longer lead-in / from the clip period | toad, rabbit, snail, chonk |
-| T22 r2: no shared line-up tool exists (critics' own scripts); they must read `pipeline/skip.txt` — documented in the playbook — was: low | Line-up/gallery tools should skip characters listed in `pipeline/skip.txt` (a hook blocks commands that mention them; chonk's line-up failed silently) | read skip.txt and drop those names | chonk |
+| T22 **(recurring 3 more in wave 5: elder, porter critics; porter_lineup.py mis-cropped — wants `charpack --lineup <names> --dirs S,N,SE,E` at 25 % skipping pipeline/skip.txt)** r2: no shared line-up tool exists (critics' own scripts); they must read `pipeline/skip.txt` — documented in the playbook — was: low | Line-up/gallery tools should skip characters listed in `pipeline/skip.txt` (a hook blocks commands that mention them; chonk's line-up failed silently) | read skip.txt and drop those names | chonk |
 | T23 DOCUMENTED r2 (charpack: walk/run/game/slide jobs and nofx-* are fx=0; every other clip job (and its strip/GIFs) has FX) — was: low | charpack clip strips are said to render with `fx=0`, so run/vote feather FX cannot be checked from the pack (chonk). Lead A/B: raw `clip-honk` frames DO contain the glyph — verify which outputs drop FX | an fx-on 60 Hz FX strip per clip, or document which outputs are fx=0 | chonk |
 | T24 low | `run.off_grid`/`flicker` "legs/specks only" WARNs from in-hold specks traced to hidden-surface geometry poking out (mole mouth box 0.15 m through the chin; chonk nape at z −0.14) — no row points at the part | report changed px by part id (`look=parts`) for in-hold changes | mole, chonk |
 | T25 **FIXED (a, c), PARTLY (b) (wave-3 module fixer)**: `sig_outside.<part>` (jobs `hide-<i>`; declared signature PARTS only — declare the tail/beak as `{ part }`), `prop_area.<prop>` (`spec.props`, default named parts below a hand bone; preservation signTauF edge-on 4/8 WARN), `<clip>.face_shimmer` (per-eye re-aligned change; informative under 30 eye px, a fair test needs equal head poses). Was: medium (wave 3, critics' process gaps) | No identity rows: (a) signature part OUTSIDE the body outline per facing (mincut tail hidden at S/N passed `sig.fur`; polly beak, opal tail); (b) face-detail stability: lens/eye interior px change between drawings of the same face (preservation pupils re-rasterised into letters, nothing flagged); (c) flat-prop facing: visible area of a named prop part per facing (6/8 edge-on cards/paddles) | rows `sig_outside.<part>` (px of the part outside the mask without it, per facing), `<clip>.face_shimmer`, `prop_area.<part>` per facing in the vote hold | mincut, preservation, polly, opal, clarabelle, progress critics |
 | T26 low | `sig.<part>` counts only parts with exactly that name (a tail split over two bones had to share one name, opal); `sig.<slot>` isolated counts dark eye/nose/glint texels inside a white mask (mincut stays 8–10 at S); a part in a shared slot (ear in 'hide') counts far-half shadow at NE/NW as failing (clarabelle) | part-name prefixes / lists; exclude other-slot px enclosed by the slot; measure only the lit half for sideways parts | opal, mincut, clarabelle |
-| T27 low | `sig_ground` judges lightness only for shade copies (a blue member 118° off grass fails until its shadow is lightened, preservation) and samples the most saturated signature part (clarabelle's snout salmon instead of the white hide); no row says whether the MAIN slot keeps its identity hue in golden/shade (the mauve/peach drift 5/8 critics found by eye) | hue OR value in the shade copy; a `main_hue` row: main slot hue/value per scene copy vs noon | preservation, clarabelle, cilantro |
+| T27 low (recurring 3: + porter, vendor wave 5 — golden-sun hue-only WARN dH 7–8 for a low-chroma cream on saturated yellow grass; wants a chroma term) | `sig_ground` judges lightness only for shade copies (a blue member 118° off grass fails until its shadow is lightened, preservation) and samples the most saturated signature part (clarabelle's snout salmon instead of the white hide); no row says whether the MAIN slot keeps its identity hue in golden/shade (the mauve/peach drift 5/8 critics found by eye) | hue OR value in the shade copy; a `main_hue` row: main slot hue/value per scene copy vs noon | preservation, clarabelle, cilantro |
 | T28 low | `strobe` does not exclude FX frames: an emote glyph fading over 2 frames + a prop change on the frame between = 3 consecutive changes (FAIL); FX step on twos from their birth, so an event an odd number of frames from the next key strobes | skip FX-flagged frames in `strobe`, or make fx step in phase with the clip grid | mincut, polly |
 | T29 low | `charpack.sh --preset cast` does not refresh `dir2/` (critic judged stale r1 output); `tools/remote.sh X=1 cmd` does not pass env vars (use `tools/remote.sh env X=1 cmd`, documented in the playbook); `tools/clean.sh <dir> '<pattern>'` prints "cleared <dir>" (unclear whether only the pattern went) | print the stale-dir warning; echo the matched count in clean.sh | opal, mincut, preservation |
 | T30 low | 8-facing grid stills from shot.sh are 1×: every critic/author wrote a remote crop helper (×3–×8) and the zsh-loop mistakes came from batching them | `tools/shot.sh … --x 3` (nearest enlarge + per-cell crop) | cilantro, polly, preservation, opal critics |
 | T31 low (recurring 2: + maxflow wave 4 — quant.lean/lag/personality changes gave a byte-identical turn report) | Turn audit: idle-loop keys (ear flick, tail, breath) inside the post-turn window look like settle redraws on `clip-turn.png` | label each redraw as key / step / dynamics from the log | clarabelle, maxflow |
-| T32 low (recurring 2: theo-rem, storyteller) | `face_visible` counts every part in the face slot (spike tips + belly in cream: 51 %; gloves + clock hands in void: 27 % for a fully visible face) | `spec.faceParts: [...]` (per-part face list) for the row | theo-rem, storyteller |
-| T33 low (recurring 2: critic-storyteller + author p3) | Turnaround grid: SW sits in a 2nd row only ≈ 85 px under S, so a ≥ 1.6 m figure overlaps; SW tile shows S's hem/staff, `height_px` max 96–100, `islands` 2–3 at SW (false WARN) | space rows by `spec.height` (or render 8 in one row) and recompute crop/height per cell | storyteller |
+| T32 **FIXED for hair/hood cover (wave-5 module fixer: `spec.faceCover`, job face-cover; `shots/mfx6/ev-T32-*.png`; `spec.faceParts` not built)** **medium (recurring 5: theo-rem, storyteller; wave 5 sweeper 33 %, vendor 48 %, porter 34 % — face-box area inside a hair cap / hood rim counted as occluded; exempt parts covered by the hair/hood slot of the same head bone)** | `face_visible` counts every part in the face slot (spike tips + belly in cream: 51 %; gloves + clock hands in void: 27 % for a fully visible face) | `spec.faceParts: [...]` (per-part face list) for the row | theo-rem, storyteller |
+| T33 low (recurring 3: critic-storyteller + author p3; + wave-5 prop_area above the crown, T38) | Turnaround grid: SW sits in a 2nd row only ≈ 85 px under S, so a ≥ 1.6 m figure overlaps; SW tile shows S's hem/staff, `height_px` max 96–100, `islands` 2–3 at SW (false WARN) | space rows by `spec.height` (or render 8 in one row) and recompute crop/height per cell | storyteller |
 | T34 low (recurring 2: maxflow push, greenting die) | Bake cell growth on SIDE touches: a lying die touching the side borders raises the bottom pad every pass instead of widening (greenting 48 → 54, full cast 58×154 with heads cut; workaround `--cell 112`); a prop pushed ≈ 1 m toward the camera still touches at S/SE/SW with `--cell 160` | grow the square on left/right/top touches (T21 only handled bottom); report the touching clip/dir | greenting, maxflow |
 | T35 low | `charpack --preset cast` requires ghost / ghost-spent for the Storyteller too (cast_clips exempts it; the preset still asks for the clips) — workaround explicit `--clips` | storyteller exemption in the charpack/bake preset list | storyteller |
 | T36 low | `sig_outside.<part>` / `sig.<part>` count ONE named part; a signature prop made of several parts (clock = rim + face + finial) is under-counted edge-on (extends T26) | multi-part signature declaration `{ parts: [...] }` | storyteller |
 | T37 low | charcheck `inner_lines` "want > 0" WARN penalises the `material.merge` workaround the critics recommend for grey seams | skip the row (or INFO) for bones listed in `material.merge` | greenting |
+| T38 low (recurring 2: sweeper author + critic, wave 5) | `prop_area.<prop>` undercounts a prop raised above the crown: 0 px at E, 7–8 at S/SE for a fan that `raw/prop-1/f.png` shows at 8/8 (the per-facing turnaround cell crops above the head; same grid spacing as T33) | measure each facing in a cell sized from the figure box of that still (or a taller cell for `prop-*` jobs) | npc-sweeper |
+| T39 low (wave 5: vendor author + critic) | `<clip>.key_delta` / `key_speckle` are measured at the pack facing only (two callout keys differing by arm elevation passed at SE, one drawing at S/E/W); `key_speckle` names the worst frame as a grid index `gN`, not the authored key | measure at S, SE, E (min over facings) and print `key f<n>` (gN − lead-in) | npc-vendor |
+| T40 low (wave 5: vendor) | `tools/remote.sh` syncs `shots/*/*.js|*.py` one level deep only; a helper in `shots/<me>/s2/` fails "No such file" | sync `shots/**/*.py|*.js` (still no PNGs) | npc-vendor |
+| T41 low (wave 5: porter) | `head_frac` uses the biped band 0.24–0.36 for NPCs (bodyPlan 'biped' per CAST_PORTING §6); v1 NPC hoods are ≈ 0.38–0.39 → WARN on a faithful port | a chibi/NPC band (0.30–0.42) for cast `npc-*`, or `spec.headFrac` override like `spec.presence` | npc-porter |
+| T42 low (wave 5: porter) | `key_speckle` counts the mottled dark front of a shaded held key (vote at SE under the raised arm: +27) as specks; slot/strap changes did not move it | merge shaded tones of adjacent slots whose sh values are within ≈ 8 % L before the isolated-px rule | npc-porter |
 | (note) | `refs/cast/_src/gamespeed_gif.py` root-following crop still cuts the feet on theo-rem (T7 marked FIXED r2) — re-check on a ball body before reopening | — | theo-rem |
 | (note) | Bake crops FX (bubbles, stars) at the figure cell (T21 by design; `--fxcell fx` keeps them) — expected, not a bug | — | greenting, theo-rem |
 | ~~medium~~ fixed r06 | Hop/skip gaits (duty ≤ 0.2): `foot_slide` reports 17.6–18.7 texels at dir 2 with "0 planted pairs" (no foot is planted on two consecutive drawings, so there is nothing to measure), and `game.readable` says cycle 0.433 s / 1.71 H for a gait whose pose ids show a 4-drawing loop every 8 grid frames (0.27 s / 1.1 H) | report n/a (not a number) when there are 0 planted pairs; derive the game cycle from the gait phase / pose-id period, not from foot-0 touchdowns at drawing changes | refs (`shots/refs-cast/recipe-chibi/report.txt`) |
@@ -2110,6 +2432,20 @@ Rig — new after cast wave 4 (lead merge 2026-10-16):
   1st row. height_px then reports max 96 and the SW tile shows another facing's hem (`shots/char-storyteller/p3/turnaround.png`).
   (fx, low) `land@staffTip` draws its dust ring at the root, not at the socket. (tools, low) `face_visible` counts every part of
   the face slot (gloves, clock hands share `void`): 27 % for a face that is fully visible.
+
+- **FIXED (lead, between waves 5 and 6 — top block)** **(char-npc-sweeper, 2026-10-16) bake auto cell growth wrapped the figure inside its cell** — `tools/charpack.sh --bake
+  npc-sweeper --preset cast` (no `--cell`) grew 60 → 82 → 112 → 152 with "touches the cell border" on EVERY cell and ended
+  with anchor [36, 26] in a 72×152 cell: the head of every idle frame sat at the cell bottom and the feet at the top (alpha
+  rows dumped with `shots/char-npc-sweeper/sw_alpha2.py.js`). Each clip baked alone was fine (idle 48×45 anchor [24, 37]);
+  the full preset grows the pad from a neighbour row's raised vote broom (≈ 0.8 m over the crown) via the `below` scan.
+  Workaround: `--cell 96` (7 sub-pixel border warnings, frames intact). Severity: medium (silent garbage sheet).
+
+- **FIXED (lead, between waves 5 and 6 — top block)** **tools/bake.py auto cell growth + a lying die (npc-vendor, medium):** `--preset cast` without `--cell` grew the render
+  cell 66 → 122 and baked `anchor [30, 26]` in a 60×122 cell: every standing drawing had its head CUT by the cell top
+  (`shots/char-npc-vendor/self/bake-top.png`, first bake). Each clip alone fits a 66 cell (`bake-t-<clip>/`); the union
+  (ghost halo above + die reaching below the feet) plus the bottom-touch pad raise seems to shift the anchor. Workaround:
+  centre the die body over the root + an explicit `--cell 90` (trimmed 56×66, anchor [28, 53], all rows complete,
+  `self/bake-die.png`, `self/bake-idle.png`).
 
 ## Integration (lead r6, 2026-10-16)
 - **Pose-id format is a cross-module contract.** LegGait emitted a running drawing counter (`walk:<k>`), tools parsed
@@ -3993,3 +4329,171 @@ stills `g8-*.png`, composites `x/s-act.png`, `x/s-talk.png`, `x/face-*.png`, `x/
   face stays inside the lathe, and make the snout ≥ 4 texels proud with the nose on its tip.
 - (maxflow r2) **Firing a poof one frame before a key change makes strobe 3–4** (poof birth, key, poof step): fire it
   2 frames early (f42 for the f44 key) so its first step lands on the key frame.
+
+## Archive — cast wave 5 per-agent notes (consolidated by the lead 2026-10-16)
+
+The NPC critic and r2 author notes below are kept for their evidence paths. Their lessons are filed in the topic sections
+above (marked **(recurring, … wave 5)**) and promoted to playbook **R W5** lines / `docs/CAST_PORTING.md` §13 "Wave 5";
+their module notes are folded into §Module backlog (bake runaway FIXED; T38–T42, M28, look hueKeep, rig rows). Do not
+append here.
+
+## critic-npc-porter r1 (art director, 2026-10-16, render-host RTX 4090) — Porter, 15/24, not shipped (author self-score 16, gap +1)
+Evidence `shots/critic-npc-porter/` (pack 111 pass / 20 warn / 0 fail, page_errors 0; own: `crit-keysA/B.png` 8-facing
+vote f12 / talk f0 / point f30 / hitch f5, f14 / die f40, `crit-z-idle-*.png` ×6, `crit-game-strip.png` 30 Hz ×4,
+`crit-lineup.png` 1× colour + 25 % silhouettes vs 24 finished members).
+- **Sack placed too HIGH vs the v1 sprite** (v1: on the lower back, top at eye level, centred at N; here: shoulder-to-
+  crown, tuft above the hood at S, off-centre at N). Cost: at SW only a cream tuft shows (sig.sack 17 px, `clip-turn`
+  f47–f108 reads as a hood with a bun) and in the vote the sack sits ON the hood at E/W/NE (reads "sack-hat", not
+  "hand up"). Lesson: when the signature prop is on the back, place it where the v1 sprite draws it and check the
+  far-shoulder facing (SW here) before tuning size.
+- **Face box proud of the hood at E/W**: the nose + near eye sit 1–2 texels OUTSIDE the hood outline (`crit-z-idle`
+  E/W) → a snout/muzzle, not a face in a hood. Keep a hood face inside the rim at profile (z ≤ rim front) and draw the
+  profile eye on the bevel inside the silhouette.
+- **Chibi legs at 4 H/s**: the sack carries the whole rhythm; legs merge into one dark lump at k0/k3 (`crit-game-strip`
+  37/49), and the 9-frame cycle holds k3 for 3 frames every cycle (2,2,2,3). A loaded scurry wants a lighter boot/
+  trouser split or a wider contact stance so contact is visible, and a 8-frame cycle (or deliberately 3-frame contact).
+- Hood hue drifted purple (#524858 vs v1 #3A3438 charcoal) — keep NPC hoods off the Storyteller's purple.
+
+## critic-npc-sweeper r1 (art director, 2026-10-16, render-host RTX 4090) — Sweeper, 16/24, not shipped (author self-score 17, gap +1)
+Evidence `shots/critic-npc-sweeper/` (cast pack 106 pass / 28 warn / 0 fail, page_errors 0; own: `crit-z-vote-f20.png`,
+`crit-z6-vote-S-E.png`, `crit-z-die-f50.png`, `crit-z6-die-S-SE.png`, `crit-z-point-f12.png`, `crit-keys-sweep.png`,
+`crit-keys-talk-ghost.png`, `crit-z-idle-faces.png`, `crit-game1x-strip.png` (1x game GIF frames 12-20), `crit-lineup25.png`).
+- **Vote: the broom floats free of the hand at S** (≈ 7 texels of gap between the raised hand at ear height and the stick
+  end, `crit-z6-vote-S-E.png`) and at E/N/NE the stick sprouts out of the hair with no hand; `broom.p` −0.42 slides the
+  prop off the grip. A grip slide must be checked at all 8 facings; prefer `'upperArmL.l'` reach + the stick end in the
+  hand. The fan is edge-on at S/E/N (`prop_area.bristles` 7/0/17 px).
+- **Die: the broom levitates** horizontally at chest height at SE (fan in mid-air), and at S the figure reads SEATED facing
+  the camera with dot eyes (SHUT `eye.s` −0.8 leaves a 1-texel dot = open eyes). Sheet says "broom flat beside him, eyes shut".
+- **No face in profile**: at E/W the bob cap covers the whole head (no eye, no nose; `crit-z-idle-faces.png`), v1 draws an
+  eye + nose at E. Same R W4 profile-face lesson; bring the fringe/side up so the eye shows at E/W.
+- **Walk "pushed ahead" is not what renders**: at SE the broom stays at his left side and swishes upright ↔ diagonal-out;
+  it never crosses in front of his feet. It still carries the rhythm (with the 2.5 px bob) and reads "scurry with a broom".
+- Point at S = arms spread (right arm to screen-left, broom to screen-right); golden hair turns tan (#8B6C51, identity drift);
+  sweep sweat-drop shows after the hand is back at idle (`clip-sweep.png` f54), not on the brow wipe (f38).
+
+## critic-npc-elder r1 (art director, 2026-10-16, render-host RTX 4090) — Elder, 15/24, not shipped (author self-score 15, gap 0)
+Evidence `shots/critic-npc-elder/` (pack 119 pass / 18 warn / 0 fail; `dir2/` E pack; `g8-*.png` 8-facing key stills with
+confirmed `p` ids; `ce-*.png` crops, strips, line-ups).
+- **Identity holds** (bald dome, slate robe, wood belt, cane in the LEFT hand at screen-right at S/SE) but the 25 % blob is a
+  plain lozenge that matches npc-porter and green-hood at S and N (`ce-lineA-0/4.png`); the cane is a 1-px wisp at 25 %
+  and 0 px at NE (`sig.caneShaft` NE 0). Rule: an NPC may be boring, but the one prop must leave the blob at 6/8 at 25 %.
+- **"Hobble" that is not a limp**: `game.head_bob` 3.9 px (10 % of a 38 px body) with limp 0.1–0.3 → at 1× it is a
+  symmetric bouncy scurry, the opposite of "frail". A cane gait needs ASYMMETRY: the cane-side drawing lower / held
+  longer (limp 1.5–2.5 px), bob ≤ 2 px on the other pair. Recurring: a planned word ("hobble", "waddle") must be
+  measurable in `head_bob` limp, not just in the sheet.
+- **Point aimed sideways at SE/S** (`ce-se-keys.png` col 5, `ce-g8-actA.png` row 4): right arm horizontal to screen-left,
+  perpendicular to the facing; NW reads as a vote. Same R W4 point lesson as maxflow/theo-rem/sweeper — still not applied.
+- **Vote cane rises from behind the head at SE and W** (arm hidden behind the skull): reads as a stick through the head at
+  1×. Raise it up-and-OUT on the camera side (out ≥ 35°) so the arm shows.
+- **Emote = ghost pose**: `nod` and `ghost` share `ON_CANE`; nod keys 6 and 20 are the same drawing at 8 facings and the
+  face is hidden at S/SE/SW on both. Give the emote its own silhouette (e.g. a lifted cane-tap or a hand-cupped ear).
+- Die final hold reads as SITTING at SW (`ce-g8-actB.png` row 4) and the slack mouth is a dark scream "O" at S/SW.
+- SE: the far-side cane sleeve crosses under the chin as a dark band (beard/scarf read); walk k0/k2 at S split the hem
+  and show dark shins = a tunic with trousers, not a long robe (`ce-g8-walk.png` col 1).
+
+## npc-porter r2 (author, after critic r1 15/24; 2026-10-16, render-host)
+- **Prop hoisted on the hand: compute `<prop>.p` from the arm FK and verify with `mark=@handR`.** The r1 vote put the
+  sack at chest-space z 0 (= over the crown → "sack hat"). Approx FK (fwd applied first, then out toward −x for the right
+  arm): y' = −cos(fwd), dir = (−y'·sin(out), y'·cos(out), sin(fwd)); len = upper·(1 + .l) + forearm + ½ hand;
+  hand = shoulder + len·dir (matched the marked hand within ≈ 1 texel), prop centre =
+  hand + half its height up. 3 variants per render, one 8-facing still each (`grid=turnaround&clip=vote&frame=12`).
+- **Any raised-arm hoist has one facing pair where the arm runs along the view ray**: there the prop hides the hand
+  (porter: E). Chest twist only moves the bad facing (SE ↔ E). Pick the pair where the prop lands BESIDE the hood, not
+  over the face, and say so.
+- **A prop hoisted above the bind hull casts self-shadow** (look.js hull = bind reach + `hullMargin` 0.12): set
+  `material.hullMargin` ≈ the hoist height above the crown (porter 0.4).
+- **Hood face at profile:** face front ≤ rim front (porter 0.222 vs 0.23) removes the E/W snout but cuts face_visible
+  (34 % → 20 %); thin, set-back side bars (0.04 m, front 0.195) keep two eyes at SE.
+- **Chibi contact at 4 H/s:** `cycleTime 0.267` (8 grid frames → even 2-frame holds), `contactReach 0.45` and a boot mid
+  ≥ 10 % L over the trousers separate the feet at contact (`clip-game.png`).
+- **Back load placement:** a sack centred at x −0.085 (near the spine) shows S 30 px / SW 44 px; x −0.06 → 19 / 55,
+  x −0.10 → 35 / 33 — the S and SW reads trade off linearly; pick the middle and check both numbers.
+
+## npc-elder r2 (author, after critic r1 15/24; 2026-10-16, render-host RTX 4090)
+- **A limp is a keyed `pos` per drawing, not the plan bob.** LegGait's biped bob is mirror-symmetric (k0 = k2), so any
+  "hobble" on `locomotion.bob` reads as a bounce (elder r1: head_bob 3.9 px, limp 0.1). Key `pos` in `clips.walk`
+  (replace mode: it REPLACES the bob, the reach drop is kept): light contact −0.008, flights 0, heavy contact −0.044 +
+  chest +10 → `game.head_bob` 2.4 px, limp 1.6 (head 18.0 / 18.8 / 16.4 / 18.8 px). ≈ 0.028 m per texel at H 1.05.
+- **R W4 point on a chibi with a wide robe: one arm aimed along the facing hides inside the body at S and SE** (it points
+  at the viewer). Critic recipe (fwd 80–95, out ≤ 10, chest twist +15) rendered 0 px outside at S/SE (`r8/g8-point`
+  first pass, `v8-ptA/B`). A long held prop is the better pointer: elder points his cane forward-UP (`cane` −42 vs plumb
+  ≈ 35° above level) → outside the outline at 6/8. Keep the free hand LOW and open — two hands on a level stick = a rifle.
+- **A lying body is foreshortened at one facing pair whatever you do** (head over body = "sitting"/ball). hips `out`
+  moves the pair (elder: out −34 → SW/NE bad; out −70 → W/E bad). Put the bad pair where the game shows it least and
+  say which; bent knees under a robe show the hem sole disc as a big dark plate (`v8-dA`), don't.
+- **Emote ≠ ghost too** (not only ≠ vote): the ghost's hands-on-crook pose reused as the emote made two clips one
+  drawing. A cane TAP (`'cane.p'` +0.1 lift ↔ plant, `land@caneTip`) + a head-only nod (head ≤ +11°, chest ≤ +5°)
+  keeps the face visible at S/SE/SW on the nod keys.
+- **Far-side prop at E/NE:** a left-hand cane is behind the robe at E/NE however far it tilts out (tilt 7 → 18°, arm
+  out 32 → 48: NE 0 → 3 px, E 5 → 18 px). Accept or move the prop to the camera-side hand for that facing pair.
+- **Bake auto cell growth ran away** for elder (58 → 80 → … → 146, figure box spanning the whole cell, anchor [29, 24])
+  while `--cell 100` baked 58×63 with 0 border touches — check the printed cell and anchor after every auto bake.
+
+## npc-vendor r1 (critic, 2026-10-16, render-host RTX 4090) — 15/24, not shipped
+Evidence `shots/critic-npc-vendor/` (pack `--preset cast --raw`, `g8-*.png`, `vc-g8-{A,B,C}.png`, `vc-z-vote-die.png`,
+`vc-lineup-{S,SE,E,N}.png`, `vc-game1x-grid.png`, `vc-callout1x-grid.png`).
+- (critic-npc-vendor) **A chibi vote `[168, 0, 22]` with `.l` 0.8/0.7 still hugs the head at SE and vanishes at E**:
+  the raised sleeve is coat-brown against the brown hair at SE, hand top below the bun (`vc-z-vote-die.png` row 1);
+  at E the whole arm is behind the head (0 px above the crown). The sheet's "clears the head at 7/8" was 6/8. More
+  `out` (≥ 35°) plus forward (fwd 150) or a skin hand ≥ 3 texels over the crown is needed; check SE + E, not only S.
+- (critic-npc-vendor) **Die curled on the left side reads as kneeling/bowing at E and NE** (`vc-g8-B.png` row 3) — the
+  body lies along the E–W camera depth axis; the final hold also adds +25 isolated px (cream apron edges dashed
+  between the dark trousers at S/SE). Same foreshortening lesson as npc-elder: pick the bad facing pair consciously.
+- (critic-npc-vendor) **Two "call" keys that differ only in arm elevation 128 → 150° read as one drawing at S/E/W**
+  (`g8-callout-f8` vs `-f20`); key_delta 68 % is measured at SE only. Change the silhouette (other arm, lean, hop).
+- (critic-npc-vendor) **Flat front apron + slim coat = a side slab at SE**: the cream panel fills the right half of
+  the body down past the knees and hides the legs (turnaround SE, walk drawings). Wrap it a little (side return /
+  curvature) or narrow it so the coat shows on both sides. At 25 % S/N she is the slimmest plain column, close to
+  npc-porter / npc-sweeper — the bun is a 1-texel bump; give the bun more mass or the apron a wider hem.
+- (critic-npc-vendor) Positive: game walk 3.95 H/s, 0.30 s, 4/4 drawings, head bob 2.5 px, apron kick 16°/drawing
+  reads at 1×; ghost (halo, pale, face visible) reads 8/8; pixel stability clean (off_grid/flicker/pan 0).
+
+## char-npc-sweeper r8 (author fix round after critic 16/24, 2026-10-16, render-host RTX 4090)
+- **A held prop's bone must sit IN the hand and pivot ON the shaft.** The r7 broom bone sat 0.07 m beside the hand and its
+  stick passed 0.2 m in front of the bone origin, so every `broom` rotation swung the stick away from the fist (vote: 7
+  texels of air between hand and stick; the `broom.p` slide made it worse). Fix: bone `pos` ≈ hand centre, and shift the
+  prop geometry so the shaft crosses the bone origin (`BROOM_PIV` in `characters/npc-sweeper.js`). After that, no `.p`
+  slide is needed for an overhead vote — raise the arm with `.l` 0.9 / 0.8 and the fan clears the crown at 8/8
+  (`shots/char-npc-sweeper/r8/vt.png`).
+- **Where the grip sits on a long prop decides whether "on the ground" is reachable.** Grip at 0.54 of 0.84 m left the
+  fan hanging 0.1 m in the air at rest; with the grip 1/3 down (0.52 m below the hand) a 20–35° lean puts the fan on the
+  grass, and fwd/out swings keep it grounded (idle, walk across key, die).
+- **Yaw a lying body with the hips `out` channel, not `twist`.** `q = qFwd·qOut·qTwist`: after `hips fwd −78`, `twist`
+  only ROLLS the body about its own axis; `out ±40` turns the lying direction on the ground (S/SE lie across the screen,
+  r8/die3.png). Any lying yaw leaves two facings end-on; pick the pair that is not the pack facing.
+- **Verify "flat on the ground" with `pitch=4`** (char-stage query): at 30° a prop lying on the far side projects UP
+  the screen and looks raised (`r8/die5.png`).
+- **Profile eye on a flat chibi face:** put the eye boxes ON the front/side bevel (x ≈ 0.65 × half-width, 0.045 deep)
+  and cut the side hair rings back (`clampZ` −0.12/−0.1/−0.04). A thin side plate on the cheek plane showed as 4 eyes at
+  S (a proud plate is a 1-px column at the face edge) — rejected (`r8/faces.png` row 2).
+- **Closed eyes = widen AND flatten** (`eye.s [0.6, −0.7]` → a 3×1 dash); y-squash alone left a 1-texel dot that reads open.
+- **Hair isolated px 5 → 3 with an 8-sided ring hull** (16-sided rings stair-stepped into specks); the bob still reads round.
+- **Golden grade vs mid greys:** a cooler hair (#66667C) only moved golden-sun hue 32 → 33°; neither whiteKeep nor
+  creamKeep gates a mid grey (luma < 0.45). Module gap reported.
+- **`prop_area` undercounts tall raised props:** the fan above the crown is visible in `raw/prop-1/f.png` at 8/8 but the
+  row reports 0–8 px at SE/E (cell crop). Judge the raw magenta still.
+
+## npc-vendor r2 (author, after critic r1 15/24; 2026-10-16, render-host RTX 4090)
+Evidence `shots/char-npc-vendor/s2/` (8-facing probes `*-g.png`, final `fin-*-g.png`, 1x GIF frame grids `gg-*.png`).
+- **A chibi vote that clears a bun at SE AND E needs length, not `out`.** At E the `out` component points the arm at the
+  camera, which LOWERS the hand on screen (screen-up ≈ up·cos30 − toward-camera·sin30). [150, 0, 40] / [160, 0, 28] hid
+  the hand in front of the face at E; [164, 0, 22] with `'upperArmR.l'` 1.7 / `'forearmR.l'` 1.45 and an open hand
+  (`'handR.s'` [0.5, 1.2, 0.3], the palm grows UP along the raised arm) clears the (enlarged) bun by ~4 texels at SE,
+  ~3 at E, 8/8 (`s2/v{a..j}-g.png`, `fin-vote-f12-g.png`). Measure on a ×6 crop of the raw still, not the ×4 grid.
+- **WIDE eyes (`eye.s` y +0.15) on a head twisted/tilted ≥ 10° rasterise into a "+" glyph at S** (vote, callout).
+  Normal eyes + tilt ≤ 6 on held keys.
+- **Die "kneeling/bowing" came from a pitched hip (hips fwd 30), not only the facing.** hips [0, 0, 88] (flat on the
+  side) + spine/chest curl 25/20 reads lying at S/SE/E/N/NW; compact at NE + W/SW (`s2/d0..d8-g.png`). Diagonal axes via
+  hips [±90, twist, 45] all put a bad pair on S or SE. The crumpled tip key (hips [20, 0, 45] + knees 70) was the key
+  that carried +19 key_speckle, not the final hold: a clean 45° tip (hips [0, 0, 45], spine/chest 10) → die +6 PASS.
+- **key_speckle `(gN)` is a grid frame: map it to the key** (lead-in 8 → key f = gN − 8) before fixing a pose.
+  Transitional keys with an arm across the coat (point return, callout lowering) add 4–8 dashed px each; hold the arm
+  out off the body instead (point +10 → +6). A prop SHOWN on the pocket-dip key (red apple on the apron) is specks too.
+- **A dark chin band ("goatee") at S/SE was the face's inner line over the neck/collar**, not the neck colour: moving
+  the neck back changed nothing; `material.merge: { head: 'neck' }` (head + neck skin share a part id) removed it.
+- **Signature + ground:** a bigger bun took over the `sig_ground.apron+bun` darkest quarter (noon-shade −13 % WARN); a
+  hair hi a touch darker (#563F31) → −28 % PASS. Apron hi #DCD6C6 + `creamKeep [1, 1]` fixed golden-sun (+14 → +25 %).
+- **Narrow apron:** a flat 0.26 m front slab fills the right half at SE; 0.14 m front face + short curved returns
+  (0.21 m overall) shows coat on both sides and the legs below; side returns that wrap far back make SE WORSE (cream to
+  the right edge), keep them shallow.
+- Process slip: one stray `python3 -c 1` (a no-op) ran on the Mac again — use `tools/remote.sh` even for trivia.

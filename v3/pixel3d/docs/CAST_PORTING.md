@@ -171,7 +171,7 @@ clips (playbook banner). The Storyteller has no vote/die/ghost clips (pass an ex
 | **walk** | the GAME locomotion: 4 H/s, ~0.3 s cycle (§8) | §8 recipe | §8 + staff/shovel/cane plant | waddle-hop | squash cycle | §8 tuned biped |
 | **run** | Storyteller fast travel at 2·v_game = 7.9 H/s (PLAYBOOK §Game speed); must differ from walk | bounding leaps (cycle ≈ 2.1 H, duty ≤ 0.1 for chibi legs), lean ≥ 12°, arms pump | robe flares | wings out, flap-hops | stretch harder, stalks back | neck forward 25° |
 | **talk** (loop) | "this one is speaking" from across the square | head nod (≥ 25° per key) + mouth/beak open on alternating keys + one hand/wing/paw gesture; 3–4 keys, 4–6 frames each, loop 16–24 frames | hood nod + hand out of the sleeve | beak open/close + neck pump (honk = honking) | stalks bob, mouth on the head column | neck bob forward |
-| **vote** (raise and HOLD) | a raised hand/wing/paw above the head, held, in the 25 % thumbnail | anticipation dip (4 f) → arm straight up past the head top (upperArm out/fwd ≈ 150–170°, ≥ 0.2 m above the head) → hold until the clip ends (last key held; the game holds it while the vote lasts); face clear at S/SE/SW | sleeve falls back, staff hand stays | wing up and spread (both wings for chonk) | one stalk up (or the wrench up) | hoof up; neck stays upright |
+| **vote** (raise and HOLD) | a raised hand/wing/paw above the head, held, in the 25 % thumbnail | anticipation dip (4 f) → arm straight up past the head top (upperArm out/fwd ≈ 150–170°, ≥ 0.2 m above the head; reach by `.l`, not `out` — wave 5) → hold until the clip ends (last key held; the game holds it while the vote lasts); face clear at S/SE/SW; a held prop stays IN the visible hand at S/SE/E/W (wave 5, 4/4 failed) | sleeve falls back, staff hand stays | wing up and spread (both wings for chonk) | one stalk up (or the wrench up) | hoof up; neck stays upright |
 | **die** (one-shot → held final pose) | collapse, unmistakably not asleep; identity still readable | stagger (no hurt flash: Clocktower rule) → knees buckle (crouch, 6 f) → fall to the side or forward (6 f, `legs: 'fk'`) → final held pose lying with the signature shape still visible from dir 1 (hat/cap/ears not under the body); eyes → closed/X | robe crumples, hood on the ground, staff falls (prop drop needs a socket trick: keep it in hand) | tips over sideways, feet up | retreats into the shell (head + stalks down, shell rolls 30°) | neck folds down in 2 steps |
 | **`<emote>`** | the blurb in one action (cards §12) | see card | see card | see card | see card | see card |
 | **point** (hold) | aimed at someone across the square, at S/SE/SW/W | arm forward-and-up ALONG the facing (never out to the side: wave 4, 4/4 failed), finger/paw straight, held ≥ 24 f; near arm = RIGHT at SE/E, LEFT at W/SW → both arms or a leading shoulder; never a level weapon thrust | sleeve falls back, hand out | a WING as the pointer, neck upright (a level neck = goose hiss) | head/stalk aims | head aims, hoof up |
@@ -606,6 +606,23 @@ cane and nod, shift the sack).
 - **Wave 4 (greenting, colour-identity members):** set `ghost.keepHue` 0.25–0.35 so the ghost stays the identity colour.
 - **Wave 4 (storyteller):** a staff carried while walking is a PLANT only if its tip lands ahead of the body at contact —
   key it by eye on E/W walk stills; the plumb-cancel convention leans it forward inside LegGait drawings.
+- **Wave 5 (4/4 NPCs: sweeper, vendor, elder, porter):** v1 votes show a raised hand in ONE view; in 3D the raised
+  prop floated off the hand, sat on the head, or rose from behind the skull at SE/E/W. The prop bone sits AT the hand
+  with the shaft through its origin (no `<prop>.p` slide), height comes from `.l` reach (an `out` raise lowers the hand
+  at E), and the held key is judged on the 8-facing still (playbook **R W5 vote prop**).
+- **Wave 5 (porter):** port a back load / prop to WHERE v1 draws it (sack: lower back, top at eye level, centred at N) —
+  "bigger/higher" moves it away from v1 and turns it into a bun at SW and a hat in the vote.
+- **Wave 5 (4/4):** NPCs are "deliberately boring" but must not be the SAME blob: elder, porter, vendor, sweeper and
+  green-hood matched at 25 % S/N. Port the one v1 distinguishing shape at ≥ 2 texels (cane, bun, broom fan, sack) and line
+  up the NPCs against each other, not only the animal cast.
+- **Wave 5 (sweeper, porter):** mid greys and mid tans (v1 #66667C hair, #A19276 burlap) drift tan/orange at golden and no
+  keep option gates them (look backlog hueKeep); a charcoal hood must stay charcoal (porter drifted to mauve #524858 =
+  toward the Storyteller's purple). Port neutral hoods as warm charcoal (#4C4648 / #3E393C / #332E32).
+- **Wave 5 (elder):** a v1 "frail / hobbling" blurb is an ASYMMETRIC gait: keyed `pos` per walk drawing (limp ≥ 1.5 px),
+  not `locomotion.bob` (mirror-symmetric). Port the word into a number (`game.head_bob` limp) before Stage 3.
+- **Wave 5 (all NPCs, porter measured):** NPCs use `bodyPlan 'biped'` (§6), whose `head_frac` band is 0.24–0.36; the v1
+  NPC hood/head is ≈ 0.38–0.39 of the sprite → a known `head_frac` WARN. Keep the v1 proportion and cite this line
+  (lead decision pending, tools backlog T41).
 
 ## 14. Tools in this folder (refs owner)
 

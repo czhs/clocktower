@@ -176,6 +176,8 @@ export function characterMaterial(engine, opts = {}) {
     // (module fix, wave 4) inner-line tone: 'tone' = every part's inner lines take the darker adjacent tone (hue kept)
     // instead of the cool grey-lilac; per slot: material.slots.<x>.line 'tone' | 'grey'. creamKeep k | [k, lift]: see outgoing
     innerLine = null, creamKeep = 0,
+    // (module fix, wave 5) hueKeep k | { <slot>: k }: read from rig.spec.material in applyFlags (named here so it stays out of `rest`)
+    hueKeep = 0,
     // (module fix, wave 3) shared ghost look: rig.buildCharacter passes spec.ghost (rig.ghostOpts) + the halo bone index
     ghost = null, ghostHaloBone = -1, ghostHeight = 1,
     uniforms = {}, vertexHead = '', vertex = '', fragmentHead = '', tones = '', ...rest
@@ -212,6 +214,7 @@ export function characterMaterial(engine, opts = {}) {
     uCharGhostFade: { value: new THREE.Vector4(...(ghost?.fade || [0, 0, 0, 0])) },
     uCharGhostGlow: { value: new THREE.Vector4(ghost?.glow?.[0] ?? 0, ghost?.glow?.[1] ?? 0, ghost?.mistK?.[0] ?? 0, ghost?.mistK?.[1] ?? 0) },
     uCharGhostKeep: { value: new Float32Array(PAL_MAX) },  // 1 = palette slot keeps its living tones (glow eyes, lantern)
+    uCharHueKeep: { value: new Float32Array(PAL_MAX) },    // (module fix, wave 5) material.hueKeep per palette slot (0 = off)
   };
   const flag = partLines ? `FLAG_CHAR + vCharPart * ${PART_STEP}` : `FLAG_CHAR + 0.0 * ${PART_STEP}`;
   const dbgOut = debug === 'far' ? 'if (charFarK > 0.5) outgoingLight = mix(outgoingLight, vec3(1.0, 0.0, 1.0), 0.6);'
@@ -304,7 +307,7 @@ export function characterMaterial(engine, opts = {}) {
       uniform float uCharTime;   // (module fix, look row) the Character's clock (frozen with the stage's t=): use it, not uTime, for glow/flicker
       uniform float uCharWhiteKeep, uCharWhiteKeepLift; uniform vec2 uCharCreamKeep;
       uniform vec4 uCharGhost, uCharGhostK, uCharGhostFade, uCharGhostGlow; uniform vec3 uCharGhostRamp[5], uCharGhostHalo;
-      uniform float uCharGhostKeep[${PAL_MAX}];
+      uniform float uCharGhostKeep[${PAL_MAX}]; uniform float uCharHueKeep[${PAL_MAX}];
       flat varying float vCharGSlot; flat varying float vCharGHalo;
       // shared ghost tone: perceptual lightness (sqrt of linear luma) onto the pale ramp d → l, so value order and slot
       // separation survive (crow/polly recipe); keepHue keeps that share of the living hue at the ghost value (mole)
@@ -396,6 +399,20 @@ export function characterMaterial(engine, opts = {}) {
           float ckL = dot(outgoingLight, ckLw), ckTL = max(dot(ckT, ckLw), 1e-4);
           float ckTarget = max(ckL, uCharCreamKeep.y * ckTL);
           outgoingLight = mix(outgoingLight, ckT * (ckTarget / ckTL), clamp(uCharCreamKeep.x, 0.0, 1.0) * ckG * ckW);
+        }
+      }
+      // (module fix, wave 5: npc-sweeper, npc-porter) material.hueKeep k | { <slot>: k } (default 0 = unchanged): a MID-value
+      // neutral (grey hair #66667C → tan, burlap #A19276 → orange at golden; whiteKeep / creamKeep gate on luma > 0.75 /
+      // > 0.45 + warm, so neither applies) keeps the hue/chroma of its authored band tone at the graded luma, any luma,
+      // every band (sun and shade copy), scaled by the warm grade (rampHi r-b: golden only; noon / night = 0). Ghosts skip.
+      if (uCharGhost.x < 0.5) {
+        float hkK = uCharHueKeep[int(vCharGSlot + 0.5)];
+        float hkW = clamp((uRampHi.r - uRampHi.b - 0.1) * 2.0, 0.0, 1.0);
+        if (hkK > 0.0 && hkW > 0.0) {
+          vec3 hkLw = vec3(0.299, 0.587, 0.114);
+          vec3 hkT = toonW.z * toonHi + toonW.y * toonMid + toonW.x * toonSh;
+          float hkL = dot(outgoingLight, hkLw), hkTL = max(dot(hkT, hkLw), 1e-4);
+          outgoingLight = mix(outgoingLight, hkT * (hkL / hkTL), clamp(hkK, 0.0, 1.0) * hkW);
         }
       }
       ${dbgOut}`,
@@ -624,6 +641,20 @@ function applyFlags(engine, rig) {
         const c = new THREE.Color(Array.isArray(t) ? (t.length === 3 ? t[1] : t[0]) : t);
         const i = pt.pal.findIndex((q) => Math.abs(q[0] - c.r) + Math.abs(q[1] - c.g) + Math.abs(q[2] - c.b) < 1e-3);
         if (i >= 0) U.uCharGhostKeep.value[i] = 1;
+      }
+    }
+    // (module fix, wave 5) material.hueKeep: k (every slot) | { <palette slot>: k } → per palette index (mid tone match)
+    if (U.uCharHueKeep && !U.uCharHueKeep.done && rig.spec?.material?.hueKeep) {
+      U.uCharHueKeep.done = true;
+      const hk = rig.spec.material.hueKeep, pt = partTable(mesh.geometry), pal = rig.spec.palette || {};
+      if (typeof hk === 'number' || typeof hk === 'string') { if (pt) U.uCharHueKeep.value.fill(+hk || 0, 0, pt.pal.length); }
+      else for (const [name, k] of Object.entries(hk)) {
+        const t = pal[name];
+        if (!t || !pt) { console.warn(`material.hueKeep: unknown palette slot '${name}'`); continue; }
+        const c = new THREE.Color(Array.isArray(t) ? (t.length === 3 ? t[1] : t[0]) : t);
+        const i = pt.pal.findIndex((q) => Math.abs(q[0] - c.r) + Math.abs(q[1] - c.g) + Math.abs(q[2] - c.b) < 1e-3);
+        if (i >= 0) U.uCharHueKeep.value[i] = +k || 0;
+        else console.warn(`material.hueKeep: slot '${name}' not on the mesh`);
       }
     }
     if (U.uCharIdBone && !U.uCharIdBone.done) {                 // material.merge: { child bone: parent bone } (part ids)

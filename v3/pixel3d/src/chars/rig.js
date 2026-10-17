@@ -59,6 +59,8 @@
 //   Root position: pose.pos = [x,y,z] or pose[<root>] = { rot:[f,t,o], pos:[x,y,z] } — an OFFSET in metres
 //   (character space) from the root bone's rest position (crouch: pos [0,-0.08,0]).
 //   Bones missing from a pose map are reset to rest (identity) by applyPose unless { reset: false }.
+//   pose.yaw = [deg] (module fix, wave 5): world-vertical spin of the ROOT bone about its joint, after its triple —
+//   choose which way a lying die pose points (hips twist on a lying body rolls it); left (+) = counter-clockwise from above.
 //
 // ─── SPEC → MESH (buildCharacter) ───────────────────────────────────────────────────────────────────────────────
 //   part = { bone, shape (BufferGeometry from kit.js; `geo` also accepted), at:[x,y,z] (offset from the bone joint,
@@ -956,6 +958,8 @@ export function poseToQuaternions(rig, pose = {}, { clamp = false } = {}) {
   const rootE = entryOf(pose, rig.rootName);
   const pos = pose?.pos ?? rootE?.pos;
   if (pos) res.pos = new THREE.Vector3(...pos);
+  const yw = pose?.yaw, yd = Array.isArray(yw) ? Number(yw[0]) || 0 : Number(yw) || 0;   // (module fix, wave 5) pose.yaw
+  if (yd && res[rig.rootName]) res[rig.rootName].premultiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yd * D2R));
   for (const [key, v] of Object.entries(pose || {})) { const x = extraKey(key); if (x && rig.bones[x.bone] && Array.isArray(v)) res[key] = new THREE.Vector3(v[0] ?? 0, v[1] ?? 0, v[2] ?? 0); }
   return res;
 }
@@ -974,6 +978,7 @@ export function mirrorPose(pose = {}) {
   const mirT = (name, t) => (sideOf(name) ? [...t] : [t[0] ?? 0, -(t[1] ?? 0), -(t[2] ?? 0)]);
   for (const [name, v] of Object.entries(pose)) {
     if (name === 'pos') { res.pos = [-v[0], v[1], v[2]]; continue; }
+    if (name === 'yaw') { res.yaw = Array.isArray(v) ? [-(v[0] ?? 0)] : -v; continue; }   // (module fix, wave 5) root yaw
     const xk = extraKey(name);
     if (xk) { res[`${swapSide(xk.bone)}.${xk.ch}`] = xk.ch === 'p' ? [-(v[0] ?? 0), v[1] ?? 0, v[2] ?? 0] : [...v]; continue; }
     const n2 = swapSide(name);
@@ -992,6 +997,7 @@ export function mirrorPose(pose = {}) {
 // '.l' stretch: a child bone's local matrix cancels its parent's length stretch (S, diagonal in the parent's frame) so the
 // child stays rigid while its joint moves out: M = T(p) · S⁻¹ · T(−p) · (T(p) R S) = T(p) · S⁻¹ · R · S
 const _lm = new THREE.Matrix4(), _lt = new THREE.Matrix4();
+const _yawQ = new THREE.Quaternion(), _yawAx = new THREE.Vector3(0, 1, 0);   // pose.yaw (module fix, wave 5)
 function counterUpdate() {
   this.matrix.compose(this.position, this.quaternion, this.scale);
   const s = this.parent?.userData?.lStretch;
@@ -1245,6 +1251,11 @@ export function buildCharacter(engine, spec) {
       }
       const rp = pose.pos ?? entryOf(pose, rootName)?.pos;
       if (rp) bones[rootName].position.copy(info[rootName].rest).add(new THREE.Vector3(rp[0], rp[1], rp[2]));
+      // (module fix, wave 5: lying die poses) pose.yaw = [deg] (or a number): spins the ROOT bone about the character's
+      // vertical axis through its joint, AFTER its own triple — a body lying on its side picks the direction it lies in
+      // (hips `twist` on a lying body rolls it about its own long axis instead). Mirrors to −yaw; 0 / absent = unchanged.
+      const yw = pose.yaw, yd = Array.isArray(yw) ? Number(yw[0]) || 0 : Number(yw) || 0;
+      if (yd && (reset || entryOf(pose, rootName)?.rot)) bones[rootName].quaternion.premultiply(_yawQ.setFromAxisAngle(_yawAx, yd * Math.PI / 180));
       if (reset && stretched.size) { for (const b of stretched) b.userData.lStretch = null; stretched.clear(); }
       let lens = null;
       for (const key in pose) {

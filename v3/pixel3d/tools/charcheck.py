@@ -552,6 +552,8 @@ def check_face(raw, res):
     per, lit_all, tot_all = {}, 0, 0
     sf, _ = load_job(raw, 'face-solo')                 # (module fix T4) face slot alone: unoccluded face px
     solo = mark_mask(sf[0]) if sf and sf[0].shape[:2] == m_all.shape else None
+    cf, _ = load_job(raw, 'face-cover')                # (module fix, wave 5: T32) face slot + its hair / hood cover
+    cov = mark_mask(cf[0]) if cf and cf[0].shape[:2] == m_all.shape else None
     for i, cell in enumerate(ci['cells']):
         if cell.get('dir') not in FACE_DIRS or i >= len(hs) or not hs[i]:
             continue
@@ -570,6 +572,10 @@ def check_face(raw, res):
         if solo is not None:
             un = int((solo & box & (np.arange(W)[None, :] >= x0) & (np.arange(W)[None, :] < x1)).sum())
             per[DIRS[cell['dir']]].update({'unocc': un, 'vis': round(tot / un, 3) if un else None})
+            if cov is not None:   # the face px the hair cap / hood rim hides by design are not 'occluded'
+                uc = int((cov & box & (np.arange(W)[None, :] >= x0) & (np.arange(W)[None, :] < x1)).sum())
+                per[DIRS[cell['dir']]].update({'uncov': uc, 'vis_raw': per[DIRS[cell['dir']]]['vis'],
+                                               'vis': round(min(1.0, tot / uc), 3) if uc else None})
         lit_all += lit; tot_all += tot
     res['face'] = {'slot': slot, 'per_facing': per, 'lit': lit_all, 'skin_px': tot_all,
                    'frac': round(lit_all / tot_all, 3) if tot_all else None}
@@ -1411,8 +1417,12 @@ def verdicts(res):
     if fc and 'frac' in fc and fc['frac'] is not None:
         if vis:   # (module fix T4) a face mostly under a brim / beak scored 96 % lit on its few visible px
             add('face_visible', f"{min(vis):.0%}", 'PASS' if min(vis) >= 0.6 else 'WARN',
-                'visible face px / unoccluded face px (face slot rendered alone, job face-solo), S/SE/SW: ' +
-                ' '.join(f"{k} {v.get('skin')}/{v.get('unocc')}" for k, v in fc['per_facing'].items()) + '; want >= 60 %')
+                ('visible face px / face px not under the hair/hood cover (face slot + cover rendered alone, job '
+                 'face-cover; raw = face slot alone), S/SE/SW: ' +
+                 ' '.join(f"{k} {v.get('skin')}/{v.get('uncov')} (raw {v.get('vis_raw', 0):.0%})" for k, v in fc['per_facing'].items())
+                 if any('uncov' in v for v in fc['per_facing'].values()) else
+                 'visible face px / unoccluded face px (face slot rendered alone, job face-solo), S/SE/SW: ' +
+                 ' '.join(f"{k} {v.get('skin')}/{v.get('unocc')}" for k, v in fc['per_facing'].items())) + '; want >= 60 %')
     if 'deterministic' in t:
         add('deterministic', t['deterministic'], 'PASS' if t['deterministic'] else 'FAIL', f"idle turnaround t=1 → 1.5 → 1 identical ({t.get('det_px', 0)} px differ)")
     for dn, dv in (res.get('det') or {}).items():

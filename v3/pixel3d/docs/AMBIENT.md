@@ -28,6 +28,7 @@ day), `docs/CHARACTER_LEARNINGS.md` §Timing and holds (the same rules bite ambi
 | `src/ambient/_ref-birds.js` | reference system: pecking pigeon flock that alerts, scatters to perches, returns (pose batch + reaction + contagion) |
 | `src/ambient/_ref-fireflies.js` | reference system: emissive sprites that blink and scatter from walkers at golden / night (sprite batch) |
 | `scenes/ambient-stage.js` | the test stage + scripted walker at game speed (§6) |
+| `scenes/ambient-gallery.js` | all seven systems in one plaza + three cast walkers (§10.6; integration lead) |
 | `tools/ambientpack.{sh,py}` | the system pack: 1x real-time GIF, x3 frame strip, cadence / determinism / reaction-lead checks (§7) |
 
 ## 2. The system contract
@@ -138,7 +139,7 @@ calls (+GL calls per frame) and per-system stats. Look at every PNG; the GIF is 
 
 | | per system | all ambient |
 |---|---|---|
-| GL calls / frame | ≤ 3 (lit pose batch = colour + normal + shadow; sprite batch = 1) | ≤ 24 |
+| GL calls / frame | ≤ 3 (lit pose batch = colour + normal + shadow; sprite batch = 1) | ≤ 36 (was 24; the seven built systems declare 32, §10.2) |
 | CPU update (median) | ≤ 0.3 ms at max agents | ≤ 1.5 ms |
 | triangles visible | ≤ 8k | — |
 | PointLights | ≤ 2 (always in the scene; off = intensity 0 — adding one recompiles every material) | ≤ 4 |
@@ -174,12 +175,188 @@ Every system answers, before code: **extra animated parts** (wings, flame tongue
 step — no smooth fades), **readability at game speed** (does the reaction start ≥ 0.3 s before a 4-heights-per-second
 walker arrives; is each drawing ≥ 2 texels different from the last; does it read in the 1x GIF).
 
-## 10. Consuming the library from the town (later)
+## 10. Using the library
 
-The town's life piece can call `createAmbient(engine, { anchors: registry anchors, heightAt: ctx.heightAt, tod:
-ctx.tod })` in its `build`, feed its walkers as sampled actors (`at(t)` = their route), and call `amb.update` from its
-own `update` with `autoUpdate: false`. Town time of day names (`TOWN_TOD`: noon / morning / golden / night) are the
-names `todInfo` expects. Ambient-core never edits `src/town/**`.
+Owner of this section, `scenes/ambient-gallery.js` and `shots/ambient-gallery/`: **ambient integration lead**. The
+gallery is the worked example: all seven systems in one small plaza, three cast members walking scripted loops at
+game speed, at noon, golden hour and night (§10.6).
+
+### 10.1 Quick start
+
+```js
+import { createAmbient, groundBasis, polylineDistance, gameSpeed } from '../src/ambient/index.js';
+const amb = await createAmbient(engine, {
+  systems: [                                   // src/ambient/<name>.js; opts per system (§10.3)
+    { name: 'birds', opts: { center, sparrows, perches, groundOk } },
+    { name: 'fire', opts: { fires: [{ id: 'campfire', kind: 'campfire', pos, yaw }], lights: ['campfire'] } },
+    'fireflies', 'critters', 'foliage', 'air', 'props',
+  ],
+  anchors: { perches, chimneys, lights, doors, windows, seats, spots: { flock, trail: [...], water } },  // TOWN.md §4
+  heightAt: (x, z) => terrain.heightAt(x, z),
+  tod: 'noon',                 // noon | morning | golden | night (+ the town's 'afternoon' = golden: TOD_ALIAS)
+  seed: 1, strict: false,      // a system that throws is skipped with console.warn; strict: true | name | [names]
+  autoUpdate: true,            // false: call amb.update(t, dt) yourself (a host with its own update, e.g. the town)
+  ticker: undefined,           // hosts with a big / wall-clock t: { mode: 'live', window: 5 } (§10.4)
+});
+amb.actors.add({ id: 'frog', at: (t) => posAt(t), height: 1.2 });   // sampled actor: a pure f(t) -> replayable
+amb.actors.set('p1', pos, vel, { height: 1.4 });                    // live actor (game feed)
+amb.setTimeOfDay('night');  amb.get('props').api.douse('lampA', 12);  amb.stats().totals;  amb.dispose();
+```
+
+Rules that keep it deterministic and readable:
+- Positions from a scene table in **screen metres** (`groundBasis(engine).scr(sx, sy)`: sx right, sy up of the frame
+  centre; the gameplay frame at vh 10 is ±8.9 × ±5). Build the camera before the systems (several read the camera at
+  create time: frame clamps, foliage's on-screen field, props / fire facings).
+- Walkers are **sampled actors** (`at(t)` = the route, `makePath` from `scenes/ambient-stage.js`) so every system
+  can replay from 0: the image at `t` is a pure function of `t` (gallery: 0 px between a cold render at t = 17.98 s
+  and the end of a 540-frame sequence, all seven systems).
+- Every reaction needs a clear run-up: put each reactive thing **1–2 m beside a route** (props: ≤ 1.7 m, real-distance
+  caps of 2.8–3.2 m), never at a walker's start / dwell point (a lamp 2 m from where the Storyteller starts kicked
+  0.09 s after he set off), and space them so the beats come one after another (gallery timeline §10.6).
+- Keep the systems' keep-outs consistent: one `laneD(x, z)` (= `polylineDistance` to the routes) feeds birds
+  `groundOk`, fireflies `avoid`, air `dustAt`; the dirt lanes are painted only where you want dirt (the frog's meadow
+  legs stay grass, otherwise the grass has nothing to part).
+
+### 10.2 What each system costs and needs
+
+| system | GL calls (+refl. water) | lights | needs (opts / anchors) | defaults when missing | time of day |
+|---|---|---|---|---|---|
+| birds | 3 (+1) | 0 | `center` (ground flock on dirt / setts), `sparrows`, `perches` (+ `perchSlots`, `perchDirs` for ridge hops), `groundOk(x,z)`, `frame` | spots.flock, anchors.perches | day: pigeons + sparrows + crows; golden: crows only; night: none |
+| fire | 2 + 3 fixtures | ≤ 2 (`lights: [ids]`) | `fires: [{id, kind campfire/brazier/torch/forge/candle, pos, yaw, mount}]`, `fixtures: false` for hosts with their own bowls | ambient-stage layout from spots | lit always; PointLights only when `tod.dark` |
+| fireflies | 2 | 0 | `swarms`, `gardens`, `glow` (wall feet), `water`, `lamps` (moth lamps), `avoid(x,z)` | spots.fireflies / wall / pillarA / pond, anchors.lights | day: butterflies, bees, blooms; golden: some fireflies + moths; night: all |
+| critters | 3 (+1) | 0 | `cats` (perched / ground + `safe` perch), `hens`, `water` + `ducks` / `frogs`, `mice.hides`, `dog` | groups without a place are skipped | all day; eyeshine at night |
+| foliage | 2 | 0 | `terrain` (tones / isGrass), `mask`, `tall`, `flowers`, `reeds`, `bushes`, `leafSources`, `area` | field = the camera view at create | replaces the world grass where it grows (`api.covers`) |
+| air | 3 cloth + 2 rings + 2 fx + 1 beam | 0 | `wind`, `flags`, `banners`, `laundry`, `bunting`, `awnings`, `chimneys`, `puddles`, `beams`, `dustAt` | nothing is built that is not listed | beams per `tods`; smoke palette per tod |
+| props | 3 + 3 fixtures + 2 | ≤ 2 (`lights: [ids]`) | `props: [{id, kind sign/gate/lamp/chimes/well/bell/fountain/scarecrow, pos, yaw}]`, `lamps: 'auto'/'lamplighter'` | ambient-stage layout | lamps lit when `tod.dark` (or by a lamplighter actor) |
+
+Measured in the gallery (RTX 4090 host, 640×360, all seven, three walkers, pond reflection off; ambientpack bench of
+60 frames + 540-frame play): **+31 GL calls/frame** at noon / golden, +28 at night (declared 32 / 29: no birds at
+night), **+46 with the reflective pond** (it re-renders every batch); frame **2.49 / 2.57 / 2.30 ms vs 2.44 / 2.16 /
+1.86 ms** without the systems (noon / golden / night); CPU **0.39–0.45 ms per update for all seven together** (mean
+over 540 frames; foliage 0.11, the others 0.04–0.08 each; a cold render's first frame replays from 0: 1–3 ms per
+system at t = 18 s). Whole-texel pan (3,2 / 5,-3 texels, grade off): 7–8 px vs 5 px with no systems (noon, still),
+1–4 px at night with the walkers: pan-stable. `amb.stats().totals` sums the declared calls / lights /
+update ms and lists budget overruns by name; `BUDGET.total.glCalls` is 36 (air bundles three planned systems, props
+its fixtures + two sprite batches).
+
+**Lights:** every PointLight costs every lit fragment and adding one later recompiles all materials. In one scene keep
+ambient lights ≤ 2–3 total: pick them with `fire.lights` / `props.lights` (gallery: the campfire + one plaza lamp; the
+Storyteller's lantern is a third, from its own `spec.lights`). The toon point light has a hard 1.8 m reach that
+steps the ground to its MID tone × the light colour: on grass the outer band turns olive, so put a lit lamp's pool
+on setts / dirt (gallery: lampB moved onto the plaza for that reason).
+
+### 10.3 Option cookbook (copied from the gallery)
+
+```js
+const face = engine.camera.yaw;   // props / fire: local +Z towards the camera, +X screen right
+birds:   { center: plazaSpot, sparrows: laneSpot, perches, perchSlots, perchDirs, groundOk: (x, z) => inPlaza(x, z) || laneD(x, z) < 0.3,
+           frame: { target, halfW: vh * 8 / 9, halfH: vh / 2 }, pitch }
+fire:    { fires: [{ id: 'campfire', kind: 'campfire', pos, yaw: face }, { id: 'torch', kind: 'torch', pos: wallFace, yaw: face, mount: 0.62 }],
+           lights: ['campfire'] }
+fireflies: { swarms: [{ c, r: 1.7, n: 24 }], gardens: [{ c: flowers, r: 0.9, n: 6 }], glow: [{ c: wallFoot, r: 0.15, n: 8, along: 1.4 }],
+           water: [pond], lamps: [lampGlass], mothsPerLamp: 3, avoid: (x, z) => inPlaza(x, z) || laneD(x, z) < 0.9 || wet(x, z) }
+critters: { cats: [{ pos: wallPerch, perched: true, coat: 'tux', alts }, { pos: doorstepTop, coat: 'ginger', safe: pillarTop, lift }],
+           hens: { center, count: 3, spread: 0.6 }, water: { x, z, level }, ducks: { homes }, frogs: { homes }, mice: { hides }, dog: { home, yaw } }
+foliage: { terrain, mask, tall: [{ x, z, r }], flowers: [{ x, z, r, tints }], reeds, bushes, leafSources, wind: { strength: 0.5 }, still }
+air:     { wind: { dir, strength: 0.4, every: 5.4, center, spots }, laundry: [{ a, b, items }], awnings, bunting: [{ a, b, n, tones }],
+           chimneys: [top], puddles: [{ pos, r }], beams: [{ pos, r, h, sun, tods: ['noon'] }], dustAt: (x, z) => laneD(x, z) < 0.6 }
+props:   { props: [{ id: 'sign', kind: 'sign', pos, yaw: face - Math.PI / 4 }, { id: 'lampB', kind: 'lamp', pos, yaw: face }, ...], lights: ['lampB'] }
+```
+A lamp's glass (moth lamp / light anchor) is `pos + R·0.5 + (0, 1.76, 0)` (props drawings: head pivot 0.5 m out on
+the arm, flame 0.43 m below it).
+
+### 10.4 Time, replay and live hosts
+
+- `Ticker` replay (default) re-simulates from t = 0 whenever time goes backwards or on the first call: right for
+  captures and scrubbing, wrong for a host whose clock starts at 3600 s. `createAmbient(engine, { ticker })` sets the
+  defaults for every Ticker built inside the systems' `create()` (no system change needed):
+  - `{ mode: 'live' }`: forward-only; a cold start or a backwards jump starts from "no history" at that t. A FORWARD
+    jump still simulates every tick in between (the engine renders t = 0 first, so a jump to t = 3600 s cost 54 000
+    ticks: birds 282 ms, fireflies 490 ms in one frame). Pair it with a window: `{ mode: 'live', window: 5 }` -> 76
+    ticks, 0.8-3 ms per system on that frame (gallery `?ticker=live&window=5&tdebug=1` counts the ticks).
+  - `{ window: 20 }`: replay, but a cold start / a forward jump > 20 s simulates only the last 20 s, so the
+    catch-up cost is bounded whatever t is. A cold start is still a pure function of t, but NOT the same image as a
+    replay from 0 when walkers keep the systems busy (gallery, t = 40 s: 2.7k px differ with window 20, 2.4k with 12;
+    first-frame update of birds 7.9 ms vs 12.5 ms). Use it for live hosts; captures keep the default.
+- Every system is on the 15 Hz ambient grid (`holds` 0 x1 drawings / 0 odd-frame changes with all seven running);
+  a host on other clocks (town life: 8 / 6 / 3 fps) mixes cadences — fine to the eye, but run cadence checks on the
+  ambient layer alone.
+- **Water caveat (module issue, src/world/water.js):** with a planar-reflective pond in view, swimming / flying
+  ambient instances change 1–13 px of the reflection on ODD 30 Hz frames (gallery: 99–145 x1 "drawings", 13–29 px
+  non-determinism between a cold render and a sequence). With `reflection: false` both checks are clean (0 / 0 px).
+  Until the reflection is fixed, run gallery checks with `?reflect=0`.
+
+### 10.5 Town life (CONTRACT-REQUEST: life, lead — ambient never edits `src/town/**`)
+
+CONTRACT-REQUEST (life, `src/town/life/index.js`): consume the library from life's `build(engine, ctx)` instead of
+growing private copies of the same behaviours. Everything it needs is in the TOWN.md §4 anchors; `ctx.registry
+.anchors(kind)` returns `[{ piece, pos | ...anchor }]`, so flatten it first:
+
+```js
+import { createAmbient, polylineDistance } from '../../ambient/index.js';
+const pos = (kind, f = () => true) => ctx.registry.anchors(kind).filter(f).map((a) => a.pos);
+const lights = ctx.registry.anchors('lights');
+const amb = await createAmbient(engine, {
+  systems: [
+    // crows / pigeons on the square's setts, crows on ridge / pinnacle perches (scare = birds' own reaction)
+    { name: 'birds', opts: { center: SQUARE_SPOT, perches: pos('perches'), groundOk: (x, z) => onSetts(x, z), crowsDay: 4, pigeons: 6 } },
+    // chimney smoke (+ dust / puddle splashes under the walkers, laundry and stall awnings where life wants them)
+    { name: 'air', opts: { chimneys: pos('chimneys'), wind: { dir, strength: 0.35, center: CIRCLE }, dustAt: (x, z) => onLane(x, z) } },
+    // braziers / torches: the composer owns the PointLights, so no ambient lights and no fixtures
+    { name: 'fire', opts: { fires: lights.filter((l) => l.kind === 'fire').map((l, i) => ({ id: `fire${i}`, kind: 'brazier', pos: l.pos.clone().setY(0) })), fixtures: false, lights: [] } },
+    // lamp moths + fireflies over the greens, glow-worms at wall feet
+    { name: 'fireflies', opts: { lamps: lights.filter((l) => l.kind === 'lamp').map((l) => l.pos), swarms: GREENS, avoid: (x, z) => onLane(x, z) } },
+    // a cat on a ridge perch and one on a doorstep (doors[].point), hens by a cottage, the town dog
+    { name: 'critters', opts: { cats: [...], hens: {...}, dog: {...} } },
+  ],
+  anchors: { perches: pos('perches'), chimneys: pos('chimneys'), lights: lights.map((l) => ({ ...l })), spots: { trail: LANE_POINTS } },
+  heightAt: ctx.heightAt, tod: ctx.tod, autoUpdate: false, ticker: { window: 20 },   // replayable routes; live feed: { mode: 'live', window: 5 }
+});
+for (const w of walkers) amb.actors.add({ id: w.id, at: (t) => w.posAt(t), height: w.height });   // routes are pure f(t)
+// life.update(t, dt): amb.update(t, dt);   life.setTimeOfDay(name): amb.setTimeOfDay(name)   ('afternoon' -> golden)
+```
+Notes for that integration: `fire` / `props` with `lights: []` draw their flames / glass glow as emissive sprites only
+(the composer's `installLights` keeps owning the ≤ 12 PointLights); `props` with `fixtures: false` keeps only the moving
+parts, so give it the town's own lamp / sign positions (the props piece would need to expose sign + lamp anchors:
+CONTRACT-REQUEST props-piece: `anchors.signs` / lamp ids); `foliage` replaces the ground piece's grass where it grows
+(mask the ground grass with `amb.get('foliage').api.covers` — CONTRACT-REQUEST ground); budget: birds 3 + air ~4 +
+fire 2 + fireflies 2 + critters 3 ≈ 14 calls of life's 30, CPU < 0.3 ms/update for that subset.
+
+### 10.6 The gallery (`scenes/ambient-gallery.js`)
+
+A sett plaza with a fountain, lamps strung with bunting, a laundry line, a market awning, a yard campfire with hens, a
+ruined wall (torch, crows, a loafing cat), two pillars, a doorstep with a ginger cat, a chimney stack, a pond with
+ducks / frogs / reeds, a tall-grass meadow under a firefly swarm, a gate, chimes, a hanging sign, two trees shedding
+leaves. Three cast members at game speed (4 body heights per second, capped at the wanderer's 1.45 m):
+- **frog** (period 8.98 s): pigeons on the setts scatter (1.5 s) → crosses the tall grass meadow (grass parts; at
+  night the swarm parts) → yard campfire flare + hens flutter off (5.3 s) → laundry wave → sparrows flush and the
+  puddle splashes (7.0 s) → ducks and frogs take to the pond → the shop sign swings (7.5 s);
+- **storyteller** (enters from the right): crows lift off the wall, the torch flares (2.8 s), lamp C kicks → stands
+  at the doorstep: the ginger cat crouches, bolts and leaps onto the pillar (4.0 s) → back past the brazier (7.1 s);
+  lantern light at golden / night;
+- **mincut**: through the gate (rattle 3.7 s), the chimes clash, the bushes rustle.
+
+Params: `tod`, `shot=wide|plaza|cat|sign|grass|pond|wall|yard|gate|laundry`, `vh`, `walker=ghost|none`,
+`cast=frog,storyteller,mincut`, `systems=`, `still=1`, `reflect=0`, `grade=0`, `pan=dx,dy`, `paths=1`, `window=`,
+`ticker=live`, `tdebug=1` (Ticker tick counts per frame in `info().stats.tickers`).
+```
+tools/ambientpack.sh birds,fire,fireflies,critters,foliage,air,props --scene ambient-gallery --out shots/ambient-gallery/check-noon --q reflect=0
+tools/remote.sh python3 shots/ambient-gallery/gclips.sh.py     # every reaction clip (GIF + 15 Hz strip) -> shots/ambient-gallery/clips/
+tools/remote.sh python3 shots/ambient-gallery/gholds.py <out> <dur> '<q>' <systems> ...   # cadence per system subset
+```
+
+### 10.7 Core additions (integration r1; all opt-in, defaults unchanged — A/B 0 px on ambient-props / -critters / -birds)
+
+| helper | what | asked by |
+|---|---|---|
+| `mergePose(parts, { keep: { aFx: { size: 2 } } })` | keeps extra per-vertex attributes through the merge (zero-filled on parts that lack them) | birds, critters (private merge copies) |
+| `createPoseBatch({ shadowMask: true })` → `b.setShadow(i, on)` | per-instance shadow switch, 0 extra calls (airborne birds cast no smear on a wall face) | birds |
+| `groundBasis(engine)` → `{ R, F, yaw, pitch, scr(sx, sy, origin?) }` | camera ground basis from yaw / pitch (camera.right is stale at create) | fire, props (private copies) |
+| `polylineDistance(x, z, pts, closed)` | distance to a route / trail polyline (keep-outs) | every scene's `segD` copy |
+| `Ticker.defaults` + `createAmbient({ ticker: { mode, window } })` | host-wide live mode / bounded catch-up (§10.4); live mode no longer replays from 0 on its first call | town / game hosts |
+| `amb.stats().totals` | summed declared calls / lights / update ms + budget overruns by name | perf checks |
+| `todInfo` `TOD_ALIAS` (`afternoon` → `golden`, `tod.host` = the host's name) | the town's 5th preset plays as golden | town |
+| `createAmbient({ strict: [names] })`, `{ name, strict: true }` entries | strictness per system | gallery |
 
 ## 11. Lessons (append: symptom → cause → rule)
 
@@ -534,3 +711,21 @@ names `todInfo` expects. Ambient-core never edits `src/town/**`.
 - (ambient-air, r3) Gust lines as single 1-texel dashes read as specks / birds. Rule: groups of 2-3 parallel lines
   (4 texels apart, staggered 5 texels and 1 tick) with a 2-texel curl at the head, born 1 tick before the front
   reaches a spot placed upwind of the cloth, so the lines arrive just before the flag snaps.
+- (integration) All seven systems in one scene pass `holds` (0 x1, 0 odd) and `deterministic` (0 px) at noon /
+  golden / night ONLY with the pond's planar reflection off: with it, swimming ducks / circling birds change 1-13 px of
+  the reflection on odd 30 Hz frames (99-145 x1 per 18 s) and a cold render differs by 13-29 px from a sequence.
+  Each system alone passes; `reflect=0` -> 0 / 0. Rule: run multi-system cadence checks with the reflection off and
+  report the water module issue; judge the look on the reflective GIF.
+- (integration) A walker that starts (or dwells) 1-2 m from a reactive prop sets it off the tick it starts moving:
+  lead 0.09 s (Storyteller beside a lamp), 0.27 s (frog by the fountain). Rule: start / dwell points >= 3.5 m from every
+  reactive thing; enter from off-frame where you can.
+- (integration) Painting a dirt lane along EVERY leg of a walker's route removed the grass it was meant to part (the
+  frog ran on a dirt corridor through the tall-grass patch). Rule: lanes only where the story wants dirt; legs that
+  should part grass / scatter fireflies stay grass, and the keep-out polylines (`spots.trail`, `laneD`) use the lanes,
+  not the routes.
+- (integration) A lit lamp whose pool falls on grass turns olive at night (the toon light's MID-tone step × warm light
+  on teal). Rule: the lamp that owns the PointLight stands on setts / dirt; other lamps only glow.
+- (integration) `setClouds` cover is a threshold: 0.22-0.42 left the whole gallery in cloud shade (every critter on
+  the dark band), 0.55 none. 0.5 gave a mix on this terrain; check one wide frame before tuning anything else.
+- (integration) `gameSpeed(H)` with the Storyteller's staff-inclusive height (1.85 m) made him run 7.4 m/s. Rule:
+  cap H at the wanderer's 1.45 m for travel speed (the game moves every sprite at the same px/s).

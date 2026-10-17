@@ -19,9 +19,9 @@ export const V_GAME = 3.95 * HEIGHT;        // 4.74 m/s
 // legs #3a3236, shoes #221a1c, apron #bcb29e (string #8a806e).
 export const PALETTE = {
   coat: ['#9A8052', '#76603E', '#544232'],     // muted ochre-brown coat + sleeves (v1 #76603E)
-  apron: ['#D8CEB6', '#BCB29E', '#8E8474'],    // signature: the plain cream apron (v1 #BCB29E, kept muted)
-  hair: ['#6A4E3A', '#4E3A2C', '#3E2E2C'],     // signature 2: the hair + bun; also the shoes (v1 shoes #221a1c lifted)
-  skin: ['#CCA67E', '#B48E68', '#86664E'],     // face, neck, forearms (rolled sleeves), hands
+  apron: ['#DCD6C6', '#BCB29E', '#8E8474'],    // signature: the plain cream apron (v1 #BCB29E; hi cooler + lighter for golden grass, r2)
+  hair: ['#563F31', '#4A3629', '#382826'],     // signature 2: the hair + bun (r2: a touch darker than v1 #4E3A2C so the bun separates from shaded grass)
+  skin: ['#C29A72', '#AA8460', '#8C6A50'],     // face, neck, forearms (rolled sleeves), hands
   dark: ['#463E4A', '#3A3236', '#342C38'],     // trousers, eyes, mouth (v1 #3A3236; no black)
   wares: ['#D0705A', '#A84A3C', '#6E3434'],    // accent: the apple she holds up when calling out (muted red)
 };
@@ -30,8 +30,8 @@ const RIG_H = 1.09;                          // skull top; the bun adds 0.08
 const BODY = { height: RIG_H, heads: 3.05, legs: 0.75, arms: 1.0, snout: 0, ears: false, tail: false, neck: 0.1 };
 // head ellipsoids (head-local; the head joint is the chin line at y 0.726)
 const HEAD_C = [0, 0.2, 0.02], HEAD_R = [0.19, 0.198, 0.188];
-const HAIR_C = [0, 0.212, -0.006], HAIR_R = [0.208, 0.205, 0.198];
-const BUN_AT = [0, 0.43, -0.055], BUN_R = 0.088;
+const HAIR_C = [0, 0.214, -0.008], HAIR_R = [0.212, 0.208, 0.2];   // r2: a slightly fuller hair mass (v1 helmet; 0.218 hid the face at SE)
+const BUN_AT = [0, 0.445, -0.05], BUN_R = 0.11;    // r2: 0.088 was a 1-texel bump at 25 %
 // eye joint on the skin surface (head-local, L) + the surface normal there
 const EYE = (() => {
   const x = 0.072, y = HEAD_C[1] - 0.01;
@@ -82,12 +82,12 @@ function cellEllipsoid(R, lats, nj, keep) {
   }
   return mkGeo(out);
 }
-const LATS = [-90, -66, -44, -24, -6, 12, 28, 46, 66, 90];
+const LATS = [-90, -66, -44, -24, -6, 12, 20, 28, 46, 66, 90];
 // hair: the whole cap above the fringe line (lat 12 at the front, a little lower at the temples), the back and the sides
 // down to the nape; the face window (front, below the fringe) and the jaw underside are cut away
 const hairKeep = (lat, az) => {
   const a = Math.abs(az);
-  if (lat > (a < 40 ? 30 : 18)) return true;          // crown + fringe (higher at the centre: the 30° camera sees the forehead)
+  if (lat > (a < 40 ? 16 : 14)) return true;          // crown + fringe down to lat 20 (r2: lat 28 left a 6-texel bare forehead at S)
   if (a > 96) return lat > -50;                       // back of the head down to the nape
   if (a > 58) return lat > 12;                        // temples (above eye level)
   return false;                                       // face window
@@ -114,22 +114,30 @@ export function parts(S) {
   const eyeRot = { rot: [-EN.pitch, EN.yaw, 0] };
   add('eyeL', K.xf(K.box(0.058, 0.08, 0.016), eyeRot), [0, 0, -0.01], 'dark', { name: 'eye', mirror: true });
   add('mouth', K.box(0.06, 0.045, 0.03), [0, 0, 0], 'dark', { name: 'mouthPlate' });
-  add('neck', K.box(0.085, 0.11, 0.085), [0, 0.04, -0.015], 'skin', { name: 'neck' });
+  add('neck', K.box(0.085, 0.11, 0.085), [0, 0.04, -0.015], 'skin', { name: 'neck' });   // merged with the head (material.merge): no chin line
 
   // ── torso: coat (blocky, v1) with the apron bib on the front and the waist band + bow ──
   const chestH = m.shoulderY - m.chestY + 0.05;
   add('chest', K.chamferBox(0.32, chestH, 0.23, 0.3), [0, chestH / 2 - 0.01, 0], 'coat', { name: 'coat' });
-  add('chest', K.box(0.18, chestH - 0.05, 0.03), [0, chestH / 2 - 0.035, 0.115], 'apron', { name: 'bib' });
+  add('chest', K.box(0.16, chestH - 0.05, 0.03), [0, chestH / 2 - 0.035, 0.115], 'apron', { name: 'bib' });
   const waistH = m.chestY - m.spineY + 0.02;
   add('spine', K.chamferBox(0.30, waistH, 0.22, 0.3), [0, waistH / 2, 0], 'coat', { name: 'coat' });
-  add('spine', K.chamferBox(0.34, 0.06, 0.26, 0.2), [0, 0.05, 0], 'apron', { name: 'band' });
-  for (const s of [-1, 1]) add('spine', K.hull([[0, 0, 0], [s * 0.08, 0.045, -0.01], [s * 0.08, -0.045, -0.01], [s * 0.02, 0, 0.02], [s * 0.07, 0, -0.035]]),
-    [0, 0.05, -0.15], 'apron', { name: 'bow' });
+  // apron strings tied at the back: ONE chunky bow (knot + two short tails), no waist band (a band only 1 texel proud of the
+  // coat drew a dotted line of inner lines all round the waist: isolated px 8 at SE)
+  add('spine', K.hull([[-0.1, 0.035, 0], [0.1, 0.035, 0], [-0.1, -0.035, 0], [0.1, -0.035, 0], [-0.07, 0.03, -0.045], [0.07, 0.03, -0.045], [-0.07, -0.03, -0.045], [0.07, -0.03, -0.045]]),
+    [0, 0.06, -0.1], 'apron', { name: 'bow' });
+  add('spine', K.hull([[-0.06, 0, 0], [0.06, 0, 0], [-0.075, -0.12, 0], [0.075, -0.12, 0], [-0.06, 0, -0.035], [0.06, 0, -0.035], [-0.075, -0.12, -0.03], [0.075, -0.12, -0.03]]),
+    [0, 0.04, -0.11], 'apron', { name: 'bow' });
   const pelY = m.spineY - m.hipsY;
   add('hips', K.chamferBox(0.31, 0.13, 0.23, 0.3), [0, pelY - 0.05, 0], 'coat', { name: 'coatHem' });
-  // apron skirt (on its own bone): a slightly flared panel to above the knee, with a pocket seam
-  add('apron', K.hull([[-0.12, 0, 0], [0.12, 0, 0], [-0.13, -0.24, 0.015], [0.13, -0.24, 0.015],
-    [-0.12, 0, 0.035], [0.12, 0, 0.035], [-0.13, -0.24, 0.05], [0.13, -0.24, 0.05]]), [0, 0, 0], 'apron', { name: 'apron' });
+  // apron skirt (on its own bone): a narrower panel that WRAPS a little round the hips (side returns set back) to
+  // above the knee — r2: the flat 0.26 m slab filled the right half of the body at SE and hid the legs
+  const AW = [0.07, 0.082], AY = [0.045, -0.215];
+  add('apron', K.hull([
+    [-AW[0], AY[0], 0.038], [AW[0], AY[0], 0.038], [-AW[1], AY[1], 0.052], [AW[1], AY[1], 0.052],          // front face
+    [-AW[0] - 0.022, AY[0], 0.012], [AW[0] + 0.022, AY[0], 0.012], [-AW[1] - 0.022, AY[1], 0.026], [AW[1] + 0.022, AY[1], 0.026],   // curved sides
+    [-AW[0] - 0.022, AY[0], -0.01], [AW[0] + 0.022, AY[0], -0.01], [-AW[1] - 0.022, AY[1], 0.0], [AW[1] + 0.022, AY[1], 0.0],
+  ]), [0, 0, 0], 'apron', { name: 'apron' });
 
   // ── arms: coat upper sleeve with a rolled cuff, skin forearm + hand ──
   for (const sd of ['L', 'R']) {
@@ -141,7 +149,7 @@ export function parts(S) {
   // ── legs: dark trousers, brown shoes ──
   add('thighL', K.frustum(4, 0.078, 0.072, m.thigh + 0.04), [0, -m.thigh / 2, 0], 'dark', { name: 'thigh', mirror: true });
   add('shinL', K.frustum(4, 0.066, 0.07, m.shin), [0, -m.shin / 2, 0], 'dark', { name: 'shin', mirror: true });
-  add('footL', K.chamferBox(0.1, m.ankleY + 0.035, 0.17, 0.35), [0, -m.ankleY / 2 + 0.012, 0.035], 'hair', { name: 'shoe', mirror: true });
+  add('footL', K.chamferBox(0.1, m.ankleY + 0.035, 0.17, 0.35), [0, -m.ankleY / 2 + 0.012, 0.035], 'coat', { name: 'shoe', mirror: true });   // r2: brown shoes in the coat slot (lighter than the dark trousers so the contact foot reads at SE)
 
   // ── wares (emote only): an apple with a stalk, TINY ──
   const T = (g, at) => ({ g: K.xf(g, { scale: TINY }), at: at.map((v) => v * TINY) });
@@ -160,18 +168,20 @@ const SHOW = (b) => ({ [b + '.s']: [999, 999, 999] });
 const ARMS_REST = { upperArmL: [0, 0, 6], upperArmR: [0, 0, 6], forearmL: [8, 0, 0], forearmR: [8, 0, 0] };
 const breathe = (d, c, extra = {}) => ({ pos: [0, -0.01 - d, 0], ...ARMS_REST, chest: [c, 0, 0], head: [-c, 0, 0], ...extra });
 const KNEES = (a) => ({ thighL: [a, 0, 0], shinL: [-2 * a, 0, 0], thighR: [a, 0, 0], shinR: [-2 * a, 0, 0] });
-const VOTE_UP = { pos: [0, 0.04, 0], spine: [-2, 0, 6], chest: [-4, -8, 8], head: [-6, 14, -6], ...WIDE, ...OPEN(0.5),
+const VOTE_UP = { pos: [0, 0.04, 0], spine: [-2, 0, 6], chest: [-4, -8, 8], head: [-6, 4, 6], ...OPEN(0.5),
   upperArmL: [0, 0, 8], forearmL: [8, 0, 0],
-  upperArmR: [168, 0, 22], forearmR: [0, 0, 0], handR: [0, 0, 0], 'upperArmR.l': [0.8], 'forearmR.l': [0.7] };
+  upperArmR: [164, 0, 22], forearmR: [0, 0, 0], handR: [0, 0, 0], 'upperArmR.l': [1.7], 'forearmR.l': [1.45], 'handR.s': [0.5, 1.2, 0.3] };
 const POINT = (extra = {}) => ({ pos: [0, 0, 0], chest: [-2, 18, 0], head: [-6, -10, 0], ...WIDE,
   upperArmR: [108, 0, 8], forearmR: [0, 0, 0], 'upperArmR.l': [0.5], 'forearmR.l': [0.4],
   upperArmL: [55, 0, 25], forearmL: [30, 0, 0], ...extra });
-const CALL = (extra = {}) => ({ pos: [0, 0.03, 0], spine: [-4, 0, -6], chest: [-6, -6, -6], head: [-10, 14, 8], ...WIDE, ...OPEN(1.1),
+const CALL = (extra = {}) => ({ pos: [0, 0.03, 0], spine: [-4, 0, -6], chest: [-6, -6, -6], head: [-10, 6, 8], ...WIDE, ...OPEN(1.1),
   upperArmR: [128, 0, 36], forearmR: [25, 0, 0], 'upperArmR.l': [0.6], 'forearmR.l': [0.4], ...SHOW('wares'),
-  upperArmL: [-20, 0, 45], forearmL: [100, 0, 0], ...extra });
-// lying curled on her left side, face toward the SE camera, eyes shut (probe pr/d3)
-const DEAD = { pos: [0, -0.3, 0], hips: [30, 0, 80], spine: [16, 0, 0], chest: [14, 0, 0], head: [10, 20, 0], ...BLINK,
-  thighL: [70, 0, 0], shinL: [-110, 0, 0], thighR: [60, 0, 0], shinR: [-100, 0, 0], apron: [50, 0, 0],
+  upperArmL: [-20, 0, 45], forearmL: [100, 0, 0], handL: [0, 0, 0], 'handL.s': [0, 0, 0], ...extra });
+// lying FLAT on her left side (hips roll 88, no hip pitch; r1 hips fwd 30 propped the hips up = "kneeling/bowing" at
+// E/NE), a soft curl in the spine and knees, eyes shut. The apron skirt is merged away (scale ~0; kept at 40 % it still added +2 isolated px) so
+// no dashed cream edges show between the trousers. Foreshortened (compact) facings: NE + W/SW (probes s2/d0..d8).
+const DEAD = { pos: [-0.1, -0.32, -0.1], hips: [0, 0, 88], spine: [25, 0, 0], chest: [20, 0, 0], head: [0, 20, 0], ...BLINK,
+  thighL: [60, 0, 0], shinL: [-90, 0, 0], thighR: [50, 0, 0], shinR: [-80, 0, 0], apron: [60, 0, 0], 'apron.s': [-0.97, -0.97, -0.97],
   upperArmL: [60, 0, 10], upperArmR: [50, 0, 10], forearmL: [60, 0, 0], forearmR: [60, 0, 0] };
 
 export const CLIPS = {
@@ -196,18 +206,18 @@ export const CLIPS = {
     { f: 2, pose: { apron: [30, 0, 0] } }, { f: 3, pose: { apron: [12, 0, 0] } },
   ] },
   talk: { fps: 30, loop: true, interp: 'step', length: 32, events: { 0: 'speak' }, keys: [
-    { f: 0, pose: { pos: [0, -0.01, 0], chest: [-3, 8, 0], head: [-6, 10, 6], ...OPEN(1), ...ARMS_REST,
-      upperArmR: [30, 0, 22], forearmR: [70, 0, 0], handR: [0, -40, 0] } },
-    { f: 8, pose: { pos: [0, -0.04, 0], chest: [2, 2, 0], head: [-1, 4, -3], ...ARMS_REST, upperArmR: [10, 0, 10], forearmR: [40, 0, 0] } },
-    { f: 16, pose: { pos: [0, -0.01, 0], chest: [-3, -4, 0], head: [-6, 2, -6], ...OPEN(0.8), ...ARMS_REST,
-      upperArmL: [30, 0, 22], forearmL: [70, 0, 0], handL: [0, -40, 0] } },
-    { f: 24, pose: { pos: [0, -0.04, 0], chest: [2, 2, 0], head: [-1, 4, 3], ...ARMS_REST, upperArmL: [10, 0, 10], forearmL: [40, 0, 0] } },
+    { f: 0, pose: { pos: [0, -0.01, 0], chest: [-3, -8, 0], head: [-6, -12, 6], ...OPEN(1), ...ARMS_REST,
+      upperArmR: [42, 0, 34], forearmR: [76, 0, 0], handR: [0, -40, 0] } },
+    { f: 8, pose: { pos: [0, -0.04, 0], chest: [2, -2, 0], head: [-1, -4, -3], ...ARMS_REST, upperArmR: [10, 0, 10], forearmR: [40, 0, 0] } },
+    { f: 16, pose: { pos: [0, -0.01, 0], chest: [-3, -4, 0], head: [-6, -14, -6], ...OPEN(0.8), ...ARMS_REST,
+      upperArmL: [42, 0, 34], forearmL: [76, 0, 0], handL: [0, -40, 0] } },
+    { f: 24, pose: { pos: [0, -0.04, 0], chest: [2, -2, 0], head: [-1, -4, 3], ...ARMS_REST, upperArmL: [10, 0, 10], forearmL: [40, 0, 0] } },
   ] },
-  // vote: a small dip, then the RIGHT hand (the near arm at SE) straight up past the bun, eyes wide, mouth a little
-  // open; HELD. Up-and-a-little-forward-out ([168, 0, 22]) so the hand clears the head at 7/8 facings (probe pr/v4);
-  // the chibi-length arm gets its reach from '.l' 0.8 / 0.7 (not a stretched-thick .s)
+  // vote: a small dip, then the RIGHT hand (the near arm at SE) straight up past the bun, eyes normal, mouth a little
+  // open; HELD. r2: [164, 0, 22] with `.l` 1.7/1.45 + an open hand clears the bun top 8/8 (SE ~4, E ~3 texels; s2/v*-g);
+  // the chibi-length arm gets its reach from '.l' (not a stretched-thick .s)
   vote: { fps: 30, loop: false, interp: 'step', dynamics: 'snap', events: { 4: 'vote@handR' }, keys: [
-    { f: 0, pose: { pos: [0, -0.05, 0], chest: [6, 0, 0], head: [-6, 0, 0], ...ARMS_REST, upperArmR: [-12, 0, 8], forearmR: [30, 0, 0] } },
+    { f: 0, pose: { pos: [0, -0.05, 0], chest: [6, 0, 0], head: [-6, 0, 0], ...ARMS_REST, upperArmR: [0, 0, 16], forearmR: [20, 0, 0] } },
     { f: 4, pose: VOTE_UP },
   ] },
   // point (the game's shared emote): the right arm out along the facing and a little up, the chest twisted so the right
@@ -217,7 +227,7 @@ export const CLIPS = {
     { f: 4, pose: POINT() },
     { f: 20, pose: POINT({ head: [-10, -14, 4], upperArmR: [114, 0, 8] }) },
     { f: 28, pose: POINT() },
-    { f: 38, pose: { pos: [0, -0.02, 0], chest: [0, 6, 0], head: [-4, 4, 0], ...ARMS_REST, upperArmR: [45, 0, 10], forearmR: [40, 0, 0] } },
+    { f: 38, pose: { pos: [0, -0.02, 0], chest: [0, 6, 0], head: [-4, 4, 0], ...ARMS_REST, upperArmR: [30, 0, 22], forearmR: [25, 0, 0] } },
     { f: 44, pose: breathe(0, 0) },
   ] },
   // die (no hurt: a gentle faint): a sway with the back of the hand to the brow, the knees buckle (kneel), she tips
@@ -228,26 +238,30 @@ export const CLIPS = {
       upperArmR: [120, 0, 20], forearmR: [110, 0, 0] } },
     { f: 10, pose: { pos: [0, -0.15, 0], spine: [14, 0, 0], chest: [12, 0, 0], head: [8, 0, 0], ...BLINK, ...KNEES(60),
       apron: [40, 0, 0], upperArmL: [30, 0, 10], upperArmR: [30, 0, 10], forearmL: [50, 0, 0], forearmR: [50, 0, 0] } },
-    { f: 16, pose: { pos: [0, -0.24, 0], hips: [20, 0, 45], spine: [16, 0, 0], chest: [14, 0, 0], head: [10, 10, 0], ...BLINK, ...KNEES(70),
-      apron: [50, 0, 0], upperArmL: [50, 0, 10], upperArmR: [50, 0, 10], forearmL: [60, 0, 0], forearmR: [60, 0, 0] } },
+    { f: 16, pose: { pos: [-0.06, -0.22, -0.03], hips: [0, 0, 45], spine: [10, 0, 0], chest: [10, 0, 0], head: [0, 10, 0], ...BLINK,   // r2: a clean 45 deg tip (s2/t1)
+      thighL: [55, 0, 0], shinL: [-110, 0, 0], thighR: [55, 0, 0], shinR: [-110, 0, 0],
+      apron: [30, 0, 0], upperArmL: [40, 0, 20], upperArmR: [30, 0, 10], forearmL: [30, 0, 0], forearmR: [40, 0, 0] } },
     { f: 22, pose: DEAD },
   ] },
   // callout (emote: the vendor's job — calling out her wares): she dips the right hand into the apron pocket, then
-  // holds the apple up and out toward the passers-by, left fist on the hip, mouth wide ("!"); a second, higher call;
-  // the apple comes back to the pocket. Distinct from the vote: bent arm out to the side with the red apple, hand on hip.
+  // holds the apple OUT to the side at shoulder height (in front of the body at E/W), left fist on the hip, mouth wide
+  // ("!"); the second call is a different drawing (r2): up on her toes, head thrown back, the apple high up-and-out at
+  // 45 deg, the LEFT hand cupped at the mouth; the apple comes back to the pocket (probes s2/c6a, c18g).
   callout: { fps: 30, loop: false, interp: 'step', dynamics: 'snap', events: { 6: 'emote:exclaim@crown', 18: 'speak' }, keys: [
     { f: 0, pose: { pos: [0, -0.04, 0], spine: [6, 0, 0], chest: [6, -10, 0], head: [2, -6, 0], ...HALF,
-      upperArmR: [-8, 0, -4], forearmR: [55, 0, 0], upperArmL: [0, 0, 8], forearmL: [8, 0, 0], ...SHOW('wares') } },
-    { f: 6, pose: CALL() },
-    { f: 18, pose: CALL({ pos: [0, 0.05, 0], head: [-12, 18, 10], upperArmR: [150, 0, 30], ...OPEN(1.3) }) },
-    { f: 30, pose: CALL({ pos: [0, 0.0, 0], head: [-4, 8, 2], upperArmR: [70, 0, 20], forearmR: [50, 0, 0], 'upperArmR.l': [0.2], 'forearmR.l': [0.1], ...OPEN(0.3), ...HALF }) },
+      upperArmR: [-8, 0, -4], forearmR: [55, 0, 0], upperArmL: [0, 0, 8], forearmL: [8, 0, 0] } },   // apple still in the pocket (r2: shown here it was red specks on the apron)
+    { f: 6, pose: CALL({ upperArmR: [105, 0, 40], forearmR: [20, 0, 0] }) },
+    { f: 18, pose: CALL({ pos: [0, 0.06, 0], spine: [-8, 0, 4], chest: [-10, -10, 4], head: [-18, 0, -6], ...OPEN(1.3), ...EYES(0, 0),
+      upperArmR: [152, 0, 45], forearmR: [10, 0, 0], 'upperArmR.l': [1.1], 'forearmR.l': [0.8],
+      upperArmL: [100, 0, -10], forearmL: [130, 0, 0], handL: [0, -70, 0], 'handL.s': [0.3, 0.3, 0.3] }) },
+    { f: 30, pose: CALL({ pos: [0, 0.0, 0], head: [-4, 8, 2], upperArmR: [40, 0, 40], forearmR: [30, 0, 0], 'upperArmR.l': [0.2], 'forearmR.l': [0.1], ...EYES(0, 0), 'mouth.p': [0, 0, 0], 'mouth.s': [0, 0, 0] }) },
     { f: 38, pose: breathe(0, 0) },
   ] },
   ghost: { fps: 30, loop: true, interp: 'step', length: 64, dynamics: 'hold', keys: [0, 1, 2, 3].map((i) => ({ f: i * 16, pose: {
     pos: [0, [0.03, 0.015, 0, 0.015][i], 0], head: [-4, 0, [4, 0, -4, 0][i]], ...ARMS_REST, upperArmL: [12, 0, 14], upperArmR: [12, 0, 14],
     forearmL: [30, 0, 0], forearmR: [30, 0, 0], apron: [-6, 0, 0], ...KNEES(18), ...(i === 2 ? HALF : {}) } })) },
   'ghost-spent': { fps: 30, loop: true, interp: 'step', length: 72, dynamics: 'hold', keys: [0, 1, 2, 3].map((i) => ({ f: i * 18, pose: {
-    pos: [0, [-0.02, -0.035, -0.05, -0.035][i], 0], spine: [6, 0, 0], chest: [6, 0, 0], head: [10, 0, [3, 0, -3, 0][i]], ...HALF,
+    pos: [0, [-0.02, -0.035, -0.05, -0.035][i], 0], spine: [3, 0, 0], chest: [3, 0, 0], head: [-1, 0, [3, 0, -3, 0][i]], ...HALF,
     upperArmL: [4, 0, 4], upperArmR: [4, 0, 4], forearmL: [10, 0, 0], forearmR: [10, 0, 0], ...KNEES(10) } })) },
 };
 CLIPS.vote.length = 31;
@@ -272,15 +286,15 @@ export function make() {
     sockets: { crown: { bone: 'head', at: [0.22, 0.5, 0.0] } },
     chains: [],
     personality: { body: { f: 2.5, zeta: 0.9, r: 0 }, head: { f: 2.5, zeta: 0.9, r: 0 } },
-    locomotion: { plan: 'biped', plant: 'hold', swingFloor: 'gait', walkSpeed: V_GAME, runSpeed: 2 * V_GAME, cycleTime: [0.3, 0.267],
+    locomotion: { plan: 'biped', plant: 'hold', swingFloor: 'gait', walkSpeed: V_GAME, runSpeed: 2 * V_GAME, cycleTime: [0.3, 0.267], contactReach: 0.45,
       poses: [4, 4], duty: [0.2, 0.1], reach: 0.6, arms: [26, 34], elbows: [14, 22], bob: [0.04, 0.07], lean: [5, 10],
       lift: [0.05, 0.08], twist: [5, 8] },
     character: { quant: { yaw: 8, chain: 4 } },
     ghost: { hover: 0.14 },
     clips: CLIPS,
     fx: { stepClips: ['walk', 'run'], stepEvery: 2, speech: { node: 'crown' } },
-    material: { sides: { eyeL: 'mid', eyeR: 'mid', mouth: 'mid', wares: 'mid', apron: 'mid' },
-      innerLine: 'tone', creamKeep: [1, 0.85] },
+    material: { merge: { head: 'neck' }, sides: { eyeL: 'mid', eyeR: 'mid', mouth: 'mid', wares: 'mid', apron: 'mid' },
+      innerLine: 'tone', creamKeep: [1, 1] },
   };
 }
 

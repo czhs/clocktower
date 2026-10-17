@@ -221,3 +221,19 @@ anticipating = r < 0; sluggish = r 0, f low.
   lathe whose centroid lies in the stroke get the mark's slot — no proud boxes, nothing at profile.
 - **TINY-scale hidden props**: geometry and child offsets × 0.001 on their own bone, shown with `'<bone>.s'` 999 on the
   keys that use them (mincut scissors, fox ghost shell).
+
+## 10. Held props and asymmetric gaits (wave 5, NPCs)
+
+- **Prop bone AT the hand, shaft through the bone origin** (sweeper `BROOM_PIV`): every `fwd`/`out` on the prop bone then
+  pivots the stick in the fist; no `<prop>.p` slide (a slide along a raised arm left 7 texels of air at S). Grip ≈ 1/3
+  down a long prop lets a 20–35° lean put the fan/tip on the grass.
+- **Hoisted prop from the arm FK** (porter r2): y' = −cos(fwd), dir = (−y'·sin(out), y'·cos(out), sin(fwd)) for the right
+  arm, hand = shoulder + (upper·(1 + .l) + forearm + ½ hand)·dir, prop centre = hand + half its height up; verify with
+  `mark=@handR` (≈ 1 texel). Raise height with `.l` reach: at E an `out` component points at the camera and lowers the
+  hand on screen (screen-up ≈ up·cos 30° − toward-camera·sin 30°).
+- **Limp = keyed `pos` per walk drawing** (elder r2): the LegGait biped bob is mirror-symmetric; in `clips.walk` (replace
+  mode) key light contact −0.008, flights 0, heavy contact −0.044 + chest +10 → `game.head_bob` limp 1.6 px.
+- **Lying direction = hips `out`** after hips `fwd` (q = qFwd·qOut·qTwist; `twist` only rolls the body about its long
+  axis); verify ground contact on a `pitch=4` still.
+- **Held-key silhouette diff** (elder `shots/char-npc-elder/el_sil.py.js base.png key.png out.png`): new px outside the
+  idle outline per facing on bg=key 8-facing stills — the one number for "does the point/vote leave the body".

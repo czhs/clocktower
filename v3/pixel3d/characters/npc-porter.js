@@ -16,18 +16,19 @@ const BODY = { height: H, heads: 2.8, legs: 0.8, arms: 0.9, snout: 0, ears: fals
 // [hi, mid, sh] sRGB. 5 slots + the eye accent. v1 values kept (hood #3A3438, sack #A19276/#897A61, skin #8A6448,
 // tunic #4E5A46, leather #5C4432, trousers #33302C → hood slot); only sh lifted for the night rule (along each hue).
 export const PALETTE = {
-  hood: ['#524858', '#423A46', '#3A3242'],     // hood, collar, trousers, chest strap (the dark mass)
+  hood: ['#5A5452', '#4A4443', '#463F47'],     // hood, collar, trousers, chest strap (the dark mass; r2 neutral charcoal)
   skin: ['#B08460', '#8A6448', '#664A3E'],     // face, nose, hands
-  tunic: ['#6C7A5C', '#4E5A46', '#3C4442'],    // dull-green work tunic + sleeves
-  leather: ['#80603F', '#5C4432', '#44343A'],  // apron, boots
-  sack: ['#E6DCC6', '#C2B49A', '#8E8278'],     // SIGNATURE: the burlap sack (lightest mass)
+  tunic: ['#6C7A5C', '#4E5A46', '#444E48'],    // dull-green work tunic + sleeves
+  leather: ['#8C6A46', '#6A4E36', '#4A383A'],  // apron, boots (r2 boot mid lifted off the trousers)
+  sack: ['#F2E8D2', '#D2C4A8', '#968A80'],     // SIGNATURE: the burlap sack (lightest mass; r2 cooler grey-cream)
   eye: ['#4A3E48', '#2C2228', '#2C2228'],      // eyes, mouth
 };
 
 // head-local (head joint at char y 0.712): face box + hood
-const FACE = { c: [0, 0.165, 0.13], s: [0.215, 0.22, 0.22] };           // front z 0.24
-const EYE = [0.068, 0.18, 0.218];
-const SACK = { pivot: [-0.15, 0.17, -0.07], c: [-0.04, 0.07, -0.19] };     // pivot chest-local (right shoulder knot), centre rel. pivot
+const FACE = { c: [0, 0.165, 0.112], s: [0.215, 0.22, 0.22] };          // front z 0.222 (r2: inside the rim front 0.23 at E/W)
+const EYE = [0.068, 0.18, 0.204];
+// r2: the sack hangs on the LOWER back like v1 (centre char y ≈ 0.64, eye level → waist), near the spine (x −0.07)
+const SACK = { pivot: [-0.085, 0.17, -0.07], c: [0, -0.07, -0.20] };       // pivot chest-local (strap knot), centre rel. pivot
 
 export function skeleton() {
   const S0 = chibi({ ...BODY, face: { eye: EYE, brow: false, mouth: [0, 0.092, 0.215] } });
@@ -45,14 +46,15 @@ export function parts(S) {
 
   // ── head: brown face in a dark hood with a rectangular opening (rim frame proud of the face) ──
   add('head', K.chamferBox(...FACE.s, 0.5), FACE.c, 'skin', { name: 'face' });
-  add('head', K.chamferBox(0.06, 0.055, 0.05, 0.3), [0, 0.135, 0.253], 'skin', { name: 'nose' });
+  add('head', K.chamferBox(0.06, 0.055, 0.04, 0.3), [0, 0.135, 0.215], 'skin', { name: 'nose' });   // tip z 0.235
   const HOOD = [[0.17, 0], [0.215, 0.07], [0.228, 0.16], [0.222, 0.25], [0.19, 0.33], [0.12, 0.395], [0.001, 0.415]];
   add('head', K.lathe(HOOD, 12, { sz: 0.88 }), [0, 0.20, -0.05], 'hood', { name: 'hood' });
-  add('head', K.box(0.30, 0.065, 0.075), [0, 0.300, 0.165], 'hood', { name: 'hoodRim' });
-  for (const s of [1, -1]) add('head', K.box(0.05, 0.26, 0.085), [s * 0.133, 0.165, 0.155], 'hood', { name: 'hoodRim' });
+  add('head', K.box(0.30, 0.065, 0.08), [0, 0.300, 0.19], 'hood', { name: 'hoodRim' });               // front z 0.23
+  // side bars thinner + set back (r2): the face shows through the opening at SE/SW and its side at E/W
+  for (const s of [1, -1]) add('head', K.box(0.04, 0.26, 0.07), [s * 0.138, 0.165, 0.16], 'hood', { name: 'hoodRim' });
   // eyes (2×2 texels) + mouth plate (buried; talk pushes it out with mouth.p)
   add('eyeL', K.box(0.05, 0.066, 0.04), [0, 0, 0], 'eye', { name: 'eye', mirror: true });
-  add('mouth', K.box(0.08, 0.045, 0.03), [0, 0, 0.0], 'eye', { name: 'mouthIn' });
+  add('mouth', K.box(0.10, 0.05, 0.03), [0, 0, -0.016], 'eye', { name: 'mouthIn' });
 
   // ── collar: the hood's drape round the neck / shoulders ──
   add('neck', K.frustum(8, 0.20, 0.165, 0.10, { sz: 0.85 }), [0, 0.03, 0.0], 'hood', { name: 'collar' });
@@ -66,8 +68,8 @@ export function parts(S) {
   add('chest', K.box(0.17, chestH - 0.06, 0.03), [0, chestH / 2 - 0.05, 0.108], 'leather', { name: 'apron' });
   add('spine', K.box(0.21, waistH + 0.01, 0.03), [0, waistH / 2 - 0.01, 0.103], 'leather', { name: 'apron' });
   add('apron', K.box(0.22, 0.16, 0.03), [0, -0.08, 0.0], 'leather', { name: 'apronFlap' });
-  add('chest', K.xf(K.box(0.055, 0.34, 0.03), { rot: [0, 0, 38] }), [0, 0.06, 0.128], 'hood', { name: 'strap' });
-  add('chest', K.xf(K.box(0.055, 0.34, 0.03), { rot: [0, 0, -38] }), [0, 0.06, -0.118], 'hood', { name: 'strap' });
+  add('chest', K.xf(K.box(0.075, 0.34, 0.035), { rot: [0, 0, 38] }), [0, 0.06, 0.128], 'hood', { name: 'strap' });
+  add('chest', K.xf(K.box(0.075, 0.34, 0.035), { rot: [0, 0, -38] }), [0, 0.06, -0.118], 'hood', { name: 'strap' });
 
   // ── arms: tunic sleeves, brown hands ──
   add('upperArmL', K.frustum(4, 0.07, 0.066, m.upperArm + 0.03), [0, -m.upperArm / 2, 0], 'tunic', { name: 'sleeve', mirror: true });
@@ -81,9 +83,9 @@ export function parts(S) {
 
   // ── the SACK on the back (bone `sack`, pivot at the right-shoulder knot): a bulging burlap lathe + a tied neck that
   // pokes up over the right shoulder (r7: the rope band drew specks; sack inner lines take its own darker tone)
-  const SP = [[0.001, 0], [0.12, 0.02], [0.19, 0.09], [0.215, 0.19], [0.2, 0.28], [0.15, 0.36], [0.08, 0.405], [0.001, 0.415]];
-  add('sack', K.lathe(SP, 10, { sz: 0.74 }), SACK.c, 'sack', { name: 'sack' });
-  add('sack', K.xf(K.frustum(6, 0.09, 0.065, 0.15), { rot: [35, 0, 10] }), [SACK.c[0] - 0.01, SACK.c[1] + 0.24, SACK.c[2] + 0.06], 'sack', { name: 'sackNeck' });
+  const SP = [[0.001, 0], [0.13, 0.02], [0.205, 0.09], [0.232, 0.19], [0.215, 0.28], [0.16, 0.36], [0.085, 0.405], [0.001, 0.415]];
+  add('sack', K.lathe(SP, 14, { sz: 0.80 }), SACK.c, 'sack', { name: 'sack' });
+  add('sack', K.xf(K.frustum(8, 0.10, 0.07, 0.14), { rot: [35, 0, 10] }), [SACK.c[0] - 0.02, SACK.c[1] + 0.23, SACK.c[2] + 0.06], 'sack', { name: 'sackNeck' });
   return P;
 }
 
@@ -107,10 +109,10 @@ export const CLIPS = {
   // walk / run (LegGait drawings, f0 = left contact; blend 'add'): the sack swings forward + drops on the contact
   // drawings (k0, k2) and lifts back in flight (k1, k3): its swing lags the body bob by one drawing
   walk: { fps: 30, loop: true, interp: 'step', length: 4, blend: 'add', keys: [
-    { f: 0, pose: { spine: [4, 0, 0], sack: [16, 0, 0], 'sack.p': [0, -0.03, 0], apron: [-14, 0, 0] } },
-    { f: 1, pose: { spine: [4, 0, 0], sack: [-10, 0, 0], 'sack.p': [0, 0.03, 0], apron: [6, 0, 0] } },
-    { f: 2, pose: { spine: [4, 0, 0], sack: [16, 0, 0], 'sack.p': [0, -0.03, 0], apron: [-14, 0, 0] } },
-    { f: 3, pose: { spine: [4, 0, 0], sack: [-10, 0, 0], 'sack.p': [0, 0.03, 0], apron: [6, 0, 0] } },
+    { f: 0, pose: { spine: [4, 0, 0], sack: [16, 0, 0], 'sack.p': [0, -0.03, 0], apron: [-34, 0, 0] } },
+    { f: 1, pose: { spine: [4, 0, 0], sack: [-10, 0, 0], 'sack.p': [0, 0.03, 0], apron: [16, 0, 0] } },
+    { f: 2, pose: { spine: [4, 0, 0], sack: [16, 0, 0], 'sack.p': [0, -0.03, 0], apron: [-34, 0, 0] } },
+    { f: 3, pose: { spine: [4, 0, 0], sack: [-10, 0, 0], 'sack.p': [0, 0.03, 0], apron: [16, 0, 0] } },
   ] },
 };
 CLIPS.run = { ...CLIPS.walk };
@@ -126,8 +128,11 @@ CLIPS.talk = { fps: 30, loop: true, interp: 'step', length: 40, events: { 0: 'sp
 ] };
 
 // vote: dip, then the SACK hoisted overhead on the right hand (sack.p lifts it from the back onto the palm), held
-const VOTE_UP = { pos: [0, 0.03, 0], spine: [-2, 0, -4], chest: [-4, 0, -4], head: [-8, 8, 4], ...WIDE,
-  upperArmR: [10, 0, 168], forearmR: [0, 0, 8], 'upperArmR.l': [0.3], handR: [0, 0, 0], sack: [0, 0, 0], 'sack.p': [-0.06, 0.53, 0.26],
+// r2: the arm goes up-forward-out (fwd 160 / out 30, reach .l 1.1) and the sack sits ON the hand (sack.p from the arm's
+// FK, probed with mark=@handR) beside/above the hood, not on it; head tilts away from the load (r8/vN, 8 facings)
+const VOTE_UP = { pos: [0, 0.03, 0], spine: [-2, 0, -4], chest: [-4, 0, -4], head: [-10, 6, 0], ...WIDE,
+  upperArmR: [160, 0, 30], forearmR: [-10, 0, 0], 'upperArmR.l': [1.1], handR: [0, 0, 0], sack: [0, 0, 0], 'sack.p': [-0.335, 0.67, 0.46],
+  'sack.s': [-0.1, -0.1, -0.1],
   upperArmL: [10, 0, 20], forearmL: [40, 0, 0] };
 CLIPS.vote = { fps: 30, loop: false, interp: 'step', events: { 4: 'vote@sackTop' }, keys: [
   { f: 0, pose: { ...breath(0), pos: [0, -0.06, 0], spine: [8, 0, 0], chest: [8, 0, 0], head: [-10, 0, 0], sack: [12, 0, 0], 'sack.p': [0, -0.03, 0],
@@ -170,11 +175,11 @@ CLIPS.die = { fps: 30, loop: false, interp: 'step', legs: 'fk', events: { 22: 'l
 CLIPS.hitch = { fps: 30, loop: false, interp: 'step', events: { 8: 'land', 14: 'emote:drop@crown' }, keys: [
   { f: 0, pose: { ...breath(0), pos: [0, -0.07, 0], spine: [12, 0, 0], chest: [8, 0, 0], head: [-14, 0, 0], ...KNEES(30), sack: [8, 0, 0], 'sack.p': [0, -0.02, 0],
     upperArmL: [20, 0, 30], forearmL: [50, 0, 0], upperArmR: [20, 0, 30], forearmR: [50, 0, 0] } },
-  { f: 5, pose: { ...breath(0), pos: [0, 0.06, 0], spine: [-4, 0, 0], chest: [-6, 0, 0], head: [-6, 0, 0], ...BLINK, sack: [-24, 0, 10], 'sack.p': [0, 0.2, 0.02],
+  { f: 5, pose: { ...breath(0), pos: [0, 0.06, 0], spine: [-4, 0, 0], chest: [-6, 0, 0], head: [-6, 0, 0], ...BLINK, sack: [-24, 0, 10], 'sack.p': [0, 0.3, 0.02],
     upperArmL: [-10, 0, 40], forearmL: [60, 0, 0], upperArmR: [-10, 0, 40], forearmR: [60, 0, 0] } },
   { f: 8, pose: { ...breath(0), pos: [0, -0.05, 0], spine: [10, 0, 0], chest: [6, 0, 0], head: [-10, 0, 0], ...KNEES(20), ...BLINK, sack: [14, 0, 0], 'sack.p': [0, -0.04, 0],
     upperArmL: [10, 0, 20], forearmL: [30, 0, 0], upperArmR: [10, 0, 20], forearmR: [30, 0, 0] } },
-  { f: 14, pose: { ...breath(1), ...OPEN, spine: [-6, 0, 0], chest: [-6, 0, 0], head: [-6, 10, 12], ...BLINK,
+  { f: 14, pose: { ...breath(1), ...OPEN, pos: [0, 0.02, 0], spine: [-8, 0, 0], chest: [-12, 0, 0], head: [-16, 12, 14], ...BLINK,
     upperArmL: [-35, 0, 30], forearmL: [95, 0, 0], handL: [0, 0, -30], upperArmR: [-35, 0, 30], forearmR: [95, 0, 0], handR: [0, 0, -30] } },
   { f: 30, pose: { ...breath(1), head: [-4, 6, 4] } },
 ], length: 38 };
@@ -204,14 +209,16 @@ export function make() {
     sockets: { crown: { bone: 'head', at: [0.05, 0.45, 0] }, sackTop: { bone: 'sack', at: [0, 0.35, -0.15] } },
     chains: [],
     personality: { body: { f: 2.5, zeta: 0.8, r: 0 }, head: { f: 2.5, zeta: 0.8, r: 0 } },
-    locomotion: { plan: 'biped', plant: 'hold', swingFloor: 'gait', walkSpeed: V_GAME, runSpeed: 2 * V_GAME, cycleTime: [0.3, 0.267],
+    locomotion: { plan: 'biped', plant: 'hold', swingFloor: 'gait', walkSpeed: V_GAME, runSpeed: 2 * V_GAME, cycleTime: [0.267, 0.267], contactReach: 0.45,
       poses: [4, 4], duty: [0.22, 0.12], reach: 0.6, arms: [22, 30], elbows: [10, 16], bob: [0.04, 0.07], lean: [7, 12],
       lift: [0.05, 0.08], twist: [5, 8] },
     character: { quant: { yaw: 8, chain: 4 } },
     ghost: { hover: 0.14, keepHue: 0.25 },
     clips: CLIPS,
     fx: { stepClips: ['walk', 'run'], stepEvery: 2, speech: { node: 'crown' } },
-    material: { sides: { eyeL: 'mid', eyeR: 'mid', mouth: 'mid', sack: 'mid' }, creamKeep: [1, 0.85], slots: { sack: { line: 'tone' } } },
+    // hullMargin 0.4 (r2): the vote hoists the sack 0.35 m above the bind hull; with the default 0.12 it shadowed the
+    // whole front (vote key_speckle +32, a mottled dark body under the sack)
+    material: { hullMargin: 0.4, sides: { eyeL: 'mid', eyeR: 'mid', mouth: 'mid', sack: 'mid' }, creamKeep: [1, 0.85], slots: { sack: { line: 'tone' } } },
   };
 }
 

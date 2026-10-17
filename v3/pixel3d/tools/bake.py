@@ -11,7 +11,8 @@
                   sheet's walk cadence is the one the game plays at its movement speed (json: clips.walk.speed)
   --cell          default: from max(height, spec.length) x ppm x 1.5, then automatically raised x1.35 (up to 3 times)
                   while any figure touches its cell border (quadrupeds, fliers, wings, smears); an explicit --cell is
-                  kept (warning only). --cell N is the SQUARE RENDER cell (N x N px per copy, feet anchored near the
+                  kept (warning only); the room under the feet (pad) grows with it, capped at 0.3 x cell (lead w5:
+                  the pad ran away and wrapped NPC sheets). --cell N is the SQUARE RENDER cell (N x N px per copy, feet anchored near the
                   bottom); the json/printed "cell WxH" is that square TRIMMED to the union bbox of all baked drawings
                   (+1 px, width kept symmetric about the anchor). So "--cell 132 -> cell 62x71" is normal, and a printed
                   height equal to N means some drawing reaches the top of the render cell (raise N or drop --cell). The
@@ -130,7 +131,12 @@ def main():
         print(f"  figure touches the cell border at cell {q1['cell']}: re-baking at {c1}")
         q1['cell'] = c1
         if 'bottom' in res['edges'] or 'pad' in q1:   # keep the room under the anchor the figure needs
-            q1['pad'] = max(round(c1 * 0.14), p1 if 'bottom' in res['edges'] else int(res['pad']))
+            # (lead, between waves 5 and 6) cap the pad at 0.3 x the new cell: the `below` scan can follow the figure into
+            # the NEXT row's figure (a raised vote prop / ghost hover directly under a lying die), so p1 ran away
+            # (npc-elder 58 → 80 with pad 8 → 57, then 146 with the head of every frame wrapped to the cell bottom;
+            # npc-sweeper, npc-vendor the same). A real lying die needs ≤ 0.3 x cell under the feet.
+            want = p1 if 'bottom' in res['edges'] else int(res['pad'])
+            q1['pad'] = max(round(c1 * 0.14), min(want, round(c1 * 0.3)))
     if two_pass:
         q['cell'] = q1['cell']
         if 'pad' in q1: q['pad'] = q1['pad']

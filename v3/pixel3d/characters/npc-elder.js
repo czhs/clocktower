@@ -7,7 +7,8 @@
 // at the belt) with a hem sole disc; brown shoes flick out of the hem on the steps. Prop: a plain wooden CANE with a
 // crook in the LEFT hand (bone `cane`, kept plumb by cancelling the arm). Everything secondary is KEYED (no springs).
 // Gait: LegGait 'biped', plant 'hold', swingFloor 'gait', 4 drawings / 0.3 s at the v2 game speed (V = 3.95·1.05 =
-// 4.15 m/s): a HOBBLE — stooped scurry, the cane planted ahead on the right-foot contact, robe sway, head nod on the bob.
+// 4.15 m/s): a HOBBLE — the keyed pos replaces the symmetric plan bob: a light left step, then a heavy drop onto the cane
+// planted ahead on the right-foot contact (pos −0.044, chest +10), robe sway. r2 = critic r1 fixes (see the .md).
 import * as THREE from 'three';
 import { chibi } from '../src/chars/rig.js';
 import * as K from '../src/chars/kit.js';
@@ -19,7 +20,7 @@ const deg = Math.PI / 180;
 // [hi, mid, sh] sRGB: 5 slots (eye = the dark accent)
 export const PALETTE = {
   skin: ['#F2D4B4', '#D8B494', '#A87E70'],    // bald dome, face, hands, ears, nose (v1 #D8B494 / shade #A78A7C)
-  fringe: ['#EEEAF0', '#C6C0CA', '#8E8698'],  // white-grey fringe + bushy brows (v1 #AEAAB0, lifted toward white)
+  fringe: ['#D6D2DA', '#AEAAB0', '#7E7688'],  // grey-white fringe + bushy brows (v1 #AEAAB0 = mid; critic r1: #EEEAF0 read as a white bowl)
   robe: ['#6C6E82', '#4A4C58', '#3A3848'],    // long slate robe + sleeves (v1 #4A4C58 / #3E3D4F; sh ≥ #3A3040)
   wood: ['#A07A58', '#6A5038', '#4A362E'],    // cane, belt, shoes (v1 WOOD #6A5038, belt #5A4A3A)
   eye: ['#4A4258', '#2E2838', '#2A2234'],     // eyes, mouth interior, shins (v1 near-black, lifted)
@@ -27,15 +28,15 @@ export const PALETTE = {
 
 // arm segment rest directions [out°, fwd°] (L side convention; R mirrored): L = cane arm (out + forward, hand at the hip),
 // R = free arm hanging slightly forward
-const ARM = { L: { up: [32, 10], fore: [18, 55] }, R: { up: [14, 6], fore: [8, 28] } };
+const ARM = { L: { up: [48, 10], fore: [28, 32] }, R: { up: [14, 6], fore: [8, 28] } };   // r2: L up out 32→48, fore [18,55]→[28,32] (no sleeve band under the chin at SE; cane further out)
 const armDir = ([o, f]) => { const O = o * deg, F = f * deg; return [Math.sin(O) * Math.cos(F), -Math.cos(O) * Math.cos(F), Math.sin(F)]; };
 // stoop: the neck joint sits forward of the chest, the head a little further (rest geometry, every clip inherits it)
-const STOOP = { neckZ: 0.06, headZ: 0.04, neckDy: -0.025 };
+const STOOP = { neckZ: 0.055, headZ: 0.05, neckDy: 0.012 };    // r2: head +0.025 → +0.05 (the stoop shows at E/W)
 // face (head-local, chin = 0)
-export const FACE = { eye: [0.094, 0.185, 0.152], brow: 0.074, mouth: [0, 0.085, 0.150], eyeYaw: 30 };
+export const FACE = { eye: [0.094, 0.185, 0.152], brow: 0.074, mouth: [0, 0.068, 0.165], eyeYaw: 30 };
 // cane (handL-local grip → down to the tip; crook above the grip)
 // rest tilt (Euler XYZ, deg): tip FORWARD (−x rot) so the cane stands ahead of the hem at E, tip OUT (+z rot) clear of it
-const CANE = { below: 0.4, above: 0.07, r: 0.032, rot: [-16, 0, 7] };
+const CANE = { below: 0.4, above: 0.07, r: 0.04, rot: [-24, 0, 18] };   // r2: r .032→.04 (≥ 2 texels), tilt [−16,0,7]→[−24,0,18] (outside the outline at 6/8)
 const CANE_Q = new THREE.Quaternion().setFromEuler(new THREE.Euler(...CANE.rot.map((r) => r * deg)));
 const caneP = (y, z = 0) => new THREE.Vector3(0, y, z).applyQuaternion(CANE_Q).toArray().map((v) => +v.toFixed(5));
 
@@ -105,7 +106,7 @@ const restWorld = (S) => {
 };
 
 // robe radius profile (world y): hem 0.25 at 0.07 → 0.175 at the belt
-const HEM_Y = 0.07, HEM_R = 0.25, BELT_Y = 0.445;
+const HEM_Y = 0.07, HEM_R = 0.27, BELT_Y = 0.445;   // r2: hem r .25→.27 (stride gaps read as folds, not trousers)
 const robeR = (y) => HEM_R + (0.178 - HEM_R) * Math.min(1, Math.max(0, (y - HEM_Y) / (BELT_Y - HEM_Y)) ** 0.8);
 
 export function parts(S) {
@@ -118,17 +119,16 @@ export function parts(S) {
   const HEAD = [[0.12, 0.0], [0.168, 0.05], [0.19, 0.13], [0.195, 0.21], [0.182, 0.29], [0.14, 0.36], [0.075, 0.395], [0, 0.405]];
   const hg = splitBy(subdivide(latheAbs(HEAD, 16, { sz: 0.94 }), 0.03), (c) => {
     const a = Math.abs(az(c)), y = c[1];
-    if (y > 0.055 && y < 0.25 && a > 66) return 'fringe';
-    if (y >= 0.25 && y < 0.3 && a > 120) return 'fringe';
+    if (y > 0.055 && y < 0.22 && a > 80 && (a < 140 || y < 0.17)) return 'fringe';   // r2: narrower band, lower at the back
     return 'skin';
   });
   add('head', hg.skin, [0, 0, 0], 'skin', { name: 'skull' });
   add('head', hg.fringe, [0, 0, 0], 'fringe', { name: 'fringe' });
-  add('head', K.chamferBox(0.07, 0.08, 0.09, 0.35), [0, 0.13, 0.205], 'skin', { name: 'nose' });
+  add('head', K.chamferBox(0.07, 0.068, 0.09, 0.35), [0, 0.142, 0.205], 'skin', { name: 'nose' });
   add('head', K.chamferBox(0.04, 0.085, 0.07, 0.3), [0.19, 0.17, -0.01], 'skin', { name: 'earL', mirror: true });
   add('eyeL', K.xf(K.box(0.062, 0.072, 0.03), { rot: [0, FACE.eyeYaw, 0] }), [0.002, 0, 0.004], 'eye', { name: 'eye', mirror: true });
   add('browL', K.xf(K.box(0.085, 0.032, 0.036), { rot: [0, FACE.eyeYaw, -8] }), [0.035, 0, -0.012], 'fringe', { name: 'brow', mirror: true });
-  add('mouth', K.box(0.075, 0.04, 0.04), [0, 0, -0.03], 'eye', { name: 'mouth' });
+  add('mouth', K.box(0.09, 0.05, 0.04), [0, 0, -0.03], 'eye', { name: 'mouth' });
   add('neck', K.frustum(6, 0.07, 0.065, 0.08), [0, 0.02, 0], 'skin', { name: 'neckSkin' });
 
   // ── UPPER ROBE (chest): rings from the belt to the shoulders, sliding FORWARD at the top (stoop) with a hump behind
@@ -142,7 +142,7 @@ export function parts(S) {
       ...ring(16, 0.12, c(0.675), 0.035, 0.9),
     ];
     // the hump: a back bulge at shoulder-blade height
-    const hump = ring(8, 0.11, c(0.6), -0.1, 0.8, 1.2).filter((p) => p[2] < -0.1);
+    const hump = ring(8, 0.13, c(0.6), -0.11, 0.8, 1.2).filter((p) => p[2] < -0.11);   // r2: bigger hump
     add('chest', K.hull([...rings, ...hump]), [0, 0, 0], 'robe', { name: 'robeUp' });
     // belt: wood band of the robe's own profile, 0.05 tall
     add('hips', K.frustum(16, robeR(BELT_Y - 0.02) + 0.006, 0.18 + 0.006, 0.05, { sz: 0.9 }), [0, BELT_Y - m.hipsY, 0], 'wood', { name: 'belt' });
@@ -153,7 +153,7 @@ export function parts(S) {
     const prof = [];
     for (let y = HEM_Y; y <= BELT_Y + 0.001; y += (BELT_Y - HEM_Y) / 6) prof.push([robeR(y), +y.toFixed(4)]);
     add('robe', K.xf(latheAbs(prof, 16, { sz: 0.9 }), { at: [0, -pivotY, 0] }), [0, 0, 0], 'robe', { name: 'robeLow' });
-    add('robe', K.frustum(16, HEM_R - 0.01, HEM_R - 0.01, 0.012, { sz: 0.9 }), [0, HEM_Y + 0.006 - pivotY, 0], 'eye', { name: 'hemSole' });
+    add('robe', K.frustum(16, HEM_R - 0.01, HEM_R - 0.01, 0.012, { sz: 0.9 }), [0, HEM_Y + 0.006 - pivotY, 0], 'robe', { name: 'hemSole' });
   }
 
   // ── SLEEVES (robe) along the bent rest directions, wide cuff, skin hands
@@ -165,13 +165,13 @@ export function parts(S) {
   for (const sd of ['L', 'R']) {
     const sx = sd === 'L' ? 1 : -1, m3 = (v) => [sx * v[0], v[1], v[2]];
     seg('upperArm' + sd, m3(armDir(ARM[sd].up)), m.upperArm + 0.03, 0.066, 0.072, 'sleeve' + sd, 'robe', -0.02);
-    seg('forearm' + sd, m3(armDir(ARM[sd].fore)), m.forearm - 0.01, 0.072, 0.092, 'cuff' + sd, 'robe');
+    seg('forearm' + sd, m3(armDir(ARM[sd].fore)), m.forearm - 0.01, 0.072, 0.086, 'cuff' + sd, 'robe');
     const d = m3(armDir(ARM[sd].fore));
     add('hand' + sd, K.chamferBox(0.08, 0.085, 0.08, 0.35), [sx * d[0] * 0.01, -0.02, d[2] * 0.01], 'skin', { name: 'hand' + sd });
   }
 
   // ── LEGS: dark shins (inside the robe), brown shoes on their own bones
-  add('shinL', K.frustum(4, 0.05, 0.055, m.shin), [0, -m.shin / 2, 0], 'eye', { name: 'shin', mirror: true });
+  add('shinL', K.frustum(4, 0.05, 0.055, m.shin), [0, -m.shin / 2, 0], 'robe', { name: 'shin', mirror: true });   // r2: robe tone (a stride gap = fold)
   add('shoeL', K.chamferBox(0.1, m.ankleY + 0.03, 0.19, 0.35), [0, -m.ankleY / 2 + 0.012, 0.05], 'wood', { name: 'shoe', mirror: true });
 
   // ── CANE (bone `cane`, grip at the origin, plumb with a slight outward lean): shaft from the tip on the ground up past
@@ -197,7 +197,7 @@ const CANE_TIP = [0, 0, 0];                   // filled by parts() (cane-local t
 const EYES = (sy) => ({ 'eyeL.s': [0, sy, 0], 'eyeR.s': [0, sy, 0] });
 const BLINK = EYES(-0.8), SHUT = EYES(-0.8), HALF = EYES(-0.45), WIDE = { ...EYES(0.3), 'eyeL.p': [0, 0.006, 0], 'eyeR.p': [0, 0.006, 0] };
 const BROWS = (o, dy = 0) => ({ browL: [0, 0, o], browR: [0, 0, o], ...(dy ? { 'browL.p': [0, dy, 0], 'browR.p': [0, dy, 0] } : {}) });
-const MOUTH = (k) => ({ 'mouth.p': [0, 0, 0.03 * k], 'mouth.s': [0, 0.5 * k, 0] });
+const MOUTH = (k) => ({ 'mouth.p': [0, -0.005 * k, 0.036 * k], 'mouth.s': [0, 0.4 * k, 0] });
 // the cane kept plumb: its fwd/out cancel the left arm's (up-bone fwd = +X rot, down-bone fwd = −X rot)
 const ARM_L = (up, fore = 0, out = 0, extra = {}) => ({ upperArmL: [up, 0, out], forearmL: [fore, 0, 0], cane: [up + fore, 0, out], ...extra });
 const ARM_R = (up, fore = 0, out = 0) => ({ upperArmR: [up, 0, out], forearmR: [fore, 0, 0] });
@@ -207,11 +207,14 @@ const breath = (d, extra = {}) => ({ pos: [0, -0.028 * d, 0], chest: [3 * d, 0, 
 // on the right contact (f2), swung forward in the flights, trailing on the left contact; robe sways toward the planted
 // side and lags; the free right arm swings opposite the right leg.
 const CANE_PLANT = -22;
+// r2 HOBBLE (critic: a symmetric 3.9 px bounce read as a scurry): the keyed `pos` replaces the plan's bob, so the two
+// contacts are NOT mirrors — the L contact (k0) is a light step, the R contact (k2) drops his weight onto the planted
+// cane (pos −0.044, chest +10, head down); the flights stay at stand height (bob ≈ 2.5 px, limp ≈ 1.6 px).
 const walkKey = (k) => [
-  { ...ARM_L(-12, 0, 0), ...ARM_R(16, 10, 0), robe: [-6, 0, 6], chest: [2, -5, 0], head: [-2, 5, 0] },                 // L contact
-  { ...ARM_L(10, 0, 0, { cane: [10 - 10, 0, 0] }), ...ARM_R(4, 6, 0), robe: [-10, 0, 0], chest: [-1, 0, 0], head: [1, 0, 0] },   // flight
-  { ...ARM_L(24, 0, 0, { cane: [24 + CANE_PLANT, 0, 0], 'cane.p': [0, -0.03, 0] }), ...ARM_R(-14, 4, 0), robe: [-6, 0, -6], chest: [4, 5, 0], head: [-4, -5, 0] },  // R contact: cane planted
-  { ...ARM_L(4, 0, 0), ...ARM_R(8, 8, 0), robe: [-10, 0, 0], chest: [-1, 0, 0], head: [1, 0, 0] },                     // flight
+  { pos: [0, -0.008, 0], ...ARM_L(-12, 0, 0), ...ARM_R(16, 10, 0), robe: [-3, 0, 6], chest: [2, -5, 0], head: [-2, 5, 0] },                 // L contact (light)
+  { pos: [0, 0, 0], ...ARM_L(10, 0, 0, { cane: [10 - 10, 0, 0] }), ...ARM_R(4, 6, 0), robe: [-5, 0, 0], chest: [-1, 0, 0], head: [1, 0, 0] },   // flight
+  { pos: [0, -0.044, 0], ...ARM_L(24, 0, 0, { cane: [24 + CANE_PLANT, 0, 0], 'cane.p': [0, -0.03, 0] }), ...ARM_R(-14, 4, 0), robe: [-3, 0, -6], chest: [10, 5, 0], head: [2, -5, 0] },  // R contact: weight on the cane
+  { pos: [0, 0, 0], ...ARM_L(4, 0, 0), ...ARM_R(8, 8, 0), robe: [-5, 0, 0], chest: [-1, 0, 0], head: [1, 0, 0] },                     // flight
 ][k];
 
 export const CLIPS = {
@@ -229,24 +232,26 @@ export const CLIPS = {
   // talk (loop 32): the free RIGHT hand lifts open-palmed ↔ comes down; head rolls toward the camera on the open keys,
   // mouth opens, brows rise; the cane hand stays put
   talk: { fps: 30, loop: true, interp: 'step', length: 32, events: { 0: 'speak' }, keys: [
-    { f: 0, pose: { chest: [-3, 6, 0], head: [-6, 6, -10], ...MOUTH(1), ...BROWS(-14, 0.012), ...ARM_R(55, 55, 22) } },
-    { f: 8, pose: { pos: [0, -0.02, 0], chest: [2, 0, 0], head: [4, 0, 0], ...MOUTH(0), ...ARM_R(20, 25, 8) } },
-    { f: 16, pose: { chest: [-3, 8, 0], head: [-6, 2, -12], ...MOUTH(1), ...BROWS(-14, 0.012), ...ARM_R(40, 40, 50) } },
-    { f: 24, pose: { pos: [0, -0.02, 0], chest: [2, 0, 0], head: [4, -4, 0], ...MOUTH(0.3), ...ARM_R(15, 20, 6) } },
+    { f: 0, pose: { chest: [-3, 6, 0], head: [-6, 6, -10], ...MOUTH(1), ...BROWS(-14, 0.012), ...ARM_R(85, 35, 42), handR: [0, 0, -20] } },
+    { f: 8, pose: { pos: [0, -0.02, 0], chest: [2, 0, 0], head: [4, 0, 0], ...MOUTH(0), ...ARM_R(12, 30, 4) } },
+    { f: 16, pose: { chest: [-3, 8, 0], head: [-6, 2, -12], ...MOUTH(1), ...BROWS(-14, 0.012), ...ARM_R(62, 10, 34) } },
+    { f: 24, pose: { pos: [0, -0.02, 0], chest: [2, 0, 0], head: [4, -4, 0], ...MOUTH(0.3), ...ARM_R(10, 24, 2) } },
   ] },
   // vote: a 3-frame dip (cane gathered) → the cane hoisted tip-UP over his head, brows up, eyes wide; HELD
   vote: { fps: 30, loop: false, interp: 'step', length: 31, events: { 3: 'vote@caneTip' }, keys: [
     { f: 0, pose: { pos: [0, -0.035, 0], spine: [6, 0, 0], head: [-4, 0, 0], ...BLINK, ...ARM_L(-10, 10, 0) } },
     { f: 3, pose: { pos: [0, 0.01, 0], spine: [-4, 0, 0], chest: [-4, 0, 0], head: [-8, 0, 0], ...WIDE, ...BROWS(-18, 0.016), ...MOUTH(0.6),
-      upperArmL: [172, 0, 20], forearmL: [0, 0, 0], cane: [382, 0, 40], "cane.p": [0, -0.12, 0], ...ARM_R(30, 60, 10) } },
+      upperArmL: [150, 0, 42], forearmL: [10, 0, 0], cane: [372, 0, 70], "cane.p": [0, -0.12, 0], ...ARM_R(30, 60, 10) } },   // r2: arm up-and-OUT beside the head (was out 20: cane rose from behind the skull)
   ] },
 };
 
-// ── point (the game's shared emote): a squint to find them (4) → the free RIGHT arm reaches forward-and-up along the
-// facing, finger out, chest turned so the right shoulder leads, chin up, brows up; the cane hand pushes the cane
-// forward-low (the near limb at W/SW) — held ≈ 1.5 s with a blink — then back to idle
-const POINT_R = { upperArmR: [124, 0, 32], forearmR: [-4, 0, 0], 'upperArmR.l': [0.45], 'forearmR.l': [0.45] };
-const POINT_BODY = { spine: [4, -10, 0], chest: [2, -10, 0], head: [-10, 8, 0], ...BROWS(-16, 0.012), ...ARM_L(52, 0, -4) };
+// ── point (the game's shared emote): a squint to find them (4) → he points his CANE forward-up along the facing (tip ≈
+// head height of the person in front), the free right hand reaching along with it, brows up, eyes wide — held ≈ 1.5 s
+// with a blink — then back to idle. No smear: a fast cane swing would read as a strike (Clocktower: no combat).
+const POINT_R = { upperArmR: [62, 0, 22], forearmR: [10, 0, 0], 'handR.s': [0.25, 0.25, 0.25] };   // open hand forward-low (never both hands on a level stick = a rifle)
+// r2 (R W4 point; v8-pt{A..E}): the right arm alone hides in the body at S/SE (aimed at the viewer) — he points with the
+// CANE: the left arm lifts it forward-up along the facing (tip ≈ 35° above level), the right hand open forward-low
+const POINT_BODY = { spine: [4, 4, 0], chest: [2, 6, 0], head: [-10, 0, 0], ...BROWS(-16, 0.012), upperArmL: [50, 0, 6], forearmL: [10, 0, 0], cane: [-42, 0, 6] };
 CLIPS.point = { fps: 30, loop: false, interp: 'step', length: 66, keys: [
   { f: 0, pose: { pos: [0, -0.02, 0], chest: [4, 6, 0], head: [-4, -4, 0], ...HALF, ...BROWS(10), ...ARM_R(30, 70, 0) } },
   { f: 4, pose: { ...POINT_BODY, ...WIDE, ...MOUTH(0.6), ...POINT_R } },
@@ -259,7 +264,7 @@ CLIPS.point = { fps: 30, loop: false, interp: 'step', length: 66, keys: [
 // ── die (gentle, Clocktower-only — no hurt flash): a weary sway, hand to the chest (8) → knees give, he sinks onto the
 // cane (6) → tips back and to his right (6) → lies rolled on his back/side, face turned up to the camera, the cane
 // across the grass beside him (dust ring + soul) → settles, HELD. Legs FK.
-const DEAD = { pos: [0, -0.3, -0.16], hips: [-78, 0, -34], spine: [-6, 0, 0], chest: [-4, 0, 0], head: [26, 22, 0], ...SHUT, ...BROWS(8), ...MOUTH(0.3),
+const DEAD = { pos: [0, -0.3, -0.2], hips: [-84, 0, -70], spine: [-6, 0, 0], chest: [-4, 0, 0], head: [20, 30, 0], ...SHUT, ...BROWS(8),   // r2: more roll, mouth closed
   thighL: [36, 0, 14], shinL: [-40, 0, 0], thighR: [20, 0, 18], shinR: [-24, 0, 0],
   upperArmR: [30, 0, 30], forearmR: [80, 0, 0], upperArmL: [-40, 0, 30], forearmL: [-55, 0, 0], cane: [-95, 0, 30], robe: [10, 0, 0] };
 CLIPS.die = { fps: 30, loop: false, interp: 'step', legs: 'fk', length: 60, events: { 22: ['die', 'land'] }, keys: [
@@ -268,27 +273,32 @@ CLIPS.die = { fps: 30, loop: false, interp: 'step', legs: 'fk', length: 60, even
   { f: 8, pose: { pos: [0, -0.12, 0], spine: [16, 0, 0], chest: [10, 0, 0], head: [-6, 0, 0], ...SHUT, ...BROWS(10),
     thighL: [55, 0, 0], shinL: [-110, 0, 0], footL: [55, 0, 0], thighR: [55, 0, 0], shinR: [-110, 0, 0], footR: [55, 0, 0],
     ...ARM_R(40, 100, -12), ...ARM_L(36, 10, 0) } },
-  { f: 14, pose: { pos: [0, -0.22, -0.1], hips: [-45, 0, -18], spine: [-4, 0, 0], head: [16, 10, 0], ...SHUT,
+  { f: 14, pose: { pos: [0, -0.3, -0.1], hips: [-45, 0, -18], spine: [-4, 0, 0], head: [16, 10, 0], ...SHUT,
     thighL: [70, 0, 10], shinL: [-70, 0, 0], thighR: [60, 0, 14], shinR: [-60, 0, 0],
     upperArmR: [20, 0, 40], forearmR: [40, 0, 0], ...ARM_L(-10, 10, 40) } },
   { f: 22, pose: DEAD },
-  { f: 28, pose: { ...DEAD, thighL: [26, 0, 14], shinL: [-26, 0, 0], head: [28, 22, 0] } },
+  { f: 28, pose: { ...DEAD, thighL: [26, 0, 14], shinL: [-26, 0, 0], head: [22, 30, 0] } },
 ] };
 
-// ── nod (emote, "leans on the cane and nods"): both hands stacked on the crook with the cane planted in front of him
-// (6) → a slow deep nod, eyes shut, brows knit (8) → up, "mm" (6) → a second, deeper nod (8) → up with a small cock of
-// the head, eyes half (14) → idle
-const ON_CANE = { upperArmL: [55, 0, -30], forearmL: [38, 0, 0], cane: [93, 0, -30], upperArmR: [58, 0, -26], forearmR: [46, 0, 0] };
-const NOD = (d, extra = {}) => ({ pos: [0, -0.012 - 0.03 * d, 0], spine: [8 + 6 * d, 0, 0], chest: [4 + 6 * d, 0, 0], head: [-10 + 26 * d, 0, 0], ...ON_CANE, ...extra });
-CLIPS.nod = { fps: 30, loop: false, interp: 'step', length: 62, events: { 0: 'land@caneTip' }, keys: [
-  { f: 0, pose: NOD(0, { ...HALF }) },
-  { f: 6, pose: NOD(1, { ...SHUT, ...BROWS(14) }) },
-  { f: 14, pose: NOD(0.1, { ...HALF, ...MOUTH(0.3) }) },
-  { f: 20, pose: NOD(1.15, { ...SHUT, ...BROWS(14) }) },
-  { f: 28, pose: NOD(0, { head: [-12, 8, -12], ...HALF, ...BROWS(-8) }) },
-  { f: 42, pose: { ...breath(0), ...HALF } },
-  { f: 50, pose: breath(0) },
+// ── nod (emote, r2 — no longer the ghost's hands-on-crook pose): "mm, quite right" — the cane lifts (anticipation, 4) →
+// TAP: the cane is planted with a little dust ring and the head nods (head only, chest ≤ 4 so the face stays visible at
+// S/SE/SW), eyes shut (8) → up, "mm", the cane lifts again (6) → a second, deeper tap-and-nod (8) → up with a head cock
+// and a pleased brow (≈ 0.7 s) → idle. The free right hand rests at the small of his back the whole time.
+const BACK_R = { upperArmR: [-28, 0, 8], forearmR: [70, 0, 0] };
+const TAPUP = { ...ARM_L(18, 0, 0), 'cane.p': [0, 0.1, 0] };          // cane lifted 0.1 m
+const TAPDN = { ...ARM_L(26, 0, 0), 'cane.p': [0, -0.01, 0] };        // cane planted ahead
+const NODK = (d, extra = {}) => ({ pos: [0, -0.008 - 0.012 * d, 0], spine: [2, 0, 0], chest: [2 + 2 * d, 0, 0], head: [-8 + 15 * d, 0, 0], ...BACK_R, ...extra });
+CLIPS.nod = { fps: 30, loop: false, interp: 'step', length: 62, events: { 4: 'land@caneTip', 18: 'land@caneTip' }, keys: [
+  { f: 0, pose: NODK(0, { ...TAPUP, ...HALF, ...BROWS(-10, 0.008) }) },
+  { f: 4, pose: NODK(1, { ...TAPDN, ...SHUT, ...BROWS(12) }) },
+  { f: 12, pose: NODK(0, { ...TAPUP, ...HALF, ...MOUTH(0.3) }) },
+  { f: 18, pose: NODK(1.25, { ...TAPDN, ...SHUT, ...BROWS(14) }) },
+  { f: 26, pose: NODK(0, { ...TAPDN, head: [-12, 10, -12], ...BROWS(-12, 0.01), ...MOUTH(0.2) }) },
+  { f: 48, pose: breath(0) },
 ] };
+
+// ghost pose: both hands stacked on the crook (the emote no longer uses it)
+const ON_CANE = { upperArmL: [55, 0, -30], forearmL: [38, 0, 0], cane: [93, 0, -30], upperArmR: [58, 0, -26], forearmR: [46, 0, 0] };
 
 // ── ghost / ghost-spent (spec.ghost draws the pale ramp, halo, hover and floating legs): a slow drift with both hands
 // resting on the cane crook, eyes half; spent = head bowed, eyes nearly shut, lower hands
@@ -321,13 +331,13 @@ export function make() {
     chains: [],
     personality: { body: { f: 1.8, zeta: 1, r: 0 }, head: { f: 2, zeta: 1, r: 0 } },
     locomotion: { plan: 'biped', plant: 'hold', swingFloor: 'gait', walkSpeed: V_GAME, runSpeed: 2 * V_GAME, cycleTime: [0.3, 0.267],
-      poses: [4, 4], duty: [0.25, 0.15], reach: 0.6, arms: [0, 0], elbows: [0, 0], bob: [0.056, 0.05], lean: [4, 10], lift: [0.04, 0.05], twist: [4, 4] },
+      poses: [4, 4], duty: [0.25, 0.15], reach: 0.6, arms: [0, 0], elbows: [0, 0], bob: [0.03, 0.05], lean: [4, 10], lift: [0.04, 0.05], twist: [4, 4] },
     character: { quant: { yaw: 8, chain: 4 } },
     clips: CLIPS,
     ghost: { hover: 0.14, keepHue: 0.2 },
     fx: { stepClips: ['walk'], stepEvery: 2, speech: { node: 'speech' }, sockets: { caneTip: { length: 0, tip: 0 } }, vote: { node: 'caneTip' } },
     material: {
-      sides: { eyeL: 'mid', eyeR: 'mid', browL: 'mid', browR: 'mid', robe: 'mid', cane: 'mid' },
+      sides: { eyeL: 'mid', eyeR: 'mid', browL: 'mid', browR: 'mid', robe: 'mid', cane: 'mid', upperArmL: 'mid' },
       innerLine: 'tone',
       whiteKeep: 0.7,
       creamKeep: [1, 0.85],

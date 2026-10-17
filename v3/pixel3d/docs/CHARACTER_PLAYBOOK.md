@@ -1,5 +1,33 @@
 # Character playbook — how an agent makes a new character
 
+> **Run 05 close (pipeline lead, 2026-10-17).** 31 cast members, critic 14–18 (mean 15.7), none shipped. Gallery +
+> line-up: `docs/CAST_GALLERY.md`; ranked blockers + self-critique evaluation: `docs/CHARACTER_LEARNINGS.md` §Run 05 close.
+> - **Stage 7 works for round 1** (self − critic +0.55 mean, |gap| 1.0, vs +5 in run 04) **but not after the fix round**
+>   (post-fix self-scores +3.5 above the last critic, unverified). From now on the fix round **reruns Stage 7** and
+>   reports a fresh evidence table; a member ships only on a critic r2.
+> - **Wave-3 touch-up owed:** clarabelle, requin, preservation, opal, cilantro, mincut need point + ghost + ghost-spent
+>   (`spec.ghost`), progress needs ghost + ghost-spent.
+> - **Old members:** adopt `whiteKeep` / `creamKeep` / `hueKeep` (golden drift on chonk, rabbit, skeleton-chef, moth,
+>   mushroom) and `spec.ghost`; check the 25 % line-up with `tools/remote.sh python3 shots/cast-gallery/lineup.py`
+>   (all members in one scene, `scenes/cast-lineup.js`) — not only your own turnaround.
+
+> **Module fixes after cast wave 5 (module fixer, 2026-10-16) — two OPT-INS + a fairer face_visible row.**
+> Files: `src/chars/{look,rig}.js`, `scenes/char-stage.js`, `tools/{charpack,charcheck}.py`. A/B of full `--preset cast`
+> packs of all 35 finished members (incl. the four NPCs): 0 differing frames in every job; only `face_visible` values
+> changed. Details + evidence: `docs/CHARACTER_LEARNINGS.md` §Module backlog (top block), `shots/mfx6/ev-*.png`; API:
+> `docs/CHARACTERS.md` "Wave-5 module fixes".
+> - **Mid-value neutrals at golden: `material.hueKeep: { <slot>: 1 }`** (or a number for every slot) — grey hair, burlap,
+>   charcoal hoods keep their authored hue in sun and shade copies instead of going tan/orange/brown; noon/night untouched.
+>   Do not re-colour a faithful v1 palette (porter r2 sack → cream) just to dodge the golden drift any more.
+> - **Choosing which way a die lies: `pose.yaw: [deg]`** on the lying keys (half on the tip-over key) — spins the whole
+>   lying body about the vertical through the root joint; stop fighting hips fwd/out/twist for the facing pair.
+> - **face_visible no longer counts your hair cap / hood rim as occlusion** (`spec.faceCover`, default = hair/hood-named
+>   parts on the head; a hat brim still counts). A WARN now means the face really is hidden — fix it, do not argue it.
+> - **Wave-5 checklist (with the earlier opt-ins):** lantern/light carrier (the Storyteller) = `spec.lights` + `uCharTime`
+>   glow; white/cream bodies = `whiteKeep` (+ `whiteKeepLift`) / `creamKeep`; mid greys/burlap = `hueKeep`; ears/hood
+>   seams = `material.merge` or `innerLine 'tone'`; chibi legs = `locomotion.plant: 'hold'` (+ `swingFloor: 'gait'`);
+>   game clips point + ghost + ghost-spent (`spec.ghost`), not for the Storyteller.
+
 > **Module fixes after cast wave 4 (module fixer, 2026-10-16) — three OPT-INS; nothing changes until your spec asks.**
 > Files: `src/chars/{look,locomotion}.js`, `src/post/outline.js`. A/B of full `--preset cast` packs of all 31 finished
 > members: 0 px in every job; shrine/glade/pond/town 0 px. Details + evidence: `docs/CHARACTER_LEARNINGS.md` §Module
@@ -77,6 +105,12 @@
 >   Gait ids untouched. A/B: wanderer, maxflow, fox sheets byte-identical; repro `shots/lead-w4/mfms.js` walk 3 → 4
 >   frames. Verified (no change): the camera-side arm is the RIGHT at SE/E and the LEFT at W/SW; `spec.presence` already
 >   overrides the presence band. Ghosts: use `spec.ghost` (wave-3 banner), not the old ghostK recipe.
+> - **Lead fixes between waves 5 and 6:** `tools/bake.py` auto cell growth no longer runs away (wave 5: 3/4 NPC bakes
+>   without `--cell` grew to 122–152 and wrapped/cut the head — elder anchor [29, 24] in a 58×146 cell). The `below` scan
+>   followed the figure into the next row's raised prop / hover, so the pad grew 8 → 57; the pad is now capped at 0.3 × the
+>   new cell. Elder 146 → 80 (58×64), sweeper 152 → 112 (72×85), vendor 122 → 90 (54×70), every row complete
+>   (`shots/lead-w5/fix-*.png`, `npc-*-{idle,vote,die}.png`). A/B: wanderer, cilantro, npc-porter sheets/json/preview
+>   byte-identical (`shots/lead-w5/ab.py`). **Drop the `--cell 90/96/100/128` workarounds**; still check the printed anchor.
 > - **Module fixes round 2 (module fixer, 2026-10-16) — these change idle-turn, talk, die, vote and emote renders too.**
 >   Files: `src/chars/{character,locomotion,rig,look,fx}.js`, `scenes/char-stage.js`, `tools/{charpack,charcheck,bake}.py`,
 >   `tools/shot.mjs`, `refs/cast/_src/gamespeed_gif.py`. Full-pack A/B of 19 cast members: no new FAIL.
@@ -221,6 +255,24 @@ maxflow 15 (self 19, +4), theo-rem 17, greenting 17, storyteller 18 (best cast r
    belly. A pose claim cites the 8-facing still of that key; a motion claim cites the 1× GIF frames.
 Also FIXED (lead): the sprite bake no longer ships a start-up walk cycle that skipped a drawing (maxflow baked 3 of 4).
 
+### Cast wave 5 (4 NPCs, critic 15–16, none shipped) — what cost points this time
+
+npc-sweeper 16 (self 17), npc-vendor 15 (self 16), npc-elder 15 (self 15), npc-porter 15 (self 16). Gaps 0…+1, but
+**every R W4 rule that applied was broken again** — the authors did not render the key the rule names. Each is an
+**R W5** line below (details: `docs/CHARACTER_LEARNINGS.md` score history + the wave-5 archive):
+1. **Vote prop not in a visible raised hand** (4/4): broom floating 7 texels off the hand (sweeper), arm behind the head at
+   E (vendor), cane out of the skull at SE/W (elder), sack ON the hood at E/W (porter) → Stage 3 **R W5 vote prop**.
+2. **R W4 point ignored** (2/4 sideways: sweeper, elder) and **R W4 die again** (4/4 sitting / kneeling / levitating prop
+   at 1–2 facings) → Stage 3 **R W4 point** (+ wide-robe pointer) and **R W5 die**.
+3. **Emote keys or emote vs ghost render the same** (2/4: elder nod = ghost pose, vendor's two calls = one drawing at
+   S/E/W) → Stage 3 **R W5 distinct at 8 facings** (key_delta is measured at the pack facing only).
+4. **Profile face / face details** (3/4): no face under a bob cap at E/W (sweeper), face box proud of the hood = snout
+   (porter), shut eyes = dots, dead mouth = scream "O" (sweeper, elder).
+5. **Mid-value identity drifts at golden** (2/4: grey hair → tan, purple hood drift toward the Storyteller) and **NPC
+   25 % blobs match each other** (4/4: elder / porter / vendor / sweeper / green-hood plain lozenges) → Stage 0 **R W5**.
+6. **Sheet ≠ still, again** (4/4): "broom flat beside him", "pushed ahead", "hobble", "clears the head 7/8", "two deep nods".
+Also FIXED (lead): bake auto cell growth runaway (banner above).
+
 ---
 
 ## Render host and commands
@@ -236,6 +288,11 @@ loops (`for k in 'vote 3'; set -- $k` silently rendered idle:0 under the wrong n
 per call, or wrap the loop in `bash -c '…'`; confirm the `p` field of every still. **R W3 (3 agents) + W4 (2 critics, again)** Never type
 `python3` on the Mac, not even a "quick json read" or `python3 -c 1`: `tools/remote.sh python3 …`. Env vars go through `env`:
 `tools/remote.sh env X0=12 python3 shots/char-<id>/x.py.js` (`X0=12 tools/remote.sh …` does not reach the host).
+**R W5 (3 more: elder critic, vendor author, the lead)** the Mac `python3 -c 1` slip happened again — type `tools/remote.sh`
+first, always. `tools/remote.sh` syncs helpers only ONE level deep (`shots/<dir>/*.py|*.js`): keep helpers at
+`shots/<you>/x.py.js`, not `shots/<you>/r2/x.py`; it also quotes its arguments, so a pipeline/`&&` chain needs
+`tools/remote.sh bash -c '…'`. The PreToolUse hook blocks any Bash command whose TEXT contains the skipped member's name
+(even `grep -v <name>`): filter with `pipeline/skip.txt` (`grep -vf pipeline/skip.txt`) instead of typing it.
 
 | what | command | look at |
 |---|---|---|
@@ -411,12 +468,28 @@ Write before any code (≤ 1.5 pages; template: `characters/wanderer.md`). For a
    the nose on its tip (2 texels = an egg); (c) eyes placed by angle round the head axis + elevation (greenting r9: |x|
    ≈ 0.9 r, φ ±70°), not a world direction from a snout cap; (d) spectacle rims/brims set back so the nose clears them at
    both profiles. At E you see the character's RIGHT side, at W the LEFT.
+   **R W5 (2/4 more: sweeper, porter — now 9 members)** (e) hair caps/bobs: cut the side hair rings back (sweeper
+   `clampZ` −0.12/−0.1/−0.04) and put the eye boxes ON the front/side bevel (x ≈ 0.65 × half-width, 0.045 deep) — a
+   bob hull covered the whole head at E/W; (f) hoods: face front ≤ rim front (porter 0.222 vs 0.23) or the nose pokes
+   past the hood outline as a snout; thin set-back side bars keep both eyes at SE. `face_visible` under-reports faces in
+   a hair/hood window (T32) — judge the ×4 E/W crop. WIDE eyes on a head tilted ≥ 10° turn into "+" glyphs at S (vendor).
    **R W4 cream identity (2/4 failed)** `whiteKeep`/`whiteKeepLift` only catch near-whites (chroma < 0.18/0.25) and never
    lighten; a cream hi (#F8E6C2) goes apricot or mauve-grey at golden. Use a cooler, less saturated hi (#F6E4D6 / mid
    #E4C8AA — theo-rem) + `slots.<cream>.lift` ≈ 0.35 + `whiteKeepLift` 0.8 (maxflow #957C7E → #D8CCBF), and judge the
    golden sun AND shade copies by eye. A cream that is darker than the fur next to it at golden is a FAIL.
    **R W4 colour-identity ghost** `ghost.keepHue` 0.25–0.35 for any character whose colour IS the identity (greenting went
    lavender-white at 0), not only for dark characters.
+   **R W5 mid-value identity at golden (2/4)** No keep option catches a mid grey or a mid tan: `whiteKeep` gates luma >
+   0.75, `creamKeep` gates authored-mid luma > 0.45 + warm (sweeper grey hair #66667C → tan #856D59; porter burlap #A19276
+   had to be lightened before creamKeep applied). Until look gets a hueKeep (backlog), pick the slot so a keep applies
+   (lighter cream → `creamKeep [1, 1]`, vendor apron #DCD6C6 golden-sun +14 → +25 %) or accept and REPORT the golden
+   drift. Never let a hood/robe drift toward purple (porter #3A3438 → #524858 = Storyteller-ward).
+   **R W5 NPCs are boring, not identical (4/4 matched each other at 25 %)** elder / porter / vendor / sweeper / green-hood
+   were the same S/N lozenge. The ONE prop or hair shape must leave the blob at 6/8 facings at 25 % (elder cane 1 px →
+   ≥ 2 texels thick, splayed ≥ 12°; vendor bun ≥ 2 texels outside; porter sack low on the back AS v1 DRAWS IT, bulging
+   past the outline at SW). Line up the other NPCs too (cut them from `shots/char-*/turnaround-silhouette.png`).
+   **R W5 v1 placement first** A back load / held prop goes where the v1 sprite draws it (porter's sack sat shoulder-to-
+   crown instead of the lower back → a cream "bun" at SW, a sack-hat in the vote). Compare the 1× S and N crop with v1.
 7. **`## Unique to me`** (mandatory; the critic grades it). Answer each with a concrete plan and how you will verify it:
    1. **Extra animated parts**: which secondary parts move (ears, tail, wings, shell, antennae, beret, apron, cape, phone,
       papers, spores, lantern, tongue, gills…) and HOW: spring chain (preset, 1 link for short parts), keyed in clips
@@ -435,8 +508,9 @@ Write before any code (≤ 1.5 pages; template: `characters/wanderer.md`). For a
    1 signature emote (+ turn check); run is optional. **R W3 (7/8 missed point/ghost)** — `cast_clips` now FAILs without them. Semantics in §Cast clips. Say what the FX module can't draw yet (backlog) rather than faking it.
 9. **Secondary motion**: chains with presets, personality (body/head), FX. **R** The numbers in the sheet must equal the
    code at the end (the critic diffs them).
-10. **Lights** (lanterns, glowing eyes): no `spec.lights` yet; a light needs your own scene copy and cannot be
-    freeze-tested at night. Say so. Night glass: use the warm mid (#FFC864-ish), not a near-white hi (moth).
+10. **Lights** (lanterns, glowing eyes): `spec.lights: [{ socket, color, intensity | [day, dusk, night], distance,
+    flicker }]` + glow code on `uCharTime` (module fix r2; freezes with `t=`). (Corrected by the lead after wave 5: this
+    line still said "no spec.lights yet".) Night glass: use the warm mid (#FFC864-ish), not a near-white hi (moth).
 
 ## Stage 1 — Blockout (silhouette)
 
@@ -569,6 +643,10 @@ Per key, on that still — write the result into the sheet's timing chart:
       pointing shoulder leads + the other paw forward-low (maxflow), or a head/neck lunge + both stubs (greenting). Render
       the point hold at 8 facings, ×3, and write texels-outside-the-outline per facing (≥ 4 at S/SE/SW/W) in the sheet.
       Calibrate the triple first: on a chibi arm fwd 90 + out 45 is a SIDEWAYS raise, not a diagonal.
+      **R W5 (2/4 again: sweeper, elder — both sideways at S/SE):** on a wide-robed chibi one arm along the facing points
+      AT the viewer and leaves 0 px outside the outline at S/SE (elder r2) — point with the long held prop instead (cane
+      forward-UP ≈ 35° above level → outside the outline at 6/8), free hand low and open (two hands on a level stick =
+      a rifle). Measure with a silhouette diff of the held key vs idle (`shots/char-npc-elder/el_sil.py.js`).
 - [ ] **R W4 talk mouth = a filled plate** Never scale a ring of smile beads (hollow dark U/C, greenting). Bury a dark plate
       in the head at rest and push it out with `'<mouth>.p'` on open keys (0.08 × 0.06 m sunk 0.045 → a 3×2 "o"); smile
       ≈ ¼ of the head width. Talk loop 32–40 frames, keys every 8–10 (6-frame beats read twitchy).
@@ -581,6 +659,30 @@ Per key, on that still — write the result into the sheet's timing chart:
       (`[60, 0, 60]`, greenting); show the shut-eyed face at S/SE (maxflow's S/SE final had no face).
 - [ ] **R W4 emote ≠ vote** The emote must not reuse the vote's prop or arm pose (theo-rem's Q.E.D. read as a card-less
       vote). Show the identity prop face-on at chest height on the punchline; twist a far-paw card 40° toward SE.
+      **R W5:** … and ≠ ghost (elder's nod reused the ghost's hands-on-crook pose: two clips, one drawing).
+- [ ] **R W5 vote prop in a visible raised hand (4/4 failed)** The held vote is judged on the 8-facing still of the HELD
+      key (`grid=turnaround&clip=vote&frame=<hold>`, ×4 crop) at S, SE, E and W: sleeve + skin hand visible, the prop's
+      grip IN that hand, the prop ≥ 3 texels over the crown and not resting on the head. Recipes that worked (wave 5 r2):
+      (a) the prop bone sits AT the hand and the shaft passes through the bone origin (sweeper `BROOM_PIV`) — never slide
+      a long prop with `<prop>.p` along the arm (7 texels of air at S); (b) height by LENGTH, not `out`: at E an `out`
+      component points the arm at the camera and LOWERS the hand on screen (vendor `[164, 0, 22]` + `'upperArmR.l'` 1.7 /
+      `'forearmR.l'` 1.45 cleared the bun 8/8); (c) a hoisted prop's position from the arm FK, verified with
+      `mark=@handR` (porter r2); (d) a raised arm always runs along the view ray at ONE facing pair — choose the pair where
+      the prop lands BESIDE the head and say so; (e) a prop above the bind hull self-shadows the body: `material.hullMargin`
+      ≈ its height over the crown (porter 0.4). `prop_area` undercounts props above the crown (tools T38): judge the raw
+      magenta still.
+- [ ] **R W5 die (4/4 failed, recurring W2–W5)** Yaw a lying body with hips `out` (±40–90), not `twist` (q = qFwd·qOut·qTwist:
+      after hips fwd −78, twist only rolls it about its long axis); a pitched hip (hips fwd 30) reads as kneeling — lie it
+      flat on its side (hips [0, 0, 88] + spine/chest curl 20–25, vendor r2). One facing pair stays end-on: put it on
+      N/NE (least seen) and write which. A held prop lies ON the ground: verify with a `pitch=4` still (at 30° a prop on
+      the far side projects up the screen). Shut eyes = widen AND flatten (`eye.s [0.6, −0.7]` → 3×1 dash; y-squash alone
+      leaves a dot that reads open); mouth closed (MOUTH 0) — a slack mouth is a scream "O". Every lying claim cites the
+      8-facing still of the final key.
+- [ ] **R W5 distinct at 8 facings** `key_delta` / `key_speckle` are measured at the pack facing only: two keys that
+      differ only in arm elevation (vendor callout 128° → 150°) passed at SE and read as one drawing at S/E/W. Diff
+      consecutive emote/talk keys on the 8-facing stills; the second beat changes the SILHOUETTE (other arm, lean, hop).
+      `key_speckle (gN)` names a grid frame: key = gN − idle lead-in (8). Transitional keys with an arm across the coat
+      add 4–8 dashed px each — hold the arm off the body.
 
 Clip rules:
 - **idle**: loop, `interp: 'step'`, 4 keys, extremes held long (0/30/36/66, length 72), 1 texel of bob (`pos` y 0.028).
@@ -603,9 +705,13 @@ Clip rules:
   facings (≥ 12 each).
 - **R W1** Long props tilt 25–30° under the gait/acceleration lean (goat); until motion M4: route LegGait
   hips/neck/head to geometry-less bones and `lean: [0, 0]` (costs head lag) or accept and report it.
-- **R W4 gait claims** (maxflow, greenting, storyteller): (a) short-duty waddles (duty ≤ 0.2, bird style) set
-  `locomotion.maxSwing: 0.5` — the default 0.25 s floor ran maxflow's cycle 0.278 s and skipped drawing k2 in the first
-  cycle (motion M23); (b) a body roll must be MIRRORED per drawing (key chest/head roll k0 −x, k2 +x in `clips.walk`) and
+- **R W4 gait claims** (maxflow, greenting, storyteller; **R W5** elder "hobble", sweeper "broom pushed ahead"): (a)
+  short-duty waddles (duty ≤ 0.2, bird style) set `locomotion.swingFloor: 'gait'` (wave-4 module fix; replaces the old
+  `maxSwing: 0.5` workaround — the default floor ran maxflow's cycle 0.278 s and skipped drawing k2, motion M23);
+  (a2) **a limp / hobble is a keyed `pos` per drawing in `clips.walk`**, never `locomotion.bob`: the LegGait biped bob is
+  mirror-symmetric (k0 = k2), elder r1 head_bob 3.9 px / limp 0.1 = a bounce; keyed light contact −0.008, flights 0,
+  heavy contact −0.044 + chest +10 → head_bob 2.4, limp 1.6 (target limp ≥ 1.5, bob ≤ 2.5 px); a prop "pushed ahead"
+  must cross in front of the feet on the SE walk drawings, or the sheet says what renders; (b) a body roll must be MIRRORED per drawing (key chest/head roll k0 −x, k2 +x in `clips.walk`) and
   small (≤ 5): at SE a LegGait roll on a tall body reads as a forward/back lurch (greenting); (c) a staff "plant" is keyed
   by eye on `grid=turnaround&clip=walk&frame=<k>&speed=<v>` E/W stills — tip AHEAD of the body at contact (the
   plumb-cancel convention still leans it ≈ 17° forward inside LegGait drawings, M25); (d) glide/fast travel drawings
@@ -736,6 +842,10 @@ time. Score like the critic: **when in doubt, score 1**.
     EVERY fix round, rewrite Unique-to-me, proportions, palette hex, timing charts, js header comments and the
     self-critique table from the CURRENT code and renders; stale evidence from the previous round cannot support a 2.
     An evidence line you marked "NOT run" caps that criterion at 1 — critics check it (fox, owl, moth were capped).
+    **R W5 (4/4 wave 5, 4/4 wave 4)** Every POSE claim in the sheet/self-critique ("flat beside him", "clears the head
+    at 7/8", "points forward-up", "two deep nods") cites the 8-facing still of THAT key (`grid=turnaround&clip=<c>&frame=<k>`)
+    and every MOTION claim ("hobble", "pushed ahead") cites the 1× GIF frames + a number (`head_bob` limp, prop px per
+    walk drawing). A WARN row that names your key (prop_area 0 at E, head_bob limp 0.1) is acted on or explained.
 11. **R** Every fix re-verified in the **same render that showed the problem** + the 8-facing still (a fix checked
     elsewhere moves the problem: duelist plume, keeper staff).
 
@@ -757,7 +867,11 @@ your three weakest points honestly in the report (the critic checks whether you 
   look at `<name>-preview.png`. `--cell N` is the square render cell, the printed cell is trimmed (tools/bake.py usage).
   **R W4** Check `bake/<name>.json` `clips.walk.frames` == `spec.gameSpeed.drawings` and read the bake's warnings: since
   the lead's wave-4 fix a short start-up cycle is re-cut from a steady cycle (warning "start-up cycle showed 3/4
-  drawings"), but the live game still plays that start — fix the spec (M23 `maxSwing`), don't just accept the warning.
+  drawings"), but the live game still plays that start — fix the spec (M23 `swingFloor: 'gait'`), don't just accept the warning.
+  **R W5 (3/4 bakes were garbage before the lead fix)** Read the printed `render cell N -> trimmed cell WxH anchor [x, y]`:
+  the anchor y must sit in the lower part of the cell (y ≥ 0.6·H) and H must be < N; then LOOK at the idle, vote and die
+  rows of the preview (the elder/sweeper sheets had the head at the cell bottom and the feet at the top). The runaway is
+  fixed (pad cap, lead wave 5); if it recurs, pass `--cell` and file it.
 - Add to `docs/CHARACTER_LEARNINGS.md` in the matching TOPIC section (never a per-agent "Additions" section — the
   wave-1 ones were merged by the lead and are archived) (extend an existing bullet and mark it
   **(recurring)** if it is already there): symptom → cause → rule, numbers. Shared-code problems → §Module backlog with

@@ -422,6 +422,11 @@ def main():
         # (module fix T4) the face slot ALONE (every other part removed): unoccluded face px per facing (face_visible row)
         if ci.get('faceSlot'):
             jobs.append({'name': 'face-solo', 'q': {**tq, 'bg': 'key', 'mark': ci['faceSlot'], 'solo': 1}, 'times': [1.0]})
+            # (module fix, wave 5: T32) + the hair / hood parts that cover the face by design (spec.faceCover, default:
+            # hair/hood-named parts on the head bone): the face px left visible there = the face_visible denominator
+            if ci.get('faceCover'):
+                jobs.append({'name': 'face-cover', 'q': {**tq, 'bg': 'key', 'mark': ci['faceSlot'], 'solo': 1,
+                                                          'cover': ','.join(ci['faceCover'])}, 'times': [1.0]})
         # camera-pan stability: frozen idle (t=1), the camera target moves 1 texel right + 1 up per 60 Hz frame
         jobs.append({'name': 'pan', 'q': {**base, 'bg': 'plain', 'clip': 'idle', 'dir': d, 't': 1, 'pan': '1,1'},
                      'times': [(i + 0.5) / 60 for i in range(24)]})

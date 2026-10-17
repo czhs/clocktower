@@ -278,6 +278,20 @@ attack: {
     gait's own swing time at the walk/run speed, so a short-duty waddle (duty 0.15, or a reach-clamped duty) keeps its
     authored cycle (0.3 s, not 0.267–0.289) and the start-up cycle no longer skips a drawing; replaces the
     `maxSwing: 0.5` workaround. New members: set it.
+- **Wave-5 module fixes** (module fixer, after cast wave 5; opt-ins / new rows, 0 px for specs that do not use them;
+  evidence `shots/mfx6/`):
+  - **`material.hueKeep: k | { <slot>: k }`** (golden grade only; noon / night 0 px) — a MID-value neutral (grey hair
+    #66667C, burlap #A19276, charcoal hood) keeps the hue/chroma of its authored band tone at the graded luma, in every
+    band (sun and shade copy), any luma; a number applies to every slot. Use it where whiteKeep (luma > 0.75) and
+    creamKeep (authored mid luma > 0.45, warm) do not reach (sweeper hair tan → blue-grey, porter burlap orange → khaki).
+  - **`pose.yaw: [deg]`** (any key; mirrors to −deg) — spins the ROOT bone about the character's vertical axis through its
+    joint, after the root's own triple: a die pose lying on its side chooses the direction it lies in (hips `twist` on a
+    lying body rolls it about its own long axis). Lerps like a triple; absent / 0 = unchanged.
+  - **`spec.faceCover: [part|slot, …]`** (tools, T32) — parts that cover the face area BY DESIGN (hair cap, fringe, bun,
+    hood, hood rim). Default: named parts on the head bone (or below) whose name or slot matches hair / hood / fringe /
+    bang / wig / cowl / bun (never the face slot; a hat brim is NOT exempt). charpack renders the face slot + these
+    (stage `cover=`, job `face-cover`) and `face_visible` = visible face px / face px not under the cover (raw ratio in
+    the detail). `spec.faceCover: []` restores the old row.
 - Hold the key that carries a `hurt` flash ≥ flash frames + 2 grid frames (else the pose under it shows for one frame).
 - Swing planes: a horizontal slash at brim/hood height hides behind the signature shape from the back; slash diagonally.
 - One smear key = ≤ 170° of blade rotation (sum arm + chest + spine + hips about the swing axis); spins = several

@@ -79,6 +79,32 @@ export const quantYaw = (a, n = 8) => Math.round(a / (TAU / n)) * (TAU / n);
 /** Copy of p snapped to the camera texel grid (right/up; depth kept). */
 export const snapTexel = (engine, p, out = new THREE.Vector3()) => engine.camera.snapWorld(p, out);
 
+// ------------------------------------------------------------------------------------------------ layout helpers
+/**
+ * Ground basis of the camera from its yaw / pitch (integration r1; fire + props each had a private copy, and the fire
+ * lesson: engine.camera.right / forward are stale at create() time). R = screen-right on the ground, F = screen-up
+ * on the ground (unit), scr(sx, sy, origin?) = the ground point sx screen metres right / sy screen metres up of origin.
+ */
+export function groundBasis(engine) {
+  const yaw = engine.camera.yaw ?? Math.PI / 4, pitch = engine.camera.pitch ?? Math.PI / 6;
+  const R = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw)), F = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
+  const scr = (sx, sy, origin = null) => (origin ? origin.clone().setY(0) : new THREE.Vector3())
+    .addScaledVector(R, sx).addScaledVector(F, sy / Math.sin(pitch));
+  return { R, F, yaw, pitch, scr };
+}
+/** Distance (m, on the ground plane) from (x, z) to a polyline of {x, z} points (closed = the last joins the first). */
+export function polylineDistance(x, z, pts, closed = true) {
+  let best = Infinity;
+  const n = pts.length, m = closed ? n : n - 1;
+  for (let i = 0; i < m; i++) {
+    const a = pts[i], b = pts[(i + 1) % n];
+    const dx = b.x - a.x, dz = b.z - a.z, l2 = dx * dx + dz * dz || 1;
+    const u = clamp(((x - a.x) * dx + (z - a.z) * dz) / l2);
+    best = Math.min(best, Math.hypot(x - a.x - dx * u, z - a.z - dz * u));
+  }
+  return n === 1 ? Math.hypot(x - pts[0].x, z - pts[0].z) : best;
+}
+
 // ------------------------------------------------------------------------------------------------ actors
 /**
  * Proximity registry of the characters walking through the scene (the "actors" every system reacts to).
@@ -164,16 +190,34 @@ class Snapshot {
  * is a pure function of t (sampled actors). live: on a backwards jump it resets and continues from t (no history).
  */
 export class Ticker {
-  constructor({ hz = GRID_HZ, reset, tick, mode = 'replay', maxTicks = 1e6 } = {}) {
-    Object.assign(this, { hz, resetFn: reset, tickFn: tick, mode, maxTicks });
+  /**
+   * Host-wide defaults for Tickers built while a system is created (integration r1). createAmbient(engine,
+   * { ticker: { mode, window } }) sets them around each system's create(), so a host (the town, the game) can run
+   * every system forward-only or with a bounded catch-up without touching the systems. Defaults = the old behaviour.
+   *   mode 'replay' | 'live'    window: s of history a cold start / far jump re-simulates (Infinity = from t 0)
+   */
+  static defaults = { mode: 'replay', window: Infinity };
+  constructor({ hz = GRID_HZ, reset, tick, mode = Ticker.defaults.mode, maxTicks = 1e6, window = Ticker.defaults.window } = {}) {
+    Object.assign(this, { hz, resetFn: reset, tickFn: tick, mode, maxTicks, window });
     this.n = null; this.ticks = 0; this.resets = 0;
   }
   advance(t) {
     const target = Math.floor(t * this.hz + EPS);
+    let fresh = false;
     if (this.n === null || target < this.n) {
       this.resets++;
       this.resetFn?.();
-      this.n = this.mode === 'live' && this.n !== null ? target - 1 : -1;
+      fresh = true;
+      // live: no history (a cold start at t = 3600 s must not simulate an hour; was: replayed from 0 on the first
+      // call); replay: from tick 0
+      this.n = this.mode === 'live' ? target - 1 : -1;
+    }
+    // bounded catch-up (window < Infinity): a cold start or a forward jump longer than the window starts the
+    // simulation `window` seconds before t instead of at 0 / at the stale state (deterministic for a cold start)
+    const W = Number.isFinite(this.window) ? Math.max(1, Math.round(this.window * this.hz)) : Infinity;
+    if (target - this.n > W) {
+      if (!fresh) { this.resets++; this.resetFn?.(); }
+      this.n = target - W - 1;
     }
     let budget = this.maxTicks;
     while (this.n < target && budget-- > 0) { this.n++; this.ticks++; this.tickFn(this.n / this.hz, 1 / this.hz, this.n); }
@@ -325,10 +369,26 @@ export function paint(geo, tones) {
   if (!g.attributes.normal) g.computeVertexNormals();
   return g;
 }
-/** Merge painted parts into one pose geometry (attributes position, normal, color, toneHi, toneSh only). */
-export function mergePose(parts) {
-  const keep = ['position', 'normal', 'color', 'toneHi', 'toneSh'];
-  const gs = parts.map((p) => { const g = p.index ? p.toNonIndexed() : p.clone(); for (const k of Object.keys(g.attributes)) if (!keep.includes(k)) g.deleteAttribute(k); return g; });
+/**
+ * Merge painted parts into one pose geometry (attributes position, normal, color, toneHi, toneSh).
+ * opts.keep (integration r1, birds / critters CONTRACT-REQUEST): extra per-vertex attributes to keep, as
+ * { name: { size = 1, fill = 0 } } (or a list of names = size 1, fill 0): a part that lacks one gets it filled, so
+ * per-part flags (aFx outline / eyeshine flags) survive the merge without a private copy of this function.
+ *   mergePose(parts, { keep: { aFx: { size: 2 } } })
+ */
+export function mergePose(parts, opts = {}) {
+  const base = ['position', 'normal', 'color', 'toneHi', 'toneSh'];
+  const extra = Array.isArray(opts.keep) ? Object.fromEntries(opts.keep.map((k) => [k, {}])) : (opts.keep || {});
+  const keep = [...base, ...Object.keys(extra)];
+  const gs = parts.map((p) => {
+    const g = p.index ? p.toNonIndexed() : p.clone();
+    for (const k of Object.keys(g.attributes)) if (!keep.includes(k)) g.deleteAttribute(k);
+    const n = g.attributes.position.count;
+    for (const [k, { size = 1, fill = 0 }] of Object.entries(extra)) {
+      if (!g.attributes[k]) g.setAttribute(k, new THREE.BufferAttribute(new Float32Array(n * size).fill(fill), size));
+    }
+    return g;
+  });
   return mergeGeometries(gs, false);
 }
 
@@ -341,10 +401,12 @@ export function mergePose(parts) {
  *   const b = createPoseBatch(engine, { poses: [geo, ...], max: 64, outline: 'full', castShadow: true, name, parent })
  *   b.set(i, pos, yaw, pose, scale = 1)   pos snapped to the texel grid (unless snap: false); yaw radians
  *   b.hide(i);  b.commit()                 (call once per update after the sets)
+ *   shadowMask: true (integration r1, birds CONTRACT-REQUEST) -> b.setShadow(i, on): a per-instance switch for the
+ *     shadow pass (0 extra calls; an airborne bird casts no smear on a wall face). Without it nothing changes.
  * Pose geometries: painted (paint / mergePose), feet at y = 0, facing +Z, centred on x/z.
  */
 export function createPoseBatch(engine, opts = {}) {
-  const { poses, max = 64, outline = 'full', castShadow = true, receiveShadow = true, name = 'ambient-batch', parent = null, snap = true } = opts;
+  const { poses, max = 64, outline = 'full', castShadow = true, receiveShadow = true, name = 'ambient-batch', parent = null, snap = true, shadowMask = false } = opts;
   if (!poses?.length) throw new Error('createPoseBatch: poses required');
   const tagged = poses.map((g, i) => {
     const c = g.index ? g.toNonIndexed() : g.clone();
@@ -362,7 +424,14 @@ export function createPoseBatch(engine, opts = {}) {
   const mesh = new THREE.InstancedMesh(geo, mat, max);
   mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   mesh.castShadow = castShadow; mesh.receiveShadow = receiveShadow;
-  mesh.customDepthMaterial = depthMaterial(engine, { vertexHead, vertex });
+  let iNoShadow = null;
+  if (shadowMask) {
+    iNoShadow = new THREE.InstancedBufferAttribute(new Float32Array(max), 1);
+    iNoShadow.setUsage(THREE.DynamicDrawUsage);
+    geo.setAttribute('iNoShadow', iNoShadow);
+    mesh.customDepthMaterial = depthMaterial(engine, { vertexHead: `${vertexHead} attribute float iNoShadow;`,
+      vertex: 'if (abs(aPose - iPose) > 0.5 || iNoShadow > 0.5) transformed = vec3(0.0);' });
+  } else mesh.customDepthMaterial = depthMaterial(engine, { vertexHead, vertex });
   mesh.frustumCulled = false;
   mesh.name = name;
   const zero = new THREE.Matrix4().makeScale(0, 0, 0);
@@ -383,8 +452,10 @@ export function createPoseBatch(engine, opts = {}) {
       shown[i] = 1;
     },
     hide(i) { if (i >= 0 && i < max) { mesh.setMatrixAt(i, zero); shown[i] = 0; } },
+    setShadow(i, on = true) { if (iNoShadow && i >= 0 && i < max) iNoShadow.array[i] = on ? 0 : 1; },
     commit() {
       mesh.instanceMatrix.needsUpdate = true; iPose.needsUpdate = true;
+      if (iNoShadow) iNoShadow.needsUpdate = true;
       visible = 0; for (let i = 0; i < max; i++) visible += shown[i];
     },
     get visible() { return visible; },
@@ -470,11 +541,16 @@ export function createSpriteBatch(engine, opts = {}) {
 
 // ------------------------------------------------------------------------------------------------ time of day
 const NIGHT = { noon: 0, morning: 0.1, golden: 0.55, dusk: 0.7, night: 1 };
-/** Normalised time-of-day info handed to systems: { name, night 0..1, dark (golden/night: lights on) }. */
+// integration r1: host time-of-day names that systems should treat as one of theirs (systems switch on tod.name):
+// the town's TOWN_TOD 'afternoon' (the old golden: low warm sun, glowing windows, PointLights) plays as 'golden'.
+// tod.host keeps the host's own name.
+export const TOD_ALIAS = { afternoon: 'golden' };
+/** Normalised time-of-day info handed to systems: { name, host, night 0..1, dark (golden/night: lights on) }. */
 export function todInfo(engine, name) {
-  const n = name ?? engine.style?.timeOfDay ?? 'noon';
+  const host = name ?? engine.style?.timeOfDay ?? 'noon';
+  const n = TOD_ALIAS[host] ?? host;
   const night = NIGHT[n] ?? 0;
-  return { name: n, night, dark: night >= 0.5, sunColor: engine.uniforms.uSunColor.value.clone() };
+  return { name: n, host, night, dark: night >= 0.5, sunColor: engine.uniforms.uSunColor.value.clone() };
 }
 
 // ------------------------------------------------------------------------------------------------ systems
@@ -485,7 +561,10 @@ export const BUDGET = {
   tris: 8000,           // per visible frame (all instances x the active pose)
   lights: 2,            // PointLights a system may own (each one costs every lit fragment)
   instances: 256,
-  total: { systems: 10, glCalls: 24, updateMs: 1.5, lights: 4 },
+  // all systems of one scene. glCalls (integration r1): the seven built systems declare 3+5+2+4+2+8+8 = 32 (air
+  // bundles the planned cloth + smoke + dust systems, props its fixtures + two sprite batches); 36 leaves room for a
+  // reflective pond. Hosts with their own props / lights pass fixtures: false, lights: [] (docs/AMBIENT.md §12).
+  total: { systems: 10, glCalls: 36, updateMs: 1.5, lights: 4 },
 };
 /**
  * Define a system. create(ctx, opts) must return { update(t, dt, actors), setTimeOfDay(tod), dispose(), stats() }.

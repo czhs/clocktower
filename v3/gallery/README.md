@@ -286,8 +286,20 @@ Latest render of each Clocktower cast member from the pixel3d pipeline. Clips ar
 ## npc-elder
 
 ![npc-elder turnaround](npc-elder/turnaround.png)
+![npc-elder clip-idle](npc-elder/clip-idle.gif)
+![npc-elder clip-walk](npc-elder/clip-walk.gif)
+![npc-elder clip-talk](npc-elder/clip-talk.gif)
+![npc-elder clip-vote](npc-elder/clip-vote.gif)
+![npc-elder clip-point](npc-elder/clip-point.gif)
+![npc-elder clip-die](npc-elder/clip-die.gif)
 
 ## npc-porter
 
 ![npc-porter turnaround](npc-porter/turnaround.png)
+![npc-porter clip-idle](npc-porter/clip-idle.gif)
+![npc-porter clip-walk](npc-porter/clip-walk.gif)
+![npc-porter clip-talk](npc-porter/clip-talk.gif)
+![npc-porter clip-vote](npc-porter/clip-vote.gif)
+![npc-porter clip-point](npc-porter/clip-point.gif)
+![npc-porter clip-die](npc-porter/clip-die.gif)
 
