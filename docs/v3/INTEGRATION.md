@@ -1,0 +1,1168 @@
+# v3 integration contract: the pixel3d town in the multiplayer game
+
+Status: **binding contract** for the v3 game swarm (branch `v3-game`, based on `v3-dev`). Written 2026-10-17 by the
+v3 integration architect, revision 2 (review round 1 resolved, see §12). Paths are repo-relative.
+`v3/pixel3d/**` and `v3/assets/**` are **read-only vendor inputs**. `$PIXEL3D_DIR` is the maintainer's local pixel3d
+checkout, the default in `scripts/v3/import-assets.sh:6`; anything that exists only there is marked
+**[unpublished, Q6]** and is not available to other worktrees.
+Do not write machine names, hardware, tailnet names or home paths into this file: the repo is public, and
+`scripts/secret-scan.sh` checks for them. Host specifics live only in the gitignored `CLAUDE.local.md` /
+`ops.local.env`.
+
+**Vendor baseline.** Checked against the `v3/pixel3d` tree last changed in commit `8b50668` (2026-10-17), with
+`find v3/pixel3d/src -name '*.js' | LC_ALL=C sort | xargs cat | shasum -a 256` = `43efbcd05609e2b8…`. Vendor code is
+cited as `file` + **symbol** (for example `src/core/Engine.js Engine.constructor`); line numbers are hints only and
+shift with every re-publish. Repo code is cited as `file:line`.
+
+Rule for every agent: when a decision here turns out to be wrong, change this document **in the same commit** as the
+code, and add a line to §11 "Decision log". Do not leave a silent divergence.
+
+---
+
+## 1. Architecture
+
+### 1.1 Shape
+
+```
+GameScreen.tsx ──(chooses)──► import('./TownGame')         Classic 2D (Phaser, unchanged; also renders the v3 world, §2.5)
+               └───────────► import('../game3d/TownGame3d') v3 3D (three r170 + pixel3d), lazy chunk "town3d"
+both: createTownGame(parent: HTMLElement, bridge: TownBridge): { destroy(): void }
+```
+
+- **Mount interface.** The v3 entry point is `createTownGame3d(parent, bridge)` in `apps/client/src/game3d/TownGame3d.ts`.
+  - Same `TownBridge` (`apps/client/src/game/TownScene.ts:164-172`) and the same `{destroy}` handle as
+    `TownGame.ts:6`.
+  - Renderer choice happens in `apps/client/src/game3d/select.ts`, which is pure (no three import) and stays in the
+    main bundle.
+- **GameScreen effect split** (`apps/client/src/game/GameScreen.tsx:35-59` today is one effect keyed on
+  `[props.conn]`):
+  - Effect A, keyed on `[props.conn]`: `applyAmbientVolume`, `attachSound`/`detachSound`, the audio-unlock listeners.
+    It does **not** re-run on a renderer swap, so ambience never restarts.
+  - Effect B, keyed on `[props.conn, renderer]`: the dynamic import + mount + `destroy()`. `renderer` is state
+    `'v3' | 'classic'`, initialised from `chooseRenderer()`.
+  - Each renderer's `destroy()` must remove every debug hook it installed (`window.__ctCamera`, `__ctSocial`,
+    `__town`, and for v3 `__pixel` members it set). `v3-fallback` asserts `__ctCamera.v3 === undefined` after a swap.
+- **Phaser stays the fallback.** Nothing in `apps/client/src/game/**` is deleted. Pure helpers that both renderers
+  need are extracted in WP0 into `apps/client/src/game/rules/*.ts`, and the Phaser-bound layers are split into a
+  renderer-free core plus a Phaser view in WP0s (§8). TownScene imports them back, with no behaviour change.
+  - Helpers to extract: `dir8`/`toFacing`/`keyDir`/`isTyping` (`TownScene.ts:114-123, 2091, 2110`), door lock and
+    in-use rules (`920-939`), auto-enter thresholds (`981-996`), the door `inward` rule of `setupDoors` (`879`,
+    extended with `doorNormal`, §2.5), `tapTarget` (`1053-1060`), `castKey` (`1073-1096`), the `stepLocal` integrator
+    (`1756-1838`), the `stepRemotes` interpolator (`1873-1914`), the prompt rules (`1916-1937`).
+- **Chunking.**
+  - `game3d/**`, `three` and `v3/pixel3d/src/**` land only in dynamic chunks. The chunk named `town3d` holds the
+    entry; pieces, interiors and characters become their own chunks (§1.3).
+  - The v3 layout data (`@ct/assets/hollowmere`, §2.2) is its own lazy chunk too (§2.4 "Layout loading").
+  - Budgets are in **brotli KiB** to match `scripts/perf/budgets.mjs` (`*BrKiB`, e.g. `lobbyChunkBrKiB` max 72,
+    v2.4 63.8, `budgets.mjs:30`): main/entry growth ≤ 1 KiB br, lobby chunk growth ≤ 2 KiB br (§7).
+- **Prefetch.** `warmTown()` (`ui/lobby/LobbyRoute.tsx:38-41`) runs before the `RoomConnection` exists (`:53-54`), so
+  it cannot know the lobby's world. It prefetches from the prefs + WebGL probe only: if the pref/probe allow v3, it
+  prefetches **both** `TownGame` and `TownGame3d` (cheap: dynamic import, no execution). The v3 layout chunk is fetched
+  when `lobby:view` arrives with `world: 'v3'`.
+
+### 1.2 Renderer choice and fallback (`game3d/select.ts`, `game3d/perf.ts`, `game3d/bootGuard.ts`)
+
+`chooseRenderer()` evaluates these rows **in order**; the first match wins.
+
+| # | Input | Rule |
+|---|---|---|
+| 1 | Lobby world (`lobbyView.world`, §2.4) | `'v2'` → Classic always (the 3D town cannot draw v2 geometry). Settings row shows "This lobby uses the classic town". |
+| 2 | Debug force `localStorage['ct.debug.v3force']==='1'` | → v3, skipping **every** later row (probe, software GL, phone, boot guard, auto-fallback). The probe still runs **without** `failIfMajorPerformanceCaveat` and only fails if `webgl2` is entirely absent. Used by e2e on the host (SwiftShader). |
+| 3 | Pref `ct.graphics` = `'auto' \| 'v3' \| 'classic'` (default `auto`) | Registered in `ui/common/prefs.ts` next to `FX_QUALITY_KEY`; shown in `SettingsDialog.tsx` (around line 437) as "Graphics: Auto / v3 3D / Classic 2D". `classic` → Classic. |
+| 4 | Boot guard (crash-loop protection, below) | Unclean previous boot → Classic + toast "v3 graphics stopped last time [Try v3]". Applies to explicit `v3` too. |
+| 5 | WebGL2 probe | `canvas.getContext('webgl2', {failIfMajorPerformanceCaveat: true})`. Null → Classic. The probe context is released with `getExtension('WEBGL_lose_context')?.loseContext()` and the canvas dropped. |
+| 6 | Software GL | `UNMASKED_RENDERER` matches `/SwiftShader\|llvmpipe\|Software/i` → Classic (only reached without v3force). |
+| 7 | Auto fallback memo | `auto` and `ct.graphics.autoFallback` set within 7 days → Classic. Settings shows "Auto (Classic: too slow on this device) [Try v3 again]"; the button clears the memo and swaps in place. |
+| 8 | Phone policy | `auto` on a coarse-pointer device whose shorter side is ≤ 500 CSS px → Classic. An explicit `v3` is honoured on any device, at the `low` tier. |
+| 9 | Starting tier | Chosen **before** building: `low` when `fx/quality` says low, the device is a tablet (coarse pointer, any size), or `UNMASKED_RENDERER` matches `/Intel\|UHD\|Iris\|Mali\|Adreno\|PowerVR\|Apple GPU/i` (integrated/mobile). Otherwise `high`. `auto` may promote low → high only after a clean sample (below) and only at a safe moment. |
+
+**Boot guard** (`game3d/bootGuard.ts`). Before `new Engine(...)`, write `localStorage['ct.graphics.booting'] =
+<ISO time>` and append the time to `ct.graphics.boots` (last 10 min). Clear `booting` after 10 s of stable frames or on
+a clean `destroy()`. On mount, a leftover `booting` flag, or ≥ 2 unclean boots in 10 min, picks Classic (row 4). This
+covers OOM / GPU-process kills on iOS Safari and low-memory Android, which reload the tab with no JS error.
+`Engine.constructor` hard-codes `powerPreference: 'high-performance'` and no `failIfMajorPerformanceCaveat`
+(`src/core/Engine.js`, `new THREE.WebGLRenderer`): CONTRACT-REQUEST (§9.2).
+
+**Runtime perf sampler** (`game3d/perf.ts`).
+
+- **Off** when `ct.debug.fps > 0` or `ct.debug.v3force === '1'`, as `TownGame.ts:19` does for Classic
+  (`new TierState(..., fpsLimit <= 0 && !forceTimeout)`). The `v3-fallback` spec turns it back on with
+  `ct.debug.v3perfFallback=1`.
+- Samples **rAF deltas** (not `engine.lastFrameMs`, which is CPU-only, `Engine.renderAt`) only while
+  `document.visibilityState === 'visible'`; deltas > 250 ms are dropped. Window: 120 accepted frames after the
+  shader warm-up and first show.
+- Threshold: median > 45 ms (a 30 fps cap from Chrome Energy Saver gives ≈ 33.3 ms and must not trip it).
+- At `high` → schedule a rebuild at `low`. At `low` → schedule `requestFallback('perf')`.
+- **Safe moment.** A scheduled rebuild, promotion or renderer swap waits while `game.day.status === 'voting'` or a
+  nomination is open, and runs at the next phase change (or after 60 s of no nomination). Crash swaps (below) never
+  wait.
+- Fallback: toast "Switched to Classic graphics for speed", sets `ct.graphics.autoFallback=<ISO date>`, destroys the
+  3D game and mounts Classic **in place** (GameScreen effect B, `renderer` state).
+
+**Crash.** Any of these triggers an immediate in-place swap with reason `'error'`:
+
+- a failed v3 import after one retry (chunk-load errors retry once after 1 s, because deploy skew is the common
+  case);
+- a throw during build. The town is built with `buildTown(engine, params, {strict: 'all'})`, so `buildPiece`
+  (`src/town/api.js buildPiece`) rethrows instead of substituting a placeholder box with a `console.warn`;
+- `webglcontextlost`. It is **never** left to three's partial restore (PixelPipeline targets, toon materials and
+  shadow state are not fully rebuilt by three). The first loss in a session does a full rebuild (new Engine, §1.3
+  "Rebuild") behind the "Rebuilding town…" overlay; a second loss within 10 min swaps to Classic.
+
+`TownBridge.requestFallback?(reason: 'perf'|'error'): void` is an **optional** bridge member; Classic ignores it.
+
+### 1.3 Importing pixel3d without editing it
+
+1. **Dependency.** Add `"three": "0.170.0"` (exact pin, the version in `v3/pixel3d/package.json`) to
+   `apps/client/package.json`. Bring the lockfile back via `CT_AGENT=v3-lead scripts/remote.sh pnpm install`.
+   - Dependabot (`.github/dependabot.yml`, npm ecosystem over every `package.json`) gets an `ignore` entry for
+     `three` (all update types). If it ever picks up `v3/pixel3d/package.json`, exclude that directory.
+   - Unit test `apps/client/test/game3d/threePin.test.ts`: the `three` version in `apps/client/package.json` equals
+     the one in `v3/pixel3d/package.json`.
+2. **Resolution.** `v3/pixel3d` is not a workspace package (`pnpm-workspace.yaml` lists only `apps/*`, `packages/*`)
+   and has no `node_modules`. A bare `import 'three'` from `v3/pixel3d/src/**` (131 files) or
+   `three/addons/utils/BufferGeometryUtils.js` (9) / `three/addons/geometries/ConvexGeometry.js` (2) walks up from
+   the importer's directory and never reaches `apps/client/node_modules`; pnpm does not hoist it to the root. So, in
+   `apps/client/vite.config.ts` (`resolve.alias`, next to the existing `@ct/protocol` alias at `:100`):
+   ```ts
+   const threeDir = path.dirname(createRequire(import.meta.url).resolve('three/package.json'));
+   { find: /^three$/,            replacement: path.join(threeDir, 'build/three.module.js') },
+   { find: /^three\/addons\/(.*)$/, replacement: path.join(threeDir, 'examples/jsm/$1') },
+   { find: /^@pixel3d\//,         replacement: path.join(repoRoot, 'v3/pixel3d/src/') },
+   ```
+   plus `resolve.dedupe: ['three']` and `server.fs.allow: [repoRoot]`. The demo import map
+   (`v3/pixel3d/demo.html`) is not used.
+   - **Vitest.** The root `vitest.config.ts` (lead) gets the same three aliases, so unit tests that import a wrapper
+     resolve the same single copy.
+   - **One-copy assertion.** `pixel3dImports.ts` `generateBundle` fails the build when module ids from more than one
+     `three/build/` directory appear in the bundle. C0's acceptance is a real `pnpm build` that bundles
+     `@pixel3d/core/Engine.js`.
+3. **Build-time import rewrites** (`apps/client/build/pixel3dImports.ts`). Pattern: the `cssOrder()` plugin
+   (`vite.config.ts:25-60`), which patches a known snippet and **fails the build** when the snippet is missing, so a
+   vendor re-publish that changes it is caught.
+   - `src/town/api.js buildPiece`: `await import(PATHS(id))` → `await __ctPieces[PATHS(id)]()` with
+     `const __ctPieces = import.meta.glob(['./pieces/*.js', './life/index.js'])` injected **into api.js itself**.
+     Globs are relative to the file they are written in; a leading `/` would resolve against the Vite root
+     (`apps/client`) and match nothing. The keys (`./pieces/<id>.js`, `./life/index.js`) equal `PATHS(id)`.
+   - `src/demo/characters.js createCharacter` calls `optional('../chars/smear.js')` and `optional('../chars/fx.js')`
+     (a variable `import(p)` Vite cannot analyse; in a build the relative URL 404s or returns HTML, so smears and fx
+     silently vanish in production). Rewrite the `optional` helper so it looks `p` up in a static map
+     `{'../chars/smear.js': () => import('../chars/smear.js'), '../chars/fx.js': () => import('../chars/fx.js')}`
+     and keeps its try/catch → `null`. Build fails if the snippet or the two call sites are missing.
+   - `src/demo/characters.js sourcePrint`: `new URL(`../../characters/${id}.js`, import.meta.url)` makes Vite emit
+     every character source as a raw asset. Rewrite the body to `return null` (no roster cache: the game never needs
+     it). Bundle-report assertion: no emitted asset matches `characters/.*\.js`.
+   - `src/demo/roster.js` `fetch(new URL('./roster.json', import.meta.url))` → a static
+     `import roster from './roster.json'`.
+   - `src/town/pieces/ground.js` `const ga = viewArea(engine, 3);` → `const ga = engine.__ctGrassArea ??
+     viewArea(engine, 3);` (grass area, step 5).
+   - `src/town/interiors/index.js`, `roster.js` and `ambient/index.js` template-literal dynamic imports: Vite
+     handles these natively. `roster.js` chunks all 37 character modules (32 cast specs + `wanderer`, `keeper`,
+     `hound`, `duelist`, `mannequin`); acceptable, they are fetched only on use.
+   - CONTRACT-REQUESTs for static imports in all of these (§9.2).
+4. **Typing.** `apps/client/src/game3d/pixel3d.d.ts` declares `@pixel3d/*` as `any`-typed modules plus the few
+   signatures we call. No `allowJs`, no vendor typecheck. Every vendor call goes through typed wrappers in
+   `game3d/vendor/*.ts`; no other file imports `@pixel3d/*` (WP0 boundary test).
+5. **Engine host** (`game3d/vendor/engineHost.ts`). Order of operations in `createEngineHost(parent, opts)`:
+   1. `window.__pixel ??= {ready:false, errors:[], renderAt:null, info:null, gpu:null}` (`Engine.constructor` writes
+      `window.__pixel.gpu` and throws without it).
+   2. `new Engine({params})` with our own `URLSearchParams` (quality etc.), never `location.search`.
+      `layout.js` (`?ldx`), `roster.js` and `characters.js` still read `location.search`; the game URL has none of
+      those keys. The constructor sizes once from `window.inner*` (`Engine._pickScale`, `Engine.resize`); that is a
+      wasted allocation, not a bug, because step 4 resizes immediately.
+   3. **Runtime assertions** so a vendor re-publish fails loudly: `engine.renderer.domElement.parentElement ===
+      document.body`, `typeof engine.resize === 'function'`, `engine.pipeline && engine.camera`, `__pixel.gpu` set.
+      A failure throws (→ Classic via the crash rule).
+   4. **Canvas.** Move `engine.renderer.domElement` into `parent`, style `position:absolute; inset:0; width:100%;
+      height:100%; image-rendering:pixelated` (CSSOM only; `style-src 'self'` allows it). The renderer runs at
+      `setPixelRatio(1)`, so canvas px = CSS px.
+   5. **Size.** Shadow `engine.resize = () => hostResize(engine, parent)`: it returns at once if `engine.__ctDisposed`,
+      else reimplements `Engine.resize` from `parent.clientWidth/Height`, with `pixelScale = max(1, round(h/360))`
+      (`low` tier: `round(h/300)`). Driven by a `ResizeObserver` on `parent`. The constructor's window `resize`
+      listener cannot be removed; it calls the shadowed method, which no-ops after dispose.
+   6. **Runtime opts.** Port the demo's `installRuntimeOpts` (`src/demo/main.js`): after `buildTown`, add an empty
+      `THREE.Group` named `town-lights` **only if** `scene.getObjectByName('town-lights')` is null, and wrap
+      `engine.pipeline.render` with the single `scene.updateMatrixWorld()` + `matrixWorldAutoUpdate=false` pattern
+      (a measured CPU saving). Never add the group **before** `buildTown`: `installLights` (`src/town/api.js`) adds
+      its own `town-lights` group on golden/night builds, and `props.js`/`life/cycle.js` look the group up by name and
+      would bind to the empty one.
+   7. **Loop.** Own RAF loop modelled on `src/demo/main.js` (the `loop` near the end of `main`), keeping the RAF id for
+      cancel on destroy. Do not use `Engine.start()` (debug controls, negative first `t`).
+   - **Grass area.** `buildTown` scatters grass only over the build camera's view (`src/world/grass.js viewArea`,
+     called by `ground.js`). The demo's `buildWide` (`src/demo/main.js`) fakes a wide view via a stack-sniffing
+     getter (`/\/town\/pieces\/ground\.js/` on `new Error().stack`), which breaks once chunks are hashed and
+     minified. We use the step-3 rewrite instead: `vendor/town.ts` sets `engine.__ctGrassArea = {x0:-2, x1:47, z0:3,
+     z1:41.5}` (the demo's `GA`) before `buildTown` and deletes it after. Harness shot `south-bay` catches bald
+     ground.
+   - **Ground handle.** `createCharacter(engine, id, {ground, position, face, fx, smears})` with an explicit `ground`.
+     Never call `listCharacters()` (`src/demo/characters.js`): it spawns NPCs through `window.__demo`.
+   - **Dispose** (`disposeEngine(engine)`): set `engine.__ctDisposed = true`; cancel the RAF; `engine.updaters.length
+     = 0` (`Engine.onUpdate` has no unsubscribe; `buildTown`, `installLights`, `createTime` and pieces register
+     updaters for good); traverse `engine.scene` and dispose geometries, materials, textures; dispose the pipeline
+     render targets, `renderer.dispose()`, `renderer.forceContextLoss()`; remove the canvas; then null the heavy
+     fields (`scene`, `pipeline`, `renderer`, `camera`, `uniforms`, `toonUniforms`) so the leaked window listener
+     only holds a shell.
+   - **Rebuild.** A tier change or a context-loss rebuild **always creates a new Engine** (dispose the old one first,
+     then the full §1.3 step-5 sequence). Never rebuild the town inside an existing Engine.
+   - **Leak test** (WP7, harness): 5 mount/destroy cycles and 2 tier rebuilds; assert `renderer.info.memory` of the
+     live engine is at baseline **and** JS heap (`performance.memory.usedJSHeapSize` after a forced GC via
+     `--js-flags=--expose-gc`, or a CDP heap snapshot) grows < 10 MB across the cycles.
+6. **CSP and vendor review.**
+   - Today the runtime vendor files have no `eval`, `new Function`, `innerHTML`, workers or style/script element
+     creation, and the CSP (`apps/server/src/securityHeaders.ts:51-63`) and Trusted Types need no change.
+   - Because the vendor is re-published by another session (rsync `--delete`) straight into the production bundle,
+     WP0 adds a vitest guard `apps/client/test/game3d/vendorGuard.test.ts` over `v3/pixel3d/{src,characters,charkit}`
+     `**/*.js` (excluding `tools/`, `*.mjs`, `pipeline/`): fails on `eval(`, `Function(`, `innerHTML`, `outerHTML`,
+     `insertAdjacentHTML`, `document.write`, `new Worker`, `setAttribute('style'`, string-argument `setTimeout(`/
+     `setInterval(`, and any absolute `http(s)://` in `fetch(`/`new URL(`/`import(`.
+   - §10 adds a vendor-diff review before each `v3-dev` → `v3-game` merge (the CLAUDE.md "never run unreviewed code
+     on the host" rule applies to vendor drops).
+   - `v3-boot` e2e runs with the console CSP-violation listener.
+7. **Needed pixel3d changes.** First choice: a wrapper in `game3d/vendor/`. If impossible, add a
+   `CONTRACT-REQUEST(pixel3d):` entry to §9.2 and a matching `// CONTRACT-REQUEST(pixel3d):` comment at the
+   workaround. Never edit `v3/pixel3d/**`.
+
+### 1.4 Module layout (`apps/client/src/game3d/`)
+
+```
+TownGame3d.ts      createTownGame3d(parent, bridge) — composition root, loop, destroy order
+select.ts          chooseRenderer(), probe, prefs (static import; no three)
+bootGuard.ts       crash-loop guard (static; no three)
+perf.ts            rAF sampler, safe-moment scheduler
+contract.ts        shared interfaces below (no three types leak out of game3d)
+coords.ts          px <-> metres, interior affine maps (§2.3), projection maths (§1.5) — pure, no three import
+vendor/            engineHost.ts, town.ts, characters.ts, interiors.ts, time.ts  (only importers of @pixel3d)
+world/             town build, doors, boarded houses, interiors switching, time-of-day, dais, clock tower  (WP3)
+avatars/           local + remote characters, cast map, ghosts, deaths, talk, carried lanterns, NPCs   (WP2)
+overlay/           world-anchored UI: labels, bubbles, pins, emotes, boards, house names, markers, hints (WP4)
+input/             keys, pointer → pick → v2 px, tap rules, routes, camera                             (WP1)
+net/               state adapter: lobbyView/gameView/snapshots → Scene3dState; move/door sends; sound cues (WP1)
+debug/             window.__ctCamera / __ctSocial v3 implementations                                  (WP1, members from all)
+harness/           mock-world page + scenario player (§6.3)                                           (WP7)
+```
+
+`contract.ts`, created by WP0, makes the packages parallel:
+
+```ts
+export interface Px { x: number; y: number }                         // v2 world px, y-down, FEET
+export interface Pose { pid: string; x: number; y: number; location: LocationId; facing: Facing; moving: boolean }
+export interface Scene3dState {                                       // written by net/, read by everyone, once per frame
+  me: Pose | null; myPid: string | null; amStoryteller: boolean;
+  remotes: ReadonlyMap<string, Pose>;                                 // already interpolated (110 ms)
+  members: ReadonlyMap<string, { name: string; castId: string; seat: number | null; role: 'player'|'storyteller' }>;
+  game: PlayerGameView | StorytellerGameView | null; phase: GamePhase | 'waiting' | 'finished';
+  layout: TownLayout; world: 'v2' | 'v3'; tier: 'low' | 'high'; reducedMotion: boolean; hour: number;
+}
+export interface Layer3d {
+  update(state: Scene3dState, t: number, dt: number): void;
+  destroy(): void;
+  debug?(): Record<string, () => unknown>;                           // merged into __ctCamera by debug/
+}
+export interface View3d {                                             // implemented by input/camera over coords.ts
+  worldToScreen(p: Px, location: LocationId, heightM?: number): { x: number; y: number } | null; // page CSS px (§1.5)
+  screenToWorld(cssX: number, cssY: number): (Px & { location: LocationId; houseId?: string }) | null; // §3 "ST taps"
+  cssPerPx(): number;                                                 // CSS px per v2 px at the focus (≈ zoom)
+}
+export interface Anchor3d { feet: Px; displayFeet: Px; headTopCss: { x: number; y: number }; heightM: number }
+export interface AvatarRegistry { anchorOf(pid: string): Anchor3d | null; pidAt(cssX: number, cssY: number): string | null; debug(pid: string): AvatarDebug | null }
+```
+
+**Coordinate rule.** Every value that crosses a package boundary is in **v2 px plus a `LocationId`**. Metres exist
+only inside `world/`, `avatars/` and `overlay/` drawing code, and only through `coords.ts`.
+
+### 1.5 Projection (`coords.ts`, WP0; the only implementation)
+
+The pixel camera renders a frustum `MARGIN = 2` low-res texels wider on each side (`src/core/PixelCamera.js` `MARGIN`,
+`PixelCamera.update`: `halfW = (lowW/2 + MARGIN)·texelWorld`). It snaps the camera to the texel grid and stores the
+sub-texel remainder in `camera.offset` (texels, y-up). The final pass (`src/core/PixelPipeline.js`, `finalMat`
+fragment shader + `render()` step 5) samples padded texel `p = s + MARGIN + off`, where `s = gl_FragCoord.xy /
+pixelScale` and `off = snapScreen ? floor(offset·scale + 0.5)/scale : offset` (`snapScreen` is `'auto'` = on at
+integer scales). A naive `vector.project(cam)` mapped to the canvas rect is therefore off by `MARGIN·pixelScale` CSS
+px (6 px at ×3) and jitters by up to one texel. The contract:
+
+```
+// world point W (metres) -> page CSS px.  cam = engine.camera.cam, after this frame's camera.update().
+ndc   = W.project(cam)                                         // x, y in [-1, 1]
+pad   = ((ndc.x+1)/2 · (lowW + 2·MARGIN), (ndc.y+1)/2 · (lowH + 2·MARGIN))   // padded low-res texels, y-up
+off   = snapScreen ? round(offset·scale)/scale : offset         // exactly as the shader
+s     = pad − MARGIN − off                                     // visible low-res texels, y-up
+css.x = rect.left + s.x · scale
+css.y = rect.top  + engine.height − s.y · scale                // engine.height = canvas px = CSS px (pixel ratio 1)
+```
+
+- `screenToWorld` inverts the same formula (`s = ((cssX − rect.left)/scale, (engine.height − (cssY − rect.top))
+  /scale)`, `pad = s + MARGIN + off`, `ndc`, unproject a ray) before the §3 pick.
+- `coords.ts` takes plain numbers (`{lowW, lowH, scale, offset, snapScreen, height, rect, viewProj}`), so it is unit
+  tested without WebGL. The harness has a `projection` scenario that renders a 1-texel marker at known world points
+  and asserts `worldToScreen` within 0.5 CSS px of the marker's drawn pixel at scales 2, 3 and 4.
+- Overlays read the projection **after** `camera.update()` of the same frame (the overlay layer runs after
+  `renderAt`).
+
+---
+
+## 2. World geometry source of truth
+
+### 2.1 Decision: (b) export Hollowmere into the server's world data, as a per-room selectable layout
+
+The 3D town is the truth. Its geometry is exported into a second `TownLayout`, **`townLayoutV3`**, which the server
+uses for rooms whose world is `v3`. The current `townLayout` (v2) is not touched, so v2 lobbies and Classic keep
+working byte-for-byte.
+
+Why not (a), keeping the v2 layout and mapping it into Hollowmere:
+
+- **House 9 moves 7 m** into a south bay whose door tile (22,41) lies outside the 37-row map
+  (`v3/pixel3d/src/town/layout.js` house 9 placement, `TOWN_H = 43`).
+- Six houses are rotated (between −45° and +45°), and seven doors have moved (`layout.js` `houses`).
+- Under (a), server doors and collision would disagree with what players see. The dais is also a solid r 2.4 m disc
+  (`src/demo/collision.js` `DAIS_R`, `tag: 'dais'`) that the v2 grid lets you walk through.
+
+Why per-room, and not replacing v2:
+
+- Replacing v2 would break every v2 test that pins 45×37 and door-by-facing (`packages/assets/test/layout.test.ts:60-124`).
+- It would also break the deployed Classic look, which cannot draw rotated houses.
+- A per-room world lets v3 ship behind a lobby option and later become the default by flipping one value (C3, §8).
+
+### 2.2 The export (owner WP5a, `v3-world`, phase 0b)
+
+- **Tool.** `scripts/v3/export-hollowmere.mjs`, plain Node 24, run on the host via `scripts/remote.sh`.
+  - Imports `v3/pixel3d/src/town/layout.js` directly (no imports, pure).
+  - Interiors: imports `town/interiors/house-<i>.js` + `kit.js` (needs `three`; resolved with
+    `--import` of a tiny loader that maps `three` → `apps/client/node_modules/three`, same rule as §1.3 step 2).
+  - Outdoor walk shapes: `src/demo/collision.js createCollision` needs a `demo`-like object (registry, layout). If it
+    cannot run headless in Node, run the same extraction in a headless chromium page on the host (logic only;
+    SwiftShader is fine).
+- **Output.** `packages/assets/src/hollowmere/hollowmere.generated.json` (committed, deterministic, sorted keys),
+  with `vendorHash` (sha256 of the source files read). The assets test recomputes it and fails with "re-run
+  export-hollowmere" when the vendor copy changed.
+- **Schema** (tiles or v2 px, y-down; metres never stored):
+
+| Field | Value / source | Rule |
+|---|---|---|
+| `version` | `3` | |
+| `tileSize` | `16` | 1 tile = 1 m (§2.3). |
+| `widthTiles` | **`112`** = 45 + 2 + 5·13 | Full map width (town + gap + 5 interior bands of stride 13, §2.3). Collision is row-major over `widthTiles·heightTiles` (`packages/protocol/src/world.ts:53,69`, `apps/client/src/game/path.ts:27-32`). |
+| `heightTiles` | **`43`** | `max(TOWN_H = 43, 1 + 2·14 + 12 = 41)`. |
+| `townBounds` | **`{x:0, y:0, w:45, h:43}`** | Read by `apps/server/src/world/index.ts:837`, `apps/server/src/social/index.ts:157`, `apps/client/src/game/sound/areas.ts:76`, `TownScene.ts:58`. |
+| `ground[]` (43 strings of 112) | `layout.ground` | Same char codes as v2 (`BLOCKING_GROUND` identical). |
+| `collision` (town part) | rasterised walk shapes | Tile blocked if its **feet point** (tx+0.5, ty+0.875) m lies inside any shape of `src/demo/collision.js createCollision`: house outlines (rotated), the clocktower box, the **`backlane`** boxes behind the north row and the 1 m slots between those buildings (players there are hidden by eaves), prop circles/boxes, and the **dais** circle (r = `DAIS_R` 2.4 m at `layout.CIRCLE`). Walk-through props do not block. |
+| `buildings[i]` (`house-0..14`) | `layout.houses[i]` | `footprint` = tile-quantised AABB of the placed outline. `door` = `houses[i].door` (tile in front of the real door). `doorNormal` = `houses[i].doorNormal` (new optional field, §2.4). `name`, `houseIndex` unchanged. |
+| `clocktower` | `layout.clocktower` | Landmark collision only, as in v2. |
+| `circle` | `layout.CIRCLE` | `{cx:360, cy:316, rx:100, ry:100, startDeg:0, sweepDeg:360, stones:15}` (new optional `stones`). |
+| `square` | `layout.SQUARE` | `{cx:360, cy:364, r:144}`. |
+| `playerSpawn` | `(22,27)` | Unchanged. |
+| `storytellerSpawn` | **moved** to `(22,23)` | Feet at y = 23.875 m, 4.1 m from the centre: outside the dais, inside the seat ring. v2 `(22,20)` is inside the dais. Q8 may change this (walkable stage). |
+| `streetlights` | `layout.streetlights` | Unchanged meaning. |
+| `interiors[i]` | §2.3 | `interior` rect, `interiorDoor`, `bed`, `visitPoint`, blocked tiles. |
+| `npcHomes` | the game's list (`TownScene.ts:1421-1451`) re-checked against the new collision | Moved to the nearest free outdoor tile if blocked. |
+| `meta.wallError` | per house `{x, z}` m | The §2.3 quantisation error, for review. |
+
+`packages/assets/src/hollowmere/layoutV3.ts` turns the JSON into a `TownLayout` and a v2-shaped `townMapV3`
+(§2.5). It is exported **only** from the subpath `@ct/assets/hollowmere` (`townLayoutV3`, `townMapV3`), never from the
+package index, so it never lands in a static chunk. `@ct/assets` index exports a pure `layoutFor(world, v3?)` helper.
+
+**Assets tests** (`packages/assets/test/hollowmere.test.ts`):
+
+- `collision.length === widthTiles·heightTiles`, `ground.length === heightTiles`, every row `widthTiles` long.
+- Every interior rect lies outside `townBounds` and inside the map; interior rects are pairwise disjoint with ≥ 1
+  free column between bands.
+- No walkable outdoor tile is hidden at the gameplay camera: for each walkable tile, its feet point is south of the
+  occluding ground line of every house whose x span covers it (data from `town.js` `?occl=1`, `stats.occl`,
+  exported alongside).
+- vendorHash fresh; every v3 door reachable from spawn; door ranges disjoint; seats walkable for n = 5..15; spawns
+  not blocked and not on the dais; interior bed/visit reachable; house-3 room fits its band (below).
+
+### 2.3 Transforms (`apps/client/src/game3d/coords.ts`, the single implementation)
+
+**Outdoors** (location `'outdoors'`):
+
+```
+metres:  X = x_px / 16        Z = y_px / 16        Y = ground.heightAt(X, Z)
+px:      x_px = X * 16        y_px = Z * 16
+```
+
+- The y-down px axis is +Z (south). pixel3d "south" faces +Z (`layout.js` header), so there are no flips.
+- A tile's feet point is (tx+0.5, ty+0.875) m.
+- Facing: `down` = +Z, `up` = −Z, `right` = +X, `left` = −X. Visual facing comes from the velocity (8 directions, as
+  v2 `dir8`), applied automatically by `ch.drive` (§4).
+
+**Interiors** (`bld:house-i`):
+
+- **Server side.** Band room `R_i = {x: 47 + (i%5)·13, y: 1 + floor(i/5)·14, w: 12, h: 12}` tiles. Stride 13 keeps one
+  free column between bands (v2 uses w 11 / stride 12, `packages/assets/src/layout.ts:336`). Rows 1..41 ≤ 43.
+- **3D side.** Room `i` has origin `O_i = originOf(i) = (200 + 30i, 0, 20) + INTERIOR_TIE`
+  (`src/town/interiors/index.js originOf`) and a per-house `ROOM.w × ROOM.d` (`house-*.js` `export const ROOM`, wall
+  thickness `T = 0.3`, `doorW = 1.1`, `src/town/interiors/kit.js Room`):
+
+  | house | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 |
+  |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+  | w × d (m) | 6.6×6.6 | 8.6×6.2 | 9×6.4 | **10×6.0** | 8.6×6.0 | 9×6 | 9×6 | 7.6×5.6 | 8.4×5.6 | 9.4×6 | 8×5.4 | 8×6 | 6.4×5.0 | 9×6.2 | 9×6 |
+  | x wall error (m) | 0.2 | 0.2 | 0 | 0.5 | 0.2 | 0 | 0 | 0.3 | 0.3 | 0.2 | 0.5 | 0.5 | 0.3 | 0 | 0 |
+
+- The mapping is a pure **translation**, 1 m = 16 px (walking speed and radii as outdoors):
+
+  ```
+  X = O_i.x + (x_px - A_i.x) / 16        Z = O_i.z + (y_px - A_i.y) / 16
+  ```
+
+- **Anchor.** The doorway is centred at room-local x = 0 (`kit.js` front-wall opening), its gap centre at z =
+  `RD/2 + RT/2`. The doorway tile is `D_i = (R_i.x + 6, R_i.y + 11)` (bottom row, as v2 `paintRoom`,
+  `layout.ts:394-398`). `A_i` is chosen so the doorway centre maps onto `D_i`'s tile centre:
+  `A_i = ((D_i.x + 0.5)·16, (D_i.y + 0.5)·16 − (RD/2 + RT/2)·16)`. Floor edges then fall where they fall; the error is
+  `|frac(0.5 + RW/2)|` to the nearest tile edge (table above, ≤ 0.5 m) and is stored in `meta.wallError`.
+  House-3 (10 m) uses floor tiles x 2..10 of its band and walls at tiles 1 and 11 (partially floor, blocked): it
+  fits with no slack; a test pins it.
+- **Collision for `R_i`:** all tiles blocked except those whose feet point maps inside the 3D floor and outside every
+  furniture collider (`buildInterior(...).collision` / `built.colliders`, `src/town/interiors/index.js`).
+- **`interiorDoor`** = the tile containing the 3D `spawn` (`collision.nearestFree(origin.x, origin.z + RD/2 − 0.65)`),
+  which is `D_i.y − 1`, the tile **above** the doorway, matching v2 (`layout.ts` "Spawn = interiorDoor (just above the
+  doorway)", `apps/client/src/game/interior.ts:23-31` `doorwayPx = interiorDoor.y + 1.5`). The 3D `exit` point lies
+  in the doorway gap itself (`W(0, RD/2 + RT·0.5)`) and maps to `D_i`, which is blocked with code `D`, so
+  `pushesOut`/`ExitGate` work unchanged.
+- `bed` / `visitPoint` = the tiles of the 3D `bed` / `visit` points, moved to the nearest free tile if blocked.
+- **No display clamp.** The 3D avatar is drawn exactly at its px position for every viewer (own and remote); the
+  quantised collision is the truth (error ≤ 0.5 m, Q5). A clamp applied only to one's own avatar would desync
+  overlays and other viewers.
+
+### 2.4 Server / protocol changes (all additive; v2 rooms unchanged)
+
+| Change | Where | Owner |
+|---|---|---|
+| `BuildingDef.doorNormal?: [number, number]` and `TownLayout.circle.stones?: number` | `packages/protocol/src/world.ts:10-63` | lead (WP0) |
+| `circleSpots`: when `stones` is set, seat `s` (sorted index `k` of `n`) uses stone `round(k·stones/n) % stones` at `θ = 2π·stone/stones` instead of `2π·k/n`. Spiral search unchanged. | `world.ts:230-270` | lead (WP0) |
+| `CreateLobbyRequest.world?: 'v2' \| 'v3'` (default `'v2'` until C3), carried through the directory `init` into `GameRoom.settings.world`, and `LobbyRoomView.world`. **Immutable after creation**: `lobby:settings` (`GameRoom.ts:724-760`) has no `world` field. | `packages/protocol/src/lobby.ts:61-70`, `apps/server/src/directory/**`, `GameRoom.ts:225-240` | lead (protocol) + lobby-auth (WP0) |
+| `RoomHost.layout(): TownLayout` (= `layoutFor(settings.world, townLayoutV3)`). Modules read `host.layout()` at creation; **factory signatures stay `(host)`** (`services.ts:57` `moduleFactories`, `rooms/testkit.ts fakeModules`). `createWorldModule(host, {layout: host.layout()})` etc. | `GameRoom.ts:1020-1027` `createModules` (runs at `:261` and on rematch `:926`), `world/index.ts:141-148`, `social/index.ts`, `voice/index.ts`, `game/index.ts` | lobby-auth (WP0), module owners sign off |
+| Client: modules that import `townLayout` statically switch to `currentLayout()` from `apps/client/src/net/layout.ts` | list below | WP0 (v3-lead acts for each owner, §8) |
+| `tests/support/bot.ts` and `tests/e2e/helpers.ts` take the layout from the room's world | tests | qa (WP7) |
+
+**Why immutable.** Players walk the town in `waiting`, and world/voice/social modules are built once per match
+(`createModules`). A mid-lobby world switch would need all modules rebuilt and every entity respawned. Choosing the
+world at creation avoids that. (Q9 asks whether the host needs to change it later; then the option is "allowed only
+while WAITING, rebuild modules, teleport everyone with reason `'spawn'`, clients remount".)
+
+**Layout loading (client).** `net/layout.ts`:
+
+```ts
+export async function ensureLayout(world: 'v2' | 'v3'): Promise<void>   // v3: await import('@ct/assets/hollowmere')
+export function currentLayout(): TownLayout                              // synchronous; townLayout until ensureLayout('v3') resolved
+```
+
+`LobbyRoute` awaits `ensureLayout(lobbyView.world)` before mounting `GameScreen`. Every consumer stays synchronous.
+Consumers that switch to `currentLayout()`: `GameScreen.tsx`, `gameplay/index.ts`, `gameplay/doorTags.ts`,
+`sound/areas.ts` (its module-level `const tb = townLayout.townBounds` at `:76` becomes a function), `sound/world.ts`,
+`ui/chat/index.tsx`, `ui/hud/hints.tsx`, `ui/storyteller/{script,stage}.tsx`, and `TownScene.ts` (WP5b).
+
+**Movement, doors, visibility, voice zones.** Data-driven; no other server change.
+
+- `DOOR_RANGE_PX = 22` (server) and the client trigger of 20 px stay.
+- WP5a's tests show every v3 door tile is reachable and door ranges do not overlap
+  (`packages/assets/test/navigation.test.ts`, parameterised by layout).
+
+**Speed** is open question Q1 (§4 "Speed"). The server keeps `PLAYER_SPEED = 150 px/s` until the user decides.
+
+### 2.5 Classic 2D in a v3 world (WP5b, phase 1)
+
+`TownScene` is far from layout-agnostic today. WP5b (v3-world acting for world-art) delivers:
+
+- **Generated Classic data.** An `assets:generate` pass (`packages/assets` generator) that emits
+  `generated/town-v3.json` (Tiled map, 112×43, ground + door object layers from `townMapV3`) and
+  `generated/square-props-v3.json` `meta.houses` (boarded/unlit overlays, door glow, board and smoke anchors in v3
+  world px). Today `TownScene.ts:454` loads `townJsonUrl` (v2 `generated/town.json`), `setupDoors` (`:870-885`) reads
+  the map's object layers, and the overlay anchors are absolute v2 px (`TownScene.ts:131-145`).
+- **Per-instance layout state.** `L`, `TS`, `TOWN` (`:56-58`), `SQUARE_VIEW` (`:72`, from `PLAZA`), the NPC homes
+  (`:1421-1451`) and every other module-level layout-derived constant become fields set in `init()` from
+  `currentLayout()`. A page can leave a v2 lobby and join a v3 lobby without reloading.
+- **Door inward** = `−doorNormal` when present, else the v2 footprint rule (`:879`). This rule lives in
+  `game/rules/doors.ts` (WP0 extraction) and is shared with the 3D auto-enter.
+- Rotated houses drawn axis-aligned at their placed AABB with their v2 sprite; door mat and door tile at the real
+  door tile.
+- It must stay **correct** (collision, doors, seats are the server's data); the look is reviewed before C3 (Q7).
+
+---
+
+## 3. Per-feature mapping (v2 → v3)
+
+Owners: **WP0s** core splits, **WP1** core (net/input/camera/debug), **WP2** avatars, **WP3** town stage, **WP4**
+overlay, **WP5** world data, **WP6** DOM UI.
+
+| v2 feature (where) | v3 approach | Owner |
+|---|---|---|
+| Own avatar + prediction (`stepLocal` `TownScene.ts:1756-1838`, `sendMove` `1840-1847`, `onTeleport` `1149-1166`) | Extracted `rules/stepLocal.ts`: px, tile collision, 15 Hz moves, seq fencing, snap on correction. A teleport with reason ≠ `correction` cross-fades a 120 ms "poof". | WP1 (logic), WP2 (avatar) |
+| `localPlayer` / `remoteEntities` writers (`publishLocal` `1855-1871`, `stepRemotes` `1907-1912`) | Written by `net/` in v2 px, same throttle (`LOCAL_PUBLISH_MS` 100). | WP1 |
+| Remote avatars (`stepRemotes`) | Extracted interpolator (110 ms delay, 600 ms stale, ST jump > 48 px → poof). Visible only on the same `location`. | WP1 (logic), WP2 (draw) |
+| Server-driven walk/freeze, door overrides, door-tag publish (`gameplay/index.ts createGameplayLayer(scene: Phaser.Scene, ctx)` `:109`; `doorOverride` `:466-469`, `publishDoorTags` `:127`) | WP0s splits `gameplay/index.ts` into `gameplay/core.ts` (renderer-free: `SelfDriver`, `doorOverride`/`doorOverrideVersion`, `publishDoorTags`, the `gameplayState` writer) and `gameplay/phaserView.ts` (markers, vote clock, hands, hints). v3 uses the core directly. | WP0s, then WP1 |
+| Tap-to-walk routes (`goTo` `TownScene.ts:1062`, `interiorTapTarget`/`interiorRoute` `1036-1043`, `game/path.ts`) | Same functions on px from `screenToWorld`. | WP1 |
+| Escape leaves an interior (`TownScene.ts:573`) | Same rule in `input/keys.ts` (not while `stagePick` is active). | WP1 |
+| Server `sound` events + door cue (`conn.events.on('sound', playCue)` `:554`, `playCue('door')` `:1160`) | `net/` subscribes and calls `game/audio.ts playCue`; these live in TownScene, not `sound/**`. | WP1 |
+| Doors enter/leave (`enter` `941-954`, `leave` `956-967`, auto-enter `981-996`, `ExitGate`) | Extracted rules (inward from `doorNormal`). Visual: `registry.get('house-N').api.setDoor(f)` opens over 300 ms on a `door` teleport and when a remote enters. | WP1 (rules), WP3 (door art) |
+| Boarded-up empty cottages, unlit windows (`houseInUse` `920-924`, overlays `1312-1376`, door glow `1503`) | Unused house (public seat count): its `api.setLit(false)` + a door-plank prop (built once per house at town build, toggled `visible`, no new programs). | WP3 |
+| Interiors (`interior.ts`, `InsidePanel`) | On `location` → `bld:house-i`: lazily `buildInterior(engine,'house-i',{tod})` (25-50 ms, vendor INTERIORS.md), park the town graph (hide + skip updaters, reimplementing the demo's private `createTownPark`, `src/demo/main.js`), camera `interior` preset. Lights: the time facade's `player.interior` (§3.1) re-aims the constant pool via the same path as `aimLights` (interiors never create PointLights, `interiors/index.js` header). Cache ≤ 2 interiors, dispose the rest. `setInside` unchanged. | WP3 |
+| Camera (`fitCamera`/`updateCamera` `1620-1654, 1726-1754`) | `applyCamera(engine,'gameplay',{focus})` (`src/town/api.js applyCamera`). Outdoors: rest on the square; outside it, lean 0.85 toward the player, smoothed `1−e^(−5dt)`, focus snapped via `PixelCamera.snapWorld`. `viewHeight` from the zoom ladder, default 12. No yaw rotation in v1 (Q2). | WP1 |
+| Day/night/time from game state (`TownScene.ts:1955-1957`) | §3.1. | WP3 |
+| Clock (tower dial `1678-1723`, `ClockChip`) | Tower driven only by the §3.1 hour through the gated api (§3.1). Bell at phase changes only. `ClockChip` DOM unchanged. | WP3 |
+| Phases, dais, nominee, votes, seats | §3.2. Raised hands = avatar `vote` emote held / released. No demo folk figures, no scripted `CEREMONY`. | WP3 (dais), WP2 (vote clip) |
+| Seat markers (own spot pulsing), vote hand, raised-hand outlines, bedtime/gathering hint arrows (`gameplay/index.ts` header `:5-11`) | DOM/overlay views over `gameplay/core.ts` state: seat markers on the ground at `circleSpots`, own spot pulsing; hint arrows anchored at screen edge toward the door/seat. | WP4 |
+| Ghosts, deaths | §4 "Ghosts". | WP2 |
+| Carried lanterns (lantern cast + ST at night, `TownScene.ts:276-278, 2015`) | A lantern prop on the hand bone + one light **taken from the constant pool** (re-aimed, not added), so the light count and programs never change. | WP2 (prop) + WP3 (pool) |
+| ST visits / teleports (`handleTap` `1027-1033`) | Same command sends; taps resolve via §3 "ST taps". | WP1 |
+| Talking outline (`fx/talking.ts`) | pixel3d `createTalkOutline` once published [unpublished, Q6]. Interim: additive emissive rim on talking handles + the DOM wave glyph over `anchorOf(pid).headTopCss`. Respect `readTalkOutlineMode()`. | WP4 |
+| Name labels | Interim DOM labels (Preact, escaped) at `headTopCss`, tokens from `kit.json meta.tokens`. Later `L.world` labels [unpublished, Q6]. | WP4 |
+| Chat bubbles (`social/bubbles.ts`, `speech.ts`) | Reuse `SpeechBook`, `wrapLines`, `stackBubbles`, `bubbleDurationMs` with a DOM renderer; `bubble_nine`/`bubble_tail` from `v3/assets/ui/indicators.png` as a 9-slice. | WP4 |
+| Pins / points / emotes / pie (`social/index.ts createSocialLayer(scene: Phaser.Scene, ctx)` `:151`) | WP0s splits `social/index.ts` into `social/controller.ts` (gesture input, rate buckets, optimistic pins model, emote/point sends) and `social/phaserView.ts`. v3 adds `overlay/socialView.ts` over the controller, with a `SocialCtx` built from `View3d` + `AvatarRegistry`. Pins/fingers are DOM sprites from `markers.png`. | WP0s, then WP4 |
+| Board tokens / door tags (`gameplay/boardTokens.ts`, `doorTags.ts`) | Pure exports (`tokenGrid`, `fitBoard`, `boardSize`, `hitToken`…; Phaser is a type-only import) reused; DOM boards at door point + `doorNormal`·0.6 m, height 1.6 m. `createBoardTokenLayer` (`:450`) stays Phaser-only. | WP4 |
+| House names (`gameplay/houseNames.ts`) | Reuse `houseOwners`/`fitName`; DOM callouts at the placed centre, roof height. | WP4 |
+| ST pick (`gameplay/pick.ts`, `stagePick`) | DOM crosshair following the pointer. Click → `screenToWorld` → `onPick(x,y)` px; Escape cancels. | WP1 |
+| NPCs (`npcRoaming.ts`, homes) | `createNpcRoamer` on `npcHomes` (§2.2), **including its Brianbi avoidance** (`hd-cast.spec.ts:100-110`). Drawn with `npc-*` specs. `__ctCamera.npcs()` unchanged shape. | WP2 |
+| Ambience (fireflies, pigeons, smoke `1411-1590`) | pixel3d `life` piece restricted to non-misleading systems (§3.1 "Life"). Client-only. Off at `low` if over budget. | WP3 |
+| Sound areas (`sound/**`) | Unchanged logic over px stores; `currentLayout()`. | WP0 |
+| Render tier (`fx/tier.ts`, `fx/quality.ts`) | `ct.fxQuality` `low` → town `quality=low`; else `high` (subject to §1.2 row 9). A tier change = new Engine (§1.3 "Rebuild", ≈ 3 s, "Rebuilding town…" overlay, safe moment only), never a reload. | WP1 + WP3 |
+| Letterbox / area mask | Not needed (only the current area is drawn). | — |
+| Touch joystick (`GameScreen.tsx:406-410`) | Unchanged: `input/keys.ts` reads window `keydown/keyup` by `e.code`. | WP1 |
+
+**ST taps / `screenToWorld`** (WP1). A ground-plane ray cannot hit buildings: at pitch 30° a click on a cottage roof
+(ridge ≈ 4.7 m) lands ≈ 8 m north, behind the house. Two-stage pick:
+
+1. Ray (§1.5 inverse) against per-house proxy boxes (`src/town/town.js houseBox(rec, top)` / `rayHitsBox`). Nearest
+   hit → `{x, y} = the house's door tile centre px, location 'outdoors', houseId}`.
+2. Else intersect the ground plane (`Y = ground.heightAt` refined by 2 iterations) → px.
+
+Unit cases: a roof click returns that house's door; a click on the lane in front returns the lane tile.
+
+### 3.1 Time of day, clock tower and life (client only; no server change)
+
+**Phase → hour.** `p` is the stage progress from `game.clock` (`DayClockView`, `packages/protocol/src/clock.ts:32-43`):
+
+```
+p = clock == null            ? 0
+  : clock.paused             ? clamp01(1 − clock.remainingMs / clock.totalMs)
+  : clock.endsAt != null     ? clamp01(1 − (clock.endsAt − serverNow()) / clock.totalMs)   // net/serverTime.ts:14
+  : 0
+```
+
+With no clock (human-Storyteller games often run without one), the hour holds the stage's start hour.
+
+| Phase / stage | Hour |
+|---|---|
+| waiting, setup | 10:00 |
+| day: discussion | 11:00 + 4·p (→ 15:00) |
+| day: nominations | 15:00 + 3·p (→ 18:00) |
+| bedtime | 18:30 + 1.25·p (→ 19:45 dusk) |
+| first_night, night | 23:00 fixed |
+| dawn (no clock stage) | 06:15 → 08:00 by a fixed client-side 20 s ease from phase entry |
+| finished | 12:30 |
+
+Hour changes > 1 h in one frame use a 1.5 s ease; `reducedMotion` makes them instant. Unit test cases: paused,
+running (`endsAt`), no clock, dawn ease, finished.
+
+**Time facade** (`game3d/vendor/time.ts`). We reuse `src/demo/time.js createTime(demo)` (the look interpolator:
+sun, ramps, fog, lights on in order, constant light pool) through a facade `demo` object, because reimplementing it is
+≈ 700 lines. Facade contents:
+
+- `engine`, `town` (the `buildTown` result), `layout` (vendor `layout.js`), `params = new URLSearchParams('folk=0')`
+  (no seated folk).
+- `store`: `state = {timeOfDay, timeSpeed: 0, paused: true, phase: 'day', nominee: null, seats: 15 × {occupied:false},
+  life: true, quality, camera: 'follow'}`; `on(key, fn) → unsubscribe`; `set(patch, source)` that notifies listeners;
+  `setSeat` no-op. **`phase`, `nominee` and `seats` never change**, so `createTime` never writes the dais after its
+  initial apply; §3.2 drives the dais directly. We advance the clock by `store.set({timeOfDay: hour}, 'game')` when
+  the §3.1 hour moves by ≥ 1 game minute (each write is a `jumpTo`-style jump: no auto-bell; the look re-derives).
+- `input = { bind: () => () => {} }` (no global B/T/./,/N/V/P/L keys).
+- `events = { emit() {}, on(name, fn) { … } }`: we emit `'ready'` after the warm-up (enables the fog pass).
+- `player = { get position() /* own avatar metres */, get interior() /* current built interior or null */ }`: drives
+  the light-pool aim outdoors and the interior re-aim.
+- `reload` = request a tier rebuild (§1.3), never a page reload.
+- `createTime` gates the tower api (`tower.setTime`/`ring` only pass its own calls, `time.js` TOWER header), so
+  `life`'s scripted clock is muted. `ringBell()` is called by WP3 at phase changes only.
+- If a re-publish breaks the facade: CONTRACT-REQUEST "export the look interpolator (`applyHours`) with an external
+  clock" (§9.2), and drive the hour directly.
+
+**Order of construction** (WP3, `world/stage.ts`): `vendor/town.ts buildTown` (grass area, `strict: 'all'`, life
+params below) → `installRuntimeOpts` port → `createTime(facade)` (tops the light pool up to 12 high / 8 low **before**
+the warm-up, `time.js` LIGHTS header) → avatars' first builds → shader warm-up over the whole town (the demo's
+`warmWholeTown` sequence) → `events.emit('ready')` → first show.
+
+**Life.** The `life` piece (`src/town/life/index.js build`) runs its own demo simulation every frame: a scripted clock
+from 11:58 that sets the tower time and rings (`clockApi.setTime`/`ring`; muted by `createTime`'s gate), house doors
+swinging for scripted walkers (`doorDrivers`), its own light cycle (`createCycle`), walkers, ambient townsfolk and bench
+folk. In a social-deduction game a door opening by itself or a bell from fake data misleads players and fights our
+`setDoor`/`setTime`. `vendor/town.ts` builds with:
+
+```
+demo=day   lifeOff=walkers,doors,folk,cycle,ambient
+```
+
+Kept: smoke, crows, cats, bugs (fireflies/moths), fountain, leaves, wind. The harness asserts after 60 s that
+`life` stats report `walkers: 0, doors: 0, folk: false, ambient: false, benchFolk: false` and that no house door
+pivot moved without a game `setDoor`.
+
+### 3.2 Dais and vote (WP3)
+
+- `dais.setSeat(stone, {occupied, dead, ghostVote, nominated, onBlock, voteHand})` from `players[]` +
+  `day.nominations[last]` (`packages/protocol/src/game.ts:72-97`). Stone index = the server's
+  `round(k·15/n) % 15` rule (§2.4).
+- Units: the dais `setPhase('vote', {from, t0, perSeat})` takes `t0` in **engine seconds** and `perSeat` in
+  **seconds** (`src/demo/time.js applyPhase` uses 0.55), and its sweep visits all 15 stones
+  (`src/town/pieces/dais.js voteProgress`, `k` up to `N = 15`), while `NominationView.stepMs` is **ms per occupied
+  voter** (`game.ts:87`). We do not use the auto-sweep:
+  - `setPhase('vote', {from: nomineeStone, t0: -1e9, perSeat: 1})`: `t0` in the past makes `voteProgress` return
+    `k = 15`, so every stone whose `voteHand` we set lights (a future `t0` would hide all vote lamps, `dais.js` level
+    loop `voted && off <= vp.k`).
+  - `setHand(stoneOf(currentVoterSeat))` each change (`game.ts:80`); `setHand(null)` when not voting.
+  - `voteHand` is set per seat only once that voter's vote is resolved in the game view.
+- `setNight(hour is dark)` follows the §3.1 hour.
+- Unit test (`world/dais.test.ts`): fixture `PlayerGameView`s for n = 5, 9, 15 → expected `setSeat`/`setHand` calls.
+
+---
+
+## 4. Characters
+
+**Mapping.** The v2 cast id (`packages/assets/src/cast.ts:26-60`, **33 entries**) maps 1:1 to the pixel3d spec id
+(`v3/pixel3d/characters/<id>.js`; that directory has 37 modules: the 32 cast specs other than brianbi plus
+`wanderer`, `keeper`, `hound`, `duelist`, `mannequin`). Resolver: `game3d/avatars/castMap.ts`, built from a
+**per-spec capability probe** after `loadSpec`:
+
+```ts
+castMap(id): { spec: string | null; fallback: 'billboard' | 'standin' | null; ghost: 'shared' | 'clips' | 'tint' }
+```
+
+| v2 ids | 3D status (`demo/roster.json`) | Game behaviour |
+|---|---|---|
+| frog, mushroom, fox, owl, crow, moth, goat, skeleton-chef, rabbit, mole, snail, toad, green-hood, honk, chonk, polly, clarabelle, requin, progress, preservation, opal, cilantro, mincut (23) | shipped | 3D spec |
+| maxflow, theo-rem, greenting, storyteller, npc-sweeper, npc-vendor, npc-elder, npc-porter (8) | wip (load, idle, walk) | 3D spec; WP2 smoke-tests load/idle/walk/vote, on failure → stand-in |
+| nicksong | wip, user-skipped | **billboard** from v2 `cast.png` frames (no `v3/assets/sprites/nicksong` bake). Q3. |
+| brianbi | no 3D (v2 HD import) | **billboard** from v2 `cast-hd` frames |
+| unknown / load error | — | **stand-in** = `wanderer`, tinted with the member's pin colour |
+
+**Ghosts.** `ch.ghost = 1|2` only has an effect when the spec has the shared `spec.ghost` block
+(`src/chars/character.js` `const gLv = this.spec.ghost ? this._ghostLevel(...) : 0`; vendor CHARACTERS.md). Probe
+result (vendor baseline):
+
+| ghost mode | specs | v3 behaviour while dead |
+|---|---|---|
+| `shared` (`spec.ghost` present) | frog, fox, owl, crow, skeleton-chef, toad, green-hood, polly, maxflow, theo-rem, greenting, npc-* | `ch.ghost = ghostVoteAvailable ? 1 : 2`; works walking and idle. |
+| `clips` (own `ghost`/`ghost-spent` loop clips, no `spec.ghost`) | chonk, goat, honk, mole, moth, mushroom, rabbit, snail | Loop clips replace idle only, so a walking ghost would look alive. While dead: hold the clip and **slide in idle pose** (drive with `face` but suppress gait, `action: 'ghost'`), plus the `tint` wrapper below at 50 % so motion never shows a living look. |
+| `tint` (neither) | cilantro, clarabelle, mincut, opal, preservation, progress, requin, storyteller, nicksong (billboard), wanderer | `avatars/ghostTint.ts`: a material wrapper on the handle (pale ramp + alpha 0.6 + 0.15 m hover), added via `onBeforeCompile` **at build time for every handle** (uniform toggled, so no recompiles on death). |
+
+CONTRACT-REQUEST (§9.2): add `spec.ghost: {hover}` to those 17 cast specs (+ wanderer), the cheap shared opt-in.
+
+**Deaths.** Alive→dead seen while in view: `play('die')` if `handle.emotes.die` (held 1.5 s) → ghost mode above.
+Otherwise straight to the ghost mode.
+
+**Emotes and clips.** `avatars/clips.ts` plays only `handle.emotes[name]` / `handle.emoteClips`
+(`src/demo/characters.js createCharacter`: `emotes` maps `talk|vote|point|die|ghost` → clip or null, `emoteClips`
+excludes `BANNED` combat clips and locomotion). Fallback chain: `point` → `talk` → `idle`.
+
+**Speed.** There is no "play walk at speed" API: locomotion comes from the velocity of `ch.drive(t => ({pos, face}))`
+(`src/chars/character.js drive`), and `LegGait` scales the cycle with `v / walkSpeed` and switches to run at `runAt`
+(`src/chars/locomotion.js`). `avatars/` feeds positions through `drive()` and leaves the gait alone. The vendor defines
+the game speed: `handle.gameSpeed` ("cast members: THE game speed (4 H/s)"), e.g. frog `V_GAME = 3.95·1.2 = 4.74 m/s`,
+commented "v2 150 px/s on a 38 px sprite" (`characters/frog.js`). The character scale assumes ≈ 32 sprite-px per
+metre, while the tile mapping is 16 px per metre: 150 px/s = 9.375 m/s ≈ 2× `gameSpeed` (frog 1.98×). Q1 options:
+
+- (a) v3 worlds only: `PLAYER_SPEED_V3 = 80 px/s` (5 m/s; frog ratio 1.05; most specs 1.0-1.2).
+- (b) keep 150 px/s and scale every character ×1.56 to v2's on-tile proportions (changes door, label and pick sizes;
+  decide before WP2/WP4 start).
+- (c) keep 150 px/s, accept a near-constant run cycle.
+
+**Billboards** (`avatars/billboard.ts`): `THREE.Mesh` quad with toon-compatible flags (outline, fog), height 1.3 m,
+anchor feet, 4 facings from v2 frames; `v3/assets/sprites/<id>.json` bakes (8 directions, `cell [72,84]`,
+`anchor [36,61]`, `ppm 36`) preferred whenever they exist (none for nicksong or brianbi today). Frame names keep the
+v2 format `<id>|<dir8>|<n>` for `__ctCamera.avatar().frame`.
+
+**Costs.** Rig build 55-90 ms + 25-40 ms first update (`src/demo/characters.js` header). One character per frame
+through a queue (own player first, then by distance). Specs preloaded in the lobby (`loadSpec` only). At the `low`
+tier, characters farther than 12 m from the camera target cast no shadow and skip the normal pass
+(`layers`/`visible` toggles in `onBeforeRender`-free code, no program change), and `fx: false, smears: false`.
+
+**Updates.** `handle.update(t)` every frame, only for handles in the current location.
+
+---
+
+## 5. HUD / UI
+
+**Adopt now (WP6, DOM only):**
+
+1. **`cast-portraits` strip.** `v3/assets/ui/cast-portraits.{png,json}` is a drop-in for
+   `ui/common/castPortrait.ts:20,126` (same `{dir, sheets}` shape). Gate on `world === 'v3'` or renderer v3; keep v2
+   for skipped ids (nicksong, brianbi). Walk cadence from `meta.walkStepMs` (67), not the hard-coded 140 ms
+   (`:374,419`). Add `<id>/dead` to `castSheetKey` (`:154`).
+2. **`portraits` icons and avatars.** `ui/common/v3atlas.ts`: `frame(name) → {url, x, y, w, h, sheetW, sheetH}` over
+   `emotes`, `portraits`, `markers` — and their **`-night`** variants (`indicators-night`, `markers-night`,
+   `portraits-night`), picked with the same hour rule as the tokens (night ≥ 19:45 or < 06:15).
+   `SocialPalette.tsx:51-69` and `PieMenu.tsx:13-31` use it when v3 is active.
+3. **`kit.json meta.tokens`** (day/golden/night) mapped onto `theme.css:8-27` variables under
+   `[data-graphics="v3"]` in `ui/common/theme-v3.css`, switching with the §3.1 hour (day < 16:00, golden < 19:45,
+   else night).
+4. **`indicators` `bubble_nine`/`label_*`** for the WP4 bubbles and labels (9-slice via `border-image`, insets from
+   `kit.json meta.nineSlice` 3/3/3/4), at `--px = engine.pixelScale`, `image-rendering: pixelated`.
+
+**Loading.** Alias `@v3assets/` → `v3/assets/ui/` (WP0 adds it). PNG and JSON both via `?url` + `fetch` inside a
+dynamic `import('./v3atlas')` gated on v3, so `emotes.json` (23 KB), `portraits.json` (38 KB), `kit.json` (35 KB) and
+`cast-portraits.json` (11 KB) never inline into `SocialPalette`/`PieMenu`/`castPortrait` chunks. No WebP copies yet.
+**CSS.** Every new stylesheet (`overlay/*.css`, `theme-v3.css`) gets a `CSS_ORDER` entry in
+`apps/client/build/cssOrder.ts:21`, or `checkCssChunks` fails the build (`:75-83`).
+
+**Wait for the UI-conversion session:** hud/panels/events groups, in-canvas `createUILayers` [unpublished, Q6], the
+`social` composite. Until then every v2 DOM component stays and is only re-tokened.
+
+---
+
+## 6. Hooks, tests, hosting
+
+### 6.1 Debug hooks (keep compatible)
+
+`window.__ctCamera` exists only when `localStorage['ct.debug.camera']==='1'` (contract `TownScene.ts:667-708`).
+`game3d/debug/camera.ts` implements it, merging each `Layer3d.debug?()`:
+
+| Member | v3 semantics |
+|---|---|
+| `worldToScreen(x, y, heightM = 0)` | §1.5 at `Y = ground + heightM`, page CSS px. The optional 3rd argument is new; v2 ignores it. |
+| `view()` | `{x, y, width, height}` = px AABB of the ground footprint of the viewport; `zoom` = `cssPerPx()` |
+| `me()` | `{x, y, facing, moving, location}` (px) |
+| `avatar(pid)` | `{texture: 'v3:<specId>' \| 'v3-billboard:<id>', frame, width, height, x, y, screen: {x, y, w, h}}`. **x/y stay world px (feet)** as in v2 (`sprite.x/y`); width/height = the box in world px; `screen` = the CSS box. `frame` = `<id>\|<dir8>\|<n>` for billboards, `<clip>\|<dir8>\|<n>` for rigs. |
+| `bubbles()` | Same shape as v2; box from the DOM bubble rect |
+| `doorBoards()` | Same as v2 (`boardTokens.inspect`-shaped per building id) |
+| `npcs()` | Same shape (`{id, x, y, home, avoiding}`) |
+| **new** `v3()` | `{ready, tier, pixelScale, calls, tris, programs, frameMs: {p50, p95}, gpu, building: string[], life: {walkers, doors, folk}}` |
+| **new** `dais()` | `{phase, hand, seats: [{stone, occupied, dead, voteHand}]}` |
+
+- `window.__ctSocial` (opt-in `ct.debug.social`): same members over the v3 social controller.
+- `window.__town`: DEV only, `{gview}`.
+- **Tap target.** The `<canvas>` lives under `.ct-game-canvas`. DOM overlays use `pointer-events:none`, except
+  interactive boards and pins, which forward events to the canvas handler.
+- **Specs that need a v3 branch.**
+  - `hd-cast.spec.ts:58` expects `texture:'cast-hd', 32×40`; `:63-66` clicks `worldToScreen(p.x, p.y − 18)` for the
+    torso; `:76-87` checks frames `brianbi|right|[1-4]`. v3 branch: `texture` starts with `v3-billboard:`, torso via
+    `worldToScreen(p.x, p.y, 0.7)`, frame regex unchanged.
+  - `helpers.ts` `outdoorCamera`/`tapTargetAt` (v2 fallbacks): under v3 the hook is mandatory and the fallbacks throw.
+
+### 6.2 Tests
+
+- **Unit** (`apps/client/test/game3d/*.test.ts`, vitest, no WebGL): `coords` round-trips (px→m→px exact to 1e-9;
+  interior maps for all 15 houses); projection formula vs hand-computed cases at scales 2/3/4 with snapScreen on/off;
+  `castMap` covers all 33 `CAST` ids and the ghost-mode table; `select` decision table (all 9 rows, v3force skipping
+  rows 3-9); boot guard; perf sampler (hidden-tab and > 250 ms drops, 33.3 ms does not trip); phase→hour; dais
+  mapping; stone mapping vs server `circleSpots` for n = 5..15; clip fallback chain; ST roof pick; `@pixel3d` import
+  boundary; vendor guard (§1.3 step 6); three pin.
+- **Assets / server:** §2.2 tests; `apps/server/test/world.v3.test.ts` (door enter/exit with `townLayoutV3`, night
+  send-home, `circleSpots` stones, ST spawn off the dais, `host.layout()` per world, `world` not changeable via
+  `lobby:settings`).
+- **e2e** (`tests/e2e/v3-*.spec.ts`, project `v3`):
+  - Playwright project `v3` in `tests/e2e/playwright.config.ts` with `launchOptions.args: ['--use-angle=swiftshader',
+    '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist']` (the base of `v3/pixel3d/charkit/tools/shot.mjs
+    glArgs`), viewport 960×540, and init script `ct.debug.v3force=1`, `ct.debug.fps=15`, `ct.fxQuality=low`,
+    `ct.debug.camera=1`.
+  - Every v3 spec asserts `__pixel.gpu` matches `/SwiftShader/` when run on the game host, so a host GPU is never used
+    by accident.
+  - **Port.** `playwright.config.ts:17` hard-codes `PORT = 3398`; WP7 makes it `Number(process.env.E2E_PORT ?? 3398)`,
+    and each agent sets `E2E_PORT` inside its §8 range.
+  - **One at a time.** v3 e2e runs on the host only through `scripts/v3/e2e.sh`, which wraps
+    `flock ~/clocktower/locks/v3-e2e nice -n 19 pnpm test:e2e --project v3`: only one v3 e2e runs on the host at a
+    time (SwiftShader is multi-core CPU work on the production machine).
+  - Specs: `v3-boot` (canvas, `__ctCamera.v3().ready`, no console errors, no CSP violations, and **fails on any
+    `console.warn` matching `/\[town\] piece .* failed/`**); `v3-doors` (house-5 rotated door in and out);
+    `v3-social` (point + pin + bubble within 6 CSS px of `worldToScreen`); `v3-vote` (5-player nomination → `dais()`);
+    `v3-fallback` (forced build error → Classic in place, `__ctCamera.v3` undefined; `WEBGL_lose_context.loseContext()`
+    → rebuild, twice → Classic; boot flag preset → Classic; `ct.debug.v3perfFallback=1` → perf fallback);
+    `v3-mixed` (one Classic, one v3 client in one v3 lobby see each other at the same px); `v3-life` (no door moves
+    without a game `setDoor` over 60 s).
+  - Classic-in-v3: `v2-phone.spec.ts` and `v2-look.spec.ts` also run against a v3 lobby, with screenshots for the
+    user (Q7, gate for C3).
+  - The existing suite stays green on v2 lobbies (default world).
+
+### 6.3 Visual and perf checks
+
+**Game host.** It runs SwiftShader for **logic** only (§6.2), never for visual or perf numbers; its GPU is not ours to
+use (other services).
+
+**Real devices (default perf path, needs no extra machine).** `ct.debug.v3perf=1` (production-safe, opt-in like
+`ct.debug.camera`) shows a small DOM overlay reading `__ctCamera.v3()`: tier, scale, p50/p95 over the last 600
+visible frames, calls, programs, GPU string, with a "copy" button. The user opens a v3 lobby on the **dev service**
+(port 3001) on a real laptop iGPU and a phone and pastes the numbers into `docs/test-results.md`. A CPU proxy is the
+vendor's `tools/demo-perf.mjs --throttle 4` (`v3/pixel3d/tools/demo-perf.mjs`).
+
+**Render host (only if the user authorises it, Q10).** A GPU machine named only by `CT_RENDER_HOST` in
+`ops.local.env` (WP7 adds the key to `ops.example.env`). Until the user says so, no agent uses any other machine;
+`CLAUDE.local.md` currently restricts this, and that file is updated by the user's decision, not by agents. If
+authorised:
+
+- Per-run directories `~/ct-v3-check/<agent>-<UTC timestamp>/` and a `flock` lock shared with the pixel3d session's
+  render tools (agree the lock path with that session; it also renders there, so runs must not overlap).
+- Before perf numbers, record GPU utilisation (the vendor tool output or the driver's own CLI) next to every number;
+  discard runs above 10 % idle utilisation.
+- Reuse the vendor tools rather than new scripts: `v3/pixel3d/tools/demo-perf-matrix.mjs` for matrices,
+  `tools/demo-bundle.sh verify` (static server with the **exact production CSP**) as the serving model.
+
+**Harness** (`apps/client/v3-harness.html` → `src/game3d/harness/main.ts`, WP7):
+
+- Built by a **separate** `apps/client/vite.harness.config.ts` (own `outDir: dist-harness/`), invoked only by
+  `scripts/v3/render-check.sh`. Never part of `pnpm build`. A build check in `scripts/perf/bundle-report.mjs` (and
+  `scripts/deploy-*.sh`) fails if `dist/` contains `v3-harness*` or `harness/`.
+- Mounts the real `createTownGame3d` on a fake `RoomConnection` (modelled on `game/dev/sandbox.tsx:1-25`), no server:
+  it replays a scenario. Served with the production CSP header.
+- **Scenario** (`tests/v3/scenarios/*.json`): `{lobbyView, steps: [{at: ms, gameView?, snapshot?, teleport?, chat?,
+  emote?, voice?: {pid: talking}}], shots: [{at, name, camera?: {focus:[x,y], viewHeight}}]}`. Snapshots at 12 Hz,
+  linear px interpolation. Scenarios: `square-day-8`, `night-15`, `vote-12`, `interior-house-5`, `dusk-transition`,
+  `phone-390x844`, `south-bay` (grass), `projection` (§1.5).
+- Hooks: `window.__harness = {done, shots: [{name, t}], perf: {frames: number[]}}`; `?scenario=&tier=&fps=0`;
+  deterministic `t` from the scenario clock.
+- `scripts/v3/render-check.sh`: build harness on the host (`CT_AGENT=v3-qa scripts/remote.sh env … pnpm --filter
+  @ct/client exec vite build -c vite.harness.config.ts`), pull `dist-harness`, then either run SwiftShader shots on
+  the game host (look only, under the e2e lock) or, if Q10 allows, GPU shots + perf on the render host. Results to
+  `v3/shots/<date>/` (gitignored); numbers to `docs/test-results.md`.
+- `scripts/perf/budgets.mjs` gets a `v3` section (§7) reading `frames.json` and the bundle report.
+
+---
+
+## 7. Performance budget and quality tiers
+
+| Metric | Budget | Measured where |
+|---|---|---|
+| Entry JS growth | ≤ 1 KiB br (`entryJsBrKiB` max 45) | `scripts/perf/bundle-report.mjs` |
+| Lobby chunk | stays ≤ 72 KiB br (`lobbyChunkBrKiB`, today 63.8); growth ≤ 2 KiB br | bundle report |
+| `town3dChunkBrKiB` (game3d + three + engine/pipeline) | ≤ 230 KiB br | bundle report (new key) |
+| `v3LayoutBrKiB` (`@ct/assets/hollowmere` chunk) | ≤ 25 KiB br | bundle report (new key) |
+| Town pieces + interiors + life (lazy) | ≤ 800 KiB br total; first paint loads only `BUILD_ORDER` pieces | bundle report |
+| Per character spec chunk | ≤ 22 KiB br | bundle report |
+| No raw `characters/*.js` assets, one `three` copy, no harness files in `dist/` | 0 / 1 / 0 | build plugin + bundle report |
+| Time to first 3D frame after mount | ≤ 6 s on a mid laptop (vendor DEMO.md reports 2.6-4.0 s demo-ready on its reference machine) | real device overlay; harness |
+| Shader warm-up | mandatory before first show; light count constant (12 high / 8 low) | harness |
+| Laptop iGPU, `low`, 15 players | p50 ≤ 33 ms, p95 ≤ 50 ms | **real device** (user, `ct.debug.v3perf`) |
+| Discrete desktop GPU, `high`, 1080p, 15 players | p50 ≤ 12 ms, p95 ≤ 20 ms | real device; render host if Q10 |
+| Phone, explicit `v3`, `low` | measured and reported; no budget until Q4 | real device |
+| Draw calls / programs | **re-baselined** in WP7 from the measured town (vendor TOWN.md §12.6 already reports ≈ 300-470 calls for the town alone) + N characters (each rig draws in shadow, colour and normal passes); the budget is "baseline + ≤ 12 calls per visible character at `high`, ≤ 6 at `low` (LOD)"; programs constant across day→night and across interior switches | `__ctCamera.v3()` |
+| Interior switch | ≤ 120 ms hitch | harness `interior-house-5` |
+| JS heap | ≤ 350 MB after 10 min; < 10 MB growth across 5 mount/destroy + 2 rebuilds | harness leak test |
+| Overlay DOM | `v3WalkDomMutPerSec` ≤ 40 /s with 15 labels (transform writes only; no layout reads); `desktopWalkMainPct` unchanged rule | `scripts/perf/budgets.mjs` (new key) |
+
+**Overlay update rule** (WP4): positions are written as `el.style.transform = translate3d(x, y, 0)` (CSSOM, allowed by
+`style-src 'self'`), in one batch after `renderAt`, skipped when the projected position moved < 0.5 px, culled
+off-screen with `visibility`, and **no layout reads** in the per-frame path (sizes measured once on content change).
+
+**Tiers** (`fx/quality.ts` values → town):
+
+- `low`: `quality=low`, 2048 shadow map, no clouds or mist, 8 lights, `life` reduced, pixelScale `round(h/300)`,
+  character LOD (§4).
+- `high`: `quality=high`, 4096 shadow map, 12 lights, `life` as §3.1.
+- No third tier in v1. Phones get Classic under `auto` (§1.2).
+
+---
+
+## 8. Work packages
+
+Every agent runs code only via `CT_AGENT=v3-<name> scripts/remote.sh …`. Ad-hoc ports below (the lead adds them to
+`CLAUDE.md` in WP0); `E2E_PORT` comes from the same range. Record every command you ran, and every failure.
+
+| Agent | Ports |
+|---|---|
+| v3-lead | 3450-3454 |
+| v3-core | 3455-3459 |
+| v3-qa harness server | 3460 |
+| v3-avatars | 3461-3464 |
+| v3-stage | 3465-3469 |
+| v3-overlay | 3470-3474 |
+| v3-world | 3475-3479 |
+| v3-ui | 3480-3484 |
+| v3-qa | 3485-3499 |
+
+**Ownership.** CLAUDE.md gives `apps/client/src/game/**` and `packages/assets/**` to world-art, `ui/chat/**` and
+`rooms/*`/`directory` to lobby-auth, `ui/hud/**` and `ui/storyteller/**` to rules-storyteller. WP0 updates the CLAUDE.md
+table: `apps/client/src/game3d/**` (split per WP below), `v3/**` = read-only vendor, `scripts/v3/**` and `tests/v3/**`
+= v3-qa (except `export-hollowmere.mjs`: v3-world). Where a v3 agent edits another owner's file it is named below, the
+edit is the minimum, and the owner's sign-off is recorded in the commit message and §11.
+
+**Order.** WP0 → (WP0s ∥ WP5a) → C0b → (WP1 ∥ WP2 ∥ WP3 ∥ WP4 ∥ WP5b ∥ WP6) → C1 → WP7 → C2 → C3. On `TownScene.ts`
+the order is WP0 (extraction) → WP0s (layer splits) → WP5b (layout injection); no two packages edit it at once.
+
+### Status
+
+| WP | Owner | Checkpoint | Last commit | Blocking |
+|---|---|---|---|---|
+| WP0 | v3-lead | C0 | — | — |
+| WP0s | v3-core | C0b | — | WP0 |
+| WP5a | v3-world | C0b | — | WP0 (protocol fields) |
+| WP1-4, WP5b, WP6 | see below | C1 | — | C0b |
+| WP7 | v3-qa | C2 | — | C1 (harness may start after C0) |
+
+### Phase 0: WP0 Foundation (`v3-lead`), checkpoint **C0**
+
+- **Owns:** `apps/client/src/game3d/{TownGame3d.ts, select.ts, bootGuard.ts, perf.ts, contract.ts, coords.ts,
+  pixel3d.d.ts, vendor/engineHost.ts}`; `apps/client/build/pixel3dImports.ts`; `apps/client/vite.config.ts`, root
+  `vitest.config.ts`, `apps/client/package.json`, the lockfile, `.github/dependabot.yml` (the `three` ignore, with
+  qa-deploy sign-off); `apps/client/src/game/rules/**` + import-only edits in `TownScene.ts` (world-art sign-off);
+  `apps/client/src/net/layout.ts`; the `GameScreen.tsx` effect split and renderer switch (world-art sign-off);
+  `packages/protocol/src/{world,lobby}.ts` (additive); `circleSpots` stones; the `currentLayout()` edits in
+  `gameplay/index.ts`, `gameplay/doorTags.ts`, `sound/{areas,world}.ts` (world-art), `ui/chat/index.tsx`
+  (lobby-auth), `ui/hud/hints.tsx`, `ui/storyteller/{script,stage}.tsx` (rules-storyteller); the `prefs.ts`
+  `ct.graphics` entry; `build/cssOrder.ts` entries for WP4/WP6 sheets (on request); `CLAUDE.md` ports + ownership;
+  this document.
+- **With lobby-auth:** `CreateLobbyRequest.world`, directory init, `GameRoom.settings.world`, `RoomHost.layout()`.
+- **Deliverables:** a stub v3 renderer (engine host + `buildTown` at the square at noon via a minimal
+  `vendor/town.ts` stub that WP3 then owns, own avatar = `wanderer` with prediction, `__ctCamera` with
+  `me/view/worldToScreen` per §1.5); empty `Layer3d` registrations; `currentLayout()` returning v2 for v2 lobbies and
+  throwing "v3 layout not built" for v3 lobbies until WP5a lands (no placeholder that would draw Hollowmere over v2
+  doors).
+- **Tests:** unit `coords` (incl. projection), `select`, boot guard, stones, import boundary, vendor guard, three pin;
+  `pnpm test`, `pnpm -r run typecheck`, `pnpm build` (bundles `@pixel3d/core/Engine.js`, one three copy, no
+  `characters/*.js` assets); v2 e2e smoke (`doors.spec.ts`, `chat-bubbles.spec.ts`).
+- **Accept:** v2 default unchanged; stub mount/destroy 5× in the harness on a v2-layout fixture without errors
+  (SwiftShader, forced); entry +≤ 1 KiB br, lobby +≤ 2 KiB br.
+
+### Phase 0b (parallel, checkpoint **C0b**)
+
+**WP0s Core splits (`v3-core`, acting for world-art)**
+
+- **Owns (edits):** `apps/client/src/game/gameplay/index.ts` → `gameplay/core.ts` + `gameplay/phaserView.ts`;
+  `apps/client/src/game/social/index.ts` → `social/controller.ts` + `social/phaserView.ts`; matching call-site edits
+  in `TownScene.ts`.
+- **Tests:** existing unit + e2e for gameplay and social stay green unchanged (`doors.spec.ts`,
+  `door-boards.spec.ts`, `chat-bubbles.spec.ts`, social specs); new unit tests for `core.ts`/`controller.ts` without
+  Phaser.
+- **Accept:** no behaviour change in Classic; `core.ts`/`controller.ts` import no `phaser` (grep test).
+
+**WP5a World export (`v3-world`)**
+
+- **Owns:** `scripts/v3/export-hollowmere.mjs`, `packages/assets/src/hollowmere/**` (world-art sign-off),
+  `packages/assets/test/hollowmere*.test.ts`, parameterising `layout.test.ts`/`navigation.test.ts` by layout, the
+  `@ct/assets/hollowmere` subpath export in `packages/assets/package.json`, `apps/server/test/world.v3.test.ts`.
+- **Deliverables:** generated JSON, `townLayoutV3`, `townMapV3`, `layoutFor`.
+- **Tests:** §2.2 assets tests, server test.
+- **Accept:** every door reachable; band/collision invariants; v2 layout byte-identical (hash of
+  `JSON.stringify(townLayout)`).
+
+### Phase 1: parallel (C1 = all merged; each commits once its tests pass)
+
+v3-lobby e2e acceptance in phase 1 runs against the real `townLayoutV3` (available since C0b).
+
+**WP1 Core: net, input, camera, debug (`v3-core`)**
+
+- **Owns:** `game3d/{net,input,debug}/**`.
+- **Relies on:** `contract.ts`, `coords.ts`, `game/rules/**`, `gameplay/core.ts`, `social/controller.ts`.
+- **Deliverables:** `Scene3dState` adapter; prediction, moves, doors, teleports, sound cues + door cue; Escape;
+  tap-to-walk routes (outdoor `goTo`, interior `interiorRoute`); `localPlayer`/`remoteEntities` writers; keys and
+  joystick; two-stage pick (§3); tap rules and ST `teleport_self`; `stagePick` crosshair; camera; `__ctCamera`/
+  `__ctSocial` (merging `Layer3d.debug`); `ct.debug.v3perf` overlay; perf sampler + safe-moment scheduler; boot-guard
+  clear; tier rebuild + context-loss orchestration (new Engine each time).
+- **Tests:** unit interpolation, pick (roof, lane) at 5 camera states, sampler, scheduler; e2e `v3-boot`, `v3-doors`,
+  `v3-fallback`.
+- **Accept:** `doors.spec.ts` and `door-reconnect.spec.ts` pass against a v3 lobby (project `v3`).
+
+**WP2 Avatars (`v3-avatars`)**
+
+- **Owns:** `game3d/avatars/**`, `game3d/vendor/characters.ts`.
+- **Deliverables:** `castMap` with the capability probe; build queue; handles driven via `drive()`; facing; clip
+  fallback over `handle.emotes`/`emoteClips`; ghost modes (`shared`/`clips`/`tint`) and deaths; vote hands; carried
+  lanterns (prop; light from WP3's pool API); low-tier character LOD; NPC roamers with Brianbi avoidance; billboards
+  (brianbi, nicksong; `<id>|<dir8>|<n>` frames); wanderer stand-in; `AvatarRegistry`.
+- **Tests:** unit `castMap` (33 ids, ghost modes), clip fallback; e2e `hd-cast.spec.ts` v3 branch; harness
+  `square-day-8`, `night-15`.
+- **Accept:** all 33 cast ids render (3D, billboard or stand-in); every dead cast id shows a ghost look while walking.
+
+**WP3 Town stage (`v3-stage`)**
+
+- **Owns:** `game3d/world/**`, `game3d/vendor/{town,interiors,time}.ts`.
+- **Deliverables:** town build per tier (grass area, `strict: 'all'`, life params, runtime opts); the §3.1
+  construction order; doors `setDoor`/`setLit`; boarded houses; interior switching/caching/parking (reimplemented
+  park); time facade + phase→hour; clock tower + bell at phase change; dais (§3.2); light pool incl. an API
+  `borrowLight(anchorFn)` for carried lanterns; shader warm-up.
+- **Tests:** unit phase→hour, dais mapping, facade store; e2e `v3-vote`, `v3-life`; harness `vote-12`,
+  `interior-house-5`, `dusk-transition`, `south-bay`.
+- **Accept:** programs constant across day→night and interior switches; interior switch ≤ 120 ms; no unscripted door
+  or bell.
+
+**WP4 Overlay (`v3-overlay`)**
+
+- **Owns:** `game3d/overlay/**` (DOM + `overlay/*.css`; `CSS_ORDER` entries requested from WP0).
+- **Relies on:** `View3d`, `AvatarRegistry`, `social/controller.ts`, `gameplay/core.ts`, pure `speech`/`boardTokens`/
+  `houseNames` exports, `v3atlas.ts` (WP6; stubbed until it lands).
+- **Deliverables:** labels, bubbles, talking indicator, pins/points/emotes/pie (`overlay/socialView.ts`), door
+  boards, house names, seat markers (own spot pulsing), vote-hand and raised-hand indicators, hint arrows, poof,
+  `bubbles()`/`doorBoards()` debug members; the §7 overlay update rule.
+- **Tests:** unit anchor stacking, transform batching (no writes under 0.5 px); e2e `v3-social`, `chat-bubbles.spec.ts`
+  and `door-boards.spec.ts` on v3.
+- **Accept:** overlays within 2 CSS px of `worldToScreen` while the camera pans (harness `projection` +
+  `square-day-8`); no `innerHTML`; `v3WalkDomMutPerSec` budget.
+
+**WP5b Classic in a v3 world (`v3-world`, acting for world-art)**
+
+- **Owns (edits):** the `packages/assets` generator pass (`town-v3.json`, `square-props-v3.json`), `TownScene.ts`
+  per-instance layout state and v3 asset selection, the `doorNormal` inward rule wiring.
+- **Tests:** `v2-phone.spec.ts`, `v2-look.spec.ts` and `doors.spec.ts` against a v3 lobby with the Classic renderer;
+  screenshots for Q7.
+- **Accept:** a Classic client in a v3 lobby enters all 15 houses; leaving a v2 lobby and joining a v3 lobby in one
+  page renders the right town.
+
+**WP6 DOM UI skin (`v3-ui`)**
+
+- **Owns:** `apps/client/src/ui/common/{v3atlas.ts, castPortrait.ts (v3 gating), theme-v3.css}`, the
+  `SettingsDialog.tsx` Graphics row (incl. "Try v3 again"), the v3 branches in `ui/social/{SocialPalette,PieMenu}.tsx`.
+- **Deliverables:** §5 items 1-4 (incl. `-night` atlases), the Graphics setting UI.
+- **Tests:** unit `v3atlas` lookup for every frame `SocialPalette`/`PieMenu` request (day and night); e2e
+  `v23-settings.spec.ts` extended.
+- **Accept:** no v2/v3 art mixing except documented skips; settings persist and swap in place; lobby chunk budget.
+
+### Phase 2: WP7 Integration / QA (`v3-qa`), checkpoint **C2**, then C3
+
+- **Owns:** `tests/e2e/v3-*.spec.ts`, the `v3` project + `E2E_PORT` in `tests/e2e/playwright.config.ts`, v3 branches
+  in `tests/e2e/helpers.ts` and `tests/support/bot.ts`, `tests/v3/**`, `scripts/v3/{render-check,e2e}.sh`,
+  `apps/client/{v3-harness.html, vite.harness.config.ts}`, `apps/client/src/game3d/harness/**`, the
+  `scripts/perf/budgets.mjs` v3 keys and bundle-report checks, `ops.example.env` (`CT_RENDER_HOST`),
+  `docs/test-results.md`.
+- **Deliverables:** harness (may start after C0); full e2e on both worlds; real-device numbers collected from the user;
+  render-host runs only if Q10 allows; leak test; `v3-mixed`; release note for `docs/progress.md` (to the lead).
+- **Accept:** every §7 budget met or explicitly waived by the user.
+- **C3** (user decision, conditional on Q7's Classic-in-v3 review): flip the `CreateLobbyRequest.world` default to
+  `'v3'`, or let the host choose per lobby with `'v3'` preselected.
+
+**Integration rule.** After each phase there is a module-fix step: shared bugs found by any WP are fixed then.
+
+---
+
+## 9. Open questions and risks
+
+### 9.1 Questions for the user
+
+1. **Q1 Speed / scale.** The vendor's cast walks at `gameSpeed` ≈ 4 body-heights/s (frog 4.74 m/s); 150 px/s at
+   16 px/m is 9.4 m/s ≈ 2× that. (a) `PLAYER_SPEED` 80 px/s in v3 worlds; (b) keep 150 px/s and scale characters
+   ×1.56; (c) keep 150 px/s and accept a run cycle. Needed before WP2/WP4.
+2. **Q2 Camera.** Fixed yaw, or 45° rotations (25-40 ms hitch each)?
+3. **Q3 nicksong / brianbi** in v3: v2-sprite billboards, or hide them from the v3 picker?
+4. **Q4 Phones.** Is "Classic on phones under Auto" acceptable for the v3 launch?
+5. **Q5 Interiors.** Tile-quantised walls/furniture with ≤ 0.5 m error (table §2.3) and no display clamp: OK?
+6. **Q6** Republish pixel3d with `src/ui/**` (labels/bubbles/pins in-canvas, `talkOutline`), and re-run
+   `scripts/v3/import-assets.sh` once the markers re-bake settles.
+7. **Q7 Classic in a v3 world.** After WP5b you get screenshots of phone/Classic in Hollowmere. Is it good enough to
+   make v3 the default world (C3), or should phones default to v2 lobbies?
+8. **Q8 Dais.** Solid disc (players and ST walk around it), or a walkable stage for the Storyteller?
+9. **Q9 World switch.** The world is fixed at lobby creation. Do hosts need to change it in a waiting lobby?
+10. **Q10 Render host.** May agents use a separate GPU machine (`CT_RENDER_HOST`) for visual/perf checks? Your
+    private notes currently say not to use the other machine. If yes, please update `CLAUDE.local.md` yourself and
+    confirm the lock/directory rules in §6.3. Without it, perf comes from your real devices via `ct.debug.v3perf`.
+
+
+**Lead defaults (2026-10-17) — in force until the user overrides them.** Work proceeds with these; each is
+isolated behind one constant/setting so a later answer is a small change.
+
+| Q | Default chosen | Why |
+|---|---|---|
+| Q1 speed | (c) keep 150 px/s in every world; play the vendor clip that fits the speed (the cast clips were already judged at v2 game speed, docs/CAST_GALLERY.md); `V3_SPEED_PX` in one place | fast movement is a v2 design rule ("voice-room picker") |
+| Q2 camera | fixed yaw | no rebuild hitch; simplest; matches the demo's default |
+| Q3 nicksong / brianbi | flat v2-sprite billboards, still pickable | nicksong is a user-requested character; hiding it would remove a feature |
+| Q4 phones | Classic under Auto at launch; "v3" forced in Settings still works | perf unknown on phones |
+| Q5 interiors | accept ≤ 0.5 m tile snap | invisible-wall risk is small; revisit with screenshots |
+| Q6 pixel3d republish | use what is published on v3-dev; merge v3-dev + re-run `scripts/v3/import-assets.sh` when the UI session publishes | another session owns it |
+| Q7 v3 default world | decide at C3 with screenshots (user) | product call |
+| Q8 dais | solid disc (demo collision) | matches the art |
+| Q9 world switch | fixed at lobby creation | simplest |
+| Q10 render host | NOT used until the user allows it (CLAUDE.local.md forbids the other machine for this project). Visual stills: SwiftShader on the host inside the capped slice (CPU only, never the host GPU), lowest quality, few frames. Real perf: `ct.debug.v3perf` on the dev service from the user's own devices | respects both host rules |
+
+### 9.2 CONTRACT-REQUESTs for the pixel3d session (collected; append, never edit vendor)
+
+- `Engine({parent, size, rendererOptions: {powerPreference, failIfMajorPerformanceCaveat}})` + `dispose()` +
+  `offUpdate(fn)`. Today shimmed in `engineHost.ts`.
+- Town `dispose()` (`town.js` has none).
+- `town/api.js buildPiece`: a static piece map (`import.meta.glob`) instead of `import(PATHS(id))`.
+- `demo/characters.js`: static optional imports for `smear.js`/`fx.js`; `sourcePrint` behind an option.
+- `demo/roster.js`: static `roster.json` import.
+- `ground.js`: an explicit grass-area option (replaces `buildWide`'s stack sniffing).
+- `demo/time.js`: an external-clock mode, or an exported look interpolator, not tied to the demo store.
+- `life`: an external-clock mode (already noted in `time.js`), and a "game mode" preset equal to
+  `lifeOff=walkers,doors,folk,cycle,ambient`.
+- `dais`: confirm the 15-stone mapping (§2.4) is intended, or add a seat-count-aware `seatAngle`.
+- `src/ui/**` icon fetch path configurable (`markers/draw.js`, `indicators/hud.js` hard-code `out/ui/portraits.json`)
+  [unpublished].
+- `spec.ghost: {hover}` for chonk, goat, honk, mole, moth, mushroom, rabbit, snail, cilantro, clarabelle, mincut, opal,
+  preservation, progress, requin, storyteller, nicksong (+ wanderer); `point` clips for cilantro, clarabelle, mincut,
+  opal, preservation, requin, nicksong.
+- Delete the stray temp files `v3/assets/sprites/.skeleton-chef-preview.png.wgV9lp` and
+  `.frog-preview.png.7amzXJ` upstream, so the next import drops them.
+
+### 9.3 Risks
+
+| Risk | Mitigation |
+|---|---|
+| A vendor re-publish breaks rewrites, facade or wrappers | Plugin fails the build; runtime assertions in `engineHost`; vendorHash test; vendor guard; vendor-diff review (§10) |
+| Quantised collision vs 3D visuals | Doorway-centred anchors, error table, WP5a tests, Q5 |
+| Mixed renderers in one lobby | One layout per room; `v3-mixed` e2e |
+| A 15-player rig build stalls joins | One-per-frame queue; preload specs in the lobby |
+| OOM / context loss / weak GPUs | Boot guard; full rebuild then Classic; low starting tier on iGPU/tablets; sampler at safe moments |
+| v3 e2e load on the production host | Single host-wide flock, `nice -n 19`, fps 15, 960×540, low tier |
+| Draw calls with 15 characters + overlays | Re-baselined budget, character LOD, transform-only overlays |
+| Misleading ambient life | `lifeOff` set + gated tower + `v3-life` e2e |
+| The UI conversion keeps moving | Adopt only the baked atlases now |
+
+---
+
+## 10. How to continue (for future agents)
+
+- **Where state lives:** this file (contract; §8 Status table), `docs/progress.md` (lead), `docs/test-results.md`
+  (qa), §11 decision log, `grep -rn "CONTRACT-REQUEST" apps/client/src/game3d`.
+- **Refreshing the vendor copies.**
+  - `v3/pixel3d/` arrives on `v3-dev` from the pixel3d session's publish script. Before merging `v3-dev` into
+    `v3-game`, review the vendor diff as text (`git diff <last merged v3-dev>..v3-dev -- v3/pixel3d`), looking for
+    new network access, `eval`-like code, new dynamic imports, and changes to the patched snippets. Never edit
+    `v3/pixel3d` here.
+  - `v3/assets/` is refreshed by `PIXEL3D_DIR=… scripts/v3/import-assets.sh` (rsync `--delete` + private-path and
+    5 MB checks, `scripts/v3/import-assets.sh:8-11`).
+- **After a refresh:**
+  1. Update the "Vendor baseline" line at the top (commit + hash).
+  2. `CT_AGENT=v3-world scripts/remote.sh node scripts/v3/export-hollowmere.mjs`; commit the JSON if it changed.
+  3. `CT_AGENT=v3-qa scripts/remote.sh pnpm build` (plugin patterns, one three copy).
+  4. `pnpm test` (vendor guard, vendorHash, castMap ghost probe).
+  5. `scripts/v3/render-check.sh` for visuals.
+- **After every commit:** update the §8 Status row, §9 (resolved questions), §11; record test commands for
+  `docs/test-results.md`; run `scripts/secret-scan.sh` before any push (no hostnames, hardware or home paths in
+  tracked files).
+- **Never:** visual/perf-check on the game host's GPU; use another machine without Q10; edit `v3/pixel3d/**` or
+  `v3/assets/**`; import `@pixel3d/*` outside `game3d/vendor/`; break v2 lobbies (the default world); run more than one
+  v3 e2e on the host at a time.
+
+## 11. Decision log
+
+- 2026-10-17: Per-room world (`v2` | `v3`). The v3 world = Hollowmere exported into `townLayoutV3`; v2 untouched.
+- 2026-10-17: 1 m = 16 px, X = x/16, Z = y/16 outdoors. Interiors are translation-only into 12×12 band rooms.
+- 2026-10-17: Seats map to the 15 fixed dais stones by `round(k·15/n)`, on server and client alike.
+- 2026-10-17: World-anchored UI is DOM-over-canvas until pixel3d `src/ui` is published. Screen UI stays Preact.
+- 2026-10-17 (rev 2): Interior bands stride 13 (w 12), `widthTiles` 112, `heightTiles` 43; doorway-centred anchors;
+  `interiorDoor` = spawn tile above the doorway; no display clamp.
+- 2026-10-17 (rev 2): World fixed at lobby creation (`CreateLobbyRequest.world`); modules read `host.layout()`.
+- 2026-10-17 (rev 2): three resolved by explicit aliases from `apps/client`; vendor globs written inside the patched
+  vendor file; optional/sourcePrint/roster/grass rewrites.
+- 2026-10-17 (rev 2): `createTime` reused through a facade with frozen phase/seats; dais driven directly with
+  `setHand` and `t0 = −1e9`; life built with `lifeOff=walkers,doors,folk,cycle,ambient`.
+- 2026-10-17 (rev 2): Ghost look by capability probe (`shared` / `clips` / `tint`).
+- 2026-10-17 (rev 2): Tier changes and context-loss rebuilds always create a new Engine.
+- 2026-10-17 (rev 2): v3 layout loaded lazily (`@ct/assets/hollowmere`) before GameScreen mounts; budgets in br.
+- 2026-10-17 (rev 2): Perf comes from real devices via `ct.debug.v3perf`; a separate render host only after Q10.
+- 2026-10-17 (rev 2): Server speed stays 150 px/s pending Q1 (options re-framed on the vendor's `gameSpeed`).
+
+## 12. Review log (round 1)
+
+All 48 review items were checked against the code at the vendor baseline. Accepted items are folded into the
+sections named; corrections and rejections:
+
+- **Accepted as stated:** three resolution (two duplicate items, §1.3.2) and glob root; projection margin/offset
+  (§1.5); life/time facade (§3.1); schema fields (§2.2); interior door and sizes (§2.3); Classic-in-v3 work (§2.5);
+  Phaser-bound layers (WP0s); hidden C0 dependency (phase 0b); render host wording (§6.3, Q10); lobby world (§2.4);
+  `town-lights` order (§1.3 step 5.6); grass area (§1.3); dispose/updaters (§1.3); clock formula (§3.1); dais units
+  (§3.2); speed (§4); roof picks (§3); back lane (§2.2); missing feature rows (§3); ownership gaps (§8); debug hook
+  semantics (§6.1); warmTown (§1.1); light-pool order and park reimplementation (§3, §3.1); counts and night atlases
+  (§4, §5); display clamp (§2.3); probe/v3force/SwiftShader args (§1.2, §6.2); sampler under fps cap (§1.2);
+  optional/sourcePrint (§1.3 step 3); `strict` builds (§1.2); real-device perf (§6.3, §7); tier start and safe
+  moments (§1.2); crash-loop guard (§1.2); e2e port and host load (§6.2); bundle budgets in br and lazy layout/atlases
+  (§2.4, §5, §7); C3 gating (Q7); overlay DOM cost (§7); vendor guard (§1.3 step 6, §10); GameScreen effect split
+  (§1.1); context loss (§1.2); dependabot pin (§1.3 step 1); continuity (top, §8 Status, §10); harness build (§6.3).
+- **Corrected:** "18 of the 33 cast specs have no `spec.ghost`": the probe finds 17 cast specs (8 with own ghost clips,
+  9 with nothing) plus `wanderer`; brianbi has no spec at all (billboard). The `buildWide` port is replaced by a
+  build-time `ground.js` patch, because the stack-sniffing regex cannot survive hashed chunk names. Interior bands:
+  chose stride 13 with w 12 (MAP_W 112) rather than w 13, which house-3 does not need. The suggestion to put the
+  harness on the dev service conflicts with "never deploy the harness"; the dev-service path is instead the
+  production-safe `ct.debug.v3perf` overlay in the real game. Interior lights: we do not call `aimLights` directly;
+  `createTime` re-aims the constant pool when the facade's `player.interior` changes (`time.js` update), which is the
+  same mechanism.
+- **Alternative not taken:** the dais auto-sweep unit conversion (`perSeat = stepMs·n/15/1000`). We drive the hand
+  with `setHand` only (§3.2); a server-to-engine time map would add drift.
+- **Rejected:** "the constructor's first `resize()`/`_pickScale()` read `window.inner*` before the shim exists" as a
+  defect. It costs one throw-away allocation of pipeline targets at window size, immediately replaced by
+  `hostResize`; noted in §1.3 step 5.2, no further work. Also rejected: "leave the sweep params unset" as a way to
+  disable the sweep. `setPhase('vote')` merges into the default `{t0: 0, perSeat: 1.2}`, and the level loop lights a
+  seat's vote lamp only once the sweep has reached it (`dais.js voteProgress`), so §3.2 sets `t0 = −1e9` instead.
+- **Render host decision (Q10) is the user's;** this document does not authorise using any other machine.
