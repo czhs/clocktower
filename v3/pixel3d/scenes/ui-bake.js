@@ -14,12 +14,17 @@
 //     async frames(env) { return [['pin_gold', img], ...]; },   // env = { engine, kit, params, tod, T }
 //     meta(env, rects) { return { anchors: {...}, fps: {...}, newStyle: {...} }; },
 //     manifest(env, { img, rects, meta, image }) { ... }        // optional: custom JSON shape (e.g. cast-portraits)
+//     files(env, { img, rects, json }) { return { 'panels.css': text }; }   // optional (module fix): extra TEXT outputs,
+//                                                   // written next to the atlas and copied back to out/ui/ by uibake.sh
 //   }
+// The hud group's display face is registered as kit FONTS.display before the module loads (module fix).
 import * as kit from '../src/ui/kit.js';
+import { registerGroupFonts } from '../src/ui/fonts.js';
 
 export default async function build(engine, params) {
   const P = (k, d) => params.get(k) ?? d;
   const group = P('group', 'kit');
+  await registerGroupFonts();
   const tod = P('tod', 'noon');
   const SHARED = { kit: '../src/ui/kit-bake.js', social: '../src/ui/social-bake.js' };   // lead-owned composite bakes
   // '<group>:<name>' = a second atlas of a group: src/ui/<group>/<name>.bake.js -> out/ui/<name>.{png,json}
@@ -66,7 +71,16 @@ export default async function build(engine, params) {
     sheet.blit(c.im, c.x + 3, c.y, { scale: S });
     kit.drawText(sheet, c.x + 3, c.y + c.im.h * S + 4, c.label, { font: 'tiny', color: T.textDim });
   }
+  // extra text outputs (module fix): basenames only, text only (e.g. the panels CSS export)
+  let files = null;
+  if (mod.files) {
+    files = {};
+    for (const [n, text] of Object.entries((await mod.files(env, { img, rects, json })) || {})) {
+      if (!/^[A-Za-z0-9._-]+$/.test(n) || n.startsWith('.')) throw new Error(`ui-bake: bad extra file name '${n}' (basename only)`);
+      files[n] = String(text);
+    }
+  }
   const url = (im) => kit.toCanvas(im).toDataURL('image/png');
-  window.__uibake = { group, png: url(img), sheet: url(sheet), json, coverage, frames: frames.length, size: [img.w, img.h] };
+  window.__uibake = { group, png: url(img), sheet: url(sheet), json, coverage, frames: frames.length, size: [img.w, img.h], files };
   engine.stats.uibake = { group, frames: frames.length, size: [img.w, img.h], coverage };
 }

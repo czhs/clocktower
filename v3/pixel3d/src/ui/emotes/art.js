@@ -107,27 +107,27 @@ const GLOVE12 = [
   '..ccwww.....',
 ];
 // 7x7 + outline = 9x9 inline glyph (row 0 blank: the art is bottom-aligned on the 9x9 inline grid, UI.md 2.6)
-const GLOVE7 = [   // pointing right: thumb on top, a 1-row index finger (reads at 9 px), curled fingers (k), cuff (c)
-  '.......',
+const GLOVE7 = [   // pointing right: thumb on the fist, a 1-row index finger, two curled fingers split by flat creases (k)
   '.ww....',
   'cwwwwww',
-  'cwwwk..',
-  'cwwwk..',
+  'cwkkk..',
+  'cwwww..',
+  'cwkkk..',
   'cwwww..',
   '.www...',
 ];
 // 9x9 + outline = 11x11 pop glyph: a 2-row index finger (lit top row / shaded bottom row) 4 px past the fist, the thumb
 // over it, two curled-finger creases and a 1-column gold cuff (critic r1: the 7-px glove read as a mitten in the pop).
-const GLOVE9 = [
-  '..ww.....',
-  '.wwwwwwww',
+const GLOVE9 = [   // r3: the classic pointing hand - thumb over the fist, a 2-row finger 4 px past it, curled fingers split by creases
+  '.www.....',
   'cwwwwwwww',
-  'cwwwk....',
+  'cwwwwwwww',
+  'cwkkkk...',
+  'cwwwww...',
+  'cwkkkk...',
+  'cwwwww...',
   'cwwww....',
-  'cwwwk....',
-  'cwwww....',
-  '.cwww....',
-  '..ww.....',
+  '.www.....',
 ];
 function glove(rows, T) {
   const P = parchMat(T), G = goldMat(T);
@@ -165,20 +165,13 @@ const PIN5 = [   // 5x7 + outline = 7x9 (pop glyph)
 function pinOf(rows, color, T) {
   const R = PIN_RAMPS[color];
   const disc = color === 'white' ? { hi: T.parchmentHi, mid: T.parchmentHi, sh: T.parchment, line: R.line, by: 'self' } : { ...parchMat(T), line: R.line, by: 'self' };
-  // black: the ramp is lifted one step (iron-hi / black hi / black mid) so the body separates from ink panels
-  const body = color === 'black' ? { hi: T.ironHi, mid: R.hi, sh: R.mid, line: R.line } : { hi: R.hi, mid: R.mid, sh: R.sh, line: R.line };
+  // black (r3, critic r2): a SOLID dark body (black hi tone) in the dark UI outline, lit rim iron-hi on the upper left:
+  // a light outline around a dark body read as a hollow / disabled pin next to the grey disabled wedges.
+  // UI integration r2 (whole-screen critic): that body (#5A5168) on ink (#2B2536) still vanished in the pie and the dock
+  // at 1x. Now a darker body (black mid / sh) inside an IRON line (lighter than every ink token, darker than the
+  // body's lit ironHi rim): the pin reads as a dark pin with a metal rim, not a hollow light ring.
+  const body = color === 'black' ? { hi: T.ironHi, mid: R.mid, sh: R.sh, line: T.iron } : { hi: R.hi, mid: R.mid, sh: R.sh, line: R.line };
   const img = shade(rows, { '#': body, o: disc }, { prefer: ['#'] });
-  if (color === 'black') {
-    // black on ink panels: a uniform light line around a dark body reads as a hollow / disabled pin (critic r1). Keep
-    // the light line only on the lit (upper-left) side, the far side gets the iron line, so the body reads solid.
-    const L = hex(R.line), set = [];
-    for (let y = 0; y < img.h; y++) for (let x = 0; x < img.w; x++) {
-      if (!img.alpha(x, y) || hex(img.get(x, y)) !== L) continue;
-      const body = (xx, yy) => img.alpha(xx, yy) && hex(img.get(xx, yy)) !== L;
-      if (!(body(x + 1, y) || body(x, y + 1))) set.push([x, y]);
-    }
-    for (const [x, y] of set) img.set(x, y, T.outline);
-  }
   return img;
 }
 export const pinIcon = (color, T) => memo('pin' + color + tkey(T), () => pinOf(PIN7, color, T));
@@ -302,7 +295,10 @@ function pieImage0(T, { size, items, hot, color, off, show, back, hub, icons, id
     if (d * Math.sin(Math.abs(step / 2 - off)) < 0.8) return -1;        // 1-2 px radial gap between wedges
     return i;
   };
-  const Rhot = R + 2;   // the hot wedge pops out over the back ring
+  // UI integration r2 (whole-screen critic): the popped-out hot wedge (R + 2, re-outlined outside the back disc) read
+  // as a straight-chord trapezoid poking 2-4 texels past the round rim. The hot wedge now stays inside the same annulus;
+  // hot still reads without colour: lit edge (ramp hi), icon 1 px out + up, and the caption plate names it.
+  const Rhot = R;
   const inW = (i, x, y) => { const dx = x - c, dy = y - c; return wedgeOf(dx, dy, i === hot ? Rhot : R) === i; };
   const edgeAt = (i, x, y) => inW(i, x, y) && (!inW(i, x + 1, y) || !inW(i, x - 1, y) || !inW(i, x, y + 1) || !inW(i, x, y - 1));
   // back disc + hub well + drop shadow
@@ -322,7 +318,7 @@ function pieImage0(T, { size, items, hot, color, off, show, back, hub, icons, id
     for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
       const d = Math.hypot(x - c, y - c);
       if (d > R + 2.5) continue;
-      if (backShow && d > r0 - 1 && !backShow.has(sectorOf(x - c, y - c))) continue;
+      if (backShow && (d > r0 - 1 ? !backShow.has(sectorOf(x - c, y - c)) : !hub)) continue;   // no hub: no well disc either
       img.set(x, y, T.outline);
     }
     for (let x = 0; x < S; x++) for (let y = S; y >= 1; y--) if (!img.alpha(x, y) && img.alpha(x, y - 1) && Math.hypot(x - c, y - 1 - c) > R) { img.set(x, y, T.shadow); break; }
@@ -382,17 +378,18 @@ function pieImage0(T, { size, items, hot, color, off, show, back, hub, icons, id
       if (off?.has(i)) { const s = new PixelImage(ic.w, ic.h); s.blit(ic, 0, 0, { tint: T.ironSh }); ic = s; }
       const ix = Math.round(c + rm * Math.cos(a) - ic.w / 2), iy = Math.round(c + rm * Math.sin(a) - ic.h / 2) - (isHot ? 1 : 0);
       img.blit(ic, ix, iy);
-      if (size === 'touch' && (it.kind === 'point' || it.kind === 'unpin')) {
-        // body font (critic r1: the tiny font's M read 'REMOVE' as 'RENOVE'); label on the hub side of the icon
-        const s = it.kind === 'point' ? 'Point' : 'Remove';
-        const ly = Math.sin(a) > 0.3 ? iy - 9 : iy + ic.h + 1;
-        drawText(img, Math.round(c + rm * Math.cos(a)), ly, s, { color: isHot ? T.goldHi : T.text, outline: T.outline, align: 'center' });
-      }
-      if (it.kind === 'pin' && it.color === color) {
-        const rr = (isHot ? Rhot : R) - 3;
-        const mx = Math.round(c + rr * Math.cos(a + step * 0.28)), my = Math.round(c + rr * Math.sin(a + step * 0.28));
-        const PR = PIN_RAMPS[color];   // the notch wears the current pin colour (critic r1: a gold speck read as noise)
-        img.rect(mx - 1, my - 1, 2, 2, PR.hi); img.set(mx, my, PR.mid);
+      // (r3) no text labels on touch wedges: v2 PieMenu draws none, and 'Point' / 'Remove' overflowed into the hub and
+      // the neighbouring wedges at 46 texels; the caption plate names the hot wedge.
+      if (it.kind === 'pin' && it.color === color && !off?.has(i)) {
+        // v2 .ctp-current. UI integration r2 (whole-screen critic: the 2x2 colour dot beside the pin read as a stray
+        // dot): the current colour is marked as a gold arc ON the wedge's outer rim (the hub's gold = "yours / chosen"),
+        // 7 rim texels centred on the wedge's centre line, so it reads as part of the pie, not as a speck.
+        const Rw = isHot ? Rhot : R;
+        for (let y = c - Rw - 1; y <= c + Rw + 1; y++) for (let x = c - Rw - 1; x <= c + Rw + 1; x++) {
+          if (!edgeAt(i, x, y) || Math.hypot(x - c, y - c) < Rw - 1.5) continue;
+          const da = Math.atan2(y - c, x - c) - a, w = Math.abs(Math.atan2(Math.sin(da), Math.cos(da))) * Rw;
+          if (w <= 3.5) img.set(x, y, w <= 1.5 ? T.goldHi : T.gold);
+        }
       }
     }
   }
@@ -419,7 +416,8 @@ export function drawPie(img, cx, cy, T, st) {
     if (k >= 4) return false;
     const i = st.commit.i, others = new Set(items.map((_, j) => j).filter((j) => j !== i));
     // back disc only behind the chosen wedge (+ hub); the others dissolve WITH their part of the back (critic r1)
-    pie = pieImage(T, { ...base, hot: i, show: new Set(), icons: false, idleHub: false, backShow: new Set([i]) });
+    // r3 (critic r2): from step 1 the hub well goes too - a lone 24-px near-black hub disc still blinked as a hole
+    pie = pieImage(T, { ...base, hot: i, show: new Set(), icons: false, idleHub: false, hub: k === 0, backShow: new Set([i]) });
     if (k === 0) pie.blit(dissolve(pieImage(T, { ...base, hot: i, show: others, hub: false, idleHub: false, backShow: others }), 0.5), 0, 0);
     pie.blit(pieImage(T, { ...base, hot: i, show: new Set([i]), back: false, hub: false, idleHub: false }), 0, 0);
     if (k >= 2) dissolve(pie, k === 2 ? 0.5 : 0.75);
@@ -466,18 +464,23 @@ export function drawCaption(img, cx, cy, R, text, T) {
 }
 
 // ------------------------------------------------------------------------------------------------ dock (social palette)
-export const DOCK = { w: 96, h: 79 };   // r2: +9 for the third key-hint row ('click your pin: remove')
+export const DOCK = { w: 96, h: 83 };   // r2: +9 for the 3rd key-hint row; UI integration r2: +4 for the 9-px key caps
 const ON = { line: 'outline', edge: 'gold', fill: 'goldLine', hi: 'goldSh', sh: null, corner: 1, shadow: false, press: 1 };
 const SWATCH_ON = { line: 'outline', edge: 'goldHi', fill: 'inkRaised', hi: null, sh: null, corner: 1, shadow: false };
 const SWATCH_HOVER = { line: 'outline', edge: 'ironHi', fill: 'inkRaised', hi: null, sh: null, corner: 1, shadow: false };
 const CLEAR_HOVER = { line: 'outline', edge: 'goldSh', fill: 'inkRaised', hi: 'ironHi', sh: 'ironSh', corner: 1, shadow: false };
-const KBD = { line: 'outline', edge: 'goldSh', fill: 'inkSunk', hi: null, sh: null, corner: 1, shadow: false };
-/** Keyboard chip (v2 <kbd>): 7 px tall, gold-shadow keyline on a sunk fill, tiny gold caps; returns its width. */
+/**
+ * Keyboard chip (v2 <kbd>): 9 px tall, gold-shadow keyline (notched corners) on a RAISED ink cap with 1 px of padding
+ * left / right and 1 row above / below the caps, tiny caps in parchment text; returns its width. UI integration r2 (whole-screen critic): the 7-px cap had
+ * the 5-row caps touching its gold keyline and gold text on it, so 'DRAG' read as 'ORAG' at 1x.
+ */
+export const KBD_H = 9;
 export function drawKbd(img, x, y, s, T) {
   const w = textWidth(s, 'tiny') + 4;
-  img.rect(x + 1, y, w - 2, 7, T.goldSh); img.rect(x, y + 1, w, 5, T.goldSh);   // 1-px notched corners
-  img.rect(x + 1, y + 1, w - 2, 5, T.inkSunk);
-  drawText(img, x + 2, y + 1, s, { font: 'tiny', color: T.gold });
+  img.rect(x + 1, y, w - 2, KBD_H, T.goldSh); img.rect(x, y + 1, w, KBD_H - 2, T.goldSh);   // 1-px notched corners
+  img.rect(x + 1, y + 1, w - 2, KBD_H - 2, T.inkRaised);
+  img.hline(x + 1, y + KBD_H - 2, w - 2, T.ironSh);                                           // cap bottom (lit from above)
+  drawText(img, x + 2, y + 2, s, { font: 'tiny', color: T.text });
   return w;
 }
 /**
@@ -534,7 +537,7 @@ export function drawDock(img, x, y, T, o = {}) {
     drawText(img, hx, hy + 1, 'Hold the town,', { color: T.textDim });
     drawText(img, hx, hy + 10, 'slide to choose', { color: T.textDim });
   } else {
-    const row = (parts) => { hx = ix + 1; for (const [k, w] of parts) { hx += drawKbd(img, hx, hy, k, T) + 2; drawText(img, hx, hy, w, { color: T.textDim }); hx += textWidth(w) + 4; } hy += 9; };
+    const row = (parts) => { hx = ix + 1; for (const [k, w] of parts) { hx += drawKbd(img, hx, hy, k, T) + 2; drawText(img, hx, hy + 1, w, { color: T.textDim }); hx += textWidth(w) + 3; } hy += KBD_H + 2; };
     row([['RIGHT', 'point'], ['DRAG', 'menu']]);
     row([['F', 'pin']]);
     drawText(img, ix + 1, hy, 'Click your pin: remove', { color: T.textDim });
@@ -552,13 +555,14 @@ export function dockButton(T, { state = 'normal', color = null, size = 24 } = {}
   // inner rim: 1 px of the line tone, then a transparent hole (the portrait group's art)
   for (let y = 3; y < size - 3; y++) for (let x = 3; x < size - 3; x++) img.erase(x, y);
   if (state === 'open') { img.hline(3, 2, size - 6, T.goldHi); img.vline(2, 3, size - 6, T.goldHi); }
-  if (color) img.blit(dockDot(color), size - 6, size - 6);
+  if (color) img.blit(dockDot(color, T), size - 6, size - 6);
   return img;
 }
-/** 7x7 pin-colour dot (the dock button's corner badge). */
-export const dockDot = (color) => memo('dot' + color, () => {
+/** 7x7 pin-colour dot (the dock button's corner badge). Black: solid body in the dark UI outline (like the black pin). */
+export const dockDot = (color, T) => memo('dot' + color + (T ? tkey(T) : ''), () => {
   const R = PIN_RAMPS[color];
-  return shade(['.###.', '#####', '#####', '#####', '.###.'], { '#': { hi: R.hi, mid: R.mid, sh: R.sh, line: R.line } }, { diag: false });
+  const m = color === 'black' && T ? { hi: T.ironHi, mid: R.hi, sh: R.hi, line: T.outline } : { hi: R.hi, mid: R.mid, sh: R.sh, line: R.line };
+  return shade(['.###.', '#####', '#####', '#####', '.###.'], { '#': m }, { diag: false });
 });
 /** Armed pill size for a mode: one line of text + icon + Cancel, sized from the text (critic r1: the fixed 96-px pill
  * wrapped to 2 lines and jammed 'Cancel' against its frame). */

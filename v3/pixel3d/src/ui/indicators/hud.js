@@ -307,8 +307,10 @@ function drawOffscreen(L, list, T) {
     const x = Math.round(cx + dx * s), y = Math.round(cy + dy * s);
     L.screen.blit(dp.img, x - (dp.img.w >> 1), y - (dp.img.h >> 1));
     const uy = Math.round(Math.sin((d8 * Math.PI) / 4));
-    // name under the disc (above it when the pointer points down)
-    const ty = uy > 0 ? y - r - 11 : y + r + 3;
+    // UI integration r2 (whole-screen critic: Wren's name sat above its disc, Hob's below): ONE rule = the name goes on
+    // the side away from the pointer's vertical component, and ABOVE for sideways pointers (left / right). The extra
+    // 8-px top margin in s keeps an above-name inside the frame for every heading.
+    const ty = uy < 0 ? y + r + 3 : y - r - 11;
     drawText(L.screen, x, ty, A.fitName(o.name, 48), { color: o.ghost ? T.ghost : T.labelText, outline: o.ghost ? A.labelLineOf('ghost', T) : T.labelLine, align: 'center' });
   }
 }

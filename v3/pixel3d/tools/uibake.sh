@@ -14,4 +14,10 @@ G0=${G%%:*}; N=${G#*:}          # '<group>:<name>' = second atlas (src/ui/<group
 mkdir -p "$ROOT/out/ui" "$ROOT/shots/ui-$G0/bake"
 rsync -az "$HOST:$RDIR/shots/ui-$G0/bake/$N.png" "$HOST:$RDIR/shots/ui-$G0/bake/$N.json" "$ROOT/out/ui/"
 rsync -az "$HOST:$RDIR/shots/ui-$G0/bake/$N-sheet.png" "$ROOT/shots/ui-$G0/bake/"
+# extra text outputs of the bake module (files(env), e.g. panels.css): listed by uibake.mjs in <name>.files
+EXTRA=$(ssh "$HOST" "cat $RDIR/shots/ui-$G0/bake/$N.files 2>/dev/null" || true)
+for f in $EXTRA; do
+  [[ "$f" =~ ^[A-Za-z0-9._-]+$ && "$f" != .* ]] || { echo "uibake.sh: skipping bad extra file name '$f'" >&2; continue; }
+  rsync -az "$HOST:$RDIR/shots/ui-$G0/bake/$f" "$ROOT/out/ui/" && echo "out/ui/$f"
+done
 echo "out/ui/$N.png out/ui/$N.json shots/ui-$G0/bake/$N-sheet.png"

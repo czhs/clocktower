@@ -404,3 +404,5 @@ export function markerFrames(T) {
   return m;
 }
 export { PIN_COLORS };
+// (variants task, additive) shared with the v2-size finger variant (v2size.js): same painter, so both sizes keep one look
+export { paintGrid, fistCentre, rotCW, flipX as flipGridX };

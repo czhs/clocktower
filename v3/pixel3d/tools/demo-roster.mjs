@@ -323,7 +323,7 @@ try {
       clock: h ? +h.clock.toFixed(2) : null, roots, npcs: d.npcs?.list ?? null,
       // the player's model really is this character: its root name, spec and rig bone count
       model: h ? { root: h.root.name, spec: h.spec?.name ?? null, bones: mesh?.skeleton?.bones?.length ?? null, specBones: h.spec?.skeleton?.length ?? null,
-        inScene: h.root.parent === d.engine.scene } : null,
+        lastBone: mesh?.skeleton?.bones?.at(-1)?.name ?? null, inScene: h.root.parent === d.engine.scene } : null,
       pos: d.player ? [+d.player.position.x.toFixed(2), +d.player.position.z.toFixed(2)] : null,
       root: h ? [+h.root.position.x.toFixed(2), +h.root.position.y.toFixed(3), +h.root.position.z.toFixed(2)] : null,
       programs: d.engine.renderer.info.programs?.length ?? null, fps: window.__demo.info?.().fps ?? null,
@@ -388,7 +388,7 @@ try {
     report.steps.push(step);
     if (idle.id !== id) fails.push(`${id}: swap did not happen (player handle ${idle.id})`);
     const md = idle.model;
-    if (!md || md.root !== `character:${id}` || !md.inScene || md.bones !== md.specBones) fails.push(`${id}: player model is not this character's rig ${JSON.stringify(md)}`);
+    if (!md || md.root !== `character:${id}` || !md.inScene || (md.bones !== md.specBones && !(md.bones === md.specBones + 1 && md.lastBone === "ghostHalo"))) fails.push(`${id}: player model is not this character's rig ${JSON.stringify(md)}`);
     if (!okRoots) fails.push(`${id}: character roots in the scene ${JSON.stringify(after.roots)} (want 1 player + ${npcN} NPCs)`);
     if (walk.mode === 'idle' && walk.speed < 0.05) fails.push(`${id}: not walking while W is held (${step.walk})`);
     if (walk2.mode === 'idle' && walk2.speed < 0.05) fails.push(`${id}: not walking while D is held (${step.walk2})`);

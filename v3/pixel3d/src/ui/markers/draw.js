@@ -19,6 +19,7 @@
 //   (none)   the 2D drop-in fallback: everything on L.world / L.ground in one call (no depth test)
 import { PixelImage, GRID_HZ, frameAt, dissolve, drawText, textWidth, loadImage } from '../kit.js';
 import { ANCHORS, POINT, POINT_DIRS, POINT_VEC, PIN_ICON, FPS, inIconInner } from './art.js';
+const POINT_NEW = POINT;
 
 const wants = (L, ph) => L.phase === undefined || L.phase === ph;
 
@@ -44,7 +45,8 @@ export function nearestDir(dx, dy) {
 export function put(img, F, name, x, y, akey, k = 0) {
   const src = F.get(name);
   if (!src) throw new Error(`markers: no frame ${name}`);
-  const a = ANCHORS[akey], dx = Math.round(x) - a.x, dy = Math.round(y) - a.y;
+  // F.anchors: a variant frame set's own anchors (v2size.js: the v2-size finger); absent = the art.js anchors
+  const a = F.anchors?.[akey] ?? ANCHORS[akey], dx = Math.round(x) - a.x, dy = Math.round(y) - a.y;
   if (k > 0) { const c = src.clone(); dissolve(c, k, dx, dy); img.blit(c, dx, dy); } else img.blit(src, dx, dy);
 }
 
@@ -64,6 +66,7 @@ export function drawPoint(L, F, { head, aim, spot, person = true, age, still = f
   const e = pointEnvelope(age, still);
   if (!e || L.phase === 'pins') return null;
   const dir = nearestDir(aim.x - head.x, aim.y - head.y), [vx, vy] = POINT_VEC[dir];
+  const POINT = F.point ?? POINT_NEW;                         // variant geometry (v2size.js POINT_V2: size 24, offset 16)
   const off = POINT.offset - (e.pop ? 3 : 0);                 // pop: the hand starts 3 px closer to the head
   const hx = Math.round(head.x + vx * off), hy = Math.round(head.y + vy * off);
   // ping on the ground at the spot (under characters)

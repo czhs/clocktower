@@ -26,7 +26,9 @@ export default {
       S.disc(r.x + r.w - 2.5, r.y + r.h - 2.5, 3.5, T.outline);
       S.disc(r.x + r.w - 2.5, r.y + r.h - 2.5, 2.5, T.ok);
     }
-    // notebook rows (panels slot): icon at the placeholder's avatar spot
+    // notebook rows (panels slot): icon at the placeholder's avatar spot. UI integration r2: none while the side panel
+    // is hidden (?panel=none, the game screen's Storyteller view): the icons floated over the town without their rows
+    if (hud.panels?.panel === 'none') return;
     const pr = rect(SLOTS.panels[0], S.w, S.h);
     hud.cast.slice(0, 4).forEach((m, i) => {
       const x = pr.x + 7, y = pr.y + 2 + 17 + i * 26 + 6;

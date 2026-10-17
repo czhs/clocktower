@@ -14,7 +14,10 @@ def opt(name, default):
 
 mode, out = sys.argv[1], sys.argv[2]
 cols, scale, fps = opt('--cols', 2), opt('--scale', 0.5), opt('--fps', 30)
-files = [f for a in sys.argv[3:] for f in sorted(glob.glob(a))]
+import re
+def natural(f):  # (module fix) numeric-aware sort: f-100 after f-99 (plain sort put f-100 before f-11)
+    return [int(t) if t.isdigit() else t for t in re.split(r'(\d+)', f)]
+files = [f for a in sys.argv[3:] for f in sorted(glob.glob(a), key=natural)]
 ims = [Image.open(f).convert('RGB') for f in files]
 if scale != 1:
     ims = [im.resize((int(im.width * scale), int(im.height * scale)), Image.NEAREST) for im in ims]

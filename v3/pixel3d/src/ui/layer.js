@@ -16,6 +16,13 @@
 //            standing on them must hide. Props still do not occlude it (use tier W meshes when that matters).
 //   L.screen tier S "screen": lowW x lowH, drawn AFTER the upscale (pipeline.render is wrapped) with the same
 //            integer scale, fixed to the canvas (never moves with the camera): HUD, panels, menus, captions.
+//   L.depthWorld  (optional, module fix) tier "A, depth-tested": same padded frame as L.world plus a per-texel view depth.
+//            Enable once in setup with L.useDepth(); then draw with L.putDepth(src, x, y, d[, k]) where d = L.depthOf(p)
+//            (view depth, m). Composited by pass 'ui-depth' (order 303, after 'ui-world' and the group pin passes 301/302): the scene texel is kept where
+//            the scene is nearer than d - L.depthEps (characters / props in front hide it), and every L.world texel
+//            (labels, bubbles, finger) stays on top. Nearer texels win among depth sprites (z-buffer). Use it for upright
+//            world sprites that stand on the ground: place pins, door tokens, seat signs (markers/pinPass.js is the
+//            group-private original of this tier).
 // Tier W "world" = real 3D meshes in engine.scene (toon materials, outlines); not handled here.
 //
 // Colour: both images hold sRGB bytes. 'ui-world' converts to linear before the pipeline's final sRGB encode (the
@@ -25,7 +32,7 @@
 // CONTRACT-REQUEST (lead): a pipeline.postRender[] hook would replace the render() wrapper below.
 import * as THREE from 'three';
 import { MARGIN } from '../core/PixelCamera.js';
-import { PixelImage, tokens } from './kit.js';
+import { PixelImage, tokens, dissolve as dissolveImg } from './kit.js';
 
 const SRGB_GLSL = /* glsl */`
 vec3 uiSrgbToLin(vec3 c) { return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c)); }`;
@@ -53,7 +60,81 @@ export function createUILayers(engine, { order = 300, tod = null, timeFn = null 
     add(fn, z = 0) { fns.push({ fn, z }); fns.sort((a, b) => a.z - b.z); return fn; },
     remove(fn) { const i = fns.findIndex((f) => f.fn === fn); if (i >= 0) fns.splice(i, 1); },
     setTod(name) { L.tok = tokens(name); },
+    // ---- depth-tested tier (lazy; see header)
+    get depthWorld() { return dimg; },
+    depthEps: 0.25,
+    /** Enable the depth-tested tier (call once, in setup). Returns L. */
+    useDepth({ order: dOrder = 303, eps = 0.25 } = {}) { if (!dpass) makeDepthPass(dOrder); L.depthEps = eps; return L; },
+    /** View depth (m along the camera axis) of a world point: the quantity linDepth() returns in low-res passes. */
+    depthOf(p) {
+      const cam = engine.camera.cam;
+      cam.updateMatrixWorld();
+      return -_tmp2.copy(p).applyMatrix4(cam.matrixWorldInverse).z;
+    },
+    /** Paint src at integer (x, y) into L.depthWorld at depth d (nearer wins per texel); k > 0 = Bayer dissolve. */
+    putDepth(src, x, y, d, k = 0) {
+      if (!dimg) throw new Error('layer: L.putDepth before L.useDepth()');
+      x = Math.round(x); y = Math.round(y);
+      if (k > 0) { src = src.clone(); dissolveImg(src, k, x, y); }
+      const W = dimg.w, H = dimg.h, sd = src.data, o = dimg.data;
+      for (let j = 0; j < src.h; j++) {
+        const ty = y + j;
+        if (ty < 0 || ty >= H) continue;
+        for (let i = 0; i < src.w; i++) {
+          const tx = x + i, si = (j * src.w + i) * 4;
+          if (tx < 0 || tx >= W || !sd[si + 3]) continue;
+          const ti = ty * W + tx;
+          if (!(d < ddepth[ti])) continue;
+          ddepth[ti] = d;
+          o[ti * 4] = sd[si]; o[ti * 4 + 1] = sd[si + 1]; o[ti * 4 + 2] = sd[si + 2]; o[ti * 4 + 3] = 255;
+          dany = true;
+        }
+      }
+      return L;
+    },
   };
+  const _tmp2 = new THREE.Vector3();
+  let dimg = null, ddepth = null, dtexC = null, dtexD = null, dpass = null, dany = false;
+  const dU = { tDC: { value: null }, tDD: { value: null }, tDW: { value: null }, uEps: { value: 0.25 }, uAny: { value: 0 } };
+  const ensureDepth = () => {
+    if (!dpass || !world) return;
+    if (dimg && dimg.w === world.w && dimg.h === world.h) return;
+    dimg = new PixelImage(world.w, world.h);
+    ddepth = new Float32Array(world.w * world.h);
+    dtexC?.dispose(); dtexD?.dispose();
+    const prep = (t) => { t.magFilter = t.minFilter = THREE.NearestFilter; t.generateMipmaps = false; t.flipY = false; t.needsUpdate = true; return t; };
+    dtexC = prep(new THREE.DataTexture(dimg.data, dimg.w, dimg.h, THREE.RGBAFormat, THREE.UnsignedByteType));
+    dtexC.colorSpace = THREE.NoColorSpace;
+    dtexD = prep(new THREE.DataTexture(ddepth, dimg.w, dimg.h, THREE.RedFormat, THREE.FloatType));
+    dU.tDC.value = dtexC; dU.tDD.value = dtexD;
+  };
+  function makeDepthPass(dOrder) {
+    dpass = engine.pipeline.addPass({
+      name: 'ui-depth', order: dOrder,
+      update: () => {                         // L.world / L.depthWorld were redrawn by 'ui-world' this frame
+        dU.uAny.value = dany && L.enabled ? 1 : 0; dU.uEps.value = L.depthEps; dU.tDW.value = texW;
+        if (dany) { dtexC.needsUpdate = true; dtexD.needsUpdate = true; }
+      },
+      material: engine.pipeline.makeLowresMaterial({
+        uniforms: dU,
+        fragment: /* glsl */`
+          uniform sampler2D tDC, tDD, tDW;
+          uniform float uEps, uAny;
+          ${SRGB_GLSL}
+          void main() {
+            vec4 s = texture2D(tColor, vUv);
+            vec3 c = s.rgb;
+            if (uAny > 0.5) {
+              vec2 uv = vec2(vUv.x, 1.0 - vUv.y);
+              vec4 p = texture2D(tDC, uv);
+              if (p.a > 0.0 && texture2D(tDW, uv).a <= 0.0 && linDepth(vUv) >= texture2D(tDD, uv).r - uEps) c = uiSrgbToLin(p.rgb);
+            }
+            gl_FragColor = vec4(c, s.a);
+          }`,
+      }),
+    });
+    ensureDepth();
+  }
   const _tmp = new THREE.Vector3();
 
   const ensure = () => {
@@ -78,6 +159,8 @@ export function createUILayers(engine, { order = 300, tod = null, timeFn = null 
   const redraw = () => {
     ensure();
     world.clear(); ground.clear(); screen.clear();
+    ensureDepth();
+    if (dimg) { dimg.clear(); ddepth.fill(1e9); dany = false; engine.camera.snapWorld(_tmp2.set(0, 0, 0), _tmp); }
     L.t = timeFn ? timeFn(engine.time ?? 0) : engine.time ?? 0;   // UI clock (a frozen stage clock freezes UI too)
     if (L.enabled) for (const { fn } of fns) fn(L);
     texW.needsUpdate = true; texG.needsUpdate = true; texS.needsUpdate = true;

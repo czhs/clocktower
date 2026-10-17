@@ -19,4 +19,4 @@ if [[ -d "$ROOT/$REL" ]]; then
   find "$ROOT/$REL" -type f -name "$PAT" -delete
   echo "local: removed $N file(s) from $REL"
 fi
-ssh "$HOST" "cd $RDIR 2>/dev/null && [ -d '$REL' ] && find '$REL' -type f -name '$PAT' -delete && echo 'remote: cleared $REL' || true"
+ssh "$HOST" "cd $RDIR 2>/dev/null && [ -d '$REL' ] && N=\$(find '$REL' -type f -name '$PAT' | wc -l) && find '$REL' -type f -name '$PAT' -delete && echo \"remote: removed \$N file(s) matching '$PAT' from $REL\" || true"

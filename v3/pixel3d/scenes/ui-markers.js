@@ -2,7 +2,7 @@
 // group's elements over it, at the game camera (vh 12), day or night, with the cast. Name labels come from the
 // indicators group module when it exists, else the kit placeholder (pins sit on the labels).
 //
-//   index.html?scene=ui-markers[&state=live|all|point|drop|pick][&tod=noon|golden|night][&still=1][&labels=0][&t=<s>]
+//   index.html?scene=ui-markers[&state=live|all|point|drop|pick|depth|variants][&pointer=new|v2][&book=held|big][&tod=noon|golden|night][&still=1][&labels=0][&t=<s>]
 //   tools/shot.sh ui-markers shots/ui-markers/r2/all.png --size 1280x720 --t 1 --q "state=all"
 //
 // States
@@ -16,6 +16,8 @@
 //          (the label steps to the free side of the crosshair when a name label is in the way)
 //   depth  place pins around characters: pins BEHIND Bram / Finn / Cleo are hidden by them, pins IN FRONT of Finn /
 //          Gus cover them (depth-tested pin pass, src/ui/markers/pinPass.js); one drops behind Finn on a 3.2 s loop
+//   variants  the four combinations Notebook held / big x Pointer new / v2 size side by side (src/ui/notebook/variants.js)
+//   (any state + ?pointer=v2 draws the v2-size finger: hud.uiOptions.pointerScale, scenes/ui-hud.js)
 // still=1 = reduced motion (no pop, bob, marching, pulsing; drops land at once).
 // Every state is registered through M.register (draw.js phases): depth-tested pins, trail at z 15, the rest at z 30.
 import { buildHudStage } from './ui-hud.js';
@@ -27,13 +29,15 @@ import { markersContext } from '../src/ui/markers/stage.js';
 import { drawLive } from '../src/ui/markers/hud.js';
 import { frameAt } from '../src/ui/kit.js';
 import * as THREE from 'three';
+import { installVariants, VARIANT_CAST } from '../src/ui/notebook/variants.js';
 
 export default async function build(engine, params) {
-  const hud = await buildHudStage(engine, params);
+  const variants = params.get('state') === 'variants';
+  const hud = await buildHudStage(engine, params, variants ? { cast: VARIANT_CAST } : undefined);
   const P = hud.P, state = P('state', 'live'), still = P('still', '0') === '1';
   // indicators config: keep Cleo's chat bubble, drop Bram's (his name carries the person-pin fan here)
   const cleo = hud.bySeat(3);
-  hud.indicatorsConfig = { bubbles: cleo ? [{ m: cleo, text: 'Something was scratching at my door all night.', at: 0, period: 9 }] : [] };
+  hud.indicatorsConfig = { bubbles: cleo && !variants ? [{ m: cleo, text: 'Something was scratching at my door all night.', at: 0, period: 9 }] : [] };
   if (P('labels', '1') !== '0') {
     let ind = null;
     try { ind = (await import('../src/ui/indicators/hud.js')).default; } catch (e) {
@@ -43,7 +47,8 @@ export default async function build(engine, params) {
     else PLACEHOLDERS.indicators(hud);
   }
   const M = await markersContext(hud);
-  engine.stats.markers = { state, still, icons: M.iconsFrom };
+  engine.stats.markers = { state, still, icons: M.iconsFrom, pointerScale: hud.uiOptions?.pointerScale };
+  if (variants) { await installVariants(hud, { still }); return; }
   const mod = (x, n) => ((x % n) + n) % n;
   const draw = {
     live: (L) => drawLive(hud, L, M, { still }),

@@ -11,7 +11,10 @@
 //   PixelImage            RGBA buffer: set/get/rect/hline/vline/line/dotted/disc/ellipse/ring/blit/outline/flip/crop
 //   hex / rgba / mix      colour parsing + sRGB mixing;  ramp(mid) -> {hi, mid, sh, line} (OKLab, warm lights / cool shadows)
 //   TOKENS, tokens(tod)   colour tokens, day / golden / night variants (docs/UI.md §2.6)
-//   FONTS, drawText, textWidth, wrapText   bitmap fonts 'body' (cap 6, x 4, desc 2) and 'tiny' (3x5 caps/digits)
+//   FONTS, drawText, textWidth, wrapText, drawRuns, registerFont   bitmap fonts 'body' (cap 6, x 4, desc 2), 'tiny' (= 'label':
+//                         caps/digits, 3x5 with 5-wide M/W, 4-wide N), 'display' (hud group face, registered by the pages)
+//   annulus, shade        clean elliptic rings; lit-from-upper-left 3-tone shading + line for flat sprites
+//   PIN_LIT, VARIANT_RAMPS, variantRamps, steps   pin ramps with a dark line for every colour; ghost/spent/dead ramps
 //   FRAMES, drawBox       procedural 9-slice frames (panel, raised, pressed, sunk, parchment, gold, bubble, chip, ...)
 //   nineSlice             9-slice from baked art (panels group)
 //   GRID_HZ, holdsFor, frameAt, popScale, dissolve   stepped animation on the 30 Hz game grid
@@ -72,6 +75,8 @@ export function ramp(mid, { light = 0.09, dark = 0.11, line = 0.26 } = {}) {
 // docs/UI.md §2.6. Derived from the v2 theme (apps/client/src/ui/common/theme.css: Panel ink #211f2c, Frame iron
 // #454250, Parchment #e4d8ba, Focus gold #d5b56a, good #7fa8d8, evil #e0625a) re-tuned to ART_DIRECTION: no pure
 // black/white, warm lights, cool (violet/slate) shadows, every line a darker+cooler shade of its own fill.
+/** Night variant of a light tone: OKLab L - dL, b shifted toward blue (cooler), a kept. Deterministic. */
+function nightTone(c, dL = 0.05) { const [L, a, b] = toOklab(c); return hex(fromOklab([L - dL, a, b * 0.85 - 0.006])); }
 const DAY = {
   outline: '#1A1524',     // outermost UI line (darkest token; mauve-navy, never black)
   shadow: '#120E19',      // 1-px drop shadow under floating UI
@@ -87,6 +92,7 @@ const DAY = {
   labelText: '#F2E8CF', labelLine: '#1E1828',                    // in-world name labels
   bubble: '#2B2536', bubbleEdge: '#8C7650', bubbleHi: '#3D3548',  // speech bubble (v2 #211f2c / #8a7448 / #343042)
   scrim: [20, 15, 30, 150],                                      // the ONE translucent token: full-screen dim behind modals
+  bedtime: '#6F7FD0',                                            // v2 clock.css bedtime periwinkle (module fix: hud request)
 };
 const NIGHT = {
   ...DAY,
@@ -98,17 +104,43 @@ const NIGHT = {
   st: '#E2C473', ghost: '#BFDCEB',
   bubble: '#221F33', bubbleEdge: '#7A6A55', bubbleHi: '#33304A',
   scrim: [12, 11, 26, 165],
+  bedtime: '#6874C0',
+  // (module fix) world-anchored parchment (finger, hands, pin sockets, callouts) a touch dimmer + cooler at night, like
+  // v2's dimmer house names (docs/UI.md §2.7). Derived in OKLab from the day values (L -0.05, chroma kept, cooler).
+  parchment: nightTone('#E6D7B2'), parchmentHi: nightTone('#F4ECD4'), parchmentSh: nightTone('#C2AE86'),
 };
 const GOLDEN = { ...DAY, ink: '#2D2433', inkRaised: '#3D3145', iron: '#665663', ironHi: '#8E7A86', text: '#F3E2C2', labelText: '#F6E6C8' };
 export const TOKENS = { day: DAY, golden: GOLDEN, night: NIGHT };
+
+/** n-step OKLab ramp from a (dark) to b (light), hex strings. */
+export function steps(a, b, n = 5) {
+  const A = toOklab(a), B = toOklab(b);
+  return Array.from({ length: n }, (_, i) => hex(fromOklab(A.map((v, j) => v + (B[j] - v) * (i / (n - 1))))));
+}
+/**
+ * Shared variant ramps (5 steps, dark -> light) for ghost / spent ghost / dead art (module fix: portraits request; the
+ * same values as src/ui/portraits/style.js variantRamp()). ghost / spent = the cast's ghost material (src/chars/rig.js
+ * ghostOpts defaults), dead = a warm memorial tone on the parchment tokens. Use VARIANT_RAMPS.ghost etc. or
+ * variantRamps(T) for the token set of a time of day (dead follows the night parchment).
+ */
+export function variantRamps(T = DAY) {
+  return { ghost: steps('#3A5696', '#E2EEFA'), spent: steps('#3A4260', '#98A2BA'),
+    dead: [ramp(T.parchmentLine).line, T.parchmentLine, hex(mix(T.parchmentLine, T.parchmentSh, 0.5)), T.parchmentSh, T.parchment] };
+}
+export const VARIANT_RAMPS = variantRamps(DAY);
 /** Token set for a time-of-day preset name (sky.js: morning|noon|golden|night). */
 export const tokens = (tod = 'noon') => (tod === 'night' ? NIGHT : tod === 'golden' ? GOLDEN : DAY);
 
 /** v2 pin colours (social.json meta.pinColorHex) as 3-tone ramps. Keys = v2 PinColor ids. */
 export const PIN_HEX = { gold: '#e6b632', crimson: '#c42c3c', violet: '#8a52cc', teal: '#22a6b4', green: '#5cb23a', orange: '#e8701e', white: '#ece6da', black: '#2c2636' };
 export const PIN_COLORS = Object.keys(PIN_HEX);
+// NOTE (module fix): PIN_RAMPS.black.line is a LIGHT tone (#A49CB4) kept for compatibility (the emotes dock uses it as the
+// lit edge of a black swatch on ink panels); it is also exposed as `rim`. Art that outlines a black pin with its own
+// `line` (world pins, sockets) should use PIN_LIT (black = a dark body with a dark line, as markers art.js PIN_ART).
 export const PIN_RAMPS = Object.fromEntries(PIN_COLORS.map((k) => [k, k === 'white' ? { hi: '#F4EEE2', mid: '#DCD3C4', sh: '#A79CB0', line: '#5B5168' }
-  : k === 'black' ? { hi: '#5A5168', mid: '#3A3346', sh: '#2A2434', line: '#A49CB4' } : ramp(PIN_HEX[k])]));
+  : k === 'black' ? { hi: '#5A5168', mid: '#3A3346', sh: '#2A2434', line: '#A49CB4', rim: '#A49CB4' } : ramp(PIN_HEX[k])]));
+/** Pin ramps whose `line` is always the darkest tone (black: own dark ramp around #2c2636, = markers PIN_ART.black). */
+export const PIN_LIT = { ...PIN_RAMPS, black: { ...ramp(PIN_HEX.black, { light: 0.2, dark: 0.05, line: 0.1 }), mid: PIN_HEX.black, rim: '#A49CB4' } };
 
 // ------------------------------------------------------------------------------------------------ PixelImage
 export class PixelImage {
@@ -292,6 +324,15 @@ const TINY_SRC = {
   '/': '001001010100100', '!': '010010010000010', '?': '110001010000010', '×': '000101010101000', '%': '101001010100101', '…': '000000000000101',
 };
 const TINY_GLYPHS = Object.fromEntries(Object.entries(TINY_SRC).map(([k, s]) => [k, { rows: [0, 1, 2, 3, 4].map((j) => s.slice(j * 3, j * 3 + 3).replace(/1/g, '#').replace(/0/g, '.')), top: 0 }]));
+// (module fix) the 3-wide M / W / N read as H / H / П at 1x ("RMB" -> "RHB", "NOMINATIONS" -> "NOHINATIONS"): 5-wide M + W,
+// 4-wide N, plus '#', ',', '·', '—', '–', "'" — the same glyphs as the hud group's LABEL face (src/ui/hud/font.js), so
+// FONTS.tiny and LABEL now render identically (FONTS.label is an alias).
+// (UI integration r2, critic) the 3-wide D (110/101/101/101/110) read as O at 1x on keycaps ('DRAG' -> 'ORAG'): 4-wide D.
+Object.assign(TINY_GLYPHS, Object.fromEntries(Object.entries({
+  d: '###./#..#/#..#/#..#/###.', m: '#...#/##.##/#.#.#/#...#/#...#', w: '#...#/#...#/#.#.#/##.##/#...#', n: '#..#/##.#/#.##/#..#/#..#',
+  '#': '.#.#./#####/.#.#./#####/.#.#.', ',': '.../.../.../.#./#..', '·': './././#/.', '—': '...../...../#####/...../.....',
+  '–': '..../..../####/..../....', "'": '#/#/./././.'.slice(0, 9),
+}).map(([k, r]) => [k, { rows: r.split('/'), top: 0 }])));
 
 function makeFont(name, glyphs, { lineH, space, tracking = 1, cap, xh, desc = 0, upper = false }) {
   const map = new Map();
@@ -302,6 +343,17 @@ export const FONTS = {
   body: makeFont('body', BODY_GLYPHS, { lineH: 9, space: 2, cap: 6, xh: 4, desc: 2 }),
   tiny: makeFont('tiny', TINY_GLYPHS, { lineH: 6, space: 2, cap: 5, xh: 5, upper: true }),
 };
+FONTS.label = { ...FONTS.tiny, name: 'label' };     // alias (hud LABEL = tiny with the wide M/W/N, now the kit's own)
+/**
+ * Register a font object under a FONTS key (module fix). kit.js cannot import group modules (circular + ownership),
+ * so pages register group faces at load: scenes/ui-hud.js and scenes/ui-bake.js register the hud group's DISPLAY face
+ * as FONTS.display (src/ui/hud/font.js). Accepts a ready font ({map, lineH, ...}) or a glyph table + metrics.
+ * Until registered, drawText({font: 'display'}) falls back to body (and warns once).
+ */
+export function registerFont(key, font, metrics = null) {
+  FONTS[key] = metrics ? makeFont(key, font, metrics) : font;
+  return FONTS[key];
+}
 const _fold = new Map();
 function glyphOf(font, ch) {
   const f = typeof font === 'string' ? FONTS[font] : font;
@@ -317,7 +369,13 @@ function glyphOf(font, ch) {
   if (k && k !== ch) { g = f.map.get(f.upper ? k.toLowerCase() : k); if (g) return g; }
   return f.map.get('?');
 }
-const fontOf = (font) => (typeof font === 'string' ? FONTS[font] : font) || FONTS.body;
+const _warned = new Set();
+const fontOf = (font) => {
+  const f = typeof font === 'string' ? FONTS[font] : font;
+  if (f) return f;
+  if (typeof font === 'string' && !_warned.has(font)) { _warned.add(font); console.warn(`kit: font '${font}' not registered, using body`); }
+  return FONTS.body;
+};
 /** Width in px of a single line of text (no outline). */
 export function textWidth(s, font = 'body') {
   const f = fontOf(font);
@@ -372,6 +430,60 @@ export function drawText(img, x, y, s, { font = 'body', color = DAY.text, outlin
   pass(target, color, 0);
   if (outline) { target.outline(outline, { diag: true }); img.blit(target, x - 1, y - 1); return { x: x - 1, y: y - 1, w: w + 2, h: H + 2 }; }
   return { x, y, w, h: H + (shadow ? 1 : 0) };
+}
+
+/**
+ * Draw coloured runs on one line (module fix: hud request): runs = [[text, color], ...] (or [text, {color, ...opts}]).
+ * Advances textWidth(run) + tracking between runs (textWidth leaves out the trailing tracking, so a naive
+ * x += textWidth(run) glues the next run's first glyph to the last one). opts as drawText (font, outline, shadow);
+ * align 'left' | 'center' | 'right' applies to the whole line. Returns {x, y, w, h} of the line.
+ */
+export function drawRuns(img, x, y, runs, { font = 'body', outline = null, shadow = null, align = 'left' } = {}) {
+  const f = fontOf(font);
+  const list = runs.map((r) => (Array.isArray(r) ? r : [r.text, r])).map(([t, c]) => [String(t), typeof c === 'object' && c && !Array.isArray(c) ? c : { color: c }]);
+  const w = list.reduce((a, [t], i) => a + textWidth(t, f) + (i ? f.tracking : 0), 0);
+  if (align === 'center') x -= Math.floor(w / 2); else if (align === 'right') x -= w;
+  let cx = x | 0;
+  for (const [t, o] of list) {
+    if (t) drawText(img, cx, y, t, { font: f, outline, shadow, ...o, align: 'left' });
+    cx += textWidth(t, f) + f.tracking;
+  }
+  const H = f.cap + f.desc;
+  return outline ? { x: (x | 0) - 1, y: (y | 0) - 1, w: w + 2, h: H + 2 } : { x: x | 0, y: y | 0, w, h: H + (shadow ? 1 : 0) };
+}
+
+// ------------------------------------------------------------------------------------------------ shapes + shading
+/**
+ * Elliptic annulus (module fix: promoted from src/ui/indicators/art.js): pixel centres inside (rx, ry) and outside
+ * (rx - tx, ry - ty) -> 2 px wide at the sides, 1 px at the poles, no pole spurs (two concentric ring() calls leave
+ * 1-px spurs). keep(x, y) filters pixels (e.g. only the front of a ground ring).
+ */
+export function annulus(img, cx, cy, rx, ry, c, { tx = 2, ty = 1, keep = null } = {}) {
+  const ins = (x, y, a, b) => { const dx = (x + 0.5 - cx) / a, dy = (y + 0.5 - cy) / b; return dx * dx + dy * dy <= 1; };
+  for (let y = Math.floor(cy - ry - 1); y <= Math.ceil(cy + ry + 1); y++)
+    for (let x = Math.floor(cx - rx - 1); x <= Math.ceil(cx + rx + 1); x++)
+      if (ins(x, y, rx, ry) && !ins(x, y, rx - tx, ry - ty) && (!keep || keep(x, y))) img.set(x, y, c);
+  return img;
+}
+/**
+ * Lit-from-the-upper-left shading of a flat sprite (module fix: promoted from src/ui/indicators/art.js): every `mid`
+ * pixel with an empty neighbour above/left becomes `hi`, else with an empty neighbour below/right becomes `sh`; then a
+ * 1-px `line` outline (diag = 8-neighbour). Shade AFTER flips/transposes so every direction keeps the same light.
+ * R = {hi, mid, sh, line} (a ramp()).
+ */
+export function shade(img, { hi, mid, sh, line }, { diag = false } = {}) {
+  const M = rgba(mid);
+  const isMid = (x, y) => { const v = img.get(x, y); return v[3] && v[0] === M[0] && v[1] === M[1] && v[2] === M[2]; };
+  const empty = (x, y) => img.alpha(x, y) === 0;
+  const set = [];
+  for (let y = 0; y < img.h; y++) for (let x = 0; x < img.w; x++) {
+    if (!isMid(x, y)) continue;
+    if (hi && (empty(x, y - 1) || empty(x - 1, y))) set.push([x, y, hi]);
+    else if (sh && (empty(x, y + 1) || empty(x + 1, y))) set.push([x, y, sh]);
+  }
+  for (const [x, y, c] of set) img.set(x, y, c);
+  if (line) img.outline(line, { diag });
+  return img;
 }
 
 // ------------------------------------------------------------------------------------------------ frames (9-slice)
@@ -467,13 +579,19 @@ export function dissolve(img, k, ox = 0, oy = 0) {
 }
 /**
  * Standard appear / disappear envelope (docs/UI.md §2.7) for an element shown at tIn (s), hidden at tOut (s):
- * returns {visible, dissolve (0..1, stepped 3 levels at 15 fps), pop (1 during the first 2 grid frames)}.
+ * returns {visible, dissolve (0..1, stepped 3 levels), pop (1 during the first popFrames grid frames)}.
+ * Default dissolve = 3 steps of 2 grid frames (200 ms, 15 fps). opts (module fix, additive):
+ *   outMs       total dissolve time; the 3 steps are held round(outMs / 3 / 33.3) grid frames each (v2 bubble 600 -> 6)
+ *   holdFrames  grid frames per dissolve step (overrides outMs)
+ *   popFrames   grid frames of the pop drawing (default 2; 0 = no pop, e.g. reduced motion)
+ * tOut = the moment the element starts to dissolve (it is gone 3 * hold grid frames later).
  */
-export function envelope(t, tIn, tOut = Infinity) {
+export function envelope(t, tIn, tOut = Infinity, { outMs = null, holdFrames = null, popFrames = 2 } = {}) {
   if (t < tIn) return { visible: false, dissolve: 1, pop: 0 };
   const a = Math.floor((t - tIn) * GRID_HZ + 1e-6);
-  if (t < tOut) return { visible: true, dissolve: 0, pop: a < 2 ? 1 : 0 };
-  const b = Math.floor((t - tOut) * GRID_HZ / 2 + 1e-6);        // 15 fps steps
+  if (t < tOut) return { visible: true, dissolve: 0, pop: a < popFrames ? 1 : 0 };
+  const hold = Math.max(1, holdFrames ?? (outMs != null ? Math.round(outMs / 3 / (1000 / GRID_HZ)) : 2));
+  const b = Math.floor((t - tOut) * GRID_HZ / hold + 1e-6);
   return b >= 3 ? { visible: false, dissolve: 1, pop: 0 } : { visible: true, dissolve: [0.25, 0.5, 0.75][b], pop: 0 };
 }
 

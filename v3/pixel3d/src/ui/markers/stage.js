@@ -1,6 +1,7 @@
 // Markers <-> mock-HUD glue (owner: markers group): where the markers attach to the cast of scenes/ui-hud.js
 // buildHudStage (hud.cast / hud.st), and the dropper icons. Used by src/ui/markers/hud.js and scenes/ui-markers.js.
 import { markerFrames } from './art.js';
+import { markerFramesV2size } from './v2size.js';
 import { initialIcon, loadCastIcons } from './draw.js';
 import { createPinPass } from './pinPass.js';
 import { textWidth } from '../kit.js';
@@ -16,7 +17,11 @@ export async function markersContext(hud) {
   const M = {
     hud,
     iconsFrom: icons ? 'out/ui/portraits.json' : 'initials (portraits atlas not baked yet)',
-    frames: (L) => markerFrames(L.tok),
+    // variants (additive): pointerScale 'new' (default, art.js) | 'v2' (v2size.js: the finger at the v2 cast-relative
+    // size, same frame names). Live option: hud.uiOptions.pointerScale (scenes/ui-hud.js ?pointer=v2, hud.setUiOptions);
+    // framesFor(L, scale) picks one explicitly (the variants scene shows both at once).
+    frames: (L) => M.framesFor(L, hud.uiOptions?.pointerScale),
+    framesFor: (L, scale = 'new') => (scale === 'v2' ? markerFramesV2size(L.tok) : markerFrames(L.tok)),
     /** {icon, iconKey} of a dropper (cast member or id). */
     icon(m, T) {
       const id = typeof m === 'string' ? m : m.id;

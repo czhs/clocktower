@@ -67,7 +67,7 @@ export default {
     for (const c of PIN_COLORS) { const notch = new PixelImage(2, 2); notch.rect(0, 0, 2, 2, PIN_RAMPS[c].hi); notch.set(1, 1, PIN_RAMPS[c].mid); out.push([`emote_pie_notch_${c}`, notch]); }
     // dock
     for (const s of ['normal', 'hover', 'open']) out.push([`emote_dock_btn${s === 'normal' ? '' : '_' + s}`, E.dockButton(T, { state: s })]);
-    for (const c of PIN_COLORS) out.push([`emote_dock_dot_${c}`, E.dockDot(c)]);
+    for (const c of PIN_COLORS) out.push([`emote_dock_dot_${c}`, E.dockDot(c, T)]);
     for (const [n, st] of [['emote_swatch_on', 'on'], ['emote_swatch_hover', 'hover']]) {
       const im = new PixelImage(11, 16); drawBox(im, 0, 0, 11, 16, st === 'on' ? { line: 'outline', edge: 'goldHi', fill: 'inkRaised', corner: 1 } : { line: 'outline', edge: 'ironHi', fill: 'inkRaised', corner: 1 }, T);
       out.push([n, im]);
@@ -97,9 +97,9 @@ export default {
         place: 'tail tip 1 px above the label stack top: hud.indicators.stackTop(m) (visual top, ghost lift, You chevron); a shared stack allocator (labels < bubble < pins < pop) is pending (lead)' },
       pie: { geometry: E.PIE, v2: E.V2_PIE, scale: 'texels at x2 (1280x720): R = round(cssRadius / 2) - 6; dead zone = css / 2', ...this._pie,
         open: 'grid frame 0: open_0 (pop), 1..2: open_1/open_2, >= 3: base; wedges fan in from Point (0, 1, n-1, 2, n-2, ...)',
-        commit: '15 fps: others 50 % dissolved (back, hub, chosen hot wedge solid), back + hub + chosen, that at 50 %, at 75 %, gone', cancel: '3-step Bayer dissolve at 15 fps',
+        commit: '15 fps: 0 others 50 % dissolved (hub + chosen hot wedge solid), 1 the chosen wedge alone (its back sector, no hub well), 2 / 3 that at 50 / 75 %, gone', cancel: '3-step Bayer dissolve at 15 fps',
         hot: 'emote_pie_<k>_hot_<i> overlay (pops out 2 px over the back ring, icon 1 px out/up); pin wedges in the pin ramp, Point in gold, Remove in danger',
-        notch: 'emote_pie_notch_<color> at radius R-3, angle + 0.28 wedge: the current pin colour' },
+        notch: 'emote_pie_notch_<color> at radius R-3, on the wedge centre line (v2 .ctp-current): the current pin colour' },
       timing: E.TIMING,
       newStyle: {
         emote_point_9: '9x9 Point glyph (art bottom-aligned)', emote_point_11: '11x11 Point glyph (emote pop)', 'emote_kbd*': 'key chips RIGHT / DRAG / F (dock hints)', 'emote_pin_<c>': 'mini map pins 9x12 (tip anchor)', 'emote_pin_s_<c>': 'mini pins 7x9',
