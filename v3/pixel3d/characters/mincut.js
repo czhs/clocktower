@@ -7,6 +7,7 @@
 // white-rimmed ears are keyed per gait drawing in clips.walk (LegGait plays authored walk clips, module fix M1).
 // r2 (critic 17/24 fixes): tail moved out beside the left hip; story props (scissors in the right paw for vote/snip,
 // a 3-link chain in the left paw for snip; hidden TINY parts shown with .s); joined brow patches; curled die.
+// r3 (cast close-out): game clips point (two-paw, along the facing), ghost + ghost-spent (spec.ghost, keepHue 0.3).
 import * as THREE from 'three';
 import { chibi } from '../src/chars/rig.js';
 import * as K from '../src/chars/kit.js';
@@ -256,6 +257,7 @@ const BLINK = EYES(0, -0.8);
 const HALF = EYES(0, -0.45);
 const SQUINT = EYES(0.05, -0.55);
 const WIDE = EYES(0.1, 0.18);
+const PT_THICK = [0.25, 0, 0.25];   // r3 point: arm segments 1.25× thick (length via '.l')
 const EARS = (l, r = l) => ({ earL0: l, earR0: r });
 const TAIL = (o0, o1 = 0, tw = 0) => ({ tail0: [0, tw, o0], tail1: [0, 0, o1] });
 const breathe = (d, c, extra = {}) => ({ pos: [0, -0.01 - d, 0], spine: [c * 0.5, 0, 0], chest: [c, 0, 0], head: [-1.5 * c, 0, 0], ...extra });
@@ -335,6 +337,32 @@ export const CLIPS = {
       ...CHAIN_ARM, 'link3.s': [-1, -1, -1], ...UP_SCIS, ...SCIS(0), ...TAIL(-14, -12) } },
     { f: 57, pose: breathe(0, 0, TAIL(0, 0)) },
   ] },
+  // point (r3, the game's shared emote, "THAT one"): paws drawn in, head + ears snap to the target, sly half-lid (4) →
+  // BOTH paws thrust forward-UP along the facing (R W4 point; probe shots/char-mincut/r3/px-stack.png row 2): the chest
+  // twisted 16° to her left so the RIGHT shoulder leads (the near arm at SE/E; it reads at SW/W too), the right arm
+  // fwd 105 out 4 reaching +80/+60 % ('.l') and 1.25× thick (no twig), the left paw forward-up-out (fwd 95 out 30,
+  // +70 %) so the point leaves the outline at S too; tail flicked out — HELD 24 → paws down (6) → idle
+  point: { fps: 30, loop: false, interp: 'step', length: 35, keys: [
+    { f: 0, pose: { pos: [0, -0.03, 0], spine: [4, -6, 0], chest: [4, -8, 0], head: [-6, -10, 0], ...HALF, ...EARS([10, 0, 0]),
+      upperArmR: [30, 0, 30], forearmR: [60, 0, 0], upperArmL: [20, 0, 10], forearmL: [50, 0, 0], ...TAIL(-6, 0) } },
+    { f: 4, pose: { pos: [0, 0.01, 0.02], spine: [0, 12, 0], chest: [-4, 16, 0], head: [-8, -16, 4], jaw: [8, 0, 0], ...EYES(0.1, -0.3), ...EARS([18, 0, -6]),
+      upperArmR: [105, 0, 4], forearmR: [-30, 0, 0], 'upperArmR.l': [0.8], 'forearmR.l': [0.6], 'upperArmR.s': PT_THICK, 'forearmR.s': PT_THICK,
+      upperArmL: [95, 0, 30], forearmL: [-25, 0, 0], 'upperArmL.l': [0.7], 'upperArmL.s': PT_THICK, 'forearmL.s': PT_THICK, ...TAIL(-22, -14) } },
+    { f: 28, pose: { pos: [0, -0.01, 0], chest: [0, -4, 0], head: [-4, -6, 0], ...HALF, ...EARS([6, 0, 0]), upperArmR: [40, 0, 20], forearmR: [40, 0, 0],
+      upperArmL: [20, 0, 12], forearmL: [30, 0, 0], ...TAIL(-4, -2) } },
+    { f: 34, pose: breathe(0, 0, TAIL(0, 0)) },
+  ] },
+  // ghost / ghost-spent (r3; spec.ghost draws the pale ramp, the gold halo, the hover and the floating legs): a slow
+  // drift, paws floating out in turn, head rolling, the ringed tail swaying out; spent = sunk lower, head bowed, ears
+  // back, paws hanging, the tail drooped (tipped forward)
+  ghost: { fps: 30, loop: true, interp: 'step', length: 64, dynamics: 'hold', keys: [0, 16, 32, 48].map((f, i) => ({ f, pose: {
+    pos: [0, [0.03, 0.015, 0, 0.015][i], 0], head: [-6, 0, [4, 0, -4, 0][i]], ...(i === 2 ? HALF : {}),
+    upperArmL: [12, 0, 16 + 8 * (i % 2)], upperArmR: [12, 0, 16 + 8 * ((i + 1) % 2)], forearmL: [20, 0, 0], forearmR: [20, 0, 0],
+    thighL: [20, 0, 0], shinL: [-30, 0, 0], thighR: [20, 0, 0], shinR: [-30, 0, 0], ...TAIL([-6, -14, -20, -14][i], [-4, -12, -16, -10][i]) } })) },
+  'ghost-spent': { fps: 30, loop: true, interp: 'step', length: 72, dynamics: 'hold', keys: [0, 18, 36, 54].map((f, i) => ({ f, pose: {
+    pos: [0, [-0.02, -0.035, -0.05, -0.035][i], 0], spine: [6, 0, 0], chest: [6, 0, 0], head: [14, 0, [3, 0, -3, 0][i]], ...HALF, ...EARS([-35, 0, 20]),
+    upperArmL: [4, 0, 12], upperArmR: [4, 0, 12], thighL: [25, 0, 0], shinL: [-35, 0, 0], thighR: [25, 0, 0], shinR: [-35, 0, 0],
+    ...TAIL([-4, -8, -12, -8][i], [-2, -6, -8, -6][i], 20) } })) },
   // walk / run (LegGait plays them for the upper body, blended onto the plan's bob/arms): f0 = left contact.
   // The big tail sways across the back with tail1 one drawing behind tail0 (follow-through); ears flop back on contacts.
   walk: { fps: 30, loop: true, interp: 'step', length: 4, blend: 'add', keys: [
@@ -372,6 +400,7 @@ export function make() {
       duty: [0.18, 0.1], reach: 0.6, arms: [20, 40], elbows: [45, 60], bob: [0.05, 0.1], lean: [6, 14],
       lift: [0.07, 0.1], twist: [6, 9] },
     character: { quant: { yaw: 8, chain: 4 } },
+    ghost: { hover: 0.14, keepHue: 0.3 },   // r3: russet + white mask are the identity: keep some hue on the pale ramp
     clips: CLIPS,
     fx: { stepClips: ['walk', 'run'], stepEvery: 2, speech: { node: 'crown' } },
     material: { sides: { eyeL: 'mid', eyeR: 'mid', earL0: 'mid', earR0: 'mid' } },

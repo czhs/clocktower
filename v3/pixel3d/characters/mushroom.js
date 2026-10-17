@@ -346,6 +346,7 @@ CLIPS.point = { fps: 30, loop: false, interp: 'step', keys: [
 //     (discard, both passes) from bind height 0.46 m (solid) to 0.14 m (gone) — 0.10–0.40 for the spent ghost;
 //   * halo: 'halo.s' grows the buried ring (ghost only, untinted gold).
 const GHOST_UP = 1 / HALO_K - 1, GHOST_SPENT = 1;
+const SPENT_UNWARM = 0.35;  // ghostUnwarm strength on the spent ghost (1 = full: the dim grey-blue turned vivid blue at golden; 0.5 still too blue, wk/spent-k.png)
 const HIDE_LEGS = { 'shinL.s': [-0.98, -0.98, -0.98], 'shinR.s': [-0.98, -0.98, -0.98] };
 const GHOST = (y, roll, halo, extra = {}) => ({ pos: [0, y, 0], spine: [0, 0, roll], chest: [2, 0, roll * 0.5], head: [-6, 0, -roll],
   cap0: [0, 0, -roll], ...EYES(-0.2), upperArmR: [50, 0, -10], forearmR: [70, 0, 0], ...HIDE_LEGS,
@@ -378,6 +379,10 @@ const GHOST_GLSL = {
       float l = pow(clamp(dot(c, vec3(0.2126, 0.7152, 0.0722)), 0.0, 1.0), 0.42);
       vec3 g = mix(vec3(${lin('#4E6C9C')}), vec3(${lin('#DCF4FC')}), l);
       return spent > 0.5 ? mix(g, vec3(dot(g, vec3(0.2126, 0.7152, 0.0722))), 0.45) * 0.62 : g;
+    }
+    vec3 ghostUnwarm(vec3 t, vec3 ramp) {
+      vec3 r = max(rampFor(ramp, t), vec3(0.05));
+      return t * (dot(r, vec3(0.2126, 0.7152, 0.0722)) / r);
     }`,
   tones: `
     if (vGhost > 0.5 && vGhostHalo < 0.5) {
@@ -388,6 +393,16 @@ const GHOST_GLSL = {
       float gT = gq.x == 0 ? (gq.y == 0 ? 0.125 : 0.625) : (gq.y == 0 ? 0.875 : 0.375);
       if (gA < gT) discard;
       toonHi = ghostTone(toonHi, gSpent); toonMid = ghostTone(toonMid, gSpent); toonSh = ghostTone(toonSh, gSpent);
+      // (close-out) golden: the warm key turned the dim spent ramp khaki-olive. A ghost is not sun-coloured: under a
+      // warm grade only (rampHi r-b, the whiteKeep/creamKeep gate; noon / night = 0 px) pre-divide each band tone by
+      // the hue of the ramp it is about to be multiplied with (rampFor = what toon.js applies), so it lands on its own
+      // blue at the ramp's luma.
+      float gW = clamp((uRampHi.r - uRampHi.b - 0.1) * 2.0, 0.0, 1.0) * mix(1.0, ${SPENT_UNWARM.toFixed(2)}, gSpent);
+      if (gW > 0.0) {
+        toonHi = mix(toonHi, ghostUnwarm(toonHi, uRampHi), gW);
+        toonMid = mix(toonMid, ghostUnwarm(toonMid, uRampMid), gW);
+        toonSh = mix(toonSh, ghostUnwarm(toonSh, uRampSh), gW);
+      }
     }`,
 };
 
@@ -435,6 +450,13 @@ export function make(opts = {}) {
     // (r2) the staff fist (far side at the game facing SE) was forced to the shadow band = a maroon lump: shaded as midline
     // (r3) + the left sleeve/cuff (upperArmL, forearmL): far side at SE, its lavender robe-shadow read as a squiggle by the face
     material: { sides: { eyeL: 'mid', eyeR: 'mid', handL: 'mid', forearmL: 'mid', upperArmL: 'mid' },
+      // (close-out) golden-hour drift: the ivory robe went mauve (#7A657E / #89738E in the sun copy) and the cap spots
+      // apricot (#EFBD78). creamKeep [1, 0.85] (the robe slot is the only one its gate takes: skin / gold / reds are too
+      // saturated) keeps the robe + spots on their authored hue in every band at ≥ 0.85 × authored luma: spots #E9DFCD,
+      // robe mid #D5C9B0, shade band #9E8A91 — three bands kept. whiteKeep 0.8 / hueKeep { robe } on top: 0 px. hueKeep
+      // { cap } fixed the spent ghost but dulled the lit living cap to salmon, so the ghost is fixed in GHOST_GLSL
+      // instead (ghostUnwarm). Golden only: noon / night 0 px (A/B shots/char-mushroom/wk/).
+      creamKeep: [1, 0.85],
       // ghost / ghost-spent look (GHOST_GLSL; bone indices = skeleton order, rig.js keeps it parent-first)
       vertexHead: GHOST_GLSL.vertexHead, fragmentHead: GHOST_GLSL.fragmentHead, tones: GHOST_GLSL.tones,
       vertex: GHOST_GLSL.vertex(S.findIndex((b) => b.name === 'head'), S.findIndex((b) => b.name === 'halo')) },

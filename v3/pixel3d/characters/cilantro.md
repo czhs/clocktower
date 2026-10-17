@@ -1,7 +1,10 @@
 # Cilantro — design sheet (cast member `cilantro`, mascot 15-251)
 
-Rewritten from the CURRENT code (`characters/cilantro.js`) and the final pack `shots/char-cilantro/final3/` (round 2,
-after critic-cilantro 15/24; rendered on render-host, RTX 4090; bake `shots/char-cilantro/bake2/`). Round-1 pack: `final/`. Identity source (read only): `refs/cast/cilantro.png`,
+Rewritten from the CURRENT code (`characters/cilantro.js`). **Current pack: `shots/char-cilantro/final5/`** (cast close-out,
+2026-10-17: + point, ghost, ghost-spent; `--preset cast --raw`, render-host RTX 4090; 113 pass / 15 warn / 0 fail; bake
+`shots/char-cilantro/bake3/`, 10 clips × 8 dirs). Round-2 pack (critic-cilantro 15/24): `final3/` + bake `bake2/`; round 1: `final/`.
+The close-out changed no living clip: turnaround, idle, walk, talk, vote, die, lookout, game strips and scene crops are
+byte-identical between the pre-close-out pack `c0/` and `final5/`. Identity source (read only): `refs/cast/cilantro.png`,
 `pipgws/packages/assets/scripts/cast/cilantro.ts`. Blurb: "A giraffe in a blue hoodie and a green scarf."
 
 ## 1. Concept + adjectives
@@ -95,6 +98,9 @@ grey cream-line "beard" row under the nose at S (`r10/z-face2.png` base vs flush
 | talk (loop 24, dynamics hold) | 0 jaw 32 + head up/roll + hoof out · 6 nod (neck +16), jaw shut · 12 jaw 30, hoof higher, other ear · 18 nod, half-lid | 6 each | beat every 6 frames |
 | vote (one-shot, length 40, held) | 0 dip (pos −0.04, neck +8) · 4 right hoof thrown up above the ossicones (upperArmR [40,0,162], `forearmR.s` y +0.5), neck leans away (out +24), eyes wide, ears up, `vote@handR` | 4 / held | raised hoof beside the neck |
 | die (one-shot, legs fk, length 50, held) | 0 wobble, eyes wide · 6 knees buckle (pos −0.12) · 12 rolls 40° onto her left side, neck droops sideways (out +34) · 18 DEAD: lying on her side, neck on the grass, face to the camera at SE, half-shut dazed lids, `die`+`land` | 6/6/6/held | down at 8/8 |
+| point (one-shot, length 42; close-out) | 0 wind-up: neck back, hooves in at the chest, half-lid · 4 aim (`POINT_AIM`): neck pokes forward on the target (NECK fwd 26, head −26 = tipped down onto it), eyes wide, ears pricked, RIGHT hoof forward near level (`upperArmR` [98, 0, 12], `.l` 0.5), LEFT hoof forward-UP (`upperArmL` [125, 0, 14], `.l` 0.4), jaw 8 · 10 settle (same aim, ears relax) · 36 hooves ease down, held to the end (idle resumes) | 4/6/26/6 | point held 32 f = 1.07 s at 1× (`final5/z1x-point.png`: 130 ms wind-up, 200 + 870 ms aim, 200 ms ease) |
+| ghost (loop 72, legs float; close-out) | 0/18/36/54: the idle neck sway kept (twist −12 → 0 → +12 → 0), hover bob 0 → 0.04 m, hooves floating forward-low alternating, knees soft, half-lid on 54. `spec.ghost` {hover 0.14, keepHue 0.3, halo lift 0.2} draws ramp, gold halo, dissolving feet | 18 each | slow drift, 600 ms per drawing at 1× (`final5/z1x-ghost.png`) |
+| ghost-spent (loop 72, legs float; close-out) | 0/18/36/54: the neck BOWED forward 10 and drooping to her left (out 30 → 22), head face-out (fwd 6, roll back −14), half-lids, ears down −32, hooves hanging, sinking −0.02 → −0.05 m. Dimmer ramp, no halo (module) | 18 each | droop sway (`final5/z1x-ghost-spent.png`) |
 | lookout (emote, length 56) | 0 dip · 4 neck telescopes +0.15 m, tiptoe, scan left · 16 scan right · 28 punchline: neck upright +0.21 m, ears straight up, 'o' mouth, hooves to chest, `emote:exclaim` · 40 neck half back · 46 idle | 4/12/12/12/6 | stretch + scan + "!" |
 
 ## Self-critique (round 2; pack `shots/char-cilantro/final3/`, 83 pass / 21 warn / 0 fail)
@@ -119,3 +125,32 @@ cream at the jaw corners (outline.js tints inner lines blue-grey, no per-slot co
 (motion M8 with a 3-link keyed neck). 1x real-time GIFs (`final3/game-1x.gif`, `clip-*-1x.gif`) could only be read as
 single frames with the Read tool; the real-time judgement rests on `clip-game.png` holds (2×), `game-onion.png` and the
 measured 1.2 px head bob.
+
+## Cast close-out (2026-10-17): point, ghost, ghost-spent
+Pack `final5/` (render-host, RTX 4090): **113 pass / 15 warn / 0 fail**; `cast_clips` PASS (was FAIL "missing
+point,ghost,ghost-spent" in the pre-close-out pack `c0/`, current rules). The 15 WARN rows are the same rows as round 2
+(colors/slot, speckle, isolated_px, sig.hide, die/vote/lookout key_speckle, micro, foot_slide n/a); every new-clip row
+PASSes. Bake `bake3/`: 10 clips × 8 dirs, cell 82×99, no border warnings in the final pass (lookout FX cropped = normal).
+
+| clip | evidence (8-facing still / strip / 1× tiles) | numbers |
+|---|---|---|
+| point | `c2/z-g8-point-f12.png` (S SE E NE N NW W SW), `final5/clip-point.png`, `final5/z1x-point.png`, `bake3/z-point.png` | key_delta 8 %, pose_read 50 % ×6, key_speckle +4, off_grid/flicker 0 |
+| ghost | `c3/z-ghost-S.png` (S/SE ×6), `final5/clip-ghost.png`, `final5/z1x-ghost.png`, `bake3/z-ghosts.png` rows 1–8 | key_delta 65 %, amplitude 43 %, islands 2 (= the halo, now clear of the knobs) |
+| ghost-spent | `c4/z-g8-ghost-spent-f0.png`, `c4/z-spent-S.png`, `final5/clip-ghost-spent.png`, `final5/z1x-ghost-spent.png` | key_delta 34 %, amplitude 14 % |
+
+What I saw and changed:
+- **Point at SE vanished** with the first aim (both hooves forward-UP, R fwd 125): the camera looks along SE, so a hoof
+  raised ≈ 35° lies on the 30° view ray (`c1/z-cal-b.png`: right hoof gone at SE, fine at S/E/W). A symmetric level V
+  (`c1/z-cal-c.png`) read at SE/E/W but left S as two side stubs. Final = asymmetric (`c1/z-cal-d*.png`, `c2/`): RIGHT
+  hoof near level (SE/E pointer), LEFT forward-up (S/W/SW pointer), neck lunge + head tipped down onto the target.
+  Reads: SE hoof thrust up-right toward the viewer with the face on it, E/W/SW a level arm + finger, N/NE/NW both
+  hooves up beyond the outline. S is the weakest facing (one hoof forward-up at screen right, the right hoof
+  foreshortened at the viewer): it reads "gesturing at you" more than a crisp point.
+- **Ghost halo sat on the ossicone knobs** at S/SE with the default `halo.lift` 0.12 (`c2/z-ghost-S.png`) → lift 0.2:
+  a 2-texel gap (`c3/z-ghost-S.png`). `keepHue` 0.3 keeps the hoodie faintly blue and the scarf faintly green.
+- **Ghost-spent neck bowed straight forward foreshortened to nothing at S/SW** (a short-necked lump,
+  `c2/z-g8-ghost-spent-f0.png`, `c3/`) → most of the bow moved into a sideways droop (NECK fwd 10, out 30 → 22) with the
+  head face-out: the neck keeps its length at S and bows visibly at SE/E/W (`c4/`).
+- The point used to end on an `IDLE_A` key (1 % key_delta WARN, the same drawing as the idle that follows) → ends on
+  the ease key; key_delta 8 % PASS.
+Not done: no `out/sprites/` copy (shared folder, outside my files): the lead copies `bake3/` when it ships.

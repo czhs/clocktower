@@ -5,6 +5,42 @@ evidence `shots/char-moth/self/` (+ `self/r3/`, `r3a/`, `dir2/`). Identity sourc
 `pipgws/packages/assets/scripts/cast/moth.ts`, `refs/cast/moth.png`. Rendered on render-host (RTX 4090, every report GPU
 line). Night light scene copy: `shots/char-moth/night.js`. r2 critique: `shots/critic-moth/` (16/24).
 
+## Close-out (2026-10-17): golden-hour colour drift
+Rendered on render-host (RTX 4090). Problem (`docs/CAST_GALLERY.md`, LEARNINGS "Run 05 close"): at golden the cream head went
+apricot `#EFBC74` (sun copy), wings / collar / paws orange-tan `#DCA356`, antennae orange `#DA832A`, and the custom
+`GHOST_GLSL` ghost / ghost-spent went khaki `#D0BD97` / `#B89B69` (the keeps test `uCharGhost`, which only `spec.ghost` sets,
+so they act on this character-local ghost too). Fix = spec opt-ins only (no shared code):
+`material.creamKeep: [1, 0.85], hueKeep: { fluff: 1, wing: 1, ant: 1 }`.
+
+| variant (`shots/char-moth/moth_wk.js`, `--q char=../shots/char-moth/moth_wk&…`) | golden result | kept? |
+|---|---|---|
+| base (pre-fix, `base=1`) | head `#EFBC74`, sig_ground golden-sun **WARN dH 23 / dL +16 %** | — |
+| `whiteKeep 0.8` (`wk-d`) | **0 px change**: the fluff hi `#F8F0DE` fails whiteKeep's chroma < 0.18 gate | no |
+| `creamKeep [1, 0.85]` (`wk-a`) | head cream `#E7DFCF` sun, `#9F888D` shade (bands kept, 65 vs 67 colours in the 8-facing crop); golden-sun **PASS dH 12 / dL +30 %**, golden-shade dL +40 → +79 % | yes |
+| + hueKeep wing (`wk-b`) | wings / collar / paws beige `#C0AF8D` instead of orange (wing mid luma 0.43 is under creamKeep's 0.45 gate) | yes |
+| + hueKeep fluff (`wk-e`) | living look 0 px vs b; ghost head stays blue-grey `#B5C2CA`, ghost-spent `#9CA1A5` (were khaki) | yes |
+| + hueKeep ant (`wk-f` = shipped) | antennae amber at the authored hue: `#C5924C` (sat 0.61 = `#E2A858`'s; base `#DA832A` hue 30°, sat 0.81); ghost antennae pale blue, halo pale gold instead of orange | yes |
+| + hueKeep coat (`g`) | no visible change in living or ghost rows | no |
+| `material.merge` | not needed: no junction seams on the turnaround (wing back/flap, collar) | no |
+
+Evidence: `wkcmp-golden.png` (scene-golden-crop base / a / b / f), `wkz-golden-sun.png`, `wkz-golden-shade.png` (x2 zoom
+sun / shade copy), `wkg8/cmp-{idle,ghost,ghost-spent}.png` (8 facings at golden: rows base / e / f / g), `wkg8/cmp-vote.png`
+(base / b / e). Before-pack copy: `pre-wk/` (incl. `pre-wk/scene-golden-crop.png`); after: `scene-golden-crop.png`.
+Noon / night: 0 px (`moth_wkdiff.py.js`: scene-{noon,night}{,-crop}.png base vs f).
+
+Full pack `tools/charpack.sh moth --preset cast --clips idle,walk,run,talk,vote,die,lamp,point,ghost,ghost-spent,turn --raw`
+→ **113 pass / 20 warn / 0 fail** (before 95 / 18 / 0; the +18 PASS / +2 WARN are rows the tools added since the touch-up:
+`lamp.key_delta` WARN 1 % (g62, the last two shake → idle keys read as one drawing), `prop_area.lanternCap` / `glass` WARN
+(lantern edge-on behind the body in the held vote at NE / N); the only status change from the keeps: golden-sun WARN → PASS).
+Raw frame A/B pre vs new (`moth_rawab.py.js`): idle, vote, die, lamp, point, ghost, ghost-spent, turn, pan, night 0 frames;
+walk / run / game / talk changed (607 / 644 / 607 / 62 px max) — **not this fix**: a `base=1` re-render of those clips is
+0 px vs the new pack, so they are the shared module fixes since the touch-up (M15 walk height, steady talk bubble).
+Looked at every changed clip at 1x real time: `wk-look/strip-{walk,run,game,talk}-1x.png` (every GIF frame + duration),
+`wk-look/strip-gamecross-1x.png` (fixed-camera crossing): lantern in every walk/run drawing, boots alternate, one steady
+speech bubble for the talk loop, no pops. Bake `tools/charpack.sh --bake moth --clips idle,walk,run,talk,vote,die,lamp,point,ghost,ghost-spent`
+→ `out/sprites/moth.{png,json}` 10 clips x 8 dirs, cell 74 → re-baked at 100 (trimmed 90x84, anchor [45, 63]; die touched
+74), no warning at the end; `moth-preview.png` looked at, every row complete.
+
 ## Touch-up (2026-10-16, Clocktower clip list) — point, ghost, ghost-spent; gentle die
 Rendered on render-host (RTX 4090). Pack `tools/charpack.sh moth --preset cast --clips idle,walk,run,talk,vote,die,lamp,point,ghost,ghost-spent,turn --raw`
 → **95 pass / 18 warn / 0 fail** (before: 65/18/0 without the new clips; the 18 WARNs are the same rows: height/head_frac,
@@ -68,8 +104,9 @@ wings 0.39 long · leg 0.29 m · lantern glass 0.125 × 0.14 (4.5 × 5 texels).
 ## Palette (5 slots + accent)
 fluff `#F8F0DE/#E8D8B6/#A99098` (head, collar-free signature) · wing `#E4D0A8/#C4AC84/#8A7484` (wings, collar, paws) · coat
 `#8C5C46/#5E3C30/#42303C` · ant `#E2A858/#A46E3A/#6A4A3E` (antennae, buttons, hem, lantern frame) · eye
-`#3A3050/#2E2440/#272036` (eyes, mouth, shins, boots) · glow `#FFD27A/#FFB04A/#D07A3A`. sig_ground noon-sun dH 84, noon-shade
-dL +47 %, golden-shade +40 % PASS; **golden-sun WARN dH 23 / dL +16 %** (the cream head turns orange on golden grass).
+`#3A3050/#2E2440/#272036` (eyes, mouth, shins, boots) · glow `#FFD27A/#FFB04A/#D07A3A`. sig_ground noon-sun dH 33, noon-shade
+dL +47 %, golden-shade +79 %, golden-sun dH 12 / dL +30 % — all PASS since the close-out keeps (`creamKeep [1, 0.85]`,
+`hueKeep { fluff, wing, ant }`; was golden-sun WARN dH 23, the cream head orange on golden grass).
 
 ## Timing charts (30 Hz; step)
 - idle 72: f0 A (30) · f30 B −1 texel (6) · f36 blink (2) · f38 B (16) · f54 glance right + antenna twitch (12) · f66 A.
@@ -105,7 +142,7 @@ border warning).
 | 2 | Pixel stability | 2 | no chains; hold_redraws 0 vote/die/lamp; game/walk/run flicker 0 (r2 295/389); pan 0, night_freeze 0, deterministic | — |
 | 3 | Line quality | 2 | silhouette_line 0/1122, inner_lines 468, edge_highlights 0 | — |
 | 4 | Tonal discipline | 1 | fluff iso max 6 (SW), antenna iso 3, die.key_speckle +20, speckle 28 | head/eye edge specks |
-| 5 | Ground separation | 1 | golden-sun WARN dH 23 (cream head on golden grass); other three PASS | value step on the head under golden light |
+| 5 | Ground separation | 2 | (close-out) all four sig_ground rows PASS: golden-sun dH 12 / dL +30 % (head stays cream `#E7DFCF`, `scene-golden-crop.png`) | — |
 | 6 | Proportion / expression | 2 | face_lit 93 %; talk open key head up, face clear at S/SE/SW; glance keeps both eyes at SE; vote lantern clear of the face | — |
 | 7 | Animation timing | 2 | single_frame 0, strobe 1 all clips; vote up in 3 frames, held; talk 45 %; holds clean in the raw audit | — |
 | 8 | Weight / contact / game speed | 1 | 3.95 H/s, 0.267 s, 4/4 drawings, boots alternate at 1×; **in-hold glide 7.0 texels**, foot_slide n/a | a planted foot at 4 H/s without the LegGait crouch |
@@ -114,5 +151,5 @@ border warning).
 | 11 | Facing and turns | 2 | turnaround 8/8; turn 45° steps (`clip-turn.png`), no settle | — |
 | 12 | Technical | 2 | page_errors 0, draw calls 2/1, deterministic, RTX 4090 | — |
 
-**Total 19 / 24.** Weakest three: (1) in-hold foot glide 7.0 texels at game speed (legacy Gait; LegGait seats the chibi),
-(2) the E/W silhouette is still one antenna lobe, (3) golden-sun separation of the cream head (dH 23).
+**Total 19 / 24** (r3 self-score; close-out: row 5 → 2 = 20, unverified until a critic r2). Weakest: (1) in-hold foot glide
+at game speed (legacy Gait; LegGait seats the chibi), (2) the E/W silhouette is still one antenna lobe.

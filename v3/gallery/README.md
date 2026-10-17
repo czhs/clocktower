@@ -167,6 +167,7 @@ Latest render of each Clocktower cast member from the pixel3d pipeline. Clips ar
 ![clarabelle clip-walk](clarabelle/clip-walk.gif)
 ![clarabelle clip-talk](clarabelle/clip-talk.gif)
 ![clarabelle clip-vote](clarabelle/clip-vote.gif)
+![clarabelle clip-point](clarabelle/clip-point.gif)
 ![clarabelle clip-die](clarabelle/clip-die.gif)
 
 ## requin
@@ -176,6 +177,7 @@ Latest render of each Clocktower cast member from the pixel3d pipeline. Clips ar
 ![requin clip-walk](requin/clip-walk.gif)
 ![requin clip-talk](requin/clip-talk.gif)
 ![requin clip-vote](requin/clip-vote.gif)
+![requin clip-point](requin/clip-point.gif)
 ![requin clip-die](requin/clip-die.gif)
 
 ## progress
@@ -185,6 +187,7 @@ Latest render of each Clocktower cast member from the pixel3d pipeline. Clips ar
 ![progress clip-walk](progress/clip-walk.gif)
 ![progress clip-talk](progress/clip-talk.gif)
 ![progress clip-vote](progress/clip-vote.gif)
+![progress clip-point](progress/clip-point.gif)
 ![progress clip-die](progress/clip-die.gif)
 
 ## preservation
@@ -194,6 +197,7 @@ Latest render of each Clocktower cast member from the pixel3d pipeline. Clips ar
 ![preservation clip-walk](preservation/clip-walk.gif)
 ![preservation clip-talk](preservation/clip-talk.gif)
 ![preservation clip-vote](preservation/clip-vote.gif)
+![preservation clip-point](preservation/clip-point.gif)
 ![preservation clip-die](preservation/clip-die.gif)
 
 ## opal
@@ -203,6 +207,7 @@ Latest render of each Clocktower cast member from the pixel3d pipeline. Clips ar
 ![opal clip-walk](opal/clip-walk.gif)
 ![opal clip-talk](opal/clip-talk.gif)
 ![opal clip-vote](opal/clip-vote.gif)
+![opal clip-point](opal/clip-point.gif)
 ![opal clip-die](opal/clip-die.gif)
 
 ## cilantro
@@ -212,6 +217,7 @@ Latest render of each Clocktower cast member from the pixel3d pipeline. Clips ar
 ![cilantro clip-walk](cilantro/clip-walk.gif)
 ![cilantro clip-talk](cilantro/clip-talk.gif)
 ![cilantro clip-vote](cilantro/clip-vote.gif)
+![cilantro clip-point](cilantro/clip-point.gif)
 ![cilantro clip-die](cilantro/clip-die.gif)
 
 ## mincut
@@ -221,6 +227,7 @@ Latest render of each Clocktower cast member from the pixel3d pipeline. Clips ar
 ![mincut clip-walk](mincut/clip-walk.gif)
 ![mincut clip-talk](mincut/clip-talk.gif)
 ![mincut clip-vote](mincut/clip-vote.gif)
+![mincut clip-point](mincut/clip-point.gif)
 ![mincut clip-die](mincut/clip-die.gif)
 
 ## maxflow

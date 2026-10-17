@@ -4,6 +4,30 @@
 → `shots/char-chonk/`. Identity source (read only): `refs/cast/chonk.png`, `pipgws/packages/assets/scripts/cast/chonk.ts`.
 (Stage 0 written before modelling; sections marked *current* are rewritten from the code at the end of every round.)
 
+## Close-out (2026-10-17) — golden-hour colour drift fixed (all renders render-host RTX 4090)
+- **Problem:** at golden the down went apricot (sun copy #EFBD7D, `sig_ground.down.golden-sun` WARN dH 24; cast line-up
+  `lineup-golden-dir1-a.png`), wings tan, ghost-spent khaki. Before: `wk-before/scene-golden-crop.png`, fresh baseline
+  `wk-base/`.
+- **Fix (material only, no palette/geometry/clip change):** `creamKeep: [1, 0.85], hueKeep: { down: 1, wing: 1 }`.
+  The down's mid #DCD3D8 is inside creamKeep's gate (linear luma 0.67, r ≥ b); the 0.85 lift keeps it white instead of
+  flat grey. hueKeep keeps the wings lilac-grey and (because chonk's ghost is the old character-local `material.tones`
+  recipe, which the keeps do not skip) brings ghost-spent back to blue-grey at golden.
+- **A/B** (variant `chonk_wk.js`, params wk/wkl/ck/ckl/hk/hkw): whiteKeep 0.8 #D2C6BA WARN; +whiteKeepLift #CBC8C3 dH 12
+  WARN; hueKeep only #CFC7BD WARN; creamKeep no lift #CFC7BD flat grey; creamKeep [1, 0.85] **#E9DFD6 PASS dH 28 dL +29 %**,
+  shade #948699 +75 %. Side by side: `wkcmp-golden.png` (base / no-lift / ck 0.8 / ck 1), 8 facings golden idle / vote /
+  ghost / ghost-spent old vs new: `wk-g8gold-cmp-2ghost.png` (rows: idle old/ck/ck+hk, spent old/ck/ck+hk, ghost x3).
+  Shading kept: hi/mid/sh bands and the lower-ball shadow visible at all 8 facings.
+- **Nothing else moved:** full `--preset cast` pack vs the same spec without the keeps (`chonk_wk0.js`, `wk-ab0/`): every
+  clip strip, 60 Hz strip, turnaround, pan, onion, noon and night scene **0 px differ**; only `scene-golden*` changed.
+  So no clip changed; the strips were still re-read (talk, game, ghost-spent) and look as in T3.
+- **Pack:** `tools/charpack.sh chonk --preset cast --raw` = **112 pass / 17 warn / 0 fail** (golden-sun WARN → PASS;
+  `game.feet_visible` SE WARN is a new shared row, not from this change; talk.key_delta 48 → 50 % from shared code).
+- **Bake:** `tools/charpack.sh --bake chonk --preset cast --clips idle,walk,run,talk,vote,die,plop,point,ghost,ghost-spent
+  --out shots/char-chonk/bake` → copied to `out/sprites/chonk.*`: 10 clips × 8 dirs, auto cell 82 → 112, trimmed 94×87
+  (T3: 94×88, shared bake.py changed since), final pass without border warnings; every row complete (`wk-bake-0/1.png`).
+- Open (unchanged): ghost still uses the old ghostK/`material.tones` recipe, not `spec.ghost` (out of scope here; living
+  renders would not change but every ghost frame would); the open items of r2 below.
+
 ## T3 touch-up (2026-10-16, Clocktower-only rule) — what changed (all renders render-host RTX 4090)
 - **Combat check:** no clip was combat-flavoured (walk/run/talk/vote/die/plop; die has no `hurt` flash or impact, plop is
   a smug sit). Nothing de-combatted.
@@ -159,7 +183,7 @@ chest where the nape meets the ball in moving drawings (SE talk/walk).
 | 2 | Pixel stability | 2 | off_grid/flicker 0 in every clip (run re-checked after the nape fix), pan 0, deterministic |
 | 3 | Line quality | 1 | silhouette_line 0, isolated down max 8, NE eye px |
 | 4 | Tonal discipline | 1 | wing 11 / ink 7 / blush 7 tones; key_speckle die +16 plop +19 |
-| 5 | Ground separation | 1 | golden-sun WARN dH 24 (look-owned) |
+| 5 | Ground separation | 1 | golden-sun WARN dH 24 (r2; close-out 2026-10-17: creamKeep + hueKeep → PASS dH 28, see top) |
 | 6 | Proportion, appeal, expression | 2 | rear no longer a snowman; talk beak 3-texel gap with chin up; ^^ at S |
 | 7 | Animation timing | 2 | talk: ≥ 50° wing change every 12 frames + 6-frame beak/head beats; vote 3 f; die 0.6 s |
 | 8 | Weight, contact, game speed | 2 | both contacts dip 4-6 texels; planted foot shows in contacts; 0.289 s, 4/4 |

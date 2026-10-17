@@ -237,6 +237,15 @@ const DEAD = { pos: [0, -0.3, 0], hips: [6, 0, 84], spine: [8, 0, 0], chest: [6,
   ...EARS([0, 0, -40]), thighL: [55, 0, 0], shinL: [-70, 0, 0], thighR: [40, 0, 0], shinR: [-60, 0, 0],
   upperArmL: [30, 0, 20], forearmL: [40, 0, 0], upperArmR: [40, 0, 10], forearmR: [30, 0, 0], tail0: [0, 0, -30], jaw: [6, 0, 0] };
 
+// point aim: both hooves forward-and-up along the facing (reach by .l so they clear the snout), the chest twisted 14° to
+// her LEFT so the camera-side RIGHT shoulder leads at SE/E, head turned back onto the target. r3 probes
+// (shots/char-clarabelle/r3/z-pv.png, z-pv2.png): a symmetric V (fwd 105–130, out 22–28) left the pointer at SE to the
+// far, dark LEFT forearm (a dark stick, far-half shaded) and the white right arm hidden in front of the chest; this
+// twisted pose shows the white RIGHT arm at SE/E and the LEFT at S/SW/W, ≥ 4 texels outside the outline at S/SE/SW/W.
+const POINT_AIM = (extra = {}) => ({ pos: [0, 0.01, 0.02], spine: [4, 8, 0], chest: [2, 14, 0], head: [-4, -14, 0], ...WIDE,
+  upperArmL: [110, 0, 30], forearmL: [0, 0, 0], 'upperArmL.l': [0.35], 'forearmL.l': [0.35],
+  upperArmR: [120, 0, 8], forearmR: [0, 0, 0], 'upperArmR.l': [0.35], 'forearmR.l': [0.35], tail0: [0, 0, 20], ...extra });
+
 export const CLIPS = {
   idle: { fps: 30, loop: true, interp: 'step', length: 72, dynamics: 'hold', keys: [
     { f: 0, pose: breathe(0, 0, { tail0: [0, 0, 10] }) },
@@ -295,11 +304,39 @@ export const CLIPS = {
       upperArmR: [20, 0, 60], forearmR: [30, 0, 0], upperArmL: [40, 0, 15], forearmL: [30, 0, 0] } },
     { f: 44, pose: breathe(0, 0) },
   ] },
+  // point (the game's shared emote, aimed ALONG the facing at whoever she faces; at SE that is the viewer) — the parallel
+  // cow points with BOTH hooves at once (one thing done twice): f0 wind-up, hooves drawn in at the chest, half-lid (4) →
+  // f4 "THAT one!": both hooves thrust forward-and-up in a narrow V (arms lengthened with .l, not .s), head forward on
+  // the target, eyes wide, ears pricked up and forward, bell swings back → f10 tiny settle (the same aim, ears relax)
+  // held to f30 (≥ 24 f) → f30 hooves ease down (6) → f36 idle
+  point: { fps: 30, loop: false, interp: 'step', dynamics: 'snap', keys: [
+    { f: 0, pose: { pos: [0, -0.03, 0], spine: [-4, 0, 0], chest: [-6, 0, 0], head: [2, 0, 0], ...HALF, ...EARS([0, 0, -10]),
+      upperArmL: [30, 0, 20], forearmL: [90, 0, 0], upperArmR: [30, 0, 20], forearmR: [90, 0, 0], bell0: [10, 0, 0] } },
+    { f: 4, pose: POINT_AIM({ ...EARS([25, 0, 30]), bell0: [-30, 0, 0], jaw: [10, 0, 0] }) },
+    { f: 10, pose: POINT_AIM({ ...EARS([15, 0, 22]), bell0: [-10, 0, 0] }) },
+    { f: 30, pose: { pos: [0, -0.01, 0], chest: [2, 0, 0], head: [-2, 0, 0], ...EARS([0, 0, 5]),
+      upperArmL: [40, 0, 15], forearmL: [40, 0, 0], upperArmR: [40, 0, 15], forearmR: [40, 0, 0] } },
+    { f: 36, pose: breathe(0, 0, { tail0: [0, 0, 10] }) },
+  ] },
+  // ghost (loop 64; spec.ghost draws the pale ramp, gold halo, hover and floating legs): a slow 4-key drift, both hooves
+  // floating forward together (the parallel cow, even dead), ears gently sideways and alternating, tail swaying, a blink
+  ghost: { fps: 30, loop: true, interp: 'step', length: 64, dynamics: 'hold', keys: [0, 16, 32, 48].map((f, i) => ({ f, pose: {
+    pos: [0, [0.03, 0.015, 0, 0.015][i], 0], spine: [2, 0, 0], head: [-6, 0, [4, 0, -4, 0][i]],
+    upperArmL: [35, 0, 18 + 6 * (i % 2)], upperArmR: [35, 0, 18 + 6 * ((i + 1) % 2)], forearmL: [35, 0, 0], forearmR: [35, 0, 0],
+    ...EARS([0, 0, [10, 0, -10, 0][i]], [0, 0, [-10, 0, 10, 0][i]]), ...KNEES(18), tail0: [0, 0, [20, 0, -20, 0][i]],
+    ...(i === 2 ? HALF : {}) } })) },
+  // ghost-spent (loop 72, after the ghost's one vote; spec.ghost: dimmer ramp, no halo): head bowed, ears drooping, hooves
+  // hanging, sinking a little lower, tail limp, eyes heavy. r3: head 16 + spine 8 hid the face at S/SE (a lump) → 9 + 4
+  'ghost-spent': { fps: 30, loop: true, interp: 'step', length: 72, dynamics: 'hold', keys: [0, 18, 36, 54].map((f, i) => ({ f, pose: {
+    pos: [0, [-0.02, -0.035, -0.05, -0.035][i], 0], spine: [4, 0, 0], chest: [4, 0, 0], head: [9, 0, [3, 0, -3, 0][i]], ...HALF,
+    ...EARS([0, 0, -38]), upperArmL: [4, 0, 10], upperArmR: [4, 0, 10], forearmL: [10, 0, 0], forearmR: [10, 0, 0],
+    ...KNEES(12), tail0: [0, 0, [-6, -12, -18, -12][i]] } })) },
 };
 
 const holdTo = (clip, f) => clip.keys.push({ f, pose: clip.keys[clip.keys.length - 1].pose });
 holdTo(CLIPS.vote, 30);
 holdTo(CLIPS.die, 60);
+CLIPS.point.length = 40;
 
 export function make() {
   const S = skeleton();
@@ -327,6 +364,8 @@ export function make() {
       duty: [0.18, 0.1], reach: 0.6, arms: [0, 0], elbows: [0, 0], bob: [0.04, 0.08], lean: [6, 12],
       lift: [0.07, 0.1], twist: [5, 8], stepYaw: 90, stepTol: 0.12, stepTime: 0.14 },
     character: { quant: { yaw: 8, chain: 4 } },
+    // keepHue 0.3: the pink snout + ear insides stay faintly pink on the pale ramp (r3: at 0 the face went one pale blob)
+    ghost: { hover: 0.14, keepHue: 0.3 },
     clips: CLIPS,
     fx: { stepClips: ['walk', 'run'], stepEvery: 2, speech: { node: 'crown' } },
     material: { sides: { eyeL: 'mid', eyeR: 'mid' }, whiteKeep: 0.8 },

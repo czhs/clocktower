@@ -18,7 +18,8 @@ const SKH = 0.95;                           // chibi template height = top of th
 // [hi, mid, sh] sRGB. 5 slots + accent (flower gold) + story-prop accent (the leaf).
 export const PALETTE = {
   fur: ['#F8E8FF', '#DECCF4', '#9E8CBE'],     // signature: head + ears (lightest mass), paws, legs, cotton tail. r3: COOL lilac
-                                              // white (golden sun turned the warm r2 cream #F0BE7B peach = an orange rabbit)
+                                              // white (golden sun turned the warm r2 cream #F0BE7B peach = an orange rabbit);
+                                              // close-out: material.hueKeep holds it white at golden (r3 still went #F1B889)
   pink: ['#F6B8C0', '#E48C9C', '#A65C78'],    // ear insides, nose, blush, pink flowers
   dress: ['#7CBCA4', '#3A7A6C', '#587C84'],   // moss dress moved to teal-jade (h ≈ 165); r3 shadow lifted (#3C4A62 read as a navy cape)
   cream: ['#FFF4D8', '#EAD8B4', '#A8928C'],   // apron, petticoat, white flowers, eye glint
@@ -399,6 +400,10 @@ export function make() {
     fx: { stepClips: ['walk', 'run'], stepEvery: 2, speech: { node: 'crown' } },
     material: { sides: { eyeL: 'mid', eyeR: 'mid', earL0: 'mid', earR0: 'mid', handL: 'mid', handR: 'mid', leaf: 'mid' },
       slots: { gold: { lift: 0.3 }, cream: { lift: 0.3 }, pink: { lift: 0.3 }, leaf: { lift: 0.3 } },
+      // close-out (golden drift): fur / cream / pink keep their authored hue at the graded luma under the golden key, every
+      // band (sun + shade copy); noon + night 0 px. whiteKeep cannot do it here: its chroma gate (< 0.18) rejects the
+      // lilac-white hi #F8E8FF (0.19) and it never touches the 'mid'-sided ears (A/B shots/char-rabbit/gk/cmp-v0-v4-v5.png).
+      hueKeep: { fur: 1, cream: 1, pink: 1 },
       // ghost / ghost-spent look (GHOST_GLSL; bone index = skeleton order)
       vertexHead: GHOST_GLSL.vertexHead, fragmentHead: GHOST_GLSL.fragmentHead, tones: GHOST_GLSL.tones,
       vertex: GHOST_GLSL.vertex(S.findIndex((b) => b.name === 'head'), S.findIndex((b) => b.name === 'halo')) },

@@ -1,6 +1,6 @@
 # Progress (cast `progress`) — design sheet
 
-"A green frog who always takes a step." (mascot 15-312). Spec: `characters/progress.js`. Pack: `shots/char-progress/r7/` (r5 critic fixes; r4 = pre-critic)
+"A green frog who always takes a step." (mascot 15-312). Spec: `characters/progress.js`. Pack: **`shots/char-progress/c1/pack2/` (close-out c1: point redone, ghost + ghost-spent, bake `c1/bake/`)**; earlier `shots/char-progress/r7/` (r5 critic fixes; r4 = pre-critic)
 (`--preset cast --raw`), 8-facing key stills `shots/char-progress/r3/g8/`, `r4/g8/`, bake `shots/char-progress/bake-r7/` (auto cell 84 → 66×67, no border warning at the final cell).
 Identity source (read only): `pipgws/packages/assets/scripts/cast/progress.ts` + `lib-c-frog.ts`, `refs/cast/progress.png`.
 Everything rendered on render-host (RTX 4090, report.txt GPU line).
@@ -72,7 +72,8 @@ accent pink `#FFC2C6 / #EC7C8C / #A0506A`. Signature `['scarf', 'skin']`, faceSl
 - die (legs fk): f0 wobble (6) · f6 sits (6) · f12 tips left 40° (5) · f17 on his side 82° · f20 settle (`die`) · repeat f60.
 - step (legs fk): f0 crouch (8) · f8 airborne pos +0.24 (6) · f14 lunge landing, arms V (forearm.s 0.6), `land` + star (14) ·
   f28 settle (6) · f34 idle.
-- point: f0 lean-in (4) · f4 right arm straight out, head along it (18) · f22 idle.
+- point (c1): f0 wind (4) · f4 hold: right arm forward-up .l 1.3, left paw forward-low (12) · f16 bounce +1 texel (12) · f28 hold (10) · f38 arms down (6) · f44 idle.
+- ghost / ghost-spent (c1, loop 72): keys every 18 f, bob +1/0/−1/0 texels; ghost knee lifts L · – · R · –; spent 2 texels lower, bowed, legs still.
 
 ## Lights
 None.
@@ -126,3 +127,33 @@ Evidence: `r5/z8-idle.png`, `r5/z-*.png` (8-facing key stills), `r6t/turnaround-
   (was 4–6), colors/slot still WARN (cream 10).
 Remaining WARNs: walk/game flicker 90–97 (legs, motion owner), turn.foot_slide 7.64 (motion), die.key_speckle +28 and
 step.key_speckle +18 (the reclining/arms-up keys add specks), speckle 31.
+
+## Close-out c1 (2026-10-17): point redone + ghost + ghost-spent added
+Evidence (all rendered on render-host, RTX 4090): full pack `c1/pack2/` (`--preset cast --raw`): **113 pass / 18 warn /
+0 fail, `cast_clips PASS all`** (idle, walk, talk, vote, point, die, ghost, ghost-spent + emote step; run kept), page_errors
+0; bake `c1/bake/` (10 clips × 8 dirs, auto cell 62 → 84, trimmed 66×67, anchor [33, 56], no border warning at the final
+cell; point 6 / ghost 4 / ghost-spent 4 frames; preview crops `c1/bk-point.png`, `c1/bk-ghost.png`, `c1/bk-spent.png`).
+1× frame sheets with durations: `c1/gs-{point,ghost,ghost-spent,vote,die}.png`.
+- **point (redone, R W4):** the r7 point (right arm level + chest twist) only left the outline sideways — at S the arm
+  pointed AT the viewer (`c1/sil-point0.png`). Now the twin preservation's measured recipe: wind (4: crouch 1 texel,
+  arms coiled) → hold (12): right arm forward-UP `[115, 0, 26]` with reach `.l` 1.3/1.3, left paw forward-low
+  `[70, 0, 34]` `.l` 0.8, chin up, eyes wide, grin open, pack tips → the eager bounce (12, +1 texel up and 0.02 forward:
+  he wants to step toward them) → hold (10) → arms down (6) → idle. Silhouette diff of the hold vs idle (bg=key,
+  `progress_sil.py.js`, `c1/sil-point1.png`): px outside the idle outline S 111 · SE 94 · E 105 · NE 117 · N 110 · NW 105 ·
+  W 111 · SW 98; the pointer itself leaves the outline by ≈ 8 (S) · 9 (SE) · 6 (W) · 7 (SW) texels. Rows: pose_read 20 %
+  held ×4, key_speckle +0, off_grid / flicker 0. 1× timing: idle 270 ms → wind 130 → point 400 → bounce 400 → 340 → 200.
+  Weak: the pointer at SE/SW is the arm's shade tone (#324A3E, under the head) — reads as a dark stick on grass
+  (`c1/z-point1.png`) but almost vanishes on the dark bake preview background; at S the arm is necessarily sideways.
+- **ghost (loop 72, 4 keys every 18 f, `spec.ghost { hover 0.14, keepHue 0.3 }`):** pale mint frog (keepHue keeps the
+  leaf-green identity), gold halo, hovering (shadow detached), RIGID whole-texel bob +1/0/−1/0, head sway ±3, grin kept,
+  blink on key 2; he still "takes a step": one knee lifts per key (L, both hang, R, both hang), arms swing against it.
+  c1's two-foot stride FAILed `ghost.foot_slide` 2.04 (hovering feet measured by height) → c1b: a hanging foot keeps
+  ONE pose; no foot_slide row now. Most of the leg is inside the module's bind-height dissolve, so the knee lift reads
+  only as a small change at the hem (`c1/gh/clip-ghost.png`). amplitude 27 %, off_grid / flicker 0.
+- **ghost-spent (loop 72):** 2 texels lower, half the bob, legs hanging still, spine/chest 5–6 + head bowed 10, eyes half
+  shut, grin closed (jaw −8), arms limp; the module's dimmer grey ramp, no halo (`c1/z-ghost-spent-f0.png`). amplitude 8 %.
+- **Halo self-shadow:** the spec.ghost halo sits outside the bind self-shadow hull and painted a slate-blue blotch on the
+  far eye bump at SE/N/NW (`c1/zz-ghost-se.png`, `c1/zz-ghost-n.png`; halo off = gone, `c1/z-wvh-ghost.png`).
+  `material.hullMargin: 0.3` clears it (`c1/z-wvm-ghost.png`; 0.15 did not, `c1/z-hm15-ghost.png`). Living cost (A/B in
+  one tree state, `c1/ab-hm-*.png`): idle 0 px, point 20, vote 82, die 250 px (pack underside a tone lighter at E/NE).
+- NOT run this round: ghost at golden/night stills, the 25 % line-up, a fresh critic.

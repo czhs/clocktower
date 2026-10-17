@@ -2,8 +2,10 @@
 
 "A French shark in a beret. Bombs are personal." Spec: `characters/requin.js`. Identity source (read only):
 `pipgws/packages/assets/scripts/cast/requin.ts`, `refs/cast/requin.png`. Pack: `shots/char-requin/` (`--preset cast --raw`,
-**81 pass / 26 warn / 0 fail** (r2; r1 73/25/0), RTX 4090 on render-host); dir-2 game pack `shots/char-requin/dir2/`; evidence stills
-`shots/char-requin/self/`; bake `shots/char-requin/bake/` (not copied into `out/sprites/`: outside this agent's ownership).
+**112 pass / 22 warn / 0 fail** after the cast close-out (2026-10-17, current rules incl. `cast_clips` with point + ghost
++ ghost-spent; r2 81/26/0, r1 73/25/0), RTX 4090 on render-host); dir-2 game pack `shots/char-requin/dir2/` (r2); evidence
+stills `shots/char-requin/self/` (r1/r2), `shots/char-requin/t1/` (close-out); bake `shots/char-requin/bake/` (10 clips × 8
+dirs, cell 92×81 anchor [46, 54]; not copied into `out/sprites/`: outside this agent's ownership).
 
 ## 0. Brief
 - Concept: a friendly upright grey-blue shark on stubby legs — ONE bullet-shaped egg that is head and body at once —
@@ -133,3 +135,35 @@ shrug/vote/die (`game-onion.png`); die bomb on the belly (`clip-die.png`); vote 
 (isolated max 6 → 5). Pack 81 pass / 26 warn / 0 fail, game.readable PASS 3.95 H/s 0.267 s 1.05 H/cyc, head_bob 2.5 px;
 1× GIF frames 60–70 ms (`r2/z-game1x-strip.png`). Talk bubble: present from grid f5 on every frame (FX on 116/121
 frames), one re-pop (small) at the f14 beat. Still WARN: face_visible 55 %, dark 11 tones, speckle 38, foot_slide n/a.
+
+## Cast close-out (2026-10-17): point, ghost, ghost-spent
+Added the three game clips the cast preset now requires (`cast_clips` PASS; full pack 112 / 22 / 0 — the 22 WARNs are the
+same rows as r2: dark 11 tones, speckle 38, beret isolated 5, face_visible 55 %, foot_slide n/a in the skip gait, micro
+pops, dorsal hidden at S/N by design, vote spark edge-on at E/NE/N). No other clip, part or palette changed.
+
+- **point** (one-shot, length 37): f0 wind-up (pos −0.03, chest twist −10, fins cocked) 4 f → **f4 point**, held 26 f
+  (`pose_read` 26 % ×26): chest twisted **−22** so the free RIGHT fin leads, head counter-twisted +14 and chin up (−14),
+  eyes wide, beret cocked 12, spark big. Right fin `[170, 0, 30]` + `.l` 0.7 on both segments = forward-and-UP along
+  the facing; the bomb fin `[124, 0, 20]` + `.l` 0.4 = forward at chest height (bomb toward the target, not swung).
+  f30 return, f36 idle breath. **Texels outside the body outline** (`shots/char-requin/outside.py`, point f20, `bg=key`,
+  limb hidden with `mark=@<bone>&hide=1`): right fin S 61 · SE 29 · E 0 · NE 12 · N 58 · NW 57 · W 2 · SW 38; bomb
+  fin S 25 · SE 68 · E 68 · NE 27 · N 46 · NW 107 · W 89 · SW 14 → the camera-side fin clears ≥ 14 at S/SE/SW/W
+  (right at SE, left at W). Tried and rejected (`t1/s2…s8`): out 26–44 swings the fin sideways (the out rotation acts on
+  the raised arm; at N it pointed straight up-right), fwd 100–150 without the chest twist stays inside the belly at SE.
+  Stills: `t1/s10.png` (f0/f20/f32 × 8 facings), `t1/s13.png` (final f20), pack `clip-point.png`, bake `t1/bake-point.png`.
+- **ghost** (loop 72, 4 keys 0/18/36/54, `dynamics 'hold'`): `spec.ghost: { hover: 0.14, keepHue: 0.25 }` (keeps the
+  blue-grey identity on the pale ramp) — hover bob 0.03/0.015/0/0.015, fins floating out and alternating (+8°), tail
+  sweeps 36→16, beret rolls 8→0, head tilts ±4, blink on key 2, small spark kept, legs dangling (FK, module float).
+  Gold halo over the beret stalk at 8/8 (`t1/s1.png`, `t1/s11.png`, `clip-ghost.png`, `t1/bake-ghost.png`).
+- **ghost-spent** (loop 72): dimmer spent ramp, no halo, spark OUT, eyes shut (−0.7), sinks −0.02…−0.05, spine 4 +
+  chest 4 + head 2 bow (a 14–18° bow put the big beret over the whole face at S/SE: `t1/s11.png` → `t1/s13.png`),
+  beret tipped back −6 so the shut eyes show at S/SE/SW, fins hanging, tail low (`clip-ghost-spent.png`,
+  `t1/bake-spent.png`).
+- charcheck: point off_grid 0, flicker 0, key_delta 42 %, strobe 1, hold_redraws 0, key_speckle +1; ghost key_delta 53 %,
+  amplitude 25 %; spent key_delta 33 %, amplitude 15 %; islands 1 in all three. 1× GIFs looked at: `clip-point-1x.gif`,
+  `clip-ghost-1x.gif`, `clip-ghost-spent-1x.gif` (the Read tool shows one frame; motion judged from the strips).
+- Bake (`tools/charpack.sh --bake requin --preset cast --game 1 --out shots/char-requin/bake`): auto cell 74 → 100 (die
+  touched the border), pad 19 → 27; point 4 drawings, ghost 4, ghost-spent 4; talk/personal FX cropped at the figure cell
+  (expected, the game draws its own bubbles).
+- Weakest: at SE (the game facing) the pointing RIGHT fin is a 29-texel blade beside the beret in the same skin blue
+  as the head — it reads, but the bomb fin (68 texels) carries more of the gesture there.

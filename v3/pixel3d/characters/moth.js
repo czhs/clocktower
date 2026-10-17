@@ -449,6 +449,13 @@ export function make() {
     // tones = lantern glow (alive) + ghost / ghost-spent look (GHOST_GLSL); bone indices = skeleton order
     material: { tones: GHOST_GLSL.tones, vertexHead: GHOST_GLSL.vertexHead, fragmentHead: GHOST_GLSL.fragmentHead,
       vertex: GHOST_GLSL.vertex(S.findIndex((b) => b.name === 'head'), S.findIndex((b) => b.name === 'halo'), S.findIndex((b) => b.name === 'lantern0')),
+      // (close-out) golden-hour drift: the cream head went apricot #EFBC74 (sun copy), wings/collar/paws tan-orange
+      // #DCA356, antennae orange #DA832A, and the custom GHOST_GLSL ghost / ghost-spent went khaki (#D0BD97 / #B89B69:
+      // it is not uCharGhost, so the keeps act on it). creamKeep [1, 0.85] keeps the fluff cream (#E7DFCF) in sun AND shade
+      // (whiteKeep 0.8 changed 0 px: the fluff hi #F8F0DE fails its chroma < 0.18 gate); hueKeep wing (mid luma 0.43, under
+      // creamKeep's gate) → beige, fluff → the ghost head stays blue-grey, ant → amber antennae at the authored hue (#C5924C,
+      // sat 0.61 = #E2A858's) + ghost antennae / halo stay pale. Golden only: noon / night 0 px (A/B shots/char-moth/wk-*).
+      creamKeep: [1, 0.85], hueKeep: { fluff: 1, wing: 1, ant: 1 },
       slots: { wing: { lift: 0.3 } }, sides: { eyeL: 'mid', eyeR: 'mid', antL0: 'mid', antR0: 'mid', wingL: 'mid', wingR: 'mid', wingFlapL: 'mid', wingFlapR: 'mid', lantern0: 'mid' } },
   };
 }

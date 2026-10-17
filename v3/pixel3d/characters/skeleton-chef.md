@@ -6,6 +6,44 @@ evidence, now stale). Sprite bake: `shots/char-skeleton-chef/bake/` (copied to `
 only): `pipgws/packages/assets/scripts/cast/skeleton-chef.ts`, `refs/cast/skeleton-chef.png`. Rendered on render-host
 (RTX 4090; the GPU line is in every `report.txt`).
 
+## Close-out (2026-10-17): golden-hour colour drift
+Problem (Run 05 close, `docs/CAST_GALLERY.md`): at golden hour the toque went apricot (#F8C987) and the skull tan
+(#D1A262), and the old-recipe ghost went tan/peach. Fix: **`material.hueKeep: { bone: 1, cloth: 1 }`** in the spec. It
+re-hues the bone and cloth pixels to their authored band tone at the graded luma, in every band, under the warm grade
+only. A/B on render-host (RTX 4090) with the variant spec `shots/char-skeleton-chef/chef_wk.js`; evidence in `wk/`:
+
+| variant | golden sun toque / skull | golden shade toque | verdict |
+|---|---|---|---|
+| v0 (before) | #F8C987 apricot / #D1A262 tan | #85779C lilac, faceted | drift |
+| a `creamKeep [1, 0.85]` | #F2EEE7 white / #D1A262 still tan | #9B92A3, **one flat tone** | skull drifts, shade flattened |
+| b a + hueKeep bone, cloth | #F2EEE7 / #B7AB95 grey-cream | flat (lift floor) | rejected: flattens the shading |
+| c b + whiteKeep 0.8 | = b (0 px over b) | = b | whiteKeep does nothing here |
+| e creamKeep [1, 0.6] + hueKeep | #D6D3CB / #B7AB95 | partly flattened | rejected |
+| **f hueKeep { bone 1, cloth 1 }** (= d, creamKeep [1, 0] + hueKeep) | **#D6D3CB off-white / #B7AB95 grey-cream** | **#847B8A, facets kept** | **adopted** |
+| f + hueKeep wicker, bread | same | same | rejected: dulls the living basket, loaves and gold halo |
+
+- Golden sun: toque L .82 vs grass .53 (dL +.29; was +.22 apricot), toque/skull step dL .17 (was .15). The toque is
+  light warm-grey, not paper white. Only a lift floor (creamKeep lift) gets it whiter, and that flattens the shade copy.
+  Evidence: `wk/cmp-golden.png`, `wk/cmp2-golden.png`, `wk/z-sun.png`, `wk/z2-sun.png`, `wk/z2-shade.png`,
+  `wk/cmp-final-golden.png`.
+- Noon and night scenes: 0 px changed (`wk/cmp-noon.png`, `wk/cmp-night.png`). The full `--preset cast --raw` pack vs the
+  previous raw frames (`wk/ab-raw.txt`): every clip and turnaround has 0 differing frames, except scene-golden and
+  scene-mark-golden. talk shows 28 frames that differ only in a 9×9 box at the speech bubble. This is shared FX drift, not
+  the keep: the same pack rendered with the keep stripped (`base=1`, `wk/talk-base`) matches the new talk byte for byte.
+- Golden 8-facing stills (`wk/g8/base-golden-rows.png` vs `fix-golden-rows.png`, x3 `cmp-idle-ghost-x3.png`): the living
+  rows read white toque + grey-cream skull at every facing, and the basket and loaves stay warm. **Ghost / ghost-spent stay
+  pale blue / blue-grey at golden** (before: tan toque and skull). The cause is that the custom `bonesGhostTone` ramp is
+  re-hued to its own (blue) band tone. Residual: a few tan basket pixels on the ghost at E/W/SW (wicker is not kept, see
+  the rejected row). Golden clip renders (`wk/golden-clips/`: idle, walk/game, offer, ghost, ghost-spent sheets + 1x GIF
+  frame strips `strip-clip-*-1x.png`) were looked at: the toque keeps its hi/mid facets in motion.
+- Pack: **113 pass / 19 warn / 0 fail**. No row changed status vs the previous 110/19/0; the 3 new rows sig_outside.toque,
+  sig_outside.skull and game.feet_visible come from newer charcheck and all PASS. sig_ground golden-sun PASS dH 147,
+  golden-shade PASS dL +46 % (was +44 %).
+- Bake re-run (`--bake skeleton-chef --preset cast --game 1`): 10 clips × 8 dirs. The bake renders at noon, so its
+  colours are unchanged. The cell is now 60×74 (was 60×79) because the shared bake cell code changed, not the spec. The
+  offer heart / vote sparkles are cropped at the figure cell (shared `--fxcell figure` default; the game draws its own
+  bubbles). Rows: `bake/rows-{S,SE}-x3.png`; the old sheet is kept in `wk/bake-pre/`.
+
 ## Touch-up (2026-10-16): Clocktower game clips
 Rules: CHARACTER_PLAYBOOK / CAST_PORTING top notes (Clocktower-only clips, module fixes r1 + r2). Pack re-rendered after
 the shared-code changes: `--preset cast --clips idle,walk,run,talk,vote,die,offer,point,ghost,ghost-spent,turn --raw`,

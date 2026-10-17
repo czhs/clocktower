@@ -5,7 +5,7 @@
 `g8-*-x3.png`, face crops `face-x8.png` / `talk*-x8.png` / `E-head-x6.png`, 1x GIF frame sheets `gs-*.png`, line-up
 `lineup-25.png`), round-1 evidence `shots/char-opal/self/`, `g8-*`, `p-*`; bake `shots/char-opal/bake/`. Identity source
 (read only): `pipgws/packages/assets/scripts/cast/opal.ts`, `refs/cast/opal.png`. Render host: render-host (RTX 4090,
-every shot log). Round 1 2026-10-16 (critic 16/24); **round 2 2026-10-16** (this sheet).
+every shot log). Round 1 2026-10-16 (critic 16/24); round 2 2026-10-16; **close-out r3 2026-10-17** (game clips point / ghost / ghost-spent added, evidence `shots/char-opal/r3/`; see §Close-out r3 at the end).
 
 ## 0. Brief
 - Concept: a sleek, cheerful brown otter in a teal vest who carries her smooth round pebble everywhere, hugged to her
@@ -91,6 +91,9 @@ mouth) · accent pebble `#C4CCDC / #A2AEC4 / #646C90` (r2: hi pulled down, no li
 | die (one-shot, held, legs fk) | f0 sway (8) · f8 knees fold (6) · f14 tips back + starts the roll (6) · f20 DEAD: hips fwd −70 / roll −80 (r2, was −28) so the body axis lies ACROSS the screen at S/SW, tail laid out past the feet → held (length 61) | "down" at S/SE/SW/NW/NE; tail visible at N |
 | optimize (emote) | f0 eyes on the pebble, LEFT paw cocked up beside the cheek ≥ 4 texels above it (6) · f6 TAP: paw on the pebble, body dips 0.05, head nods, spark (4) · f10 paw up (4) · f14 TAP 2, wide eyes, ears perk, spark + poof (6) · f20 PUNCHLINE: pebble held by her right cheek, smug half-lid, head tilt toward it, tail curled up, ears perk, star (14) · f34 smug closed-eye nod (8) · f42 stand | two visible taps, then the smug pebble-by-the-cheek |
 | turn | stop-motion 45° steps (charpack pseudo clip) | |
+| point (one-shot, r3) | f0 wind: paws to the chest, lean back, half-lid (4) · f4 "THAT one!": LEFT paw thrust forward-UP along the facing (upperArmL [115, 0, 30], forearm straight [−110, 0, 30], `.l` 1.3 / 1.2, paw at head height), pebble paw presented forward-LOW-out on her right ([60, 0, 40] / [−70, 0, 20]), head twist 6° to the target, ears perk, small open mouth, tail flick (24) · f28 paws back (6) · f34 idle (length 35) | the pointing arm outside the outline at S / SE / E / W / NW (left paw) and SW (pebble paw) |
+| ghost (loop 64, r3) | 4 keys every 16 f: rigid whole-texel bob (0.028 / 0.014 / 0 / 0.014 m), chest + head roll ±3 / ±5, blink on key 2, tail hanging (droop 35) and swishing ±10 / ±14, knees 18, toes down; pebble still hugged; `spec.ghost { hover 0.14, keepHue 0.3 }` draws ramp, halo, float | pale, haloed, same otter + pebble + vest tint |
+| ghost-spent (loop 72, r3) | 4 keys every 18 f: lower (−0.028…−0.056 m), spine/chest/head 3/3/3 (≈ 9° world bow; 26° hid the whole face, `r3/g8-ghost-spent-f0-bow26-x3.png`), eyes half shut (`eye.s` [0.05, −0.55]), ears down 25, paws sagging to the hips, tail straight down (droop 55) | dimmer, no halo, bowed, face still visible at S/SE/SW |
 
 ## Game speed (Stage 6; `shots/char-opal/report.txt`, `dir2/`)
 - `game.readable` PASS: 3.95 H/s, cycle **0.289 s / 1.14 H**, 4/4 drawings every cycle, holds 2,3,2,2,2,2…
@@ -116,9 +119,35 @@ mouth) · accent pebble `#C4CCDC / #A2AEC4 / #646C90` (r2: hi pulled down, no li
 | 9 | Personality, secondary | 2 | tail in every clip, ears perk in 4 clips, taps + poof + smug pebble-by-the-cheek punchline (`r2/gs-optimize.png`) | — |
 | 10 | Smears and FX | 2 | tap sparks ON the pebble (`clip-optimize.png` f14/f22), poof on tap 2, one steady talk bubble from f2 (`r2/gs-talk.png`, a 1-drawing pop-in only on the very first beat) | — |
 | 11 | Facing and turns | 2 | turnaround 8/8, turn off_grid 0 / flicker 0 | — |
-| 12 | Technical | 2 | page_errors 0, deterministic, 0 FAIL (85 pass / 18 warn), RTX 4090; bake 7 clips × 8 dirs, cell 58×74 | — |
+| 12 | Technical | 2 | page_errors 0, deterministic, 0 FAIL (r3: 116 pass / 16 warn, cast_clips PASS), RTX 4090; bake r3 10 clips × 8 dirs, cell 58×69 | — |
 | | **total** | **21** | | |
 
 Three weakest points: (1) leg-only flicker / unmeasurable contact from the shared LegGait 'hold' drawings; (2) the die
 rest at E/W still reads as a ball / head-over-body (a body lying across the screen at S cannot also lie across at E);
 (3) tone counts (dark 12, pebble 10) after moving the legs to the dark slot and dropping the pebble lift.
+
+## Close-out r3 (2026-10-17, render-host RTX 4090) — game clips point / ghost / ghost-spent
+Kept everything from round 2 unchanged (idle, walk, run, talk, vote, die, optimize, model, palette). Added:
+- **point** — two arms, because one arm never leaves the outline at S, SE, SW and W (R W4 point). Pose probes on
+  8-facing stills `r3/p{A..K}-x3.png`: a forward-UP pebble paw covered the face at S (pD, pE); both arms level-wide read
+  as a T-pose (pG); the free LEFT paw alone missed SW (pH). Chosen = pJ: left paw forward-up (carries S / SE / E / W /
+  NW, ≈ 5–10 texels outside the outline at SE/W) + the pebble paw forward-low-out (carries SW). Held key
+  `r3/g8-point-f4-x3.png`; wind / return `r3/g8-point-f0-x3.png`, `-f28-x3.png`. Different from vote (pebble overhead,
+  sideways) and talk f12 (pebble out to the side). 1× real time `r3/gs-point.png` (270 / 130 / 800 / 200 / 440 ms):
+  at SE the paw is thrown at the viewer side at head height and held 0.8 s — reads as "you!".
+- **ghost** — `spec.ghost { hover: 0.14, keepHue: 0.3 }` + a pose-only loop (no ghostK recipe): pale ramp, gold halo,
+  vest keeps a blue tint, pebble still hugged, tail hanging + swishing (`r3/g8-ghost-f0-x3.png`, `-f32-x3.png`, face
+  crop `r3/ghost-face-x8.png`, 1× `r3/gs-ghost.png`).
+- **ghost-spent** — dimmer, no halo, lower, head bowed ≈ 9° only (the first try at 26° hid the whole face under the
+  flat skull at S/SE/SW: `r3/g8-ghost-spent-f0-bow26-x3.png` → `r3/g8-ghost-spent-f0-x3.png`, `r3/spent-face-x8.png`),
+  half-lid, paws sagging, tail straight down (1× `r3/gs-ghost-spent.png`).
+- Pack `tools/charpack.sh opal --preset cast --raw` (current rules): **0 FAIL, 116 pass, 16 warn, `cast_clips` PASS**;
+  point off_grid/flicker 0, hold_redraws 0, pose_read 28 % ×24, key_speckle +4; ghost key_delta 55 %, amplitude 28 %;
+  ghost-spent key_delta 40 %, amplitude 16 %; islands 1 in all three. WARNs are the round-2 ones (LegGait legs, tone
+  counts, die.foot_slide counts the collapse). Log `r3/charpack.log`.
+- Bake `tools/charpack.sh --bake opal --preset cast --out shots/char-opal/bake`: 10 clips × 8 dirs (point 4, ghost 4,
+  ghost-spent 4 frames), trimmed cell 58×69 anchor [29, 56], no border warning after the auto re-bake at 88; checked
+  rows `r3/bake-point.png`, `r3/bake-ghosts.png` (halo inside the cell at 8/8). Log `r3/bake.log`.
+- Weak spots left: point at S is a diagonal (left paw up-right, pebble low-left) rather than an aimed arm — pointing at
+  the viewer cannot leave a chibi outline any other way; the point arm at 1× is a long brown stroke with a dark paw
+  (no finger part). The spent ghost's face is readable only at ×8 on dark ground at 1×.

@@ -374,7 +374,12 @@ export function make() {
     character: { legIK: 'pose', quant: { yaw: 8, chain: 4 } },
     clips: CLIPS,
     fx: { speech: { node: 'head' } },
-    material: { sides: { eyeL: 'mid', eyeR: 'mid' }, ...ghostMaterial(S) },
+    // close-out (golden drift): hueKeep keeps the bone grey-cream and the cloth (toque, apron, teeth) off-white under the
+    // golden key in every band, re-hued at the graded luma, so the shade copy keeps its facets (golden sun toque apricot
+    // #F8C987 → #D6D3CB, skull tan #D1A262 → #B7AB95; noon/night 0 px). It also keeps the custom ghost (old ghostK recipe,
+    // which the keeps cannot detect) pale blue at golden. creamKeep [1, 0.85] made a whiter sun toque (#F2EEE7) but its lift
+    // floor flattened the shade-copy toque to one tone; whiteKeep adds 0 px here. A/B: shots/char-skeleton-chef/wk/.
+    material: { sides: { eyeL: 'mid', eyeR: 'mid' }, hueKeep: { bone: 1, cloth: 1 }, ...ghostMaterial(S) },
   };
 }
 

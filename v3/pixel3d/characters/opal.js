@@ -270,11 +270,41 @@ export const CLIPS = {
     { f: 34, pose: { ...SMUG, pos: [0, -0.01, 0], head: [8, 0, -10], ...BLINK, tail0: [-20, 0, -10], tail1: [-25, 0, -60] } },
     { f: 42, pose: breathe(0, 0, TAIL(0, 0)) },
   ] },
+  // point (the game's shared emote, close-out r3): wind — both paws pull the pebble to the chest, lean back, half-lid (4) →
+  // "THAT one!": the free LEFT paw thrust forward-UP along the facing (straight arm, reach .l 1.3/1.2, paw at head height)
+  // and the pebble paw presented forward-LOW-out on her right, head + ears to the target, tail flick (held 24) → paws
+  // back (6) → idle. Two arms because one arm never leaves the outline at S, SE, SW AND W (R W4 point): the left paw
+  // carries S / SE / E / W / NW, the pebble paw SW. Pose probes shots/char-opal/r3/p{A..K}-x3.png (pJ = this).
+  point: { fps: 30, loop: false, interp: 'step', dynamics: 'snap', keys: [
+    { f: 0, pose: { pos: [0, -0.03, 0], spine: [-4, 0, 0], chest: [-6, -6, 0], head: [-2, -6, 0], ...HALF,
+      upperArmL: [30, 0, 20], forearmL: [30, 0, 0], ...TAIL(-8, -8) } },
+    { f: 4, pose: { pos: [0, 0.01, 0], chest: [-4, 0, 0], head: [-8, 6, -4], ...PERK, jaw: [10, 0, 0], 'mouth.s': [0.15, 1.0, 0],
+      upperArmL: [115, 0, 30], forearmL: [-110, 0, 30], 'upperArmL.l': [1.3], 'forearmL.l': [1.2],
+      upperArmR: [60, 0, 40], forearmR: [-70, 0, 20], ...TAIL(14, 18) } },
+    { f: 28, pose: { pos: [0, -0.01, 0], chest: [0, 4, 0], head: [-4, 4, 0], upperArmL: [40, 0, 25], forearmL: [-20, 0, 10],
+      upperArmR: [20, 0, 15], forearmR: [-20, 0, 0], ...TAIL(4, 4) } },
+    { f: 34, pose: breathe(0, 0, TAIL(0, 0)) },
+  ] },
+  // ghost (loop 64; spec.ghost draws the pale ramp, gold halo, hover and floating legs): the same cheerful otter, the
+  // pebble still hugged to her belly, a rigid whole-texel bob, a slow head sway, the tail hanging and swishing under her
+  // (droop +), one blink per loop
+  ghost: { fps: 30, loop: true, interp: 'step', length: 64, dynamics: 'hold', keys: [0, 1, 2, 3].map((i) => ({ f: i * 16, pose: {
+    pos: [0, [0.028, 0.014, 0, 0.014][i], 0], chest: [-2, 0, [3, 0, -3, 0][i]], head: [-6, 0, [5, 0, -5, 0][i]],
+    ...(i === 2 ? BLINK : {}), ...TAIL([-10, 0, 10, 0][i], [-14, 0, 14, 0][i], 35),
+    ...KNEES(18), footL: [30, 0, 0], footR: [30, 0, 0] } })) },
+  // ghost-spent (loop 72): dimmer (module ramp, no halo), hovering lower, head bowed only ≈ 9° world (r3: 26° hid the
+  // whole face under the flat skull at S/SE/SW, r3/g8-ghost-spent-f0-bow26-x3.png), eyes half shut, ears down, the
+  // pebble sagging to the hips, the tail hanging straight down
+  'ghost-spent': { fps: 30, loop: true, interp: 'step', length: 72, dynamics: 'hold', keys: [0, 1, 2, 3].map((i) => ({ f: i * 18, pose: {
+    pos: [0, [-0.028, -0.042, -0.056, -0.042][i], 0], spine: [3, 0, 0], chest: [3, 0, [2, 0, -2, 0][i]], head: [3, 0, [4, 0, -4, 0][i]],
+    ...EYES(0.05, -0.55), earL: [25, 0, 0], earR: [25, 0, 0], upperArmL: [-8, 0, 4], upperArmR: [-8, 0, 4], forearmL: [-20, 0, 0], forearmR: [-20, 0, 0],
+    ...TAIL([-4, 0, 4, 0][i], [-6, 0, 6, 0][i], 55), ...KNEES(10), footL: [35, 0, 0], footR: [35, 0, 0] } })) },
 };
 
 // vote / die end on a HELD pose (clip.hold): length after the last key, never a duplicate final key (honk r2)
 CLIPS.vote.length = 31;
 CLIPS.die.length = 61;
+CLIPS.point.length = 35;
 
 export function make() {
   const S = skeleton();
@@ -297,6 +327,7 @@ export function make() {
       duty: [0.18, 0.1], reach: 0.6, arms: [0, 0], elbows: [0, 0], bob: [0.05, 0.1], lean: [6, 14],
       lift: [0.07, 0.1], twist: [6, 9] },
     character: { quant: { yaw: 8, chain: 4 } },
+    ghost: { hover: 0.14, keepHue: 0.3 },   // r3: keepHue — the teal vest / brown fur are half the identity
     clips: CLIPS,
     // r2: the tap spark spawns AT the pebbleTop socket (a 0-length 'blade'; the default weapon tip sat 0.51 m in front)
     fx: { stepClips: ['walk', 'run'], stepEvery: 2, speech: { node: 'crown' }, sockets: { pebbleTop: { length: 0 } }, poof: { n: 5, speed: 0.6 } },
