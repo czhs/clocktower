@@ -109,7 +109,8 @@ export function ExileControls({ view, send }: { view: StorytellerGameView; send:
   const ex = view.exile;
   const running = ex && (ex.status === 'pending' || ex.status === 'voting') ? ex : null;
   const exiled = new Set(view.players.filter((p) => p.exiled).map((p) => p.seat));
-  const open = (view.travellers ?? []).filter((t) => !exiled.has(t.seat) && view.players.find((p) => p.seat === t.seat)?.alive);
+  // A dead Traveller may still be exiled (the engine allows it); only an exiled one is done.
+  const open = (view.travellers ?? []).filter((t) => !exiled.has(t.seat));
   if (!running && !open.length) return null;
   if (running) {
     const who = nameOf(view.players, running.travellerSeat);
@@ -163,7 +164,7 @@ export function ExileControls({ view, send }: { view: StorytellerGameView; send:
           <span class="cts-grow">
             Traveller <b>{nameOf(view.players, t.seat)}</b> <span class="muted">({CHARACTER_INFO[t.character].name})</span>
           </span>
-          <button onClick={() => send({ type: 'exile_call', seat: t.seat, startVote: true })} title="Everyone votes; more than half the living exiles them">
+          <button onClick={() => send({ type: 'exile_call', seat: t.seat, startVote: true })} title="Everyone votes; at least half the living exiles them">
             Call for exile
           </button>
         </li>

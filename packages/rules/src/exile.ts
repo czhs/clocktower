@@ -3,9 +3,10 @@
 // An exile differs from an execution in every way that matters:
 //
 //   * ANYONE may vote, including dead players, and a dead player does NOT spend their ghost vote;
-//   * a simple majority of the living is enough, and it is not compared against today's block, so
-//     an exile never competes with (or blocks) a normal execution;
+//   * votes from at least half the living are enough (the same bar as an execution), and it is not
+//     compared against today's block, so an exile never competes with (or blocks) a normal execution;
 //   * at most one exile vote runs at a time, but an exile does not use up the day's execution;
+//   * an exile vote belongs to its day: nightfall withdraws one still open;
 //   * an exiled Traveller leaves the game: they are dead and their ability ends.
 //
 // Travellers also cannot be nominated for a normal execution — `canBeNominated` is the single
@@ -27,7 +28,7 @@ export interface ExileState {
   /** seat -> vote. Dead players appear here too and keep their ghost vote. */
   votes: Record<number, boolean>;
   voteCount: number;
-  /** Votes needed: more than half the LIVING players. */
+  /** Votes needed: at least half the LIVING players. */
   threshold: number;
   /** Raised hands not yet locked in. */
   hands: number[];
@@ -51,12 +52,13 @@ export function travellersIn(s: GameState): PlayerState[] {
   return s.players.filter((p) => isTravellerPlayer(p));
 }
 
-/** Votes needed to exile: strictly more than half the living players. */
+/** Votes needed to exile: at least half the living players (rounded up), as for an execution. */
 export function exileThreshold(s: GameState): number {
-  return Math.floor(publicAliveCount(s) / 2) + 1;
+  return Math.ceil(publicAliveCount(s) / 2);
 }
 
 function requireExileState(s: GameState): ExileState {
+  if (s.phase !== 'day') throw new RuleError('phase', 'Exiles happen during the day');
   if (!s.exile) throw new RuleError('not_found', 'No exile vote is running');
   return s.exile;
 }

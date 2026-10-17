@@ -146,7 +146,7 @@ const TRAVELLER_RULES: readonly RuleSection[] = [
     heading: 'Exile',
     points: [
       'Everyone may vote on an exile, including dead players, and dead players do not spend their ghost vote.',
-      'An exile needs votes from more than half the living players.',
+      'An exile needs votes from at least half the living players, the same as an execution.',
       'An exile is not an execution: it does not use up the day\'s execution, and it is not compared with today\'s nominations.',
       'An exiled Traveller dies and their ability ends.',
     ],

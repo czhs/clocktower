@@ -1,4 +1,5 @@
 import {
+  CHARACTER_IDS,
   CHARACTER_INFO,
   TB_DISTRIBUTION,
   charactersOfScript,
@@ -68,9 +69,17 @@ function clampCounts(c: SetupCounts, n: number): SetupCounts {
   return out;
 }
 
+/**
+ * The characters setup may draw from on `script` (bluffs, a believed character). A custom script's
+ * list is not part of the game state, so it may draw from every seated character.
+ */
+function scriptPool(script: ScriptId): readonly CharacterId[] {
+  return script === 'custom' ? CHARACTER_IDS.filter((c) => isSeatedType(CHARACTER_INFO[c].type)) : charactersOfScript(script);
+}
+
 /** Characters of a type within one script's pool. */
 export const ALL_OF = (t: 'townsfolk' | 'outsider' | 'minion' | 'demon', script: ScriptId = DEFAULT_SCRIPT): CharacterId[] =>
-  charactersOfScript(script).filter((c) => CHARACTER_INFO[c].type === t);
+  scriptPool(script).filter((c) => CHARACTER_INFO[c].type === t);
 
 export interface Assignment {
   bySeat: Map<number, CharacterId>;
@@ -102,7 +111,7 @@ function goodNotInPlay(
   exclude: readonly CharacterId[] = [],
   script: ScriptId = DEFAULT_SCRIPT,
 ): CharacterId[] {
-  return charactersOfScript(script).filter(
+  return scriptPool(script).filter(
     (c) =>
       CHARACTER_INFO[c].alignment === 'good' &&
       !ROLES[c]?.believesOther &&

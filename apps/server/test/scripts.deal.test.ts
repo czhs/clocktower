@@ -192,7 +192,7 @@ describe('Travellers made by the Storyteller (set_traveller) and exile', () => {
     expect(JSON.stringify((other.last('game:view') as PlayerGameView).players)).not.toContain('evil');
   }, 60_000);
 
-  it('a Traveller cannot be executed or force-nominated; a majority exiles them (dead players vote free)', async () => {
+  it('a Traveller cannot be executed or force-nominated; half the living exiles them (dead players vote free)', async () => {
     const { st, ps } = await lobby('trouble-brewing');
     const tSeat = stView(st).players.at(-1)!.seat;
     st.send('st:command', { type: 'set_traveller', seat: tSeat, character: 'gunslinger', alignment: 'good' });
@@ -213,7 +213,7 @@ describe('Travellers made by the Storyteller (set_traveller) and exile', () => {
     await waitFor(() => stView(st).players.find((p) => p.seat === deadSeat)?.alive === false, 5000, 'dead');
     st.send('st:command', { type: 'exile_call', seat: tSeat, startVote: true });
     const ex = await waitFor(() => stView(st).exile?.status === 'voting' && stView(st).exile, 5000, 'exile open');
-    expect(ex.threshold).toBe(Math.floor((PLAYERS - 1) / 2) + 1); // more than half the 6 living
+    expect(ex.threshold).toBe(Math.ceil((PLAYERS - 1) / 2)); // at least half the living (as for an execution)
     // players raise their own hands (the dead one too); the Traveller cannot be nominated meanwhile
     const bySeat = (seat: number) => ps.find((p) => (p.last('game:view') as PlayerGameView).you.seat === seat)!;
     const voters = stView(st).players.filter((p) => p.seat !== tSeat).slice(0, ex.threshold - 1).map((p) => p.seat);

@@ -65,7 +65,7 @@ export interface PublicPlayerView {
 
 /**
  * (additive, travellers) A Traveller exile vote. Public: everyone, alive or dead, may raise a hand
- * and a dead player does not spend their ghost vote. Needs more than half the living.
+ * and a dead player does not spend their ghost vote. Needs at least half the living.
  */
 export interface ExileView {
   id: string;

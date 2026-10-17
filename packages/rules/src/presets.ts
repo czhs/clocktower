@@ -1,9 +1,9 @@
 // OWNED BY rules-storyteller. (v2.2) Dealing a character BAG onto the seats at random: preset
 // storylines (catalogue + bag builder: @ct/protocol storylines.ts) and Storyteller-picked bags.
 // Pure; all randomness from the injected RNG (a seed gives a reproducible deal).
-import { CHARACTER_INFO, buildStorylineBag, storylineById, type CharacterId, type StorylineDef } from '@ct/protocol';
+import { CHARACTER_INFO, buildStorylineBag, storylineById, type CharacterId, type ScriptId, type StorylineDef } from '@ct/protocol';
 import { RuleError, type Rng } from './types.js';
-import { completeAssignment, pickDrunkBelief, validateAssignment, type Assignment, type ValidationResult } from './setup.js';
+import { completeAssignment, validateAssignment, type Assignment, type ValidationResult } from './setup.js';
 import { shuffle } from './util.js';
 
 export interface BagDealOptions {
@@ -13,6 +13,11 @@ export interface BagDealOptions {
   drunkBelievesPrefer?: readonly CharacterId[];
   /** Up to 3 bluffs (filled up at random). */
   demonBluffs?: readonly CharacterId[];
+  /**
+   * The lobby's script (default Trouble Brewing): random bluffs and a Lunatic's / Marionette's
+   * believed character come from its pool, and the bag is validated against it.
+   */
+  script?: ScriptId;
 }
 
 /** The bag for a storyline at `n` players (throws RuleError when unknown / unsupported). */
@@ -37,10 +42,13 @@ export function dealBag(seats: readonly number[], bag: readonly CharacterId[], r
   [...seats].sort((a, b) => a - b).forEach((seat, i) => bySeat.set(seat, chars[i]!));
   let drunkBelieves: CharacterId | null = opts.drunkBelieves ?? null;
   if (!drunkBelieves && bag.includes('drunk')) {
-    const preferred = (opts.drunkBelievesPrefer ?? []).find((c) => CHARACTER_INFO[c].type === 'townsfolk' && !bag.includes(c));
-    drunkBelieves = preferred ?? pickDrunkBelief(rng, bag);
+    // A storyline's preferred belief; otherwise completeAssignment picks one from the script's pool.
+    drunkBelieves = (opts.drunkBelievesPrefer ?? []).find((c) => CHARACTER_INFO[c].type === 'townsfolk' && !bag.includes(c)) ?? null;
   }
-  const assignment = completeAssignment({ bySeat, drunkBelieves, redHerringSeat: null, demonBluffs: [...(opts.demonBluffs ?? [])] }, rng);
+  const assignment = completeAssignment(
+    { bySeat, drunkBelieves, redHerringSeat: null, demonBluffs: [...(opts.demonBluffs ?? [])], ...(opts.script ? { script: opts.script } : {}) },
+    rng,
+  );
   const validation = validateAssignment(seats, assignment);
   if (validation.errors.length) throw new RuleError('invalid', validation.errors.join('; '));
   return { assignment, validation };

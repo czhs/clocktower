@@ -128,10 +128,10 @@ describe('Exile', () => {
     expect(actErr(s, 2, { type: 'nominate', nomineeSeat: 5 })).toMatch(/exiled, not executed/);
   });
 
-  it('a majority of the living exiles the Traveller', () => {
+  it('at least half the living exiles the Traveller', () => {
     const s = game();
-    // 6 alive -> threshold 4.
-    expect(exileThreshold(s)).toBe(4);
+    // 6 alive -> threshold 3 (half, rounded up: the same bar as an execution).
+    expect(exileThreshold(s)).toBe(3);
     callExile(s, op(), 5, 2);
     startExileVote(s, op());
     for (const seat of [0, 1, 2, 3]) setExileHand(s, op(), seat, true);
@@ -196,6 +196,23 @@ describe('Exile', () => {
     st(s, { type: 'execute', seat: 2 });
     expect(alive(s, 2)).toBe(false);
     expect(s.day!.executionOccurred).toBe(true);
+  });
+
+  it('nightfall withdraws an open exile vote; nobody can vote on it at night; the next day starts clean', () => {
+    const s = game();
+    callExile(s, op(), 5, null);
+    startExileVote(s, op());
+    act(s, 0, { type: 'exileHand', vote: true });
+    st(s, { type: 'force_phase', to: 'night' });
+    expect(s.exile!.status).toBe('cancelled');
+    expect(actErr(s, 1, { type: 'exileHand', vote: true })).toMatch(/No exile vote is open/);
+    expect(() => tallyExile(s, op())).toThrow(/during the day/);
+    expect(alive(s, 5)).toBe(true);
+    st(s, { type: 'force_phase', to: 'day' });
+    expect(s.exile).toBeNull();
+    // A fresh exile can be called on the new day.
+    callExile(s, op(), 5, null);
+    expect(s.exile!.status).toBe('pending');
   });
 
   it('a locked vote cannot be changed', () => {

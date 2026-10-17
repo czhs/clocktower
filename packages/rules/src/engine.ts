@@ -279,6 +279,11 @@ function startNight(s: GameState, op: Op, first: boolean, reason: 'bedtime' | 'n
     s.lastDay = { nominatorSeats: [...new Set(nominatorSeats)], voterSeats, executionOccurred: s.day.executionOccurred };
   }
   s.day = null;
+  // An exile vote belongs to its day: one still open at nightfall is withdrawn.
+  if (s.exile && (s.exile.status === 'pending' || s.exile.status === 'voting')) {
+    s.exile.status = 'cancelled';
+    alert(s, op, `The exile vote on seat ${s.exile.travellerSeat + 1} was still open at nightfall and was withdrawn.`);
+  }
   for (const p of s.players) {
     if (p.poisonedBy === 'poisoner') p.poisonedBy = null;
     p.protectedTonight = false;
@@ -298,6 +303,7 @@ function startDay(s: GameState, op: Op): void {
   clearStage(s);
   s.visitingSeat = null;
   s.day = newDay();
+  s.exile = null; // yesterday's exile vote (if any) is not today's
   s.lastExecutedDiedSeat = null;
   clearStepPrompts(s);
   for (const p of s.players) {
@@ -649,6 +655,7 @@ function dealOwnBag(s: GameState, op: Op, cmd: Extract<StCommand, { type: 'deal_
   const { assignment, validation } = dealBag(dealSeats(s), cmd.characters, dealRng(s, cmd.seed), {
     ...(cmd.drunkBelieves ? { drunkBelieves: cmd.drunkBelieves } : {}),
     ...(cmd.demonBluffs ? { demonBluffs: cmd.demonBluffs } : {}),
+    script: s.script,
   });
   if (validation.warnings.length && !cmd.allowNonstandard) throw new RuleError('invalid', `${validation.warnings.join('; ')} (set allowNonstandard to accept)`);
   for (const w of validation.warnings) alert(s, op, w);
