@@ -64,3 +64,19 @@ export { finishVoteNow, minVotes } from './day.js';
 // Storyteller-facing night-step view (suggestion, prompt, notes). Used by the ST panel and tests.
 export { stepView, buildNightQueue, findStep, openStepFor } from './night.js';
 export { mulberry32, impaired, actingRole } from './util.js';
+// Travellers: the exile mechanic (travellers are exiled, never executed).
+export {
+  addTraveller,
+  callExile,
+  cancelExile,
+  canBeNominated,
+  EXILE_REMINDER,
+  exilePlayer,
+  exileThreshold,
+  isTravellerPlayer,
+  setExileHand,
+  startExileVote,
+  tallyExile,
+  travellersIn,
+  type ExileState,
+} from './exile.js';

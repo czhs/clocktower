@@ -153,6 +153,9 @@ export function createGame(opts: CreateGameOptions): GameState {
     stepSeq: 0,
     day: null,
     lastExecutedDiedSeat: null,
+    lastDay: null,
+    exile: null,
+    exileSeq: 0,
     visitingSeat: null,
     travelSpeedMult: 1,
     announcements: [],
@@ -256,6 +259,20 @@ function startNight(s: GameState, op: Op, first: boolean, reason: 'bedtime' | 'n
   s.nightNumber += 1;
   s.phaseEndsAt = null;
   clearStage(s);
+  // Keep a summary of the day for the night's information characters before dropping it.
+  if (s.day) {
+    const nominatorSeats = s.day.nominations.filter((n) => n.status !== 'cancelled').map((n) => n.nominatorSeat);
+    const voterSeats = [
+      ...new Set(
+        s.day.nominations.flatMap((n) =>
+          Object.entries(n.votes)
+            .filter(([, yes]) => yes === true)
+            .map(([seat]) => Number(seat)),
+        ),
+      ),
+    ];
+    s.lastDay = { nominatorSeats: [...new Set(nominatorSeats)], voterSeats, executionOccurred: s.day.executionOccurred };
+  }
   s.day = null;
   for (const p of s.players) {
     if (p.poisonedBy === 'poisoner') p.poisonedBy = null;

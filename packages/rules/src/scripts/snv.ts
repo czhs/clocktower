@@ -228,17 +228,13 @@ export const SNV_ROLES: ScriptRoleDefs = {
     otherNight: 48,
     suggest: (s) => {
       const demon = s.players.find((q) => typeOf(q.character) === 'demon');
-      const voted =
-        !!demon &&
-        (s.day?.nominations ?? []).some((n) => n.votes[demon.seat] === true);
+      // `s.day` is cleared at nightfall, so this reads the captured summary of yesterday.
+      const voted = !!demon && (s.lastDay?.voterSeats ?? []).includes(demon.seat);
       const text = voted ? 'The Demon voted today.' : 'The Demon did not vote today.';
       return {
         text: `Flowergirl: Demon ${demon ? who(demon) : 'none'} ${voted ? 'VOTED' : 'did not vote'} today`,
         info: { text, yes: voted },
-        notes: [
-          'Reads today\'s tallied votes. Check it against a vote the Storyteller struck or added.',
-          ...vortoxNote(s),
-        ],
+        notes: ["Reads yesterday's tallied votes. Re-check it if you struck or added a vote.", ...vortoxNote(s)],
       };
     },
     infoOnly: true,
@@ -248,9 +244,9 @@ export const SNV_ROLES: ScriptRoleDefs = {
     firstNight: null,
     otherNight: 48,
     suggest: (s) => {
-      const minionNominated = (s.day?.nominations ?? []).some((n) => {
-        const nom = playerAt(s, n.nominatorSeat);
-        return !!nom && typeOf(nom.character) === 'minion' && n.status !== 'cancelled';
+      const minionNominated = (s.lastDay?.nominatorSeats ?? []).some((seat) => {
+        const nom = playerAt(s, seat);
+        return !!nom && typeOf(nom.character) === 'minion';
       });
       const text = minionNominated ? 'A Minion nominated today.' : 'No Minion nominated today.';
       return {

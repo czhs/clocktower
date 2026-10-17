@@ -1,5 +1,6 @@
 import { killPlayer, proposeResult } from './deaths.js';
 import { ROLES } from './roles.js';
+import { canBeNominated } from './exile.js';
 import { RuleError, type DayState, type GameState, type NominationState } from './types.js';
 import {
   aliveCount,
@@ -55,6 +56,8 @@ export function nominate(s: GameState, op: Op, nominatorSeat: number, nomineeSea
   if (!nominator.publicAlive) throw new RuleError('forbidden', 'Dead players cannot nominate');
   if (nominator.nominatedToday) throw new RuleError('forbidden', 'You have already nominated today');
   if (nominee.wasNominatedToday) throw new RuleError('forbidden', 'That player has already been nominated today');
+  // Travellers are exiled, never executed, so they cannot be nominated (see exile.ts).
+  if (!canBeNominated(nominee)) throw new RuleError('forbidden', 'Travellers are exiled, not executed');
   nominator.nominatedToday = true;
   nominator.nominationsMade += 1;
   nominee.wasNominatedToday = true;
