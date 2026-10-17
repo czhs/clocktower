@@ -194,7 +194,7 @@ export function parts(S) {
   // r2: lid rim + a slat band on their own bone 'crateLid' (a different part id → real step lines; on the same bone
   // as the box the lines were suppressed and the crate read as a blank cube)
   add('crateLid', tiny(K.box(CW, 0.08, CW)), [0, (CW / 2 - 0.04) * TINY, 0], 'wood', { name: 'crateLid' });
-  add('crateLid', tiny(K.box(CW - 0.01, 0.06, CW - 0.01)), [0, -0.07 * TINY, 0], 'wood', { name: 'crateSlat' });
+  add('crateLid', tiny(K.box(CW + 0.02, 0.07, CW + 0.02)), [0, -0.08 * TINY, 0], 'wood', { name: 'crateSlat' });
   return P;
 }
 
@@ -237,21 +237,21 @@ export const CLIPS = {
     { f: 60, pose: breathe(0.028, 4, { ...TAIL(-18, -16), ...SQ(0.05), ...EARS([0, 0, 0], [-30, 0, 15]) }) },
     { f: 64, pose: breathe(0.014, 2, { ...TAIL(-6, -4), ...SQ(0.03) }) },
   ] },
-  // talk (loop 24): a beat every 6 frames — mouth open on alternate keys, head roll toward the camera, his right paw
-  // gestures (out low ↔ up by the shoulder), ear flicks, tail beat, body squash on the "down" beats
+  // talk (loop 24): a beat every 6 frames — mouth open on alternate keys, head roll toward the camera, his right paw (f0) then his LEFT paw (f12, r2: the gesture now shows at W/NW too)
+  // gestures (out low, then up by the shoulder), ear flicks, tail beat, body squash on the "down" beats
   talk: { fps: 30, loop: true, interp: 'step', length: 24, dynamics: 'hold', events: { 0: 'speak' }, keys: [
-    { f: 0, pose: { pos: [0, 0, 0], chest: [-4, -8, 0], head: [-6, -10, 8], ...MOUTH(1.6), upperArmR: [50, 0, 55], forearmR: [40, 0, 0], ...TAIL(0, -4) } },
-    { f: 6, pose: { pos: [0, -0.03, 0], chest: [2, -4, 0], head: [0, -14, -6], ...HALF, ...SQ(0.06), upperArmR: [15, 0, 20], forearmR: [15, 0, 0],
+    { f: 0, pose: { pos: [0, 0, 0], chest: [-4, -8, 0], head: [-6, -10, 8], ...MOUTH(1.6), upperArmR: [50, 0, 55], forearmR: [40, 0, 0], upperArmL: [0, 0, 0], forearmL: [0, 0, 0], ...TAIL(0, -4) } },
+    { f: 6, pose: { pos: [0, -0.03, 0], chest: [2, -4, 0], head: [0, -14, -6], ...HALF, ...SQ(0.06), upperArmR: [15, 0, 20], forearmR: [15, 0, 0], upperArmL: [0, 0, 0], forearmL: [0, 0, 0],
       ...EARS([0, 0, 0], [-30, 0, 15]), ...TAIL(-14, -12) } },
-    { f: 12, pose: { pos: [0, 0, 0], chest: [-4, -12, 0], head: [-6, -6, 12], ...MOUTH(1.4), upperArmR: [85, 0, 30], forearmR: [80, 0, 0], ...TAIL(4, 6) } },
-    { f: 18, pose: { pos: [0, -0.03, 0], chest: [2, -2, 0], head: [0, -12, 2], ...HALF, ...SQ(0.06), upperArmR: [20, 0, 25], forearmR: [15, 0, 0],
+    { f: 12, pose: { pos: [0, 0, 0], chest: [-4, -12, 0], head: [-6, -6, 12], ...MOUTH(1.4), upperArmR: [20, 0, 25], forearmR: [15, 0, 0], upperArmL: [85, 0, 30], forearmL: [80, 0, 0], ...TAIL(4, 6) } },
+    { f: 18, pose: { pos: [0, -0.03, 0], chest: [2, -2, 0], head: [0, -12, 2], ...HALF, ...SQ(0.06), upperArmR: [20, 0, 25], forearmR: [15, 0, 0], upperArmL: [0, 0, 0], forearmL: [0, 0, 0],
       ...EARS([-30, 0, 15], [0, 0, 0]), ...TAIL(-14, -12) } },
   ] },
   // vote: squat + grab (4) → the crate hoisted overhead in both paws, on tiptoe, ears folded under it, eyes wide — HELD
   vote: { fps: 30, loop: false, interp: 'step', length: 30, events: { 4: 'vote@handR' }, keys: [
     { f: 0, pose: { pos: [0, -0.06, 0], spine: [8, 0, 0], chest: [6, 0, 0], head: [-10, 0, 0], ...SQ(0.1), ...EARS([-15, 0, 10]),
       upperArmL: [60, 0, 30], upperArmR: [60, 0, 30], forearmL: [40, 0, 0], forearmR: [40, 0, 0], ...CRATE(CP(-0.06, 0, 0.5)), ...TAIL(-10, -4) } },
-    { f: 4, pose: { pos: [0, 0.04, 0], spine: [-4, 0, 0], chest: [-4, 0, 0], head: [-6, 0, 0], ...WIDE, ...SQ(-0.04), ...EARS([-45, 0, 25]),
+    { f: 4, pose: { pos: [0, 0.04, 0], spine: [-4, 0, 0], chest: [-4, 0, 0], head: [-6, 0, 0], ...WIDE, ...SQ(-0.04), ...EARS([-20, 0, 8]),
       ...LIFT(2.0), ...CRATE([0, 1.24, 0.02]), ...TAIL(-20, -18, -10) } },
   ] },
   // point (the game's shared emote): wind (4) → right paw thrown out-and-up toward the facing, head + ears to the
