@@ -84,7 +84,7 @@ import * as THREE from 'three';
 import { toonMaterial } from '../materials/toon.js';
 
 export const PART_STEP = '0.00048828125';            // 2^-11: one half-float ulp in [0.5, 1) → exact ids
-const PART_MOD = 156;                                 // ids ±1..±78 (FLAG_CHAR ± 0.039, isChar: ± 0.05); 0 = no part
+const PART_MOD = 156;                                 // ids ±1..±78 (FLAG_CHAR ± 0.039; inner-line tone parts ±79..±156, isChar: ± 0.08); 0 = no part
                                                       // info (plain FLAG_CHAR, partLines false): lines as before
 const PAL_MAX = 16;
 
@@ -173,6 +173,9 @@ export function characterMaterial(engine, opts = {}) {
     // round 05 (look.js header §Part options): signature / face lift, held props off the far side, material hints
     sigLift = 0.3, faceLift = 0.3, liftDown = -0.35, props = 'mid', propReach = 0.2, slots = null, hints = null,
     hintAmp = 1, shadowSnap = true,
+    // (module fix, wave 4) inner-line tone: 'tone' = every part's inner lines take the darker adjacent tone (hue kept)
+    // instead of the cool grey-lilac; per slot: material.slots.<x>.line 'tone' | 'grey'. creamKeep k | [k, lift]: see outgoing
+    innerLine = null, creamKeep = 0,
     // (module fix, wave 3) shared ghost look: rig.buildCharacter passes spec.ghost (rig.ghostOpts) + the halo bone index
     ghost = null, ghostHaloBone = -1, ghostHeight = 1,
     uniforms = {}, vertexHead = '', vertex = '', fragmentHead = '', tones = '', ...rest
@@ -199,6 +202,8 @@ export function characterMaterial(engine, opts = {}) {
     uCharHintK: { value: hintAmp },
     uCharSnap: { value: new THREE.Vector3(0, 0, 0) },    // shadow-lookup shift (world m) that snaps the root to the shadow grid
     uCharWhiteKeepLift: { value: 0 },                    // material.whiteKeepLift (whiteKeep on pixels a slot lift raised)
+    // (module fix, wave 4) material.creamKeep: x k (0 = off), y lift (min luma of the kept cream / its authored band tone)
+    uCharCreamKeep: { value: new THREE.Vector2(...(Array.isArray(creamKeep) ? [+creamKeep[0] || 0, +creamKeep[1] || 0] : [+creamKeep || 0, 0])) },
     // shared ghost (spec.ghost; level set per displayed clip by Character / rig.setGhost): x level 0|1|2, y halo bone, z H
     uCharGhost: { value: new THREE.Vector4(0, ghostHaloBone, ghostHeight, 0) },
     uCharGhostRamp: { value: Array.from({ length: 5 }, (_, i) => (GR[i] ? new THREE.Vector3(GR[i].r, GR[i].g, GR[i].b) : new THREE.Vector3())) },
@@ -283,9 +288,12 @@ export function characterMaterial(engine, opts = {}) {
           float po = uCharOpt[pi / 4][pi - (pi / 4) * 4];
           vCharLift = mod(po, 128.0) * 0.01;
           vCharProp = mod(floor(po / 128.0), 2.0);
-          vCharHint = floor(po / 256.0);
+          vCharHint = mod(floor(po / 256.0), 4.0);
           vCharFar *= 1.0 - vCharProp;
           vCharPart = vCharPart < ${PART_MOD / 2}.0 ? vCharPart - ${PART_MOD / 2}.0 : vCharPart - ${PART_MOD / 2 - 1}.0;
+          // (module fix, wave 4) inner-line TONE parts (opt bit 1024) write their id in the outer band ±79..±156
+          // (FLAG_CHAR ± 0.076; outline.js isChar ± 0.08): outline.js colours their lines from the darker adjacent tone
+          if (po >= 1024.0) vCharPart += sign(vCharPart) * ${PART_MOD / 2}.0;
         }
       #else
         vCharFar = 0.0; vCharMid = 0.0; vCharPart = 0.0;
@@ -294,7 +302,7 @@ export function characterMaterial(engine, opts = {}) {
       uniform vec3 uCharCenter, uCharFwd, uCharAnchor; uniform vec4 uCharShape, uCharHull; uniform vec3 uCharSelf;
       uniform float uCharHintK; uniform vec3 uCharSnap;
       uniform float uCharTime;   // (module fix, look row) the Character's clock (frozen with the stage's t=): use it, not uTime, for glow/flicker
-      uniform float uCharWhiteKeep, uCharWhiteKeepLift;
+      uniform float uCharWhiteKeep, uCharWhiteKeepLift; uniform vec2 uCharCreamKeep;
       uniform vec4 uCharGhost, uCharGhostK, uCharGhostFade, uCharGhostGlow; uniform vec3 uCharGhostRamp[5], uCharGhostHalo;
       uniform float uCharGhostKeep[${PAL_MAX}];
       flat varying float vCharGSlot; flat varying float vCharGHalo;
@@ -372,6 +380,24 @@ export function characterMaterial(engine, opts = {}) {
         float wlW = clamp((uRampHi.r - uRampHi.b - 0.1) * 2.0, 0.0, 1.0);
         if (wlL > 0.7 && wlC < 0.25) outgoingLight = mix(outgoingLight, vec3(dot(outgoingLight, vec3(0.299, 0.587, 0.114))), uCharWhiteKeepLift * wlW * (toonW.y + toonW.z));
       }
+      // (module fix, wave 4: maxflow, theo-rem) material.creamKeep k | [k, lift] (default 0 = unchanged): a CREAM albedo
+      // (authored mid: linear luma > 0.45, warm r >= b, saturation < 0.45, fading out by 0.6; whiteKeep's chroma gate
+      // rejects cream) keeps its authored hue under the warm golden grade in EVERY band (sun hi/mid and the shade
+      // copy): the lit colour is re-hued to the authored band tone at the same luma (k · warmth), and with lift > 0
+      // never darker than lift × that tone's luma (the mauve-grey golden chest #957C7E). Ghost levels are skipped.
+      if (uCharCreamKeep.x > 0.0 && uCharGhost.x < 0.5) {
+        vec3 ckLw = vec3(0.299, 0.587, 0.114);
+        float ckMx = max(max(toonMid0.r, toonMid0.g), toonMid0.b), ckMn = min(min(toonMid0.r, toonMid0.g), toonMid0.b);
+        float ckS = (ckMx - ckMn) / max(ckMx, 1e-4);
+        float ckG = step(0.45, dot(toonMid0, ckLw)) * step(toonMid0.b, toonMid0.r) * (1.0 - smoothstep(0.45, 0.6, ckS));
+        float ckW = clamp((uRampHi.r - uRampHi.b - 0.1) * 2.0, 0.0, 1.0);
+        if (ckG * ckW > 0.0) {
+          vec3 ckT = toonW.z * toonHi + toonW.y * toonMid + toonW.x * toonSh;   // authored band tone (this pixel's bands)
+          float ckL = dot(outgoingLight, ckLw), ckTL = max(dot(ckT, ckLw), 1e-4);
+          float ckTarget = max(ckL, uCharCreamKeep.y * ckTL);
+          outgoingLight = mix(outgoingLight, ckT * (ckTarget / ckTL), clamp(uCharCreamKeep.x, 0.0, 1.0) * ckG * ckW);
+        }
+      }
       ${dbgOut}`,
   });
   mat.defines.LOOK_MAX_BONES = maxBones;
@@ -396,7 +422,7 @@ export function characterMaterial(engine, opts = {}) {
   };
   const self = selfShadow === -1 ? 'hull' : selfShadow;
   const o = { farHalf, farLight, sideEps, dead, sunTieBreak, midline, sides, cloud, selfShadow: self, hullMargin, partLines,
-    sigLift, faceLift, props, propReach, slots, hints, shadowSnap };
+    sigLift, faceLift, props, propReach, slots, hints, shadowSnap, innerLine };
   mat.userData.look = { uniforms: look, opts: o };
   // per render: hull + shadow depth scale (self-shadow exemption), part ids on the geometry (first render), snap
   mat.onBeforeRender = (renderer, scene, camera, geometry, object) => {
@@ -711,9 +737,11 @@ export function partOptions(mesh, rig, o = {}) {
     if (so.side === 'mid') prop = 1; else if (so.side === 'sided') prop = 0;
     const hint = HINTS[so.hint ?? (sn && o.hints?.[sn])] || 0;
     const raw = (e.bone * pt.m + e.slot) % PART_MOD;
-    const val = Math.round(lift * 100) + 128 * prop + 256 * hint;
+    // (module fix, wave 4) inner-line tone: material.innerLine 'tone' (all parts) or material.slots.<x>.line 'tone'|'grey'
+    const line = (so.line ?? o.innerLine) === 'tone' ? 1 : 0;
+    const val = Math.round(lift * 100) + 128 * prop + 256 * hint + 1024 * line;
     enc[raw] = Math.max(enc[raw], val);
-    out.pairs.push({ bone: names[e.bone], slot: sn ?? e.slot, raw, reach: +e.reach.toFixed(3), lift, prop, hint });
+    out.pairs.push({ bone: names[e.bone], slot: sn ?? e.slot, raw, reach: +e.reach.toFixed(3), lift, prop, hint, line });
   }
   return out;
 }

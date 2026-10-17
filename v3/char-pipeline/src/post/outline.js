@@ -68,6 +68,9 @@ export const OUTLINE_DEFAULTS = {
   depth: true,             // global enable for depth outlines
   edges: true,             // global enable for edge highlights
   debug: 0,                // 1 = red outlines / green edges over grey, 2 = + near-flip decisions
+  // (module fix, wave 4; characters only) inner lines of TONE parts (look.js material.innerLine / slots.<x>.line
+  // 'tone'): colour from the DARKER of the two adjacent pixels, hue kept (desat charToneDesat instead of outlineDesat)
+  charToneDesat: 0.2,
 };
 
 const FRAG = /* glsl */`
@@ -75,15 +78,18 @@ const FRAG = /* glsl */`
 uniform float uDepthThr, uDepthThrTexels, uObliqueBoost, uConvexThr, uSlopeTol, uTopY, uRimDrop;
 uniform float uOutlineDark, uOutlineFloor, uOutlineMax, uOutlineDesat, uOutlineShadow, uEdgeShadow, uLitSoft;
 uniform vec3 uOutlineTint, uEdgeMul, uEdgeCream; uniform float uEdgeLift, uEdgeStrength;
-uniform float uEnableDepth, uEnableEdges, uQuantize;
+uniform float uEnableDepth, uEnableEdges, uQuantize, uCharToneDesat;
 uniform int uDebug; uniform float uFragEps;
 uniform sampler2D tShadow; uniform mat4 uShadowMatrix; uniform float uShadowBias, uHasShadow; uniform vec2 uShadowSize;
 
+// (module fix, wave 4) world flags are exact half floats (0.25 / 0.5 / 0.75 / 1.0): ± 0.02 classifies them exactly as
+// ± 0.05 did; the character band is FLAG_CHAR ± 0.08 (part ids ±1..±78, inner-line TONE parts ±79..±156 = ± 0.0762)
 bool isNone(float f) { return abs(f - FLAG_NONE) < 0.05; }
-bool isDepthOnly(float f) { return abs(f - FLAG_DEPTH_ONLY) < 0.05; }
-bool isChar(float f) { return abs(f - FLAG_CHAR) < 0.05; }
-// FLAG_CHAR pixels carry a part id (look.js: FLAG_CHAR + id·2^-11, 1 ≤ |id| ≤ 78; same id = same part; 0 = no part info)
+bool isDepthOnly(float f) { return abs(f - FLAG_DEPTH_ONLY) < 0.02; }
+bool isChar(float f) { return abs(f - FLAG_CHAR) < 0.08; }
+// FLAG_CHAR pixels carry a part id (look.js: FLAG_CHAR + id·2^-11, 1 ≤ |id| ≤ 156; same id = same part; 0 = no part info)
 float charPart(float f) { return floor((f - FLAG_CHAR) * 2048.0 + 0.5); }
+bool charTone(float f) { return abs(charPart(f)) > 78.5; }   // look.js inner-line tone part
 
 float shadowTap(vec2 st, float z) {
   return step(z + uShadowBias, unpackRGBAToDepth(texture2D(tShadow, (st + 0.5) / uShadowSize)));
@@ -130,6 +136,8 @@ void main() {
   bool outline = false, edge = false, fragO = false, fragE = false;
   bool topFace = nW.y > uTopY;
   bool char0 = isChar(f0);
+  bool tone0 = char0 && charTone(f0);
+  vec3 lineSrc = col.rgb;                                      // tone lines: the darkest pixel of the line's pairs
   for (int i = 0; i < 4; i++) {
     // L, D, U, R in texels (y-up, matches vUv)
     vec2 o = i == 0 ? vec2(-1.0, 0.0) : i == 1 ? vec2(0.0, -1.0) : i == 2 ? vec2(0.0, 1.0) : vec2(1.0, 0.0);
@@ -151,7 +159,11 @@ void main() {
     float tR = thr + uSlopeTol * min(length(ni.xy) / nzi, 8.0) * tw;
     bool cF = fwd > tF, cR = rev < -0.5 * tR;
     if (uDebug == 2 && ((abs(fwd - tF) < uFragEps * tF && cR) || (abs(rev + 0.5 * tR) < uFragEps * tR && cF))) fragO = true;
-    if (cF && cR) { outline = true; continue; }
+    if (cF && cR) {
+      outline = true;
+      if (tone0) { vec3 cn = texture2D(tColor, uv).rgb; if (luma(cn) < luma(lineSrc)) lineSrc = cn; }
+      continue;
+    }
     if (!solidN || isDepthOnly(fi) || charN || !topFace) continue;   // a character never makes a world rim
     float convex = dot(cross(n0, ni), vec3(-o.y, o.x, 0.0));
     if (convex <= uConvexThr || fwd <= -2.0 * tF || rev <= -2.0 * tR) {   // (2×: corner pixels sit near 1×)
@@ -165,7 +177,7 @@ void main() {
     if (dy > uRimDrop) edge = true;
   }
 
-  bool canDepth = abs(f0 - FLAG_EDGES_ONLY) > 0.05 && uEnableDepth > 0.5;
+  bool canDepth = abs(f0 - FLAG_EDGES_ONLY) > 0.02 && uEnableDepth > 0.5;
   bool canEdge  = !isDepthOnly(f0) && !char0 && uEnableEdges > 0.5;
   bool doO = outline && canDepth;
   bool doE = !doO && edge && canEdge;
@@ -190,9 +202,10 @@ void main() {
   if (lit > 0.0 && !char0) lit *= sunLitAt(worldPos(vUv) + nW * (2.0 * tw));
 
   if (doO) {
-    float l = luma(col.rgb);
+    vec3 src = tone0 ? lineSrc : col.rgb;
+    float l = luma(src);
     float tl = min(l * uOutlineMax, l * uOutlineDark + uOutlineFloor);   // compressed towards a floor
-    vec3 base = mix(col.rgb, l * uOutlineTint, uOutlineDesat);
+    vec3 base = mix(src, l * uOutlineTint, tone0 ? uCharToneDesat : uOutlineDesat);
     vec3 o = base * (tl / max(luma(base), 1e-5));
     col.rgb = mix(col.rgb, o, mix(uOutlineShadow, 1.0, lit));
   } else {
@@ -235,6 +248,7 @@ export function createOutlinePass(pipeline) {
       uEnableDepth: { value: D.depth ? 1 : 0 },
       uEnableEdges: { value: D.edges ? 1 : 0 },
       uQuantize: { value: D.quantize ? 1 : 0 },
+      uCharToneDesat: { value: D.charToneDesat },
       uFragEps: { value: 0.01 },
       uDebug: { value: Number(params?.get('outlineDebug') || D.debug) },
       tShadow: { value: null },
@@ -311,7 +325,7 @@ function setOpts(pass, opts) {
   const num = { depthThr: 'uDepthThr', depthThrTexels: 'uDepthThrTexels', obliqueBoost: 'uObliqueBoost',
     convexThr: 'uConvexThr', topY: 'uTopY', rimDrop: 'uRimDrop', slopeTol: 'uSlopeTol', outlineDark: 'uOutlineDark',
     outlineFloor: 'uOutlineFloor', outlineMax: 'uOutlineMax', outlineDesat: 'uOutlineDesat',
-    outlineShadow: 'uOutlineShadow', edgeShadow: 'uEdgeShadow', litSoft: 'uLitSoft', debug: 'uDebug', fragEps: 'uFragEps' };
+    outlineShadow: 'uOutlineShadow', edgeShadow: 'uEdgeShadow', litSoft: 'uLitSoft', debug: 'uDebug', fragEps: 'uFragEps', charToneDesat: 'uCharToneDesat' };
   const vec = { outlineTint: 'uOutlineTint', edgeMul: 'uEdgeMul', edgeCream: 'uEdgeCream' };
   for (const [k, v] of Object.entries(opts)) {
     if (v === undefined) continue;

@@ -263,3 +263,31 @@ Latest render of each Clocktower cast member from the pixel3d pipeline. Clips ar
 ![storyteller clip-point](storyteller/clip-point.gif)
 ![storyteller clip-die](storyteller/clip-die.gif)
 
+## npc-sweeper
+
+![npc-sweeper turnaround](npc-sweeper/turnaround.png)
+![npc-sweeper clip-idle](npc-sweeper/clip-idle.gif)
+![npc-sweeper clip-walk](npc-sweeper/clip-walk.gif)
+![npc-sweeper clip-talk](npc-sweeper/clip-talk.gif)
+![npc-sweeper clip-vote](npc-sweeper/clip-vote.gif)
+![npc-sweeper clip-point](npc-sweeper/clip-point.gif)
+![npc-sweeper clip-die](npc-sweeper/clip-die.gif)
+
+## npc-vendor
+
+![npc-vendor turnaround](npc-vendor/turnaround.png)
+![npc-vendor clip-idle](npc-vendor/clip-idle.gif)
+![npc-vendor clip-walk](npc-vendor/clip-walk.gif)
+![npc-vendor clip-talk](npc-vendor/clip-talk.gif)
+![npc-vendor clip-vote](npc-vendor/clip-vote.gif)
+![npc-vendor clip-point](npc-vendor/clip-point.gif)
+![npc-vendor clip-die](npc-vendor/clip-die.gif)
+
+## npc-elder
+
+![npc-elder turnaround](npc-elder/turnaround.png)
+
+## npc-porter
+
+![npc-porter turnaround](npc-porter/turnaround.png)
+

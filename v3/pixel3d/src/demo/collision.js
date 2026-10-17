@@ -123,7 +123,7 @@ export function createCollision(demo, { radius = PLAYER_RADIUS } = {}) {
   const t0 = performance.now();
   const W = layout.TOWN_W, H = layout.TOWN_H;
   const doors = realDoors(demo?.town?.registry);
-  const shapes = [];
+  const shapes = [], groundCarved = {};
 
   // blocking ground tiles + the map border
   for (let z = 0; z < H; z++) for (let x = 0; x < W; x++) {
@@ -138,7 +138,18 @@ export function createCollision(demo, { radius = PLAYER_RADIUS } = {}) {
     const d = doors.find((q) => q.id === h.id);
     if (d) {
       const [nx, nz] = d.normal, L = 4;   // the corridor runs from the door plane out past the footprint
-      sh.carve = [dirBox(d.pos.x + nx * (L / 2 - 0.02), d.pos.z + nz * (L / 2 - 0.02), nx, nz, DOOR_HALF, L / 2)];
+      const cor = dirBox(d.pos.x + nx * (L / 2 - 0.02), d.pos.z + nz * (L / 2 - 0.02), nx, nz, DOOR_HALF, L / 2);
+      sh.carve = [cor];
+      // ... and out of the blocking ground tiles / map-border boxes it crosses: a cottage moved to the map edge keeps
+      // its doorstep (house-12, LAYOUT_DELTAS dx -3 + ry -25: its SE chamfer door sits at x 0.5, on the west border
+      // column x 0..1, so the whole doorstep was within R of a 'T' tile and the walk-in test could never fire)
+      const [cx0, cz0, cx1, cz1] = shapeBounds(cor);
+      for (const g of shapes) {
+        if (!g.tag?.startsWith('ground:') || g.cx + g.hw < cx0 || g.cx - g.hw > cx1 || g.cz + g.hd < cz0 || g.cz - g.hd > cz1) continue;
+        if (sdBox(cor, g.cx, g.cz) > Math.SQRT2 * 0.5) continue;   // bounds overlap only: the tile misses the corridor
+        (g.carve ??= []).push(cor);
+        groundCarved[h.id] = (groundCarved[h.id] ?? 0) + 1;
+      }
     }
     shapes.push(sh);
   }
@@ -171,6 +182,7 @@ export function createCollision(demo, { radius = PLAYER_RADIUS } = {}) {
 
   const api = fieldCollision(shapes, { x0: 0, z0: 0, x1: W, z1: H }, radius, { doors });
   api.stats.ms = Math.round(performance.now() - t0);
+  api.stats.groundCarved = groundCarved;   // door corridors cut through blocking ground: {house-id: tiles}
   return api;
 }
 

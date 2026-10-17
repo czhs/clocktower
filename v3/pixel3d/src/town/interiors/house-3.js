@@ -365,6 +365,13 @@ export default function build(room, ctx) {
       fl.pool({ x: -2.1, v: -1.25, r: 0.85, r2: 0.6, color: '#7E5646', inner: '#B07A52', peak: 0.34, clip: inside });   // the candelabra
       fl.pool({ x: -1.1, v: 2.15, r: 0.7, r2: 0.5, color: '#7E5646', inner: '#B07A52', peak: 0.3, clip: inside });   // the door lantern
       pools.push(...fl.draw(b));
+      // the coffin-bench candle's glow on the lid itself (it has no point light): a small dithered pool round the candle,
+      // clipped to the lid's coffin outline
+      const lid = [[-1.0, 0], [-0.78, 0.3], [0.95, 0.22], [1.02, 0], [0.95, -0.22], [-0.78, -0.3]].map(([x, z]) => [cbx + x, cbz + z]);
+      // (1-texel cells at this camera, vh 6.83 over 360 rows: a fine glow, not the floor pools' 2-texel checker)
+      const cl = hourCanvas({ plane: 'floor', y: 0.515, cw: 6.83 / 360, ch: 6.83 / 180, dayTo: '#3A2C34' });
+      cl.pool({ x: cbx + 0.55, v: cbz, r: 0.55, r2: 0.28, color: '#6E4838', inner: '#A87050', peak: 0.42, power: 1.4, clip: (u, w) => inPoly(lid, u, w) });
+      pools.push(...cl.draw(b));
       // up the apse's back wall between the prickets, and a halo in every niche
       const onWall = (sg, z, list) => {
         const c = hourCanvas({ plane: 'wall', z, dayTo: '#4E3866' });

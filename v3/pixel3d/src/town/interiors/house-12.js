@@ -14,6 +14,11 @@ import { Builder } from '../kit.js';
 
 export const ROOM = { w: 6.4, d: 5.0, h: 3.6, wall: 'plaster', pal: 0, floor: 'boards' };
 /** Night look (docs/DEMO.md 4.3 nightAmbient): inky black + newsprint cream. */
+// the window's sun patch (sunPanes): its noon tone, its late-sun tone (honey: warm, and LIGHTER, never redder), and the
+// faint tone it fades through as the sun drops - still a shade lighter and warmer than the shaded boards (#5a5048 in
+// the demo), so the panes always read as sunlight, never as a rug or bricks (critic polish3: at 16:00 / 19:00 the old
+// sun-colour multiply turned it a flat salmon-brick block)
+const PANE_SUN = new THREE.Color('#94745f'), PANE_LATE = new THREE.Color('#a8885e'), PANE_FADE = new THREE.Color('#766652');
 const NIGHT_AMBIENT = { lit: '#ECE0C4', sh: '#9A9490', k: 0.65, gain: 1.2, mist: 0.3, litK: 0.6 };
 
 // ---------------------------------------------------------------------------------------------- local helpers
@@ -25,8 +30,10 @@ const NIGHT_AMBIENT = { lit: '#ECE0C4', sh: '#9A9490', k: 0.65, gain: 1.2, mist:
  * otherwise go black at night), restored by day.
  * day(b, layer): STATIC day-only geometry (the window's sun patch), drawn only while the room is NOT dark.
  * Vertex order: [day][particles][night] -> by day drawRange(0, ..particles), in the dark drawRange(particles.., end).
+ * dayGlow(c: THREE.Color) -> bool: (glow only) recolours the day geometry each frame it changes (c = the colour to
+ * use, set in place); false hides it (e.g. the sun too low to reach the floor).
  */
-function particles(room, ctx, { name, n, make, path, glow = true, night = null, day = null, dayParticles = true, nightColor = null }) {
+function particles(room, ctx, { name, n, make, path, glow = true, night = null, day = null, dayGlow = null, dayParticles = true, nightColor = null }) {
   const b = new Builder(room.engine, { name });
   const layer = glow ? 'glass' : 'soft', ranges = [];
   if (day) day(b, layer);
@@ -57,7 +64,9 @@ function particles(room, ctx, { name, n, make, path, glow = true, night = null, 
     }
     ga.needsUpdate = true;
   };
-  let last = -1, lastDark = null;
+  const gd = glow && day && dayGlow ? mesh.geometry.getAttribute('aGlow') : null, tint = new THREE.Color();
+  let last = -1, lastDark = null, lastTint = '';
+  const dayRange = (show) => mesh.geometry.setDrawRange(show ? 0 : nDayOnly, (dayParticles ? nDay : nDayOnly) - (show ? 0 : nDayOnly));
   return {
     group: grp,
     update(t) {
@@ -65,8 +74,16 @@ function particles(room, ctx, { name, n, make, path, glow = true, night = null, 
         const dark = isDark(room);
         if (dark !== lastDark) {
           if (dark) mesh.geometry.setDrawRange(nDayOnly, nAll - nDayOnly);
-          else mesh.geometry.setDrawRange(0, dayParticles ? nDay : nDayOnly);
-          recolor(dark); lastDark = dark;
+          else dayRange(true);
+          recolor(dark); lastDark = dark; lastTint = '';
+        }
+        if (gd && !dark) {
+          const show = dayGlow(tint), key = show ? tint.getHexString() : 'off';
+          if (key !== lastTint) {
+            dayRange(show);
+            if (show) { for (let v = 0; v < nDayOnly; v++) { gd.array[v * 4] = tint.r; gd.array[v * 4 + 1] = tint.g; gd.array[v * 4 + 2] = tint.b; } gd.needsUpdate = true; }
+            lastTint = key;
+          }
         }
       }
       const k = Math.floor(t * 8) / 8;
@@ -130,20 +147,13 @@ function ditherPool(b, layer, { x = 0, y = 0.006, z = 0, r, rv = r, cols, peak =
 /**
  * The window's sun patch on the floor as a flat decal (day-only geometry for particles({day})): rows x cols panes
  * (x = the patch centre, z0 = its back edge, w = its width; pane length pl along z, mullion bar `bar`), each pane a
- * sunlit-board core inside a one-cell Bayer-dithered rim, so the patch reads as soft window light, not a cut-out.
- * Cells are cu x cv metres (v stretched for the 30 deg camera, like ditherPool).
+ * flat sunlit-board tone with crisp edges (pixel-art window light: no shadow-map notches, no stair steps).
  */
-function sunPanes(b, layer, { x, z0, w, rows = 5, cols = 2, pl = 0.28, bar = 0.07, cu = 0.03, cv = 0.045, core = '#8c6e60', rim = '#76605a' }) {
+function sunPanes(b, layer, { x, z0, w, rows = 4, cols = 2, pl = 0.3, bar = 0.06, tone = '#94745f' }) {
   const pw = (w - (cols - 1) * bar) / cols, y = 0.006;
-  const quad = (xa, xb, za, zb, hex) => b.tris([xa, y, za, xb, y, zb, xb, y, za, xa, y, za, xa, y, zb, xb, y, zb], { tones: 'glass', layer, glow: hex, glowKind: 1 });
   for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
-    const px0 = x - w / 2 + c * (pw + bar), pz0 = z0 + r * (pl + bar);
-    const ni = Math.max(3, Math.round(pw / cu)), nj = Math.max(3, Math.round(pl / cv)), du = pw / ni, dv = pl / nj;
-    // the core: one quad inside the rim
-    quad(px0 + du, px0 + pw - du, pz0 + dv, pz0 + pl - dv, core);
-    // the rim: every other cell (Bayer 2x2 checker), merged into runs along each edge
-    for (let i = 0; i < ni; i++) for (const j of [0, nj - 1]) if (((i + j) & 1) === 0) quad(px0 + i * du, px0 + (i + 1) * du, pz0 + j * dv, pz0 + (j + 1) * dv, rim);
-    for (let j = 1; j < nj - 1; j++) for (const i of [0, ni - 1]) if (((i + j) & 1) === 0) quad(px0 + i * du, px0 + (i + 1) * du, pz0 + j * dv, pz0 + (j + 1) * dv, rim);
+    const x0 = x - w / 2 + c * (pw + bar), x1 = x0 + pw, za = z0 + r * (pl + bar), zb = za + pl;
+    b.tris([x0, y, za, x1, y, zb, x1, y, za, x0, y, za, x0, y, zb, x1, y, zb], { tones: 'glass', layer, glow: tone, glowKind: 1 });
   }
 }
 /**
@@ -429,7 +439,20 @@ export default function build(room, ctx) {
   //      Paranoid: the board is the warmest thing in the house at midnight.
   const nightGlow = particles(room, ctx, {
     name: 'house-12-night', n: 0, dayParticles: false, make: () => {}, path: () => [0, 0, 0],
-    day: (b, layer) => sunPanes(b, layer, { x: win.x - 0.65, z0: -D / 2 + 0.06, w: win.w - 0.06 }),
+    day: (b, layer) => sunPanes(b, layer, { x: win.x - 0.65, z0: -D / 2 + 0.06, w: win.w - 0.06, tone: PANE_SUN }),
+    // the patch follows the sun: noon newsprint-tan, warmer honey as the sun yellows (its hue stays a light sunlit
+    // yellow-tan: the sun colour only picks the blend, it is never multiplied in), and from mid-afternoon it fades
+    // toward a faint warm tone as the sun drops, then is gone (before the window turns to dusk)
+    dayGlow: (c) => {
+      const U = room.engine.uniforms, sd = U?.uSunDir?.value, sc = U?.uSunColor?.value;
+      const k = sd ? Math.max(0, Math.min(1, (sd.y - 0.24) / 0.22)) : 1;
+      if (k <= 0.3) return false;
+      const warm = sc ? Math.max(0, Math.min(1, (0.745 - sc.b) / 0.5)) : 0;
+      c.copy(PANE_SUN).lerp(PANE_LATE, warm);
+      c.lerp(PANE_FADE, 1 - k);
+      c.setRGB(Math.round(c.r * 64) / 64, Math.round(c.g * 64) / 64, Math.round(c.b * 64) / 64);   // steps, not a per-frame upload
+      return true;
+    },
     night: (b, layer) => {
       // the lamp lights its own desk top (inside the top's rect: the papers sit on it, the dark under the desk stays dark)
       const dtx = dx, dtz = dz - 0.3;

@@ -7,7 +7,7 @@ export const FLAGS_GLSL = /* glsl */`
 #define FLAG_CHAR 0.625       // characters (look owner, docs/CHARACTERS.md): depth lines only where a character
                               // pixel is in front of another FLAG_CHAR pixel (inner lines); never a line against
                               // the world/background, no edge highlights; world pixels treat it as a depth-only neighbour
-                              // + part id: a = FLAG_CHAR + id * 2^-11 (|id| <= 78, look.js), compare with abs(f - FLAG_CHAR) < 0.05
+                              // + part id: a = FLAG_CHAR + id * 2^-11 (|id| <= 156 incl. inner-line tone parts, look.js), compare with abs(f - FLAG_CHAR) < 0.08
 #define FLAG_EDGES_ONLY 0.75  // normal edge highlights only, no depth outline
 #define FLAG_FULL 1.0         // everything (default)
 `;

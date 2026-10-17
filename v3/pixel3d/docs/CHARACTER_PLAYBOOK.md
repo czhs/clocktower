@@ -1,5 +1,23 @@
 # Character playbook — how an agent makes a new character
 
+> **Module fixes after cast wave 4 (module fixer, 2026-10-16) — three OPT-INS; nothing changes until your spec asks.**
+> Files: `src/chars/{look,locomotion}.js`, `src/post/outline.js`. A/B of full `--preset cast` packs of all 31 finished
+> members: 0 px in every job; shrine/glade/pond/town 0 px. Details + evidence: `docs/CHARACTER_LEARNINGS.md` §Module
+> backlog (top block), `shots/mfx5/ev-*.png`; API: `docs/CHARACTERS.md` "Wave-4 module fixes".
+> - **Grey seams on unclothed bodies: `material.innerLine: 'tone'`** — inner lines take the darker adjacent tone, hue
+>   kept (maxflow collar, greenting leg roots: grey-lilac → darker body tone). Prefer it to `material.merge` when the line
+>   is wanted (arm over body, collar, quills); `merge` only where no line should exist. Per slot:
+>   `material.slots.<x>.line: 'tone' | 'grey'`.
+> - **Cream at golden: `material.creamKeep: [1, 0.85]`** — cream / warm-light albedo (whiteKeep's gate rejects it) keeps
+>   its hue in sun AND shade copies under the golden key instead of going mauve-grey; noon/night untouched.
+> - **Short-duty / reach-clamped LegGait walks: `locomotion.swingFloor: 'gait'`** — the live cycle stays the authored
+>   one (0.3 s, was 0.267–0.289 s on 16 members) and the start-up cycle shows every drawing; drop `maxSwing: 0.5`.
+>   Set it on new members (default stays 'fixed' until the lead re-checks the 15 finished walks it would change).
+> - **Wave-4 checklist (with the earlier opt-ins):** a lantern/light carrier (the Storyteller) = `spec.lights` + `uCharTime`
+>   glow; white/cream bodies = `whiteKeep` (+ `whiteKeepLift`) / `creamKeep`; ears/hood seams = `material.merge` or
+>   `innerLine 'tone'`; chibi legs = `locomotion.plant: 'hold'`; game clips point + ghost + ghost-spent (`spec.ghost`),
+>   not for the Storyteller.
+
 > **Module fixes after cast wave 3 (module fixer, 2026-10-16) — read before porting point / ghost / ghost-spent.**
 > Files: `src/chars/{character,rig,look}.js`, `scenes/{char-stage,char-bake}.js`, `tools/{charpack,charcheck,bake}.py`.
 > A/B of full `--preset cast` packs of all 27 finished members: 0 px everywhere except ONE 60 Hz frame per walk/run/game job of the LegGait 'hold' members (the walk-start leg flicker, now gone); no new FAIL. Details + evidence: `docs/CHARACTER_LEARNINGS.md`

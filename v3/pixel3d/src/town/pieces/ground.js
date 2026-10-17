@@ -26,6 +26,9 @@
 //   joint lines fade out (sett period < 4.5 px) and only stone tone variation remains (no moire).
 //   Everything is world-anchored and texel-exact (patterns are decided per pixel from world position with
 //   screen-pixel line widths), so a whole-texel pan changes nothing.
+//   Zoom-dependent sizes (lane sett cell, litter / twig cells) scale CONTINUOUSLY with the zoom / yaw, which is fine at
+//   the ladder stops but slides the pattern under a continuous zoom: while engine.uniforms.uCamFlight = 1 (the intro's
+//   flight) they snap to a 1.25^n ladder with a per-cell dissolve instead (world-locked; identical to gameplay at L = 0).
 //
 // Contract: town floor FLAT at y = 0 for x -0.6..45.6, z -0.6..37.6 (every other piece stands on y = 0). The
 // terrain rolls only outside it. api: heightAt(x, z), normalAt(x, z), terrain (createTerrain-like object), isWater,
@@ -387,6 +390,11 @@ export default function build(engine, ctx) {
     uGRoad: { value: roadPts }, uGRoadN: { value: roadPts.length },
     uGMisc: { value: new THREE.Vector4(WATER_LEVEL, LANE_CELL, SPAN, KERB.r1) },
     uGMisc2: { value: new THREE.Vector4(ctx.night ? 1 : 0, KERB.widen, CLUMP.dark, CLUMP.light) },
+    // 1 while the camera flies with a CONTINUOUS zoom / yaw (the demo's opening cinematic, src/demo/intro.js sets it):
+    // the zoom-dependent pattern sizes (lane setts, forest litter, twigs) then snap to a fixed 1.25^n ladder with a
+    // stone-by-stone dissolve between levels, so the pattern stays locked to the ground instead of scaling about the
+    // world origin (= sliding). 0 (default, gameplay at a ladder stop): the original continuous sizes, bit-identical.
+    uCamFlight: (engine.uniforms.uCamFlight ??= { value: 0 }),
   };
   const material = toonMaterial(engine, {
     color: 0xffffff, outline: 'depth', normalNoise: 0.15, uniforms,
@@ -719,6 +727,7 @@ const GROUND_GLSL = (NT, NR) => /* glsl */`
   uniform sampler2D tGZone; uniform sampler2D tGDecal; uniform vec4 uGZoneRect;
   uniform vec3 uGT[${NT * 3}];
   uniform vec4 uGPlaza, uGCircle, uGMisc, uGMisc2;
+  uniform float uCamFlight;
   uniform vec2 uGRoad[${NR}]; uniform int uGRoadN;
   varying vec3 vGN;
   vec2 gH2(vec2 p) { return vec2(hash12(p + vec2(311.0, 7.0)), hash12(p + vec2(57.0, 113.0))); }
@@ -856,7 +865,19 @@ const GROUND_TONES_GLSL = /* glsl */`
   } else if (isLane) {
     // ---------------- cobbled lanes: rounded setts (voronoi), sun-side bevel, sinking into earth at the edge
     vec2 cid; float cell = max(uGMisc.y, 5.0 / minPx);          // far LOD: bigger setts, still >= 5 px (no flat strip)
-    vec4 v = gVoro(wp / cell, cid);
+    vec4 v;
+    if (uCamFlight > 0.5) {
+      // camera flight (continuous zoom / yaw): a continuously scaled cell slides every sett across the ground. Use
+      // world-locked cells of LANE_CELL * 1.25^n instead; the coarser level dissolves in per coarse stone (L = 0, i.e.
+      // the gameplay camera, gives exactly LANE_CELL = the gameplay pattern: no pop when the flight ends). The finer
+      // level is >= 4 px (5 / 1.25), so joints are drawn down to 4 px stones while flying (below: flat strip)
+      float L = max(0.0, log(5.0 / minPx / uGMisc.y) * 4.4814201), l0 = floor(L);   // 1 / ln 1.25
+      cell = uGMisc.y * pow(1.25, l0 + 1.0);
+      v = gVoro(wp / cell, cid);
+      if (hash12(cid + vec2(41.0, 17.0)) >= L - l0) { cell = uGMisc.y * pow(1.25, l0); v = gVoro(wp / cell, cid); }
+    } else {
+      v = gVoro(wp / cell, cid);
+    }
     float ePx = v.x * cell * GPX(v.zw);
     float e2Px = v.y * cell * minPx * 1.15;
     float h = hash12(cid + vec2(11.0, 71.0));
@@ -865,7 +886,7 @@ const GROUND_TONES_GLSL = /* glsl */`
     bool edge = cobW < max(0.11, 1.2 / minPx) + 0.05 * (lowN - 0.5);
     bool far_ = uGMisc.y * minPx < 4.5;
     if (far_ && h > 0.82) k = 20;                                 // far LOD: a third, darker mottle tone
-    if (stonePx > 4.5) {
+    if (stonePx > (uCamFlight > 0.5 ? 3.95 : 4.5)) {
       if (ePx < 1.0 || (ePx < 1.9 && e2Px < 1.9)) k = edge ? (lowN > 0.5 ? 18 : 5) : (far_ && h < 0.5 ? 8 : 9);
       else if (ePx < 2.0) {
         // the plaza's lighting language: a cream sun-side rim (ashlar hi), the shade side one step down
@@ -931,11 +952,19 @@ const GROUND_TONES_GLSL = /* glsl */`
       if (dc > 100.0) dens = 0.72;                             // layout 'leaves' decal: a leaf drift
     }
     float lc = max(0.15, tw * 4.5);                            // litter cell: >= 4.5 px wide at any zoom (no speckle)
+    float tcs = max(0.9, tw * 27.0);
+    if (uCamFlight > 0.5) {
+      // camera flight: world-locked 1.25^n cells with a per-cell dissolve (see the lane setts) instead of sliding ones
+      float L = max(0.0, log(tw * 4.5 / 0.15) * 4.4814201), l0 = floor(L), fl = L - l0;
+      lc = 0.15 * pow(1.25, l0 + 1.0);
+      if (hash12(floor(wp / lc) + vec2(19.0, 83.0)) >= fl) lc = 0.15 * pow(1.25, l0);
+      tcs = 0.9 * pow(1.25, l0 + 1.0);
+      if (hash12(floor(wp / tcs) + vec2(7.0, 61.0)) >= fl) tcs = 0.9 * pow(1.25, l0);
+    }
     vec2 pc = wp / lc, pi = floor(pc);
     vec2 dpx = TOPX((pc - pi - (gH2(pi + 2.0) * 0.6 + 0.2)) * lc);
     float hh = hash12(pi + vec2(13.0, 1.0));
     if (hh > dens + 0.05 * clamp(tw / 0.033 - 1.0, 0.0, 1.0) && abs(dpx.x) < 1.0 && abs(dpx.y) < 0.55) k = hash12(pi + 4.0) > 0.72 ? 16 : 24;
-    float tcs = max(0.9, tw * 27.0);
     vec2 tc = wp / tcs, ti = floor(tc);                        // twigs: rare 4-px strokes
     if (hash12(ti + vec2(71.0, 3.0)) > 0.86) {
       vec2 a = (ti + 0.3 + gH2(ti) * 0.4) * tcs, d = normalize(gH2(ti + 1.0) - 0.5 + 1e-3) * tcs * 0.145;

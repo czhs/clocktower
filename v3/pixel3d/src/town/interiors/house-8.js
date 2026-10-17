@@ -215,14 +215,17 @@ export default function build(room, ctx) {
     const f = (i + 1) / 4;
     room.solid(-W / 2, BZ, -W / 2 + 2 * ext * f + 0.35, BZ + 2 * ext * (1 - f) + 0.6);
   }
-  const fire = [Fx + NX * 0.02, 0.55, Fz + NZ * 0.02];                       // (at the mouth: a spill on the slab, no floor disc)
+  // (fix 2026-10-16: at y 0.55 / r 0.62 its reach cut the slab top (y 0.104) in a small pale hard ellipse by day / golden
+  // hour; now it sits higher in the mouth with r 0.6, so it stops 3 cm above the slab and only warms the firebox, the
+  // logs, the crane and the jambs; the slab's warm spill is the painted `tops` field at night)
+  const fire = [Fx + NX * 0.02, 0.74, Fz + NZ * 0.02];
   // the hearth is THE key light: fire anchors out in front of the mouth warm the slab, the pelt, the logs and the table
   // (night pass: short reaches, kept off the walls and the hearth face, so the toon pools never draw a disc; the soft fan
   // across the floor and up the logs is painted by lightPools below); the far right (bed, woodpile) is left to the dark
   // (polish 2026-10-16: by day / golden hour - no painted pools then - the r 1.8 / 2.2 / 1.4 anchors left flat red hard
-  // circles on the planks. Now only the fire anchor reaches down, onto the raised slab; the others stop short of the
+  // circles on the planks. Now the fire anchor stops just above the slab (see above) and the others stop short of the
   // floor and warm the hearth face, the mantel, the logs and the pelt's edge; the floor fan is painted at night)
-  room.light({ pos: fire, color: '#FF7A2A', r: 0.62, kind: 'fire', intensity: 1.2, hug: false });
+  room.light({ pos: fire, color: '#FF7A2A', r: 0.6, kind: 'fire', intensity: 1.2, hug: false });
   room.light({ pos: [Fx + NX * 1.6, 1.45, Fz + NZ * 1.6], color: '#FF8A30', r: 1.4, kind: 'fire', intensity: 1.2 });
   room.light({ pos: [Fx + NX * 3.1, 1.9, Fz + NZ * 3.1], color: '#FF9A40', r: 1.75, kind: 'lantern', intensity: 1.1 });
   room.light({ pos: [-W / 2 + 1.2, 1.15, Fz + 2.6], color: '#FF8030', r: 1.05, kind: 'lantern', intensity: 1.0 });

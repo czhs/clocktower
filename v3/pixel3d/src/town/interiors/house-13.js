@@ -358,10 +358,23 @@ export default function build(room, ctx) {
         keep: (u) => Math.abs(mx + u) < sx + 0.25 });                                                 // over the water only
     }
     ditherPool(b, layer, { room, x: lx - 0.35, z: lz - 0.05, y: 0.006, r: 0.95, rv: 0.6, cols: ['#4a3424', '#7a5634', '#a8763e'], peak: 0.8, cell: 0.05 });
-    // the river's cold spill on the right walkway (the right half used to sink to black): faint blue-grey, brightest at
-    // the slip's edge and dimming out across the boards
-    ditherPool(b, layer, { room, x: sx + 0.2, z: -1.1, y: 0.006, r: 1.9, rv: 1.9, cols: ['#2c3652'], peak: 0.8, fall: 1.0, cell: 0.06,
-      keep: (u) => u > 0.05 });
+    // the moonbeam on the right walkway (the right half used to sink to black). Fix 2026-10-16 (the critic: "a checker
+    // patch with straight top and left edges"): the light is now a BEAM - a shaft from the water-door's right jamb
+    // slanting forward-right across the boards, widening as it goes, a solid pale core inside a dithered rim, fading in
+    // where it leaves the water and fading out toward the front; no clip edge anywhere (fade, not keep)
+    {
+      const ox = 0.95, oz = -D / 2, L = Math.hypot(0.62, 1), dx = 0.62 / L, dz = 1 / L, cx = 2.65, cz = -1.0;
+      const beam = (u, v) => {
+        const x = cx + u, z = cz - v, px = x - ox, pz = z - oz;
+        const t = px * dx + pz * dz, sd = Math.abs(px * dz - pz * dx), hw = 0.32 + 0.24 * t;
+        if (t <= 0 || x > W / 2 - 0.12) return 0;
+        const across = Math.max(0, 1 - (sd / hw) ** 2);
+        const edge = Math.max(0, Math.min(1, (x - (sx + 0.14)) / 0.45));          // fades in off the slip's edge
+        const along = Math.max(0, Math.min(1, (4.3 - t) / 1.9));                    // and out toward the front
+        return Math.pow(across, 0.8) * edge * along;
+      };
+      ditherPool(b, layer, { room, x: cx, z: cz, y: 0.006, r: 1.95, rv: 2.15, cols: ['#27304a', '#36425e'], peak: 1.15, fall: 0, cell: 0.06, fade: beam });
+    }
   };
   // RIPPLE PATCHES: broad soft blue-grey patches of river light (one-colour dithered ellipses) that sway across the
   // back wall either side of the water-door and along both side walls - the walls breathe with the water instead of

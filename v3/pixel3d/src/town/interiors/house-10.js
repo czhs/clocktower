@@ -32,7 +32,7 @@ const scaleP = (pts, s, sy = s) => pts.map(([x, y]) => [x * s, y * sy]);
  * nightColor(i) -> hex | null: in the dark speck i glows steadily in that colour (e.g. window-kind ripples that would
  * otherwise go black at night), restored by day.
  */
-function particles(room, ctx, { name, n, make, path, glow = true, night = null, dayParticles = true, nightColor = null }) {
+function particles(room, ctx, { name, n, make, path, glow = true, night = null, both = null, dayParticles = true, nightColor = null }) {
   const b = new Builder(room.engine, { name });
   const layer = glow ? 'glass' : 'soft', ranges = [];
   for (let i = 0; i < n; i++) {
@@ -40,16 +40,30 @@ function particles(room, ctx, { name, n, make, path, glow = true, night = null, 
     make(b, i, layer);
     ranges.push([a, b.layers[layer].pos.length / 3]);
   }
+  // `both(b, layer, mode)`: STATIC geometry drawn day AND night, painted twice ('day' / 'night': the same calls, only
+  // the glow colours differ). The night paint is captured from a scratch builder and swapped into aGlow on the switch.
+  const nBoth0 = (b.layers[layer]?.pos.length ?? 0) / 3;
+  if (both) both(b, layer, 'day');
   const nDay = (b.layers[layer]?.pos.length ?? 0) / 3;
+  let bothGlow = null;
+  if (both && glow) {
+    const scratch = new Builder(room.engine, { name: name + '-night-paint' });
+    both(scratch, layer, 'night');
+    const day = b.layers[layer].glow.slice(nBoth0 * 4, nDay * 4), nightG = scratch.layers[layer]?.glow ?? [];
+    if (nightG.length !== day.length) throw new Error(`${name}: day / night paint differ (${day.length} vs ${nightG.length})`);
+    bothGlow = { day: Float32Array.from(day), night: Float32Array.from(nightG) };
+  }
   if (night) night(b, layer);
   const grp = b.build({ name, castShadow: false, receiveShadow: false });
   const mesh = grp.children[0];
   if (glow) mesh.material = ctx.kit.interiorGlowMaterial(room.engine);
   mesh.frustumCulled = false;
   const pos = mesh.geometry.getAttribute('position'), base = pos.array.slice(), nAll = pos.count;
-  const ga = glow && nightColor ? mesh.geometry.getAttribute('aGlow') : null, gDay = ga?.array.slice();
+  const ga = glow && (nightColor || bothGlow) ? mesh.geometry.getAttribute('aGlow') : null, gDay = ga?.array.slice();
   const recolor = (dark) => {
     if (!ga) return;
+    if (bothGlow) { ga.array.set(dark ? bothGlow.night : bothGlow.day, nBoth0 * 4); ga.needsUpdate = true; }
+    if (!nightColor) return;
     const c = new THREE.Color();
     for (let i = 0; i < n; i++) {
       const hex = dark ? nightColor(i) : null;
@@ -67,7 +81,7 @@ function particles(room, ctx, { name, n, make, path, glow = true, night = null, 
     update(t) {
       if (night || ga || !dayParticles) {
         const dark = isDark(room);
-        if (dark !== lastDark) { mesh.geometry.setDrawRange(0, dark ? nAll : dayParticles ? nDay : 0); recolor(dark); lastDark = dark; }
+        if (dark !== lastDark) { mesh.geometry.setDrawRange(0, dark ? nAll : dayParticles || both ? nDay : 0); recolor(dark); lastDark = dark; }
       }
       const k = Math.floor(t * 8) / 8;
       if (k === last) return;
@@ -376,23 +390,43 @@ export default function build(room, ctx) {
   // sconce warms the left end of the shoe rack, the door lantern a small pool on the boards. And the wrong note: the
   // ashy footprints and the ash-soled pair keep a faint cold pallor in the dark.
   const AMBER = ['#4a2c1e', '#7a4826', '#a8682e', '#d89a4a'];
-  // NIGHT SHOE WALL (fix 2026-10-16, the critic's "flat brown band with ragged holes, muddy boots"): the rack reads as a
-  // warm lamp-lit cabinet - each bay's backing in three soft steps (warm where the pairs stand, shadowed up under the
-  // next shelf), every shelf with a bright amber lip and a lit front strip, brass name tags that glint, and every
-  // shoe re-painted in its own colour (lifted, warmed) with a pale rim along its top edges; the back shoe of each
-  // pair shows as a darker band above its partner. The ash-soled pair keeps its cold pale soles. Flat decals in the
-  // dust mesh (night-only drawRange): no extra mesh, no extra light.
+  // THE SHOE WALL'S LIGHT (fix 2, 2026-10-16; critic polish3: the rack lit up backwards - by day a dim grey cabinet
+  // in the room's sun shade, at night evenly warm and brighter than the rest of the room). The rack's paint is flat
+  // decals in the dust mesh, drawn day AND night (particles({both}): one geometry, two glow paints swapped on the
+  // dark switch; no extra mesh, no extra light):
+  //  - DAY: window light. The shelves read in the shop's daylight - warm mid-brown bays, lit shelf lips, every pair in
+  //    its own clear colour with a lit top edge - a touch brighter toward the eyelet window on the right.
+  //  - NIGHT: lantern level only. The sconce at the rack's left end is the one source: its end of the rack is
+  //    warm-lit (no brighter than the sconce's own wall pool), and the light falls off along the shelves into warm
+  //    shadow where the pairs are only dim shapes. The ash-soled pair keeps its faint cold pallor.
   const nightTone = (ramp, L, warm = 0.18) => {
     const c = new THREE.Color(ramp[1]), hsl = {};
     c.getHSL(hsl, THREE.SRGBColorSpace);
     c.setHSL(hsl.h, Math.min(0.6, hsl.s * 1.05 + 0.04), L(hsl.l), THREE.SRGBColorSpace);
     return '#' + c.lerp(new THREE.Color('#e0904c'), warm).getHexString();
   };
-  /**
-   * Night paint for a profile prism (pts [[x, y]] room-local, extruded `depth` along z, centred on zc): its front face
-   * as one flat `body` decal, and every top face (outward normal pointing up) as a lifted `top` quad - lit tops over a
-   * mid body instead of a dark unlit lump. Winding-safe for flipped profiles.
-   */
+  /** lamp-lit tone: the shoe's own hue at lightness L(l), pulled toward lamp amber of the SAME lightness (a warm cast that
+   *  does not lift it: nightTone's lerp toward a bright amber lit every shoe to the same orange, critic polish3). */
+  const lampTone = (ramp, L, warm) => {
+    const c = new THREE.Color(ramp[1]), hsl = {};
+    c.getHSL(hsl, THREE.SRGBColorSpace);
+    const l = L(hsl.l);
+    c.setHSL(hsl.h, Math.min(0.55, hsl.s * 1.05 + 0.04), l, THREE.SRGBColorSpace);
+    return '#' + c.lerp(new THREE.Color().setHSL(0.075, 0.55, l, THREE.SRGBColorSpace), warm).getHexString();
+  };
+  const clampL = (lo, hi, m = 1, add = 0) => (l) => Math.max(lo, Math.min(hi, l * m + add));
+  /** hex mix a -> b by t (in linear light), times k (the day window gradient). */
+  const mixHex = (a, b, t, k = 1) => {
+    const c = new THREE.Color().setStyle(a, THREE.SRGBColorSpace), d = new THREE.Color().setStyle(b, THREE.SRGBColorSpace);
+    const o = new THREE.Color();
+    o.setRGB(Math.min(1, (c.r + (d.r - c.r) * t) * k), Math.min(1, (c.g + (d.g - c.g) * t) * k), Math.min(1, (c.b + (d.b - c.b) * t) * k));
+    return '#' + o.getHexString();
+  };
+  const SCONCE = [-2.05, 1.55];
+  /** night: the sconce's reach at (x, y) on the rack, 0..1 (a soft falloff along the shelves). */
+  const lamp = (x, y) => Math.pow(Math.max(0, 1 - Math.hypot(x - SCONCE[0], (y - SCONCE[1]) * 1.25) / 2.5), 1.4);
+  /** day: the eyelet window's side of the rack is a little brighter. */
+  const win = (x) => 0.9 + 0.14 * Math.max(0, Math.min(1, (x - rx0) / (rx1 - rx0)));
   const paintPrism = (b, layer, pts, zc, depth, body, top) => {
     const o = { tones: 'glass', layer, glowKind: 1 }, n = pts.length;
     let area = 0;
@@ -416,46 +450,64 @@ export default function build(room, ctx) {
     }
     if (tp.length) b.tris(tp, { ...o, glow: top });
   };
-  const rackNight = (b, layer) => {
+  const rackPaint = (b, layer, mode) => {
+    const DAY = mode === 'day';
     const Z = -D / 2, o = (hex) => ({ tones: 'glass', layer, glow: hex, glowKind: 1 });
     const wallQ = (x0, y0, x1, y1, z, hex) => b.tris([x0, y0, Z + z, x1, y0, Z + z, x1, y1, Z + z, x0, y0, Z + z, x1, y1, Z + z, x0, y1, Z + z], o(hex));
     const topQ = (x0, x1, z0, z1, y, hex) => b.tris([x0, y, Z + z1, x1, y, Z + z1, x1, y, Z + z0, x0, y, Z + z1, x1, y, Z + z0, x0, y, Z + z0], o(hex));
-    const X0 = rx0 - 0.1, X1 = rx1 + 0.1;
+    // one tone per surface: [day, night-shadow, night-lamplit]; (x, y) picks the light there
+    const tone = ([day, dark, lit], x, y) => (DAY ? mixHex(day, day, 0, win(x)) : mixHex(dark, lit, lamp(x, y)));
+    const X0 = rx0 - 0.1, X1 = rx1 + 0.1, SEG = 6, sx = (X1 - X0) / SEG;
+    // long strips are cut in SEG pieces along x so the night falloff (and the day window gradient) can step along them
+    const strip = (fn, T, y) => { for (let k = 0; k < SEG; k++) fn(X0 + k * sx, X0 + (k + 1) * sx, tone(T, X0 + (k + 0.5) * sx, y)); };
     // the backing, bay by bay (in front of the board, behind the shoes)
+    const BAY = [['#6e4a34', '#22160f', '#5a3624'], ['#5e3e2c', '#1f140e', '#4a2c1e'], ['#4c3024', '#1b120d', '#3a2218']];
     shelfY.forEach((y, k) => {
       const yt = k < 2 ? shelfY[k + 1] - 0.05 : 1.74, h = yt - y;
-      wallQ(X0, y, X1, y + h * 0.42, 0.045, '#4e301f');
-      wallQ(X0, y + h * 0.42, X1, y + h * 0.74, 0.045, '#3f271a');
-      wallQ(X0, y + h * 0.74, X1, yt, 0.045, '#2e1c15');
+      [[y, y + h * 0.42], [y + h * 0.42, y + h * 0.74], [y + h * 0.74, yt]].forEach(([ya, yb], q) =>
+        strip((x0, x1, hex) => wallQ(x0, ya, x1, yb, 0.045, hex), BAY[q], (ya + yb) / 2));
     });
-    // the shelves: a warm top (brighter toward the front edge), a lit front strip with a hot amber lip
+    // the shelves: a top (brighter toward the front edge), a front strip with a lit lip
     for (const y of shelfY) {
-      topQ(X0 + 0.05, X1 - 0.05, 0.0, 0.22, y + 0.003, '#4a2e1e');
-      topQ(X0 + 0.05, X1 - 0.05, 0.22, 0.34, y + 0.003, '#6e4628');
-      wallQ(X0 + 0.05, y - 0.05, X1 - 0.05, y - 0.018, 0.343, '#7a4c2a');
-      wallQ(X0 + 0.05, y - 0.018, X1 - 0.05, y, 0.343, '#d4a05a');
+      strip((x0, x1, hex) => topQ(x0, x1, 0.0, 0.22, y + 0.003, hex), ['#7a5636', '#22170f', '#583822'], y);
+      strip((x0, x1, hex) => topQ(x0, x1, 0.22, 0.34, y + 0.003, hex), ['#94704a', '#281a11', '#704828'], y);
+      strip((x0, x1, hex) => wallQ(x0, y - 0.05, x1, y - 0.018, 0.343, hex), ['#86603e', '#261910', '#64402a'], y);
+      strip((x0, x1, hex) => wallQ(x0, y - 0.018, x1, y, 0.343, hex), ['#c8a070', '#33231a', '#a06c38'], y);
     }
     // the side uprights: a lit inner edge
-    for (const x of [rx0 - 0.06 + 0.02, rx1 + 0.06 - 0.02]) wallQ(x - 0.02, 0.0, x + 0.02, 1.78, 0.363, '#7a5032');
-    // the shoes: front shoe of each pair in its lifted colour, the back one darker above it, lit tops on both
+    for (const x of [rx0 - 0.06 + 0.02, rx1 + 0.06 - 0.02]) wallQ(x - 0.02, 0.0, x + 0.02, 1.78, 0.363, tone(['#8a6446', '#24180f', '#64402c'], x, 1.0));
+    // the shoes: the front shoe of each pair in its own colour, the back one darker above it, lit tops on both
+    const shoeTone = (col, x, y, front, top) => {
+      if (DAY) {
+        const L = front ? (top ? clampL(0.62, 0.76, 1.05, 0.24) : clampL(0.4, 0.54, 1.15)) : (top ? clampL(0.5, 0.62, 1, 0.16) : clampL(0.3, 0.42, 1.0));
+        return mixHex(nightTone(col, L, top ? 0.1 : 0.05), '#000000', 0, win(x));
+      }
+      const dk = front ? (top ? clampL(0.15, 0.2, 0.5) : clampL(0.1, 0.14, 0.4)) : (top ? clampL(0.12, 0.16, 0.4) : clampL(0.08, 0.11, 0.3));
+      const lt = front ? (top ? clampL(0.42, 0.52, 1, 0.12) : clampL(0.26, 0.34, 0.9)) : (top ? clampL(0.32, 0.4, 1) : clampL(0.18, 0.24, 0.7));
+      return mixHex(lampTone(col, dk, 0.35), lampTone(col, lt, top ? 0.4 : 0.3), lamp(x, y));
+    };
     for (const [X, y, z, prof, s, sy, col, p, i] of rackShoes) {
-      const pts = scaleP(prof, s, sy).map(([px, py]) => [X + px, y + py]);
+      const pts = scaleP(prof, s, sy).map(([px, py]) => [X + px, y + py]), cx = X + s * 0.45;
+      paintPrism(b, layer, pts, Z + z, 0.075, shoeTone(col, cx, y + 0.1, p === 1, false), shoeTone(col, cx, y + 0.1, p === 1, true));
       if (p === 1) {
-        paintPrism(b, layer, pts, Z + z, 0.075, nightTone(col, (l) => Math.max(0.3, Math.min(0.46, l * 1.1))), nightTone(col, (l) => Math.max(0.58, Math.min(0.72, l * 1.1 + 0.26)), 0.25));
-        if (i === ASH) wallQ(X - 0.03, y, X + s * 0.92, y + 0.035, z + 0.0425 + 0.004, '#8e8c98');      // the ashy soles, cold and pale
-      } else paintPrism(b, layer, pts, Z + z, 0.075, nightTone(col, (l) => Math.max(0.22, Math.min(0.34, l * 0.9)), 0.12), nightTone(col, (l) => Math.max(0.4, Math.min(0.54, l + 0.12)), 0.2));
+        if (i === ASH) wallQ(X - 0.03, y, X + s * 0.92, y + 0.035, z + 0.0425 + 0.004, DAY ? '#aeacb8' : '#55535f');   // the ashy soles: cold and pale
+        topQ(X - 0.03, X + s * 0.92, 0.0775, 0.2825, y + 0.038, i === ASH ? (DAY ? '#8a8894' : '#3c3a44') : tone(['#4a3a32', '#1a1210', '#3a2a24'], cx, y));
+      }
     }
-    // the two pairs hung by their laces in front of the rack: dim leather, lit along their soles
+    // the two pairs hung by their laces in front of the rack: leather, lit along their soles
     for (const [hx, hz, col] of hungBoots) for (const p of [0, 1]) {
       const pts = scaleP(BOOT, 0.3, 0.32).map(([x, y]) => [hx - 0.04 + p * 0.09 + x, H - 0.48 - y]);
-      paintPrism(b, layer, pts, hz + p * 0.05, 0.08, nightTone(col, (l) => Math.max(0.2, Math.min(0.3, l)), 0.15), nightTone(col, (l) => Math.max(0.38, Math.min(0.48, l + 0.12)), 0.2));
+      const k = lamp(hx, H - 0.6);
+      paintPrism(b, layer, pts, hz + p * 0.05, 0.08,
+        DAY ? nightTone(col, clampL(0.3, 0.4, 1), 0.05) : mixHex(lampTone(col, clampL(0.1, 0.13, 1), 0.3), lampTone(col, clampL(0.15, 0.19, 1), 0.3), k),
+        DAY ? nightTone(col, clampL(0.5, 0.6, 1, 0.12), 0.1) : mixHex(lampTone(col, clampL(0.16, 0.2, 1), 0.3), lampTone(col, clampL(0.3, 0.38, 1, 0.1), 0.3), k));
     }
     // brass name tags glint; the spilt ash on the ash pair's shelf
     shelfY.forEach((y, row) => {
       for (let k = 0; k < 5; k++) {
         const x = rx0 + 0.2 + k * ((rx1 - rx0 - 0.4) / 4);
-        wallQ(x - 0.05, y - 0.08, x + 0.05, y - 0.02, 0.362, '#c8964c');
-        if (row * 5 + k === ASH) for (const [ax, az] of [[-0.1, 0.32], [0.16, 0.36], [0.05, 0.3]]) topQ(x + ax - 0.035, x + ax + 0.035, az - 0.025, az + 0.025, y + 0.017, '#6c6a76');
+        wallQ(x - 0.05, y - 0.08, x + 0.05, y - 0.02, 0.362, tone(['#d8b060', '#3a2a1a', '#b08040'], x, y));
+        if (row * 5 + k === ASH) for (const [ax, az] of [[-0.1, 0.32], [0.16, 0.36], [0.05, 0.3]]) topQ(x + ax - 0.035, x + ax + 0.035, az - 0.025, az + 0.025, y + 0.017, DAY ? '#a4a2ae' : '#4a4854');
       }
     });
   };
@@ -464,7 +516,6 @@ export default function build(room, ctx) {
     ditherPool(b, layer, { room, x: wbx - 0.1, z: wbz + 0.2, y: 0.04, r: 1.95, rv: 1.4, cols: AMBER, peak: 0.82, fall: 1.3, cell: 0.05, keep: underBench });
     ditherPool(b, layer, { room, x: sx + 0.55, z: sz + 0.2, r: 1.1, rv: 0.8, cols: ['#4e2416', '#8a3c1c', '#c86428'], peak: 0.85, kind: 2, cell: 0.05 });
     ditherPool(b, layer, { room, plane: 'back', x: -2.05, y: 1.6, r: 0.75, rv: 0.85, cols: ['#4a2c22', '#6e4430', '#94603a'], peak: 0.85, cell: 0.05 });
-    rackNight(b, layer);
     ditherPool(b, layer, { room, x: 1.0, z: D / 2 - 0.85, r: 0.8, rv: 0.55, cols: ['#4a3022', '#7a5230'], peak: 0.85, cell: 0.05 });
     for (const [x, z, ry] of ashSteps) {                       // (one flat quad per print: the 12-tri boxes cost the rack's budget)
       const c = Math.cos(ry), sn = Math.sin(ry), P = (u, w) => [x + u * c + w * sn, 0.02, z - u * sn + w * c];
@@ -472,7 +523,7 @@ export default function build(room, ctx) {
     }
   };
   const dust = particles(room, ctx, {
-    name: 'house-10-dust', n: 14, night,
+    name: 'house-10-dust', n: 14, night, both: rackPaint,
     make: (b, i, layer) => b.box(0.03, 0.03, 0.03, { at: [0, 0, 0], tones: 'glass', layer, glow: TP.glow[i % 2 ? 0 : 1], glowKind: 1 }),
     path: (i, t) => {
       const ph = i * 2.39, y = 0.9 + ((t * 0.05 + i * 0.071) % 1) * 1.1;

@@ -7,6 +7,8 @@
 // turn and the descent are CONTINUOUS (eased yaw; geometric eased zoom) instead of stop-motion poses / ladder cuts. The
 // trade-off is some texel crawl while the camera turns or zooms (the t3ssel8r stop-motion convention avoids it); the
 // sweep and the end pose are still texel-snapped, so play itself is unaffected.
+// The ground's zoom-dependent pattern sizes are held world-locked for the flight (engine.uniforms.uCamFlight = 1, read by
+// src/town/pieces/ground.js), else the lane setts / forest litter rescale every frame and slide over the ground.
 //
 // No stutter: before the flight starts, every key pose of the flight is rendered ONE frame each behind the loading
 // screen (src/demo/loading.js), so all programs (objects that only enter the frustum on the wide views: the forest rim,
@@ -126,7 +128,11 @@ export function createIntro(demo, { loading = defaultLoading } = {}) {
     const yaw = m === 'iso' ? CAMERAS.iso.yaw : (m === 'vote' || m === 'overview') ? 0 : store.state.yaw * DEG;
     return { x: cam.target.x, z: cam.target.z, vh: cam.viewHeight, yaw };
   };
+  // world-locked ground LOD while the camera zooms / turns continuously (src/town/pieces/ground.js uCamFlight): the
+  // zoom-dependent sett / litter sizes would otherwise rescale every frame and slide over the ground
+  const flight = (engine.uniforms.uCamFlight ??= { value: 0 });
   const apply = (p) => {
+    flight.value = p.stage === 'end' ? 0 : 1;
     cam.target.set(p.x, 0, p.z);
     cam.viewHeight = p.vh;
     cam.yaw = p.yaw;
@@ -198,6 +204,7 @@ export function createIntro(demo, { loading = defaultLoading } = {}) {
     // the rig sets target / viewHeight every frame, but never the yaw: put the gameplay yaw back ourselves (a skip
     // mid-sweep would otherwise leave the camera at the sweep's 45 deg)
     cam.yaw = endPose().yaw;
+    flight.value = 0;
     setPhase('done');
     finish();
     events?.emit?.('intro:end', { skipped });
@@ -246,7 +253,7 @@ export function createIntro(demo, { loading = defaultLoading } = {}) {
         el.classList.add('itr-wait');
       }
     },
-    dispose() { if (phase !== 'done') { setPhase('done'); finish(); resolveDone({ skipped: true }); } },
+    dispose() { flight.value = 0; if (phase !== 'done') { setPhase('done'); finish(); resolveDone({ skipped: true }); } },
   };
   return intro;
 }

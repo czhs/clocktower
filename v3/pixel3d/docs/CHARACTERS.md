@@ -263,6 +263,21 @@ attack: {
   - **`clip.legs: 'float'`** on any loop clip: FK legs, no leg-IK hip dip (the hover `pos` is what you get).
   - **`material.whiteKeepLift` k** — whiteKeep for pixels a slot / signature LIFT raised into the mid band (a lifted white
     belly stayed peach at golden; also accepts a slightly tinted hi, chroma < 0.25).
+- **Wave-4 module fixes** (module fixer, after cast wave 4; opt-ins, 0 px for specs that do not use them; evidence `shots/mfx5/`):
+  - **`material.innerLine: 'tone'`** (all parts) or per slot **`material.slots.<x>.line: 'tone' | 'grey'`** — the
+    character's inner lines (part over part) take the DARKER of the two adjacent pixels' colours with its hue kept
+    (outline `charToneDesat` 0.2 instead of the cool grey-lilac `outlineDesat` 0.55): a seam on a saturated unclothed body
+    reads as a darker body tone, not a light grey collar / speck. Use it INSTEAD of `material.merge` when the line itself
+    is wanted (arm over body, collar, leg roots, quills); keep `merge` only where no line is wanted at all. Mechanism: tone
+    parts write their part id in an outer band (FLAG_CHAR ± 0.076, ids ±79..±156); outline.js `isChar` is ± 0.08.
+  - **`material.creamKeep: k | [k, lift]`** (golden grade only; noon / night 0 px) — a CREAM albedo (authored mid linear
+    luma > 0.45, r ≥ b, saturation < 0.45, fading out by 0.6) keeps its authored hue in EVERY band under the warm key
+    (sun hi/mid AND the shade copy), re-hued at the same luma; `lift` (0.85 recommended) also keeps it at ≥ lift × the
+    authored band tone's luma (maxflow golden chest mauve-grey → cream). whiteKeep / whiteKeepLift still handle near-whites.
+  - **`locomotion.swingFloor: 'gait'`** (LegGait; default `'fixed'` = old) — the `maxSwing` floor is never shorter than the
+    gait's own swing time at the walk/run speed, so a short-duty waddle (duty 0.15, or a reach-clamped duty) keeps its
+    authored cycle (0.3 s, not 0.267–0.289) and the start-up cycle no longer skips a drawing; replaces the
+    `maxSwing: 0.5` workaround. New members: set it.
 - Hold the key that carries a `hurt` flash ≥ flash frames + 2 grid frames (else the pose under it shows for one frame).
 - Swing planes: a horizontal slash at brim/hood height hides behind the signature shape from the back; slash diagonally.
 - One smear key = ≤ 170° of blade rotation (sum arm + chest + spine + hips about the swing axis); spins = several

@@ -1,6 +1,6 @@
 {
   "version": 3,
-  "generated": "2026-10-17T03:50:57.703Z",
+  "generated": "2026-10-17T04:22:13.928Z",
   "generator": "tools/demo-roster.mjs",
   "rule": "offered (public) = finished AND playable; wipOffered (demo.html?wip=1 adds them) = playable AND not finished. finished = shipped in docs/CHARACTER_STATUS.md OR the final independent critic verdict in characters/<id>.md ships (>= 19/24, no zeros on 1–3 or 7; docs/CHARACTER_PLAYBOOK.md) OR in src/demo/roster-allow.json. playable = characters/<id>.js loads AND it passed (or has not yet failed) the live idle + walk check",
   "shipBar": {
@@ -93,9 +93,13 @@
     "green-hood"
   ],
   "wip": [
+    "npc-elder",
     "greenting",
     "maxflow",
     "nicksong",
+    "npc-vendor",
+    "npc-sweeper",
+    "npc-porter",
     "storyteller",
     "theo-rem"
   ],
@@ -376,7 +380,7 @@
       "critic": {
         "score": 17,
         "shipped": false,
-        "src": "docs/CHARACTER_LEARNINGS.md:2505"
+        "src": "docs/CHARACTER_LEARNINGS.md:2539"
       },
       "mtime": 1792191424000,
       "verified": {
@@ -438,7 +442,7 @@
       "critic": {
         "score": 16,
         "shipped": false,
-        "src": "docs/CHARACTER_LEARNINGS.md:2558"
+        "src": "docs/CHARACTER_LEARNINGS.md:2592"
       },
       "mtime": 1792191187000,
       "verified": {
@@ -492,7 +496,7 @@
       "critic": {
         "score": 15,
         "shipped": false,
-        "src": "docs/CHARACTER_LEARNINGS.md:2173"
+        "src": "docs/CHARACTER_LEARNINGS.md:2207"
       },
       "mtime": 1792190684000,
       "verified": {
@@ -554,7 +558,7 @@
       "critic": {
         "score": 16,
         "shipped": false,
-        "src": "docs/CHARACTER_LEARNINGS.md:3014"
+        "src": "docs/CHARACTER_LEARNINGS.md:3048"
       },
       "mtime": 1792191669000,
       "verified": {
@@ -613,7 +617,7 @@
       "critic": {
         "score": 15,
         "shipped": false,
-        "src": "docs/CHARACTER_LEARNINGS.md:3514"
+        "src": "docs/CHARACTER_LEARNINGS.md:3548"
       },
       "mtime": 1792192729000,
       "verified": {
@@ -672,7 +676,7 @@
       "critic": {
         "score": 16,
         "shipped": false,
-        "src": "docs/CHARACTER_LEARNINGS.md:3499"
+        "src": "docs/CHARACTER_LEARNINGS.md:3533"
       },
       "mtime": 1792192485000,
       "verified": {
@@ -726,7 +730,7 @@
       "critic": {
         "score": 15,
         "shipped": false,
-        "src": "docs/CHARACTER_LEARNINGS.md:2989"
+        "src": "docs/CHARACTER_LEARNINGS.md:3023"
       },
       "mtime": 1792191529000,
       "verified": {
@@ -786,7 +790,7 @@
       "critic": {
         "score": 15,
         "shipped": false,
-        "src": "docs/CHARACTER_LEARNINGS.md:2423"
+        "src": "docs/CHARACTER_LEARNINGS.md:2457"
       },
       "mtime": 1792190771000,
       "verified": {
@@ -840,7 +844,7 @@
       "critic": {
         "score": 16,
         "shipped": false,
-        "src": "docs/CHARACTER_LEARNINGS.md:2952"
+        "src": "docs/CHARACTER_LEARNINGS.md:2986"
       },
       "mtime": 1792191666000,
       "verified": {
@@ -902,7 +906,7 @@
       "critic": {
         "score": 16,
         "shipped": false,
-        "src": "docs/CHARACTER_LEARNINGS.md:2479"
+        "src": "docs/CHARACTER_LEARNINGS.md:2513"
       },
       "mtime": 1792191128000,
       "verified": {
@@ -962,7 +966,7 @@
       "critic": {
         "score": 15,
         "shipped": false,
-        "src": "docs/CHARACTER_LEARNINGS.md:2441"
+        "src": "docs/CHARACTER_LEARNINGS.md:2475"
       },
       "mtime": 1792190749000,
       "verified": {
@@ -1021,7 +1025,7 @@
       "critic": {
         "score": 17,
         "shipped": false,
-        "src": "docs/CHARACTER_LEARNINGS.md:3612"
+        "src": "docs/CHARACTER_LEARNINGS.md:3646"
       },
       "mtime": 1792193628000,
       "verified": {
@@ -1081,7 +1085,7 @@
       "critic": {
         "score": 15,
         "shipped": false,
-        "src": "docs/CHARACTER_LEARNINGS.md:2459"
+        "src": "docs/CHARACTER_LEARNINGS.md:2493"
       },
       "mtime": 1792190859000,
       "verified": {
@@ -1143,7 +1147,7 @@
       "critic": {
         "score": 16,
         "shipped": false,
-        "src": "docs/CHARACTER_LEARNINGS.md:2974"
+        "src": "docs/CHARACTER_LEARNINGS.md:3008"
       },
       "mtime": 1792191490000,
       "verified": {
@@ -1202,7 +1206,7 @@
       "critic": {
         "score": 16,
         "shipped": false,
-        "src": "docs/CHARACTER_LEARNINGS.md:3555"
+        "src": "docs/CHARACTER_LEARNINGS.md:3589"
       },
       "mtime": 1792193802000,
       "verified": {
@@ -1264,7 +1268,7 @@
       "critic": {
         "score": 15,
         "shipped": false,
-        "src": "docs/CHARACTER_LEARNINGS.md:3474"
+        "src": "docs/CHARACTER_LEARNINGS.md:3508"
       },
       "mtime": 1792192962000,
       "verified": {
@@ -1323,7 +1327,7 @@
       "critic": {
         "score": 15,
         "shipped": false,
-        "src": "docs/CHARACTER_LEARNINGS.md:3572"
+        "src": "docs/CHARACTER_LEARNINGS.md:3606"
       },
       "mtime": 1792193761000,
       "verified": {
@@ -1383,7 +1387,7 @@
       "critic": {
         "score": 15,
         "shipped": false,
-        "src": "docs/CHARACTER_LEARNINGS.md:3531"
+        "src": "docs/CHARACTER_LEARNINGS.md:3565"
       },
       "mtime": 1792192677000,
       "verified": {
@@ -1442,7 +1446,7 @@
       "critic": {
         "score": 16,
         "shipped": false,
-        "src": "docs/CHARACTER_LEARNINGS.md:3592"
+        "src": "docs/CHARACTER_LEARNINGS.md:3626"
       },
       "mtime": 1792193035000,
       "verified": {
@@ -1496,7 +1500,7 @@
       "critic": {
         "score": 18,
         "shipped": false,
-        "src": "docs/CHARACTER_LEARNINGS.md:2192"
+        "src": "docs/CHARACTER_LEARNINGS.md:2226"
       },
       "mtime": 1792190804000,
       "verified": {
@@ -1558,7 +1562,7 @@
       "critic": {
         "score": 15,
         "shipped": false,
-        "src": "docs/CHARACTER_LEARNINGS.md:2880"
+        "src": "docs/CHARACTER_LEARNINGS.md:2914"
       },
       "mtime": 1792191357000,
       "verified": {
@@ -1612,7 +1616,7 @@
       "critic": {
         "score": 14,
         "shipped": false,
-        "src": "docs/CHARACTER_LEARNINGS.md:2918"
+        "src": "docs/CHARACTER_LEARNINGS.md:2952"
       },
       "mtime": 1792191391000,
       "verified": {
@@ -1674,7 +1678,7 @@
       "critic": {
         "score": 16,
         "shipped": false,
-        "src": "docs/CHARACTER_LEARNINGS.md:2934"
+        "src": "docs/CHARACTER_LEARNINGS.md:2968"
       },
       "mtime": 1792191643000,
       "verified": {
@@ -1690,6 +1694,45 @@
         "src": "1uybs9b.30946",
         "thumb": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAABzklEQVR4AZyUu0oDQRSGD6lELFcJCCraeAkqCKlEvGFhYWkhIhYWIhYW6gNYBisVsRJJ4RtoISIWIpJOSUIqCakkprYU800yMtmdnc1m2X8uZ87+39lhZxPSxpX0Br5RG6mBlEgAxqunGx5iHHCICEQCvmqV3vvD2xo+nUAiARibiguJDQAWB9IRIA6kYwCQdhQJ4MthS2xmxFm3remYE8DD49uznk629VGQUIA2H0oN2HxbYhRBfkuwOQkFNNelnK/oYWjvKsIKoJqRmX7n1oTSfAtWgJlzuTgkx30JJTNujl1v6QRgbhoBMuftjEMBR0uDsn7w1iIM40JCAZih99wWneheTYzGtT2kWQH8QXczr+oPOpXOkqfEG6mBrynevNR4xhdWUytArdSbk52+etu4AZnzRjS6dQKuf7rFW0sKxkjq195TWZ0NtgbVQ87bCuAcpPeX/8/BWTUhWqZbT0+XuLaHXCuAhUw6SSeThYJwUv3CnAQKoSDGNgUAJPPQ1fmdAPmYmJC1allppVQULZuZLRYA8DXkLh7VF8R+U/loaljQw+i4oOm5lIJTAKbP2U2Pwhj7FQDohPmFMT1UfSn/qXqaTPVXeEPE3KU/AAAA//80FPfTAAAABklEQVQDAIbCmrs7ZsgzAAAAAElFTkSuQmCC"
       }
+    },
+    {
+      "id": "npc-elder",
+      "name": "Elder",
+      "status": "wip",
+      "shipped": false,
+      "finished": false,
+      "finishedBy": null,
+      "loads": true,
+      "playable": true,
+      "offered": false,
+      "complete": false,
+      "wipOffered": true,
+      "reason": "work in progress, ?wip=1 only (not in CHARACTER_STATUS shipped; no critic verdict in its sheet; not allow-listed)",
+      "blurb": null,
+      "bodyPlan": "biped",
+      "height": 1.05,
+      "walkSpeed": 4.147,
+      "runSpeed": 8.295,
+      "gameSpeed": 4.147,
+      "plan": "biped",
+      "clips": [
+        "idle",
+        "walk",
+        "talk",
+        "vote",
+        "point",
+        "die",
+        "nod",
+        "ghost",
+        "ghost-spent"
+      ],
+      "emote": "nod",
+      "smears": false,
+      "fx": true,
+      "verdict": null,
+      "critic": null,
+      "mtime": 1792210845000,
+      "verified": null
     },
     {
       "id": "greenting",
@@ -1836,6 +1879,126 @@
         "src": "x0qsud.17422",
         "thumb": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAACJUlEQVR4AZSUTUhUURTHj9MQIWE2TvSxGOhjhCKGKGkRCAktgyLCXUItjSBpUbRo0T4ckISoqKR2EhEtggg/ShcuREQQHFQY8AsHHZDxA94Mzu/CgTdP77vPB/93zrn3nP/vznszE5MDXKeSqdUDtJvWyADMM5mbSaKZjHiLBAiaUqMoDCcAI06OMCSq2GMtTKEADDCzGaRSGecjswIwx6BYXLP5S2NjQuih19ZkBTCAAVG1HyzYo70aQwFBQ5eZmvqjFbBcyJ/I5ycLNANCwZzaJStAB39l2wVRK2S4/4WQI3FcTsCjlz+NBRCEOQvkPDIXxAlYKxblbmcfnibe78iaPOrNCuCr19rWlvzR2yGvbl2Q8e+jJvb3Pa3x5j3xvmoWfYUVwNC/gYHC456/8nFhS67eu2Gks9nfeTnWVKelNVoBwQlA6MHz9/L6w6Dkcrlgy751ZEDXs64ag3Q6XVPbisiA7jfdNo/QdSegVCqJ6v/QoIwMD8nXL5+NyL2yl0geP7NokxPQlG4RpMccf3fJpGNvm6XuUFymPl2JVXUasUFE5MgJ2F6cpk/Ei0ulUjG553km7mxtVi4/nFii0Ki5QpyAi6135Oz5Zmm53S6JhnrmJX74iIm2G+YKdAL8JqvrG+YjjPWc8y/vydWcDSdgfnZGEM2q60/mNF3htBQayf0KBfBr/vOt1/xlM1R/tCF2rXNGymVPiNW1k5xWVa2FnKjaBQAA//+PuogMAAAABklEQVQDABfw6EQpfov1AAAAAElFTkSuQmCC"
       }
+    },
+    {
+      "id": "npc-vendor",
+      "name": "Npc Vendor",
+      "status": "wip",
+      "shipped": false,
+      "finished": false,
+      "finishedBy": null,
+      "loads": true,
+      "playable": true,
+      "offered": false,
+      "complete": false,
+      "wipOffered": true,
+      "reason": "work in progress, ?wip=1 only (not in CHARACTER_STATUS shipped; no critic verdict in its sheet; not allow-listed)",
+      "blurb": null,
+      "bodyPlan": "biped",
+      "height": 1.2,
+      "walkSpeed": 4.74,
+      "runSpeed": 9.48,
+      "gameSpeed": 4.74,
+      "plan": "biped",
+      "clips": [
+        "idle",
+        "walk",
+        "run",
+        "talk",
+        "vote",
+        "point",
+        "die",
+        "callout",
+        "ghost",
+        "ghost-spent"
+      ],
+      "emote": "callout",
+      "smears": false,
+      "fx": true,
+      "verdict": null,
+      "critic": null,
+      "mtime": 1792210766000,
+      "verified": null
+    },
+    {
+      "id": "npc-sweeper",
+      "name": "npc-sweeper",
+      "status": "wip",
+      "shipped": false,
+      "finished": false,
+      "finishedBy": null,
+      "loads": true,
+      "playable": true,
+      "offered": false,
+      "complete": false,
+      "wipOffered": true,
+      "reason": "work in progress, ?wip=1 only (not in CHARACTER_STATUS shipped; no critic verdict in its sheet; not allow-listed)",
+      "blurb": "boring on purpose (NPC)",
+      "bodyPlan": "biped",
+      "height": 1.08,
+      "walkSpeed": 4.266,
+      "runSpeed": 8.532,
+      "gameSpeed": 4.266,
+      "plan": "biped",
+      "clips": [
+        "idle",
+        "walk",
+        "run",
+        "talk",
+        "vote",
+        "point",
+        "die",
+        "sweep",
+        "ghost",
+        "ghost-spent"
+      ],
+      "emote": "sweep",
+      "smears": false,
+      "fx": true,
+      "verdict": null,
+      "critic": null,
+      "mtime": 1792210916000,
+      "verified": null
+    },
+    {
+      "id": "npc-porter",
+      "name": "Porter",
+      "status": "wip",
+      "shipped": false,
+      "finished": false,
+      "finishedBy": null,
+      "loads": true,
+      "playable": true,
+      "offered": false,
+      "complete": false,
+      "wipOffered": true,
+      "reason": "work in progress, ?wip=1 only (not in CHARACTER_STATUS shipped; no critic verdict in its sheet; not allow-listed)",
+      "blurb": null,
+      "bodyPlan": "biped",
+      "height": 1.12,
+      "walkSpeed": 4.424,
+      "runSpeed": 8.848,
+      "gameSpeed": 4.424,
+      "plan": "biped",
+      "clips": [
+        "idle",
+        "walk",
+        "run",
+        "talk",
+        "vote",
+        "point",
+        "die",
+        "hitch",
+        "ghost",
+        "ghost-spent"
+      ],
+      "emote": "hitch",
+      "smears": false,
+      "fx": true,
+      "verdict": null,
+      "critic": null,
+      "mtime": 1792210839000,
+      "verified": null
     },
     {
       "id": "storyteller",

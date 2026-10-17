@@ -1714,6 +1714,40 @@ Shared code: tools/bake cut the walk from the start-up cycle (maxflow, 3 drawing
 
 ## Module backlog
 
+**Module fixes after cast wave 4 (module fixer, 2026-10-16, render-host RTX 4090; evidence `shots/mfx5/`)** — every
+high/medium row cast wave 4 hit (there were no high rows; three medium: inner-line colour, creamKeep, M23). Developed in
+an isolated copy (render dirs `pixel3d-fix` / baseline `pixel3d-base5` = the live tree before the change), copied back in
+one step. Files: `src/chars/{look,locomotion}.js`, `src/post/outline.js`, `src/core/glsl.js` (comment only). All three
+are OPT-IN. **Regression A/B:** full `--preset cast` raw packs of all 31 finished members incl. wanderer and the wave-4
+four (`shots/mfx5/aball.py`, `shots/mfx5/ab-final.txt`): **0 px in every job of every member**, report totals identical.
+**World A/B** (outline.js is shared): shrine, glade, pond, town at noon/golden/night × 2 times (`shots/mfx5/world.py`):
+0 px in all 24 images (world flags are exact half floats, so the tightened ±0.02 tolerances classify them as before).
+- **look: per-slot inner-line colour (medium, recurring 4) — FIXED (opt-in):** `material.innerLine: 'tone'` or
+  `material.slots.<x>.line: 'tone' | 'grey'`. Tone parts write their part id in an outer band (±79..±156, FLAG_CHAR
+  ± 0.076); outline.js paints their inner lines from the DARKER of the two adjacent pixels with the hue kept
+  (`charToneDesat` 0.2 instead of `outlineDesat` 0.55). Without `merge`: maxflow's grey neck collar / stitched arm lines →
+  dark orange seams (`shots/mfx5/ev-innerline-maxflow.png`), greenting's grey arm/leg-root/neck lines → dark jade
+  (`ev-innerline-greenting.png`, sun and pillar-shade copies), cilantro/theo-rem `shots/mfx5/lines1.png`. This removes
+  the reason for the `material.merge` workaround (and its T37 `inner_lines 0` WARN) where a line is wanted; the per-part
+  opt-out for intended depth steps is `slots.<x>.line: 'grey'` (keeps the old line).
+- **look: creamKeep (medium, recurring 2 + earlier) — FIXED (opt-in):** `material.creamKeep: k | [k, lift]`. Gate on the
+  AUTHORED mid tone (linear luma > 0.45, r ≥ b, saturation < 0.45 → 0 by 0.6; whiteKeep's chroma gate rejected cream),
+  warm grade only (rampHi r−b, like whiteKeep), every band (sun hi/mid and the shade copy): re-hue to the authored band
+  tone at the same luma, and with `lift` never darker than lift × that tone's luma. Maxflow golden: sun-side chest/arm
+  and the pillar-shade chest mauve-grey → cream (`ev-creamkeep-maxflow.png`: none / [1, 0] hue only = khaki / [1, 0.85]);
+  theo-rem cream belly mauve → warm cream in sun and shade (`ev-creamkeep-theo-rem.png`). Noon and night: 0 px (measured).
+- **M23 (medium) — FIXED (opt-in `locomotion.swingFloor: 'gait'`):** the floor becomes max(maxSwing, the gait's own
+  swing time (1−β)·C/v at the walk / run branch speed): equal to the cycle's phase rate at game speed (no effect), still
+  lands the foot when slowing down. Maxflow without its `maxSwing: 0.5` workaround: base start-up ids k0 k1 k3 (k2
+  skipped), game cycle 0.278 s, walk.distinct 8 images → fix k0 k1 k2 k3, 0.3 s, 5 images
+  (`ev-M23-maxflow.png`, `shots/mfx5/m23-*`). **Why opt-in:** as a default (run 1, `ab-final.txt` header) it changed
+  the walks of 15 finished members — their live cycles ran on the floor at 0.267–0.289 s instead of the authored 0.3 s
+  (clarabelle, crow, fox, goat, greenting, mincut, mushroom run, opal, owl, polly, preservation, progress, requin,
+  theo-rem, toad): all became 0.3 s with 4/4 drawings, but crow run.off_grid/flicker 0 → 2/3, requin game/walk
+  off_grid/flicker 0 → 1, progress game.off_grid 0 → 1 WARN appeared. Lead decision: flip the default after the authors
+  re-check those walks (`swingFloor` per spec until then). So M23 was in fact recurring 16, not 2.
+- Not attempted (low): M24 roll lurch, M25 plumb, M26/M27, fx `land@`/`poof@` socket position, T32–T37, rig rows.
+
 **Fixed by the lead between waves 4 and 5 (2026-10-16, render-host RTX 4090; evidence `shots/lead-w4/`):**
 - **tools/bake.py walk cut from the start-up cycle (maxflow; recurring 2 with M22)** — when an authored LegGait walk
   (ids `<gait>:<clip>:k<n>:<drawing>:<cycle>`) skips a drawing in its first cycle, the cut now restarts at the first run
@@ -1730,10 +1764,10 @@ Shared code: tools/bake cut the walk from the start-up cycle (maxflow, 3 drawing
 - Already supported (no change): `spec.presence = [lo, hi]` (T13) for a deliberately big mascot (maxflow 189 %).
 
 **Priority after cast wave 4 (lead, 2026-10-16)** — what blocks the most rubric points now (4 members, scores 15–18):
-1. **look: per-slot inner-line colour** (recurring 4: cilantro, maxflow, greenting, theo-rem) — grey collars/seams/specks
+1. **FIXED opt-in (wave-4 module fixer: `material.innerLine 'tone'`, `shots/mfx5/ev-innerline-*.png`)** **look: per-slot inner-line colour** (recurring 4: cilantro, maxflow, greenting, theo-rem) — grey collars/seams/specks
    on unclothed saturated bodies cost line + tonal points on 3/4 wave-4 members; merge workaround costs a WARN (T37).
-2. **look: creamKeep** (recurring 2 in wave 4 + requin/rabbit/chonk earlier) — cream identity goes mauve/apricot at golden.
-3. **motion M23** short-duty `maxSwing` floor (the live game still starts maxflow-like waddles with a skipped drawing;
+2. **FIXED opt-in (`material.creamKeep [1, 0.85]`, `shots/mfx5/ev-creamkeep-*.png`)** **look: creamKeep** (recurring 2 in wave 4 + requin/rabbit/chonk earlier) — cream identity goes mauve/apricot at golden.
+3. **M23 FIXED opt-in (`locomotion.swingFloor 'gait'`, `shots/mfx5/ev-M23-maxflow.png`; default flip = lead decision)** **motion M23** short-duty `maxSwing` floor (the live game still starts maxflow-like waddles with a skipped drawing;
    the bake is fixed) + **M24** SE lurch / lopsided roll (greenting, maxflow).
 4. **tools T32/T33/T34** face_visible per-part list, turnaround grid row spacing for tall figures, bake side-touch growth.
 5. **fx `land@`/`poof@` socket positions** (storyteller, maxflow) and **M25** prop plumb under LegGait (storyteller, goat).
@@ -1928,7 +1962,7 @@ Motion — new after cast wave 4 (lead merge 2026-10-16):
 
 | # | sev | issue | fix wanted | seen |
 |---|---|---|---|---|
-| M23 | medium (recurring 2 with M22) | LegGait `maxSwing` floor `dt·(1−β)/maxSwing` (default 0.25 s) sets the phase on short-duty gaits (duty 0.15 waddle): live cycle 0.278 s vs authored 0.3 s, and the start-up cycle skips a drawing (k2) | floor ≥ the authored swing time, or ignore the floor while accelerating from rest; workaround `locomotion.maxSwing: 0.5` (maxflow r2: 0.30 s, 4/4) | maxflow |
+| M23 | ~~medium~~ **FIXED opt-in (wave-4 module fixer)**: `locomotion.swingFloor: 'gait'` (floor ≥ the gait's own swing time at the branch speed); maxflow without maxSwing k0 k1 k3 → k0 k1 k2 k3, 0.278 → 0.3 s (`shots/mfx5/ev-M23-maxflow.png`). As a default it changes 15 finished walks (0.267–0.289 → 0.3 s, a few new 1–3 frame off_grid WARNs), so the default stays 'fixed' — see the top block. Was: medium (recurring 2 with M22) | LegGait `maxSwing` floor `dt·(1−β)/maxSwing` (default 0.25 s) sets the phase on short-duty gaits (duty 0.15 waddle): live cycle 0.278 s vs authored 0.3 s, and the start-up cycle skips a drawing (k2) | floor ≥ the authored swing time, or ignore the floor while accelerating from rest; workaround `locomotion.maxSwing: 0.5` (maxflow r2: 0.30 s, 4/4) | maxflow |
 | M24 | low (recurring 2: greenting, maxflow) | LegGait `roll` on a tall body at SE reads as a forward/back lurch (far-side roll tilts right, near-side roll foreshortens to a squat); the waddle roll is lopsided per drawing | a screen-space sway option (roll about the camera's view axis) or a mirrored-roll default; workaround: key a mirrored chest/head roll per drawing, roll ≤ 5 | greenting, maxflow |
 | M25 | low (recurring 2 with M4 "plumb constraint not built": goat W1, storyteller W4) | The plumb-cancel convention (prop fwd = −(upperArm + forearm)) still leans a staff ≈ 17° forward inside LegGait walk drawings | a real plumb constraint for prop bones (`props.<p>.plumb: true`) applied after the gait's body pose | storyteller |
 | M26 | low | A keyed `pos` in a LegGait run clip does not move the head relative to the root (run.head_bob 0.2 px); `hips.p` works | document (M1 says `pos` replaces the plan bob) or apply `pos` before the root-relative measure | storyteller |
@@ -1984,9 +2018,9 @@ Rig — new after cast wave 4 (lead merge 2026-10-16):
 | ~~medium~~ **FIXED r2 (opt-in)** (module fix r2: `material.whiteKeep` k: a near-white HI tone (linear luma > 0.75, chroma < 0.18) is pulled to its own luma by k·warmth(rampHi r−b) in the lit band only; characters only, world untouched, default 0 = identical (rabbit A/B 0 px). Chonk whiteKeep 0.8 at golden: apricot #EFBD7D → #D2C6BA, shadows keep their violet (`ev-look-whitekeep-chonk.png`); sig_ground still WARNs on hue vs olive grass) — was: medium (recurring 4) | The golden key light tints any near-white albedo to apricot (#EFBD7D–#F0BE7B, dH 23–25 vs golden grass): white cast members lose "white". Cooler hi changed nothing (chonk #F3F1F5); only a magenta-pushed hi passed (rabbit #F8E8FF → dH 34) | cap the golden tint on near-white albedo (or a per-slot `goldenKeep` factor); must keep world scenes + town pixel-identical, so it belongs in the character material path | rabbit, chonk, skeleton-chef, goat |
 | low | Scaling a convex bead eye part in x (`eyeL.s` x +0.3) draws a dark 1-px vertical column down each eye; y-only scale is clean (`shots/char-green-hood/r6/b/f-dbg2.png` vs `f-dbg3.png`). Cause unknown (mirrored part or skinned normals under non-uniform scale) | find the cause (normals under non-uniform bone scale) | green-hood |
 | ~~medium~~ **FIXED opt-in (wave-3 module fixer)**: `material.whiteKeepLift k` keeps lifted mid-band near-whites (gate chroma < 0.25: requin's magenta-pushed hi #F8E8FF failed the old 0.18 gate too); requin variant golden belly peach → white, `shots/mfx4/ev-whitekeeplift.png` — was: medium | `material.whiteKeep` has no effect on pixels raised by `material.slots.<slot>.lift` (a lift-0.35 belly stayed peach #F1B889 at golden with whiteKeep 0.7 and 1; workaround lift 0.18 + a cool mid #E6DCF4) | apply whiteKeep after the slot lift | requin |
-| low | outline.js tints FLAG_CHAR inner lines toward blue-grey, so a line on a cream/white part reads as grey specks ("beard" round a muzzle); no per-slot line colour (workaround `material.merge` + flush detail boxes) | per-slot inner-line tone (`material.slots.<x>.line`) or tint toward the part's own sh | cilantro |
-| **medium (new wave 4, recurring 2: maxflow, theo-rem; W3 requin, W2 rabbit/chonk)** | `whiteKeep` / `whiteKeepLift` never catch CREAM (gate chroma < 0.18 / 0.25; #F8E6C2 ≈ 0.40) and never LIGHTEN: maxflow cream chest #957C7E mauve-grey in the golden sun copy (0 px change at 0.8/0.8), theo-rem cream face apricot; the SHADE copy of a lifted cream still drifts mauve | a `creamKeep` (or widen the gate to high-L, low-saturation warm hi ≥ #F0E0C8) that keeps cream warm-light in the golden grade, sun AND shade; A/B on the cast | maxflow, theo-rem |
-| **medium (priority raised wave 4, recurring 4: cilantro, maxflow, greenting, theo-rem)** | (same as the outline.js row above) inner lines between same-slot parts draw LIGHT grey-lilac on saturated/unclothed bodies (maxflow neck collar + stitched arms, greenting leg roots, theo-rem quill specks); the only workaround (`material.merge`) costs `inner_lines 0` WARN and merges details | inner-line colour = the darker of the two adjacent slot tones (or `slots.<x>.line`); a per-part opt-out for intended depth steps (quills) | cilantro, maxflow, greenting, theo-rem |
+| ~~low~~ **FIXED opt-in (wave 4, row below)** | outline.js tints FLAG_CHAR inner lines toward blue-grey, so a line on a cream/white part reads as grey specks ("beard" round a muzzle); no per-slot line colour (workaround `material.merge` + flush detail boxes) | per-slot inner-line tone (`material.slots.<x>.line`) or tint toward the part's own sh | cilantro |
+| ~~medium~~ **FIXED opt-in (wave-4 module fixer)**: `material.creamKeep: [1, 0.85]` (authored-mid cream gate, every band, golden only; `shots/mfx5/ev-creamkeep-{maxflow,theo-rem}.png`) — was: **medium (new wave 4, recurring 2: maxflow, theo-rem; W3 requin, W2 rabbit/chonk)** | `whiteKeep` / `whiteKeepLift` never catch CREAM (gate chroma < 0.18 / 0.25; #F8E6C2 ≈ 0.40) and never LIGHTEN: maxflow cream chest #957C7E mauve-grey in the golden sun copy (0 px change at 0.8/0.8), theo-rem cream face apricot; the SHADE copy of a lifted cream still drifts mauve | a `creamKeep` (or widen the gate to high-L, low-saturation warm hi ≥ #F0E0C8) that keeps cream warm-light in the golden grade, sun AND shade; A/B on the cast | maxflow, theo-rem |
+| ~~medium~~ **FIXED opt-in (wave-4 module fixer)**: `material.innerLine: 'tone'` / `slots.<x>.line` (darker adjacent tone, hue kept; `shots/mfx5/ev-innerline-{maxflow,greenting}.png`) — was: **medium (priority raised wave 4, recurring 4: cilantro, maxflow, greenting, theo-rem)** | (same as the outline.js row above) inner lines between same-slot parts draw LIGHT grey-lilac on saturated/unclothed bodies (maxflow neck collar + stitched arms, greenting leg roots, theo-rem quill specks); the only workaround (`material.merge`) costs `inner_lines 0` WARN and merges details | inner-line colour = the darker of the two adjacent slot tones (or `slots.<x>.line`); a per-part opt-out for intended depth steps (quills) | cilantro, maxflow, greenting, theo-rem |
 | low | `sigLift` keeps the signature at L ≥ 0.3 in the pillar shadow, so the shade copy can't reach −25 % by lowering `sh` (polly noon-shade −7 %) | let `sh` below the lift floor through, or document the floor in the sig_ground note | polly |
 
 ### fx (src/chars/smear.js, fx.js)

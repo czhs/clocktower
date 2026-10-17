@@ -321,7 +321,9 @@ export default function build(room, ctx) {
       lint.update(t);
       switchSets();
       lid.update();
-      if (!moonUp()) lid.group.visible = false;           // golden hour: no lid, no hard sun panes through its holes
+      // golden hour (the window glow on, the sun still warm): the lid slid 5 m aside, so its closed margin shades the
+      // whole room - the low sun through the bay drew hard amber fragments between the loom, table and rack shadows
+      if (lid.group.visible && !moonUp()) lid.group.position.x += 5;
     },
     bedRect: bed.rect,
   };

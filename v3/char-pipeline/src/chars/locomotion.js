@@ -495,6 +495,11 @@ export class LegGait {
       twist: pair(L.twist, [6, 10]), roll: pair(L.roll, [6, 4]), headBob: pair(L.headBob, [8, 6]), flex: pair(L.flex, [6, 14]),
       spacing: L.spacing ?? 1, vStart: L.vStart ?? 0.06 * H + 0.05, vStop: L.vStop ?? 0.03 * H + 0.03,
       stepTime: L.stepTime ?? 0.2, maxSwing: L.maxSwing ?? 0.25, stepLift: L.stepLift ?? 0.05 * H, stepTol: L.stepTol ?? 0.06 * H,
+      // (module fix M23, opt-in) 'gait': the maxSwing floor is never shorter than the authored swing time at the branch
+      // speed ((1-β)·C/v at walkSpeed / runSpeed), so it only acts while slowing down. Default 'fixed' = the old floor
+      // (kept: 'gait' restores the authored 0.3 s cycle of 15 finished members that ran at 0.267-0.289 s — their walks
+      // change, see CHARACTER_LEARNINGS §Module backlog M23 for the A/B before flipping the default)
+      swingFloor: L.swingFloor ?? 'fixed',
       stepYaw: L.stepYaw ?? 35, hipY, minHold: opts.minHold ?? spec.character?.minHold ?? 2,
       squash: L.squash ?? null, hover: L.hover ?? (rig.spec?.skeleton?.meta?.hover ? 0 : 0.3 * H),
       flap: { period: 0.267, angles: [55, 15, -30, 15], ...(L.flap || {}) },
@@ -663,7 +668,7 @@ export class LegGait {
     const ds = v * dt;
     const phi0 = this.phi;
     const swinging = this.legs.some((l) => frac(this.phi + this._off(l)) >= beta);
-    this.phi += this.legs.length && swinging ? Math.max(ds / C, dt * (1 - beta) / this.p.maxSwing) : ds / C;
+    this.phi += this.legs.length && swinging ? Math.max(ds / C, dt * (1 - beta) / this._swingFloor(w)) : ds / C;
     this._surge(C, beta, n, vf, ds, this.phi - phi0);
     this.lastSpeed = Math.max(v, 0.3);
     const lift = lerp(this.p.lift[0], this.p.lift[1], w) * clamp(vf / (0.5 * this.p.walkSpeed), 0.4, 1);
@@ -683,6 +688,23 @@ export class LegGait {
         this._swingPose(l, f, u, f.lift, f.land, f.liftYaw, ctx.facing, lift + hopArc, ground);
       }
     }
+  }
+
+  /** (module fix M23) Swing-time floor (s): a swinging foot lands within it (decelerating bodies never leave a foot
+   *  hanging). Was maxSwing alone (0.25 s): a short-duty gait whose AUTHORED swing is longer (maxflow duty 0.15 →
+   *  0.255 s) ran its steady cycle on the floor (0.278 s instead of 0.3 s) and skipped a drawing in the start-up
+   *  cycle. swingFloor 'gait': max(maxSwing, steady swing time at the branch speed) — at the game speed the floor equals the
+   *  cycle's own phase rate (no effect); below it (stopping) the floor still lands the foot. 'fixed' (default) = old. */
+  _swingFloor(w) {
+    const P = this.p;
+    if (P.swingFloor === 'fixed') return P.maxSwing;
+    const k = w > 0.5 ? 1 : 0;
+    if (this._swF?.[k] === undefined) {
+      const v = k ? P.runSpeed : P.walkSpeed;
+      const { C, beta } = this.cycleAt(v, k);
+      (this._swF ??= [])[k] = v > 1e-3 ? (1 - beta) * C / v : 0;
+    }
+    return Math.max(P.maxSwing, this._swF[k] * 1.0001);   // a hair longer: at the branch speed the cycle rate wins
   }
 
   /** Plant spot ahead of the hip anchor at touchdown: the planted drawing's hold is crossed symmetrically. */
