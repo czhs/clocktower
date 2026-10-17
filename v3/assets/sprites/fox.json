@@ -1,0 +1,194 @@
+{
+ "name": "fox",
+ "image": "fox.png",
+ "cell": [
+  62,
+  72
+ ],
+ "anchor": [
+  31,
+  53
+ ],
+ "ppm": 36.0,
+ "yaw": 0.0,
+ "pitch": 30.0,
+ "tod": "noon",
+ "dirs": [
+  "S",
+  "SE",
+  "E",
+  "NE",
+  "N",
+  "NW",
+  "W",
+  "SW"
+ ],
+ "bodyPlan": "uprightAnimal",
+ "height_m": 1.32,
+ "fps": 30,
+ "clips": {
+  "idle": {
+   "fps": 30,
+   "loop": true,
+   "frames": 7,
+   "holds": [
+    6,
+    14,
+    2,
+    8,
+    4,
+    8,
+    30
+   ],
+   "row": 0,
+   "period": 72,
+   "grid_frames": [
+    30,
+    36,
+    50,
+    52,
+    60,
+    64,
+    72
+   ],
+   "frames_by": "pose ids"
+  },
+  "walk": {
+   "fps": 30,
+   "loop": true,
+   "frames": 4,
+   "holds": [
+    2,
+    2,
+    2,
+    2
+   ],
+   "row": 8,
+   "period": 8,
+   "grid_frames": [
+    3,
+    5,
+    7,
+    9
+   ],
+   "frames_by": "pose ids"
+  },
+  "run": {
+   "fps": 30,
+   "loop": true,
+   "frames": 4,
+   "holds": [
+    2,
+    2,
+    2,
+    2
+   ],
+   "row": 16,
+   "period": 8,
+   "grid_frames": [
+    9,
+    11,
+    13,
+    15
+   ],
+   "frames_by": "pose ids"
+  },
+  "talk": {
+   "fps": 30,
+   "loop": true,
+   "frames": 4,
+   "holds": [
+    6,
+    6,
+    6,
+    6
+   ],
+   "row": 24,
+   "period": 24,
+   "grid_frames": [
+    6,
+    12,
+    18,
+    24
+   ],
+   "frames_by": "pose ids"
+  },
+  "vote": {
+   "fps": 30,
+   "loop": false,
+   "frames": 3,
+   "holds": [
+    3,
+    27,
+    1
+   ],
+   "row": 32,
+   "period": null,
+   "grid_frames": [
+    0,
+    3,
+    30
+   ],
+   "frames_by": "pose ids",
+   "holdLast": true
+  },
+  "die": {
+   "fps": 30,
+   "loop": false,
+   "frames": 5,
+   "holds": [
+    6,
+    4,
+    4,
+    36,
+    1
+   ],
+   "row": 40,
+   "period": null,
+   "grid_frames": [
+    0,
+    6,
+    10,
+    14,
+    50
+   ],
+   "frames_by": "pose ids",
+   "holdLast": true
+  },
+  "whisper": {
+   "fps": 30,
+   "loop": false,
+   "frames": 6,
+   "holds": [
+    6,
+    6,
+    14,
+    10,
+    10,
+    1
+   ],
+   "row": 48,
+   "period": null,
+   "grid_frames": [
+    0,
+    6,
+    12,
+    26,
+    36,
+    46
+   ],
+   "frames_by": "pose ids"
+  }
+ },
+ "runtime": "character",
+ "shadow": {
+  "image": "fox-shadow.png",
+  "anchor": [
+   31,
+   53
+  ],
+  "rx": 7.6,
+  "ry": 3.8
+ },
+ "warnings": []
+}

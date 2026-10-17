@@ -1,0 +1,264 @@
+{
+ "name": "moth",
+ "image": "moth.png",
+ "cell": [
+  90,
+  84
+ ],
+ "anchor": [
+  45,
+  63
+ ],
+ "ppm": 36.0,
+ "yaw": 0.0,
+ "pitch": 30.0,
+ "tod": "noon",
+ "dirs": [
+  "S",
+  "SE",
+  "E",
+  "NE",
+  "N",
+  "NW",
+  "W",
+  "SW"
+ ],
+ "bodyPlan": "uprightAnimal",
+ "height_m": 1.36,
+ "fps": 30,
+ "clips": {
+  "idle": {
+   "fps": 30,
+   "loop": true,
+   "frames": 5,
+   "holds": [
+    6,
+    2,
+    16,
+    12,
+    36
+   ],
+   "row": 0,
+   "period": 72,
+   "grid_frames": [
+    30,
+    36,
+    38,
+    54,
+    66
+   ],
+   "frames_by": "pose ids"
+  },
+  "walk": {
+   "fps": 30,
+   "loop": true,
+   "frames": 4,
+   "holds": [
+    2,
+    2,
+    4,
+    2
+   ],
+   "row": 8,
+   "period": 10,
+   "grid_frames": [
+    4,
+    6,
+    8,
+    12
+   ],
+   "frames_by": "pose ids"
+  },
+  "run": {
+   "fps": 30,
+   "loop": true,
+   "frames": 4,
+   "holds": [
+    2,
+    2,
+    2,
+    2
+   ],
+   "row": 16,
+   "period": 8,
+   "grid_frames": [
+    10,
+    12,
+    14,
+    16
+   ],
+   "frames_by": "pose ids"
+  },
+  "talk": {
+   "fps": 30,
+   "loop": true,
+   "frames": 4,
+   "holds": [
+    5,
+    5,
+    5,
+    5
+   ],
+   "row": 24,
+   "period": 20,
+   "grid_frames": [
+    5,
+    10,
+    15,
+    20
+   ],
+   "frames_by": "pose ids"
+  },
+  "vote": {
+   "fps": 30,
+   "loop": false,
+   "frames": 2,
+   "holds": [
+    3,
+    28
+   ],
+   "row": 32,
+   "period": null,
+   "grid_frames": [
+    0,
+    3
+   ],
+   "frames_by": "pose ids",
+   "holdLast": true
+  },
+  "die": {
+   "fps": 30,
+   "loop": false,
+   "frames": 6,
+   "holds": [
+    8,
+    5,
+    5,
+    2,
+    4,
+    39
+   ],
+   "row": 40,
+   "period": null,
+   "grid_frames": [
+    0,
+    8,
+    13,
+    18,
+    20,
+    24
+   ],
+   "frames_by": "pose ids",
+   "holdLast": true
+  },
+  "lamp": {
+   "fps": 30,
+   "loop": false,
+   "frames": 11,
+   "holds": [
+    6,
+    6,
+    4,
+    4,
+    4,
+    4,
+    6,
+    6,
+    6,
+    6,
+    1
+   ],
+   "row": 48,
+   "period": null,
+   "grid_frames": [
+    0,
+    6,
+    12,
+    16,
+    20,
+    24,
+    28,
+    34,
+    40,
+    46,
+    52
+   ],
+   "frames_by": "pose ids"
+  },
+  "point": {
+   "fps": 30,
+   "loop": false,
+   "frames": 6,
+   "holds": [
+    4,
+    12,
+    12,
+    10,
+    10,
+    1
+   ],
+   "row": 56,
+   "period": null,
+   "grid_frames": [
+    0,
+    4,
+    16,
+    28,
+    38,
+    48
+   ],
+   "frames_by": "pose ids"
+  },
+  "ghost": {
+   "fps": 30,
+   "loop": true,
+   "frames": 4,
+   "holds": [
+    18,
+    18,
+    18,
+    18
+   ],
+   "row": 64,
+   "period": 72,
+   "grid_frames": [
+    18,
+    36,
+    54,
+    72
+   ],
+   "frames_by": "pose ids"
+  },
+  "ghost-spent": {
+   "fps": 30,
+   "loop": true,
+   "frames": 4,
+   "holds": [
+    18,
+    18,
+    18,
+    18
+   ],
+   "row": 72,
+   "period": 72,
+   "grid_frames": [
+    18,
+    36,
+    54,
+    72
+   ],
+   "frames_by": "pose ids"
+  }
+ },
+ "runtime": "character",
+ "shadow": {
+  "image": "moth-shadow.png",
+  "anchor": [
+   45,
+   63
+  ],
+  "rx": 7.83,
+  "ry": 3.92
+ },
+ "warnings": []
+}

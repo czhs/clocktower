@@ -1,0 +1,251 @@
+{
+ "name": "crow",
+ "image": "crow.png",
+ "cell": [
+  88,
+  84
+ ],
+ "anchor": [
+  44,
+  60
+ ],
+ "ppm": 36.0,
+ "yaw": 0.0,
+ "pitch": 30.0,
+ "tod": "noon",
+ "dirs": [
+  "S",
+  "SE",
+  "E",
+  "NE",
+  "N",
+  "NW",
+  "W",
+  "SW"
+ ],
+ "bodyPlan": "uprightAnimal",
+ "height_m": 1.32,
+ "fps": 30,
+ "clips": {
+  "idle": {
+   "fps": 30,
+   "loop": true,
+   "frames": 5,
+   "holds": [
+    6,
+    2,
+    14,
+    12,
+    38
+   ],
+   "row": 0,
+   "period": 72,
+   "grid_frames": [
+    30,
+    36,
+    38,
+    52,
+    64
+   ],
+   "frames_by": "pose ids"
+  },
+  "walk": {
+   "fps": 30,
+   "loop": true,
+   "frames": 4,
+   "holds": [
+    2,
+    2,
+    2,
+    2
+   ],
+   "row": 8,
+   "period": 8,
+   "grid_frames": [
+    3,
+    5,
+    7,
+    9
+   ],
+   "frames_by": "pose ids",
+   "speed": 5.28
+  },
+  "run": {
+   "fps": 30,
+   "loop": true,
+   "frames": 4,
+   "holds": [
+    2,
+    2,
+    2,
+    2
+   ],
+   "row": 16,
+   "period": 8,
+   "grid_frames": [
+    9,
+    11,
+    13,
+    15
+   ],
+   "frames_by": "pose ids"
+  },
+  "talk": {
+   "fps": 30,
+   "loop": true,
+   "frames": 4,
+   "holds": [
+    5,
+    5,
+    5,
+    5
+   ],
+   "row": 24,
+   "period": 20,
+   "grid_frames": [
+    5,
+    10,
+    15,
+    20
+   ],
+   "frames_by": "pose ids"
+  },
+  "vote": {
+   "fps": 30,
+   "loop": false,
+   "frames": 2,
+   "holds": [
+    4,
+    27
+   ],
+   "row": 32,
+   "period": null,
+   "grid_frames": [
+    0,
+    4
+   ],
+   "frames_by": "pose ids",
+   "holdLast": true
+  },
+  "point": {
+   "fps": 30,
+   "loop": false,
+   "frames": 6,
+   "holds": [
+    4,
+    18,
+    6,
+    14,
+    6,
+    1
+   ],
+   "row": 40,
+   "period": null,
+   "grid_frames": [
+    0,
+    4,
+    22,
+    28,
+    42,
+    48
+   ],
+   "frames_by": "pose ids"
+  },
+  "die": {
+   "fps": 30,
+   "loop": false,
+   "frames": 4,
+   "holds": [
+    6,
+    8,
+    4,
+    43
+   ],
+   "row": 48,
+   "period": null,
+   "grid_frames": [
+    0,
+    6,
+    14,
+    18
+   ],
+   "frames_by": "pose ids",
+   "holdLast": true
+  },
+  "ghost": {
+   "fps": 30,
+   "loop": true,
+   "frames": 4,
+   "holds": [
+    16,
+    16,
+    16,
+    16
+   ],
+   "row": 56,
+   "period": 64,
+   "grid_frames": [
+    16,
+    32,
+    48,
+    64
+   ],
+   "frames_by": "pose ids"
+  },
+  "ghost-spent": {
+   "fps": 30,
+   "loop": true,
+   "frames": 4,
+   "holds": [
+    16,
+    16,
+    16,
+    16
+   ],
+   "row": 64,
+   "period": 64,
+   "grid_frames": [
+    16,
+    32,
+    48,
+    64
+   ],
+   "frames_by": "pose ids"
+  },
+  "dig": {
+   "fps": 30,
+   "loop": false,
+   "frames": 6,
+   "holds": [
+    8,
+    8,
+    10,
+    8,
+    12,
+    1
+   ],
+   "row": 72,
+   "period": null,
+   "grid_frames": [
+    0,
+    8,
+    16,
+    26,
+    34,
+    46
+   ],
+   "frames_by": "pose ids"
+  }
+ },
+ "runtime": "character",
+ "shadow": {
+  "image": "crow-shadow.png",
+  "anchor": [
+   44,
+   60
+  ],
+  "rx": 7.6,
+  "ry": 3.8
+ },
+ "warnings": []
+}

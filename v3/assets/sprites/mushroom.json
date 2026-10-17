@@ -1,0 +1,258 @@
+{
+ "name": "mushroom",
+ "image": "mushroom.png",
+ "cell": [
+  128,
+  113
+ ],
+ "anchor": [
+  64,
+  74
+ ],
+ "ppm": 36.0,
+ "yaw": 0.0,
+ "pitch": 30.0,
+ "tod": "noon",
+ "dirs": [
+  "S",
+  "SE",
+  "E",
+  "NE",
+  "N",
+  "NW",
+  "W",
+  "SW"
+ ],
+ "bodyPlan": "uprightAnimal",
+ "height_m": 1.36,
+ "fps": 30,
+ "clips": {
+  "idle": {
+   "fps": 30,
+   "loop": true,
+   "frames": 5,
+   "holds": [
+    6,
+    2,
+    22,
+    6,
+    36
+   ],
+   "row": 0,
+   "period": 72,
+   "grid_frames": [
+    30,
+    36,
+    38,
+    60,
+    66
+   ],
+   "frames_by": "pose ids"
+  },
+  "walk": {
+   "fps": 30,
+   "loop": true,
+   "frames": 4,
+   "holds": [
+    2,
+    2,
+    2,
+    2
+   ],
+   "row": 8,
+   "period": 8,
+   "grid_frames": [
+    3,
+    5,
+    7,
+    9
+   ],
+   "frames_by": "pose ids"
+  },
+  "run": {
+   "fps": 30,
+   "loop": true,
+   "frames": 4,
+   "holds": [
+    2,
+    3,
+    2,
+    2
+   ],
+   "row": 16,
+   "period": 9,
+   "grid_frames": [
+    11,
+    13,
+    16,
+    18
+   ],
+   "frames_by": "pose ids"
+  },
+  "talk": {
+   "fps": 30,
+   "loop": true,
+   "frames": 4,
+   "holds": [
+    5,
+    5,
+    5,
+    5
+   ],
+   "row": 24,
+   "period": 20,
+   "grid_frames": [
+    5,
+    10,
+    15,
+    20
+   ],
+   "frames_by": "pose ids"
+  },
+  "vote": {
+   "fps": 30,
+   "loop": false,
+   "frames": 2,
+   "holds": [
+    4,
+    21
+   ],
+   "row": 32,
+   "period": null,
+   "grid_frames": [
+    0,
+    4
+   ],
+   "frames_by": "pose ids",
+   "holdLast": true
+  },
+  "point": {
+   "fps": 30,
+   "loop": false,
+   "frames": 8,
+   "holds": [
+    5,
+    12,
+    12,
+    21,
+    10,
+    24,
+    12,
+    1
+   ],
+   "row": 40,
+   "period": null,
+   "grid_frames": [
+    0,
+    5,
+    17,
+    29,
+    50,
+    60,
+    84,
+    96
+   ],
+   "frames_by": "pose ids"
+  },
+  "die": {
+   "fps": 30,
+   "loop": false,
+   "frames": 4,
+   "holds": [
+    6,
+    4,
+    4,
+    21
+   ],
+   "row": 48,
+   "period": null,
+   "grid_frames": [
+    0,
+    6,
+    10,
+    14
+   ],
+   "frames_by": "pose ids",
+   "holdLast": true
+  },
+  "ghost": {
+   "fps": 30,
+   "loop": true,
+   "frames": 4,
+   "holds": [
+    18,
+    18,
+    18,
+    18
+   ],
+   "row": 56,
+   "period": 72,
+   "grid_frames": [
+    18,
+    36,
+    54,
+    72
+   ],
+   "frames_by": "pose ids"
+  },
+  "ghost-spent": {
+   "fps": 30,
+   "loop": true,
+   "frames": 4,
+   "holds": [
+    18,
+    18,
+    18,
+    18
+   ],
+   "row": 64,
+   "period": 72,
+   "grid_frames": [
+    18,
+    36,
+    54,
+    72
+   ],
+   "frames_by": "pose ids"
+  },
+  "bless": {
+   "fps": 30,
+   "loop": false,
+   "frames": 8,
+   "holds": [
+    8,
+    9,
+    8,
+    7,
+    4,
+    4,
+    12,
+    1
+   ],
+   "row": 72,
+   "period": null,
+   "grid_frames": [
+    0,
+    8,
+    17,
+    25,
+    32,
+    36,
+    40,
+    52
+   ],
+   "frames_by": "pose ids"
+  }
+ },
+ "runtime": "character",
+ "shadow": {
+  "image": "mushroom-shadow.png",
+  "anchor": [
+   64,
+   74
+  ],
+  "rx": 7.83,
+  "ry": 3.92
+ },
+ "warnings": []
+}

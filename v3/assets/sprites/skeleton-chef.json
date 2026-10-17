@@ -1,0 +1,252 @@
+{
+ "name": "skeleton-chef",
+ "image": "skeleton-chef.png",
+ "cell": [
+  60,
+  74
+ ],
+ "anchor": [
+  30,
+  60
+ ],
+ "ppm": 36.0,
+ "yaw": 0.0,
+ "pitch": 30.0,
+ "tod": "noon",
+ "dirs": [
+  "S",
+  "SE",
+  "E",
+  "NE",
+  "N",
+  "NW",
+  "W",
+  "SW"
+ ],
+ "bodyPlan": "uprightAnimal",
+ "height_m": 1.4,
+ "fps": 30,
+ "clips": {
+  "idle": {
+   "fps": 30,
+   "loop": true,
+   "frames": 5,
+   "holds": [
+    6,
+    2,
+    22,
+    6,
+    36
+   ],
+   "row": 0,
+   "period": 72,
+   "grid_frames": [
+    30,
+    36,
+    38,
+    60,
+    66
+   ],
+   "frames_by": "pose ids"
+  },
+  "walk": {
+   "fps": 30,
+   "loop": true,
+   "frames": 4,
+   "holds": [
+    2,
+    2,
+    3,
+    2
+   ],
+   "row": 8,
+   "period": 9,
+   "grid_frames": [
+    4,
+    6,
+    8,
+    11
+   ],
+   "frames_by": "pose ids",
+   "speed": 5.53
+  },
+  "run": {
+   "fps": 30,
+   "loop": true,
+   "frames": 4,
+   "holds": [
+    2,
+    2,
+    2,
+    2
+   ],
+   "row": 16,
+   "period": 8,
+   "grid_frames": [
+    12,
+    14,
+    16,
+    18
+   ],
+   "frames_by": "pose ids"
+  },
+  "talk": {
+   "fps": 30,
+   "loop": true,
+   "frames": 4,
+   "holds": [
+    6,
+    6,
+    6,
+    6
+   ],
+   "row": 24,
+   "period": 24,
+   "grid_frames": [
+    6,
+    12,
+    18,
+    24
+   ],
+   "frames_by": "pose ids"
+  },
+  "vote": {
+   "fps": 30,
+   "loop": false,
+   "frames": 2,
+   "holds": [
+    4,
+    27
+   ],
+   "row": 32,
+   "period": null,
+   "grid_frames": [
+    0,
+    4
+   ],
+   "frames_by": "pose ids",
+   "holdLast": true
+  },
+  "point": {
+   "fps": 30,
+   "loop": false,
+   "frames": 6,
+   "holds": [
+    4,
+    18,
+    6,
+    14,
+    6,
+    1
+   ],
+   "row": 40,
+   "period": null,
+   "grid_frames": [
+    0,
+    4,
+    22,
+    28,
+    42,
+    48
+   ],
+   "frames_by": "pose ids"
+  },
+  "die": {
+   "fps": 30,
+   "loop": false,
+   "frames": 4,
+   "holds": [
+    14,
+    4,
+    4,
+    39
+   ],
+   "row": 48,
+   "period": null,
+   "grid_frames": [
+    0,
+    14,
+    18,
+    22
+   ],
+   "frames_by": "pose ids",
+   "holdLast": true
+  },
+  "ghost": {
+   "fps": 30,
+   "loop": true,
+   "frames": 4,
+   "holds": [
+    16,
+    16,
+    16,
+    16
+   ],
+   "row": 56,
+   "period": 64,
+   "grid_frames": [
+    16,
+    32,
+    48,
+    64
+   ],
+   "frames_by": "pose ids"
+  },
+  "ghost-spent": {
+   "fps": 30,
+   "loop": true,
+   "frames": 4,
+   "holds": [
+    16,
+    16,
+    16,
+    16
+   ],
+   "row": 64,
+   "period": 64,
+   "grid_frames": [
+    16,
+    32,
+    48,
+    64
+   ],
+   "frames_by": "pose ids"
+  },
+  "offer": {
+   "fps": 30,
+   "loop": false,
+   "frames": 5,
+   "holds": [
+    6,
+    14,
+    6,
+    6,
+    1
+   ],
+   "row": 72,
+   "period": null,
+   "grid_frames": [
+    0,
+    6,
+    20,
+    26,
+    32
+   ],
+   "frames_by": "pose ids"
+  }
+ },
+ "runtime": "character",
+ "shadow": {
+  "image": "skeleton-chef-shadow.png",
+  "anchor": [
+   30,
+   60
+  ],
+  "rx": 8.06,
+  "ry": 4.03
+ },
+ "warnings": [
+  "vote: FX cropped at the figure cell in 2 frame(s) (the game draws its own bubbles; --fxcell fx keeps them)",
+  "offer: FX cropped at the figure cell in 13 frame(s) (the game draws its own bubbles; --fxcell fx keeps them)"
+ ]
+}
