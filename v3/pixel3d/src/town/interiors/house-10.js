@@ -15,6 +15,8 @@ import * as THREE from 'three';
 import { Builder } from '../kit.js';
 
 export const ROOM = { w: 8, d: 5.4, h: 2.5, wall: 'plaster', pal: 0, floor: 'boards' };
+/** Night look (docs/DEMO.md 4.3 nightAmbient): warm leather browns, one amber lamp. */
+const NIGHT_AMBIENT = { lit: '#ECB888', sh: '#A47E64', k: 0.7, gain: 1.2, mist: 0.25 };
 
 /** Side profiles (x = toe direction, y up), metres for size 1. */
 const LAST = [[0, 0], [0.82, 0], [0.97, 0.05], [1, 0.12], [0.86, 0.2], [0.55, 0.28], [0.34, 0.5], [0.3, 0.62], [0.02, 0.62], [-0.03, 0.3]];
@@ -23,8 +25,14 @@ const SHOE = [[0, 0], [0.85, 0], [1, 0.08], [0.9, 0.2], [0.5, 0.26], [0.3, 0.42]
 const scaleP = (pts, s, sy = s) => pts.map(([x, y]) => [x * s, y * sy]);
 
 // ---------------------------------------------------------------------------------------------- local helpers
-/** Animated specks: n small boxes in ONE mesh, moved per particle (stepped 8 fps, pure function of t). */
-function particles(room, ctx, { name, n, make, path, glow = true }) {
+/**
+ * Animated specks: n small boxes in ONE mesh, moved per particle (stepped 8 fps, pure function of t). `night(b, layer)`
+ * adds STATIC night-only geometry to the same mesh (soft light pools, glow decals): it is drawn only while the room is
+ * dark (drawRange, no extra draw call). dayParticles false: the specks themselves only show in the dark too.
+ * nightColor(i) -> hex | null: in the dark speck i glows steadily in that colour (e.g. window-kind ripples that would
+ * otherwise go black at night), restored by day.
+ */
+function particles(room, ctx, { name, n, make, path, glow = true, night = null, dayParticles = true, nightColor = null }) {
   const b = new Builder(room.engine, { name });
   const layer = glow ? 'glass' : 'soft', ranges = [];
   for (let i = 0; i < n; i++) {
@@ -32,15 +40,35 @@ function particles(room, ctx, { name, n, make, path, glow = true }) {
     make(b, i, layer);
     ranges.push([a, b.layers[layer].pos.length / 3]);
   }
+  const nDay = (b.layers[layer]?.pos.length ?? 0) / 3;
+  if (night) night(b, layer);
   const grp = b.build({ name, castShadow: false, receiveShadow: false });
   const mesh = grp.children[0];
   if (glow) mesh.material = ctx.kit.interiorGlowMaterial(room.engine);
   mesh.frustumCulled = false;
-  const pos = mesh.geometry.getAttribute('position'), base = pos.array.slice();
-  let last = -1;
+  const pos = mesh.geometry.getAttribute('position'), base = pos.array.slice(), nAll = pos.count;
+  const ga = glow && nightColor ? mesh.geometry.getAttribute('aGlow') : null, gDay = ga?.array.slice();
+  const recolor = (dark) => {
+    if (!ga) return;
+    const c = new THREE.Color();
+    for (let i = 0; i < n; i++) {
+      const hex = dark ? nightColor(i) : null;
+      if (hex) c.set(hex);
+      for (let v = ranges[i][0]; v < ranges[i][1]; v++) {
+        if (hex) { ga.array[v * 4] = c.r; ga.array[v * 4 + 1] = c.g; ga.array[v * 4 + 2] = c.b; ga.array[v * 4 + 3] = 1; }
+        else for (let q = 0; q < 4; q++) ga.array[v * 4 + q] = gDay[v * 4 + q];
+      }
+    }
+    ga.needsUpdate = true;
+  };
+  let last = -1, lastDark = null;
   return {
     group: grp,
     update(t) {
+      if (night || ga || !dayParticles) {
+        const dark = isDark(room);
+        if (dark !== lastDark) { mesh.geometry.setDrawRange(0, dark ? nAll : dayParticles ? nDay : 0); recolor(dark); lastDark = dark; }
+      }
       const k = Math.floor(t * 8) / 8;
       if (k === last) return;
       last = k;
@@ -53,6 +81,48 @@ function particles(room, ctx, { name, n, make, path, glow = true }) {
       pos.needsUpdate = true;
     },
   };
+}
+/** The room is dark: the sun is down or the town light has turned to moonlight (the same test as sunMask's lid). */
+function isDark(room) {
+  const sun = room.engine.uniforms?.uSunDir?.value, sunC = room.engine.uniforms?.uSunColor?.value;
+  return !sun || sun.y < 0.08 || (sunC && sunC.b > sunC.r + 0.02);
+}
+const BAYER4 = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+/**
+ * A soft light pool as an ordered-dither glow decal (night-only geometry for particles({night})): concentric bands of
+ * `cols` (dim -> bright) that dissolve into the surface through a 4x4 Bayer pattern instead of ending in a hard disc.
+ * plane 'floor' (y up) or 'back' | 'left' | 'right' (the wall's inner face); (x, y, z) = the centre, r / rv the radii
+ * along the plane's u (x, or z on side walls) and v (z on the floor, y on walls). peak 0..1 scales the brightness,
+ * fall the falloff exponent, cell the dither cell (u metres; v is stretched for the 30 deg camera). keep(u, v) clips.
+ * stipple: a hashed (random-looking) threshold instead of the Bayer matrix - mist and haze, not light.
+ */
+function ditherPool(b, layer, { x = 0, y = 0.006, z = 0, r, rv = r, cols, peak = 1, fall = 1.6, cell = 0.036, plane = 'floor', kind = 1, keep = null, stipple = false, room }) {
+  const cu = cell, cv = plane === 'floor' ? cell * 2 : cell * 1.15;
+  const U = plane === 'floor' ? [1, 0, 0] : plane === 'back' ? [1, 0, 0] : plane === 'left' ? [0, 0, -1] : [0, 0, 1];
+  const V = plane === 'floor' ? [0, 0, -1] : [0, 1, 0];
+  const o = plane === 'floor' ? [x, y, z] : plane === 'back' ? [x, y, -room.D / 2 + 0.012] : plane === 'left' ? [-room.W / 2 + 0.012, y, z] : [room.W / 2 - 0.012, y, z];
+  const n = cols.length, ni = Math.ceil(r / cu), nj = Math.ceil(rv / cv);
+  const P = (u, v) => [o[0] + U[0] * u + V[0] * v, o[1] + U[1] * u + V[1] * v, o[2] + U[2] * u + V[2] * v];
+  const quad = (u0, u1, v0, v1, lvl) => b.tris([...P(u0, v0), ...P(u1, v0), ...P(u1, v1), ...P(u0, v0), ...P(u1, v1), ...P(u0, v1)],
+    { tones: 'glass', layer, glow: cols[lvl], glowKind: kind });
+  for (let j = -nj; j < nj; j++) {
+    let run = -1, runLvl = -1;
+    for (let i = -ni; i <= ni; i++) {
+      let lvl = -1;
+      if (i < ni) {
+        const u = (i + 0.5) * cu, v = (j + 0.5) * cv, d2 = (u / r) ** 2 + (v / rv) ** 2;
+        if (d2 < 1 && (!keep || keep(u, v))) {
+          const I = peak * Math.pow(1 - d2, fall) * n, lo = Math.floor(I);
+          const th = stipple ? (((Math.sin(i * 12.9898 + j * 78.233) * 43758.5453) % 1) + 1) % 1 : (BAYER4[((j & 3) << 2) | (i & 3)] + 0.5) / 16;
+          lvl = Math.min(n, lo + (I - lo > th ? 1 : 0)) - 1;
+        }
+      }
+      if (lvl !== runLvl) {
+        if (runLvl >= 0) quad(run * cu, i * cu, j * cv, (j + 1) * cv, runLvl);
+        run = i; runLvl = lvl;
+      }
+    }
+  }
 }
 /**
  * Shadow-only ceiling: a plane high up the sun ray (off screen) with holes that let sun onto the floor. The holes are
@@ -198,12 +268,14 @@ export default function build(room, ctx) {
     });
   });
   // the ash trail: footprints from the doormat to the rack (pairs of soles, fading toward the door)
+  const ashSteps = [];
   {
     const pts = [[0.2, 1.95], [0.45, 1.35], [0.7, 0.72], [0.8, 0.1], [0.62, -0.5], [0.42, -1.05], [0.35, -1.55]];
     pts.forEach(([x, z], k) => {
       const nx = pts[Math.min(k + 1, pts.length - 1)][0] - x, nz = pts[Math.min(k + 1, pts.length - 1)][1] - z;
       const ry = Math.atan2(nx, nz) + Math.PI / 2, side = k % 2 ? 0.09 : -0.09;
       room.b.box(0.28, 0.014, 0.11, { at: [x + side * Math.cos(ry), 0.004, z - side * Math.sin(ry)], ry, tones: ash, tint: 0.9 + 0.1 * (k / pts.length) });
+      ashSteps.push([x + side * Math.cos(ry), z - side * Math.sin(ry), ry]);
     });
   }
 
@@ -289,8 +361,21 @@ export default function build(room, ctx) {
   const mask = sunMask(room, { name: 'house-10-leather-sky', open: (x, z) => ((x - winX + 0.1) / 0.75) ** 2 + ((z + 1.45) / 0.6) ** 2 < 1 });
 
   // ---- ambiance: leather dust drifting in the lamp pool, steam curling off the kettle
+  // NIGHT (same mesh, drawn only in the dark): the room's own light is warm leather-amber, in soft dithered pools -
+  // the cobbler's lamp pours amber over the bench and the rug, the stove breathes a flickering orange corner, the
+  // sconce warms the left end of the shoe rack, the door lantern a small pool on the boards. And the wrong note: the
+  // ashy footprints and the ash-soled pair keep a faint cold pallor in the dark.
+  const AMBER = ['#4a2c1e', '#7a4826', '#a8682e', '#d89a4a'];
+  const night = (b, layer) => {
+    const underBench = (u, v) => !(Math.abs(u + 0.1) < 0.72 && Math.abs(-v + 0.2 - 0.05) < 0.3);     // the bench's own shadow
+    ditherPool(b, layer, { room, x: wbx - 0.1, z: wbz + 0.2, y: 0.04, r: 1.95, rv: 1.4, cols: AMBER, peak: 0.82, fall: 1.3, cell: 0.05, keep: underBench });
+    ditherPool(b, layer, { room, x: sx + 0.55, z: sz + 0.2, r: 1.1, rv: 0.8, cols: ['#4e2416', '#8a3c1c', '#c86428'], peak: 0.85, kind: 2, cell: 0.05 });
+    ditherPool(b, layer, { room, plane: 'back', x: -2.05, y: 1.6, r: 0.75, rv: 0.85, cols: ['#4a2c22', '#6e4430', '#94603a'], peak: 0.85, cell: 0.05 });
+    ditherPool(b, layer, { room, x: 1.0, z: D / 2 - 0.85, r: 0.8, rv: 0.55, cols: ['#4a3022', '#7a5230'], peak: 0.85, cell: 0.05 });
+    for (const [x, z, ry] of ashSteps) b.box(0.2, 0.004, 0.07, { at: [x, 0.02, z], ry, tones: 'glass', layer, glow: '#5c5a68', glowKind: 1 });
+  };
   const dust = particles(room, ctx, {
-    name: 'house-10-dust', n: 14,
+    name: 'house-10-dust', n: 14, night,
     make: (b, i, layer) => b.box(0.03, 0.03, 0.03, { at: [0, 0, 0], tones: 'glass', layer, glow: TP.glow[i % 2 ? 0 : 1], glowKind: 1 }),
     path: (i, t) => {
       const ph = i * 2.39, y = 0.9 + ((t * 0.05 + i * 0.071) % 1) * 1.1;
@@ -306,6 +391,13 @@ export default function build(room, ctx) {
     },
   });
 
+  // point lights only warm the props right by them (short reach, gentle: the floor pools are the dithered decals
+  // above, so no hard-edged coloured disc lands on the boards or the leather walls)
+  for (const l of room.lightList) {
+    if (l.kind === 'fire') { l.r = Math.min(l.r, 1.5); l.intensity = Math.min(l.intensity, 1.0); }
+    else { l.r = Math.min(l.r, 0.8); l.intensity = Math.min(l.intensity, 0.6); }
+  }
+
   room.spot('bench', wbx, wbz + 0.8, Math.PI);
   room.spot('shoes', 0.3, -1.55, Math.PI);
   room.spot('stove', sx + 0.75, sz, -Math.PI / 2);
@@ -314,6 +406,8 @@ export default function build(room, ctx) {
     bed: { x: bx, z: bz - 0.6, y: 0.55, facing: 0 },
     visit: { x: bx, z: bz + 1.35, facing: Math.PI },
     extras: [mask.group, dust.group, steam.group],
+    // the demo's night look for this room (time.js ROOM_NIGHT shape): warm leather browns
+    nightAmbient: NIGHT_AMBIENT,
     update(t) { mask.update(); dust.update(t); steam.update(t); },
     bedRect: bed.rect, benchRect: bench.rect,
   };

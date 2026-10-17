@@ -247,42 +247,67 @@ export function blockOutside(room, inside, step = 0.2) {
  * Cheap animated specks / puffs in ONE mesh (vertices rewritten at `fps`, a pure function of t): dust motes, pollen,
  * lint, smoke curls, steam. {n, seed, box {x0, x1, y0, y1, z0, z1}, sources [[x, z], ...] (rise from these points),
  * size, glow colour (interior glow material, glowKind 1) | glow false + tones / layer (toon-lit), mode 'drift' | 'rise'
- * | 'fall' | 'steam', speed (m/s), sway (m), grow}. Returns {group, update(t), mesh}.
+ * | 'fall' | 'steam' | 'pop' (bubbles: swell and burst in place), speed (m/s), sway (m), grow}.
+ * Night pass: `sets: [{...same per-set options}]` adds more speck sets to the same mesh (one draw call), `still(b)`
+ * static geometry in it (always shown) and `night(b)` static geometry shown only at night (the dithered light pools:
+ * ditherPool / ditherWall). Returns {group, update(t), mesh}.
  */
 export function motes(room, o = {}) {
-  const { n = 20, seed = 1, box, sources = null, size = 0.045, glow = '#FFFFFF', tones = 'cream', layer = 'soft', mode = 'drift', speed = 0.12, sway = 0.12, grow = 1.5, fps = 8, name = 'motes', jitter = 0.08 } = o;
-  const r = rng(seed);
+  const { glow = '#FFFFFF', tones = 'cream', layer = 'soft', fps = 8, name = 'motes' } = o;
   const b = new Builder(room.engine, { name: `${room.id}-${name}` });
   const L = glow ? 'glass' : layer;
   const items = [];
-  for (let k = 0; k < n; k++) {
-    const src = sources ? sources[k % sources.length] : null;
-    const y0 = src && src[2] != null ? src[2] + box.y0 : box.y0;
-    const p = src ? [src[0] + (r() - 0.5) * jitter, y0, src[1] + (r() - 0.5) * jitter]
-      : [box.x0 + r() * (box.x1 - box.x0), box.y0 + r() * (box.y1 - box.y0), box.z0 + r() * (box.z1 - box.z0)];
-    const v0 = (b.layers[L]?.pos.length ?? 0) / 3;
-    const s = size * (0.75 + r() * 0.5);
-    b.box(s, s, s, { origin: 'center', ry: r() * 1.5, ...(glow ? { tones: 'glass', layer: 'glass', glow, glowKind: 1 } : { tones, layer, tint: [1, 0.96, 1.04][k % 3] }) });
-    items.push({ p, y0, ph: r(), v0, v1: b.layers[L].pos.length / 3, sx: r() - 0.5, sz: r() - 0.5 });
+  for (const so of [o, ...(o.sets ?? [])]) {
+    const { n = 20, seed = 1, box, sources = null, size = 0.045, mode = 'drift', speed = 0.12, sway = 0.12, grow = 1.5, jitter = 0.08 } = { ...o, sets: undefined, ...so };
+    const sg = so.glow ?? glow;
+    if (!n) continue;
+    const r = rng(seed);
+    for (let k = 0; k < n; k++) {
+      const src = sources ? sources[k % sources.length] : null;
+      const y0 = src && src[2] != null ? src[2] + box.y0 : box.y0;
+      const p = src ? [src[0] + (r() - 0.5) * jitter, y0, src[1] + (r() - 0.5) * jitter]
+        : [box.x0 + r() * (box.x1 - box.x0), box.y0 + r() * (box.y1 - box.y0), box.z0 + r() * (box.z1 - box.z0)];
+      const v0 = (b.layers[L]?.pos.length ?? 0) / 3;
+      const s = size * (0.75 + r() * 0.5);
+      b.box(s, s, s, { origin: 'center', ry: r() * 1.5, ...(glow ? { tones: 'glass', layer: 'glass', glow: sg, glowKind: 1 } : { tones, layer, tint: [1, 0.96, 1.04][k % 3] }) });
+      items.push({ p, y0, ph: r(), v0, v1: b.layers[L].pos.length / 3, sx: r() - 0.5, sz: r() - 0.5, mode, speed, sway, grow, Hy: box.y1 - box.y0 });
+    }
   }
+  if (o.still) o.still(b);
+  const n0 = (b.layers[L]?.pos.length ?? 0) / 3;
+  if (o.night) o.night(b);
+  const n1 = (b.layers[L]?.pos.length ?? 0) / 3;
   const grp = b.build({ name: `${room.id}-${name}`, castShadow: false });
   let mesh = null;
   grp.traverse((q) => { if (q.isMesh) { mesh = q; q.castShadow = false; q.frustumCulled = false; if (glow) q.material = interiorGlowMaterial(room.engine); } });
   const pos = mesh.geometry.getAttribute('position');
   const base = Float32Array.from(pos.array);
-  const Hy = box.y1 - box.y0;
-  let last = null;
+  let last = null, lastNight = null;
   const update = (t) => {
+    // the night-only statics: collapsed to a point by day (rewritten only when day / night flips)
+    if (n1 > n0) {
+      const nn = isNight(room);
+      if (nn !== lastNight) {
+        lastNight = nn;
+        for (let v = n0 * 3; v < n1 * 3; v++) pos.array[v] = nn ? base[v] : base[n0 * 3 + (v % 3)];
+        pos.needsUpdate = true;
+      }
+    }
     const k = Math.floor(t * fps);
     if (k === last) return;
     last = k;
     const ts = k / fps;
     for (const it of items) {
       let [x, y, z] = it.p, s = 1;
+      const { mode, speed, sway, grow, Hy } = it;
       if (mode === 'drift') {
         x += Math.sin(ts * speed * 3 + it.ph * 40) * sway * (0.6 + it.sx);
         y += Math.sin(ts * speed * 2.1 + it.ph * 23) * sway * 0.8;
         z += Math.cos(ts * speed * 2.6 + it.ph * 31) * sway * (0.6 + it.sz);
+      } else if (mode === 'pop') {
+        const f = (it.ph + ts * speed) % 1;
+        s = f < 0.7 ? 0.3 + f : Math.max(0, (1 - f) / 0.3) * 1.0;
+        y = it.y0 + f * Hy;
       } else {
         let f = (it.ph + (ts * speed) / Hy) % 1;
         if (mode === 'fall') f = 1 - f;
@@ -304,10 +329,76 @@ export function motes(room, o = {}) {
   return { group: grp, update, mesh };
 }
 
+// ---------------------------------------------------------------------------------------- dithered light pools
+// Night pass (critic: rooms read as hard-edged coloured discs). A point light in the toon shader steps whole surfaces to
+// a tinted mid tone inside a hard reach, so a big pool = a flat coloured disc. Instead the MOOD light of a room is drawn
+// as an ordered (Bayer 4x4) dither of tiny emissive cells: dense near the source, thinning out to nothing, the floor's
+// own pattern showing between the dots - the pixel-art way to paint a soft pool. Cells are about 2 texels at the
+// interior camera (59 texels / m; floor cells are twice as deep, they project at sin 30 deg). Pools that overlap
+// combine on one lattice (1 - (1 - a)(1 - b)); runs of equal cells in a row merge into one quad.
+const BAYER4 = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+/** A dither canvas: add pools, then draw(b) emits flat quads ('floor': the xz plane at y, normal up; 'wall': the local
+ *  xy plane at z, normal +z, for onSeg frames). */
+export function ditherCanvas({ plane = 'floor', cw = 0.034, ch = plane === 'floor' ? 0.068 : 0.04, y = 0.006, z = 0.004 } = {}) {
+  const cells = new Map();
+  const api = {
+    /** {x, y|z (the 2nd axis: floor z, wall y), r, r2 (2nd-axis radius), color, inner (colour of the dense core),
+     *   peak 0.5 (max density), power 1.4 (falloff), clip(u, v) -> false to skip, k (inner split 0.62)} */
+    pool({ x = 0, v = 0, r = 1, r2 = r, color, inner = null, peak = 0.5, power = 1.4, clip = null, k = 0.62 }) {
+      const i0 = Math.floor((x - r) / cw), i1 = Math.ceil((x + r) / cw), j0 = Math.floor((v - r2) / ch), j1 = Math.ceil((v + r2) / ch);
+      for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+        const u = (i + 0.5) * cw, w = (j + 0.5) * ch;
+        const d2 = ((u - x) / r) ** 2 + ((w - v) / r2) ** 2;
+        if (d2 >= 1 || (clip && !clip(u, w))) continue;
+        const f = peak * (1 - d2) ** power;
+        const key = i + ',' + j, c = cells.get(key);
+        const col = inner && f > peak * k ? inner : color;
+        if (!c) cells.set(key, { i, j, f, col, fm: f });
+        else { c.f = 1 - (1 - c.f) * (1 - f); if (f > c.fm) { c.fm = f; c.col = col; } }
+      }
+      return api;
+    },
+    draw(b, { glowKind = 1 } = {}) {
+      const rows = new Map();
+      for (const c of cells.values()) {
+        const t = (BAYER4[(((c.j % 4) + 4) % 4) * 4 + (((c.i % 4) + 4) % 4)] + 0.5) / 16;
+        if (c.f <= t) continue;
+        (rows.get(c.j) ?? rows.set(c.j, []).get(c.j)).push(c);
+      }
+      let quads = 0;
+      for (const [j, row] of rows) {
+        row.sort((p, q) => p.i - q.i);
+        for (let a = 0; a < row.length;) {
+          let e = a;
+          while (e + 1 < row.length && row[e + 1].i === row[e].i + 1 && row[e + 1].col === row[a].col) e++;
+          const x0 = row[a].i * cw, x1 = (row[e].i + 1) * cw, v0 = j * ch, v1 = (j + 1) * ch;
+          const P = plane === 'floor'
+            ? [x0, y, v0, x0, y, v1, x1, y, v1, x0, y, v0, x1, y, v1, x1, y, v0]
+            : [x0, v0, z, x1, v0, z, x1, v1, z, x0, v0, z, x1, v1, z, x0, v1, z];
+          b.tris(P, { tones: 'glass', layer: 'glass', glow: row[a].col, glowKind });
+          quads++; a = e + 1;
+        }
+      }
+      return quads;
+    },
+  };
+  return api;
+}
+
+/** Dithered pools on a wall segment (onSeg frame: x = u along the wall, v = height y), drawn into b (a room-local
+ *  builder, e.g. a motes night layer). Use BACK-facing segments only: these do not drop with the cut-away. */
+export function ditherWall(b, seg, pools, { z = 0.006 } = {}) {
+  const c = ditherCanvas({ plane: 'wall', z });
+  for (const p of pools) c.pool(p);
+  b.push({ at: [seg.mid[0], 0, seg.mid[1]], ry: seg.ry });
+  try { return c.draw(b); } finally { b.pop(); }
+}
+
 /** Shadow-only ceiling (keeps the town sun out of a dark room): a plane high up the sun ray (off screen) that casts the
  *  room into shadow, with holes where `open(x, z)` (room-local floor point) lets sun through. Add `.group` to extras and
- *  call `.update()` every frame (it follows the sun; hidden at night). Same recipe as houses 10 / 12 / 13. */
-export function sunMask(room, { open = () => false, cell = 0.2, margin = 6, name = `${room.id}-sunmask` } = {}) {
+ *  call `.update()` every frame (it follows the sun - the moon at night). Same recipe as houses 10 / 12 / 13. nightOnly: the
+ *  mask works only at night (a room lit by its own fire once the moon is up); nightShift: see update(). */
+export function sunMask(room, { open = () => false, cell = 0.2, margin = 6, name = `${room.id}-sunmask`, nightShift = null, nightOnly = false } = {}) {
   const b = new Builder(room.engine, { name });
   const x0 = -room.W / 2 - margin, z0 = -room.D / 2 - margin;
   const nx = Math.ceil((room.W + 2 * margin) / cell), nz = Math.ceil((room.D + 2 * margin) / cell);
@@ -329,12 +420,22 @@ export function sunMask(room, { open = () => false, cell = 0.2, margin = 6, name
   }
   const holder = new THREE.Group(); holder.name = name;
   holder.add(b.build({ name, castShadow: true, receiveShadow: false }));
+  // shadow ONLY: the mask must never be drawn by a colour / normal / depth pass (at night the moon put it in front of
+  // the camera: the flat grey plane over house-3's back wall). The shadow map pass does not call onBeforeRender, so an
+  // empty draw range there hides it from every camera pass and the shadow pass still sees the whole geometry.
+  holder.traverse((q) => {
+    if (!q.isMesh) return;
+    q.onBeforeRender = (r, sc, cam, geo) => geo.setDrawRange(0, 0);
+    q.onAfterRender = (r, sc, cam, geo) => geo.setDrawRange(0, Infinity);
+  });
   const sun = room.engine.uniforms?.uSunDir?.value;
   const update = () => {
-    if (!sun || sun.y < 0.08) { holder.visible = false; return; }
+    if (!sun || sun.y < 0.08 || (nightOnly && !isNight(room))) { holder.visible = false; return; }
     holder.visible = true;
     const h = Math.min(20, 30 * sun.y);
     holder.position.set((sun.x * h) / sun.y, h, (sun.z * h) / sun.y);
+    // nightShift [dx, dz]: at night slide the mask so only its closed margin covers the room (no moon dapples)
+    if (nightShift && isNight(room)) { holder.position.x += nightShift[0]; holder.position.z += nightShift[1]; }
   };
   update();
   return { group: holder, update };
@@ -349,24 +450,51 @@ export function glowGroup(room, b, name) {
 /** Is it night in the town (the kit's global window glow, 0 day .. 1 night)? */
 export const isNight = (room) => nightGlow(room.engine) > 0.5;
 
-/** A ring of short boxes lying on the floor (chalk circles, inlays). */
+/** A flat strip on the floor (2 triangles, top face only): centre (x, z), length L along its local x, width w, turned by
+ *  ry like a box. Chalk and inlays are paint, not relief: a box's sides cost 10 more triangles for half a texel. */
+function floorStrip(b, x, y, z, L, w, ry, opts) {
+  const c = Math.cos(ry), s = Math.sin(ry), P = [];
+  const at = (u, v) => [x + u * c + v * s, y, z - u * s + v * c];
+  const p0 = at(-L / 2, -w / 2), p1 = at(-L / 2, w / 2), p2 = at(L / 2, w / 2), p3 = at(L / 2, -w / 2);
+  for (const q of [p0, p1, p2, p0, p2, p3]) P.push(...q);
+  // winding: make the normal point up
+  const nx = (p1[1] - p0[1]) * (p2[2] - p0[2]) - (p1[2] - p0[2]) * (p2[1] - p0[1]);
+  const ny = (p1[2] - p0[2]) * (p2[0] - p0[0]) - (p1[0] - p0[0]) * (p2[2] - p0[2]);
+  if (ny < 0 || (ny === 0 && nx < 0)) for (let t = 0; t < P.length; t += 9) for (let k = 0; k < 3; k++) { const tmp = P[t + 3 + k]; P[t + 3 + k] = P[t + 6 + k]; P[t + 6 + k] = tmp; }
+  b.tris(P, opts);
+}
+/** A flat painted mark facing +z (2 triangles): centre (x, y, z), w x h, turned by rz about z. Labels, calendar grids,
+ *  chalk on a wall: paint, not relief (a box costs 12 triangles for a sliver nobody sees). */
+export function flatQuad(b, x, y, z, w, h, { rz = 0, ...opts } = {}) {
+  const c = Math.cos(rz), s = Math.sin(rz);
+  const at = (u, v) => [x + u * c - v * s, y + u * s + v * c, z];
+  const p0 = at(-w / 2, -h / 2), p1 = at(w / 2, -h / 2), p2 = at(w / 2, h / 2), p3 = at(-w / 2, h / 2);
+  b.tris([...p0, ...p1, ...p2, ...p0, ...p2, ...p3], { pattern: 'none', ...opts });
+}
+/** A ring of short boxes lying on the floor (chalk circles, inlays; h <= 0.01: flat strips). */
 export function floorRing(b, { x, z, r, n = 32, w = 0.035, tones = 'cream', y = 0.002, h = 0.008, dash = 1, from = 0, to = Math.PI * 2 }) {
   for (let k = 0; k < n; k++) {
     if (dash > 1 && k % dash) continue;
     const a0 = from + ((to - from) * k) / n, a1 = from + ((to - from) * (k + 1)) / n, a = (a0 + a1) / 2;
     const L = r * (a1 - a0) + 0.01;
-    b.box(L, h, w, { at: [x + Math.cos(a) * r, y, z + Math.sin(a) * r], ry: -a - Math.PI / 2, tones, pattern: 'none' });
+    if (h <= 0.01) floorStrip(b, x + Math.cos(a) * r, y + h, z + Math.sin(a) * r, L, w, -a - Math.PI / 2, { tones, pattern: 'none' });
+    else b.box(L, h, w, { at: [x + Math.cos(a) * r, y, z + Math.sin(a) * r], ry: -a - Math.PI / 2, tones, pattern: 'none' });
   }
 }
-/** A straight line of chalk on the floor from p to q. */
+/** A straight line of chalk on the floor from p to q (a flat strip). */
 export function floorLine(b, p, q, { w = 0.035, tones = 'cream', y = 0.002, h = 0.008 } = {}) {
   const dx = q[0] - p[0], dz = q[1] - p[1];
-  b.box(Math.hypot(dx, dz), h, w, { at: [(p[0] + q[0]) / 2, y, (p[1] + q[1]) / 2], ry: -Math.atan2(dz, dx), tones, pattern: 'none' });
+  floorStrip(b, (p[0] + q[0]) / 2, y + h, (p[1] + q[1]) / 2, Math.hypot(dx, dz), w, -Math.atan2(dz, dx), { tones, pattern: 'none' });
 }
 
 // =================================================================================================== the tower
 /** Room size / walls (index.js reads ROOM before build): a tall round tower drum fitted in a 6.6 m square. */
-export const ROOM = { w: 6.6, d: 6.6, h: 3.8, wall: 'stone', pal: 0, doorW: 1.0 };
+export const ROOM = {
+  w: 6.6, d: 6.6, h: 3.8, wall: 'stone', pal: 0, doorW: 1.0,
+  // the demo's room night look (docs/DEMO.md 4.3; read once index.js passes ROOM.nightAmbient through): deep indigo
+  // fill, moon-white lit faces, a little mist in the beam
+  nightAmbient: { lit: '#A8B8F0', sh: '#6E7CC8', k: 0.3, litK: 0.35, gain: 1.15, mist: 0.55 },
+};
 
 export default function build(room, ctx) {
   const { FURNITURE: F, CLOTH, GLOW, TOWN_PALETTE: TP, paintRamp } = ctx;
@@ -580,18 +708,38 @@ export default function build(room, ctx) {
   }
   F.doormat(room, { x: 0, z: room.D / 2 - 0.4 });
 
-  // ---- the moonbeam: a blue key light at the lancet (by day it only cools the back of the room), and at night a pale
-  // patch on the floor under the lancet with dust motes drifting in its column
-  room.light({ pos: [0, 2.1, -A + 0.25], color: '#8FA8E8', r: 5.0, kind: 'fire', intensity: 1.25 });
-  const beamB = new Builder(room.engine, { name: 'house-0-moonbeam' });
-  beamB.hexa([new THREE.Vector3(-0.45, 0.004, -A + 0.05), new THREE.Vector3(0.45, 0.004, -A + 0.05), new THREE.Vector3(-0.45, 0.012, -A + 0.05), new THREE.Vector3(0.45, 0.012, -A + 0.05),
-    new THREE.Vector3(-0.15, 0.004, -1.25), new THREE.Vector3(0.75, 0.004, -1.25), new THREE.Vector3(-0.15, 0.012, -1.25), new THREE.Vector3(0.75, 0.012, -1.25)],
-  { tones: 'glass', layer: 'glass', glow: '#5468A8', glowKind: 1 });
-  // the moon itself, low in the lancet (night only)
-  beamB.cylinder(0.17, 0.17, 0.02, { at: [0.12, 2.25, -A - 0.13], segments: 12, tones: 'glass', layer: 'glass', glow: '#E8ECFF', glowKind: 1 });
-  const beamG = glowGroup(room, beamB, 'house-0-moonbeam');
-  const dust = motes(room, { n: 26, seed: 31, box: { x0: -0.45, x1: 0.65, y0: 0.35, y1: 2.6, z0: -A + 0.3, z1: -1.4 }, size: 0.04, glow: MOON, mode: 'drift', speed: 0.18, sway: 0.16, name: 'dust' });
-
+  // ---- NIGHT: cold moonlight through the lancet is the key. No point light on the wall (a blue disc round the lancet):
+  // a small blue light down in the beam picks out the telescope and the chalk; the beam itself is a dithered pale-blue
+  // pool streaming from the lancet across the floor, dust motes drifting in its column, the moon low in the lancet.
+  // Warm counterpoints: the desk candle, the orrery's little brass sun, the lantern over the chalk - each a small
+  // dithered amber pool (soft, the slate showing through), so the room reads indigo + moon-white + brass.
+  room.light({ pos: [0.35, 0.55, -1.75], color: '#8FA8E8', r: 1.7, kind: 'lantern', intensity: 0.85, hug: false });
+  const dust = motes(room, {
+    n: 34, seed: 31, box: { x0: -0.45, x1: 0.75, y0: 0.3, y1: 2.6, z0: -A + 0.3, z1: -1.2 }, size: 0.04, glow: MOON, mode: 'drift', speed: 0.18, sway: 0.16, name: 'dust',
+    night: (b) => {
+      // the moonlit sky in the lancet and the slit (the panes alone go navy at night) and the moon itself, low in it
+      for (const [k, u, y, w, h] of [[8, 0, 0.95, 0.86, 1.85], [9, 0.1, 1.3, 0.3, 1.25]]) {
+        const sg = S(k), gz = -room.T * 0.55 + 0.016;
+        b.push({ at: [sg.mid[0], 0, sg.mid[1]], ry: sg.ry });
+        b.box(w, h, 0.004, { at: [u, y, gz], tones: 'glass', layer: 'glass', glow: '#5A6EAE', glowKind: 1 });
+        b.prism([[-w / 2, 0], [w / 2, 0], [w * 0.3, w * 0.44], [0, w * 0.8], [-w * 0.3, w * 0.44]], 0.004, { at: [u, y + h + 0.06, 0.02], tones: 'glass', layer: 'glass', glow: '#6A7EBE', glowKind: 1 });
+        b.pop();
+      }
+      b.push({ at: [0.14, 2.32, -A - 0.11], rx: Math.PI / 2 });
+      b.cylinder(0.15, 0.15, 0.01, { segments: 12, tones: 'glass', layer: 'glass', glow: '#EEF0FF', glowKind: 1 });
+      b.pop();
+      const fl = ditherCanvas({ plane: 'floor' });
+      // the moonbeam: a dense pale core down the middle, thinning at its edges and toward the room
+      for (const [x, z, r, r2, pk] of [[0.08, -2.75, 0.55, 0.42, 0.62], [0.22, -2.2, 0.62, 0.5, 0.58], [0.36, -1.62, 0.6, 0.48, 0.5], [0.5, -1.05, 0.5, 0.42, 0.32]]) {
+        fl.pool({ x, v: z, r, r2, color: '#7488C8', inner: '#B4C4F4', peak: pk, power: 1.2, clip: (u, w) => inPoly(V, u, w) });
+      }
+      // warm counterpoints
+      fl.pool({ x: dx + 0.45, v: dz - 0.35, r: 0.95, r2: 0.7, color: '#B08660', inner: '#E0AE70', peak: 0.36 });   // desk candle
+      fl.pool({ x: ox, v: oz + 0.1, r: 0.75, r2: 0.6, color: '#A89060', inner: '#D8B870', peak: 0.34, clip: (u, w) => inPoly(V, u, w) });   // orrery sun
+      fl.pool({ x: 1.55, v: 0.3, r: 1.05, r2: 0.85, color: '#A88460', inner: '#DCA870', peak: 0.32 });   // the lantern
+      fl.draw(b);
+    },
+  });
   room.spot('telescope', 1.35, -0.2, Math.atan2(tsx - 1.35, tsz + 0.2));
   room.spot('desk', dx + 0.95, dz - 0.45, -Math.PI / 2);
   room.spot('chalk', cx, cz + 1.5, Math.PI);
@@ -600,11 +748,10 @@ export default function build(room, ctx) {
   return {
     bed: { x: bx, z: bz - 0.6, y: 0.55, facing: 0 },
     visit: { x: bx + 0.95, z: bz + 0.4, facing: -Math.PI / 2 },
-    extras: [orbPivot, beamG, dust.group],
+    extras: [orbPivot, dust.group],
     update(t) {
       const k = Math.floor(t * 8) / 8;                         // stepped 8 fps
       orbG.rotation.y = k * 0.22;
-      beamG.visible = isNight(room);
       dust.update(t);
     },
     bedRect: bed.rect,

@@ -14,7 +14,7 @@ Tags in brackets name who found it and on which character, e.g. `(critic-keeper-
 Contents: Score history · Silhouette and signature shapes · Proportions and geometry · Palette, tones and ground
 separation · Look / shading rules · Props and held objects · Poses and actions · Timing and holds · Locomotion and feet ·
 Secondary motion (chains, personality) · Smears and FX · Night, lights and emissives · Quadrupeds · Measurement and tools
-· Process · Body plans · **Module backlog** (priority list at its top) · Integration · Archives (wave-1, wave-2 and wave-3
+· Process · Body plans · **Module backlog** (priority list at its top) · Integration · Archives (wave-1 to wave-4
 per-agent notes, consolidated; do not append there).
 
 ## Score history (critic scores; ship bar 19/24)
@@ -116,6 +116,35 @@ glyphs, mask speckle: 8/8;
 Process: 4 agents ran a zsh loop that did not word-split (renders silently became idle:0), 3 ran `python3` on the Mac by
 mistake (no-ops). Shared code: 5/8 hit the fx speech-chain first-beat gap, 2/8 the charcheck `isl[0]` crash — both FIXED
 by the lead (Module backlog, "lead, between waves 3 and 4").
+
+Cast wave 4 (4 cast members, 2026-10-16; critic r1 per member, none shipped; authors then ran a fix round — notes in the
+wave-4 archive):
+
+| cast member | author self | critic | gap | what the critic found that the author missed |
+|---|---|---|---|---|
+| maxflow (fox mascot) | 19 | 15 | +4 | ear root = a 2×6 "eye" slab in profile, 2-texel snout (orange egg at E/W), point aimed sideways, poof on the belly, 3-drawing baked walk, cream → mauve at golden |
+| theo-rem (hedgehog) | 18 | 17 | +1 | spike grid = fuzzy halo / barrel back with a face at N, point hidden at W/SW, nose hidden by the rim at E, Q.E.D. = card-less vote, die sits |
+| greenting (Joguman) | 17 | 17 | 0 | talk mouth = hollow dark ring, no face at E/W (eyes on the cap edge), 8-texel grin, point hidden at E/W/SW, SE gait lurch, lavender ghost |
+| storyteller | 17 | 18 | −1 | point swings the lantern sideways, staff "plant" is a push-off, glide drawings identical, staff/clock hidden at W/SW, false SW grid WARN |
+
+**(recurring, 4/4 wave 4 — lead merge 2026-10-16)** Wave-4 scores 15–18 (bar 19; storyteller 18 is the best cast r1 so
+far); gaps −1…+1 except maxflow +4 (E/W profile, point direction and golden cream never judged). What cost points (each
+promoted to a playbook **R W4** line and, where it is a porting habit, to `docs/CAST_PORTING.md`):
+(1) **point aimed sideways or with the far arm** — 4/4 (maxflow out 45° to his right, storyteller lantern 55° out,
+theo-rem/greenting left arm hidden at W/SW/E): one arm cannot read at S/SE/SW/W — the near arm at SE/E is the
+character's RIGHT, at W/SW the LEFT (lead render `shots/lead-w4/side-se-e.png`, `side-w-sw.png`);
+(2) **profile face fails at E/W** — 3/4 (maxflow ear root read as the eye + 2-texel snout, greenting eyes on the snout cap
+edge, theo-rem nose behind the spectacle rim); W3 had it 8/8 — it is now the single most repeated face failure;
+(3) **cream/white identity drifts at golden** — 2/4 (maxflow chest #957C7E mauve-grey, theo-rem face apricot) despite
+whiteKeep 0.8 + whiteKeepLift 0.8: the look gate only catches near-whites (chroma < 0.18/0.25), cream is ≈ 0.40;
+(4) **light-grey inner lines on unclothed saturated bodies** — 3/4 (maxflow collar + stitched arms, greenting leg roots,
+theo-rem quill specks; W3 cilantro): look has no per-slot line colour; `material.merge` is the workaround;
+(5) **die reads as sitting / a jumble** — 3/4 (theo-rem upright ball, greenting lump at 4/8, maxflow S/SE no face);
+(6) **an emote or gait claim not true in the render** — maxflow push poof on the belly, storyteller staff "plant",
+greenting "waddle" = lurch, theo-rem Q.E.D. = vote (4/4 had at least one sheet claim the 8-facing still contradicted).
+Process: 2 critics ran a no-op `python3` on the Mac again (recurring W3); 1 hit the zsh word-split trap again.
+Shared code: tools/bake cut the walk from the start-up cycle (maxflow, 3 drawings) — FIXED by the lead (Module backlog,
+"lead, between waves 4 and 5").
 
 ## Silhouette and signature shapes
 
@@ -224,6 +253,35 @@ by the lead (Module backlog, "lead, between waves 3 and 4").
   problem: mid-skull eye = cyclops (and opal's "eye" was actually a low side EAR — check with a part-drop variant), two
   eye bumps = a tall thumb (the far bump sits ≈ 7 texels higher at E/W), mouth gap = a dark band round the head, ears
   at 45° back = a plain ball. Rules in playbook Stage 0 **R W3 profile face**.
+  **Wave 4 (lead merge; recurring: maxflow, greenting, theo-rem — 3/4; now 7 members over two waves):** (a) a chibi EAR
+  rooted on the skull side (maxflow head-local [0.17, 0.43, −0.04]) shows its dark root INSIDE the profile as a 2×6 slab
+  bigger than the real eye — the second "ear read as eye" after opal; root ears on the crown/back (z ≤ −0.1, y ≥ 0.5) so
+  they sit ON the outline; (b) a snout 0.05 m proud of the lathe is 2 texels = an egg in profile — ≥ 4 texels (≈ 0.11 m)
+  proud with the nose on the tip (maxflow r2, theo-rem r2: snout tip z 0.39, nose box z 0.405 → 2×2 nose past the
+  outline at E AND W); (c) eyes placed by a world direction from a snout CAP land on the cap's silhouette edge at E/W —
+  place them by angle round the head axis + elevation (greenting r9: |x| ≈ 0.9 r, φ ±70°, 14° up the cap → one 2×2
+  eye on the side at E and W; φ 46–64° still failed one profile); (d) spectacle rims sit on the snout line at one
+  profile and hide the nose — rims r 0.05 / t 0.024 set back 0.004. **At E you see the character's RIGHT (−x) side, at W
+  the LEFT** (lead w4 marked render). Check E AND W separately; a symmetric head still differs (theo-rem).
+- (lead, wave-4 merge; critic-greenting, greenting r9) **(recurring with W3 talk mouth: opal, cilantro, requin)** Never open a
+  talk mouth by scaling a RING of beads (`mouth.s` y +0.7 on a 7-bead smile): it draws a hollow dark U/C that merges with
+  the eyes into one crescent (a socket/beak at SE). A filled mouth = a dark plate BURIED in the head at rest and pushed out
+  with `<bone>.p` on the open keys (unkeyed `.p` resets to rest = hidden in every other clip): 0.08 × 0.06 m sunk 0.045 m →
+  a filled 3×2 "o" under a 3-bead smile at S/SE/SW. Keep the smile ≈ ¼ of the head width (7 beads = an 8-texel grin).
+- (lead, wave-4 merge; theo-rem, greenting, storyteller) **(recurring with W3 eye glyphs: preservation, requin)** Small eye
+  boxes re-rasterise into "+" crosshairs: a 2×2 eye in a 5-texel ring (theo-rem SE), a 0.062 m square bead (greenting, one
+  talk key; 0.052 m never did). Use a 1×2 pupil box (0.036 × 0.07) with no glint inside rims. Expressions on bead eyes need
+  ≥ 2 texels: add `eyeL/R.p` offsets to the y-scale (storyteller r2: WIDE +0.5 & lifted, SQUINT −0.6 & dropped 0.014 m).
+- (lead, wave-4 merge; critic-theo-rem, theo-rem r2) **A spiky outline = FEW, FAT, LONG quills on a SMOOTH shell.** 72
+  short lat/lon pyramids rastered to a 1-px cream halo and a hooped "barrel with a face" back at N (isolated_px 39); 37
+  thin quills = sea-urchin needles. 23 pyramids (base half-width 0.085, length 0.2–0.26 m, lean back 0.45 + up 0.2, base
+  sunk 0.05 m into a smooth 9×16 ellipsoid) gave 2–3 px teeth at 8/8, isolated_px 14. Offset L/R quill pairs (a
+  symmetric pair = two dark "eyes" at N), no quill dead-centre on rows the N camera looks along, cream tips only on
+  outline quills, keep quills ≥ 48° from the face (else a dark "second eye" at SE). Applies to manes, crowns, feathers.
+- (lead, wave-4 merge; critic-storyteller, storyteller r2) **A face-on disc prop (clock, shield, sign) yawed for SE goes
+  edge-on at 2–3 other facings** (clock at E/SW/W = gold sliver; `sig_outside.clock` SW 0 px). Give it a rim or ring
+  proud of both faces (≥ 3 px edge-on), and keep a recessed face prism THICKER than a solid rim prism (prisms are solid:
+  the face vanished) and ≥ 0.01 m proud (0.004 m gave a 1 px whole-texel `pan` FAIL).
 
 ## Proportions and geometry
 
@@ -411,6 +469,13 @@ by the lead (Module backlog, "lead, between waves 3 and 4").
 - (lead, wave-3 merge) **(recurring: clarabelle, requin; W2: rabbit, chonk)** White hides/bellies go peach at golden →
   `material.whiteKeep` 0.7–0.8 + a neutral hi (clarabelle #F2EEF0 stayed white); whiteKeep does NOT act on px raised by a
   slot `lift` (requin; backlog look) — lower the lift (0.18) and use a cool/magenta mid. A pink snout still goes salmon.
+  **Wave 4 (lead merge; recurring: maxflow, theo-rem — CREAM, not white):** whiteKeep's gate (linear luma > 0.75, chroma
+  < 0.18; whiteKeepLift < 0.25) never catches a cream hi (#F8E6C2 chroma ≈ 0.40), and neither knob LIGHTENS — they only
+  desaturate. maxflow's cream chest stayed #957C7E (mauve-grey, darker than the orange fur) in the golden sun copy with
+  whiteKeep 0.8 + whiteKeepLift 0.8 (0 px change); `material.slots { cream: { lift: 0.35 } }` + whiteKeepLift → #D8CCBF
+  (0.6 = same as 0.35). theo-rem: a cooler, less saturated hi (#F6E4D6, mid #E4C8AA) + whiteKeep 0.5 stayed pale cream at
+  golden; a magenta-pushed #F4E2EA went grey-white (identity lost). Rule: cream identity = cool/desaturated hi + a slot
+  lift, judged on `scene-golden-crop.png` sun AND shade copies (the shade copy still drifts mauve: look backlog).
 
 ## Look / shading rules
 
@@ -481,6 +546,18 @@ by the lead (Module backlog, "lead, between waves 3 and 4").
   (hound) it does almost nothing. Cost in isolated px (owl test body, dir 1/2): none 10/3, fur 12/5, feather 17/12,
   scale 21/15. First cells of 0.05 m / ±0.2 L were noise (1-px flecks all over the hi band). Rule: opt-in, judge at 1×,
   shots/look5/h1-zoom.png is the reference.
+- (lead, wave-4 merge) **(recurring: maxflow, greenting, theo-rem; W3 cilantro; look backlog)** Inner depth lines draw
+  LIGHT grey-lilac (outline.js tints character inner lines toward blue-grey) on saturated or unclothed bodies: a "collar"
+  round the neck + stitched ∩ arm outlines (maxflow orange), grey specks at leg/tail roots (greenting jade), specks where
+  quills cross the shell (theo-rem). Until look has a per-slot line colour: `material.merge` the same-slot bones that
+  should be one mass (`upperL: 'body'`, head → body), BUT (maxflow r2) move other-slot detail (cream muzzle/cheeks) onto a
+  zero-offset child bone first or it merges too, and keep a seam where it is the only thing separating two masses (tail →
+  body made the E profile one egg). Merging everything leaves charcheck `inner_lines 0` WARN (greenting) — accept it.
+- (lead, wave-4 merge; maxflow r2) **Same-bone same-slot parts never draw a line between them** (a crate lid rim on the
+  crate bone was invisible): a lid/slat/plank that must read goes on a child bone.
+- (lead, wave-4 merge; critic-greenting) **Ghost with `keepHue` 0 turns a colour-identity character lavender-white**
+  (greenting rows 3–4): set `ghost.keepHue` 0.25–0.35 when the colour IS the identity (green, orange, purple), not only
+  for dark characters.
 
 ## Props and held objects
 
@@ -622,6 +699,17 @@ by the lead (Module backlog, "lead, between waves 3 and 4").
   bone reused for the vote: the crate overhead in both paws (`.l` 1.6, upper arm out 160) clears the head at 8/8
   (`shots/char-maxflow/r2/s-keys.png` row 3). A thin proud band round a box draws dotted lines (key_speckle +11 → +5
   after removing it): one lid rim only.
+- (lead, wave-4 merge; critic-storyteller, storyteller r2) **(recurring with W1 goat staff tilt)** The "plumb cancel" (prop fwd
+  = −(upperArm + forearm)) does NOT hold inside LegGait walk drawings: the staff top still leaned ≈ 17° FORWARD at the
+  left contact with the tip behind = a push-off, not a plant. Key a staff plant by eye on
+  `grid=turnaround&clip=walk&frame=<k>&speed=<v>` stills at E/W: tip AHEAD of the body at contact (top tilted back
+  ≈ −10…−15°; storyteller: staff fwd = arm − 36), vertical on the flight drawing (arm − 20).
+- (lead, wave-4 merge; storyteller r2) A far-hand prop over a hood needs TWO tilts: forward clears W but moves it onto the
+  hood at SW; outward fixes SW (7° fwd + 14° out → `sig_outside.clock` ≥ 3 px at 8/8). Bake the tilt into the geometry
+  (rotate shaft parts + child bone pos about the grip) so every clip inherits it; re-compensate raised keys (vote).
+- (lead, wave-4 merge; critic-maxflow, maxflow r2) **`poof@<prop bone>` on the key that HIDES the prop fires where the bone
+  went back to** (push f44 returned the crate bone to the hips: poof on the belly, crate vanished 1 m ahead). Fire the poof
+  2 frames BEFORE the hide key (f42 for f44: one frame early made strobe 3–4) or from a socket at the prop's last spot.
 
 ## Poses and actions
 
@@ -783,6 +871,31 @@ by the lead (Module backlog, "lead, between waves 3 and 4").
   positive `fwd` swings the raised limb BACK. Probe with a variant spec (`wv.js` with JSON key overrides) + one
   8-facing still before reasoning about angles. **(recurring: preservation, progress, mincut, requin)** Chibi arms can't
   clear a big head: `upperArm.s` ≤ 1.6× + 1.2× thicker, prop `.s` divided back; a shoulder shrug `upperArm.p` +0.08.
+- (lead, wave-4 merge) **(recurring, 4/4 wave 4: maxflow, storyteller, theo-rem, greenting)** **Point aimed at the side or
+  with the far arm.** maxflow `upperArmR` out 45°/fwd 112° pointed screen-left at SE (away from the target), a dark disc on
+  the belly at E, hidden at NW/W/SW; storyteller swung the lantern 55° out (inside the outline at E/NE); theo-rem's left
+  arm aimed forward was 0 texels outside at W; greenting's left arm hidden at E/W/SW. Facts (lead w4 render with
+  `mark=@handL`, `shots/lead-w4/side-se-e.png` / `side-w-sw.png`): **at SE (dir 1) and E the camera-side arm is the
+  character's RIGHT; at W and SW it is the LEFT; S shows both.** So one arm can never leave the outline at S, SE, SW AND W
+  on a body wider than the arm. What read at 8/8: (a) aim ALONG the facing, forward + up (target = where the character
+  faces; at SE that is the viewer, so the paw lands in front of the chest): storyteller `upperArm` [86, 0, 20] (relative to
+  a 50° rest out) + `.l` 0.6/0.5 → outside the outline at 6/8; (b) TWO-paw point on ball bodies: theo-rem left
+  `[60, 0, 70]` + right `[85, 0, 30]`, both `.l` 1.3 → 6–15 texels outside at 8/8; maxflow forward thrust + chest twisted
+  so the pointing shoulder leads + the other paw forward-low → 8/8; (c) stub limbs: head/neck lunge toward the target +
+  both stubs forward. Pose-triple calibration: on a chibi arm fwd 90 + out 45 is a SIDEWAYS raise, not a 45° diagonal —
+  render pure fwd / pure out stills first (theo-rem).
+- (lead, wave-4 merge) **(recurring: theo-rem, greenting, maxflow; W3 6/8, W2 honk)** Die still sits: theo-rem's final hold
+  was a near-upright ball LESS tipped than the f20 drawing; greenting a compact lump with a stub up at E/NE/W/SW; maxflow's
+  S/SE final an unreadable cream/dark jumble with no face. Rules unchanged (playbook R W3 die) plus: the final hold is at
+  least as tipped as the previous drawing; a ball body squashes wider (`ball.s` y −0.1) and drops to ≤ 60 % of standing
+  height; hips `twist` on a body lying on its side spins it about its OWN long axis (lying direction unchanged) — to lie
+  diagonally combine fwd + out (`hips [60, 0, 60]`: lump facings 4/8 → 2/8, greenting r9); drop raised limbs in the hold.
+- (lead, wave-4 merge; critic-theo-rem, critic-maxflow) **(recurring with W3 emote punchline 6/8)** The emote must not
+  borrow the vote's prop or pose: theo-rem's Q.E.D. was an arm stub behind the head = a card-less vote. Make the
+  punchline the identity prop shown FACE-ON at chest height (slap the ∎ card down / hold it out with eyes shut + hop).
+  A card held by the FAR paw at SE reads edge-on: twist the prop bone 40° toward the SE camera (`card [0, 40, −60]`).
+- (lead, wave-4 merge; critic-maxflow) Vote hold with a carried crate: paws must TOUCH the prop's lower side edges (lower
+  it 0.1 m into the paws); a crate balanced on the skull hides the ear bases.
 
 ## Timing and holds
 
@@ -844,6 +957,8 @@ by the lead (Module backlog, "lead, between waves 3 and 4").
 - (critic-keeper-r1, keeper r2) Robed slow walk on twos with near-identical drawings read as a gliding block. Fix that
   worked: authored `clips.walk` with a staff plant (tip forward on the step, planted while the body passes), holds ≥ 3 grid
   frames (length 12), sway as hip rotation.
+- (lead, wave-4 merge; critic-greenting) A talk beat every 6 frames (0.2 s) reads twitchy at 1×: loop 32–40 frames, keys
+  every 8–10 (the cast-clip table's 8–14 frame guideline).
 
 ## Locomotion and feet
 
@@ -1065,6 +1180,23 @@ by the lead (Module backlog, "lead, between waves 3 and 4").
   talk / vote / push gives the plush squash everywhere at no speckle cost.
 
 - (char-greenting) **Custom biped-named skeleton + LegGait `plan: 'biped', style: 'bird', plant: 'hold'` = a waddle for ANY long body on 0.1 H legs**, first render: 4/4 drawings, 0.267 s / 1.05 H, off_grid/flicker 0. A tall tube amplifies the roll: roll 12 gave a 4-texel one-sided limp (head_bob limp 4.0 WARN) and a forward-dive drawing at SE; roll 8 + headBob 4 → limp 2.6 PASS. The arms/tail rhythm goes in an additive `clips.walk` (`blend: 'add'`, length 4), with `locomotion.arms/elbows [0, 0]` so the plan's swing does not fight it. Feet stay a 2–4 texel shuffle (foot_slide n/a): contact is still the weak point.
+- (lead, wave-4 merge; maxflow r2) **LegGait `maxSwing` races the phase on short-duty waddles** (duty ≤ 0.2): the floor
+  `dt·(1−β)/maxSwing` (default 0.25 s) ran the live cycle 0.278 s instead of the authored 0.3 s AND made the start-up
+  cycle skip drawing k2 (ids k0, k1, k3). `locomotion.maxSwing: 0.5` → live 0.30 s / 1.19 H and 4/4 drawings. The bake
+  used to ship that start-up cycle (3-drawing walk) — FIXED in tools/bake.py (lead, between waves 4 and 5); the bake now
+  warns "start-up cycle showed 3/4 drawings" — still fix the spec so the live game starts clean. Motion backlog M23.
+- (lead, wave-4 merge; critic-maxflow, critic-greenting, greenting r9) **(recurring: maxflow, greenting)** LegGait `roll`
+  reads wrong at SE (dir 1): on a tall tube the roll toward the far side tilts the figure right on screen and the roll
+  toward the camera foreshortens it into a squat = a forward/back LURCH (greenting, limp 2.6 at roll 8 / 1.7 at 5 / 0.1 at
+  0); on a waddling mascot the roll was lopsided (maxflow k0 ≈ 20°, k2 upright). Key a MIRRORED chest/head roll per drawing
+  in `clips.walk` (k0 −x, k2 +x) and keep `lean`/`roll` small (≤ 5–6); at 4 H/s the game plays the RUN index of every LegGait
+  pair (Froude ≫ 0.5), so tune `lean[1]`/`roll[1]`, not [0].
+- (lead, wave-4 merge; storyteller r2) A glide/run that must read at 2–4× speed needs distinct drawings: hem flared back
+  −25…−28° with a 2-drawing flutter (`robe.s` +10 % on the flare drawing), hood tip streaming, body lean 10–12°, a 1-texel
+  float bob. A keyed `pos` in a LegGait run clip did not move the head relative to the root (run.head_bob 0.2 px);
+  `'hips.p': [0, 0.035, 0]` on alternate drawings gave 1.5 px.
+- (lead, wave-4 merge; theo-rem r2) Paws carried over the belly draw a dashed grey inner line across it on every contact
+  drawing: hold the upper arms out ≈ 22° (an additive `WALK_ARMS` key in walk/run) and cut the arm swing ([30, 40] → [18, 26]).
 
 ## Secondary motion (chains, personality)
 
@@ -1283,6 +1415,9 @@ by the lead (Module backlog, "lead, between waves 3 and 4").
   same hash on `uCharTime` (`hash12(vec2(floor(uCharTime·fps), seed))`) and only for bind y < 0.8, so the eyes (same glow
   slot) stay steady while the glass flickers. night_freeze 0 px and night_pan 0 px, `shots/char-storyteller/p3/scene-night-crop.png`.
   Rule: use spec.lights + uCharTime; no scene copy is needed any more.
+- (lead, wave-4 merge; critic-storyteller) With `spec.lights` the lantern pool reads at night (olive disc on the grass), but
+  the glass drew cream-white and the hem barely caught the light: keep the glass on the glow mid/hi warm (cap ≈ #FFD27A),
+  and hang the light low enough (hem height) or raise its intensity so the robe takes a warm rim.
 
 ## Quadrupeds
 
@@ -1410,6 +1545,19 @@ by the lead (Module backlog, "lead, between waves 3 and 4").
   rows of every held key + a 1× "what would a stranger call this prop" line in the sheet.
 
 - (char-greenting) **Bake cell runaway from a WIDE lying die pose:** a die lying sideways that spans the 62-px render cell's width (figure box x 2..60) made `bake.py` raise the bottom pad on every growth pass (trimmed cell 48 → 54 for idle+die, 154 px for the full cast preset, heads cut at the cell top). Workaround: an explicit `--cell 112` (no border touches, trimmed 58×65); with FX the speech bubbles were cropped at E/NE/N, so the shipped bake is `--q fx=0`. Bisect a bad bake with `--clips idle,<clip>` per clip (≈ 10 s each).
+- (lead, wave-4 merge) **(recurring: theo-rem, storyteller)** `face_visible` counts EVERY part in the face slot: spike tips
+  and belly (theo-rem cream: 51 % on a visible face), gloves and clock hands (storyteller void: 27 %). Read it against the
+  `face-solo` job by eye until a per-part face list exists (tools backlog T32).
+- (lead, wave-4 merge; critic-storyteller) **The 7+1 turnaround grid puts SW under S**: a figure ≥ ≈ 1.6 m shows S's hem/staff
+  at the top of the SW tile — `height_px` max 96–100 and `islands` 2–3 at SW are a TOOL artefact (T33), not the character.
+- (lead, wave-4 merge) **(recurring: maxflow; W3 clarabelle, T31)** The turn audit counts idle-loop keys (blink, ear flick)
+  inside the post-turn window as settle redraws; quant.lean / quant.lag / personality changes gave a byte-identical turn
+  report on maxflow. Read `clip-turn.png` and classify each redraw before tuning.
+- (lead, wave-4 merge) Presence: `spec.presence = [lo, hi]` ALREADY overrides the plan band (T13, fixed wave 1) — maxflow's
+  189 % WARN for a deliberately big mascot needed no tools change. Same for head_frac/height_px on a tall robed host: set
+  `spec.heightPx`; say in the sheet why.
+- (lead, wave-4 merge) **Bake check:** after every bake, `bake/<name>.json` `clips.walk.frames` must equal
+  `spec.gameSpeed.drawings` (maxflow shipped 3 of 4); the bake now prints a warning when the start-up cycle was short.
 
 ## Process
 
@@ -1501,6 +1649,13 @@ by the lead (Module backlog, "lead, between waves 3 and 4").
   and the vote at E/W). Authors that skipped the 25 % line-up (polly, mincut) missed their weakest S/N read.
 
 - (char-greenting) **The identity reference can change mid-run — re-read `refs/cast/<id>.png` when the lead relays a user note.** Greenting r1–r2 (gumdrop + duck-bill snout, footless hop on LegGait 'glide' with an authored 4-key hop: 4/4 drawings, 0 FAIL on the first pack) was replaced by the user's Joguman reference (long tube body, stubby arms/legs, face toward the snout end). The rebuild took ≈ 1/3 of the run because the probe tooling (a `pp=<JSON pose>` variant + an 8-facing crop/zoom script in `shots/char-<id>/`) was already in place: keep those helpers generic from the first hour.
+- (lead, wave-4 merge) **(recurring: W3 3 agents, W4 critic-maxflow + critic-storyteller)** Critics again ran a no-op
+  `python3 -c 1` on the Mac. Every python goes through `tools/remote.sh python3 …`; there is no harmless local python.
+  **(recurring: W3 4 agents, W4 theo-rem)** zsh does not word-split `set -- $c` (`$3: unbound`): write explicit commands.
+- (lead, wave-4 merge) **(recurring, 4/4 wave 4)** Every author's sheet carried at least one claim the 8-facing still
+  contradicted (staff "plant", "waddle", poof "at the crate", Q.E.D. distinct from vote) and maxflow scored E/W profile
+  criteria without a profile check (+4 gap). A claim about a pose = the 8-facing still of that key named in the evidence
+  column; a claim about motion = the 1× GIF frames (`clip-<c>-1x.gif` sheet), not the design intent.
 
 ## Body plans and cast scale (rig r6)
 
@@ -1558,6 +1713,31 @@ by the lead (Module backlog, "lead, between waves 3 and 4").
   that reads at 7/8 facings (hidden behind the head at W).
 
 ## Module backlog
+
+**Fixed by the lead between waves 4 and 5 (2026-10-16, render-host RTX 4090; evidence `shots/lead-w4/`):**
+- **tools/bake.py walk cut from the start-up cycle (maxflow; recurring 2 with M22)** — when an authored LegGait walk
+  (ids `<gait>:<clip>:k<n>:<drawing>:<cycle>`) skips a drawing in its first cycle, the cut now restarts at the first run
+  of cycle ≥ 1 and warns `walk: start-up cycle showed 3/4 drawings → cut from the first steady cycle instead`; if even
+  that is short it warns `baked cycle shows only k of K gait drawings`. Legacy-Gait ids (which alias drawings at game
+  speed by design: wanderer run 0,2,4 / 0,1,3,5) are excluded. Repro `shots/lead-w4/mfms.js` (maxflow with the default
+  maxSwing): walk frames 3 → 4, period 6 → 8 (`shots/lead-w4/ab/mfms-walk-base-x3.png` vs `mfms-walk-x3.png`: k1/k3
+  duplicates → four distinct drawings). **A/B** (baseline = the same file with the new branch disabled,
+  `shots/lead-w4/bake_base.py`): wanderer (`--game 1`), maxflow and fox (`--preset cast --game 1`) — sheet PNG, JSON and
+  preview byte-identical (`shots/lead-w4/ab/<c>-{base,fix}/`). Bakes whose cut already shows every drawing never enter
+  the new branch.
+- Verified, not a bug: `camera-side arm` — at SE (dir 1) and E the near arm is the character's RIGHT, at W/SW the LEFT
+  (`shots/lead-w4/side-se-e.png`, `side-w-sw.png`, wanderer with `mark=@handL`); theo-rem's note had it reversed.
+- Already supported (no change): `spec.presence = [lo, hi]` (T13) for a deliberately big mascot (maxflow 189 %).
+
+**Priority after cast wave 4 (lead, 2026-10-16)** — what blocks the most rubric points now (4 members, scores 15–18):
+1. **look: per-slot inner-line colour** (recurring 4: cilantro, maxflow, greenting, theo-rem) — grey collars/seams/specks
+   on unclothed saturated bodies cost line + tonal points on 3/4 wave-4 members; merge workaround costs a WARN (T37).
+2. **look: creamKeep** (recurring 2 in wave 4 + requin/rabbit/chonk earlier) — cream identity goes mauve/apricot at golden.
+3. **motion M23** short-duty `maxSwing` floor (the live game still starts maxflow-like waddles with a skipped drawing;
+   the bake is fixed) + **M24** SE lurch / lopsided roll (greenting, maxflow).
+4. **tools T32/T33/T34** face_visible per-part list, turnaround grid row spacing for tall figures, bake side-touch growth.
+5. **fx `land@`/`poof@` socket positions** (storyteller, maxflow) and **M25** prop plumb under LegGait (storyteller, goat).
+Not module work (author rules, playbook R W4): point direction, profile face, die, emote punchline.
 
 **Module fixes after cast wave 3 (module fixer, 2026-10-16, render-host RTX 4090; evidence `shots/mfx4/`)** — every
 high/medium row cast wave 3 hit. Developed in an isolated copy (render dirs `pixel3d-fix` / baseline `pixel3d-base4`),
@@ -1742,7 +1922,17 @@ Motion — new after cast wave 3 (lead merge 2026-10-16):
 | M19 | low (recurring 3) | Idle recovery still steps once per 45° facing step (stepYaw/stepTol 50 → 90/0.12 cut a 180° turn from 6 to 5 steps); a 3-link keyed neck re-settles each link (cilantro 5 small redraws f45–56); mincut 4 post-turn redraws 10–39 px | one lifted/landed pair after the LAST yaw step; settle a keyed neck as one unit (M8 follow-up) | clarabelle, cilantro, mincut |
 | M20 | low | A 1-link spring chain at game speed lags ≈ 2ζ/(2πf)·v and sits at its limit behind the body (cilantro scarf end hidden at 8/8; fix was keying it forward) | velocity-compensated chain target, or a 'follow key' option in locomotion | cilantro |
 | M21 | low | LegGait authored walk keys REPLACE the plan's lean/twist on every keyed bone, so a contact key easily pitches a chibi head down; whole-clip `blend: 'add'` is the only alternative | per-bone add (`clip.add: ['head', …]`) | progress |
-| M22 | low | First walk cycle after idle shows drawing 1 skipped (walk:k0 → k2 → k3, then +1 per hold) on clarabelle; M7 says cycle 0 starting at drawing 1 is by design — reported as a skip | confirm against M7 and document, or start cycle 0 at drawing 0 | clarabelle |
+| M22 | low | First walk cycle after idle shows drawing 1 skipped (walk:k0 → k2 → k3, then +1 per hold) on clarabelle; M7 says cycle 0 starting at drawing 1 is by design — reported as a skip | confirm against M7 and document, or start cycle 0 at drawing 0 | clarabelle; **recurring 2 (wave 4: maxflow k0 → k1 → k3, start-up cycle; the bake no longer ships it — see M23)** |
+
+Motion — new after cast wave 4 (lead merge 2026-10-16):
+
+| # | sev | issue | fix wanted | seen |
+|---|---|---|---|---|
+| M23 | medium (recurring 2 with M22) | LegGait `maxSwing` floor `dt·(1−β)/maxSwing` (default 0.25 s) sets the phase on short-duty gaits (duty 0.15 waddle): live cycle 0.278 s vs authored 0.3 s, and the start-up cycle skips a drawing (k2) | floor ≥ the authored swing time, or ignore the floor while accelerating from rest; workaround `locomotion.maxSwing: 0.5` (maxflow r2: 0.30 s, 4/4) | maxflow |
+| M24 | low (recurring 2: greenting, maxflow) | LegGait `roll` on a tall body at SE reads as a forward/back lurch (far-side roll tilts right, near-side roll foreshortens to a squat); the waddle roll is lopsided per drawing | a screen-space sway option (roll about the camera's view axis) or a mirrored-roll default; workaround: key a mirrored chest/head roll per drawing, roll ≤ 5 | greenting, maxflow |
+| M25 | low (recurring 2 with M4 "plumb constraint not built": goat W1, storyteller W4) | The plumb-cancel convention (prop fwd = −(upperArm + forearm)) still leans a staff ≈ 17° forward inside LegGait walk drawings | a real plumb constraint for prop bones (`props.<p>.plumb: true`) applied after the gait's body pose | storyteller |
+| M26 | low | A keyed `pos` in a LegGait run clip does not move the head relative to the root (run.head_bob 0.2 px); `hips.p` works | document (M1 says `pos` replaces the plan bob) or apply `pos` before the root-relative measure | storyteller |
+| M27 | low (recurring 2 with the rig "clips cannot key leg bones" row: + greenting) | LegGait 'hold' legs cannot be keyed from `clips.walk`, so a contact drawing with the near stub foot stepping out is impossible from the spec; foot_slide stays n/a | per-drawing leg overrides in clips.walk | greenting |
 | (note) | **FIXED opt-in (wave-3 module fixer)**: `clip.legs: 'float'` on any loop clip, and ghost clips under `spec.ghost` float by default (plain `'fk'` on loop clips stays ignored: fox/honk ghosts key it) | Legacy-Gait ghost loop clips still need `pos` +0.1 to cancel the idle leg-IK dip (`legs: 'fk'` ignored on loop clips); on LegGait 'bird' the dip is not there (honk) | honour `legs: 'fk'` on loop clips | polly, honk |
 
 Rig (src/chars/rig.js) — open after cast wave 1:
@@ -1763,7 +1953,15 @@ Rig (src/chars/rig.js) — open after cast wave 1:
 | low | `kit.lathe` is bbox-centred but specs place profiles bone-relative (mis-placed domes/collars) | `{ origin: 'profile' }` option | progress |
 | low | Clips cannot key leg bones under LegGait (a touchdown haunch flare can't be authored); a hop's flight leg extension needs a negative `lift` hack | per-drawing leg overrides in clips.walk, or a `flightReach` knob | preservation |
 
-- **(tools/motion, medium — char-maxflow 2026-10-16) bake cuts the walk from the START-UP cycle.** `tools/bake.py` takes
+Rig — new after cast wave 4 (lead merge 2026-10-16):
+
+| sev | issue | fix wanted | seen |
+|---|---|---|---|
+| low | Hips `twist` on a body lying on its side spins it about its own long axis, so a die pose cannot choose its lying direction with twist (workaround fwd + out `[60, 0, 60]`) | document in CHARACTERS.md §4 (lying poses), or a world-yaw channel for the root of a lying pose | greenting |
+| low | A twist-keyed bone keeps the snapped world axis: clock hands on a yawed face leave its plane (workaround ×0.001 variant bones scaled ×1000 per key) | twist about the bone's current (parent-rotated) axis, or document | storyteller |
+| low — DOCUMENT | Which arm is on the camera side: at SE (dir 1) and E the character's RIGHT (−x), at W/SW the LEFT (lead w4 `shots/lead-w4/side-*.png`; theo-rem's note said the opposite) | now in the playbook point rule | theo-rem, lead |
+
+- **FIXED (lead, between waves 4 and 5 — see the top block)** **(tools/motion, medium — char-maxflow 2026-10-16) bake cuts the walk from the START-UP cycle.** `tools/bake.py` takes
   the loop from the 2nd walk drawing to its repeat one cycle later; maxflow's first LegGait walk cycle shows k0, k1, k3
   (k2 skipped at the start: pose ids `walk:walk:k1:1:0` .117 s → `k3:3:0` .183 s), so the baked walk row has 3
   drawings (k1, k3, k0; json `walk.frames 3, period 6`) while the steady cycles show 4/4 (`game.readable` PASS). Every
@@ -1787,6 +1985,8 @@ Rig (src/chars/rig.js) — open after cast wave 1:
 | low | Scaling a convex bead eye part in x (`eyeL.s` x +0.3) draws a dark 1-px vertical column down each eye; y-only scale is clean (`shots/char-green-hood/r6/b/f-dbg2.png` vs `f-dbg3.png`). Cause unknown (mirrored part or skinned normals under non-uniform scale) | find the cause (normals under non-uniform bone scale) | green-hood |
 | ~~medium~~ **FIXED opt-in (wave-3 module fixer)**: `material.whiteKeepLift k` keeps lifted mid-band near-whites (gate chroma < 0.25: requin's magenta-pushed hi #F8E8FF failed the old 0.18 gate too); requin variant golden belly peach → white, `shots/mfx4/ev-whitekeeplift.png` — was: medium | `material.whiteKeep` has no effect on pixels raised by `material.slots.<slot>.lift` (a lift-0.35 belly stayed peach #F1B889 at golden with whiteKeep 0.7 and 1; workaround lift 0.18 + a cool mid #E6DCF4) | apply whiteKeep after the slot lift | requin |
 | low | outline.js tints FLAG_CHAR inner lines toward blue-grey, so a line on a cream/white part reads as grey specks ("beard" round a muzzle); no per-slot line colour (workaround `material.merge` + flush detail boxes) | per-slot inner-line tone (`material.slots.<x>.line`) or tint toward the part's own sh | cilantro |
+| **medium (new wave 4, recurring 2: maxflow, theo-rem; W3 requin, W2 rabbit/chonk)** | `whiteKeep` / `whiteKeepLift` never catch CREAM (gate chroma < 0.18 / 0.25; #F8E6C2 ≈ 0.40) and never LIGHTEN: maxflow cream chest #957C7E mauve-grey in the golden sun copy (0 px change at 0.8/0.8), theo-rem cream face apricot; the SHADE copy of a lifted cream still drifts mauve | a `creamKeep` (or widen the gate to high-L, low-saturation warm hi ≥ #F0E0C8) that keeps cream warm-light in the golden grade, sun AND shade; A/B on the cast | maxflow, theo-rem |
+| **medium (priority raised wave 4, recurring 4: cilantro, maxflow, greenting, theo-rem)** | (same as the outline.js row above) inner lines between same-slot parts draw LIGHT grey-lilac on saturated/unclothed bodies (maxflow neck collar + stitched arms, greenting leg roots, theo-rem quill specks); the only workaround (`material.merge`) costs `inner_lines 0` WARN and merges details | inner-line colour = the darker of the two adjacent slot tones (or `slots.<x>.line`); a per-part opt-out for intended depth steps (quills) | cilantro, maxflow, greenting, theo-rem |
 | low | `sigLift` keeps the signature at L ≥ 0.3 in the pillar shadow, so the shade copy can't reach −25 % by lowering `sh` (polly noon-shade −7 %) | let `sh` below the lift floor through, or document the floor in the sig_ground note | polly |
 
 ### fx (src/chars/smear.js, fx.js)
@@ -1811,6 +2011,7 @@ Rig (src/chars/rig.js) — open after cast wave 1:
 | ~~low~~ **FIXED r2 (opt-in)** (module fix r2: `spec.fx.poof` / `spec.fx.land` { n, speed, radius (m) } override the ring; chonk `land: {radius: 0.5}` moved the plop motes outside the ball (31–86 px change)) — was: low | `poof@<node>` spawns 6 slow motes at the node (eggs under a wide body); `land` ring motes still pass under a 1 m body | spawn radius / speed option scaled by body width | chonk |
 | low | Flap feathers render as detached 1-px grey slashes | motes ≥ 2×2 texels in plumage tones, short life | honk |
 | low — DOCUMENTED r2 (bake an FX-free sheet with `tools/charpack.sh --bake <name> --q fx=0`) | The bake includes FX (speech bubble, sparkles, glyphs) in clip frames: vote/talk sprites carry FX pixels | bake an `fx=0` layer and an FX layer separately (or document) | mole |
+| low (new wave 4) | `land@<socket>` (storyteller `land@staffTip`) draws its dust ring at the character root/feet, not at the named socket (`shots/char-storyteller/p1/clip-chime.png`); `poof@<bone>` on the key that moves the bone fires at the NEW bone position (maxflow push: poof on the belly) | land/poof honour the socket's world position at the event frame; document that events read the pose of their own frame | storyteller, maxflow |
 | low | No spec-level light; `fx.wisp` colour is per character (the die soul wisp shares the emote flame colour) | per-event colour; see look `spec.lights` | green-hood |
 | ~~low~~ **FIXED r2** (via tools T5: final_hold / hold_redraws come from an fx=0 copy) — was: low (wave 1) | Vote sparkle (≈ 0.8 s) and die soul wisp (1.2 s) outlive the pack window, so a correctly held clip FAILs `final_hold` | fx lifetimes ≤ hold, or tools excludes FX from final_hold (tools row T5) | mushroom |
 
@@ -1859,11 +2060,19 @@ Rig (src/chars/rig.js) — open after cast wave 1:
 | T28 low | `strobe` does not exclude FX frames: an emote glyph fading over 2 frames + a prop change on the frame between = 3 consecutive changes (FAIL); FX step on twos from their birth, so an event an odd number of frames from the next key strobes | skip FX-flagged frames in `strobe`, or make fx step in phase with the clip grid | mincut, polly |
 | T29 low | `charpack.sh --preset cast` does not refresh `dir2/` (critic judged stale r1 output); `tools/remote.sh X=1 cmd` does not pass env vars (use `tools/remote.sh env X=1 cmd`, documented in the playbook); `tools/clean.sh <dir> '<pattern>'` prints "cleared <dir>" (unclear whether only the pattern went) | print the stale-dir warning; echo the matched count in clean.sh | opal, mincut, preservation |
 | T30 low | 8-facing grid stills from shot.sh are 1×: every critic/author wrote a remote crop helper (×3–×8) and the zsh-loop mistakes came from batching them | `tools/shot.sh … --x 3` (nearest enlarge + per-cell crop) | cilantro, polly, preservation, opal critics |
-| T31 low | Turn audit: idle-loop keys (ear flick, tail, breath) inside the post-turn window look like settle redraws on `clip-turn.png` | label each redraw as key / step / dynamics from the log | clarabelle |
+| T31 low (recurring 2: + maxflow wave 4 — quant.lean/lag/personality changes gave a byte-identical turn report) | Turn audit: idle-loop keys (ear flick, tail, breath) inside the post-turn window look like settle redraws on `clip-turn.png` | label each redraw as key / step / dynamics from the log | clarabelle, maxflow |
+| T32 low (recurring 2: theo-rem, storyteller) | `face_visible` counts every part in the face slot (spike tips + belly in cream: 51 %; gloves + clock hands in void: 27 % for a fully visible face) | `spec.faceParts: [...]` (per-part face list) for the row | theo-rem, storyteller |
+| T33 low (recurring 2: critic-storyteller + author p3) | Turnaround grid: SW sits in a 2nd row only ≈ 85 px under S, so a ≥ 1.6 m figure overlaps; SW tile shows S's hem/staff, `height_px` max 96–100, `islands` 2–3 at SW (false WARN) | space rows by `spec.height` (or render 8 in one row) and recompute crop/height per cell | storyteller |
+| T34 low (recurring 2: maxflow push, greenting die) | Bake cell growth on SIDE touches: a lying die touching the side borders raises the bottom pad every pass instead of widening (greenting 48 → 54, full cast 58×154 with heads cut; workaround `--cell 112`); a prop pushed ≈ 1 m toward the camera still touches at S/SE/SW with `--cell 160` | grow the square on left/right/top touches (T21 only handled bottom); report the touching clip/dir | greenting, maxflow |
+| T35 low | `charpack --preset cast` requires ghost / ghost-spent for the Storyteller too (cast_clips exempts it; the preset still asks for the clips) — workaround explicit `--clips` | storyteller exemption in the charpack/bake preset list | storyteller |
+| T36 low | `sig_outside.<part>` / `sig.<part>` count ONE named part; a signature prop made of several parts (clock = rim + face + finial) is under-counted edge-on (extends T26) | multi-part signature declaration `{ parts: [...] }` | storyteller |
+| T37 low | charcheck `inner_lines` "want > 0" WARN penalises the `material.merge` workaround the critics recommend for grey seams | skip the row (or INFO) for bones listed in `material.merge` | greenting |
+| (note) | `refs/cast/_src/gamespeed_gif.py` root-following crop still cuts the feet on theo-rem (T7 marked FIXED r2) — re-check on a ball body before reopening | — | theo-rem |
+| (note) | Bake crops FX (bubbles, stars) at the figure cell (T21 by design; `--fxcell fx` keeps them) — expected, not a bug | — | greenting, theo-rem |
 | ~~medium~~ fixed r06 | Hop/skip gaits (duty ≤ 0.2): `foot_slide` reports 17.6–18.7 texels at dir 2 with "0 planted pairs" (no foot is planted on two consecutive drawings, so there is nothing to measure), and `game.readable` says cycle 0.433 s / 1.71 H for a gait whose pose ids show a 4-drawing loop every 8 grid frames (0.27 s / 1.1 H) | report n/a (not a number) when there are 0 planted pairs; derive the game cycle from the gait phase / pose-id period, not from foot-0 touchdowns at drawing changes | refs (`shots/refs-cast/recipe-chibi/report.txt`) |
 
 
-- (char-storyteller, tools, low) turnaround grid: cells 85 px apart vertically, so a 1.8 m figure in the 2nd row (SW) overlaps the
+- (folded by the lead, wave 4: → T33, fx `land@` row, T32) (char-storyteller, tools, low) turnaround grid: cells 85 px apart vertically, so a 1.8 m figure in the 2nd row (SW) overlaps the
   1st row. height_px then reports max 96 and the SW tile shows another facing's hem (`shots/char-storyteller/p3/turnaround.png`).
   (fx, low) `land@staffTip` draws its dust ring at the root, not at the socket. (tools, low) `face_visible` counts every part of
   the face slot (gloves, clock hands share `void`): 27 % for a face that is fully visible.
@@ -3597,6 +3806,13 @@ Evidence: `shots/char-requin/` (cast pack `--raw`), `dir2/`, `r2/z-face-{a,b,c}.
 - (char-opal) Moving legs to the dark slot (value separation from a same-slot tail) costs tone count (dark 7 → 12);
   dropping a slot lift raises that slot's tone count (pebble 6 → 10).
 
+## Archive — cast wave 4 per-agent notes (consolidated by the lead 2026-10-16)
+
+Everything below was written per agent during wave 4 (maxflow, theo-rem, greenting, storyteller: critic r1 notes and
+author r2 notes). The lead merged it the same day: recurring lessons went into the TOPIC sections above (tagged
+"(lead, wave-4 merge)"), the score table into §Score history, shared-code rows into §Module backlog ("after cast wave 4").
+Do not append here — write into the topic sections.
+
 ## critic-theo-rem r1 (art director, 2026-10-16, render-host RTX 4090) — 17/24, not shipped
 Evidence: `shots/critic-theo-rem/` (full `--preset cast` pack, report 117 pass / 18 warn / 0 fail; 8-facing key stills
 `g8-*.png` + ×3 crops `z-g8-*.png`; tracked 1× game GIF frames `z-game1x-track.png`; 25 % line-up `z-lineup25.png`).
@@ -3714,3 +3930,32 @@ stills `g8-*.png`, composites `x/s-act.png`, `x/s-talk.png`, `x/face-*.png`, `x/
 - (Locomotion) Paws carried over the belly draw a dashed grey inner line across it on every contact drawing: hold the upper
   arms out ~22° (rest + an additive `WALK_ARMS` key in walk/run) and cut the gait arm swing ([30, 40] → [18, 26]).
 - (Process) zsh word-split trap hit again (`for c in "qed 17"; set -- $c` → `$3: unbound`): write explicit commands.
+- (char-greenting r9) **A filled talk mouth = a dark plate BURIED in the head at rest and pushed out with `<bone>.p`** (no hide keys needed in other clips: unkeyed `.p` resets to rest = hidden). On greenting the 0.08 × 0.06 plate sunk 0.045 m reads as a filled 3×2 "o" under a 3-bead smile at S/SE/SW (`shots/char-greenting/r9d/zf.png`), where the old `mouth.s` y-stretch of the smile ring drew a hollow dark U merging with the eyes.
+- (char-greenting r9) **Profile eyes on a forward-leaning tube head: place them by (angle round the head axis, elevation on the cap), not by a world direction.** |x| ≈ 0.9 of the radius (φ ±70°) at 14° up the cap gives one 2×2 eye on the side at E and W; φ ±46–64° still put the eye on the snout edge at one profile. Which profile shows which eye: at E you see the char's RIGHT (−x) side. A 0.062 m square bead rasterised as a 3×3 '+' at SE in one talk key; 0.052 m never did.
+- (char-greenting r9) **LegGait `roll` on a tall tube reads as a forward/back lurch at SE (dir 1):** the roll toward the far side tilts the figure right on screen, the roll toward the camera foreshortens it into a squat drawing; A/B roll 8 / 5 / 0 (`shots/char-greenting/r9w-{a,d,b}/clip-game.png`): limp 2.6 / 1.7 / 0.1. At 4 H/s the game plays the RUN index of every LegGait pair (Froude ≫ 0.5) — tune `lean[1]`/`roll[1]`, not [0].
+- (char-greenting r9) **Hips `twist` on a body lying on its side spins it about its own long axis** (lying direction unchanged → lumps at E/W whatever the twist). To lie diagonally, combine fwd + out (`hips [60, 0, 60]`): the lump facings move to NE/SW (2/8 instead of 4/8) (`shots/char-greenting/r9p/z*.png`).
+- (char-greenting r9) A noodle vote arm past `out` 90° swings OVER the head (hidden at 5/8); a diagonal up-out arm (out 66, fwd −6, `.l` 4.6) clears the head at 8/8. A backward tilt (fwd −26) fixes E but hides it at NE (foreshortened onto the back under the elevated camera).
+- (char-greenting r9) `material.merge` of every same-slot bone into `hips` removes the light-grey inner lines (leg roots) but leaves `inner_lines 0` WARN — a per-slot DARK line colour is still the real fix (look backlog, maxflow/cilantro).
+- (maxflow r2, author) **LegGait `maxSwing` races the phase on short-duty waddles.** With duty 0.15 a foot is almost
+  always swinging, so `phi += max(ds/C, dt·(1−β)/maxSwing)` takes the maxSwing floor (default 0.25 s): the live cycle ran
+  0.278 s instead of the authored 0.3 s, AND the start-up cycle skipped drawing k2 — which is the cycle `bake.py` cuts,
+  so the shipped walk row had 3 drawings. `locomotion.maxSwing: 0.5` → live 0.30 s / 1.19 H (v2 0.31 s / 1.2 H) and the
+  bake walk row 4/4. Check `bake/<name>.json` clips.walk.frames == gameSpeed.drawings on every bird/duty ≤ 0.2 member.
+- (maxflow r2) **whiteKeep / whiteKeepLift do not lighten — they only desaturate the hi band / lifted px.** A cream chest
+  in the golden sun copy stayed #957C7E with whiteKeep 0.8 + whiteKeepLift 0.8 (0 px change). `material.slots { cream:
+  { lift: 0.35 } }` lifted it to #D8CCBF (whiteKeepLift then keeps it un-peach); 0.6 renders identical to 0.35.
+- (maxflow r2) **material.merge kills seams between SAME-SLOT parts only when they are on merged bones — move the
+  other-slot detail off the bone first.** Merging head → body would also have merged the cream muzzle into the cream
+  chest; putting muzzle/cheeks/snout on a zero-offset child bone `face` keeps that line while skull/body/arms share an
+  id (neck collar at the back + stitched arm outlines gone, 137 px at idle). The tail → body merge removed the dotted X
+  at N but turned the E profile into one egg — keep a seam where it is the only thing separating two masses.
+- (maxflow r2) **Same-bone same-slot parts never draw a line between them** (a crate lid rim on the crate bone was
+  invisible); put the lid/slat on a child bone to get a real step line.
+- (maxflow r2) **One-arm point on a round body hides at SE or SW** (the arm root is behind the ball on the far side):
+  forward thrust + the chest twisted so the pointing shoulder leads + the other paw forward-low = a paw off the outline
+  at 8/8 (`shots/char-maxflow/r3/pt.png`).
+- (maxflow r2) **Profile check before scoring E/W:** an ear root placed mid-skull (at z ≈ 0) shows its outer face as a
+  dark slab inside the profile that reads as an eye; put ears on the crown/back (z −0.1) and narrow enough that the outer
+  face stays inside the lathe, and make the snout ≥ 4 texels proud with the nose on its tip.
+- (maxflow r2) **Firing a poof one frame before a key change makes strobe 3–4** (poof birth, key, poof step): fire it
+  2 frames early (f42 for the f44 key) so its first step lands on the key frame.

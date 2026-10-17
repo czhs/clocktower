@@ -44,6 +44,111 @@ function motes(room, ctx, name, n, colorOf, size, pos) {
 }
 const hash = (k) => { const h = Math.sin(k * 127.1 + 311.7) * 43758.5453; return h - Math.floor(h); };
 
+// ---- night light pools (night pass 2026-10-16; the critic's "hard-edged coloured discs"): the toon point-light pools are
+// quantised into a few hard bands, so the soft falloff of each lamp / fire / glow is PAINTED instead: a 4x4 Bayer-dithered
+// field of up to 3 tones per source on the floor (+ the back wall), run-merged quads in ONE glow mesh, shown only while
+// the sky is dark (engine.style.sky) and hidden when the back wall is cut away (camera turned to face it).
+//   src = pool(x, z, r, cols [dim, mid, hot], {peak 1, sx 1, sz 1, kind 1 steady | 2 flicker, pow 1.3}) (back wall: x, y)
+//         ring(x, z, R, w, cols, opts): a halo around a circle of radius R, w wide
+//   tops [{in(u, v), y, cols}]: raised surfaces (a pelt, a hearth slab) re-painted in their own lit tones (checked first)
+//   panes [{x0, x1, y0, y1}]: back-wall openings (windows) the wall field leaves alone
+//   tone {at(u, v, cu, cv) -> variant index, mul: [[r, g, b], ...]}: the floor's own pattern (harlequin tiles, flag joints)
+//   kept in the light; flagJoints(ctx, scale) = the kit's ashlar floor joints (kit.js kitBlocks: rows 0.32, blocks 0.58)
+const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5].map((v) => (v + 0.5) / 16);
+const pool = (x, z, r, cols, { peak = 1, sx = 1, sz = 1, kind = 1, pow = 1.3 } = {}) => ({
+  cols, kind, at: (u, v) => { const d = Math.hypot((u - x) / sx, (v - z) / sz) / r; return d >= 1 ? 0 : peak * (1 - d) ** pow; },
+});
+const ring = (x, z, R, w, cols, { peak = 1, kind = 1, pow = 1.3 } = {}) => ({
+  cols, kind, at: (u, v) => { const d = Math.abs(Math.hypot(u - x, v - z) - R) / w; return d >= 1 ? 0 : peak * (1 - d) ** pow; },
+});
+function flagJoints(ctx, sc = 1.7) {
+  const ox = 200 + 30 * ctx.index + 0.0047 + 0.0037, oz = 20 + 0.0071, CH = 0.32, BW = 0.58;   // index.js originOf + the pattern phase
+  return {
+    mul: [[1, 1, 1], [0.76, 0.76, 0.76]],
+    at: (u, v, cu, cv) => {
+      const X = (ox + u) / sc, Y = (-(oz + v) + 0.0061) / sc, hy = cv / 2 / sc, hx = cu / 2 / sc;
+      if (Math.floor((Y - hy) / CH) !== Math.floor((Y + hy) / CH)) return 1;
+      const xs = X + (((Math.floor(Y / CH) % 2) + 2) % 2) * 0.5 * BW;
+      return Math.floor((xs - hx) / BW) !== Math.floor((xs + hx) / BW) ? 1 : 0;
+    },
+  };
+}
+function lightPools(room, ctx, name, { floor = [], back = [], y = 0.006, raise = [], holes = [], seams = null, tops = [], panes = [], tone = null, extra = null, cell = 3, band = 0.5, dark = 0.1 } = {}) {
+  const { W, D, H, T } = room, BZ = -D / 2;
+  // the dither cell = `cell` texels of the room's own camera (index.js buildInterior: viewHeight over 360 rows); each band
+  // step is dithered only over the middle `band` of its range (solid rings between: long merged runs, few triangles)
+  const sF = 0.866 * 0.5 - 0.5 * (D / 2 + T + 0.1), sB = 0.866 * (H + 0.2) - 0.5 * (-D / 2 - T);
+  const vh = Math.max((sB - sF) * 1.1, ((W + 2 * T + 0.6) / (16 / 9)) * 1.04), tx = (cell * vh) / 360;
+  const pb = new Builder(room.engine, { name });
+  const solids = room.colliders.filter((c) => c.kind !== 'wall');
+  const inR = (r, u, v, e = 0) => u > r.x0 + e && u < r.x1 - e && v > r.z0 + e && v < r.z1 - e;
+  const under = (u, v) => solids.some((c) => inR(c, u, v, 0.04)) || holes.some((r) => (typeof r === 'function' ? r(u, v) : inR(r, u, v)));
+  // seams {z: pitch, x: pitch (0 = none), x0, z0}: the floor's plank / flag joints, one band darker (the lit floor keeps
+  // its pattern instead of turning into a flat painted rug)
+  const seam = (u, v, cu, cv) => !!seams && ((seams.z > 0 && Math.abs(((v - (seams.z0 ?? 0)) % seams.z + seams.z) % seams.z) < cv * 0.999)
+    || (seams.x > 0 && Math.abs(((u - (seams.x0 ?? 0)) % seams.x + seams.x) % seams.x) < cu * 0.999));
+  let quads = 0;
+  const field = (srcs, u0, u1, v0, v1, cu, cv, skip, emit, joints = false) => {
+    for (let j = 0; v0 + (j + 0.5) * cv < v1; j++) {
+      const v = v0 + (j + 0.5) * cv;
+      let run = null;
+      const flush = () => { if (run) { emit(run.a, run.b, v - cv / 2, v + cv / 2, run.s, run.lev, run.vk); quads++; run = null; } };
+      for (let i = 0; u0 + (i + 0.5) * cu < u1; i++) {
+        const u = u0 + (i + 0.5) * cu;
+        let best = 0, bs = null, sum = 0;
+        for (const s of srcs) { const val = s.at(u, v); sum += val; if (val > best) { best = val; bs = s; } }
+        let lev = 0;
+        const top = tops.find((q) => q.in(u, v)) ?? null;
+        if (bs && (top || !skip(u, v))) {
+          const L = Math.min(sum, 1) * 3;
+          const f = Math.min(1, Math.max(0, (L - Math.floor(L) - 0.5 + band / 2) / band));
+          lev = Math.min(3, Math.floor(L) + (f > BAYER[(j & 3) * 4 + (i & 3)] ? 1 : 0));
+          if (joints && !top && lev && seam(u, v, cu, cv)) lev--;
+        }
+        const ss = top && lev ? (top.src ??= { cols: top.cols, kind: top.kind ?? 1, y: top.y }) : bs;
+        const vk = joints && !top && tone ? tone.at(u, v, cu, cv) : 0;
+        if (lev && run && run.s === ss && run.lev === lev && run.vk === vk) run.b = u + cu / 2;
+        else { flush(); if (lev) run = { a: u - cu / 2, b: u + cu / 2, s: ss, lev, vk }; }
+      }
+      flush();
+    }
+  };
+  const tinted = new Map();
+  const colOf = (c, vk) => {
+    if (!vk || !tone) return c;
+    const key = c + vk;
+    if (!tinted.has(key)) { const m = tone.mul[vk], q = new THREE.Color(c); tinted.set(key, new THREE.Color(q.r * m[0], q.g * m[1], q.b * m[2]).getHex()); }
+    return tinted.get(key);
+  };
+  const opt = (s, lev, vk = 0) => ({ tones: 'glass', layer: 'glass', glow: colOf(s.cols[lev - 1], vk), glowKind: s.kind });
+  if (floor.length) {
+    const yAt = (u, v) => { for (const r of raise) if (inR(r, u, v)) return r.y; return y; };
+    field(floor, -W / 2, W / 2, BZ, D / 2, tx, tx * 2, under, (a, b, z0, z1, s, lev, vk) => {
+      const yy = s.y ?? yAt((a + b) / 2, (z0 + z1) / 2);
+      pb.tris([a, yy, z0, a, yy, z1, b, yy, z1, a, yy, z0, b, yy, z1, b, yy, z0], opt(s, lev, vk));
+    }, true);
+  }
+  if (back.length) {
+    const z = BZ + 0.004;
+    const t0 = tops; tops = [];
+    field(back, -W / 2, W / 2, 0.02, H, tx, tx / 0.866, (u, v) => panes.some((q) => u > q.x0 && u < q.x1 && v > q.y0 && v < q.y1), (a, b, y0, y1, s, lev) => {
+      pb.tris([a, y0, z, b, y0, z, b, y1, z, a, y0, z, b, y1, z, a, y1, z], opt(s, lev));
+    });
+    tops = t0;
+  }
+  extra?.(pb, tx);                                              // more night-only glow (pb: room-local, 'glass' layer)
+  const grp = pb.build({ name, castShadow: false });
+  grp.traverse((o) => { if (o.isMesh) { o.material = ctx.kit.interiorGlowMaterial(room.engine); o.castShadow = false; o.receiveShadow = false; } });
+  const E = room.engine;
+  const update = () => {
+    const c = E.style?.sky, lum = c?.isColor ? 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b : (ctx.tod === 'night' ? 0 : 1);
+    const yaw = E.camera?.targetYaw ?? E.camera?.yaw ?? 0;
+    grp.visible = lum < dark && Math.cos(yaw) > -0.3;
+  };
+  update();
+  return { group: grp, update, quads };
+}
+
 export default function build(room, ctx) {
   const { CLOTH, TOWN_PALETTE: TP, paintRamp } = ctx;
   const W = room.W, D = room.D, H = room.H, BZ = -D / 2;
@@ -112,8 +217,8 @@ export default function build(room, ctx) {
     if (Math.abs(x) < 1.0 && z > 1.2) continue;
     const r = 0.22 + hash(i + 2) * 0.2;
     b.push({ at: [x, 0, z], ry: a, s: [1, 1, 0.6] });
-    b.cylinder(r, r, 0.012, { at: [0, 0, 0], tones: 'moss', segments: 8, tint: [0.95, 1, 1.05][i % 3] });
-    b.cylinder(r * 0.55, r * 0.55, 0.02, { at: [r * 0.3, 0, 0.05], tones: 'mossTuft', segments: 8 });
+    b.cylinder(r, r, 0.012, { at: [0, 0, 0], tones: 'moss', segments: 7, tint: [0.95, 1, 1.05][i % 3] });
+    b.cylinder(r * 0.55, r * 0.55, 0.02, { at: [r * 0.3, 0, 0.05], tones: 'mossTuft', segments: 6 });
     b.pop();
     b.box(0.07, 0.04, 0.06, { at: [x + r + 0.1, 0, z + 0.05], ry: a, tones: 'stone', pattern: 'none' });
   }
@@ -126,8 +231,8 @@ export default function build(room, ctx) {
       const ry = Math.atan2(Cx - x, Cz - z), r = 0.12 + hash(i + 11) * 0.1;
       b.push({ at: [x, y, z], ry });
       g.push({ at: [x, y, z], ry });
-      g.cylinder(r, r * 0.8, 0.05, { at: [0, 0, 0.02], tones: 'glass', layer: 'glass', glow: color, glowKind: 2, segments: 8 });
-      b.cylinder(r * 0.7, r * 0.5, 0.04, { at: [0, -0.04, 0.0], tones: 'cream', segments: 8 });
+      g.cylinder(r, r * 0.8, 0.05, { at: [0, 0, 0.02], tones: 'glass', layer: 'glass', glow: color, glowKind: 2, segments: 6 });
+      b.cylinder(r * 0.7, r * 0.5, 0.04, { at: [0, -0.04, 0.0], tones: 'cream', segments: 6 });
       g.pop(); b.pop();
     }
   };
@@ -146,7 +251,7 @@ export default function build(room, ctx) {
     for (let k = 0; k < 3; k++) {
       const x = cx + (hash(i * 3 + k + 200) - 0.5) * 0.3, z = cz + (hash(i * 3 + k + 230) - 0.5) * 0.24, s = 0.6 + hash(i * 3 + k + 260) * 0.6;
       b.box(0.025 * s, 0.1 * s, 0.025 * s, { at: [x, 0, z], tones: 'cream', pattern: 'none' });
-      g.cylinder(0.065 * s, 0.025 * s, 0.05 * s, { at: [x, 0.1 * s, z], tones: 'glass', layer: 'glass', glow: c, glowKind: 2, segments: 8 });
+      g.cylinder(0.065 * s, 0.025 * s, 0.05 * s, { at: [x, 0.1 * s, z], tones: 'glass', layer: 'glass', glow: c, glowKind: 2, segments: 6 });
     }
   });
   room.light({ pos: [-2.7, 1.0, BZ + 1.15], color: CYAN, r: 1.15, kind: 'fire', intensity: 1.0 });
@@ -285,6 +390,29 @@ export default function build(room, ctx) {
     return [x0 + Math.sin(t * 0.5 + k) * 0.25, 0.25 + u * span, z0 + Math.cos(t * 0.4 + k * 1.7) * 0.2, Math.min(1, u * 6, (1 - u) * 6)];
   });
 
+  // ---- night: the burrow glows from below. Dithered halos on the packed earth: cyan at the left bank's fungi, pink at
+  // the right, a rose ring around the fairy ring (its middle, with the shoe, left dark: slightly wrong), gold spilling
+  // from the tiny door, beetle-green under the lantern; specks of glowing spore-dust on the floor
+  const CY = ['#4C7C88', '#58AEB2', '#8EE6DA'], PK = ['#7C5A78', '#B26C9C', '#F29CCC'], RS = ['#84506A', '#C25E86', '#FF8AB0'];
+  const GD = ['#7C6446', '#B48C4C', '#F4C674'], BG = ['#5C7A5A', '#82AA6A', '#BCEA92'];
+  const night = lightPools(room, ctx, 'house-7-night', {
+    floor: [
+      pool(-2.75, -0.75, 1.75, CY, { peak: 1.0, sz: 1.25 }), pool(-2.2, 1.1, 0.9, CY, { peak: 0.55 }),
+      pool(2.9, -0.45, 1.5, PK, { peak: 0.9, sz: 1.3 }), pool(1.0, 1.95, 0.75, PK, { peak: 0.5 }),
+      ring(RX, RZ, RR, 0.42, RS, { peak: 1.0, kind: 2 }),
+      pool(2.2, BZ + 0.45, 0.85, GD, { peak: 0.95, sx: 0.75, kind: 2 }),
+      pool(LX, LZ + 0.1, 0.75, BG, { peak: 0.42 }),
+    ],
+    back: [pool(2.2, 0.32, 0.6, GD, { peak: 0.85 })],
+    extra: (pb, tx) => {
+      for (let i = 0; i < 46; i++) {
+        const x = (hash(i + 400) - 0.5) * (W - 1.4), z = (hash(i + 450) - 0.5) * (D - 1.0), c = [CYAN, '#9AF0C8', PINK][i % 3];
+        if (Math.hypot(x - QX, z - QZ) < 0.6) continue;
+        pb.tris([x, 0.008, z, x, 0.008, z + 2 * tx, x + tx, 0.008, z + 2 * tx, x, 0.008, z, x + tx, 0.008, z + 2 * tx, x + tx, 0.008, z], { tones: 'glass', layer: 'glass', glow: c, glowKind: 2 });
+      }
+    },
+  });
+
   let leftWallSoft = false;
   room.spot('ring', RX + 0.9, RZ, -Math.PI / 2);
   room.spot('table', QX, QZ + 1.15, Math.PI);
@@ -293,7 +421,7 @@ export default function build(room, ctx) {
   return {
     bed: { x: BX, z: BZc - 0.4, y: 0.46, facing: 0 },
     visit: { x: BX - 0.85, z: BZc + 0.25, facing: Math.PI / 2 },
-    extras: [spores.group],
+    extras: [spores.group, night.group],
     update(t) {
       // the burrow's left wall throws no hard noon shadow across the floor (the round banks shade the corners instead):
       // once the room is attached, its full-height left wall stops casting
@@ -302,6 +430,7 @@ export default function build(room, ctx) {
         spores.group.parent.getObjectByName(`${room.id}-wall-left`)?.traverse((o) => { if (o.isMesh) o.castShadow = false; });
       }
       spores.update(t);
+      night.update();
     },
   };
 }

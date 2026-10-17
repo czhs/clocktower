@@ -5,7 +5,8 @@
 // No hearth (a mill fears fire more than anything): the light is SUNBEAMS slanting from two high windows across the
 // floor, with flour drifting in them (a shadow-only roof far up the sun ray leaves only the two beams), and at night two
 // lanterns. The great PIT WHEEL turns on the back wall (driven by the water wheel outside), its shaft runs out over the
-// stones, the runner stone turns: the mill's rumble. At night the beams close (no moonlit patches): two lanterns only.
+// stones, the runner stone turns: the mill's rumble. At night the beams close: honey lamplight pools and the wheel
+// silhouetted on the lamp-lit back wall, a thin moon spill on the flour bin where the gear glints.
 // Story: ordinary hiding the key clue. Front right, in a flour bin heaped white, stands, edge-on and half buried, the brass gear the
 // clock tower lost on the long night - too big and too fine for any mill - with the RED SIGIL (the eye-in-a-clock)
 // scratched on its face. The miller weighs flour on his scales, tallies sacks on the wall, and has not said a word.
@@ -14,10 +15,18 @@ import * as THREE from 'three';
 import { Builder } from '../kit.js';
 
 export const ROOM = { w: 9, d: 6, h: 3.3, wall: 'planks', pal: 2, floor: 'boards' };
+/** Night look (docs/DEMO.md 4.3 nightAmbient): warm wood, lantern honey, flour haze. */
+const NIGHT_AMBIENT = { lit: '#F0D8A8', sh: '#AC947C', k: 0.65, gain: 1.25, mist: 0.45, litK: 0.5 };
 
 // ---------------------------------------------------------------------------------------------- local helpers
-/** Animated specks: n small boxes in ONE mesh, moved per particle (stepped 8 fps, pure function of t). */
-function particles(room, ctx, { name, n, make, path, glow = true }) {
+/**
+ * Animated specks: n small boxes in ONE mesh, moved per particle (stepped 8 fps, pure function of t). `night(b, layer)`
+ * adds STATIC night-only geometry to the same mesh (soft light pools, glow decals): it is drawn only while the room is
+ * dark (drawRange, no extra draw call). dayParticles false: the specks themselves only show in the dark too.
+ * nightColor(i) -> hex | null: in the dark speck i glows steadily in that colour (e.g. window-kind ripples that would
+ * otherwise go black at night), restored by day.
+ */
+function particles(room, ctx, { name, n, make, path, glow = true, night = null, dayParticles = true, nightColor = null }) {
   const b = new Builder(room.engine, { name });
   const layer = glow ? 'glass' : 'soft', ranges = [];
   for (let i = 0; i < n; i++) {
@@ -25,15 +34,35 @@ function particles(room, ctx, { name, n, make, path, glow = true }) {
     make(b, i, layer);
     ranges.push([a, b.layers[layer].pos.length / 3]);
   }
+  const nDay = (b.layers[layer]?.pos.length ?? 0) / 3;
+  if (night) night(b, layer);
   const grp = b.build({ name, castShadow: false, receiveShadow: false });
   const mesh = grp.children[0];
   if (glow) mesh.material = ctx.kit.interiorGlowMaterial(room.engine);
   mesh.frustumCulled = false;
-  const pos = mesh.geometry.getAttribute('position'), base = pos.array.slice();
-  let last = -1;
+  const pos = mesh.geometry.getAttribute('position'), base = pos.array.slice(), nAll = pos.count;
+  const ga = glow && nightColor ? mesh.geometry.getAttribute('aGlow') : null, gDay = ga?.array.slice();
+  const recolor = (dark) => {
+    if (!ga) return;
+    const c = new THREE.Color();
+    for (let i = 0; i < n; i++) {
+      const hex = dark ? nightColor(i) : null;
+      if (hex) c.set(hex);
+      for (let v = ranges[i][0]; v < ranges[i][1]; v++) {
+        if (hex) { ga.array[v * 4] = c.r; ga.array[v * 4 + 1] = c.g; ga.array[v * 4 + 2] = c.b; ga.array[v * 4 + 3] = 1; }
+        else for (let q = 0; q < 4; q++) ga.array[v * 4 + q] = gDay[v * 4 + q];
+      }
+    }
+    ga.needsUpdate = true;
+  };
+  let last = -1, lastDark = null;
   return {
     group: grp,
     update(t) {
+      if (night || ga || !dayParticles) {
+        const dark = isDark(room);
+        if (dark !== lastDark) { mesh.geometry.setDrawRange(0, dark ? nAll : dayParticles ? nDay : 0); recolor(dark); lastDark = dark; }
+      }
       const k = Math.floor(t * 8) / 8;
       if (k === last) return;
       last = k;
@@ -46,6 +75,48 @@ function particles(room, ctx, { name, n, make, path, glow = true }) {
       pos.needsUpdate = true;
     },
   };
+}
+/** The room is dark: the sun is down or the town light has turned to moonlight (the same test as sunMask's lid). */
+function isDark(room) {
+  const sun = room.engine.uniforms?.uSunDir?.value, sunC = room.engine.uniforms?.uSunColor?.value;
+  return !sun || sun.y < 0.08 || (sunC && sunC.b > sunC.r + 0.02);
+}
+const BAYER4 = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+/**
+ * A soft light pool as an ordered-dither glow decal (night-only geometry for particles({night})): concentric bands of
+ * `cols` (dim -> bright) that dissolve into the surface through a 4x4 Bayer pattern instead of ending in a hard disc.
+ * plane 'floor' (y up) or 'back' | 'left' | 'right' (the wall's inner face); (x, y, z) = the centre, r / rv the radii
+ * along the plane's u (x, or z on side walls) and v (z on the floor, y on walls). peak 0..1 scales the brightness,
+ * fall the falloff exponent, cell the dither cell (u metres; v is stretched for the 30 deg camera). keep(u, v) clips.
+ * stipple: a hashed (random-looking) threshold instead of the Bayer matrix - mist and haze, not light.
+ */
+function ditherPool(b, layer, { x = 0, y = 0.006, z = 0, r, rv = r, cols, peak = 1, fall = 1.6, cell = 0.036, plane = 'floor', kind = 1, keep = null, stipple = false, room }) {
+  const cu = cell, cv = plane === 'floor' ? cell * 2 : cell * 1.15;
+  const U = plane === 'floor' ? [1, 0, 0] : plane === 'back' ? [1, 0, 0] : plane === 'left' ? [0, 0, -1] : [0, 0, 1];
+  const V = plane === 'floor' ? [0, 0, -1] : [0, 1, 0];
+  const o = plane === 'floor' ? [x, y, z] : plane === 'back' ? [x, y, -room.D / 2 + 0.012] : plane === 'left' ? [-room.W / 2 + 0.012, y, z] : [room.W / 2 - 0.012, y, z];
+  const n = cols.length, ni = Math.ceil(r / cu), nj = Math.ceil(rv / cv);
+  const P = (u, v) => [o[0] + U[0] * u + V[0] * v, o[1] + U[1] * u + V[1] * v, o[2] + U[2] * u + V[2] * v];
+  const quad = (u0, u1, v0, v1, lvl) => b.tris([...P(u0, v0), ...P(u1, v0), ...P(u1, v1), ...P(u0, v0), ...P(u1, v1), ...P(u0, v1)],
+    { tones: 'glass', layer, glow: cols[lvl], glowKind: kind });
+  for (let j = -nj; j < nj; j++) {
+    let run = -1, runLvl = -1;
+    for (let i = -ni; i <= ni; i++) {
+      let lvl = -1;
+      if (i < ni) {
+        const u = (i + 0.5) * cu, v = (j + 0.5) * cv, d2 = (u / r) ** 2 + (v / rv) ** 2;
+        if (d2 < 1 && (!keep || keep(u, v))) {
+          const I = peak * Math.pow(1 - d2, fall) * n, lo = Math.floor(I);
+          const th = stipple ? (((Math.sin(i * 12.9898 + j * 78.233) * 43758.5453) % 1) + 1) % 1 : (BAYER4[((j & 3) << 2) | (i & 3)] + 0.5) / 16;
+          lvl = Math.min(n, lo + (I - lo > th ? 1 : 0)) - 1;
+        }
+      }
+      if (lvl !== runLvl) {
+        if (runLvl >= 0) quad(run * cu, i * cu, j * cv, (j + 1) * cv, runLvl);
+        run = i; runLvl = lvl;
+      }
+    }
+  }
 }
 /**
  * Shadow-only ceiling: a plane high up the sun ray (off screen) with holes that let sun onto the floor. The holes are
@@ -223,7 +294,7 @@ export default function build(room, ctx) {
     b.cylinder(0.17, 0.04, 0.1, { at: [x, y + 0.24, z], tones: 'iron', segments: 4, ry: Math.PI / 4 });
     for (const [sx2, sz2] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) b.box(0.025, 0.2, 0.025, { at: [x + sx2 * 0.09, y + 0.04, z + sz2 * 0.09], tones: 'iron' });
     flames.push([x, y + 0.05, z]);
-    room.light({ pos: [x, y - 0.1, z], color: GLOW.candle, r, kind: 'lantern', intensity: 1.3 });
+    room.light({ pos: [x, y - 0.1, z], color: GLOW.candle, r: Math.min(r, 1.0), kind: 'lantern', intensity: 0.75 });   // the pool is a decal
   };
 
   // ---- the miller's counter with the SCALES (pans, weights), a lantern over it
@@ -309,6 +380,8 @@ export default function build(room, ctx) {
     room.b.box(fw, 0.006, fd, { at: [fx, 0.001, fz], ry, tones: flour, layer: 'soft', tint: 0.96 });
   }
   lantern(1.2, 1.6, 2.25, 3.0);
+  // the miller's night lamp on a nail between the pit wheel and the right window: at night it backlights the wheel
+  Wl.sconce(room, { wall: 'back', x: 1.95, y: 1.5, r: 1.0 });
   F.doormat(room, { x: 0, z: D / 2 - 0.4 });
 
   // ---- daylight: only two slanting beams from the high windows reach the floor
@@ -316,8 +389,24 @@ export default function build(room, ctx) {
   const mask = sunMask(room, { name: 'house-14-roof', cell: 0.1, open: (x, z) => beam(x, z, -1.75, 0.45) || beam(x, z, 1.2, 0.85) });
 
   // ---- ambiance: flour drifting in the two beams (window-kind glow: bright by day, gone at night)
+  // NIGHT (same mesh): the beams close; the mill is warm wood in the honey light of its lamps - a pool round the
+  // scales and the counter, another at the foot of the hurst steps, the night lamp on the back wall throwing the
+  // great pit wheel into silhouette against honey-lit boards - with the day's flour still hanging in the air
+  // (the motes turn a dim lantern-gold). Only one cold thing: a thin moon spill from the high right window lands on
+  // the flour bin, and the buried gear's rim glints in it.
+  const HONEY = ['#4a3a28', '#7a5e3a', '#b08a52', '#dcbc80'];
+  const night = (b, layer) => {
+    ditherPool(b, layer, { room, x: -2.35, z: 1.45, y: 0.03, r: 1.55, rv: 1.05, cols: HONEY, peak: 0.85, fall: 1.4, cell: 0.05 });
+    ditherPool(b, layer, { room, x: 1.15, z: 1.75, y: 0.03, r: 1.45, rv: 0.9, cols: HONEY, peak: 0.8, fall: 1.4, cell: 0.05 });
+    ditherPool(b, layer, { room, x: 0.45, z: hz1 - 0.15, y: hy + 0.01, r: 1.25, rv: 0.6, cols: HONEY.slice(0, 3), peak: 0.7, cell: 0.05,
+      keep: (u, v) => -v + hz1 - 0.15 < hz1 - 0.02 });                                                // up over the hurst's front edge
+    ditherPool(b, layer, { room, plane: 'back', x: 1.35, y: 1.55, r: 1.7, rv: 1.15, cols: ['#6a5a44', '#94785a', '#c09c6c'], peak: 0.85, fall: 1.3, cell: 0.05,
+      keep: (u, v) => Math.abs(u - 1.4) > 0.45 || Math.abs(v - 0.85) > 0.5 });                       // honey on the boards, the wheel against it
+    ditherPool(b, layer, { room, x: fbx + 0.2, z: fbz - 0.25, y: 0.84, r: 0.75, rv: 0.45, cols: ['#7a90a8', '#a8c0d4', '#d0e0ec'], peak: 0.8, cell: 0.04 });
+  };
   const motes = particles(room, ctx, {
-    name: 'house-14-flour', n: 26 + 1 + flames.length,
+    name: 'house-14-flour', n: 26 + 1 + flames.length, night,
+    nightColor: (i) => (i < 26 ? (i % 3 ? '#7A6A4E' : '#5E5444') : i === 26 ? '#F4DC80' : null),
     make: (b, i, layer) => (i === 26
       ? b.box(0.06, 0.06, 0.04, { at: [fbx - 0.12, 1.32, fbz - 0.29], tones: 'glass', layer, glow: TP.glow[0], glowKind: 2 })   // a glint on the gear's rim
       : i > 26 ? b.box(0.15, 0.17, 0.15, { at: flames[i - 27], tones: 'glass', layer, glow: GLOW.candle, glowKind: 2 })        // lantern flames
@@ -330,6 +419,9 @@ export default function build(room, ctx) {
     },
   });
 
+  // point lights only warm the props right by them (short, gentle: the pools are the dithered decals above)
+  for (const l of room.lightList) { l.r = Math.min(l.r, 1.0); l.intensity = Math.min(l.intensity, 0.75); }
+
   room.spot('millstones', mx - 0.3, hz1 + 0.8, Math.PI);
   room.spot('bin', fbx - 0.2, fbz - 0.75, 0);
   room.spot('scales', -2.7, 1.75, Math.PI);
@@ -341,6 +433,7 @@ export default function build(room, ctx) {
     bed: { x: bx, z: bz - 0.6, y: 0.55, facing: 0 },
     visit: { x: bx + 1.2, z: bz + 0.95, facing: -Math.PI / 2 },
     extras: [mask.group, runnerP, wheelP, motes.group],
+    nightAmbient: NIGHT_AMBIENT,   // the demo's night look (time.js ROOM_NIGHT shape): warm wood, lantern honey, flour haze
     update(t) {
       mask.update(); motes.update(t);
       const k = Math.floor(t * 6) / 6;

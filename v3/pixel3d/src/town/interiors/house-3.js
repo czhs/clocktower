@@ -13,10 +13,15 @@
 // oak dado; the CANDLES are the key light day and night (small warm 'fire' pools at the lectern, the coffin-bench and
 // the desk), pale grey smoke curling up from them; solemn, gothic.
 import * as THREE from 'three';
-import { bareShell, polyWalls, polyFloor, blockOutside, inPoly, onSeg, segPoint, motes, at, sunMask } from './house-0.js';
+import { bareShell, polyWalls, polyFloor, blockOutside, inPoly, onSeg, segPoint, motes, at, sunMask, ditherCanvas, ditherWall } from './house-0.js';
 
 /** Room size / walls (index.js reads ROOM before build): a wide, shallow nave; the apse is part of the depth. */
-export const ROOM = { w: 10, d: 6.0, h: 3.6, wall: 'stone', pal: 3, floor: 'flags' };
+export const ROOM = {
+  w: 10, d: 6.0, h: 3.6, wall: 'stone', pal: 3, floor: 'flags',
+  // the demo's room night look (docs/DEMO.md 4.3, once index.js passes it through): candle-warm lit faces, a deep
+  // violet-rose fill, almost no mist (the smoke is the room's own)
+  nightAmbient: { lit: '#E8A878', sh: '#7C6488', k: 0.7, litK: 0.45, gain: 1.0, mist: 0.2 },
+};
 
 export default function build(room, ctx) {
   const { FURNITURE: F, CLOTH, GLOW, TOWN_PALETTE: TP, paintRamp } = ctx;
@@ -130,7 +135,11 @@ export default function build(room, ctx) {
   pricket(-0.72, -2.3, 1.15); pricket(0.72, -2.3, 1.15);
   room.solidAt(-0.72, -2.3, 0.3, 0.3); room.solidAt(0.72, -2.3, 0.3, 0.3);
   // the key light, day and night: the two prickets' pool round the lectern ('fire' = always lit; no violet window light)
-  room.light({ pos: [0, 1.25, -1.9], color: CANDLE, r: 2.0, kind: 'fire', intensity: 1.9 });
+  room.light({ pos: [0, 1.45, -2.55], color: CANDLE, r: 1.75, kind: 'fire', intensity: 1.45 });
+  // (deep in the apse, behind the plane of the nave's back walls: those face away from it and stay dark, so the warm
+  //  pool fills the apse and ends at its columns and arch instead of painting a disc across the nave)
+  // the ledger itself, lit by the prickets: a small light just above the open book (reaches neither floor nor walls)
+  room.light({ pos: [0, 1.62, -1.95], color: CANDLE, r: 0.75, kind: 'fire', intensity: 1.3 });
 
   // ---- grave-slabs in the floor (pale ledger stones with an incised cross and a border)
   for (const [sx, sz, ry] of [[-2.9, 0.2, 0], [-1.25, 0.9, 0], [2.6, 0.95, 0]]) {
@@ -157,7 +166,7 @@ export default function build(room, ctx) {
     for (const sx of [-0.7, 0.7]) b.box(0.16, 0.06, 0.06, { at: [sx, 0.32, 0.31], tones: 'iron' });  // handles
   });
   room.solidAt(cbx, cbz, 2.1, 0.66, 0, 'coffin');
-  room.light({ pos: [cbx + 0.55, 0.9, cbz], color: CANDLE, r: 1.45, kind: 'fire', intensity: 1.5 });
+  room.light({ pos: [cbx + 0.55, 0.85, cbz + 0.1], color: CANDLE, r: 1.05, kind: 'fire', intensity: 1.2 });
   at(room, { x: -4.6, z: 0.6, rz: 0.12 }, (b) => {                                              // the spade
     b.box(0.05, 1.2, 0.05, { at: [0, 0.3, 0], tones: 'plank' });
     b.box(0.16, 0.05, 0.05, { at: [0, 1.5, 0], tones: 'plank' });
@@ -206,21 +215,45 @@ export default function build(room, ctx) {
       g.box(0.06, 0.07, 0.06, { at: [0.45, top + 0.165, 0.15], tones: 'glass', layer: 'glass', glow: GLOW.candle, glowKind: 2 });
     },
   });
-  room.light({ pos: [dx + 0.45, 1.1, dz + 0.15], color: CANDLE, r: 1.45, kind: 'fire', intensity: 1.5 });
+  room.light({ pos: [dx + 0.45, 1.05, dz + 0.2], color: CANDLE, r: 1.05, kind: 'fire', intensity: 1.2 });
   F.chair(room, { x: dx, z: dz - 0.7, ry: 0 });
   // a candelabra by the left column, the lantern on its chain inside the door, a chest of parish rolls
   F.candelabra(room, { x: -2.1, z: -1.35 });
-  Object.assign(room.lightList[room.lightList.length - 1], { color: CANDLE, r: 1.6, intensity: 0.95 });   // a small pool
-  F.hangingLantern(room, { x: -1.1, z: 2.05, y: 2.0, r: 1.8, intensity: 0.85 });
+  room.lightList.pop();   // its own point light painted a disc on the nave wall: the dithered pool + the niche glow carry it
+  F.hangingLantern(room, { x: -1.1, z: 2.05, y: 2.0, r: 1.2, intensity: 0.8 });
   F.chest(room, { x: 4.55, z: 1.15, ry: -Math.PI / 2 });
   F.rug(room, { x: 0, z: 0.0, w: 2.2, d: 1.5, tones: paintRamp('#4a1c28', { lightness: 0.22 }), border: PLUM });
   F.doormat(room, { x: 0, z: Z - 0.4 });
 
   // ---- smoke curling up from the candles: pale grey wisps (a faint self-lit grey, so they read pale on the dark
-  // stone instead of as dark specks), rising, swaying, shrinking
+  // stone instead of as dark specks), rising, swaying, shrinking. In the same mesh, the CANDLELIGHT itself (day and
+  // night: the shutters keep the sun out): dithered amber pools - round the lectern and up the apse, in each niche,
+  // under the coffin-bench candle, the desk, the candelabra and the door lantern - soft islands in the violet dark
+  const inside = (u, w) => inPoly(poly, u, w);
   const smoke = motes(room, {
     n: 26, seed: 33, sources: [[-0.72, -2.3, 1.68], [0.72, -2.3, 1.68], [cbx + 0.55, cbz, 0.78], [dx + 0.45, dz + 0.15, 1.02]], jitter: 0.05,
     box: { y0: 0, y1: 1.3 }, size: 0.045, glow: '#8E8A96', mode: 'steam', speed: 0.16, sway: 0.06, name: 'smoke',
+    still: (b) => {
+      const fl = ditherCanvas({ plane: 'floor' });
+      fl.pool({ x: 0, v: -2.05, r: 1.45, r2: 1.05, color: '#8A5C48', inner: '#C88A5A', peak: 0.5, power: 1.1, clip: inside });   // the lectern + prickets
+      fl.pool({ x: cbx + 0.5, v: cbz + 0.15, r: 0.9, r2: 0.65, color: '#8A5C48', inner: '#C08458', peak: 0.38, clip: inside });   // the coffin-bench candle
+      fl.pool({ x: dx + 0.45, v: dz + 0.3, r: 0.85, r2: 0.6, color: '#8A5C48', inner: '#C08458', peak: 0.36, clip: inside });   // the desk
+      fl.pool({ x: -2.1, v: -1.25, r: 0.85, r2: 0.6, color: '#7E5646', inner: '#B07A52', peak: 0.34, clip: inside });   // the candelabra
+      fl.pool({ x: -1.1, v: 2.15, r: 0.7, r2: 0.5, color: '#7E5646', inner: '#B07A52', peak: 0.3, clip: inside });   // the door lantern
+      fl.draw(b);
+      // up the apse's back wall between the prickets, and a halo in every niche
+      ditherWall(b, apseBack, [{ x: 0, v: 1.35, r: 1.05, r2: 0.95, color: '#7A4C46', inner: '#B07058', peak: 0.42, power: 1.1 }], { z: 0.01 });
+      for (const [sg, u, w] of niches) ditherWall(b, sg, [{ x: u + (w ? 0.2 : 0), v: 1.7, r: 0.36, r2: 0.42, color: '#8A5444', inner: '#C8845A', peak: 0.55, power: 1.0 }], { z: 0.02 });
+      ditherWall(b, navL, [{ x: -2.1 - navL.mid[0], v: 1.45, r: 0.6, r2: 0.55, color: '#6E4A48', inner: '#9A6656', peak: 0.3 }], { z: 0.01 });
+    },
+    night: (b) => {
+      // a faint violet moon in the two lancets (the panes alone go black at night)
+      for (const [sg, u, w, h] of [[apseBack, 0, 0.36, 1.1], [navR, 3.45 - navR.mid[0], 0.34, 0.95]]) {
+        b.push({ at: [sg.mid[0], 0, sg.mid[1]], ry: sg.ry });
+        b.box(w, h, 0.004, { at: [u, 1.6, -T * 0.55 + 0.016], tones: 'glass', layer: 'glass', glow: '#4C4278', glowKind: 1 });
+        b.pop();
+      }
+    },
   });
   // ---- the sun stays out: a shadow-only mask over the whole room (the lancets only glow)
   const mask = sunMask(room, { name: 'house-3-shutter', cell: 0.5, margin: 14 });

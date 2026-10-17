@@ -1,0 +1,148 @@
+charpack duelist  runtime=character  plan=biped  vh=10  dir=1  only=all  37.7 s
+host <your-machine>  gpu ANGLE (NVIDIA, Vulkan 1.3.242 (NVIDIA NVIDIA GeForce RTX 4090 (0x00002684)), NVIDIA)
+
+check                    status value                              note
+height_px                PASS  S 58 (min 47 max 60)               target 45-62 at vh 10 (bodyPlan biped)
+head_frac                WARN  0.409                              0.24-0.36 of height (head joint→top), plan biped
+presence                 PASS  107% (687 px, w 24-65)             silhouette area at S vs the mannequin; plan biped wants 60%-160% (cast reads at one size)
+colors/slot              WARN  dark:9 coat:4 steel:11 hat:4 skin:9 plume:9 total 75; ≤3 tones + outline + rim per slot
+pure_black_white         PASS  0                                  
+speckle                  WARN  40                                 isolated px per figure (eyes count)
+facing_area_var          PASS  24%                                < 40 %
+isolated_px              PASS  hat max 2 [0, 1, 0, 0, 2, 1, 1, 0] isolated px on the signature part per facing S..SW (slot from spec); want <= 2
+face_lit                 PASS  83% (149/180)                      skin hi/mid share of face px, noon S/SE/SW: S 0.828 SE 0.803 SW 0.857
+islands                  WARN  2                                  connected parts of the figure per facing (>= 3 px; > 1 = a detached boot / prop / hat), S..SW: 1 1 1 1 1 2 1 1
+deterministic            PASS  True                               idle turnaround t=1 → 1.5 → 1 identical (0 px differ)
+lunge.deterministic      PASS  0 px                               mid-action t=0.525 rendered fresh, after t+0.7 and again (re-simulation): figure px that differ
+silhouette_line          PASS  0/1405 ring px                     outline px against the world (outlineDebug red); ring lined w/o world 4% (inner lines; >30 % = silhouette line)
+inner_lines              PASS  470                                internal depth lines (want > 0)
+edge_highlights          PASS  0                                  none on characters
+ring_luma                PASS  1.075                              ring/inner luma on plain ground (dark ring frac 21%)
+game.off_grid            PASS  0 (upper 0, specks 0)              changes 23 @ 14.38 Hz; intervals 2x22
+game.flicker             PASS  0 (upper 0)                        0 same-pose frames changed; tiny changes 0
+game.distinct            PASS  16 images / 6 drawing ids          visually distinct drawings (figure cropped to its own bbox) vs distinct gait drawing ids in the last 2/3 of the window; fewer images = drawings that look identical (snail glide 4 ids, 1 look)
+game.head_bob            PASS  1.9 px                             head height above the root per gait drawing: 0:27.3 1:25.5 2:27.1 3:27.4 4:25.6 5:27.0; want a bob >= 1 px and, on alternating biped/bird walks, mirror drawings (k, k+n/2) within 3 px (one-sided limp; the 3/4 view alone gives a rolling waddle 2-3 px)
+game.islands             PASS  1 -> max 1                         connected parts per distinct drawing (>= 3 px) vs the first frame: a new island = a part detached from the body (boot, prop, hat)
+game.single_frame        PASS  0                                  x1 holds (not smear/clip switch)
+game.foot_slide          WARN  1.02                               ~1-texel jitter of a planted foot (texel snap / per-drawing re-plant); drawn planted foot, texels at drawing changes, 2 feet, stance by gait: dir 1 1.02 (3 pairs), dir 2 profile 0.0 (3 pairs); snap removed 0.94/0.0; 60 Hz in-hold 8.02; root travel 334.5 px
+game.strobe              PASS  1                                  longest run of consecutive grid frames that each change (> 8 px; loco: upper half), smears excluded; want < 3
+game.readable            FAIL  3.95 H/s cyc 0.217 s 0.86 H/cyc    Clocktower speed 5.832 m/s = 209.9 px/s at vh 10; cycle by pose ids (run: cycle counter, 3/6 drawings shown per cycle); holds 2x22; drawing change med 0.92 min 0.645; FAIL: aliasing: the shown run drawings change between cycles (135 024 0235 134); only 3/6 run drawings reach the screen per cycle (cycle shorter than drawings x hold: lock the cycle at game speed) (v2: 0.31 s, 1.2 H/cycle)
+hurt.off_grid            PASS  0 (upper 0, specks 0)              changes 7 @ 5.6 Hz; intervals 2x2,1,6x2,2
+hurt.flicker             PASS  0 (upper 0)                        0 same-pose frames changed; tiny changes 0
+hurt.key_delta           PASS  8% (g27)                           smallest px change between consecutive AUTHORED keys / figure area (FX frames, dynamics redraws, idle and turn skipped); < 1 % = two keys that read as one drawing at 1x
+hurt.islands             PASS  1 -> max 1                         connected parts per distinct drawing (>= 3 px) vs the first frame: a new island = a part detached from the body (boot, prop, hat)
+hurt.single_frame        PASS  0                                  x1 holds (not smear/clip switch)
+hurt.strobe              PASS  2                                  longest run of consecutive grid frames that each change (> 8 px; loco: upper half), smears excluded; want < 3
+hurt.hold_redraws        PASS  0                                  changes > 8 px inside one authored key (no FX visible)
+hurt.pose_read           PASS  63% x6                             max silhouette change vs the idle lead-in (g13) and its hold in grid frames; 1x read wants >= 10 % held >= 4
+hurt.key_speckle         WARN  +11 (g13)                          isolated px on the held action keys minus the idle lead-in (36); dotted lines / specks a key adds (want <= 6)
+idle.off_grid            PASS  0 (upper 0, specks 0)              changes 6 @ 1.5 Hz; intervals 6,30,6,30,6
+idle.flicker             PASS  0 (upper 0)                        0 same-pose frames changed; tiny changes 0
+idle.islands             PASS  1 -> max 1                         connected parts per distinct drawing (>= 3 px) vs the first frame: a new island = a part detached from the body (boot, prop, hat)
+idle.single_frame        PASS  0                                  x1 holds (not smear/clip switch)
+idle.strobe              PASS  1                                  longest run of consecutive grid frames that each change (> 8 px; loco: upper half), smears excluded; want < 3
+lunge.off_grid           PASS  0 (upper 0, specks 0)              changes 9 @ 7.01 Hz; intervals 5,1x4,4,5,2
+lunge.flicker            PASS  0 (upper 0)                        0 same-pose frames changed; tiny changes 0
+lunge.key_delta          PASS  5% (g28)                           smallest px change between consecutive AUTHORED keys / figure area (FX frames, dynamics redraws, idle and turn skipped); < 1 % = two keys that read as one drawing at 1x
+lunge.islands            PASS  1 -> max 1                         connected parts per distinct drawing (>= 3 px) vs the first frame: a new island = a part detached from the body (boot, prop, hat)
+lunge.single_frame       PASS  0                                  x1 holds (not smear/clip switch)
+lunge.strobe             PASS  1                                  longest run of consecutive grid frames that each change (> 8 px; loco: upper half), smears excluded; want < 3
+lunge.hold_redraws       PASS  0                                  changes > 8 px inside one authored key (no FX visible)
+lunge.pose_read          PASS  88% x4                             max silhouette change vs the idle lead-in (g17) and its hold in grid frames; 1x read wants >= 10 % held >= 4
+lunge.key_speckle        PASS  +6 (g17)                           isolated px on the held action keys minus the idle lead-in (36); dotted lines / specks a key adds (want <= 6)
+parry.off_grid           PASS  0 (upper 0, specks 0)              changes 7 @ 5.45 Hz; intervals 3,2x2,6,5,2
+parry.flicker            PASS  0 (upper 0)                        0 same-pose frames changed; tiny changes 0
+parry.key_delta          PASS  1% (g28)                           smallest px change between consecutive AUTHORED keys / figure area (FX frames, dynamics redraws, idle and turn skipped); < 1 % = two keys that read as one drawing at 1x
+parry.islands            PASS  1 -> max 1                         connected parts per distinct drawing (>= 3 px) vs the first frame: a new island = a part detached from the body (boot, prop, hat)
+parry.single_frame       PASS  0                                  x1 holds (not smear/clip switch)
+parry.strobe             PASS  1                                  longest run of consecutive grid frames that each change (> 8 px; loco: upper half), smears excluded; want < 3
+parry.hold_redraws       PASS  0                                  changes > 8 px inside one authored key (no FX visible)
+parry.pose_read          PASS  24% x6                             max silhouette change vs the idle lead-in (g15) and its hold in grid frames; 1x read wants >= 10 % held >= 4
+parry.key_speckle        WARN  +16 (g21)                          isolated px on the held action keys minus the idle lead-in (36); dotted lines / specks a key adds (want <= 6)
+run.off_grid             PASS  0 (upper 0, specks 0)              changes 29 @ 14.5 Hz; intervals 2x28
+run.flicker              PASS  0 (upper 0)                        0 same-pose frames changed; tiny changes 0
+run.distinct             PASS  20 images / 6 drawing ids          visually distinct drawings (figure cropped to its own bbox) vs distinct gait drawing ids in the last 2/3 of the window; fewer images = drawings that look identical (snail glide 4 ids, 1 look)
+run.head_bob             PASS  1.9 px                             head height above the root per gait drawing: 0:27.3 1:25.5 2:27.1 3:27.4 4:25.6 5:27.0; want a bob >= 1 px and, on alternating biped/bird walks, mirror drawings (k, k+n/2) within 3 px (one-sided limp; the 3/4 view alone gives a rolling waddle 2-3 px)
+run.islands              PASS  1 -> max 1                         connected parts per distinct drawing (>= 3 px) vs the first frame: a new island = a part detached from the body (boot, prop, hat)
+run.single_frame         PASS  0                                  x1 holds (not smear/clip switch)
+run.foot_slide           WARN  1.0                                ~1-texel jitter of a planted foot (texel snap / per-drawing re-plant); drawn planted foot, texels at drawing changes, 2 feet, stance by gait: dir 1 1.0 (8 pairs), dir 2 profile 0.0 (8 pairs); snap removed 0.99/0.61; 60 Hz in-hold 5.98; root travel 259.5 px
+run.strobe               PASS  1                                  longest run of consecutive grid frames that each change (> 8 px; loco: upper half), smears excluded; want < 3
+spin.off_grid            PASS  0 (upper 0, specks 0)              changes 13 @ 8.76 Hz; intervals 6,1x8,5x2,2
+spin.flicker             PASS  0 (upper 0)                        0 same-pose frames changed; tiny changes 0
+spin.key_delta           PASS  4% (g34)                           smallest px change between consecutive AUTHORED keys / figure area (FX frames, dynamics redraws, idle and turn skipped); < 1 % = two keys that read as one drawing at 1x
+spin.islands             PASS  1 -> max 1                         connected parts per distinct drawing (>= 3 px) vs the first frame: a new island = a part detached from the body (boot, prop, hat)
+spin.single_frame        PASS  0                                  x1 holds (not smear/clip switch)
+spin.strobe              PASS  1                                  longest run of consecutive grid frames that each change (> 8 px; loco: upper half), smears excluded; want < 3
+spin.micro               WARN  1                                  changes of 1-5 px: single-pixel pops, unreadable at 1x
+spin.hold_redraws        PASS  0                                  changes > 8 px inside one authored key (no FX visible)
+spin.pose_read           PASS  94% x6                             max silhouette change vs the idle lead-in (g8) and its hold in grid frames; 1x read wants >= 10 % held >= 4
+spin.key_speckle         WARN  +13 (g8)                           isolated px on the held action keys minus the idle lead-in (36); dotted lines / specks a key adds (want <= 6)
+walk.off_grid            PASS  0 (upper 0, specks 0)              changes 29 @ 14.5 Hz; intervals 2x28
+walk.flicker             PASS  0 (upper 0)                        0 same-pose frames changed; tiny changes 0
+walk.distinct            PASS  20 images / 8 drawing ids          visually distinct drawings (figure cropped to its own bbox) vs distinct gait drawing ids in the last 2/3 of the window; fewer images = drawings that look identical (snail glide 4 ids, 1 look)
+walk.head_bob            PASS  2.1 px, limp 0.4                   head height above the root per gait drawing: 0:28.2 1:27.5 2:28.4 3:29.3 4:28.2 5:27.2 6:28.1 7:28.9; want a bob >= 1 px and, on alternating biped/bird walks, mirror drawings (k, k+n/2) within 3 px (one-sided limp; the 3/4 view alone gives a rolling waddle 2-3 px)
+walk.islands             PASS  1 -> max 1                         connected parts per distinct drawing (>= 3 px) vs the first frame: a new island = a part detached from the body (boot, prop, hat)
+walk.single_frame        PASS  0                                  x1 holds (not smear/clip switch)
+walk.foot_slide          WARN  1.02                               ~1-texel jitter of a planted foot (texel snap / per-drawing re-plant); drawn planted foot, texels at drawing changes, 2 feet, stance by gait: dir 1 1.02 (24 pairs), dir 2 profile 1.02 (24 pairs); snap removed 0.96/0.66; 60 Hz in-hold 2.01; root travel 106.8 px
+walk.strobe              PASS  1                                  longest run of consecutive grid frames that each change (> 8 px; loco: upper half), smears excluded; want < 3
+night_freeze             PASS  0 px (0/4 fr)                      key bg, night, t=1 frozen, engine t 0.1, 0.35, 0.6, 0.85, 1.1: figure px changed vs the first (> 0: the character runs on engine time, e.g. a uTime glow)
+night_pan                PASS  0 px (0/4 fr)                      night meadow, lantern=0, t frozen, whole-texel pan in one stepped-clock window (engine 2.008-2.075 s: between steps of grain 12 fps, wind 3.5 fps, glow 7.5 Hz); figure-box diff after the best shift (unshifted whole-frame change 217269 px = the pan itself)
+sig.hat                  WARN  px min 57 iso max 12 lit 8/8       slot 'hat' (slot hat): visible px/facing [69, 57, 71, 83, 75, 57, 62, 74], isolated [10, 4, 5, 12, 8, 8, 7, 4], hi/mid share [0.94, 0.89, 0.96, 0.89, 0.67, 0.67, 0.89, 0.89] (want >= 50 % in >= 6/8)
+game.feet_visible        PASS  SE min 7 px, hidden 0/16           visible px of each foot (footL,footR) per game-speed gait drawing, SE: k0 14/20 | k1 7/20 | k2 22/15 | k3 21/15 | k4 13/18 | k5 17/19 | k6 22/15 | k7 22/15; S: k0 16/6 | k1 12/10 | k2 9/15 | k3 6/16 | k4 12/10 | k5 12/14 | k6 9/15 | k7 9/15; E: k0 21/24 | k1 5/21 | k2 22/14 | k3 20/19 | k4 16/17 | k5 19/22 | k6 22/14 | k7 22/14; < 2 px = the foot is not drawn there (buried by squash, under the hem); want a foot in every drawing at SE and no foot hidden in half the drawings or more
+sig_ground.hat.noon-sun  PASS  dH 101 dL -39%                     part #C6535C vs grass #BADA81 in a 2-5 px ring round the figure; part = its lit half; sun copy wants hue >= 30 deg or |L| >= 25 %
+sig_ground.hat.noon-shade PASS  dH 178 dL -27%                     part #6F3651 vs grass #3B6D5F in a 2-5 px ring round the figure (darkest quarter); shade copy wants L >= +15 % or <= -25 %
+sig_ground.hat.golden-sun PASS  dH 56 dL -17%                      part #E6613B vs grass #B6AB4F in a 2-5 px ring round the figure; part = its lit half; sun copy wants hue >= 30 deg or |L| >= 25 %
+sig_ground.hat.golden-shade PASS  dH 137 dL -30%                     part #582642 vs grass #375255 in a 2-5 px ring round the figure (darkest quarter); shade copy wants L >= +15 % or <= -25 %
+pan                      PASS  0 px (0/23 fr)                     whole-texel camera pan [1, 1]/frame, frozen idle; best-shift diff over the figure box; shift != root's in 0 fr
+page_errors              PASS  0                                  
+draw_calls/char          PASS  color 2.0 normal 1.0               incl. shadow map in the first stage
+-- 81 pass, 12 warn, 1 fail
+
+files:
+turnaround.png
+turnaround-plain.png
+turnaround-vh12.png
+clip-idle.png
+clip-idle-60hz.png
+clip-idle.gif
+clip-idle-1x.gif
+clip-lunge.png
+clip-lunge-60hz.png
+clip-lunge.gif
+clip-lunge-1x.gif
+clip-spin.png
+clip-spin-60hz.png
+clip-spin.gif
+clip-spin-1x.gif
+clip-parry.png
+clip-parry-60hz.png
+clip-parry.gif
+clip-parry-1x.gif
+clip-hurt.png
+clip-hurt-60hz.png
+clip-hurt.gif
+clip-hurt-1x.gif
+clip-walk.png
+clip-walk-60hz.png
+clip-walk.gif
+clip-walk-1x.gif
+clip-run.png
+clip-run-60hz.png
+clip-run.gif
+clip-run-1x.gif
+clip-game.png
+clip-game-60hz.png
+clip-game.gif
+clip-game-1x.gif
+game-1x.gif
+game-x3.gif
+game-onion.png
+scene-noon.png
+scene-noon-crop.png
+scene-golden.png
+scene-golden-crop.png
+scene-night.png
+scene-night-crop.png
+turnaround-silhouette.png
+turnaround-isolated.png
+pan.png

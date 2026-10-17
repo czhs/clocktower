@@ -159,8 +159,10 @@ applies only if a character is deliberately re-imagined on four legs, which brea
 Clip list: **idle, walk, talk, vote, point, die, ghost, ghost-spent, `<emote>`** (+ the pseudo clip `turn` for the turn
 audit); **run is optional**. **Wave 3 (7/8 missed point/ghost):** this list used to stop at die, and so did
 `--preset cast`; both now include point/ghost/ghost-spent and `cast_clips` FAILs without them. Port point and the ghost
-from a finished member of your plan (frog/fox upright, owl/crow/honk bird, snail limbless; ghost = crow's ghostK
-flag + `material.tones` recipe; see the touch-up notes in `docs/CHARACTER_LEARNINGS.md`). Timing grid
+from a finished member of your plan (frog/fox upright, owl/crow/honk bird, snail limbless) — but NOT its point
+direction (wave 4: 4/4 points aimed sideways or used the far arm; playbook **R W4 point**) and NOT the old crow ghostK
++ `material.tones` ghost recipe: since the wave-3 module fix a ghost is `spec.ghost: { hover: 0.14 }` + plain loop
+clips (playbook banner). The Storyteller has no vote/die/ghost clips (pass an explicit `--clips` list: tools T35). Timing grid
 30 Hz, held drawings 2–4 frames in locomotion, holds ≥ 6 frames in actions (playbook Stage 3/4 rules all apply).
 
 | clip | what must read at 1×, dir 1 | upright chibi | robed | bird (honk/chonk) | snail | long neck |
@@ -172,8 +174,8 @@ flag + `material.tones` recipe; see the touch-up notes in `docs/CHARACTER_LEARNI
 | **vote** (raise and HOLD) | a raised hand/wing/paw above the head, held, in the 25 % thumbnail | anticipation dip (4 f) → arm straight up past the head top (upperArm out/fwd ≈ 150–170°, ≥ 0.2 m above the head) → hold until the clip ends (last key held; the game holds it while the vote lasts); face clear at S/SE/SW | sleeve falls back, staff hand stays | wing up and spread (both wings for chonk) | one stalk up (or the wrench up) | hoof up; neck stays upright |
 | **die** (one-shot → held final pose) | collapse, unmistakably not asleep; identity still readable | stagger (no hurt flash: Clocktower rule) → knees buckle (crouch, 6 f) → fall to the side or forward (6 f, `legs: 'fk'`) → final held pose lying with the signature shape still visible from dir 1 (hat/cap/ears not under the body); eyes → closed/X | robe crumples, hood on the ground, staff falls (prop drop needs a socket trick: keep it in hand) | tips over sideways, feet up | retreats into the shell (head + stalks down, shell rolls 30°) | neck folds down in 2 steps |
 | **`<emote>`** | the blurb in one action (cards §12) | see card | see card | see card | see card | see card |
-| **point** (hold) | aimed at someone across the square, at S/SE/SW/W | arm out-and-up toward the facing, finger/paw straight, held ≥ 24 f; never a level weapon thrust | sleeve falls back, hand out | a WING as the pointer, neck upright (a level neck = goose hiss) | head/stalk aims | head aims, hoof up |
-| **ghost / ghost-spent** (loops) | dead player: pale, hovering, same identity; spent = dimmer, no halo, head bowed | hover bob in whole texels, legs FK; `material.tones` remap via a flag bone (1 / 0.5) | hem dissolves | crest/neck laid flat so it doesn't touch the halo | shell pale | neck bowed |
+| **point** (hold) | aimed at someone across the square, at S/SE/SW/W | arm forward-and-up ALONG the facing (never out to the side: wave 4, 4/4 failed), finger/paw straight, held ≥ 24 f; near arm = RIGHT at SE/E, LEFT at W/SW → both arms or a leading shoulder; never a level weapon thrust | sleeve falls back, hand out | a WING as the pointer, neck upright (a level neck = goose hiss) | head/stalk aims | head aims, hoof up |
+| **ghost / ghost-spent** (loops) | dead player: pale, hovering, same identity; spent = dimmer, no halo, head bowed | `spec.ghost: { hover: 0.14 }` + plain pose-only loop clips (module draws ramp, halo, floating legs; `keepHue` 0.25–0.35 when the colour is the identity — greenting went lavender at 0) | hem dissolves | crest/neck laid flat so it doesn't touch the halo | shell pale | neck bowed |
 
 Notes: the game decides when talk/vote/die play; talk and vote must loop/hold cleanly from any idle frame (start on
 the idle's first drawing). Keep head world pitch within ±15° for wide hats/caps/hoods in held keys (mushroom, crow,
@@ -321,6 +323,17 @@ S/SE/SW (hound r2); no outline, so the eye is a dark inset part in the face slot
 - **Mouth colour and talk (wave 3: requin, opal, cilantro):** keep the v1 mouth colour (requin maroon #4A1C2C) in its own
   slot; on a chibi pad a scaled mouth plate (`'mouth.s'` [0.25, 1.9, 0], opal r2) opens 2–3 texels at S/SE/SW where a
   14–26° jaw shows ≤ 1 texel. Twist the head TOWARD the camera on talk beats (judge the sign on the 8-facing still).
+- **Profile face, wave 4 (recurring: maxflow, greenting, theo-rem — after opal/preservation/progress/clarabelle in W3):**
+  v1 E sprites show ears ON the outline, a snout clearly past the skull and the nose at its tip. In 3D: ears rooted on
+  the crown/back (z ≤ −0.1) — a side-rooted ear's dark root reads as a big eye mid-skull (maxflow, opal); snout ≥ 4
+  texels (≈ 0.11 m) proud of the lathe (0.05 m = an orange egg); eyes on a snout-tipped tube head placed by angle round
+  the head axis (|x| ≈ 0.9 r, φ ±70°), not from the cap centre (greenting's face vanished at E/W); spectacles set back so
+  the nose clears the rim at BOTH profiles (theo-rem lost the nose at E only). At E you see the RIGHT side, at W the LEFT.
+- **Talk mouth on bead smiles (wave 4, greenting):** never scale the bead ring (hollow dark ring); a dark plate buried in
+  the head and pushed out with `<bone>.p` on the open keys gives a filled 3×2 "o". A v1 "small smile" is ≈ ¼ of the head
+  width — 3–4 beads, not 7.
+- **Small eyes in rings (wave 4, theo-rem/greenting):** a 2×2 eye in a 5-texel lens or a 0.062 m square bead becomes a "+"
+  crosshair at SE; use a 1×2 pupil box (0.036 × 0.07) without a glint, beads ≤ 0.052 m.
 
 ## 10. Blurb → personality → timing
 
@@ -538,7 +551,7 @@ cane and nod, shift the sack).
 - Mirrored text/marks (polly λ, greenting clock hand, honk's contract): geometry on the front, never mirrored parts.
 - Tails and capes are midline chains rooted at |x| ≤ 0.03 m (look sides rule); tails that sweep to one side in v2
   (maxflow right, opal left, mincut left) get that side by a rest direction, not by an x offset.
-- Lantern/light characters: the glow is not in packs (no `spec.lights`): say so in the report.
+- Lantern/light characters: put the light in `spec.lights` (socket, warm colour, night intensity, quantized flicker) and drive glow code from `uCharTime`; keep the glass on a warm mid/hi (≈ #FFD27A cap, storyteller r1 drew cream-white) and hang the light low enough that the robe/hem takes a warm rim.
 - Green characters: measure against the grass in all six scene copies before Stage 3.
 - **Wave 1 (recurring):** keep the v1 VALUE, not just the hue — lifting tones for night turned the crow's dark hat tan and
   the owl/skeleton-chef navy periwinkle; lift only `sh`. Compare your 1× S crop with `refs/cast/<id>.png` side by side.
@@ -578,6 +591,21 @@ cane and nod, shift the sack).
   clarabelle); a tiny story prop shown only in the emote (mincut scissors, TINY-scale trick) beats a bare-arm gesture.
 - **Wave 3:** identity accessories that v1 draws hanging (cilantro's scarf end, requin's bomb in the run) must be KEYED in
   the walk/run clips — a spring chain trails behind the body at game speed and hides them.
+- **Wave 4 (4/4: maxflow, storyteller, theo-rem, greenting):** v1 has no point sprite; the game's point aims at the player
+  the character FACES. Porting a "hand out to the side" gesture made all four fail (lantern swung 55° out, paw aimed
+  screen-left at SE, far arm hidden at W/SW/E). Aim forward-and-up along the facing; the camera-side arm is the RIGHT at
+  SE/E and the LEFT at W/SW, so a round body points with both paws or a leading shoulder.
+- **Wave 4 (recurring: maxflow, theo-rem; W2/W3 white animals):** CREAM identity (fox chest, hedgehog face) is not white:
+  `material.whiteKeep`/`whiteKeepLift` do not catch it and do not lighten. Port v1 cream as a cooler, less saturated hi
+  (#F6E4D6, mid #E4C8AA) + a slot lift ≈ 0.35, and compare the golden sun AND shade copies with the v1 S crop.
+- **Wave 4 (recurring: maxflow, greenting, theo-rem):** v1 plush/unclothed bodies have no seams; in 3D every same-slot
+  limb/head junction draws a light grey-lilac inner line (look backlog). `material.merge` arms/head/legs into the body bone,
+  with other-slot face detail (muzzle, cheeks) on a child bone so it keeps its line.
+- **Wave 4 (theo-rem):** a v1 sawtooth outline (hedgehog quills, manes, crowns) = ≈ 20–25 fat pyramids (half-width 0.085,
+  length 0.2–0.26 m) on a smooth shell, offset L/R; a dense spike grid is a fuzzy halo + a "face" on the back at N.
+- **Wave 4 (greenting, colour-identity members):** set `ghost.keepHue` 0.25–0.35 so the ghost stays the identity colour.
+- **Wave 4 (storyteller):** a staff carried while walking is a PLANT only if its tip lands ahead of the body at contact —
+  key it by eye on E/W walk stills; the plumb-cancel convention leans it forward inside LegGait drawings.
 
 ## 14. Tools in this folder (refs owner)
 

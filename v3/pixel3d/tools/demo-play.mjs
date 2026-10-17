@@ -155,7 +155,27 @@ async function townGrid() {
     const W = L.TOWN_W, H = L.TOWN_H, g = [];
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) g.push(L.blocked(x, y) ? 1 : 0);
     const doors = {};
-    for (const h of L.houses) { const d = api.doorOf(window.__demo.demo.town.registry, h.id); if (d) doors[h.id] = { x: d.pos.x, z: d.pos.z, anchor: !!d.anchor, layout: h.doorPoint ?? null, normal: d.normal ?? h.doorNormal ?? [0, 1] }; }
+    // approach tiles per door from the GAME's own collision (player.townCollision, collision.js: the SDF of the placed
+    // cottages minus their carved door corridors): a free tile within 1.6 m whose centre has a collision-free straight
+    // line to the doorstep (0.75 m out along the door normal). The 1 m layout grid alone can close the last tile in
+    // front of a door (house-7: its footprint fills the whole x = 39 column, the nearest free tile is 1.02 m away)
+    // although the real player walks in fine; the final leg is then checked against the real collision instead.
+    const col = window.__demo.demo.player?.townCollision ?? null;
+    for (const h of L.houses) {
+      const d = api.doorOf(window.__demo.demo.town.registry, h.id);
+      if (!d) continue;
+      const normal = d.normal ?? h.doorNormal ?? [0, 1], nl = Math.hypot(normal[0], normal[1]) || 1;
+      const step = { x: d.pos.x + normal[0] / nl * 0.75, z: d.pos.z + normal[1] / nl * 0.75 };
+      const approach = [];
+      if (col?.lineFree) {
+        for (let y = Math.floor(d.pos.z - 2); y <= Math.floor(d.pos.z + 2); y++) for (let x = Math.floor(d.pos.x - 2); x <= Math.floor(d.pos.x + 2); x++) {
+          if (x < 0 || y < 0 || x >= W || y >= H || g[y * W + x]) continue;
+          const c = { x: x + 0.5, z: y + 0.5 };
+          if (Math.hypot(c.x - d.pos.x, c.z - d.pos.z) < 1.6 && col.free(c.x, c.z) && col.lineFree(c, step)) approach.push(y * W + x);
+        }
+      }
+      doors[h.id] = { x: d.pos.x, z: d.pos.z, anchor: !!d.anchor, layout: h.doorPoint ?? null, normal, approach, stepFree: col ? col.free(step.x, step.z) : null };
+    }
     return { W, H, g, doors };
   });
 }
@@ -228,7 +248,9 @@ async function walkToDoor(grid, id) {
   const from = { x: start.player[0], z: start.player[1] };
   // a tile whose nearest point is within 0.95 m of the door (the trigger radius is 1.4 m; the last step walks into the
   // doorstep until collision stops it). house-14's real door sits in a corner the layout's collision mostly blocks.
-  const near = (x, y) => Math.hypot(Math.max(x - d.x, 0, d.x - x - 1), Math.max(y - d.z, 0, d.z - y - 1)) < 0.95;
+  // or a tile from which the game's own collision has a free straight line to the doorstep (townGrid: d.approach)
+  const appr = new Set(d.approach ?? []);
+  const near = (x, y) => Math.hypot(Math.max(x - d.x, 0, d.x - x - 1), Math.max(y - d.z, 0, d.z - y - 1)) < 0.95 || appr.has(y * grid.W + x);
   const t0 = Date.now();
   let ok = false, legs = 0, replans = 0, p = null;
   // walk tile centre to tile centre (the first waypoint is the start tile's centre: a straight run from an off-centre

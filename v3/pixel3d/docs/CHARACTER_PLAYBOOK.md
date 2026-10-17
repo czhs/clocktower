@@ -54,6 +54,11 @@
 >   pops out and leaves a 0.4 s gap (fx looks ahead to the clip's next speak beat) — drop the "speak at f2" / "two speaks
 >   per loop" workarounds; (3) charcheck no longer crashes when an FX shows on every frame; talk islands/key_delta come
 >   from a new `nofx-talk` copy. A/B: wanderer full pack 0 px; fox only `clip-talk` (the bubble now shown at grid 12–23).
+> - **Lead fixes between waves 4 and 5:** `tools/bake.py` — an authored LegGait walk whose start-up cycle skipped a
+>   drawing (maxflow: k0, k1, k3 → a 3-drawing baked walk) is now cut from the first steady cycle, with a warning; legacy
+>   Gait ids untouched. A/B: wanderer, maxflow, fox sheets byte-identical; repro `shots/lead-w4/mfms.js` walk 3 → 4
+>   frames. Verified (no change): the camera-side arm is the RIGHT at SE/E and the LEFT at W/SW; `spec.presence` already
+>   overrides the presence band. Ghosts: use `spec.ghost` (wave-3 banner), not the old ghostK recipe.
 > - **Module fixes round 2 (module fixer, 2026-10-16) — these change idle-turn, talk, die, vote and emote renders too.**
 >   Files: `src/chars/{character,locomotion,rig,look,fx}.js`, `scenes/char-stage.js`, `tools/{charpack,charcheck,bake}.py`,
 >   `tools/shot.mjs`, `refs/cast/_src/gamespeed_gif.py`. Full-pack A/B of 19 cast members: no new FAIL.
@@ -183,6 +188,21 @@ score history + the wave-3 archive):
 Also: the fx speech-chain first-beat gap and the charcheck `isl[0]` crash are FIXED (lead) — drop the "first speak at f2"
 and "two speak events per loop" workarounds.
 
+### Cast wave 4 (4 members, critic 15–18, none shipped) — what cost points this time
+
+maxflow 15 (self 19, +4), theo-rem 17, greenting 17, storyteller 18 (best cast r1 so far). Each is an **R W4** line below
+(details: `docs/CHARACTER_LEARNINGS.md` score history + "(lead, wave-4 merge)" bullets):
+1. **Point aimed sideways or with the far arm** (4/4): the camera-side arm is the RIGHT at SE/E and the LEFT at W/SW, so
+   one arm never reads at S/SE/SW/W — aim along the facing with both arms or a leading shoulder (Stage 3 **R W4 point**).
+2. **Profile face fails at E/W** (3/4; 7 members over waves 3–4): ear root read as the eye, a 2-texel snout, eyes on a
+   snout-cap edge, nose behind a rim (Stage 0 **R W4 profile face**). maxflow's +4 gap was mostly unrendered E/W.
+3. **Cream identity drifts at golden** (2/4): whiteKeep does not catch cream (Stage 0 **R W4 cream identity**).
+4. **Grey inner-line seams on unclothed bodies** (3/4): `material.merge` the same-slot masses (look fix pending).
+5. **Die sits / final hold less tipped than the drawing before** (3/4) and **emote = vote** (theo-rem).
+6. **Sheet claims the still contradicts** (4/4): staff "plant" = push-off, "waddle" = lurch, poof "at the crate" = on the
+   belly. A pose claim cites the 8-facing still of that key; a motion claim cites the 1× GIF frames.
+Also FIXED (lead): the sprite bake no longer ships a start-up walk cycle that skipped a drawing (maxflow baked 3 of 4).
+
 ---
 
 ## Render host and commands
@@ -195,8 +215,8 @@ Check the GPU line in a shot log (`RTX 4090`) and say in your report where you r
 and printf/xargs batches are blocked by the permission classifier (and the xargs variant silently rendered the mannequin).
 For many poses in one render use the 8-facing still. **R W3 (recurring, 4 agents)** zsh does not word-split `$v` in
 loops (`for k in 'vote 3'; set -- $k` silently rendered idle:0 under the wrong names): write explicit commands, one
-per call, or wrap the loop in `bash -c '…'`; confirm the `p` field of every still. **R W3 (3 agents)** Never type
-`python3` on the Mac, not even a "quick json read": `tools/remote.sh python3 …`. Env vars go through `env`:
+per call, or wrap the loop in `bash -c '…'`; confirm the `p` field of every still. **R W3 (3 agents) + W4 (2 critics, again)** Never type
+`python3` on the Mac, not even a "quick json read" or `python3 -c 1`: `tools/remote.sh python3 …`. Env vars go through `env`:
 `tools/remote.sh env X0=12 python3 shots/char-<id>/x.py.js` (`X0=12 tools/remote.sh …` does not reach the host).
 
 | what | command | look at |
@@ -367,6 +387,18 @@ Write before any code (≤ 1.5 pages; template: `characters/wanderer.md`). For a
    **R W3 eyes (5/8)** Eye slot hi ≤ #4A4258 (a lit lilac "dark" + glint = X-eye, requin); pupil in the darkest tone,
    1×1–1×2 on a FIXED texel (2×2 pupils in a 4×4 lens re-rasterise into letters, preservation); white ≥ 3×3 when v1 has a
    white eye (progress); keep skull patches off the eye area (cilantro); white masks as ≥ 2×2 patches (mincut).
+   **R W4 profile face, again (3/4 failed; 7 members over waves 3–4)** Render the idle at E AND W ×4 BEFORE Stage 3 and
+   name what is the eye in each: (a) ears rooted on the crown/back (z ≤ −0.1, y ≥ 0.5), never mid-skull side — the dark
+   ear root inside the profile reads as a big eye (maxflow, opal); (b) snout ≥ 4 texels (≈ 0.11 m) proud of the lathe with
+   the nose on its tip (2 texels = an egg); (c) eyes placed by angle round the head axis + elevation (greenting r9: |x|
+   ≈ 0.9 r, φ ±70°), not a world direction from a snout cap; (d) spectacle rims/brims set back so the nose clears them at
+   both profiles. At E you see the character's RIGHT side, at W the LEFT.
+   **R W4 cream identity (2/4 failed)** `whiteKeep`/`whiteKeepLift` only catch near-whites (chroma < 0.18/0.25) and never
+   lighten; a cream hi (#F8E6C2) goes apricot or mauve-grey at golden. Use a cooler, less saturated hi (#F6E4D6 / mid
+   #E4C8AA — theo-rem) + `slots.<cream>.lift` ≈ 0.35 + `whiteKeepLift` 0.8 (maxflow #957C7E → #D8CCBF), and judge the
+   golden sun AND shade copies by eye. A cream that is darker than the fur next to it at golden is a FAIL.
+   **R W4 colour-identity ghost** `ghost.keepHue` 0.25–0.35 for any character whose colour IS the identity (greenting went
+   lavender-white at 0), not only for dark characters.
 7. **`## Unique to me`** (mandatory; the critic grades it). Answer each with a concrete plan and how you will verify it:
    1. **Extra animated parts**: which secondary parts move (ears, tail, wings, shell, antennae, beret, apron, cape, phone,
       papers, spores, lantern, tongue, gills…) and HOW: spring chain (preset, 1 link for short parts), keyed in clips
@@ -511,6 +543,26 @@ Per key, on that still — write the result into the sheet's timing chart:
       BACK (progress, preservation, honk). Chibi arms (≈ 0.32–0.45 m) cannot clear a big head: stretch the upper arm on
       the raise key ≤ 1.6× (`'upperArmR.s'`) and thicken it ≈ 1.2×, divide a child prop's `.s` by the same factor; past
       ≈ 1.9× the arm reads as a stick (mincut).
+- [ ] **R W4 point (4/4 failed)** Point aims ALONG the facing (forward + up toward whoever the character faces; at SE the
+      target is the viewer), never out to the side (maxflow out 45°, storyteller lantern 55° out). **Camera side: at SE
+      (dir 1) and E the near arm is the character's RIGHT; at W and SW the LEFT; S shows both** (lead w4 render,
+      `shots/lead-w4/side-*.png`). One arm cannot leave the outline at S, SE, SW AND W on a body wider than the arm:
+      use both arms (ball body: theo-rem left `[60, 0, 70]` + right `[85, 0, 30]`, both `.l` 1.3), or twist the chest so the
+      pointing shoulder leads + the other paw forward-low (maxflow), or a head/neck lunge + both stubs (greenting). Render
+      the point hold at 8 facings, ×3, and write texels-outside-the-outline per facing (≥ 4 at S/SE/SW/W) in the sheet.
+      Calibrate the triple first: on a chibi arm fwd 90 + out 45 is a SIDEWAYS raise, not a diagonal.
+- [ ] **R W4 talk mouth = a filled plate** Never scale a ring of smile beads (hollow dark U/C, greenting). Bury a dark plate
+      in the head at rest and push it out with `'<mouth>.p'` on open keys (0.08 × 0.06 m sunk 0.045 → a 3×2 "o"); smile
+      ≈ ¼ of the head width. Talk loop 32–40 frames, keys every 8–10 (6-frame beats read twitchy).
+- [ ] **R W4 FX on a moving prop** `poof@<bone>` / `land@<socket>` read the bone's pose on the EVENT frame: fire a poof 2
+      frames before the key that hides/returns the prop (maxflow push: poof drew on the belly); `land@` still draws at the
+      root (fx backlog) — check the dust position on the 8-facing still.
+- [ ] **R W4 die, again (3/4)** The final hold is at least as tipped/low as the drawing before it (theo-rem's final was
+      MORE upright = sitting); ball bodies squash wider (`ball.s` y −0.1) to ≤ 60 % of standing height; hips `twist` on a
+      body lying on its side does NOT change where it lies (it spins about its long axis) — combine fwd + out
+      (`[60, 0, 60]`, greenting); show the shut-eyed face at S/SE (maxflow's S/SE final had no face).
+- [ ] **R W4 emote ≠ vote** The emote must not reuse the vote's prop or arm pose (theo-rem's Q.E.D. read as a card-less
+      vote). Show the identity prop face-on at chest height on the punchline; twist a far-paw card 40° toward SE.
 
 Clip rules:
 - **idle**: loop, `interp: 'step'`, 4 keys, extremes held long (0/30/36/66, length 72), 1 texel of bob (`pos` y 0.028).
@@ -533,6 +585,13 @@ Clip rules:
   facings (≥ 12 each).
 - **R W1** Long props tilt 25–30° under the gait/acceleration lean (goat); until motion M4: route LegGait
   hips/neck/head to geometry-less bones and `lean: [0, 0]` (costs head lag) or accept and report it.
+- **R W4 gait claims** (maxflow, greenting, storyteller): (a) short-duty waddles (duty ≤ 0.2, bird style) set
+  `locomotion.maxSwing: 0.5` — the default 0.25 s floor ran maxflow's cycle 0.278 s and skipped drawing k2 in the first
+  cycle (motion M23); (b) a body roll must be MIRRORED per drawing (key chest/head roll k0 −x, k2 +x in `clips.walk`) and
+  small (≤ 5): at SE a LegGait roll on a tall body reads as a forward/back lurch (greenting); (c) a staff "plant" is keyed
+  by eye on `grid=turnaround&clip=walk&frame=<k>&speed=<v>` E/W stills — tip AHEAD of the body at contact (the
+  plumb-cancel convention still leans it ≈ 17° forward inside LegGait drawings, M25); (d) glide/fast travel drawings
+  must differ by more than ±8° (hem flare + flutter, hood streamer, `hips.p` float bob — keyed `pos` does nothing there).
 - **walk / run**: tuned at **v_game / 2·v_game** (§Game speed), never at the defaults. **R** Bob ≥ 1 texel (0.014 m
   never shows), run vertical swing ≥ 0.05 m; **R** sway = hips rotation, never `pos.x` (reads as 1.15 texel slide);
   **R** check the gait is actually the clip you edited (Froude: keeper's run silently played the walk; at game speed the
@@ -585,9 +644,9 @@ Clip rules:
 | talk | a speaking gesture that LOOPS: mouth/beak opens ≥ 2 texels + a hand/wing/head beat ≥ 25° | 2–4 drawings, a beat every 8–14 frames | biped: open hand; bird: wing-hand + beak; limbless: body squash + eye stalks; quadruped: head bob + mouth |
 | vote | raise hand / wing / paw and HOLD; silhouette changes upward | up in ≤ 6 frames (one anticipation dip 2–4), hold to the end | the raised part clears the head at all 8 facings (up-and-forward-out) |
 | die | collapse to a final held pose, readable at 1× in ≤ 1 s | anticipation (stagger) 4–6 → fall 1–2 keys → impact squash + dust → settle → held final | ends lying/curled, 25 % thumbnail clearly "down"; head pitch rule does not apply to the final pose but the face must not become a box; no chain jitter in the hold. v1 has ghost sprites (`<id>/ghost`): the dead state may later be a ghost look — note it in the sheet |
-| point | the game's shared emote: an arm/wing/paw (or the head on a limbless body) aimed at someone, held | out in ≤ 6 frames, hold ≥ 24, return | reads at S/SE/SW/W at 25 % (the pointer leaves the outline ≥ 4 texels); never a level weapon thrust (goose neck = hiss); see frog/fox/honk touch-up notes |
-| ghost | dead player: the same character pale and hovering (loop) | loop 72, 4 keys, hover bob on whole texels | the crow/frog recipe (ghostK flag bone + `material.tones` remap + halo); identity colours kept as pale tints |
-| ghost-spent | ghost after its one vote: dimmer, greyer, no halo, head bowed | loop 72 | same rig/shader as ghost with the flag at 0.5 |
+| point | the game's shared emote: an arm/wing/paw (or the head on a limbless body) aimed at someone, held | out in ≤ 6 frames, hold ≥ 24, return | aimed ALONG the facing, forward + up (never out to the side); reads at S/SE/SW/W at 25 % (the pointer leaves the outline ≥ 4 texels) — near arm = RIGHT at SE/E, LEFT at W/SW, so use both arms or a chest twist (**R W4 point**); never a level weapon thrust (goose neck = hiss) |
+| ghost | dead player: the same character pale and hovering (loop) | loop 72, 4 keys, hover bob on whole texels | `spec.ghost: { hover: 0.14 }` + a plain pose-only loop clip (module draws ramp, halo, float legs — banner above); `keepHue` 0.25–0.35 when colour is the identity; the old ghostK recipe is obsolete |
+| ghost-spent | ghost after its one vote: dimmer, greyer, no halo, head bowed | loop 72 | same `spec.ghost`, the clip at ghost level 0.5 (CHARACTERS.md §5) |
 | emote | the blurb's signature action; changes the 25 % silhouette | like an action | one per character |
 | turn | 45° steps held ≥ 2 grid frames, chains settle ≤ 0.5 s | pseudo clip | |
 
@@ -678,6 +737,9 @@ your three weakest points honestly in the report (the critic checks whether you 
 - Sprite bake: `tools/charpack.sh --bake <name> --preset cast --out shots/char-<name>/bake`
   (no `--cell`: it grows ×1.35 up to 3 times until nothing touches the border); leave it in `shots/char-<name>/bake/` and say so in the report — cast agents do not own `out/sprites/`, the lead copies it (progress, opal);
   look at `<name>-preview.png`. `--cell N` is the square render cell, the printed cell is trimmed (tools/bake.py usage).
+  **R W4** Check `bake/<name>.json` `clips.walk.frames` == `spec.gameSpeed.drawings` and read the bake's warnings: since
+  the lead's wave-4 fix a short start-up cycle is re-cut from a steady cycle (warning "start-up cycle showed 3/4
+  drawings"), but the live game still plays that start — fix the spec (M23 `maxSwing`), don't just accept the warning.
 - Add to `docs/CHARACTER_LEARNINGS.md` in the matching TOPIC section (never a per-agent "Additions" section — the
   wave-1 ones were merged by the lead and are archived) (extend an existing bullet and mark it
   **(recurring)** if it is already there): symptom → cause → rule, numbers. Shared-code problems → §Module backlog with

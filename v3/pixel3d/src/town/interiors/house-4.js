@@ -16,10 +16,15 @@
 import * as THREE from 'three';
 import { Builder } from '../kit.js';
 import { rng } from '../../core/noise.js';
-import { bareShell, polyWalls, polyFloor, blockOutside, inPoly, onSeg, segPoint, motes, at, sunMask } from './house-0.js';
+import { bareShell, polyWalls, polyFloor, blockOutside, inPoly, onSeg, segPoint, motes, at, sunMask, ditherCanvas, ditherWall, flatQuad } from './house-0.js';
 
 /** Room size / walls (index.js reads ROOM before build): a low, wide, earth-sheltered room. */
-export const ROOM = { w: 8.6, d: 6.0, h: 2.35, wall: 'stone', pal: 4, floor: 'flags' };
+export const ROOM = {
+  w: 8.6, d: 6.0, h: 2.35, wall: 'stone', pal: 4, floor: 'flags',
+  // the demo's room night look (docs/DEMO.md 4.3, once index.js passes it through): earthy browns in the fill, a
+  // green cast on the lit faces (moonlight through the ivy), little mist
+  nightAmbient: { lit: '#B8D490', sh: '#8E7C5C', k: 0.55, litK: 0.4, gain: 1.15, mist: 0.3 },
+};
 
 export default function build(room, ctx) {
   const { FURNITURE: F, CLOTH, GLOW, TOWN_PALETTE: TP, paintRamp, POTIONS } = ctx;
@@ -68,13 +73,13 @@ export default function build(room, ctx) {
     // the mantel: honey jars, a candle, a jug of dried flowers
     for (const [mx, k] of [[-0.55, 'honey'], [-0.3, 'honey'], [0.35, 'jug'], [0.6, 'candle']]) {
       if (k === 'honey') { b.cylinder(0.06, 0.06, 0.13, { at: [mx, 1.24, dep / 2 + 0.06], tones: CLOTH.gold, segments: 8 }); b.box(0.13, 0.03, 0.13, { at: [mx, 1.37, dep / 2 + 0.06], tones: CLOTH.red }); }
-      if (k === 'jug') { b.cylinder(0.07, 0.09, 0.18, { at: [mx, 1.24, dep / 2 + 0.06], tones: 'cream', segments: 8 }); for (let q = 0; q < 3; q++) b.box(0.05, 0.2, 0.05, { at: [mx - 0.05 + q * 0.05, 1.42, dep / 2 + 0.06], rz: (q - 1) * 0.3, tones: q === 1 ? NIGHTSHADE : CLOTH.gold, layer: 'soft' }); }
+      if (k === 'jug') { b.cylinder(0.07, 0.09, 0.18, { at: [mx, 1.24, dep / 2 + 0.06], tones: 'cream', segments: 8 }); for (let q = 0; q < 3; q++) b.box(0.05, 0.2, 0.05, { at: [mx - 0.05 + q * 0.05, 1.42, dep / 2 + 0.06], rz: (q - 1) * 0.3, tones: q === 1 ? NIGHTSHADE : CLOTH.gold }); }
       if (k === 'candle') { b.box(0.05, 0.14, 0.05, { at: [mx, 1.24, dep / 2 + 0.06], tones: 'cream', pattern: 'none' }); g.box(0.05, 0.06, 0.05, { at: [mx, 1.38, dep / 2 + 0.06], tones: 'glass', layer: 'glass', glow: GLOW.candle, glowKind: 2 }); }
     }
   });
   { const c = segPoint(hearthS, 0, 0, 0.45); room.solidAt(c[0], c[2], 1.3, 1.3, 0, 'fireplace'); }
   const fl = segPoint(hearthS, 0, 0.55, 0.55);
-  room.light({ pos: fl, color: GLOW.fire, r: 4.2, kind: 'fire', intensity: 1.45 });
+  room.light({ pos: segPoint(hearthS, 0, 0.3, 0.95), color: GLOW.fire, r: 1.4, kind: 'fire', intensity: 1.15 });
 
   // ---- the back wall: the grandfather clock (11:55), the calendar (circled date), pressed nightshade; seed-jar shelves
   const ux = (x) => x - back.mid[0];
@@ -101,8 +106,8 @@ export default function build(room, ctx) {
     // the circled date on a calendar (right of the clock) and the pressed nightshade above it
     b.box(0.36, 0.46, 0.012, { at: [0.6, 0.98, 0.012], tones: 'cream', pattern: 'none' });
     b.box(0.36, 0.08, 0.016, { at: [0.6, 1.38, 0.014], tones: RED });
-    for (let i = 0; i < 5; i++) for (let j = 0; j < 4; j++) b.box(0.035, 0.03, 0.008, { at: [0.47 + i * 0.065, 1.04 + j * 0.075, 0.02], tones: 'timber', pattern: 'none' });
-    for (let q = 0; q < 10; q++) { const a = (q / 10) * Math.PI * 2; b.box(0.028, 0.012, 0.008, { at: [0.6 + 0.065 + Math.cos(a) * 0.045, 1.115 + Math.sin(a) * 0.04, 0.026], rz: a + Math.PI / 2, tones: RED, origin: 'center', pattern: 'none' }); }
+    for (let i = 0; i < 5; i++) for (let j = 0; j < 4; j++) flatQuad(b, 0.47 + i * 0.065, 1.055 + j * 0.075, 0.019, 0.035, 0.03, { tones: 'timber' });
+    for (let q = 0; q < 10; q++) { const a = (q / 10) * Math.PI * 2; flatQuad(b, 0.6 + 0.065 + Math.cos(a) * 0.045, 1.115 + Math.sin(a) * 0.04, 0.021, 0.028, 0.012, { rz: a + Math.PI / 2, tones: RED }); }
     b.box(0.02, 0.02, 0.03, { at: [0.6, 1.46, 0.02], tones: 'iron' });
     b.box(0.44, 0.54, 0.04, { at: [0.6, 1.52, 0.02], tones: 'plank', pattern: 'none' });
     b.box(0.36, 0.46, 0.012, { at: [0.6, 1.56, 0.042], tones: 'cream', pattern: 'none', tint: 0.96 });
@@ -127,10 +132,10 @@ export default function build(room, ctx) {
         }
         const seed = [EARTH, CLOTH.gold, 'dirt', 'thatch', 'crow', RED][Math.floor(jr() * 6)];
         b.cylinder(0.062, 0.062, 0.2, { at: [x, y + 0.04, 0.13], tones: 'glass', segments: 8 });
-        b.cylinder(0.055, 0.055, 0.12, { at: [x, y + 0.05, 0.13], tones: seed, segments: 8 });
+        flatQuad(b, x, y + 0.085, 0.194, 0.08, 0.07, { tones: seed });                                   // the seeds behind the glass
         b.box(0.13, 0.035, 0.13, { at: [x, y + 0.24, 0.13], tones: 'plank' });
-        b.box(0.09, 0.06, 0.01, { at: [x, y + 0.1, 0.195], tones: 'cream', pattern: 'none' });          // the name label
-        b.box(0.06, 0.008, 0.006, { at: [x, y + 0.13, 0.2], tones: 'timber', pattern: 'none' });
+        flatQuad(b, x, y + 0.165, 0.195, 0.09, 0.05, { tones: 'cream' });                                // the name label
+        flatQuad(b, x, y + 0.165, 0.196, 0.06, 0.01, { tones: 'timber' });
       }
     }
   });
@@ -138,7 +143,7 @@ export default function build(room, ctx) {
   onSeg(room, back, ux(0.55), 1.05, (b) => {
     for (let k = 0; k < 4; k++) {
       b.box(0.13, 0.08, 0.13, { at: [-0.24 + k * 0.16, 0, 0.1], tones: 'brick' });
-      b.box(0.06, 0.08 + (k % 2) * 0.04, 0.06, { at: [-0.24 + k * 0.16, 0.08, 0.1], ry: k, tones: 'mossTuft', layer: 'soft' });
+      b.box(0.06, 0.08 + (k % 2) * 0.04, 0.06, { at: [-0.24 + k * 0.16, 0.08, 0.1], ry: k, tones: 'mossTuft' });
     }
   });
   at(room, { x: 0.15, z: -Z + 0.3 }, (b) => {
@@ -189,26 +194,25 @@ export default function build(room, ctx) {
     for (let k = 0; k < 16; k++) {
       const a = (k / 16) * Math.PI * 2, rx2 = w / 2 + 0.12 + ir() * 0.1, ry2 = 0.5 + ir() * 0.12;
       if (Math.sin(a) < -0.3) continue;
-      b.box(0.13, 0.1, 0.06, { at: [Math.cos(a) * rx2, 0.38 + Math.sin(a) * ry2, 0.04 + ir() * 0.04], ry: ir(), rz: ir(), tones: ir() < 0.5 ? 'leaf' : 'mossTuft', layer: 'soft' });
+      b.box(0.13, 0.1, 0.06, { at: [Math.cos(a) * rx2, 0.38 + Math.sin(a) * ry2, 0.04 + ir() * 0.04], ry: ir(), rz: ir(), tones: ir() < 0.5 ? 'leaf' : 'mossTuft' });
     }
   });
   ivy(back, ux(0.55), 1.05, 0.68);
   ivy(winS, 0.05, 1.0, 0.62);
   onSeg(room, back, 0, H - 0.25, (b) => {
-    for (let k = 0; k < 22; k++) b.box(0.15, 0.11, 0.06, { at: [-2.2 + k * 0.21, (k % 3) * -0.04, 0.05], ry: k, tones: k % 3 ? 'leaf' : 'mossTuft', layer: 'soft' });
+    for (let k = 0; k < 22; k++) b.box(0.15, 0.11, 0.06, { at: [-2.2 + k * 0.21, (k % 3) * -0.04, 0.05], ry: k, tones: k % 3 ? 'leaf' : 'mossTuft' });
   });
-  // the green fill through the ivy: the right window's (daylight) + the back window's ('fire': always on, so it is
-  // the day key light; at night it reads as moonlight through the leaves)
-  room.light({ pos: segPoint(winS, 0.05, 1.25, 1.2), color: '#6CC84A', r: 3.2, kind: 'window', intensity: 1.8 });   // daylight only (the demo fades 'window' kinds at night)
-  room.light({ pos: segPoint(back, ux(0.55), 1.25, 1.2), color: '#74CC52', r: 3.0, kind: 'fire', intensity: 1.9 });
+  // (night pass: no green point lights - the two window lights painted hard green discs over the walls and the floor
+  // day and night; the green comes from the ivy panes, the leafy sun dapples by day and the dithered green streaks
+  // from each sill at night, see the night layer below)
 
   // ---- the lantern on its chain
   // dried flowers hung from the top of the back wall, left of the clock
   onSeg(room, back, ux(-0.45), H - 0.32, (b) => {
     b.box(0.7, 0.04, 0.05, { at: [0, 0, 0.03], tones: 'timber' });
-    [CLOTH.gold, NIGHTSHADE, 'leaf', CLOTH.gold].forEach((c, k) => { b.box(0.02, 0.08, 0.02, { at: [-0.27 + k * 0.18, -0.08, 0.06], tones: TP.thatch }); b.box(0.11, 0.22, 0.09, { at: [-0.27 + k * 0.18, -0.3, 0.08], tones: c, layer: 'soft' }); });
+    [CLOTH.gold, NIGHTSHADE, 'leaf', CLOTH.gold].forEach((c, k) => { b.box(0.02, 0.08, 0.02, { at: [-0.27 + k * 0.18, -0.08, 0.06], tones: TP.thatch }); b.box(0.11, 0.22, 0.09, { at: [-0.27 + k * 0.18, -0.3, 0.08], tones: c }); });
   });
-  F.hangingLantern(room, { x: 1.75, z: 1.15, y: 1.45, r: 3.0, intensity: 1.2 });
+  F.hangingLantern(room, { x: 1.75, z: 1.15, y: 1.45, r: 1.5, intensity: 0.7 });
 
   // ---- the letters table: the stack of unsent letters tied with red string, one half-written, ink, candle, portrait
   const tx = 0.35, tz = 0.55;
@@ -234,7 +238,7 @@ export default function build(room, ctx) {
       g.box(0.035, 0.05, 0.035, { at: [0.55, top + 0.215, 0.2], tones: 'glass', layer: 'glass', glow: GLOW.flame, glowKind: 2 });
     },
   });
-  room.light({ pos: [tx + 0.55, 1.1, tz + 0.2], color: GLOW.candle, r: 2.2, kind: 'lantern', intensity: 1.1 });
+  room.light({ pos: [tx + 0.55, 1.05, tz + 0.2], color: GLOW.candle, r: 1.2, kind: 'lantern', intensity: 0.7 });
   F.chair(room, { x: tx, z: tz - 0.68, ry: 0 });
 
   // ---- the bed against the right wall (head to the wall) under an ochre quilt, a sheepskin; a dresser corner
@@ -260,8 +264,8 @@ export default function build(room, ctx) {
   }
   rock.box(0.44, 0.05, 0.42, { at: [0, 0.44, 0], tones: 'plank' });
   for (let k = 0; k < 3; k++) rock.box(0.38, 0.06, 0.04, { at: [0, 0.62 + k * 0.17, -0.22 - k * 0.025], rx: -0.15, tones: 'plank' });
-  rock.box(0.48, 0.42, 0.05, { at: [0, 0.6, -0.27], rx: -0.15, tones: RED, layer: 'soft', pattern: 'vboards', scale: 0.3 });   // the blanket
-  rock.box(0.5, 0.06, 0.07, { at: [0, 1.0, -0.33], rx: -0.15, tones: RED, tint: 0.94, layer: 'soft' });
+  rock.box(0.48, 0.42, 0.05, { at: [0, 0.6, -0.27], rx: -0.15, tones: RED, pattern: 'vboards', scale: 0.3 });   // the blanket
+  rock.box(0.5, 0.06, 0.07, { at: [0, 1.0, -0.33], rx: -0.15, tones: RED, tint: 0.94 });
   const rockG = rock.build({ name: 'house-4-rocker' });
   const rockPivot = new THREE.Group();
   rockPivot.position.set(rcx, 0, rcz);
@@ -271,10 +275,36 @@ export default function build(room, ctx) {
 
   // ---- the ivy canopy over the room: the sun falls through it in leafy dapples (shadow-only, follows the sun)
   const leafy = (x, z) => Math.sin(x * 4.4 + Math.sin(z * 3.1) * 1.6) + Math.sin(z * 5.2 + x * 1.5 + Math.cos(x * 2.2) * 1.2) * 0.9 + Math.sin((x - z) * 7.1) * 0.35;
-  const canopy = sunMask(room, { name: 'house-4-ivy', cell: 0.1, open: (x, z) => Math.abs(x) < X && Math.abs(z) < Z && leafy(x, z) > 0.95 });
+  // (at night it slides 7 m so only its closed margin covers the room: no grey moon dapples on the floor)
+  const canopy = sunMask(room, { name: 'house-4-ivy', cell: 0.25, margin: 10, nightShift: [0, 7], open: (x, z) => Math.abs(x) < X && Math.abs(z) < Z && leafy(x, z) > 0.95 });
 
   // ---- pollen drifting in the green window light
-  const pollen = motes(room, { n: 26, seed: 44, box: { x0: -1.0, x1: 3.6, y0: 0.4, y1: 2.1, z0: -2.7, z1: 0.6 }, size: 0.035, glow: '#F2E68E', mode: 'drift', speed: 0.14, sway: 0.18, name: 'pollen' });
+  // ...and at night, in the same mesh: the peat fire's low red-gold pool before the hearth, the ivy windows' green
+  // moonlight (the panes pale green, a streak from each sill across the earth floor), the letter-candle's pool on the
+  // rug and the lantern's on the floor - warm hearth against cool leaf-green, the rest left in tender dark
+  const inside = (u, w) => inPoly(poly, u, w);
+  const pollen = motes(room, {
+    n: 26, seed: 44, box: { x0: -1.0, x1: 3.6, y0: 0.4, y1: 2.1, z0: -2.7, z1: 0.6 }, size: 0.035, glow: '#F2E68E', mode: 'drift', speed: 0.14, sway: 0.18, name: 'pollen',
+    night: (b) => {
+      for (const [sg, u, y, w, h] of [[back, ux(0.55), 1.05, 0.68, 0.72], [winS, 0.05, 1.0, 0.62, 0.75]]) {
+        b.push({ at: [sg.mid[0], 0, sg.mid[1]], ry: sg.ry });
+        b.box(w, h, 0.004, { at: [u, y, -T * 0.55 + 0.016], tones: 'glass', layer: 'glass', glow: '#4E7A52', glowKind: 1 });
+        b.pop();
+      }
+      const fl = ditherCanvas({ plane: 'floor' });
+      const hf = segPoint(hearthS, 0, 0, 0.95);
+      fl.pool({ x: hf[0], v: hf[2], r: 1.35, r2: 1.05, color: '#9A5A3A', inner: '#D4844A', peak: 0.48, power: 1.2, clip: inside });   // the hearth
+      for (const [p0, p1] of [[segPoint(back, ux(0.55), 0, 0.35), segPoint(back, ux(0.75), 0, 1.75)], [segPoint(winS, 0.05, 0, 0.35), segPoint(winS, -0.3, 0, 1.7)]]) {
+        for (let q = 0; q < 4; q++) {
+          const f = q / 3;
+          fl.pool({ x: p0[0] + (p1[0] - p0[0]) * f, v: p0[2] + (p1[2] - p0[2]) * f, r: 0.34 + f * 0.06, r2: 0.36, color: '#4E7A54', inner: '#7EB070', peak: 0.55 - f * 0.28, power: 1.0, clip: inside });
+        }
+      }
+      fl.pool({ x: 1.75, v: 1.3, r: 0.8, r2: 0.6, color: '#A08054', inner: '#D0A462', peak: 0.3, clip: (u, w) => inside(u, w) && ((u - tx) / 1.3) ** 2 + ((w - tz) / 0.95) ** 2 > 1 });   // the lantern
+      fl.draw(b);
+      ditherCanvas({ plane: 'floor', y: 0.042 }).pool({ x: tx + 0.45, v: tz + 0.35, r: 0.9, r2: 0.7, color: '#A08054', inner: '#D0A462', peak: 0.36, clip: (u, w) => ((u - tx) / 1.28) ** 2 + ((w - tz) / 0.93) ** 2 < 1 }).draw(b);   // the letter-candle on the rug
+    },
+  });
 
   room.spot('hearth', -1.85, -1.35, -Math.PI / 2);
   room.spot('clock', -1.45, -1.9, Math.PI);

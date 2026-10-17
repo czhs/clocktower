@@ -174,6 +174,28 @@ function keepFxProgram(engine) {
 }
 
 /**
+ * A page opened in a ZERO-SIZE viewport (a hidden / collapsed browser pane, some background tabs: innerHeight 0) made
+ * Engine.resize set lowH = 0, so PixelCamera.texelWorld = viewHeight / 0 = Infinity and camera.snapWorld() returned
+ * NaN: life's sprite batch (src/town/life/sprites.js push(): every centre goes through snapWorld) filled its position
+ * buffer with NaN and three logged "computeBoundingSphere(): Computed radius is NaN" on the first frame of every such
+ * load (its bounding sphere stayed NaN after the window got a size). Until the window has a real size the camera and
+ * the pipeline get a nominal 640 x 360 low-res frame; the next resize event (the pane shown) sets the real one.
+ * (Engine.resize itself is read-only core: CONTRACT-REQUEST core, clamp lowW / lowH >= 1.)
+ */
+function guardZeroViewport(engine) {
+  const base = engine.resize.bind(engine);
+  engine.resize = () => {
+    base();
+    if (engine.lowW >= 1 && engine.lowH >= 1) return;
+    engine.lowW = 640; engine.lowH = 360;
+    engine.camera.resize(engine.lowW, engine.lowH);
+    engine.pipeline.resize(engine.lowW, engine.lowH);
+    engine.stats.demoZeroViewport = (engine.stats.demoZeroViewport ?? 0) + 1;
+  };
+  engine.resize();
+}
+
+/**
  * The control panel covers the right of the canvas (316 px + margins at 1280 x 720). Framed views - the cottage
  * dollhouse camera and the vote / overview / iso presets - are centred on the VISIBLE area instead of the canvas
  * (critic r6: house-8's bed / firewood / visit point under the panel; the vote camera's east seats on its edge): the
@@ -187,7 +209,7 @@ function installViewInset(demo) {
   const { engine, store } = demo;
   const rig = demo.camera, cam = engine.camera, canvas = engine.renderer.domElement;
   if (!rig?.update || rig.__inset) return;
-  const MAX_FIT = 1.35, MARGIN = 0.5;
+  const MAX_FIT = 1.35, MARGIN = 0.5, VOTE_SPAN = 15.2;
   let want = 0, px = 0, panelEl = null, ro = null;
   const measure = () => {
     panelEl ??= document.querySelector('#demo-ui > .dui-panel');
@@ -224,6 +246,11 @@ function installViewInset(demo) {
       const f = room.floor, R = Math.abs(Math.cos(cam.yaw)), S = Math.abs(Math.sin(cam.yaw));
       const need = (f.x1 - f.x0) * R + (f.z1 - f.z0) * S + 0.6 + MARGIN * 2;
       const fit = Math.min(MAX_FIT, Math.max(1, need / (cam.viewHeight * aspect * vis)));
+      cam.viewHeight *= fit; info.fit = +fit.toFixed(3);
+    } else if (m === 'vote') {
+      // the voting circle (15 seats on SEAT_R 6.25 m + the seated characters and the kerb: ~15.2 m across) must fit
+      // beside the panel on narrower windows too (1280 x 720: it fits at fit 1; ~900 px wide: widened)
+      const fit = Math.min(MAX_FIT, Math.max(1, (VOTE_SPAN + MARGIN * 2) / (cam.viewHeight * aspect * vis)));
       cam.viewHeight *= fit; info.fit = +fit.toFixed(3);
     } else info.fit = 1;
     // move the target right (camera right axis on the ground) by half the covered width, in whole texels
@@ -305,6 +332,7 @@ try {
   const params = new URLSearchParams(location.search);
   store.set(stateFromParams(params), 'url');
   const engine = new Engine({ params });
+  guardZeroViewport(engine);
   // the town's own URL params (scenes/town.js names): time-of-day preset + quality from the state; life is always built
   // (state.life only hides / shows it); the cut-away is re-aimed every frame by api.js createCutController
   const q = new URLSearchParams(params);

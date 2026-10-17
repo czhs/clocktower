@@ -1,0 +1,26 @@
+{
+  "_doc": "Your game's clip set and movement speed. Read by tools/charkit_pack.py (charpack/bake presets and the game-speed checks) and by character specs (import it to set walk speed). See AGENTS.md 'Calibrate game speed' and 'Clip profile'. These values are OUR game's (a top-down social-deduction game); replace them with yours. tools/gamespeed.py computes the game block from your sprite numbers.",
+  "name": "example: Clocktower (social deduction, top-down town)",
+  "clips": ["idle", "walk", "talk", "vote", "point", "die", "ghost", "ghost-spent", "$emote"],
+  "optionalClips": ["run"],
+  "clipNotes": {
+    "idle": "alive but calm; <= 4 drawings, extremes held >= 30 grid frames (loop 72)",
+    "walk": "THE in-game locomotion at the game speed below; the species' own gait",
+    "talk": "speaking loop: mouth opens >= 2 texels + a hand/head beat >= 25 deg every 8-14 grid frames",
+    "vote": "raise hand/wing/paw (or a prop) above the head in <= 6 grid frames and HOLD",
+    "point": "the shared emote: aim an arm at someone, hold >= 24 grid frames, return",
+    "die": "gentle, non-violent collapse to a held pose that reads as 'down' at 25 %",
+    "ghost": "dead player: pale, hovering loop (spec.ghost draws the look)",
+    "ghost-spent": "ghost after its one vote: dimmer, head bowed, no halo",
+    "$emote": "ONE signature social emote from the brief (spec.emote names the clip)"
+  },
+  "game": {
+    "heightsPerSecond": 3.95,
+    "walkDrawings": 4,
+    "walkFps": 12.5,
+    "cycleSeconds": [0.2, 0.5],
+    "heightsPerCycle": [0.8, 1.8],
+    "holdGridFrames": [2, 4],
+    "source": "150 px/s player speed, ~38 px tall sprites, 4-drawing walk at ~12.5 fps -> 3.95 body-heights/s, cycle 0.32 s, 1.26 H per cycle"
+  }
+}

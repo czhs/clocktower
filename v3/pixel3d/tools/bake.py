@@ -23,6 +23,8 @@
 Pipeline: 1 meta page load (clip lengths) → 1 page load of scenes/char-bake.js with every (clip, dir) copy in its own
 cell, rendered at t = (i + .5)/30 for every 30 Hz grid frame i (loops: 2 periods, to find the real period from the
 images) → per clip, the DISPLAYED frames (union of pose changes over the directions; holds kept) → packed sheet.
+Loops are cut from the 2nd drawing of the settled gait; an authored LegGait walk/run whose start-up cycle skipped a
+drawing (pose ids '<gait>:<clip>:k<n>:<drawing>:<cycle>') is re-cut from the first steady cycle, with a warning (lead w4).
 
 Outputs (out/sprites/):
   <name><suffix>.png         RGBA, key colour → alpha 0. Row = clip-major, then direction (dirs order); column = frame.
@@ -211,12 +213,12 @@ def bake_once(name, q, raw, out, suffix, ppm, yaw, pitch, tod, trim, nframes, T0
                             return False
                     return True
                 gaitn = (ci.get('gait') or {}).get(clip)
-                def gait_rep(bi):
+                def gait_rep(bi, s):
                     # Character gait ids '<gait>:<clip>:<frame>:<cycle n>' (authored or procedural walk/run): the
                     # same frame one cycle later is the same drawing. Older 2-field ids '<gait>:<n>' count drawings:
                     # drawing k and k + poses-per-cycle are the same. (The 2-field parse read the CYCLE counter of
                     # 4-field ids, found no repeat and baked 60 walk frames for the hound's 8-drawing walk.)
-                    fa_, fb_ = str(runs[a0][2][0]).split(':'), str(runs[bi][2][0]).split(':')
+                    fa_, fb_ = str(runs[s][2][0]).split(':'), str(runs[bi][2][0]).split(':')
                     try:
                         if len(fa_) >= 4 and len(fb_) >= 4:
                             return fa_[0] == fb_[0] and fa_[-2] == fb_[-2] and int(fb_[-1]) == int(fa_[-1]) + 1
@@ -224,12 +226,37 @@ def bake_once(name, q, raw, out, suffix, ppm, yaw, pitch, tod, trim, nframes, T0
                     except (ValueError, IndexError, TypeError):
                         return False
                     return bool(gaitn) and kb - ka == gaitn
-                for test in (lambda bi: runs[bi][2] == runs[a0][2], gait_rep, lambda bi: near(runs[bi][0], runs[a0][0])):
-                    for bi in range(a0 + 2, len(runs)):
-                        if test(bi):
-                            cyc = runs[a0:bi]; period = runs[bi][0] - runs[a0][0]; break
-                    if cyc:
-                        break
+                def find_cycle(s):
+                    for test in (lambda bi: runs[bi][2] == runs[s][2], lambda bi: gait_rep(bi, s), lambda bi: near(runs[bi][0], runs[s][0])):
+                        for bi in range(s + 2, len(runs)):
+                            if test(bi):
+                                return runs[s:bi], runs[bi][0] - runs[s][0]
+                    return None, None
+                cyc, period = find_cycle(a0)
+                # (lead w4, maxflow) the cycle above starts in the START-UP cycle; when the gait skipped a drawing
+                # there (short-duty waddle: pose ids k0, k1, k3, then 0..3 every later cycle) the sheet lost that
+                # drawing. Ids '<gait>:<clip>:k<n>:<drawing>:<cycle>': if the cut shows fewer drawings than the settled gait,
+                # cut again from the first run of cycle >= 1. Bakes whose cut already shows every drawing are unchanged.
+                def dc(r_):
+                    f_ = str(r_[2][0]).split(':')
+                    try:
+                        # authored LegGait ids only: legacy Gait ids '<gait>:<clip>:<frame>:<cycle>' alias drawings at
+                        # game speed by design (wanderer run shows 0,2,4 then 0,1,3,5) and must keep the old cut
+                        return (f_[-2], int(f_[-1])) if len(f_) >= 5 and f_[-3].startswith('k') else None
+                    except ValueError:
+                        return None
+                if cyc and all(dc(r_) for r_ in runs[a0:]):
+                    allk = {dc(r_)[0] for r_ in runs[a0:]}
+                    if len({dc(r_)[0] for r_ in cyc}) < len(allk):
+                        a1 = next((k for k in range(a0 + 1, len(runs)) if dc(runs[k])[1] >= 1), None)
+                        c1, p1 = find_cycle(a1) if a1 is not None else (None, None)
+                        if c1 and len({dc(r_)[0] for r_ in c1}) == len(allk):
+                            warnings.append(f'{clip}: start-up cycle showed {len({dc(r_)[0] for r_ in cyc})}/{len(allk)} '
+                                            f'drawings → cut from the first steady cycle instead')
+                            cyc, period = c1, p1
+                        else:
+                            warnings.append(f'{clip}: baked cycle shows only {len({dc(r_)[0] for r_ in cyc})} of '
+                                            f'{len(allk)} gait drawings (check spec.locomotion / gameSpeed.drawings)')
             if cyc is None and not cm.get('procedural') and cm['frames'] < n:
                 # authored loop (e.g. walk/run keys over one cycle; legs from the distance-phased gait): the period is
                 # the clip length when every direction repeats there (≤ 2 % of the figure differs)

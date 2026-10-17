@@ -188,7 +188,7 @@
 .dui-status .dim { color: var(--dui-dim); }
 .dui-status .amb { color: var(--dui-amber); }
 #demo-ui > .dui-toasts {
-  position: absolute; left: 50%; bottom: 40px; transform: translateX(-50%); pointer-events: none;
+  position: absolute; left: 50%; bottom: 54px; transform: translateX(-50%); pointer-events: none;
   display: flex; flex-direction: column-reverse; align-items: center; gap: 4px;
 }
 .dui-toast {

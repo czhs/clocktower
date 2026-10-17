@@ -114,12 +114,15 @@ export function mountUI(demo) {
 
   // toasts are used by every section below
   const toasts = h('div', { class: 'dui-toasts', 'aria-live': 'polite' });
+  /** Show a toast for `ms` (null: the caller removes it with fadeToast). Returns its element. */
   function toast(text, ms = 2600) {
     const el = h('div', { class: 'dui-toast' }, String(text));
     toasts.prepend(el);
     while (toasts.children.length > 4) toasts.lastChild.remove();
-    setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 400); }, ms);
+    if (ms !== null) setTimeout(() => fadeToast(el), ms);
+    return el;
   }
+  function fadeToast(el) { if (!el || el.classList.contains('out')) return; el.classList.add('out'); setTimeout(() => el.remove(), 400); }
 
   // --- Character ----------------------------------------------------------------------------------
   const roster = (demo.characters ?? []).filter((c) => c && c.complete && c.id);
@@ -538,11 +541,44 @@ export function mountUI(demo) {
     }, { desc: 'show / hide the panel', group: 'ui' }),
     events.on('toast', (p) => toast(p?.text ?? p)),
     events.on('bell', () => toast('The bell tolls')),
-    // user request: tell players they can emote (Space = the character's signature emote, 1-6 = the others)
-    events.on('intro:end', () => setTimeout(() => toast('Tip: press SPACE to emote (1-6 for more)', 9000), 1200)),
-    events.on('ready', () => { if (!demo.intro || store.state.intro === false) setTimeout(() => toast('Tip: press SPACE to emote (1-6 for more)', 9000), 1500); }),
+    // (the emote tip: shown once from update() when the player has control, see emoteTip below)
     store.on('phase', ({ value, source }) => { if (source !== 'ui') toast(`Phase: ${value}`); }),
   );
+
+  // --- the emote tip (user request: tell players they can emote; Space = the signature emote, 1-6 the others) -------
+  // Shown ONCE, 1.2 s after the player gets control: the demo is ready, the opening cinematic is over (or off: ?intro=0,
+  // automation, a reload) and the loading screen has gone, while the page is visible with a real size. It stays for
+  // 9 s of RENDERED time (frame dt, not a wall-clock timer: the earlier setTimeout version could run its whole 9 s in a
+  // hidden / zero-size tab or behind a loading screen that was still up, so the player never saw it). The loading
+  // screen keeps its own tip line (loading.js TIPS).
+  const TIP_TEXT = 'Tip: press SPACE to emote (1-6 for more)', TIP_DELAY = 1.2, TIP_SECS = 9;
+  const emoteTip = { state: 'wait', wait: 0, left: TIP_SECS, el: null, shownAt: null };
+  let readySeen = !!window.__demo?.ready;
+  offs.push(events.on('ready', () => { readySeen = true; }));
+  const hasControl = () => {
+    if (!readySeen && !window.__demo?.ready) return false;
+    if (demo.intro && demo.intro.phase !== 'done') return false;
+    if (document.body.classList.contains('ct-intro')) return false;
+    const ld = document.getElementById('demo-loading');
+    if (ld && ld.style.display !== 'none' && !ld.classList.contains('ldg-out')) return false;
+    return document.visibilityState !== 'hidden' && innerWidth > 0 && innerHeight > 0;
+  };
+  function tickTip(dt) {
+    if (emoteTip.state === 'done') return;
+    const step = Math.min(0.25, Math.max(0, Number(dt) || 0));
+    if (emoteTip.state === 'wait') {
+      if (!hasControl()) { emoteTip.wait = 0; return; }
+      emoteTip.wait += step;
+      if (emoteTip.wait < TIP_DELAY) return;
+      emoteTip.el = toast(TIP_TEXT, null);
+      emoteTip.el.classList.add('dui-tip');
+      emoteTip.state = 'shown'; emoteTip.shownAt = Math.round(performance.now());
+      return;
+    }
+    // shown: count down while frames render; a toast flood that pushed it out ends it early
+    emoteTip.left -= step;
+    if (emoteTip.left <= 0 || !emoteTip.el.isConnected) { fadeToast(emoteTip.el); emoteTip.state = 'done'; }
+  }
 
   // --- per frame ----------------------------------------------------------------------------------
   let fpsN = 0, fpsT = -1, fps = 0, nextStatus = 0;
@@ -575,7 +611,9 @@ export function mountUI(demo) {
     enterHouse,
     leaveHouse,
     visitBed,
-    update(t) {
+    emoteTip,
+    update(t, dt) {
+      tickTip(dt);
       if (fpsT < 0) fpsT = t;
       fpsN++;
       if (t - fpsT >= 0.5) { fps = fpsN / (t - fpsT); fpsN = 0; fpsT = t; }
@@ -589,6 +627,14 @@ export function mountUI(demo) {
           (inside ? `${nameOf(s.character)} inside ${inside.name ?? inside.id}`
             : `${nameOf(s.character)} @ ${p ? `${p.x.toFixed(1)}, ${p.z.toFixed(1)}` : '-'}${door ? ` · door: ${placeName(door.id)}` : ''}`);
         paintCeremony();
+        // toasts centred on the part of the canvas the panel leaves visible (main.js installViewInset measures it)
+        let cover = 0;
+        if (s.ui && !folded() && !document.body.classList.contains('ct-intro')) {
+          const r = panel.getBoundingClientRect();
+          if (r.width > 0 && r.left > innerWidth / 2 && r.left < innerWidth) cover = Math.round(innerWidth - r.left);
+        }
+        const left = cover ? `calc(50% - ${cover / 2}px)` : '';
+        if (toasts.style.left !== left) toasts.style.left = left;
         doorNow.textContent = inside ? '' : door ? `At the door of ${placeName(door.id)}` : p ? `Standing at ${p.x.toFixed(1)}, ${p.z.toFixed(1)}` : '';
       }
     },

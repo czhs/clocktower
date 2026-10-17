@@ -14,20 +14,23 @@
 // crystal ball; cluttered and warm; mischievous.
 import * as THREE from 'three';
 import { glassGlow } from '../palette.js';
-import { bareShell, polyWalls, polyFloor, blockOutside, inPoly, onSeg, segPoint, motes, at, glowGroup } from './house-0.js';
-import { Builder } from '../kit.js';
+import { bareShell, polyWalls, polyFloor, blockOutside, inPoly, onSeg, segPoint, motes, at, ditherCanvas, ditherWall, sunMask } from './house-0.js';
 
 /** Room size / walls (index.js reads ROOM before build): low and wide; the L leaves the front-left corner outside. */
-export const ROOM = { w: 8.6, d: 6.2, h: 2.7, wall: 'plaster', pal: 1, floor: 'flags' };
+export const ROOM = {
+  w: 8.6, d: 6.2, h: 2.7, wall: 'plaster', pal: 1, floor: 'flags',
+  // the demo's room night look (docs/DEMO.md 4.3, once index.js passes it through): green-gold, warm and close
+  nightAmbient: { lit: '#E0CC70', sh: '#94A868', k: 0.6, litK: 0.4, gain: 1.2, mist: 0.3 },
+};
 
 export default function build(room, ctx) {
   const { FURNITURE: F, WALL: Wl, CLOTH, GLOW, TOWN_PALETTE: TP, paintRamp } = ctx;
   const W = room.W, D = room.D, H = room.H, T = room.T;
   const X = W / 2, Z = D / 2, IX = -1.4, IZ = 0.6;           // the L's inner corner
+  const tx = 1.15, tz = 0.35;                                  // the round table
   const PURPLE = paintRamp('#4a2a5e', { lightness: 0.38 });
   const WASH = paintRamp('#5e7a70', { lightness: 0.58 });     // stained teal-grey plaster
   const BREW = glassGlow(TP.mossTuft[0], 0.12);
-  const STEAM = paintRamp('#b8d4a6', { lightness: 0.78 });
   const LAVENDER = paintRamp(TP.flowerViolet, { lightness: 0.5 });
   bareShell(room);
 
@@ -93,19 +96,37 @@ export default function build(room, ctx) {
     b.box(0.2, 0.03, 0.03, { at: [0.0, 1.55, 1.36], tones: 'iron' });                                  // horseshoe-ish
     for (const s of [-1, 1]) b.box(0.03, 0.14, 0.03, { at: [s * 0.09, 1.42, 1.36], tones: 'iron' });
   });
-  // green-gold, not orange: an orange pool under the blue night wash reads salmon-pink
-  room.light({ pos: [cx, 0.45, cz + 0.3], color: '#E8C850', r: 3.2, kind: 'fire', intensity: 1.3 });
-  room.light({ pos: [cx + 0.3, 1.0, cz + 0.7], color: '#B0E060', r: 2.8, kind: 'fire', intensity: 1.15 });
-  // bubbles (glow) + steam (lit puffs curling up into the hood)
-  const bub = new Builder(room.engine, { name: 'house-1-bubbles' });
-  for (const [x, z, s] of [[0.12, 0.05, 0.09], [-0.15, 0.1, 0.07], [0.02, -0.18, 0.08], [-0.08, -0.05, 0.05], [0.2, -0.12, 0.05]]) {
-    bub.box(s, s * 0.8, s, { at: [x, 0, z], tones: 'glass', layer: 'glass', glow: glassGlow(TP.mossTuft[0], 0.45), glowKind: 1 });
-  }
-  const bubG = glowGroup(room, bub, 'house-1-bubbles');
-  const bubPivot = new THREE.Group();
-  bubPivot.position.set(cx, 0.78, cz);
-  bubPivot.add(bubG);
-  const steam = motes(room, { n: 14, seed: 11, sources: [[cx, cz + 0.05], [cx + 0.15, cz - 0.1], [cx - 0.15, cz]], jitter: 0.2, box: { y0: 0.82, y1: 1.85 }, size: 0.12, glow: false, tones: STEAM, layer: 'soft', mode: 'steam', speed: 0.32, sway: 0.1, grow: 1.4, name: 'steam' });
+  // green-gold, not orange: an orange pool under the blue night wash reads salmon-pink. ONE low gold fire under the pot
+  // (a big green light here painted a hard green disc over the hood and the back wall) and a small green one over the
+  // brew that only reaches the pot rim and the hood's lintel; the rest of the green is the glowing steam
+  room.light({ pos: [cx + 0.2, 0.4, cz + 0.45], color: '#E8C850', r: 2.2, kind: 'fire', intensity: 1.25 });
+  room.light({ pos: [cx, 1.05, cz + 0.2], color: '#B0E060', r: 0.95, kind: 'fire', intensity: 0.85 });
+  // the glowing steam curling up into the hood + the brew's bubbles (one glow mesh), and the night's dithered pools
+  const steam = motes(room, {
+    n: 26, seed: 11, sources: [[cx, cz + 0.05], [cx + 0.15, cz - 0.1], [cx - 0.15, cz]], jitter: 0.24, box: { y0: 0.82, y1: 1.75 }, size: 0.06,
+    glow: '#8CB47E', mode: 'steam', speed: 0.32, sway: 0.1, grow: 1.4, name: 'steam',
+    sets: [{ n: 7, seed: 12, sources: [[cx + 0.12, cz + 0.05], [cx - 0.15, cz + 0.1], [cx + 0.02, cz - 0.18], [cx - 0.08, cz - 0.05], [cx + 0.2, cz - 0.12]], jitter: 0.05, box: { y0: 0.775, y1: 0.84 }, size: 0.075, glow: glassGlow(TP.mossTuft[0], 0.45), mode: 'pop', speed: 0.55 }],
+    night: (b) => {
+      const fl = ditherCanvas({ plane: 'floor' }), inside = (u, w) => inPoly(poly, u, w);
+      fl.pool({ x: cx + 0.15, v: cz + 0.35, r: 1.35, r2: 1.05, color: '#A87A40', inner: '#E0A84E', peak: 0.48, power: 1.25, clip: inside });   // the fire under the pot
+      fl.pool({ x: 2.55, v: 1.6, r: 1.2, r2: 0.95, color: '#A08052', inner: '#D8AA66', peak: 0.4, power: 1.25, clip: inside });            // the lantern
+      fl.pool({ x: -0.75, v: -1.55, r: 0.8, r2: 0.55, color: '#6E9A58', inner: '#A0C870', peak: 0.34, clip: inside });                       // the glowing jars on the crate
+      fl.pool({ x: 2.75, v: -2.6, r: 0.75, r2: 0.5, color: '#A08052', inner: '#D0A262', peak: 0.3, clip: inside });                          // the nightstand candle
+      // the jars on the crate glow at night (a witch's brews: green, amber, violet)
+      for (const [x, z, c] of [[-1.09, -2.01, '#7CC060'], [-0.95, -1.88, '#E0B050'], [-0.81, -2.0, '#A07CD0'], [-0.87, -2.05, '#7CC060']]) {
+        b.box(0.118, 0.1, 0.118, { at: [x, 0.32, z], tones: 'glass', layer: 'glass', glow: c, glowKind: 1 });
+      }
+      fl.pool({ x: 3.4, v: 2.55, r: 0.7, r2: 0.5, color: '#B4682E', inner: '#E08A3A', peak: 0.4, clip: inside });                            // the jack-o'-lantern
+      fl.draw(b);
+      // the crystal ball's violet glint + the black candle on the rug (a canvas at the rug's top)
+      ditherCanvas({ plane: 'floor', y: 0.042 }).pool({ x: tx - 0.12, v: tz + 0.0, r: 1.0, r2: 0.78, color: '#8468AC', inner: '#B496DA', peak: 0.34, clip: (u, w) => ((u - tx) / 1.28) ** 2 + ((w - tz - 0.05) / 0.98) ** 2 < 1 }).draw(b);
+      // firelight on the rubble footing behind the pot
+      ditherWall(b, back, [
+        { x: cx - back.mid[0], v: 0.45, r: 1.25, r2: 0.7, color: '#A07A44', inner: '#D8A450', peak: 0.5, power: 1.2 },
+        { x: 2.75 - back.mid[0], v: 0.95, r: 0.55, r2: 0.5, color: '#9A7A50', inner: '#C89A60', peak: 0.36 },   // the nightstand candle on the wall
+      ], { z: 0.008 });
+    },
+  });
 
   // ---- the black cat asleep in a wicker basket in the nook
   at(room, { x: -3.55, z: -0.15, ry: 0.35 }, (b, g) => {
@@ -158,7 +179,7 @@ export default function build(room, ctx) {
       } else room.b.box(0.13, len, 0.1, { at: [x, beamY - 0.12 - len, bz], tones: kind === 1 ? 'mossTuft' : kind === 2 ? LAVENDER : 'leaf', layer: 'soft', tint: [1, 0.94, 1.05][k % 3] });
     }
   }
-  F.hangingLantern(room, { x: 2.55, z: 1.45, y: 1.6, r: 3.0, intensity: 1.2 });
+  F.hangingLantern(room, { x: 2.55, z: 1.45, y: 1.6, r: 1.7, intensity: 1.0 });
 
   // ---- the bed in the back-right corner under a green patchwork, the nightstand under the porthole
   const bx = X - 0.6, bz = -Z + 1.05;
@@ -178,7 +199,6 @@ export default function build(room, ctx) {
   room.b.box(0.03, 0.03, 0.02, { at: [1.45, 0.055, -Z + 0.4], tones: 'crow' });
 
   // ---- the round table: crystal ball, the tarot spread with ONE card face-down, a black candle; a violet rug
-  const tx = 1.15, tz = 0.35;
   F.rug(room, { x: tx, z: tz + 0.05, w: 2.6, d: 2.0, oval: true, tones: PURPLE, border: 'gold' });
   F.table(room, {
     x: tx, z: tz, round: true, items: false,
@@ -199,7 +219,10 @@ export default function build(room, ctx) {
       g.box(0.05, 0.06, 0.05, { at: [-0.36, top + 0.23, 0.18], tones: 'glass', layer: 'glass', glow: GLOW.candle, glowKind: 2 });
     },
   });
-  room.light({ pos: [tx - 0.12, 1.15, tz - 0.16], color: '#B49CE8', r: 2.0, kind: 'lantern', intensity: 1.0 });
+  room.light({ pos: [tx - 0.12, 1.1, tz - 0.16], color: '#B49CE8', r: 1.1, kind: 'lantern', intensity: 0.8 });
+  // the warm fill of the main room (the moon is kept out at night): a broad, low-intensity glow over the table and the
+  // rug - from the lantern on the beam and the candles - centred on the round rug, so its edge reads as the rug's pool
+  room.light({ pos: [tx + 0.3, 0.95, tz + 0.2], color: '#E8B868', r: 1.6, kind: 'lantern', intensity: 0.9 });
   F.chair(room, { x: tx - 0.95, z: tz, ry: Math.PI / 2 });
   F.stool(room, { x: tx + 0.9, z: tz + 0.25 });
 
@@ -234,6 +257,10 @@ export default function build(room, ctx) {
   F.chest(room, { x: X - 0.3, z: -0.2, ry: -Math.PI / 2 });
   F.doormat(room, { x: 0, z: Z - 0.4 });
 
+  // ---- at night the moon stays out (a shadow-only lid, night only): the cottage is lit by its own fire, the brew and
+  // the candles - by day the room keeps its open dollhouse sun
+  const lid = sunMask(room, { name: 'house-1-lid', cell: 0.5, margin: 14, nightOnly: true });
+
   room.spot('cauldron', cx + 1.0, cz + 0.9, -Math.PI * 0.7);
   room.spot('table', tx, tz + 1.0, Math.PI);
   room.spot('cat', -3.0, 0.35, -Math.PI * 0.6);
@@ -241,13 +268,10 @@ export default function build(room, ctx) {
   return {
     bed: { x: bx, z: bz - 0.6, y: 0.55, facing: 0 },
     visit: { x: bx - 0.95, z: bz + 0.55, facing: Math.PI / 2 },
-    extras: [bubPivot, steam.group],
+    extras: [steam.group, lid.group],
     update(t) {
-      const k = Math.floor(t * 4);                               // stepped 4 fps
-      bubPivot.rotation.y = k * 1.3;
-      bubPivot.position.y = 0.78 + (k % 3) * 0.012;
-      bubPivot.scale.setScalar(1 + (k % 2) * 0.15);
       steam.update(t);
+      lid.update();
     },
     bedRect: bed.rect,
   };

@@ -1,9 +1,9 @@
 # Greenting — design sheet (cast member `greenting`, UCT mascot)
 
-"A round green creature. Nobody knows what it is." Code: `characters/greenting.js`. Final pack:
-`tools/charpack.sh greenting --preset cast --raw --out shots/char-greenting/final` (117 pass / 15 warn / 0 fail, render-host
-RTX 4090). Bake: `shots/char-greenting/bake/` (`--preset cast --cell 112 --q fx=0`). Evidence for the table below:
-`shots/char-greenting/{final,self,p5,p6}/`.
+"A round green creature. Nobody knows what it is." Code: `characters/greenting.js`. Final pack (r9, after critic-greenting 17/24):
+`tools/charpack.sh greenting --preset cast --raw --out shots/char-greenting/final-r9c` (116 pass / 17 warn / 0 fail, render-host
+RTX 4090). Bake: `shots/char-greenting/bake-r9/` (`--preset cast --cell 112 --q fx=0`; walk 4/4 drawings). Evidence for the table below:
+`shots/char-greenting/{final-r9c,r9c,r9d}/` (r8 pack kept in `final/` for A/B).
 
 **Identity source (changed mid-run).** Round 1 followed the gumdrop/duck-bill override (`refs/cast/greenting-user-ref-group.png`,
 now kept as `greenting-ref-v1-overlapping-group-crop.png`); the user then replaced `refs/cast/greenting.png` with the
@@ -21,27 +21,28 @@ in the gothic town (user: fine). Adjectives: **blank, deadpan, stiff** → perso
 ## 2. Body plan and game-speed numbers
 `bodyPlan: 'uprightAnimal'`, custom skeleton with biped names: `hips` (root, y 0.16) → `spine` (body tube) → `chest`
 (arm root, part-less) → `neck` (upper tube) → `head` (tube along the head axis, leaning 35° forward, + end cap) →
-`eyeL/R`, `mouth`; `upperArm/forearm/handL,R` (one stub lobe on upperArm); `thigh/shin/footL,R` (leg 0.11 m = 0.1 H);
-`tail0` (stub at the back bottom).
+`eyeL/R`, `mouth` (smile), `mouthO` (filled talk mouth, r9); `upperArm/forearm/handL,R` (one stub box on upperArm);
+`thigh/shin/footL,R` (leg 0.11 m = 0.1 H); `tail0` (stub at the back bottom).
 
 H = 1.12 m (v2 28 px → castHeight), 34–42 texels at vh 10 (head leans forward, so S is the shortest).
-- v_game = 3.95·H = **4.42 m/s** (charpack game job = spec.gameSpeed.v).
-- Legs 0.1 H cannot step at 4 H/s (duty bound ≈ 0.1) → LegGait `plan: 'biped'` + `style: 'bird'` (= a **waddle**: the
-  body rolls onto the planted foot), `plant: 'hold'` (sprite-style leg drawings, no re-pin), `poses [4, 4]`, `duty [0.25,
-  0.2]`, `roll [8, 7]`, `headBob [4, 4]`, `lean [6, 12]`, `lift [0.04, 0.06]`, `arms/elbows [0, 0]` (no procedural arm
-  swing), `cycleTime [0.3, 0.267]`.
-- Measured: **4/4 drawings every cycle, cycle 0.267 s (8 grid frames, holds 2), 1.05 H per cycle**, game.off_grid 0,
-  flicker 0, strobe 1, head_bob 3.6 px with limp 2.6 (≤ 3 PASS) (`final/report.txt`).
-- `clips.walk` (`blend: 'add'`, length 4, f0 = left contact) adds the stub-arm flap (±24° between drawing pairs), a tail
-  wag (±16°) and a ±3° head counter-roll on top of the waddle.
+- v_game = 3.95·H = **4.42 m/s** (charpack game job = spec.gameSpeed.v). Froude ≫ 0.5, so the game plays the RUN
+  branch of the LegGait numbers (index 1).
+- Legs 0.1 H cannot step at 4 H/s (duty bound ≈ 0.1) → LegGait `plan: 'biped'` + `style: 'bird'` (= a **waddle**),
+  `plant: 'hold'`, `poses [4, 4]`, `duty [0.25, 0.2]`, **r9: `roll [5, 5]`, `lean [3, 4]`** (was 8/7 and 6/12: at SE a
+  roll shows as a right-tilt drawing vs a squat drawing = the "forward/back lurch" the critic saw; roll 0 removes it,
+  roll 5 keeps a small sway; A/B `r9w-{a,b,c,d}/clip-game.png`), `headBob [4, 4]`, **`lift [0.06, 0.08]`**,
+  `arms/elbows [0, 0]`, `cycleTime [0.3, 0.267]`.
+- Measured (`final-r9c/report.txt`): **4/4 drawings every cycle, 0.267 s (8 grid frames, holds 2), 1.05 H per cycle**,
+  game.off_grid 0, flicker 0, strobe 1, head_bob 3.8 px, limp 1.7 (r8: limp 2.6), feet_visible SE PASS.
+- `clips.walk` (`blend: 'add'`, length 4, f0 = left contact): r9 stub-arm flap 40° between contact drawings (+16 / −24),
+  a 1-texel body drop on both contact drawings, tail wag ±22°, ±3° head counter-roll.
 
 ## 3. Silhouette (25 % blob)
-1. **Long narrow tube** (0.38 m wide × 1.1 m: the narrowest cast member) with two stub arms straight out to the sides —
-   a "+"/cross blob at S and N (width feature, R W3).
+1. **Long narrow tube** with two stub arms straight out to the sides (r9: arms 0.27 m box, ≈ 7 texels out of the body) —
+   a "+"/cross blob at S and N.
 2. **Head end leaning forward + tail stub** — at E/W a "7"/sauropod hook with a tail on the ground.
-Line-up `self/sil-lineup.png` (S/SE/E/N vs 26 members): closest = skeleton-chef / polly (narrow upright columns) but both
-have no forward hook at E and no side stubs at S; cilantro is the other long neck but 40 % taller with ossicones and hoofed
-legs. Distinct.
+Line-up `r9d/sil-lineup.png` (S/SE/E/N vs 30 cast silhouettes, skip list excluded): still the only cross at S/N and the
+only forward hook + tail at E; nearest are skeleton-chef / polly (narrow columns, no side stubs, no hook).
 
 ## 4. Proportions (vh 10 = 36 px/m)
 | part | m | texels |
@@ -49,68 +50,72 @@ legs. Distinct.
 | height (head top) | 1.11 | 34 (S) – 42 (N) |
 | body tube r (max) × depth | 0.19 × 0.94 | 14 wide |
 | head tube r / lean | 0.172 / 35° fwd | 12 wide |
-| stub arm (box) | 0.23 × 0.11 × 0.11 | 4 × 4 out of the body |
+| stub arm (box) | 0.27 × 0.11 × 0.11 (r9, was 0.23) | ≈ 6–7 × 4 out of the body |
 | leg + foot | 0.16 tall, foot 0.11 × 0.16 | 2–4 visible under the body |
 | tail stub | 0.25 long, r 0.06 | 6–8 at E/W |
-| eye bead | 0.062 square | 2 × 2 |
-| smile | 7 beads in a U, 0.052 each | ≈ 5 × 2 |
+| eye bead | 0.052 square (r9, was 0.062: rasterised as a 3×3 '+') | 2 × 2 / 2 × 1 |
+| smile | 3 beads, ±11° round the head axis (r9, was 7 beads) | ≈ 4 × 1 |
+| open talk mouth | 0.08 × 0.06 plate | ≈ 3 × 2 filled |
 
 ## 5. Palette (2 slots, no accent)
-- `jade` `['#66D8A4', '#2EB27E', '#2A8C68']` — the ref's flat mint/leaf green (hue ≈ 156°); sh kept on the ref hue.
-  Measured: noon sun dH 44 / dL −38 %, noon shade dL +22 %, golden sun dH 83 / dL −47 %, golden shade dL +23 % (all PASS).
-- `ink` `['#33433F', '#2A3633', '#222C2B']` — eye dots + smile; dark green-slate, no black.
-No pink/magenta anywhere in the palette or renders (the magenta in `turnaround-isolated.png` is charcheck's stray-px marker).
+- `jade` `['#66D8A4', '#2EB27E', '#2D9670']` — the ref's flat mint/leaf green (hue ≈ 156°); r9 sh lifted from #2A8C68
+  (golden-shade had dropped to +14 % with the longer arms). Measured: noon sun dH 43 / dL −34 %, noon shade +30 %,
+  golden sun dH 82 / −43 %, golden shade +22 % (all PASS).
+- `ink` `['#33433F', '#2A3633', '#222C2B']` — eyes, smile, open mouth; dark green-slate, no black (ink tones 12 → 6).
+- `material.merge`: every jade bone → `hips` (r9 adds thighs + feet), so no light-grey junction line draws anywhere.
+- `ghost: { hover 0.14, keepHue 0.45 }` (r9): ghost = pale mint, spent = grey sea-green, not lavender.
 
 ## Unique to me
-1. **Extra animated parts** — (a) STUB ARMS: keyed everywhere (no springs): idle −20° → −14° breath, walk flap ±24° per
-   drawing pair (additive clip), talk flaps the free arm up 40°, vote stretches the right arm up into a long noodle
-   (`'upperArmR.l': [3.6]`: the stub grows ×4.6 — the "soft rubber creature" gag), point stretches the left arm ×2.5
-   forward-up, shrug raises both; (b) TAIL wags ±16° in the walk; (c) the long BODY + NECK + HEAD are the expression:
-   talk sways them ±28° like a metronome (40° between keys), die topples the whole tube; (d) MOUTH: the smile beads
-   stretched (`mouth.s` y +0.7–0.8) = an open "D" mouth in talk; (e) EYES blink/close by `eye*.s` y −0.8.
-   Verified: `final/clip-talk.png`, `self/z-vote-point.png`, `final/clip-walk-60hz.png`.
-2. **My locomotion** — a stiff **waddle** (numbers §2). 0-slide: legs are sprite-drawn ('hold'), no planted pair exists
-   (`game.foot_slide` n/a, in-hold glide 6 texels = the baked-sprite behaviour, same as every chibi). The rhythm is
-   carried by the long body's roll (head 3.6 px bob + 2–3 px sideways sway), the flapping stub arms and the tail.
-3. **Expressions** — two 2×2 dark dot eyes on the upper sides of the head's snout end (EYE_DIR (0.5, 0.42, 0.76) from the
-   cap centre) + a 7-bead U smile on the lower front that wraps round the end, so at the game facing (SE) and in profile the
-   face sits OFF TO THE SIDE toward the snout end (at S, looking straight down the head axis, it is necessarily centred).
-   talk = smile stretched into a dark "D" + body sway; vote = head up 8°, other arm down; die = eyes shut (lines), body
-   on its side; emote = head tilted 24° + "?" glyph after a full stop-motion pirouette.
-4. **Game-speed readability** — walk: one word at 1×: "waddle" (`final/game-onion.png`, `final/gamespeed.png`); talk: a
-   beat every 6 frames (0.2 s), amplitude 43 %; vote: arm up at f3 (0.1 s), full at f6, held (final_hold 1.57 s, 32 % off
-   idle); die: down by f18 (0.6 s), final_hold 2.03 s 115 % off idle; emote: the pirouette is 8 drawings × 3 frames.
+1. **Extra animated parts** — (a) STUB ARMS keyed everywhere (no springs): idle −20° → −14° breath, walk flap 40°
+   between contact drawings, talk flaps the free arm up 40°, vote stretches the right arm into a long noodle (`.l` 4.6,
+   out 66: diagonal up-out so it clears the head at all 8 facings), point reaches BOTH stubs forward (`.l` 1.6 / 1.1,
+   jab 2.0 / 1.4) with a neck lunge; (b) TAIL wags ±22° in the walk; (c) the long BODY + NECK + HEAD sway ±28° as the
+   talk metronome, die topples the whole tube diagonally; (d) MOUTH: a separate filled dark plate (`mouthO`) buried in the
+   head at rest and pushed out with `mouthO.p` on the talk keys = a filled "o"/"D" under the small smile (the smile is
+   never scaled); (e) EYES blink/close by `eye*.s` y −0.8. Verified: `r9d/zf.png` (idle + talk 0/9/18/27 at S/SE/E/W/SW),
+   `final-r9c/clip-talk.png`, `r9c/z-v.png`, `r9c/z-pv.png`.
+2. **My locomotion** — a stiff **waddle-scurry** (numbers §2): legs are sprite-drawn ('hold'), `foot_slide` n/a; the
+   rhythm is the 40° arm flap, the 1-texel contact drop + 3.8 px head bob, a 5° roll and the tail wag.
+   `final-r9c/clip-game.png`, `game-onion.png`, 1× frames `r9d/z-gif-game.png`.
+3. **Expressions** — r9 face (critic fix): the eyes sit on the SIDES of the snout end (φ +72° / −70° round the head axis
+   from its front, 14° up the cap: |x| ≈ 0.9 of the radius), so each profile shows one eye on the side of the head (E
+   2×2, W 2×1); a 3-bead smile turned 12° toward the char's left, so S shows a small off-centre smile under two
+   edge-set dots and SE/SW show eye + smile toward the snout (`r9c/zf-idle.png`). talk = filled mouth + sway; vote = head
+   up 8°; die = eyes shut, on its side; emote = head tilted 24° + "?" after a stop-motion pirouette.
+4. **Game-speed readability** — walk: "waddle" at 1× (above); talk: a beat every 9 frames (0.3 s), key_delta 47 %;
+   vote: arm up-out at f3 (0.1 s), noodle at f6, held (final_hold 1.57 s, 46 % off idle); die: down by f18 (0.6 s),
+   final_hold 2.03 s, 132 % off idle; emote: pirouette 8 drawings × 3 frames.
 
 ## 6. Clips (30 Hz grid, `interp: 'step'`)
 | clip | keys (frame: what) | notes |
 |---|---|---|
 | idle (loop 72) | 0 rest · 30 breath 2° · 36 breath 4° + head tilt 6° · 52 blink (2 f) · 54 · 66 | arms −20 → −14 |
-| walk (add, 4) | 0 L contact: L arm up, R down, tail L · 1 pass · 2 mirror · 3 pass | LegGait waddle underneath |
-| talk (loop 24) | 0 sway L + mouth open + R arm up · 6 back, down 1 texel · 12 sway R + mouth + L arm · 18 back | `speak` at 0 |
-| vote | 0 dip · 3 R arm up (.l 1.6) · 6 noodle arm (.l 3.6, fwd −18 so it rises behind the head at E) — held | `vote@handR` at 6 |
-| point | 0 coil · 4 L arm fwd-up (55, 0, 40; .l 1.5) · 16 jab (.l 1.8, +0.03 fwd) · 24 point · 84 idle | |
-| die | 0 sway L, eyes half · 6 sway R, knees bend · 12 topple (roll 40°) · 18 on its side (roll 80°, turned 40°, +0.06 y) · 22 settle; held to 60 | `die` at 18, legs fk |
+| walk (add, 4) | 0 L contact: drop 1 texel, L arm up, R down, tail L · 1 pass · 2 mirror · 3 pass | LegGait waddle underneath |
+| talk (loop 36) | 0 sway L + mouth open + R arm up · 9 back, down 1 texel · 18 sway R + mouth + L arm · 27 back | `speak` at 0 |
+| vote | 0 dip · 3 R arm up-out (−6, 0, 54; .l 2.6) · 6 noodle (−6, 0, 66; .l 4.6) — held | `vote@handR` at 6 |
+| point | 0 coil back · 4 both stubs forward + neck lunge · 16 jab (.l 2.0 / 1.4, +0.03 fwd) · 24 point · 84 idle | |
+| die | 0 sway L · 6 sway R, knees bend · 12 twist (roll 40°) · 18 falls diagonally (hips fwd 54 / out 58) · 22 settles (60/60, limbs down); held to 60 | `die` at 18, legs fk |
 | mystery (emote) | 0 gather · 4–22 pirouette 45° per 3 f · 25 land · 28 shrug + head tilt 24° · 44 idle | `emote:question@crown` at 28 |
-| ghost / ghost-spent | 4 keys × 18 f, `legs: 'float'`, `spec.ghost { hover 0.14 }` (shared module ramp + halo) | spent: head bowed, arms down |
+| ghost / ghost-spent | 4 keys × 18 f, `legs: 'float'`, `spec.ghost { hover 0.14, keepHue 0.45 }` | spent: head bowed, arms down |
 | run (optional) | procedural waddle at 2·v | not authored |
 
-## 7. Self-critique (Stage 7; scored like the critic, evidence = files in shots/char-greenting/)
+## 7. Self-critique (r9; scored like the critic, evidence = files in shots/char-greenting/)
 | # | criterion | score | evidence (file · facing/frame · number) | what would raise it |
 |---|---|---|---|---|
-| 1 | Silhouette | 2 | `self/sil-lineup.png`: narrowest blob, cross at S/N, hook at E, no look-alike; `final/turnaround.png` 8/8 read as the Joguman tube | — |
-| 2 | Pixel stability | 2 | `final/report.txt`: off_grid 0 and flicker 0 in every clip, strobe ≤ 1, deterministic + vote.deterministic 0 px, pan 0 | — |
-| 3 | Line quality | 1 | `final/turnaround.png` N/E: the depth lines at the tail/foot roots render as light-grey 1-px specks on the green (zoom `r8/zn.png`); silhouette_line 0 | per-slot line colour (look backlog) or tail/feet inside the body |
-| 4 | Tonal discipline | 1 | isolated_px 5–10 per facing (jade), at the body-bottom/foot junction and smile edge (`r7f/zi.png`); colors/slot WARN ink 12 | coarser foot/body junction |
-| 5 | Ground separation | 2 | sig_ground noon/golden sun + shade all PASS (dH 44/83, shade +22/+23 %); `final/scene-*-crop.png` read in sun and pillar shade | — |
-| 6 | Proportion, appeal, expression | 1 | face_lit 70 %; talk mouth "D" visible at S/SE/SW (`self/z-idle-talk.png`) but the open mouth merges with the eyes into one dark mark at S; face centred at S | larger head/face spacing, smaller mouth open |
-| 7 | Animation timing | 1 | no x1 holds, hold_redraws 0, key_delta ≥ 19 %; BUT point hidden at SW (far arm) and vote arm hidden at NE (`self/z-vote-point.png`, `p6/z.png`) | a per-facing-safe pointer (head/arm both) |
-| 8 | Weight, contact, game speed | 1 | game.readable 4/4 drawings, 0.267 s, 1.05 H; head_bob 3.6 px; foot_slide n/a; feet only 2–4 texels and shuffle: contact barely visible at 1× (`final/clip-game.png`) | a visible foot plant drawing / bigger roll at contact |
-| 9 | Personality, secondary, uniqueness | 1 | deadpan stiff waddle + noodle-arm vote + pirouette emote are in character; secondary motion is keyed only (arms/tail ≤ 24°), no lag/overshoot anywhere | a soft settle on the head after the hop/pirouette |
-| 10 | Smears and FX | 1 | speech bubble, vote sparkle at the hand, `?` glyph, die dust + soul (`final/clip-*.png`); no smears (none needed); the bake is FX-free (FX were cropped by the figure-sized cell) | — |
-| 11 | Facing and turns | 2 | `final/clip-turn.png`: 45° steps held 2 frames, no chains to settle, all 8 facings read | — |
-| 12 | Technical | 2 | 0 FAIL, page_errors 0, draw_calls/char 2/1, night_freeze/night_pan 0 px, rendered on render-host RTX 4090 | — |
-| | **total** | **17** | | |
+| 1 | Silhouette | 2 | `r9d/sil-lineup.png` vs 30 members: only cross at S/N, only hook + tail at E; `final-r9c/turnaround.png` 8/8 | — |
+| 2 | Pixel stability | 2 | `final-r9c/report.txt`: off_grid 0 / flicker 0 in every clip, strobe 1, deterministic + vote.deterministic 0 px, pan 0/23, night_pan 0 | — |
+| 3 | Line quality | 1 | grey leg-root specks gone (`r9d/zfeet.png` S/SE/N/W x8: none), silhouette_line 0/806; but inner_lines 0 WARN (no depth line at all now) and the outlineDebug still was not run | a dark (not grey) leg/body line, needs a per-slot line colour (module) |
+| 4 | Tonal discipline | 1 | isolated_px jade [7,6,5,5,6,4,1,7] (was max 10), ink tones 12 → 6, jade 7; hi/mid 0.54–0.73 | sink the feet/tail roots further (remaining px at foot bottoms + head rim, `final-r9c/turnaround-isolated.png`) |
+| 5 | Ground separation | 2 | sig_ground noon/golden sun + shade all PASS (dH 43/82, shade +30/+22 %); `final-r9c/scene-{golden,night}-crop.png` read | — |
+| 6 | Proportion, appeal, expression | 2 | `r9c/zf-idle.png`: eye on the side at E (2×2) and W (2×1), S small 3-bead smile off-centre; talk open mouth is a filled 3×2 plate, not a ring, separate from the eyes at S/SE/SW (`r9d/zf.png` f0/f18); no '+' eye after EYE_A 0.026 (f27 SE) | S eyes sit on the outline as 1×2 columns |
+| 7 | Animation timing | 2 | point f16 arm visible 8/8 (`r9c/z-pv.png` row 1), vote f6 8/8 incl. NE (`r9c/z-v.png`); talk keys every 9 frames; key_delta ≥ 8 %, hold_redraws 0 | vote f3 in-between hidden at E |
+| 8 | Weight, contact, game speed | 1 | game.readable 4/4, 0.267 s, 1.05 H; head_bob 3.8 px limp 1.7; SE right-tilt/squat alternation reduced (`final-r9c/clip-game.png`); feet still 2–4 px stubs, foot_slide n/a | a real foot plant drawing (needs keyable legs under LegGait 'hold') |
+| 9 | Personality, secondary, uniqueness | 1 | noodle vote, two-stub point lunge, pirouette emote, 40° arm flap; still no lag/settle (deadpan by design) | a settle on the head after pirouette/vote |
+| 10 | Smears and FX | 2 | speech bubble steady (`final-r9c/clip-talk.png`), vote sparkle, '?' glyph, die dust (`clip-die.png` f26/f30) | — |
+| 11 | Facing and turns | 2 | `final-r9c/clip-turn.png` 45° steps, strobe 1 | — |
+| 12 | Technical | 2 | 0 FAIL (116 pass / 17 warn), page_errors 0, draw calls 2/1, night_freeze 0, bake 4/4 walk drawings, render-host RTX 4090 | — |
+| | **total** | **20** | | |
 
-Three weakest points: (1) contact/feet at game speed (shuffle, 2–4 texel feet); (2) the point and the vote arm vanish at
-the facing where the arm is on the far side (SW for point, NE for vote); (3) grey inner-line specks and 5–10 isolated px
-at the leg/tail roots.
+Remaining weak points: (1) feet/contact at game speed (stub shuffle, no planted drawing); (2) isolated px 4–7 per
+facing at the foot bottoms and head rim; (3) die final still a compact lump at NE and SW (2/8, was 4/8:
+`r9c/z-dg.png` row 2).

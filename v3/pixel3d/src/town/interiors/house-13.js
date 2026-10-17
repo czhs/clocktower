@@ -14,10 +14,18 @@ import * as THREE from 'three';
 import { Builder } from '../kit.js';
 
 export const ROOM = { w: 9, d: 6.2, h: 3.2, wall: 'planks', pal: 1, floor: 'boards' };
+/** Night look (docs/DEMO.md 4.3 nightAmbient): blue-grey river light, teal moon, mist. */
+const NIGHT_AMBIENT = { lit: '#A8D8CC', sh: '#78A8A0', k: 0.6, gain: 1.3, mist: 0.75, litK: 0.6 };
 
 // ---------------------------------------------------------------------------------------------- local helpers
-/** Animated specks: n small boxes in ONE mesh, moved per particle (stepped 8 fps, pure function of t). */
-function particles(room, ctx, { name, n, make, path, glow = true }) {
+/**
+ * Animated specks: n small boxes in ONE mesh, moved per particle (stepped 8 fps, pure function of t). `night(b, layer)`
+ * adds STATIC night-only geometry to the same mesh (soft light pools, glow decals): it is drawn only while the room is
+ * dark (drawRange, no extra draw call). dayParticles false: the specks themselves only show in the dark too.
+ * nightColor(i) -> hex | null: in the dark speck i glows steadily in that colour (e.g. window-kind ripples that would
+ * otherwise go black at night), restored by day.
+ */
+function particles(room, ctx, { name, n, make, path, glow = true, night = null, dayParticles = true, nightColor = null }) {
   const b = new Builder(room.engine, { name });
   const layer = glow ? 'glass' : 'soft', ranges = [];
   for (let i = 0; i < n; i++) {
@@ -25,15 +33,35 @@ function particles(room, ctx, { name, n, make, path, glow = true }) {
     make(b, i, layer);
     ranges.push([a, b.layers[layer].pos.length / 3]);
   }
+  const nDay = (b.layers[layer]?.pos.length ?? 0) / 3;
+  if (night) night(b, layer);
   const grp = b.build({ name, castShadow: false, receiveShadow: false });
   const mesh = grp.children[0];
   if (glow) mesh.material = ctx.kit.interiorGlowMaterial(room.engine);
   mesh.frustumCulled = false;
-  const pos = mesh.geometry.getAttribute('position'), base = pos.array.slice();
-  let last = -1;
+  const pos = mesh.geometry.getAttribute('position'), base = pos.array.slice(), nAll = pos.count;
+  const ga = glow && nightColor ? mesh.geometry.getAttribute('aGlow') : null, gDay = ga?.array.slice();
+  const recolor = (dark) => {
+    if (!ga) return;
+    const c = new THREE.Color();
+    for (let i = 0; i < n; i++) {
+      const hex = dark ? nightColor(i) : null;
+      if (hex) c.set(hex);
+      for (let v = ranges[i][0]; v < ranges[i][1]; v++) {
+        if (hex) { ga.array[v * 4] = c.r; ga.array[v * 4 + 1] = c.g; ga.array[v * 4 + 2] = c.b; ga.array[v * 4 + 3] = 1; }
+        else for (let q = 0; q < 4; q++) ga.array[v * 4 + q] = gDay[v * 4 + q];
+      }
+    }
+    ga.needsUpdate = true;
+  };
+  let last = -1, lastDark = null;
   return {
     group: grp,
     update(t) {
+      if (night || ga || !dayParticles) {
+        const dark = isDark(room);
+        if (dark !== lastDark) { mesh.geometry.setDrawRange(0, dark ? nAll : dayParticles ? nDay : 0); recolor(dark); lastDark = dark; }
+      }
       const k = Math.floor(t * 8) / 8;
       if (k === last) return;
       last = k;
@@ -46,6 +74,48 @@ function particles(room, ctx, { name, n, make, path, glow = true }) {
       pos.needsUpdate = true;
     },
   };
+}
+/** The room is dark: the sun is down or the town light has turned to moonlight (the same test as sunMask's lid). */
+function isDark(room) {
+  const sun = room.engine.uniforms?.uSunDir?.value, sunC = room.engine.uniforms?.uSunColor?.value;
+  return !sun || sun.y < 0.08 || (sunC && sunC.b > sunC.r + 0.02);
+}
+const BAYER4 = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+/**
+ * A soft light pool as an ordered-dither glow decal (night-only geometry for particles({night})): concentric bands of
+ * `cols` (dim -> bright) that dissolve into the surface through a 4x4 Bayer pattern instead of ending in a hard disc.
+ * plane 'floor' (y up) or 'back' | 'left' | 'right' (the wall's inner face); (x, y, z) = the centre, r / rv the radii
+ * along the plane's u (x, or z on side walls) and v (z on the floor, y on walls). peak 0..1 scales the brightness,
+ * fall the falloff exponent, cell the dither cell (u metres; v is stretched for the 30 deg camera). keep(u, v) clips.
+ * stipple: a hashed (random-looking) threshold instead of the Bayer matrix - mist and haze, not light.
+ */
+function ditherPool(b, layer, { x = 0, y = 0.006, z = 0, r, rv = r, cols, peak = 1, fall = 1.6, cell = 0.036, plane = 'floor', kind = 1, keep = null, stipple = false, room }) {
+  const cu = cell, cv = plane === 'floor' ? cell * 2 : cell * 1.15;
+  const U = plane === 'floor' ? [1, 0, 0] : plane === 'back' ? [1, 0, 0] : plane === 'left' ? [0, 0, -1] : [0, 0, 1];
+  const V = plane === 'floor' ? [0, 0, -1] : [0, 1, 0];
+  const o = plane === 'floor' ? [x, y, z] : plane === 'back' ? [x, y, -room.D / 2 + 0.012] : plane === 'left' ? [-room.W / 2 + 0.012, y, z] : [room.W / 2 - 0.012, y, z];
+  const n = cols.length, ni = Math.ceil(r / cu), nj = Math.ceil(rv / cv);
+  const P = (u, v) => [o[0] + U[0] * u + V[0] * v, o[1] + U[1] * u + V[1] * v, o[2] + U[2] * u + V[2] * v];
+  const quad = (u0, u1, v0, v1, lvl) => b.tris([...P(u0, v0), ...P(u1, v0), ...P(u1, v1), ...P(u0, v0), ...P(u1, v1), ...P(u0, v1)],
+    { tones: 'glass', layer, glow: cols[lvl], glowKind: kind });
+  for (let j = -nj; j < nj; j++) {
+    let run = -1, runLvl = -1;
+    for (let i = -ni; i <= ni; i++) {
+      let lvl = -1;
+      if (i < ni) {
+        const u = (i + 0.5) * cu, v = (j + 0.5) * cv, d2 = (u / r) ** 2 + (v / rv) ** 2;
+        if (d2 < 1 && (!keep || keep(u, v))) {
+          const I = peak * Math.pow(1 - d2, fall) * n, lo = Math.floor(I);
+          const th = stipple ? (((Math.sin(i * 12.9898 + j * 78.233) * 43758.5453) % 1) + 1) % 1 : (BAYER4[((j & 3) << 2) | (i & 3)] + 0.5) / 16;
+          lvl = Math.min(n, lo + (I - lo > th ? 1 : 0)) - 1;
+        }
+      }
+      if (lvl !== runLvl) {
+        if (runLvl >= 0) quad(run * cu, i * cu, j * cv, (j + 1) * cv, runLvl);
+        run = i; runLvl = lvl;
+      }
+    }
+  }
 }
 /**
  * Shadow-only ceiling: a plane high up the sun ray (off screen) with holes that let sun onto the floor. The holes are
@@ -218,7 +288,7 @@ export default function build(room, ctx) {
       candleY = top;                                                                                       // its flame is in the river-light mesh
     },
   });
-  room.light({ pos: [lx - 0.45, 1.1, lz - 0.1], color: GLOW.candle, r: 2.2, kind: 'lantern', intensity: 1.15 });
+  room.light({ pos: [lx - 0.45, 1.1, lz - 0.1], color: GLOW.candle, r: 1.0, kind: 'lantern', intensity: 0.75 });
   F.chair(room, { x: lx + 0.95, z: lz, ry: -Math.PI / 2 });
   F.chest(room, { x: -W / 2 + 0.32, z: 2.45, ry: Math.PI / 2 });
 
@@ -255,16 +325,41 @@ export default function build(room, ctx) {
   F.doormat(room, { x: 0, z: D / 2 - 0.4 });
 
   // the river light: a cool window-kind anchor at the water-door (follows the daylight in the demo)
-  room.light({ pos: [0, 0.7, -D / 2 + 1.4], color: '#9CB8D0', r: 3.2, kind: 'window', intensity: 1.0, hug: false });
+  room.light({ pos: [0, 0.7, -D / 2 + 1.4], color: '#9CC4D0', r: 1.6, kind: 'window', intensity: 0.7, hug: false });
 
   // ---- daylight: thin stripes of sun through the slatted boards overhead
   const mask = sunMask(room, { name: 'house-13-slats', cell: 0.1, open: (x, z) => ((z + 20) % 0.8) < 0.14 });
 
   // ---- ambiance (ONE glow mesh): the ledger candle (static), ripples of river light on the back wall's inner face
   //      (kept 0.45 m inside the side walls so none can reach a wall top), glints drifting down the slip
+  // NIGHT (same mesh): the moonlit river is the room's key light - the ripples on the back wall and the glints on the
+  // slip turn pale moon-teal (by day they follow the daylight), a moon hangs over the Gloamwood in the water-door with
+  // its broken path on the river, river MIST lies low and dithered over the slip and the walkways, and the ledger
+  // candle is the one small warm pool in a cold, lonely house.
+  const doorW = door.w;
+  const night = (b, layer) => {
+    const zDoor = -D / 2 - 0.05;                                   // just in front of the river / sky panes
+    const o = (hex) => ({ tones: 'glass', layer, glow: hex, glowKind: 1 });
+    b.push(M({ at: [0.72, 1.86, zDoor], rx: Math.PI / 2 }));                                                          // the moon + halo
+    b.cylinder(0.13, 0.13, 0.01, { ...o('#D8E4E0'), at: [0, 0, 0], segments: 8 });
+    b.cylinder(0.18, 0.18, 0.01, { ...o('#5A7488'), at: [0, -0.012, 0], segments: 8 });
+    b.pop();
+    for (let k = 0; k < 7; k++) {                                                                                       // moon path
+      const y = 0.68 - k * 0.095, w = 0.1 + k * 0.05 + (k % 2) * 0.04;
+      b.box(w, 0.03, 0.01, { ...o(k % 2 ? '#7A98A8' : '#A8C4CC'), at: [0.72 + ((k * 0.37) % 1 - 0.5) * 0.12, y, zDoor] });
+    }
+    // the moon's sheen on the slip, then two low banks of mist lying on the water (sparse, pale stipple)
+    ditherPool(b, layer, { room, x: 0, z: -1.1, y: 0.012, r: 1.45, rv: 2.0, cols: ['#4a6e7c', '#78a0a8'], peak: 0.6, fall: 1.0, cell: 0.06 });
+    for (const [mx, mz, my, mr] of [[-0.3, -2.0, 0.22, 2.2], [0.4, -0.5, 0.3, 2.4]]) {
+      ditherPool(b, layer, { room, x: mx, z: mz, y: my, r: mr, rv: 0.85, cols: ['#6a8494'], peak: 0.22, fall: 1.4, cell: 0.04, stipple: true,
+        keep: (u) => Math.abs(mx + u) < sx + 0.25 });                                                 // over the water only
+    }
+    ditherPool(b, layer, { room, x: lx - 0.35, z: lz - 0.05, y: 0.006, r: 0.95, rv: 0.6, cols: ['#4a3424', '#7a5634', '#a8763e'], peak: 0.8, cell: 0.05 });
+  };
   const NR = 16, NG = 12;
   const fx = particles(room, ctx, {
-    name: 'house-13-river-light', n: 1 + NR + NG,
+    name: 'house-13-river-light', n: 1 + NR + NG, night,
+    nightColor: (i) => (i === 0 ? null : i <= NR ? (i % 2 ? '#5E8494' : '#86AEB8') : '#A8C8D0'),
     make: (b, i, layer) => {
       if (i === 0) return b.box(0.05, 0.07, 0.05, { at: [lx - 0.45, candleY + 0.15, lz - 0.2], tones: 'glass', layer, glow: GLOW.candle, glowKind: 2 });
       if (i <= NR) return b.box(0.16 + (i % 3) * 0.08, 0.025, 0.01, { at: [0, 0, 0], tones: 'glass', layer, glow: i % 2 ? '#6C88A0' : '#8AA6BC', glowKind: 3 });
@@ -288,6 +383,7 @@ export default function build(room, ctx) {
     bed: { x: bx, z: bz - 0.6, y: 0.55, facing: 0 },
     visit: { x: bx + 0.95, z: bz + 0.55, facing: -Math.PI / 2 },
     extras: [mask.group, boatPivot, fx.group],
+    nightAmbient: NIGHT_AMBIENT,   // the demo's night look (time.js ROOM_NIGHT shape): moonlit teal river, mist
     update(t) {
       mask.update(); fx.update(t);
       const k = Math.floor(t * 6) / 6;

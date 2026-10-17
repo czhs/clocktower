@@ -312,11 +312,11 @@ export const CLIPS = {
   // walk / run (LegGait plays them for the upper body, ADDED on the waddle body): f0 = left contact. The big tail
   // swings out and back with tail1 one drawing behind (follow-through); ears flop back on the contacts.
   walk: { fps: 30, loop: true, interp: 'step', length: 4, blend: 'add', keys: [
-    // r2: spine roll per contact (k0 −7, k2 −3) evens out the waddle — r1 rolled ≈ 15° on k0 vs ≈ 5° on k2
+    // r2: spine roll −7 on the k0 contact evens out the waddle — r1 rolled ≈ 15° on k0 vs ≈ 5° on k2
     // (probe shots/char-maxflow/r3/roll.png: +out leans to screen-right at S)
     { f: 0, pose: { ...TAIL(-8, -24), ...EARS([-24, 0, 8]), spine: [0, 0, -7] } },
     { f: 1, pose: { ...TAIL(-20, 4), spine: [0, 0, 0] } },
-    { f: 2, pose: { ...TAIL(-38, -4), ...EARS([-24, 0, 8]), spine: [0, 0, -3] } },
+    { f: 2, pose: { ...TAIL(-38, -4), ...EARS([-24, 0, 8]), spine: [0, 0, 0] } },
     { f: 3, pose: { ...TAIL(-26, -30), spine: [0, 0, 0] } },
   ] },
   run: { fps: 30, loop: true, interp: 'step', length: 4, blend: 'add', keys: [
@@ -344,7 +344,7 @@ export function make() {
     sockets: { crown: { bone: 'head', at: [0.3, 0.62, 0.0] } },
     chains: [],
     personality: { body: { f: 1.8, zeta: 0.7, r: 0 }, head: { f: 2.2, zeta: 0.8, r: 0 } },
-    locomotion: { plan: 'biped', style: 'bird', plant: 'hold', walkSpeed: V_GAME, runSpeed: 2 * V_GAME, cycleTime: [0.3, 0.267], poses: [4, 4],
+    locomotion: { plan: 'biped', style: 'bird', plant: 'hold', maxSwing: 0.5, walkSpeed: V_GAME, runSpeed: 2 * V_GAME, cycleTime: [0.3, 0.267], poses: [4, 4],
       duty: [0.15, 0.1], reach: 0.6, bob: [0.06, 0.1], lean: [6, 12], lift: [0.06, 0.08], roll: [9, 4], headBob: [6, 6],
       squash: { bones: ['ball'], amount: 0.22, riders: ['chest'] } },
     character: { quant: { yaw: 8, chain: 4 } },
