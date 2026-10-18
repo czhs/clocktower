@@ -33,6 +33,17 @@ docs/perf-v3/stage.md §6. `v31-cpu` — 433 game3d tests, typecheck; SwiftShade
 (goal not reached: ~190 ms synced, 7.6-7.8 fps). C2 QA (read-only, on d9cc841): harness stills 6/6, a 10-bot playtest
 18/18 steps with 0 page / console errors.
 
+### v3.1 dev deploy (same day, after the push; the tagged commit `v3.1` = `b7803fa`)
+
+| Command (from the orchestrator checkout unless noted) | Result |
+|---|---|
+| `scripts/secret-scan.sh`; `git push origin v3-game`; `git tag -a v3.1 b7803fa`; `git push origin v3.1` | scan clean (392701 lines); pre-push scan clean (13 unpublished commits); `c67e1ea..b7803fa`; new tag `v3.1` |
+| `scripts/deploy-hshi-u1.sh dev b7803fa` | **exit 0 in 14 s**: sandboxed build, `clocktower-dev` restarted (only that unit), healthy `version b7803fae…`, 104 previous assets carried |
+| on the host: `systemctl status clocktower-dev`; `curl 127.0.0.1:3001/internal/version`; `GET / /v2/ /lobby/x /v2/lobby/x`; `journalctl -u clocktower-dev -n 50` | active (running); version = `b7803fae0359d864418ef27fc889e6c350b13e97`; all four 200 with the app (`<title>Clocktower Town</title>`); journal: no error / warn / fail lines. Prod untouched (`4be9bb4`, active) |
+| browser smoke on the host GPU against 127.0.0.1:3001 (scratch Playwright spec in the sandbox `.smoke/`, not in git; `flock browser.lock`, nice 19; 6 protocol bots (Storyteller + 5) + a 1920×1080 page + a 1440×900 DPR-2 laptop page, `ct.fxQuality=auto`): ready → start → random setup → first night → day → teleport all to seats → nominations + a nomination → vote frame on both pages | **1/1 pass (18.7 s); page errors [] and console errors [] on both pages**; both pages tier high; vote frame desktop viewHeight 13.10, laptop 13.53 with the measured HUD keep-outs (`stage().vote.key` lists 8 boxes); desktop frame p50 16.7 ms |
+
+Stills (this machine, gitignored): `tests/v3/shots/v3.1/{square-1920x1080,voting-1920x1080,voting-laptop-1440x900-dpr2}.png`.
+
 ## 2026-10-18 — v3.0 release gate (`v3-release`, branch `v3-game`, the host, sandbox `v3-release`)
 
 Tree = `116024f`: WP8 (`d66c622`) + the lead's merges of `v3-perf-stage`, `v3-perf-ui`, `v3-perf-learn`, `v3-perf-server`,

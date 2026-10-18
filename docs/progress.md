@@ -215,7 +215,8 @@ v2; v3.0 is on the dev service, see "v3 handoff" below.)
 ### v3 handoff (2026-10-18 night, after the v3.1 release — RESTART FROM HERE)
 
 - **v3.1 = the commit "v3.1: release gate + docs" on `v3-game`, tag `v3.1`, deployed to DEV** (`clocktower-dev`,
-  127.0.0.1:3001; verification in docs/test-results.md "v3.1 dev deploy"). **Prod still runs v3.0** (`4be9bb4`); per the
+  127.0.0.1:3001; `scripts/deploy-hshi-u1.sh dev b7803fa` exit 0, `/internal/version` = b7803fa, journal clean, a 6-bot
+  GPU smoke with 0 page errors; docs/test-results.md "v3.1 dev deploy"). **Prod still runs v3.0** (`4be9bb4`); per the
   user's standing rule (below) ship v3.1 to prod after this dev smoke, checking the journal for a running game first.
   Release note: docs/RELEASE-v3.md "v3.1". Gate: docs/test-results.md "v3.1 release gate" (typecheck, build, budgets
   incl. the new `town3dChunkBrKiB`, full `pnpm test` 175 files / 2016 tests, all 9 v3 e2e specs on the host GPU with 0
