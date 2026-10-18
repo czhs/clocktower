@@ -230,6 +230,16 @@ export function createInput(target = window) {
       return () => { const l = binds.get(code); const i = l?.indexOf(b); if (i >= 0) l.splice(i, 1); };
     },
     bindings: () => [...binds.values()].flat().map(({ code, desc, group }) => ({ code, desc, group })),
+    /** Run every press binding of `code` once, as a key press would (the game UI's action-bar buttons: the SAME code
+     *  path as the key). Returns how many bindings ran. */
+    press(code) {
+      const list = binds.get(code);
+      if (!list?.length) return 0;
+      for (const b of [...list]) { try { b.fn({ code, repeat: false, synthetic: true, preventDefault() {} }); } catch (err) { console.error('[demo] press', code, err); } }
+      return list.length;
+    },
+    /** Is anything bound to `code`? */
+    has: (code) => !!binds.get(code)?.length,
     dispose() { target.removeEventListener('keydown', kd); target.removeEventListener('keyup', ku); target.removeEventListener('blur', blur); },
   };
 }

@@ -342,6 +342,50 @@ export function createTime(demo) {
   // the dais' brazier light is pinned (dais.js finds it by position at its first live frame and recolours it)
   const pinned = fireAnchor ? recs[0] : null;
   if (pinned) assign(pinned, fireAnchor);
+  // (P1.3) a CARRIED light: the player's character holds a light (spec.lights, e.g. the Storyteller's lantern; the
+  // Character is built without it, characters.js lightless): the LAST light of the pool follows its socket every frame
+  // (world position, colour, reach, decay; intensity [day, dusk, night] by the toon ramp's daylight level x the spec's
+  // stepped flicker on the character's own clock, the formula of src/chars/character.js). The light count never
+  // changes, so swapping to the Storyteller compiles no program. While it is carried the town / room aim uses one slot less.
+  const carryRec = recs.length > (pinned ? 2 : 1) ? recs[recs.length - 1] : null;
+  let carry = null;          // { h (handle), L, node, decay0 }
+  const isSlot = (r) => r !== pinned && !(carry && r === carryRec);
+  const carriedOf = () => { const h = demo.player?.handle; return h?.lights?.length ? h : null; };
+  const wpos = new THREE.Vector3();
+  function syncCarry() {
+    const h = carriedOf();
+    if ((carry?.h ?? null) === h) return;
+    if (carry) { carryRec.light.decay = carry.decay0; assign(carryRec, null); }
+    carry = h && carryRec ? { h, L: h.lights[0].L, node: h.lights[0].node, decay0: carryRec.light.decay } : null;
+    if (carry) {
+      assign(carryRec, null);
+      carryRec.light.color.set(carry.L.color ?? '#FFB060'); carryRec.light.distance = carry.L.distance ?? 2.4; carryRec.light.decay = carry.L.decay ?? 1.5;
+    }
+    info.carried = carry ? { id: h.id, socket: carry.L.socket ?? carry.L.bone } : null;
+    // re-distribute the other slots (one more / one less)
+    if (inRoom) aimRoom(inRoom); else { aimX = aimZ = 1e9; aimT = -1; }
+  }
+  function lightCarry() {
+    if (!carry) return;
+    const { L, node, h } = carry;
+    node.updateWorldMatrix(true, false);
+    node.getWorldPosition(wpos);
+    carryRec.light.position.copy(wpos);
+    const c = engine.toonUniforms?.uRampHi?.value;
+    const l = c ? 0.299 * c.r + 0.587 * c.g + 0.114 * c.b : 1;
+    const u = Math.min(1, Math.max(0, (l - 0.35) / 0.25)), night = 1 - u * u * (3 - 2 * u);
+    const lvl = l < 0.45 ? 2 : l < 0.85 ? 1 : 0;
+    let I = Array.isArray(L.intensity) ? L.intensity[lvl] : (L.intensity ?? 2.6) * (L.nightOnly === false ? 1 : night);
+    const F = L.flicker === false ? null : { fps: 7.5, levels: [0.62, 0.78, 0.9, 1.0], seed: 17, ...(L.flicker || {}) };
+    if (F) {
+      const step = Math.floor(Math.max(0, h.clock) * F.fps + 0.001);
+      const qx = Math.imul(step | 0, 1597334673) >>> 0, qy = Math.imul(F.seed, 3812015801 | 0) >>> 0;
+      const hh = (Math.imul((qx ^ qy) >>> 0, 1597334673) >>> 0) / 4294967295;
+      I *= F.levels[Math.min(F.levels.length - 1, Math.floor(hh * F.levels.length))];
+    }
+    carryRec.light.intensity = I;
+    info.carried.intensity = +I.toFixed(2);
+  }
   const gainOf = (a, h) => (a.room ? roomGain(a) : a.kind === 'fire' ? fireGain : a.key !== null ? (lit.get(a.key) ? 1 : 0) : onAt(GENERIC, h) ? 1 : 0);
   // ---- inside a cottage (interior.js / src/town/interiors: room.lights = [{pos, color, r, kind, intensity}], world):
   // the hearth always burns, candles / lanterns are lit by day too but brighter at night, the window light follows the
@@ -360,7 +404,7 @@ export function createTime(demo) {
   };
   function aimRoom(room) {
     inRoom = room;
-    const slots = recs.filter((r) => r !== pinned);
+    const slots = recs.filter(isSlot);
     if (!room) {
       for (const r of slots) assign(r, null);
       roomLook = null;
@@ -404,11 +448,11 @@ export function createTime(demo) {
       pool.push(a);
     }
     pool.sort((x, y) => x.score - y.score || x.i - y.i);
-    const want = new Set(), pieces = new Set(), slots = recs.length - (pinned ? 1 : 0);
+    const want = new Set(), pieces = new Set(), slots = recs.filter(isSlot).length;
     for (const a of pool) if (want.size < slots && a.d < near && a.score < 900 && !pieces.has(a.piece)) { pieces.add(a.piece); want.add(a); }
     for (const a of pool) if (want.size < slots) want.add(a);
     const free = [];
-    for (const r of recs) { if (r === pinned) continue; if (r.a && want.has(r.a)) want.delete(r.a); else free.push(r); }
+    for (const r of recs) { if (!isSlot(r)) continue; if (r.a && want.has(r.a)) want.delete(r.a); else free.push(r); }
     for (const a of want) assign(free.shift(), a);
     for (const r of free) assign(r, null);
     aimX = cx; aimZ = cz; aimVersion = litVersion; info.aims++;
@@ -594,6 +638,7 @@ export function createTime(demo) {
     at(K.die - 2, () => store.setSeat(K.nominee, { dead: true, ghostVote: true, nominated: false }, 'time'));
     at(K.night - 2, () => { votes.clear(); cer = null; store.set({ phase: 'night', nominee: null }, 'time'); });
     cer = { t0: engine.time, k: 0, steps };
+    events.emit('ceremony', { start: true, t0: engine.time });
     if (store.state.camera === 'follow') store.set({ camera: 'vote' }, 'time');
     events.emit('toast', { text: 'the voting ceremony' });
   }
@@ -681,6 +726,8 @@ export function createTime(demo) {
     get preset() { return preset; },
     get period() { return period; },
     get votes() { return votes; },
+    /** the dais' vote sweep of the current / last vote phase: { from (seat), t0 (engine s), per (s per seat) } */
+    get sweep() { return { ...vote }; },
     get ceremony() { return cer ? { t: engine.time - cer.t0, step: cer.k, of: cer.steps.length } : null; },
     presets: CLOCK_PRESETS, schedule: SCHEDULE, info,
     ringBell, jumpTo, nextPreset, playCeremony, stopCeremony,
@@ -701,6 +748,7 @@ export function createTime(demo) {
       // the count never changes), and the town aim resumes on leaving.
       const room = demo.player?.interior ?? null;
       if (room !== inRoom) aimRoom(room);
+      syncCarry();
       const p = (s.camera === 'follow' && demo.player?.position) || engine.camera.target;
       if (!inRoom && (Math.abs(p.x - aimX) + Math.abs(p.z - aimZ) > 2.5 || aimVersion !== litVersion) && t - aimT > 0.25) { aimT = t; aim(p.x, p.z); }
       if (inRoom) T.uPointShape.value.y = Math.min(T.uPointShape.value.y, ROOM_REACH);
@@ -725,6 +773,7 @@ export function createTime(demo) {
         r.light.intensity = a.base * g * f;
       }
       info.lit = nLit;
+      lightCarry();
 
       if (!lifeOn) for (const L of lifeLights) L.light.intensity = 0;
       if (cer) { const ct = t - cer.t0; while (cer && cer.k < cer.steps.length && ct >= cer.steps[cer.k][0]) cer.steps[cer.k++][1](); }

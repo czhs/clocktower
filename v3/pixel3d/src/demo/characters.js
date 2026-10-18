@@ -31,6 +31,13 @@ import { buildCharacter } from '../chars/rig.js';
 import { loadRoster, loadSpec, probe, wipMode, publicOffer, wipOffer, isFinished } from './roster.js';
 
 let smearMod = null, fxMod = null;
+
+/** (P1.3, the Storyteller's lantern) A Character builds a PointLight for every spec.lights entry under its socket the
+ *  first time it updates: one more light in the scene = every lit material recompiles (+23 programs, a ~200 ms hitch
+ *  on the swap, audit 2026-10-17). The demo builds the Character from a shallow copy WITHOUT lights; the entries stay on
+ *  the handle (`handle.lights`, with the socket node resolved) and the time module pins one light of its constant pool
+ *  to the socket (time.js `carried`). Same spec object everywhere else (handle.spec is the original). */
+export const lightless = (spec) => (spec?.lights?.length ? { ...spec, lights: [] } : spec);
 const optional = async (p) => { try { return await import(p); } catch (e) { console.warn(`[demo] ${p} unavailable:`, e?.message || e); return null; } };
 
 // game emotes (CHARACTERS.md clocktower rule) -> clip name in the spec (or null). 'signature' = spec.emote.
@@ -189,7 +196,7 @@ function exercise(engine, spec, thumbs, status) {
   Object.defineProperty(proxy, 'time', { get: () => tau });
   proxy.onUpdate = () => {};
   const H = spec.height ?? 1.4, v = spec.gameSpeed?.v ?? spec.game?.speed ?? 3.95 * H, GO = 0.6;
-  const ch = new Character(proxy, spec, { autoUpdate: false, snap: false, facingSteps: 8, face: 0, position: new THREE.Vector3() });
+  const ch = new Character(proxy, lightless(spec), { autoUpdate: false, snap: false, facingSteps: 8, face: 0, position: new THREE.Vector3() });
   try {
     ch.drive((t) => ({ pos: new THREE.Vector3(0, 0, Math.max(0, t - GO) * v), face: 0 }));
     for (let i = 0; i <= 15; i++) ch.update(tau = i / 30);           // idle, 0 .. 0.5 s
@@ -345,7 +352,7 @@ export async function createCharacter(engine, id, { position, face = 0, ground, 
     // (perf) the rig build and the Character's first update (its rest-shape / dynamics setup) land in DIFFERENT frames:
     // owl's build alone is 55-90 ms and its first update 25-40 ms (2026-10-16 probe), together a >100 ms swap frame
     await nextFrame();
-    ch = new Character(proxy, spec, {
+    ch = new Character(proxy, lightless(spec), {
       rig, autoUpdate: false, snap: true, facingSteps: 8, face,
       position: position?.clone?.() ?? new THREE.Vector3(), ground: ground ?? groundOf(),
     });
@@ -365,6 +372,18 @@ export async function createCharacter(engine, id, { position, face = 0, ground, 
     throw new Error(`character '${id}': ${e?.message || e}`, { cause: e });
   }
   ch.root.name = `character:${id}`;
+  // spec.lights (not built by the Character, see lightless): an empty Object3D at each light's socket / bone (+ `at`),
+  // so the time module can read its world position; never a light itself (the light count stays constant)
+  const lights = [];
+  for (const L of spec.lights ?? []) {
+    const node = ch.rig?.sockets?.[L.socket] ?? ch.bones?.[L.bone ?? L.socket];
+    if (!node) { console.warn(`[demo] '${id}' spec.lights: no socket/bone '${L.socket ?? L.bone}'`); continue; }
+    const at = new THREE.Object3D();
+    at.name = `demo-carried-light:${L.socket ?? L.bone}`;
+    if (L.at) at.position.fromArray(L.at);
+    node.add(at);
+    lights.push({ L, node: at });
+  }
 
   const clips = Object.keys(spec.clips ?? {});
   const emotes = {};
@@ -379,6 +398,8 @@ export async function createCharacter(engine, id, { position, face = 0, ground, 
     runSpeed: loco.runSpeed ?? 3.4,
     gameSpeed: spec.gameSpeed?.v ?? spec.game?.speed ?? null,   // cast members: THE game speed (4 H/s); null = use walkSpeed
     clips, emotes,
+    /** the spec's carried lights [{ L (the spec.lights entry), node (Object3D at the socket) }]: lit by time.js */
+    lights,
     /** clips safe to play as emotes in the clocktower game (no combat / hurt, no locomotion) */
     emoteClips: clips.filter((c) => !BANNED.has(c) && !['idle', 'walk', 'run'].includes(c)),
     /** the Character's local clock (s since creation; -1 before the first update) */

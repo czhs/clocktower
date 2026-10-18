@@ -581,7 +581,8 @@ export function mountUI(demo) {
     events.on('toast', (p) => toast(p?.text ?? p)),
     events.on('bell', () => toast('The bell tolls')),
     // (the emote tip: shown once from update() when the player has control, see emoteTip below)
-    store.on('phase', ({ value, source }) => { if (source !== 'ui') toast(`Phase: ${value}`); }),
+    // (with the game UI the events group's phase caption ribbon says it: no toast on top of it)
+    store.on('phase', ({ value, source }) => { if (source !== 'ui' && !demo.gameui) toast(`Phase: ${value}`); }),
   );
 
   // --- the emote tip (user request: tell players they can emote; Space = the signature emote, 1-6 the others) -------
@@ -612,11 +613,14 @@ export function mountUI(demo) {
     if (emoteTip.state === 'done') return;
     const step = Math.min(0.25, Math.max(0, Number(dt) || 0));
     if (emoteTip.state === 'wait') {
+      // "never show again" (the game UI's tip row, localStorage): no automatic tip; the lightbulb still opens it
+      if (demo.gameui?.tipNever) { emoteTip.state = 'done'; emoteTip.skipped = 'never'; return; }
       if (!hasControl()) { emoteTip.wait = 0; return; }
       emoteTip.wait += step;
       if (emoteTip.wait < TIP_DELAY) return;
       // with the game UI: the pixel key-hint plate at the bottom (hud art drawKeyHint), the same 9 s
-      emoteTip.el = demo.gameui?.tip ? demo.gameui.tip(TIP_TOKENS, TIP_SECS) : toast(TIP_TEXT, null);
+      // (the game UI's own tokens name the action bar; it flies into the toolbar's lightbulb when it goes)
+      emoteTip.el = demo.gameui?.tip ? demo.gameui.tip(demo.gameui.tipTokens ?? TIP_TOKENS, TIP_SECS) : toast(TIP_TEXT, null);
       emoteTip.el.classList.add('dui-tip');
       emoteTip.state = 'shown'; emoteTip.shownAt = Math.round(performance.now());
       return;

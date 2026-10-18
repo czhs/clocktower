@@ -1,8 +1,13 @@
 // Demo character roster generator (owner: demo characters; docs/DEMO.md §4.2). Re-runnable while the character session
 // keeps adding / finishing cast members:
-//   tools/remote.sh node tools/demo-roster.mjs [--check] [--include a,b] [--exclude c]          static pass (node only)
-//   tools/remote.sh node tools/demo-roster.mjs --browser [--shots shots/v3-roster] [--tag noon]  + live verification
-// Writes src/demo/roster.json (pull it back: rsync render-host:pixel3d/src/demo/roster.json), which src/demo/roster.js reads.
+//   tools/demo-roster.sh [--check] [--include a,b] [--exclude c]          static pass (node only)
+//   tools/demo-roster.sh --browser [--shots shots/v3-roster] [--tag noon]  + live verification
+// Writes src/demo/roster.json, which src/demo/roster.js reads. RUN IT THROUGH tools/demo-roster.sh: this script runs on
+// the render host, and the next tools/remote.sh sync pushes the Mac tree over the host's copy, so a roster.json written
+// only there is lost. The wrapper passes --emit <shots/demo-roster/emit-*.json> (a path no sync touches: every
+// manifest this run writes is also written there) and copies that file back into the Mac's src/demo/roster.json after
+// checking it (JSON, version, rows, no pipeline/skip.txt id anywhere). Running the .mjs directly still works (the host
+// copy only).
 //
 // Manifest v3 (2026-10-16: the PUBLIC demo offers only FINISHED characters; ?wip=1 adds the work in progress).
 // EVERY characters/<id>.js is a row (mannequin, opal-style partial files and _-prefixed files aside):
@@ -42,6 +47,9 @@ const list = (s) => (s ? s.split(',').map((x) => x.trim()).filter(Boolean) : [])
 const INCLUDE = new Set(list(opt('include', '')));
 const EXCLUDE = new Set(['mannequin', ...list(opt('exclude', ''))]);
 const OUT = path.join(ROOT, opt('out', 'src/demo/roster.json'));
+// --emit <path>: also write every manifest there (tools/demo-roster.sh pulls it back to the Mac)
+const EMIT = opt('emit', '') ? path.join(ROOT, opt('emit', '')) : null;
+if (EMIT && !path.relative(ROOT, EMIT).startsWith('shots' + path.sep)) { console.error(`--emit must be under shots/ (got ${opt('emit', '')})`); process.exit(2); }
 const read = (p) => { try { return fs.readFileSync(path.join(ROOT, p), 'utf8'); } catch { return ''; } };
 const mtime = (p) => { try { return fs.statSync(path.join(ROOT, p)).mtimeMs; } catch { return 0; } };
 /** The same fingerprint as src/demo/characters.js sourcePrint (FNV-1a over the UTF-16 code units, '.' + length). */
@@ -209,6 +217,7 @@ const writeManifest = () => {
     characters: out,
   };
   fs.writeFileSync(OUT, JSON.stringify(manifest, null, 2) + '\n');
+  if (EMIT) { fs.mkdirSync(path.dirname(EMIT), { recursive: true }); fs.writeFileSync(EMIT, JSON.stringify(manifest, null, 2) + '\n'); }
   return manifest;
 };
 const manifest = writeManifest();

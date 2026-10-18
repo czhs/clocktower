@@ -56,9 +56,11 @@ export function bookMats(T, ghost = false) {
   return {
     a: leather, b: page, g: { hi: T.goldHi, mid: T.gold, sh: T.gold, line: T.goldLine }, r: { hi: rib.mid, mid: rib.mid, sh: rib.sh, line: rib.line },
     e: page.sh, i: ramp(T.parchment, { line: 0.36 }).line, k: leather.line,
-    // quill (r6): one strong silhouette, the feather in the cream rim colour (page hi) with the page outline, and a
-    // single dark nib texel (no outline ring around the nib: renderBookMask)
-    w: { hi: page.hi, mid: page.hi, sh: page.hi, line: page.line }, v: { hi: T.gold, mid: T.goldSh, sh: T.goldSh, line: T.goldLine }, n: T.outline,
+    // quill (r6): one strong silhouette and a single dark nib texel (no outline ring around the nib: renderBookMask).
+    // (demo round, 2026-10-18) the feather was the page's own cream with the page's own line: on the open spread its
+    // outline read as a crack / a torn V in the pages at 1x, not a quill. Now a cool white goose feather (the ghost
+    // ramp: hi / mid / sh) with a violet-ink line, so it separates from the warm pages by hue AND value.
+    w: { hi: ramp(T.ghost, { light: 0.06 }).hi, mid: T.ghost, sh: T.ghostSh, line: ramp(T.ghostSh, { line: 0.42 }).line }, v: { hi: T.gold, mid: T.goldSh, sh: T.goldSh, line: T.goldLine }, n: T.outline,
   };
 }
 

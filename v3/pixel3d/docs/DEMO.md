@@ -26,11 +26,12 @@ Console errors / page errors / shader errors = failure. No git commits.
 | **characters** | `src/demo/characters.js` | which characters are complete, loading a spec, creating a runtime Character handle |
 | **time** (town states) | `src/demo/time.js` | continuous clock → sky / sun / lights / tower hands / hour strikes; phase / nominee / seats → dais + ceremony; bell; life on/off; quality (reload) |
 | **ui** | `src/demo/ui.js` | the control panel, status line, help overlay, toasts |
-| **ui** (game UI) | `src/demo/gameui.js`, `src/demo/notebook.js`, `src/demo/ui-assets.json`, `src/ui/runtime/layer.js` + `src/ui/runtime/book3d.js` (new, additive to the UI library) | the pixel3d UI library in the demo (§4.7): labels, talk + bubbles, emote pops, point / pie / pins, the pixel HUD (clock + phase chips, toolbar, toasts, prompts, tip, social dock), the notebook + the reading book, the panel skin |
+| **ui** (game UI) | `src/demo/gameui.js`, `src/demo/actionbar.js`, `src/demo/notebook.js`, `src/demo/ui-assets.json`, `src/ui/runtime/layer.js` + `src/ui/runtime/book3d.js` (new, additive to the UI library) | the pixel3d UI library in the demo (§4.7): labels, talk + bubbles, emote pops, point / pie / pins, the pixel HUD (clock + phase chips, toolbar + the tip's lightbulb, toasts, prompts, the controls tip, social dock), the ACTION BAR (every key as a button), the events group (captions, night veil / dawn, vote clock, execution, ghost reveal, poof), off-screen arrows, the notebook + the reading book, the panel skin |
+| **ui** (ambient) | `src/demo/ambient.js` | the ambient library (`src/ambient/**`, read only) in the demo (§4.8): pigeons, fireflies / moths / butterflies, the cauldron fire, props, reacting to the player |
 | **deploy** | `src/demo/deploy.js`, `tools/demo-serve.mjs`, `tools/demo-check*.mjs` (+ `shots/demo-deploy/`) | `window.__demo` automation hooks, error overlay, perf watchdog, serving, the playtest automation |
 | **player** (houses) | `src/demo/interior.js`, `src/demo/camera.js`, `src/demo/collision.js` | entering / leaving cottages (fade, room collision, the dollhouse camera), the texel-locked follow, collision + walk-through props |
 | **intro** | `src/demo/loading.js`, `src/demo/loading.css`, `src/demo/intro.js`, the `#demo-loading` markup in demo.html | the loading screen (real progress), the opening cinematic |
-| **roster** | `tools/demo-roster.mjs`, `src/demo/roster.js`, `src/demo/roster.json` (generated) | which characters are offered (shipped / WIP), portraits |
+| **roster** | `tools/demo-roster.sh` (run this) → `tools/demo-roster.mjs`, `src/demo/roster.js`, `src/demo/roster.json` (generated) | which characters are offered (shipped / WIP), portraits; the wrapper brings the host's roster.json back to the Mac (a sync would overwrite it otherwise) |
 | interiors (town side) | `src/town/interiors/*` (read-only for the demo) | the 15 rooms (`buildInterior`, `aimLights`), docs/INTERIORS.md |
 
 Every non-lead file exists as a **working stub** written by the lead (so the page runs end to end from minute one).
@@ -58,9 +59,9 @@ Owners replace their stub; keep the exported names and signatures below (add fre
    follow + the interior dollhouse camera) + `createCutController(demo)` (lead) → `createNPCs(demo)` (idle townsfolk
    characters, `?npcs=0` off; `demo.npcs` is a placeholder until then so listCharacters does not start them before the
    player exists) → `createIntro(demo)` (only when `loading.js introEnabled(params)` and not capture) → `createTime(demo)`
-   → `createGameUI(demo)` (gameui.js, §4.7; `?gameui=0` off) → `mountUI(demo)` → `installDeploy(demo)` →
+   → `createAmbientLayer(demo)` (ambient.js, §4.8; `?ambient=0` off) → `createGameUI(demo)` (gameui.js, §4.7; `?gameui=0` off) → `mountUI(demo)` → `installDeploy(demo)` →
    `installViewInset(demo)` (main.js: wraps the rig's update, §5 "Framing beside the panel").
-6. ONE per-frame updater, registered after every town piece's: `player → camera → intro → cut → time → gameui → ui → deploy`
+6. ONE per-frame updater, registered after every town piece's: `player → camera → intro → cut → time → ambient → gameui → ui → deploy`
    (the intro reads the rig's pose of the frame as its end pose, so it runs right after the camera). A module whose
    `update` throws is reported once and switched off.
 7. **Shader warm-up** behind the boot screen: `Engine.start()` in capture mode (installs `__pixel.renderAt/info`, renders
@@ -113,7 +114,7 @@ record: id, name, camera, floor, spawn, exit, bed, visitPoint, lights, spots), `
 
 **The `demo` object** every factory receives: `{ engine, params (URLSearchParams), store, layout (src/town/layout.js),
 town ({registry, tod, preset, root, lights, cutaway, quality} = buildTown's result), events, input, characters (the
-listCharacters() array), player, camera, cut, time, ui, deploy, reload(patch) }`. Modules created later are filled in as
+listCharacters() array), player, camera, cut, time, ambient, gameui, ui, deploy, reload(patch) }`. Modules created later are filled in as
 the boot proceeds (the ui sees everything; the player sees no time / ui yet).
 
 **Events** (`demo.events.on(name, fn)` → unsubscribe; `emit(name, payload)`; `'*'` gets `(name, payload)`):
@@ -129,9 +130,13 @@ the boot proceeds (the ui sees everything; the player sees no time / ui yet).
 | `player:location` | `{location, prev, room: {id, name} \| null}` | player, after entering / leaving a cottage |
 | `player:teleport` | `{x, z}` | player |
 | `intro:start` / `intro:title` / `intro:end` | `{}` / `{}` / `{skipped}` | intro (flight start, title card, hand-over to play) |
+| `player:emote` | `{clip ('talk' … 'signature'), name (the spec clip) \| null, fallback?}` | player, when an emote plays (or the game UI's fallback: the point pop) |
+| `ceremony` | `{start: true, t0}` | time, when the scripted voting ceremony starts (P) |
+| `gameui:tip` | `{open, auto?, reason?}` / `{never, saved}` | gameui: the controls tip opened / dismissed (`close` `bulb` `esc` `timeout` `dismiss` `never`), "never show again" |
 
 **Input** (`demo.input`, api.js `createInput`): `held(code)` / `any(...codes)` for continuous keys (movement),
-`bind(code, fn, {desc, group, repeat})` → unbind for presses. `KeyboardEvent.code` names (`'KeyW'`, `'ArrowUp'`,
+`bind(code, fn, {desc, group, repeat})` → unbind for presses, `press(code)` runs every press binding of a code once (the
+action bar's buttons: the same code path as the key), `has(code)`. `KeyboardEvent.code` names (`'KeyW'`, `'ArrowUp'`,
 `'BracketRight'` ...), so keyboard layouts do not matter; keys typed into form fields are ignored; `bindings()` lists
 everything for the help overlay (`keyLabel(code)` → printable). **Bind your keys through it, never raw listeners.**
 
@@ -171,6 +176,11 @@ emote(clip), dispose() }`.
   `new Character(engine, spec, { autoUpdate: false, snap: true, facingSteps: 8, position, face })`; attach the spec's
   smears / FX like `scenes/char-stage.js createActor` does. Reject with an Error on failure (never throw at import time).
   The caller adds `handle.root` to the scene; `dispose()` removes it. Characters are never cut away (not under the town root).
+- **Carried lights (P1.3, the Storyteller's lantern):** a Character builds a PointLight for each `spec.lights` entry on
+  its first update; one more light in the scene = every lit material recompiles (+23 programs, a ~200 ms frame on the
+  swap: audit 2026-10-17). characters.js builds the Character (and the portrait exercise) from `lightless(spec)` (a
+  shallow copy with `lights: []`); `handle.spec` stays the original and `handle.lights = [{L, node}]` carries each entry
+  with an empty Object3D at its socket / bone (+ `at`). The time module lights it (§4.3).
 
 ### 4.3 time (town states) — `createTime(demo) → { update(t, dt), hours, preset, ringBell(), dispose() }`
 - **Continuous** time of day: the stub only snaps to the nearest `TOWN_TOD` preset (`api.js presetForHour`). Target:
@@ -192,6 +202,13 @@ emote(clip), dispose() }`.
   (night reach 4 m paints flat pools across a 9 × 6 m room). Leaving re-applies the clock and re-aims at the player.
   The count never changes (programs constant). The window panes show the sky through `room.setTimeOfDay` (the player
   calls it on `tod`).
+- **Carried light (P1.3):** while the player's character carries a light (`handle.lights`, the Storyteller's lantern)
+  the LAST light of the pool is pinned to its socket every frame (world position, the spec's colour / reach / decay;
+  intensity `[day, dusk, night]` by the toon ramp's daylight level x the spec's stepped flicker on the character's own
+  clock: the formula of `src/chars/character.js`); the town / room aim uses one slot less meanwhile and gets it back on
+  the swap away. `demo.time.info.carried = {id, socket, intensity}`. Measured: swap to the Storyteller at 23:00, programs
+  56 → 58 (its own materials; was 48 → 71), worst frame 17-54 ms (was 217 ms), no `char-light:*` PointLight in the scene.
+- `demo.time.sweep` = the dais' vote sweep `{from, t0, per}` (the events' vote clock follows it, §4.7).
 - **Room night looks** (r6, the critic's "every room falls to the same blue-grey wash"): while inside, `applyHours` pulls
   the night look toward the room's own palette × the darkness (`ROOM_NIGHT` in time.js, from LORE.md's ambiance column:
   candle-warm 3, gold 6, orange 8, leather 10, newsprint cream 12, teal river 13, warm wood 14 ...): `sh` tints the
@@ -310,7 +327,56 @@ moments; the demo never imports `scenes/`). `?gameui=0` turns it off (the A/B ba
 - **Perf**: the pin / book / talk passes run only while they have something to draw (all on in the warm-up frames, so
   their programs compile behind the loading screen); HUD pieces, labels, toasts and the dock are drawn once per state and
   copied with a byte blit. Programs 43 → 48 at boot, constant afterwards.
-- **Automation**: `demo.gameui.info()` → {members (+ talking, bubble, screen px), point, pie, pins, pops, dock (+ hit
+- **Action bar** (the user's request: "a clickable-UI way to do emote / notebook, not just pressing the letter";
+  `src/demo/actionbar.js` art + tables, gameui.js layout / hit tests): EVERY key action of the demo is a pixel button in
+  the library's look (kit `drawBox` frames raised / hover / pressed / disabled, hud / emotes / indicators glyphs + a few
+  7x7 glyphs of its own), its key as a small hint plate in the corner (the tiny face; `[` `]` `` ` `` `=` drawn there; no
+  hints on a touch screen). The bar (6 x 18 px buttons): **emotes** (Space: opens the emote palette: talk 1, vote 2,
+  point 3, die 4, ghost 5, signature 6 / Space; greyed when your character has no such clip, except point: the P2.8 pop),
+  **point** (right-click: arms a point, then click), **pin** (F: arms a pin of the current colour, then click),
+  **palette** (G: the social dock), **notebook** (J), **more** (the tray, two rows: camera Q E − = C, clock T , . N, town
+  B V P L, characters [ ], panel `, keys H, Esc). A button runs `demo.input.press(code)` (the key's own code path) or the
+  dock's arm. Placement: the bottom row between the status line (bottom left, DOM: measured into `cover.status`) and the
+  dock button, centred on the visible area; on a narrow screen (a phone: the status line spans the bottom) it stands on
+  top of the status line. It respects the panel's right band and the folded panel's top band (`cover`), and does NOT
+  move for the open notebook (a left band only down to its own bottom: `cover.leftBottom`). The popovers open above the
+  bar (over the tip / prompt); a click / tap elsewhere or Esc closes them; a mouse hover shows a tooltip ("Notebook
+  (J)"). The door prompt and the tip stay above the bar. Covered by the playtest: every `input.bindings()` code is
+  reachable from a button (29 bindings, 0 missing).
+- **The controls tip + the lightbulb** (the user's request): the tip (hud `drawKeyHint` plate + a "Never show again"
+  row, mouse or touch wording, naming the buttons) shows ONCE per visit (ui.js: 1.2 s after the player gets control, 9 s
+  of rendered time), then stays hidden. The toolbar's first button is an always-there LIGHTBULB: a click / tap reopens
+  the tip (until closed). Dismissing it (its ×, the bulb, Esc, the 9 s, "never show again") plays the tip SHRINKING and
+  FLYING into the bulb (8 drawings at 15 fps, eased, the last two dissolving), then the bulb glows and pulses 1.8 s
+  (gold frame, lit glass with rays, a 2-ring halo; lit 2 drawings of 3) so players learn where it went (`rm=1`: no fly,
+  the glow only). "Never show again" is saved in localStorage `hollowmere-tip:never` (every access in try / catch; no
+  storage = this visit only) and stops the automatic tip on later visits (`ui.emoteTip.skipped = 'never'`); the bulb
+  stays.
+- **Events** (the events group, `src/ui/events/draw.js`; adapter `evHud`: `cast` / `bySeat` from the dais seats and
+  `store.seats`, `place`, `terrain`): a caption ribbon under the chips on every phase change (nominations; "Seat N is
+  nominated. Raise a hand to vote." → "Seat N is on the block (n votes)." / "Not enough votes."; "The bell tolls for Seat
+  N."; "Night falls. You are alone in your home…"; "Dawn breaks over Hollowmere."; ui.js's "Phase: x" toast is off with
+  the game UI); the toasts drop below a showing caption. The NIGHT VEIL when the phase turns to night or the running
+  clock crosses 20:00, DAWN on night → day or 06:00 (natural crossings only: a running clock ≤ 120 game min / s, no
+  jumps, ≤ 1 per 20 s); the VOTE clock + tally (HUD, left under the chips) in the vote phase, its hand in step with the
+  dais' brass hand (`time.sweep`: each voter's 1.2 s slot mapped onto the dais' reach times); the EXECUTION on the
+  nominee's seat (dim, tolls, bell, wisp, reveal); your GHOST reveal (wisp + burst) on the ghost emote and the ghost
+  label variant while a character plays `ghost`; the Storyteller POOF when you swap to / from the Storyteller. The veil /
+  dawn / dim write the layer bytes directly, so the layer is marked dirty (else stale bands stayed on screen).
+- **Off-screen arrows (P2.7)**: your point target, the townsfolk you pinned and your place pins outside the visible area
+  (the canvas minus `cover`, below the chips, above the bottom row) get an indicators edge disc (`edgeDisc` +
+  `edgeDiscPointer`: the person's portrait, or your pin / the glove in it) on that area's edge, its tail pointing the way
+  (≤ 6).
+- **Point fallback (P2.8)**: a character without a `point` clip (the shipped four) shows the emotes group's point pop
+  over its head (right-click point, the bar, the 3 key: `gameui.emoteFallback`, no "has no 'point' emote" toast).
+- **Labels (P3.9)**: a name label the DOM covers (the panel's band, the folded panel's top band, the open notebook) or
+  under the HUD's top row (the chips, the toolbar) is not drawn, nor its stack.
+- **The held book's quill** (`src/ui/notebook/art.js bookMats` `w`, a small art fix): the feather was the page's own
+  cream with the page's line, so on the open spread it read as a crack / a torn V at 1x; now a cool white goose feather
+  (the ghost ramp) with a violet-ink line.
+- **Automation**: `demo.gameui.info()` → {members (+ talking, bubble, screen px, shown, ghostLabel), hover, bar, palette, tray,
+  tipState {shown, auto, rect (+ close / never), flying, glowing, never, neverSaved, shownCount, dismissed}, events
+  {captions, caption, veil, dawn, vote, exec, ghost, poof, counts}, offscreen, point, pie, pins, pops, dock (+ hit
   rects), toolbar, toasts, tip, notebook, readers, books3d, mergedBooks, youIcon (atlas | thumb | initial), options,
   cover {left, right, top}, touch, pressing (touch | right | null), pie.input}; `doPoint / dropPin / removePin / clearPins /
   targetAt / openPieAt` (the same code paths as the pointer / keys). Events: `gameui:point`, `gameui:pie`, `gameui:pin`,
@@ -318,6 +384,31 @@ moments; the demo never imports `scenes/`). `?gameui=0` turns it off (the A/B ba
   NPCs: `demo.npcs.members` (the live records).
 - **Assets**: the baked files the demo fetches (`out/ui/portraits.*`, `out/ui/cast-portraits.*`, `out/ui/panels.css`,
   `out/ui/notebook.css`) are listed in `src/demo/ui-assets.json`; the bundle ships exactly those (§6 Publish).
+
+### 4.8 ui (ambient) — `createAmbientLayer(demo) → layer | null`, `src/demo/ambient.js`
+The ambient library (docs/AMBIENT.md, `src/ambient/**`, read only: no library change) wired to the demo's REAL actors:
+`createAmbient(engine, {autoUpdate: false, ticker: {mode: 'live', window: 5}, tod})`, every frame
+`amb.actors.set('you', pos, velocity)` (+ the NPCs, standing) and `amb.update(t, dt)` (after time); `setTimeOfDay` on
+`tod`; hidden + not updated while `store.life` is off or inside a cottage. Nothing the town's own life piece draws is
+doubled:
+- **birds**: 7 pigeons on the west cobble lane south of the square (17, 30.5) + 5 sparrows on the south dirt road
+  (28.5, 35), only on paved tiles; they alert and SCATTER when you walk at them, resettle when you leave (day only). No
+  crows (`crowsDay / crowsDusk / groundCrows 0`): life owns the crows.
+- **fireflies**: night fireflies over the greens life used for its own (5 swarms), moths at the street lamps + stall
+  lanterns, butterflies + bees on the system's own blooms in 3 garden corners by day; homes only on grass tiles. Life's
+  own (non-reactive) moths + fireflies are switched off at the build with life's documented switch: main.js adds
+  `lifeOff=bugs` to the town params while the layer is on (ONE set of bugs, the reactive one).
+- **fire**: the fire under house-1's cauldron (a torch-sized flame: the campfire drawing covered the pot), sprites only:
+  `fixtures: false`, `lights: []`. The dais braziers are the dais piece's own flames: not doubled.
+- **props**: a hanging shop sign by the red stall (12.1, 15.9), wind chimes by the boathouse bench (10.9, 23.9), a
+  scarecrow in the pumpkin patch (34.8, 23.1): things the town does not have; `lights: []`. (Walk-through: not in the
+  collision.)
+- **Budget** (measured, render-host, 1280 x 720): declared 15 calls (birds 3, fireflies 2, fire 2, props 8), measured +11
+  at noon on the spawn; 0 lights; +8 programs, all compiled behind the loading screen (the warm-up frames show the night
+  and the day drawings), none in play (pigeons scatter, props react, night fireflies, the day cycle);
+  CPU 0.2-0.4 ms per frame for the set (`info().updateMs`).
+- `demo.ambient.info()` → {on, tod, systems, calls, lights, over, updateMs, actors, per (each system's stats: flees,
+  ff, moth, bfly ...)}; `?ambient=0` off (A/B; life keeps its own bugs).
 
 ## 5. URL parameters (`demo.html?...`)
 
@@ -327,7 +418,7 @@ State: `char=<id>` `tod=<hours>|night|morning|noon|afternoon|golden` `speed=<min
 `at` while inside); `intro=0|1` the cinematic (default on in a browser, off under automation / capture); `npcs=<n>` idle
 townsfolk characters (0 = off); `roster=shipped|all|a,b`, `thumbs=0`, `exercise=0` (characters.js);
 `interiorKit=stub`; `demoGrass=wide4` (review: the old grass area); game UI (§4.7): `book=held|big` (state.bookStyle),
-`pointer=new|v2` (state.pointerScale), `gameui=0` (no game UI: the A/B baseline), `touch=1|0` (force the touch /
+`pointer=new|v2` (state.pointerScale), `gameui=0` (no game UI: the A/B baseline), `ambient=0` (no ambient layer, §4.8), `touch=1|0` (force the touch /
   mouse wording; default: the coarse-pointer media query), `bookmerge=0` (the library's per-part 3D books, A/B), `rm=1` (reduced motion: no pops / bobs /
 marching / page turns). Engine: `scale=<n>|fit`, `capture=1` (headless: renders t = 0 only, no loop). Town params pass
 through to buildTown (`lights=`, `vignette=`, `contact=0`, `shadowCull=0`, `relAz=`/`elev=` ...), except
@@ -373,6 +464,8 @@ ends. A click overrides the automatic fold until the condition changes. On a pho
 | G / click your portrait (bottom right) | the social dock: Point / Pin (arm, then click), colours, Clear my pins | ui (game UI) |
 | J / the toolbar's book | the notebook (Seats / Notes); Esc closes it (and the pie / an armed dock) | ui (game UI) |
 | P | play / stop the voting ceremony | time |
+| the action bar (bottom) | emotes palette (Space / 1-6), point, pin (F), pin palette (G), notebook (J), more = the tray with every other key (Q E − = C T , . N B V P L [ ] ` H Esc): click / tap; the key in each button's corner | ui (game UI) |
+| the lightbulb (toolbar, top right) | reopen the controls tip; × / Esc / the bulb close it (it flies into the bulb); "Never show again" | ui (game UI) |
 | walk into a door | go into the cottage; on the exit spot (or pushing out on it): back out | player |
 | click | walk there (a cottage: to its door and in) | player |
 | Esc / any key / click (cinematic) | skip the flight; on the title card: begin | intro |
@@ -526,7 +619,17 @@ panel's "big" toggle + J = the 3D big book, "v2 size" + right-click = the 24 px 
 constant) · **touch** (a phone page, 390 x 844 @2x, isMobile + hasTouch: the HUD below the folded panel
 (`cover.top`), the toolbar's notebook on the canvas and a tap opens it, the notebook above the reader, the panel's
 notebook button folds the panel, a CDP long press = the touch pie (not before 450 ms), lift = sticky, tap the teal wedge
-= a teal pin without walking, a short tap still walks, the portrait opens the dock; no errors, no CSP violations) · quality reload (state + position kept) + a reload inside a house (`?in=` brings the player back in).
+= a teal pin without walking, a short tap still walks, the portrait opens the dock, the action bar on the canvas, the
+tray by a tap and its L by a tap, a tap on the town closes it; no errors, no CSP violations) · **gameui2** (the action
+bar: every key binding has a button, hover tooltip, the emote palette + the point pop fallback, the tray's Q E = - T B L
+] [ Esc by real clicks, pin / point armed from the bar, the dock and the notebook from the bar; an off-screen arrow for a
+far place pin; no label drawn under the panel; the tip: shown at the first run and gone by itself, the bulb reopens it,
+its × flies it into the bulb + the glow, "never show again" closes + saves it; the ambient layer: 4 systems, 0 lights,
+≤ 16 calls, butterflies by day, pigeons scatter when you walk at them, fireflies + moths at night; the events: captions,
+vote clock, execution, night veil, dawn, the ghost reveal + ghost label with a ghost-clip character; programs constant
+but for a swapped-in character's own) · **storyteller** (a `?wip=1&tod=23` page: the swap compiles ≤ 3 programs, no
+`char-light` PointLight, the carried lantern lit, the poof, no frame > 150 ms) · quality reload (state + position kept;
+no automatic tip after "never show again", the bulb still there) + a reload inside a house (`?in=` brings the player back in).
 
 1. `demo.html` boots to the town in < 6 s on the 4090, no console / page / shader errors (`tools/demo-lead.mjs` exit 0),
    boot screen gone, 60 fps reported.

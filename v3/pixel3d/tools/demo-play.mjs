@@ -26,12 +26,20 @@
 //   6c touch          a phone (390 x 844 @2x, touch): the HUD below the folded panel, a tap on the toolbar notebook opens it, the
 //                     notebook above the reader, the panel's notebook button folds the panel, long press = the touch pie
 //                     (sticky, tap a wedge = a pin, no walking), a short tap still walks, the dock's touch hints
-//   7 quality reload  store quality=low -> the page reloads; character / phase / clock / position must survive
+//   6d gameui2        the action bar (every key binding has a button; palette / tray / pin / point / dock / notebook by
+//                     REAL clicks, the tooltip), the tip (first run, the bulb, the fly + glow, never show again), the
+//                     ambient layer (pigeons scatter, day / night insects, life off hides it, 0 lights), the events
+//                     (captions, vote clock, execution, night veil, dawn, the ghost reveal), off-screen arrows, labels
+//                     under the panel; programs constant
+//   6e storyteller    a ?wip=1 night page: the swap to the Storyteller compiles <= 3 programs (no lantern PointLight),
+//                     the carried lantern light is lit, the poof plays, no long frame
+//   7 quality reload  store quality=low -> the page reloads; character / phase / clock / position must survive; the
+//                     tip stays away after "never show again" (the bulb stays)
 // Exit 1 on any console / page / shader error, __demo.errors, a door not reached, a swap that fails, a key that did nothing.
 //
 //   tools/remote.sh node tools/demo-play.mjs [--out shots/demo-deploy/play] [--doors auto|house-9,house-14,...]
 //        [--every 400] [--gif-fps 8] [--gif-scale 0.4] [--size 1280x720] [--q "..."] [--base http://<tailnet-ip>:8090]
-//        [--skip loading,crates,houses,doors,roster,time,phases,ceremony,controls,gameui,touch,reload] [--day-speed 120] [--chars 5]
+//        [--skip loading,crates,houses,doors,roster,time,phases,ceremony,controls,gameui,gameui2,storyteller,touch,reload] [--day-speed 120] [--chars 5]
 //        [--houses auto|house-3,house-9,house-12]
 //   rsync -az render-host:pixel3d/shots/demo-deploy/play/ shots/demo-deploy/play/ --exclude frames/      # then LOOK at them
 // Writes <out>/NN-<step>.png, <out>/play.gif (tools/sheet.py gif), <out>/sheet.png (contact sheet), <out>/play.json.
@@ -1007,6 +1015,278 @@ try {
     }
   }
 
+  // ---------------------------------------------------------------------------------------------- 6d game UI round 2
+  // the user's requests + the audit gaps (src/demo/gameui.js, actionbar.js, ambient.js; docs/DEMO.md §4.7 / §4.8),
+  // REAL mouse input on the action bar:
+  //   bar       6 buttons; EVERY key binding of the demo is reachable from a button (bar / emote palette / tray);
+  //             emote palette (open, greyed emotes, point = the P2.8 pop fallback), the tray (Q / E / = / - / T / B / L
+  //             / [ ] / Esc by click), pin + point armed from the bar, the dock and the notebook from the bar; a hover
+  //             shows the tooltip; a click elsewhere closes a popover
+  //   tip       the first-run tip was shown and went by itself; the bulb reopens it, its x makes it FLY into the bulb
+  //             and the bulb glows, "never show again" closes it + saves (localStorage); (step 7: no tip after the reload)
+  //   ambient   systems birds / fireflies / fire / props, 0 lights, declared calls <= 16; pigeons scatter when you walk
+  //             at them; butterflies by day, fireflies + moths at night; hidden with life off
+  //   events    phase captions, the vote clock in the vote phase, the execution, the night veil, dawn; your ghost
+  //             reveal (+ the ghost label) with a ghost-clip character
+  //   arrows    a place pin off screen gets an edge disc; labels under the panel are not drawn
+  //   programs  constant through all of it
+  if (!SKIP.has('gameui2')) {
+    console.log('6d game UI round 2 (action bar, tip + bulb, ambient, events, arrows)');
+    const r = report.steps.gameui2 = {};
+    const gi = () => page.evaluate(() => window.__demo.demo.gameui?.info?.() ?? null);
+    try {
+      await setState({ camera: 'follow', timeOfDay: 12.5, timeSpeed: 0, phase: 'day', nominee: null, zoom: 12, yaw: 0, ui: true, life: true, paused: false });
+      await page.evaluate(() => { window.__demo.demo.gameui.clearPins(); });
+      await steerTo({ x: 22.5, z: 25.5 }, { timeout: 5000 }).catch(() => {});
+      await sleep(700);
+      const prog0 = (await info()).programs;
+      const S = await page.evaluate(() => window.__demo.demo.engine.pixelScale);
+      const px = (rc) => ({ x: (rc.x + rc.w / 2) * S, y: (rc.y + rc.h / 2) * S });
+      const clickR = async (rc, o = {}) => { const a = px(rc); await page.mouse.click(a.x, a.y, o); await sleep(260); };
+      let g = await gi();
+      // -- the bar: 6 buttons, every binding covered
+      r.bar = g.bar?.map((b) => b.k);
+      if (!g.bar || g.bar.length !== 6) fail(`gameui2: the action bar has ${g.bar?.length ?? 0} buttons (want 6)`);
+      const binds = await bindings();
+      const covered = new Set(['KeyF', 'KeyG', 'KeyJ', 'Digit6']);   // bar pin / dock / notebook; Digit6 = the signature (= Space)
+      // the palette / tray codes come from the module's own tables
+      const tables = await page.evaluate(() => { const a = window.__demo.demo.gameui?.actions; return a ? { e: a.emotes.map((x) => x.code), t: a.tray.flat().map((x) => x.code) } : null; });
+      for (const c of [...(tables?.e ?? []), ...(tables?.t ?? [])]) covered.add(c);
+      const missing = [...new Set(binds.map((b) => b.code))].filter((c) => !covered.has(c));
+      r.bindings = binds.length; r.missingButtons = missing;
+      if (!tables) fail('gameui2: could not read the action bar tables (src/demo/actionbar.js)');
+      if (missing.length) fail(`gameui2: key bindings without a button: ${missing.join(', ')}`);
+      // -- hover tooltip, emote palette, point fallback (the default character has no point clip)
+      const bar = Object.fromEntries(g.bar.map((b) => [b.k, b]));
+      await page.mouse.move(px(bar.notebook).x, px(bar.notebook).y); await sleep(250);
+      g = await gi(); r.hover = g.hover;
+      if (g.hover?.kind !== 'bar' || g.hover.k !== 'notebook') fail(`gameui2: hovering the notebook button: ${JSON.stringify(g.hover)}`);
+      await shot('ui2-hover');
+      await clickR(bar.emote);
+      g = await gi(); r.palette = g.palette;
+      if (!g.palette?.open || g.palette.items?.length !== 6) fail(`gameui2: the emote button did not open the 6-emote palette (${JSON.stringify(g.palette)})`);
+      await shot('ui2-palette');
+      const hasPointClip = await page.evaluate(() => { const h = window.__demo.demo.player.handle; return !!(h?.emotes?.point && h.spec?.clips?.[h.emotes.point]); });
+      const pp = g.palette.items?.find((x) => x.k === 'point');
+      if (pp) {
+        await clickR(pp);
+        g = await gi(); r.pointEmote = { hasPointClip, pops: g.pops.filter((p) => p.who === 'you').map((p) => p.kind), clip: g.members.find((m) => m.you)?.clip };
+        if (!hasPointClip && !g.pops.some((p) => p.who === 'you' && p.kind === 'point')) fail(`gameui2: the palette's point (no point clip) showed no point pop (${JSON.stringify(r.pointEmote)})`);
+        if (g.palette.open) fail('gameui2: the palette stayed open after an emote');
+      } else fail('gameui2: no point in the emote palette');
+      // -- the tray: Q / E, zoom, T, B, L, [ ], Esc by click
+      await clickR(bar.more); g = await gi();
+      if (!g.tray?.open) fail('gameui2: the more button did not open the tray');
+      await shot('ui2-tray');
+      const T = Object.fromEntries((g.tray.items ?? []).map((x) => [x.code, x]));
+      const st = () => page.evaluate(() => ({ ...window.__demo.demo.store.state, seats: null }));
+      const tr = {};
+      let s0 = await st(); await clickR(T.KeyQ); let s1 = await st(); tr.Q = [s0.yaw, s1.yaw];
+      await clickR(T.KeyE); s1 = await st(); tr.E = s1.yaw;
+      s0 = await st(); await clickR(T.Equal); s1 = await st(); tr.zoomIn = [s0.zoom, s1.zoom];
+      await clickR(T.Minus); s1 = await st(); tr.zoomOut = s1.zoom;
+      await clickR(T.KeyT); s1 = await st(); tr.T = s1.paused; await clickR(T.KeyT); tr.T2 = (await st()).paused;
+      const bells0 = await page.evaluate(() => window.__demo.demo.time.info.strikes + (window.__playBells ?? 0));
+      await page.evaluate(() => { window.__playBells = 0; window.__demo.demo.events.on('bell', () => { window.__playBells++; }); });
+      await clickR(T.KeyB); tr.B = await page.evaluate(() => window.__playBells);
+      await clickR(T.KeyL); tr.L = [(await st()).life, await page.evaluate(() => window.__demo.demo.ambient?.visible ?? null)];
+      await clickR(T.KeyL); tr.L2 = (await st()).life;
+      const ch0 = (await info()).character;
+      await clickR(T.BracketRight); for (let k = 0; k < 50; k++) { if ((await info()).character !== ch0) break; await sleep(100); }
+      tr.next = (await info()).character;
+      await sleep(400);
+      g = await gi();
+      const T2 = Object.fromEntries((g.tray.items ?? []).map((x) => [x.code, x]));
+      if (T2.BracketLeft) { await clickR(T2.BracketLeft); for (let k = 0; k < 50; k++) { if ((await info()).character === ch0) break; await sleep(100); } }
+      tr.back = (await info()).character;
+      await sleep(300);
+      g = await gi();
+      if (g.tray?.open && g.tray.items) { const esc = g.tray.items.find((x) => x.code === 'Escape'); if (esc) await clickR(esc); }
+      tr.escClosed = !(await gi()).tray?.open;
+      r.tray = tr; void bells0;
+      if (tr.Q[1] !== tr.Q[0] + 45 || tr.E !== tr.Q[0]) fail(`gameui2: tray Q / E did not rotate the camera (${JSON.stringify(tr)})`);
+      if (!(tr.zoomIn[1] < tr.zoomIn[0]) || tr.zoomOut !== tr.zoomIn[0]) fail(`gameui2: tray = / - did not zoom (${JSON.stringify(tr)})`);
+      if (tr.T !== true || tr.T2 !== false) fail(`gameui2: tray T did not pause / run the clock (${tr.T}, ${tr.T2})`);
+      if (!(tr.B >= 1)) fail('gameui2: tray B rang no bell');
+      if (tr.L[0] !== false || tr.L[1] !== false || tr.L2 !== true) fail(`gameui2: tray L did not switch life (and the ambient layer) off and on (${JSON.stringify(tr.L)}, ${tr.L2})`);
+      if (tr.next === ch0 || tr.back !== ch0) fail(`gameui2: tray ] / [ did not swap the character and back (${ch0} -> ${tr.next} -> ${tr.back})`);
+      if (!tr.escClosed) fail('gameui2: the tray Esc button did not close the tray');
+      // -- pin + point armed from the bar, the dock, the notebook
+      g = await gi();
+      const B2 = Object.fromEntries(g.bar.map((b) => [b.k, b]));
+      await clickR(B2.pin); g = await gi(); r.armPin = g.dock.armed;
+      if (g.dock.armed !== 'pin') fail(`gameui2: the bar's pin button did not arm a pin (${g.dock.armed})`);
+      const me = g.members.find((m) => m.you);
+      const spot = { x: me.screen.x + 40, y: me.screen.y + 6, w: 0, h: 0 };
+      await clickR(spot); await sleep(400);
+      g = await gi(); r.pinFromBar = g.pins.filter((p) => !p.removing).length;
+      if (!g.pins.some((p) => p.kind === 'place' && !p.removing)) fail('gameui2: arming the pin from the bar + a click dropped no place pin');
+      await clickR(B2.point); g = await gi();
+      if (g.dock.armed !== 'point') fail(`gameui2: the bar's point button did not arm a point (${g.dock.armed})`);
+      await clickR({ x: me.screen.x - 30, y: me.screen.y + 4, w: 0, h: 0 }); await sleep(250);
+      g = await gi(); r.pointFromBar = g.point;
+      if (!g.point) fail('gameui2: arming the point from the bar + a click pointed nowhere');
+      await clickR(B2.dock); g = await gi(); const dockOn = g.dock.open; await clickR(B2.dock); g = await gi();
+      if (!dockOn || g.dock.open) fail(`gameui2: the bar's palette button did not toggle the dock (${dockOn} / ${g.dock.open})`);
+      await clickR(B2.notebook); g = await gi(); const nbOn = g.notebook.open; await shot('ui2-notebook');
+      await clickR(B2.notebook); await sleep(300); g = await gi();
+      if (!nbOn || g.notebook.open) fail(`gameui2: the bar's notebook button did not toggle the notebook (${nbOn} / ${g.notebook.open})`);
+      // -- off-screen arrows: the place pin just dropped, the player far away
+      await page.evaluate(() => window.__demo.demo.player.teleport(40, 30));
+      await sleep(1600);
+      g = await gi(); r.offscreen = g.offscreen;
+      if (!g.offscreen.some((o) => o.kind === 'pin')) fail(`gameui2: no off-screen arrow for the far place pin (${JSON.stringify(g.offscreen)})`);
+      else { const o = g.offscreen.find((x) => x.kind === 'pin'); if (o.at[0] > g.screen[0] - g.cover.right) fail(`gameui2: the off-screen arrow is under the panel (${JSON.stringify(o)} cover ${g.cover.right})`); }
+      await shot('ui2-offscreen');
+      // labels under the panel: none drawn
+      const hidden = g.members.filter((m) => m.screen.x > g.screen[0] - g.cover.right + 4 && m.shown);
+      if (hidden.length) fail(`gameui2: labels drawn under the control panel: ${hidden.map((m) => m.name).join(', ')}`);
+      await page.evaluate(() => { window.__demo.demo.gameui.clearPins(); window.__demo.demo.player.teleport(22.5, 25.5); });
+      await sleep(900);
+      // -- the tip: shown at first run, gone by itself; the bulb, the fly, the glow, never show again
+      g = await gi();
+      for (let k = 0; k < 60 && (g.tipState.shown || !g.tipState.shownCount); k++) { await sleep(250); g = await gi(); }   // (a short run: the 9 s may not be over)
+      r.tipStart = { shownCount: g.tipState.shownCount, dismissed: g.tipState.dismissed, shown: g.tipState.shown, never: g.tipState.never };
+      if (!(g.tipState.shownCount >= 1)) fail('gameui2: the first-run tip was never shown');
+      if (g.tipState.shown) fail('gameui2: the first-run tip is still up (it should hide by itself after 9 s)');
+      if (!g.toolbar?.tip) fail('gameui2: no lightbulb in the toolbar');
+      else {
+        await clickR(g.toolbar.tip); g = await gi();
+        if (!g.tipState.shown || g.tipState.auto !== false) fail(`gameui2: the bulb did not reopen the tip (${JSON.stringify(g.tipState)})`);
+        await shot('ui2-tip-bulb');
+        await clickR(g.tipState.rect.close);
+        const fl = await gi(); r.fly = { flying: fl.tipState.flying, glowing: fl.tipState.glowing };
+        await sleep(550); g = await gi(); r.glow = g.tipState.glowing;
+        await shot('ui2-tip-glow');
+        if (!r.fly.flying && !r.fly.glowing) fail('gameui2: closing the tip did not fly it into the bulb');
+        if (!r.glow) fail('gameui2: the bulb does not glow after the tip flew into it');
+        await clickR(g.toolbar.tip); g = await gi();
+        await clickR(g.tipState.rect.never); await sleep(200); g = await gi();
+        r.never = { never: g.tipState.never, saved: g.tipState.neverSaved, shown: g.tipState.shown, ls: await page.evaluate(() => { try { return localStorage.getItem('hollowmere-tip:never'); } catch { return 'no storage'; } }) };
+        if (!r.never.never || r.never.shown || r.never.ls !== '1') fail(`gameui2: "never show again" (${JSON.stringify(r.never)})`);
+        if (!(await gi()).toolbar?.tip) fail('gameui2: the bulb went away after "never show again"');
+      }
+      // -- ambient: present, no lights, budget; pigeons scatter; day / night insects
+      let A = await page.evaluate(() => window.__demo.demo.ambient?.info?.() ?? null);
+      r.ambient = A && { systems: A.systems, calls: A.calls, lights: A.lights, updateMs: A.updateMs };
+      if (!A) fail('gameui2: no ambient layer (demo.ambient)');
+      else {
+        for (const s of ['birds', 'fireflies', 'fire', 'props']) if (!A.systems.includes(s)) fail(`gameui2: ambient system ${s} missing`);
+        if (A.lights !== 0) fail(`gameui2: the ambient layer owns ${A.lights} lights (want 0)`);
+        if (A.calls > 16) fail(`gameui2: the ambient layer declares ${A.calls} draw calls (budget ~14)`);
+        if (!(A.per.fireflies?.bfly > 0)) fail(`gameui2: no butterflies by day (${JSON.stringify(A.per.fireflies)})`);
+        const fl0 = A.per.birds?.flees ?? 0;
+        await page.evaluate(() => window.__demo.demo.player.teleport(20.4, 29.2));
+        await sleep(1200);
+        await hold(['KeyA'], 900); await sleep(500);
+        A = await page.evaluate(() => window.__demo.demo.ambient.info());
+        r.pigeons = { flees: [fl0, A.per.birds?.flees], states: { flee: A.per.birds?.flee, away: A.per.birds?.away } };
+        await shot('ui2-pigeons');
+        if (!(A.per.birds?.flees > fl0)) fail(`gameui2: the pigeons did not scatter when you walked at them (${JSON.stringify(r.pigeons)})`);
+        await setState({ timeOfDay: 23 }); await sleep(2200);
+        A = await page.evaluate(() => window.__demo.demo.ambient.info());
+        r.night = { ff: A.per.fireflies?.ff, moth: A.per.fireflies?.moth, tod: A.tod };
+        if (!(A.per.fireflies?.ff > 0) || !(A.per.fireflies?.moth > 0)) fail(`gameui2: no fireflies / moths at night (${JSON.stringify(r.night)})`);
+        await shot('ui2-night-ambient');
+        await setState({ timeOfDay: 12.5 }); await sleep(600);
+      }
+      // -- events: captions, vote clock, execution, night veil, dawn
+      await page.evaluate(() => window.__demo.demo.player.teleport(22.5, 25.5));
+      const seats = Array.from({ length: 15 }, (_, i) => ({ occupied: i < 9, dead: i === 2, ghostVote: i === 2, nominated: false, onBlock: false }));
+      await setState({ seats, nominee: 5, phase: 'nomination' }); await sleep(500);
+      g = await gi(); const ev = { nomination: g.events.caption };
+      await setState({ phase: 'vote' }); await sleep(1500);
+      g = await gi(); ev.vote = g.events.vote; ev.voteCaption = g.events.caption;
+      await shot('ui2-vote');
+      await setState({ phase: 'execution' }); await sleep(1200);
+      g = await gi(); ev.exec = g.events.exec; ev.execCaption = g.events.caption;
+      await shot('ui2-execution');
+      await setState({ phase: 'night' }); await sleep(500);
+      g = await gi(); ev.veil = g.events.veil; ev.nightCaption = g.events.caption;
+      await shot('ui2-nightfall');
+      await sleep(2500);
+      await setState({ phase: 'day' }); await sleep(200);
+      g = await gi(); ev.dawn = g.events.dawn; ev.dayCaption = g.events.caption;
+      await shot('ui2-dawn');
+      r.events = ev;
+      if (!/Nominations/.test(ev.nomination ?? '')) fail(`gameui2: no nomination caption (${ev.nomination})`);
+      if (!ev.vote || !/nominated/.test(ev.voteCaption ?? '')) fail(`gameui2: no vote clock / caption in the vote phase (${JSON.stringify(ev.vote)} ${ev.voteCaption})`);
+      if (!ev.exec || !/bell tolls/.test(ev.execCaption ?? '')) fail(`gameui2: no execution (${ev.exec} ${ev.execCaption})`);
+      if (!ev.veil || !/Night falls/.test(ev.nightCaption ?? '')) fail(`gameui2: no night veil (${ev.veil} ${ev.nightCaption})`);
+      if (!ev.dawn) fail('gameui2: no dawn after night -> day');
+      await setState({ seats: Array.from({ length: 15 }, () => ({ occupied: false, dead: false, ghostVote: true, nominated: false, onBlock: false })), nominee: null });
+      // -- the ghost reveal with a character that has a ghost clip
+      const ghostChar = await page.evaluate(() => (window.__demo.demo.characters ?? []).filter((c) => c.complete).map((c) => c.id).find((id) => ['clarabelle', 'owl', 'fox', 'rabbit'].includes(id)) ?? null);
+      if (ghostChar) {
+        const back = (await info()).character;
+        await setState({ character: ghostChar }); for (let k = 0; k < 60; k++) { if ((await info()).character === ghostChar) break; await sleep(100); }
+        await sleep(700);
+        const hasGhost = await page.evaluate(() => { const h = window.__demo.demo.player.handle; return !!(h?.emotes?.ghost); });
+        const g0 = (await gi()).events.ghosts;
+        await press('Digit5'); await sleep(400);
+        g = await gi(); r.ghost = { char: ghostChar, hasGhost, ghosts: [g0, g.events.ghosts], label: g.members.find((m) => m.you)?.ghostLabel };
+        await shot('ui2-ghost');
+        if (hasGhost && (!(g.events.ghosts > g0) || !r.ghost.label)) fail(`gameui2: the ghost emote showed no ghost reveal / ghost label (${JSON.stringify(r.ghost)})`);
+        await press('Digit1'); await sleep(200);
+        await setState({ character: back }); for (let k = 0; k < 60; k++) { if ((await info()).character === back) break; await sleep(100); }
+      } else note('gameui2: no ghost-clip character offered (ghost reveal not checked)');
+      await sleep(500);
+      const prog1 = (await info()).programs;
+      r.programs = [prog0, prog1];
+      console.log(`   bar ${r.bar?.join(' ')} · ${r.bindings} bindings, missing ${r.missingButtons?.length ?? '?'} · tray ${JSON.stringify(r.tray)}`);
+      console.log(`   tip ${JSON.stringify(r.tipStart)} fly ${JSON.stringify(r.fly)} glow ${r.glow} never ${JSON.stringify(r.never)}`);
+      console.log(`   ambient ${JSON.stringify(r.ambient)} pigeons ${JSON.stringify(r.pigeons)} night ${JSON.stringify(r.night)}`);
+      console.log(`   events ${JSON.stringify(r.events)} ghost ${JSON.stringify(r.ghost)} · offscreen ${JSON.stringify(r.offscreen)} · programs ${prog0} -> ${prog1}`);
+      if (prog1 > prog0 + (ghostChar ? 2 : 0)) fail(`gameui2: programs grew ${prog0} -> ${prog1} (the UI / ambient / events must compile nothing mid-game; a swapped-in character may add its own)`);
+    } catch (e) { fail('gameui2: ' + (e.stack || e.message).split('\n').slice(0, 2).join(' | ')); }
+  }
+
+  // ---------------------------------------------------------------------------------------------- 6e the Storyteller
+  // (P1.3) a ?wip=1 night page: swapping to the Storyteller adds no PointLight (the lantern is a light of the time
+  // module's constant pool pinned to its socket): programs grow by the character's own materials only (<= 3), the
+  // worst frame of the swap stays short, the carried light is lit at night, the poof plays; no errors
+  if (!SKIP.has('storyteller')) {
+    console.log('6e the Storyteller (lantern without a recompile)');
+    const r = report.steps.storyteller = {};
+    const p2 = await browser.newPage({ viewport: { width: W, height: H }, deviceScaleFactor: 1 });
+    const sbad = [];
+    p2.on('console', (m) => { if (m.type() === 'error' || SHADER_RX.test(m.text())) sbad.push(`[st console.${m.type()}] ${m.text()}`); });
+    p2.on('pageerror', (e) => sbad.push(`[st pageerror] ${e.stack || e.message}`));
+    try {
+      if (BASE === 'http://pixel3d.local') await p2.route('http://pixel3d.local/**', (route) => {
+        const u = new URL(route.request().url()), p = path.join(ROOT, decodeURIComponent(u.pathname));
+        if (!p.startsWith(ROOT) || !fs.existsSync(p) || fs.statSync(p).isDirectory()) return route.fulfill({ status: 404, body: 'nf' });
+        route.fulfill({ status: 200, body: fs.readFileSync(p), headers: { 'content-type': MIME[path.extname(p)] || 'application/octet-stream' } });
+      });
+      await p2.goto(`${BASE}/demo.html?intro=0&wip=1&tod=23&npcs=0`);
+      await p2.waitForFunction(() => window.__demo?.ready, null, { timeout: 120000 });
+      await p2.waitForTimeout(2000);
+      const offered = await p2.evaluate(() => (window.__demo.demo.characters ?? []).some((c) => c.id === 'storyteller' && c.complete));
+      if (!offered) note('storyteller: not offered with ?wip=1 (not checked)');
+      else {
+        r.before = await p2.evaluate(() => window.__demo.demo.engine.renderer.info.programs.length);
+        await p2.evaluate(() => { const g = (window.__stGaps = { max: 0, on: true }); let prev = performance.now(); const f = (n) => { g.max = Math.max(g.max, n - prev); prev = n; if (g.on) requestAnimationFrame(f); }; requestAnimationFrame(f); });
+        await p2.evaluate(() => window.__demo.set({ character: 'storyteller' }));
+        for (let k = 0; k < 80; k++) { if (await p2.evaluate(() => window.__demo.demo.player.handle?.id === 'storyteller')) break; await p2.waitForTimeout(100); }
+        await p2.waitForTimeout(2200);
+        const s = await p2.evaluate(() => { window.__stGaps.on = false; const d = window.__demo.demo, L = []; d.engine.scene.traverse((o) => { if (o.isLight && /char-light/.test(o.name)) L.push(o.name); });
+          return { programs: d.engine.renderer.info.programs.length, maxGapMs: Math.round(window.__stGaps.max), carried: d.time.info.carried, lights: d.time.info.lights, charLights: L, poofs: d.gameui?.info().events.poofs }; });
+        Object.assign(r, s);
+        await p2.screenshot({ path: path.join(OUT, `${String(++shotN).padStart(2, '0')}-storyteller-night.png`) });
+        console.log(`   programs ${r.before} -> ${s.programs} · worst frame ${s.maxGapMs} ms · carried ${JSON.stringify(s.carried)} · poofs ${s.poofs}`);
+        if (s.programs - r.before > 3) fail(`storyteller: the swap compiled ${s.programs - r.before} programs (lantern light recompile?)`);
+        if (s.charLights.length) fail(`storyteller: the Character built its own PointLight(s): ${s.charLights.join(', ')}`);
+        if (!s.carried || !(s.carried.intensity > 0.5)) fail(`storyteller: the carried lantern light is not lit at night (${JSON.stringify(s.carried)})`);
+        if (!(s.poofs >= 1)) fail('storyteller: no poof on the swap');
+        if (s.maxGapMs > 150) fail(`storyteller: a ${s.maxGapMs} ms frame during the swap`);
+      }
+      const errs = await p2.evaluate(() => window.__demo?.errors ?? []);
+      if (errs.length) sbad.push(...errs.map((e) => `[st __demo] ${e}`));
+    } catch (e) { fail('storyteller: ' + (e.stack || e.message).split('\n').slice(0, 2).join(' | ')); }
+    for (const b of sbad) fail(b);
+    await p2.close();
+  }
+
   // ---------------------------------------------------------------------------------------------- 6c touch (a phone)
   // a second page in the same browser, 390 x 844 @2x, isMobile + hasTouch (coarse pointer), REAL touch input (taps +
   // a CDP long press): the auto-folded panel is a top band the HUD drops below (cover.top), the toolbar's notebook is
@@ -1019,6 +1299,11 @@ try {
     const r = report.steps.touch = {};
     const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
     const ph = await ctx.newPage();
+    if (BASE === 'http://pixel3d.local') await ctx.route('http://pixel3d.local/**', (route) => {   // (the default base: the repo, as the main page)
+      const u = new URL(route.request().url()), p = path.join(ROOT, decodeURIComponent(u.pathname));
+      if (!p.startsWith(ROOT) || !fs.existsSync(p) || fs.statSync(p).isDirectory()) return route.fulfill({ status: 404, body: 'nf' });
+      route.fulfill({ status: 200, body: fs.readFileSync(p), headers: { 'content-type': MIME[path.extname(p)] || 'application/octet-stream' } });
+    });
     const pbad = [];
     ph.on('console', (m) => { if (m.type() === 'error' || SHADER_RX.test(m.text())) pbad.push(`[touch console.${m.type()}] ${m.text()}`); });
     ph.on('pageerror', (e) => pbad.push(`[touch pageerror] ${e.stack || e.message}`));
@@ -1103,6 +1388,32 @@ try {
       await ph.touchscreen.tap(db.x, db.y); await ph.waitForTimeout(600);
       if (!(await gi()).dock.open) fail('touch: tapping your portrait did not open the dock');
       await pshot('touch-dock');
+      // the action bar on a phone: 6 buttons on the canvas (above the status line), the tray by a tap, its L by a tap
+      g = await gi();
+      r.bar = g.bar?.map((b) => [b.k, b.x, b.y]);
+      if (!g.bar || g.bar.length !== 6) fail(`touch: the action bar has ${g.bar?.length ?? 0} buttons`);
+      else {
+        const more = g.bar.find((b) => b.k === 'more'), mc = await cl(more.x + 9, more.y + 9);
+        r.underBar = await ph.evaluate(([x, y]) => document.elementFromPoint(x, y)?.tagName ?? null, [mc.x, mc.y]);
+        if (r.underBar !== 'CANVAS') fail(`touch: the action bar lies under ${r.underBar}`);
+        if (g.dock.open) { const db = await cl(g.dock.button.x + 12, g.dock.button.y + 12); await ph.touchscreen.tap(db.x, db.y); await ph.waitForTimeout(400); }
+        await ph.touchscreen.tap(mc.x, mc.y); await ph.waitForTimeout(500);
+        g = await gi();
+        const L0 = await ph.evaluate(() => window.__demo.demo.store.state.life);
+        const lb = g.tray.items?.find((x) => x.code === 'KeyL');
+        if (!g.tray.open || !lb) fail(`touch: tapping 'more' did not open the tray (${JSON.stringify(g.tray.open)})`);
+        else {
+          await pshot('touch-tray');
+          const lc = await cl(lb.x + 9, lb.y + 9); await ph.touchscreen.tap(lc.x, lc.y); await ph.waitForTimeout(400);
+          const L1 = await ph.evaluate(() => window.__demo.demo.store.state.life);
+          await ph.touchscreen.tap(lc.x, lc.y); await ph.waitForTimeout(400);
+          const L2 = await ph.evaluate(() => window.__demo.demo.store.state.life);
+          r.trayLife = [L0, L1, L2];
+          if (L1 === L0 || L2 !== L0) fail(`touch: tapping the tray's L did not switch life (${JSON.stringify(r.trayLife)})`);
+          const out = await cl(Math.round(g.screen[0] / 2), Math.round(g.screen[1] * 0.3)); await ph.touchscreen.tap(out.x, out.y); await ph.waitForTimeout(400);
+          if ((await gi()).tray.open) fail('touch: a tap on the town did not close the tray');
+        }
+      }
       r.csp = await ph.evaluate(() => window.__csp);
       if (r.csp.length) fail(`touch: CSP violations ${JSON.stringify(r.csp)}`);
       const errs = await ph.evaluate(() => window.__demo?.errors ?? []);
@@ -1130,6 +1441,15 @@ try {
     if (!SKIP.has('loading')) await skipIntro({ flyMs: 300 });
     await sleep(1200);
     const after = await info();
+    // "never show again" (6d) holds across the reload: no automatic tip, the bulb is still there
+    if (!SKIP.has('gameui2')) {
+      await sleep(2200);
+      const tp = await page.evaluate(() => ({ tip: window.__demo.demo.gameui?.info().tipState, bulb: !!window.__demo.demo.gameui?.info().toolbar?.tip, ui: window.__demo.demo.ui?.emoteTip?.skipped ?? null }));
+      report.steps.tipAfterReload = { shownCount: tp.tip?.shownCount, never: tp.tip?.never, bulb: tp.bulb, skipped: tp.ui };
+      if (tp.tip?.shownCount !== 0 || !tp.tip?.never || tp.ui !== 'never') fail(`reload: the tip came back after "never show again" (${JSON.stringify(report.steps.tipAfterReload)})`);
+      if (!tp.bulb) fail('reload: no lightbulb after the reload');
+      await page.evaluate(() => { try { localStorage.removeItem('hollowmere-tip:never'); } catch { /* none */ } });
+    }
     const keep = { quality: after.state.quality === 'low', character: after.character === before.character, phase: after.state.phase === before.state.phase,
       clock: Math.abs(after.state.timeOfDay - before.state.timeOfDay) < 0.2,
       position: Math.hypot(after.player[0] - before.player[0], after.player[1] - before.player[1]) < 0.6,

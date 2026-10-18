@@ -6,7 +6,7 @@
 //   4. the owners' modules, in this order: characters (list) -> player -> camera rig + live cut-away (lead, api.js)
 //      -> time -> ui -> deploy; each failure is reported, the page keeps running without that module
 //   5. shader warm-up, then the demo's own real-time loop (not Engine.start's: see the comment there)
-// One per-frame updater runs after every town piece: player -> camera -> cut-away -> time -> ui -> deploy.
+// One per-frame updater runs after every town piece: player -> camera -> cut-away -> time -> ambient -> gameui -> ui -> deploy.
 import * as THREE from 'three';
 import { Engine } from '../core/Engine.js';
 import { applyCamera } from '../town/api.js';
@@ -340,6 +340,9 @@ try {
   q.set('tod', presetForHour(store.state.timeOfDay));
   q.set('quality', store.state.quality);
   q.set('life', '1');
+  // the ambient layer (src/demo/ambient.js) brings the REACTIVE moths + fireflies: life's own (non-reactive) bugs are
+  // switched off with life's own documented A/B switch, so the town never shows two sets (?ambient=0: life keeps them)
+  if (params.get('ambient') !== '0') q.set('lifeOff', [...new Set([...(q.get('lifeOff') ?? '').split(',').filter(Boolean), 'bugs'])].join(','));
   // (perf) the character specs download while the town builds (listCharacters below then finds them imported)
   import('./characters.js').then((m) => m.prefetchCharacters?.()).catch(() => {});
   say(`building Hollowmere (${store.state.quality}) ...`);
@@ -355,7 +358,7 @@ try {
     input: createInput(window),
     // npcs: a placeholder until createNPCs below (listCharacters starts them itself when demo.npcs is unset, BEFORE
     // the player exists; main creates them explicitly after the player instead)
-    characters: [], player: null, camera: null, cut: null, intro: null, npcs: { list: [], placeholder: true }, time: null, gameui: null, ui: null, deploy: null,
+    characters: [], player: null, camera: null, cut: null, intro: null, npcs: { list: [], placeholder: true }, time: null, ambient: null, gameui: null, ui: null, deploy: null,
     /** Reload the page with the current state (+ patch) in the URL: quality changes rebuild the town this way. */
     reload(patch = {}) {
       store.set(patch, 'reload');
@@ -387,6 +390,9 @@ try {
   const ld = await import('./loading.js').catch(() => null);
   if (ld?.introEnabled?.(params) && !engine.capture) demo.intro = await load('intro', './intro.js', 'createIntro', demo, { loading: ld.loading });
   demo.time = await load('time', './time.js', 'createTime', demo);
+  // the ambient library (src/ambient via src/demo/ambient.js: pigeons, fireflies / moths, the cauldron fire, props that
+  // react to the player; ?ambient=0 off), after the time module (it reads the preset)
+  demo.ambient = await load('ambient', './ambient.js', 'createAmbientLayer', demo);
   // the game UI from the pixel3d UI library (gameui.js: labels, point / pie / pins, HUD, notebook; ?gameui=0 off)
   demo.gameui = await load('gameui', './gameui.js', 'createGameUI', demo);
   demo.ui = await load('ui', './ui.js', 'mountUI', demo);
@@ -406,6 +412,7 @@ try {
     step('intro', demo.intro, t, dt);
     step('cut', demo.cut, t, dt);
     step('time', demo.time, t, dt);
+    step('ambient', demo.ambient, t, dt);
     step('gameui', demo.gameui, t, dt);
     step('ui', demo.ui, t, dt);
     step('deploy', demo.deploy, t, dt);

@@ -143,11 +143,14 @@ export async function createPlayer(demo) {
     // game emotes: characters.js maps them to the spec's clips (handle.emotes; combat clips are never offered)
     const name = handle.emotes ? handle.emotes[clip ?? 'signature'] ?? null : clip ?? handle.spec.emote ?? null;
     if (!name || !handle.spec.clips?.[name]) {
+      // the game UI draws a fallback for some emotes (P2.8: the point pop glyph over a character without a point clip)
+      if (demo.gameui?.emoteFallback?.(clip)) { events.emit('player:emote', { clip, name: null, fallback: true }); return true; }
       events.emit('toast', { text: `${handle.name ?? handle.id} has no ${clip ? `'${clip}'` : 'signature'} emote` });
       return false;
     }
     path = null;
     play(name);
+    events.emit('player:emote', { clip: clip ?? 'signature', name });
     const c = handle.spec.clips[name];
     emoting = c.loop || c.hold || name === 'vote' || name === 'die' ? name : null;
     return true;
