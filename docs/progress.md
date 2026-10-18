@@ -214,16 +214,21 @@ v2; v3.0 is on the dev service, see "v3 handoff" below.)
 
 ### v3 handoff (2026-10-18 night, after the v3.2 release — RESTART FROM HERE)
 
-- **v3.2 = the commit "v3.2: release gate + docs" on `v3-game`, tag `v3.2`.** Dev / prod deploy: see docs/test-results.md
-  "v3.2 deploy" (pre-approved by the user: "the whole game is in beta"). Rollback: `scripts/deploy-hshi-u1.sh prod b7803fa`
+- **v3.2 = the commit "v3.2: release gate + docs" on `v3-game` (`ceab1ce`), tag `v3.2`. PROD runs v3.2 since
+  2026-10-18 16:32 PDT** (pre-approved by the user: "the whole game is in beta"): dev deploy + 6-bot GPU smoke (0 page
+  errors, no Phaser chunk in a v3 join, `/assets` served br), no prod lobby open in the 30 min before, manual
+  `clocktower-backup-prod` + the script's pre-deploy backup, `scripts/deploy-hshi-u1.sh prod ceab1ce` exit 0, public `/`,
+  `/v2/`, `/v3-art-demo/` 200, journals clean. Edge: `town3d` arrives as the origin's q11 br (290 358 B, was ≈ 336 600 at
+  Cloudflare's q4), MISS → HIT; the JSON atlases are still `DYNAMIC` (owner cache rule). docs/test-results.md "v3.2 deploy". Rollback: `scripts/deploy-hshi-u1.sh prod b7803fa`
   (v3.1). Release note: docs/RELEASE-v3.md "v3.2". Gate: docs/test-results.md "v3.2 release gate" (typecheck, build with
   the .br / .gz siblings, budgets all ok incl. the new `v3JoinPhaserChunk` + `town3dShippedBrKiB`, full `pnpm test`
   178 files / 2063 tests, all 9 v3 e2e specs on the host GPU with 0 page errors, Classic doors + chat-bubbles).
 - Contents: `v32-early` merged (idle rendering 30 fps: −41-44 % main-thread work in still windows; Phaser-free v3 join:
   −360 KB br; `town3d` prefetch on the v3 home / landing page; build-time brotli: `town3d` 336.6 KB at Cloudflare's
   q4 → ~290 KB br from the origin) + one release fix (select.ts out of the entry chunk).
-- Owner actions still open (docs/perf-v3/fullstack.md §10.3): the Cloudflare `/assets/*` cache rule and Smart Tiered
-  Cache (the edge check result is in "v3.2 deploy").
+- Owner actions still open (docs/perf-v3/fullstack.md §10.3): the Cloudflare `/assets/*` cache rule (the hashed JSON
+  atlases are `DYNAMIC` at the edge) and Smart Tiered Cache. Brotli pass-through already works (no Compression Rule
+  change needed).
 - **Next = v3.3:** the prototypes on branches `v33-tiles`, `v33-bake`, `v33-sprites`, `v33-light`, `v33-gpu` are still
   running (agent worktrees in `.claude/worktrees/`); merge what wins. Laptop (tp64) access for the iGPU A/B is pending the
   user's Mac setup. Everything under "Next = v3.2" in the v3.1 entry below that v3.2 did not do (town-batch laptop A/B,

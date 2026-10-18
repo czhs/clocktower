@@ -1,7 +1,7 @@
 # Clocktower Town v3.2
 
-Status: **tagged `v3.2` on `v3-game`** (deploy status: docs/progress.md "v3 handoff" and docs/test-results.md "v3.2
-release gate"). Contract and decision log: docs/v3/INTEGRATION.md §11. Numbers: docs/perf-v3/fullstack.md §10.
+Status: **on prod since 2026-10-18 16:32 PDT** (https://clocktower.chrisshi.com, tag `v3.2` = `ceab1ce` on
+`v3-game`). Gate and deploy: docs/test-results.md "v3.2 release gate" / "v3.2 deploy". Contract and decision log: docs/v3/INTEGRATION.md §11. Numbers: docs/perf-v3/fullstack.md §10.
 
 v3.2 is a perf release on top of v3.1 (branch `v32-early` merged): the town draws at half rate while nothing on screen
 changes, a v3 join no longer downloads Phaser, the 3D town is prefetched on the home page, and the origin ships
@@ -26,8 +26,9 @@ build-time brotli.
 - **Build-time brotli.** `pnpm build` writes `.br` (q11) and `.gz` siblings for every text asset
   (`apps/client/build/precompress.mjs`); the server sends them to clients that accept them, with the same immutable
   Cache-Control, `Vary: Accept-Encoding` and per-variant ETags (`apps/server/src/precompressed.ts`). `town3d` on the
-  wire: **336.6 KB (Cloudflare's q4) → ~290 KB** (283.6 KiB br; the chunk grew by the v3.1 merge since the 279.6 KB
-  measured on `v32-early`).
+  wire: **336.6 KB (Cloudflare's q4) → 290.4 KB** (283.6 KiB; measured through Cloudflare after the prod deploy: the
+  edge passes the origin's br through and caches it; the chunk grew by the v3.1 merge since the 279.6 KB measured on
+  `v32-early`).
 - Bundles: entry JS 44.2/45 KiB br (the home prefetch module is imported lazily so select.ts stays out of the entry),
   LobbyRoute 66.9/72, TownGame 281.4/300, `town3d` 283.6/300. New budget keys: `v3JoinPhaserChunk` = 0 (no Phaser chunk
   in the static import closure of LobbyRoute + `town3d`) and `town3dShippedBrKiB` ≤ 300 (the shipped `.br` sibling;
@@ -39,8 +40,8 @@ build-time brotli.
   late (never stale).
 - An old v2 share link opened at a v3 path (`/lobby/x`) starts `town3d` before `lobby:view` moves the page to `/v2/`
   (rare; that page then loads Phaser too).
-- Cloudflare: the `/assets/*` cache rule and Smart Tiered Cache are owner dashboard steps (fullstack.md §10.3); the
-  edge result of this release is in docs/test-results.md "v3.2 release gate".
+- Cloudflare: the hashed JSON atlases are still `DYNAMIC` (not cached) at the edge until the owner adds the `/assets/*`
+  cache rule; Smart Tiered Cache is also an owner step (fullstack.md §10.3).
 
 # Clocktower Town v3.1
 

@@ -20,6 +20,23 @@ Tree = v3.1 (`40ec348`) + merge of `v32-early` (`3e46778`; no textual conflicts)
 The front branch's own runs: docs/perf-v3/fullstack.md §10.4 (idle / join / compression measurements, unit tests,
 e2e on `v32-early`).
 
+### v3.2 deploy (same day; the tagged commit `v3.2` = `ceab1ce`)
+
+| Command (from the orchestrator checkout unless noted) | Result |
+|---|---|
+| `scripts/secret-scan.sh`; `git push origin v3-game`; `git tag -a v3.2 ceab1ce`; `git push origin v3.2` | scan clean (394058 lines); pre-push scan clean (2 commits); `40ec348..ceab1ce`; new tag `v3.2` |
+| `scripts/deploy-hshi-u1.sh dev ceab1ce` | **exit 0 in 18 s**: precompress 131 .br / 131 .gz of 140, healthy `version ceab1ce…`, 104 previous assets carried |
+| on the host: `curl 127.0.0.1:3001/internal/version`; `GET / /v2/ /lobby/x /v2/lobby/x`; `journalctl -u clocktower-dev`; `curl -sI -H 'Accept-Encoding: br' 127.0.0.1:3001/assets/town3d-BNrxKKg_.js` | version = ceab1ce; all four 200; journal: no error / warn / fail lines; `Content-Encoding: br`, `Content-Length: 290358`, `Vary: Accept-Encoding`, immutable |
+| browser smoke on the host GPU against 127.0.0.1:3001 (scratch Playwright spec in the sandbox `.smoke/`, not in git; `flock browser.lock`, nice 19; 6 protocol bots (Storyteller + 5) + a 1920×1080 page + a 1440×900 DPR-2 page; waiting room → start → first night → day → teleport to seats → a nomination → vote frame; network log of both pages) | first run: the scratch spec's own bug (`const URL` shadowed the URL class), fixed; second run **1/1 pass (24.5 s)**: page errors [] and console errors [] on both pages; **TownGame / Phaser requests: none**; `/assets` js / css / json responses 88 br + 4 identity per page; laptop waiting room after 5 s still: `idle {on: true, idle: true}`; both pages tier high; vote frame viewHeight 13.10 / 13.53 with 8 measured HUD boxes |
+| prod pre-check: `journalctl -u clocktower-prod --since "30 min ago" -o cat` (16:31) | two solo Storyteller lobbies, both disposed by 16:21; no lobby open |
+| `sudo -n /usr/bin/systemctl start clocktower-backup-prod.service` | exit 0, Result=success |
+| `scripts/deploy-hshi-u1.sh prod ceab1ce` | **exit 0 in 17 s**: pre-deploy backup, `prod -> releases/ceab1ce…` (previous b7803fa), healthy, old release `fd73c81` pruned, 104 previous assets carried |
+| `curl 127.0.0.1:3000/internal/version` (host); public `https://clocktower.chrisshi.com/`, `/v2/`, `/v3-art-demo/`, `/healthz`; prod / dev / tunnel units; journals | version = ceab1ce; 200 / 200 / 200 (title "Hollowmere demo") / ok; all active; prod + dev journals since the deploys: 0 error / warn / fail / crit lines |
+| edge: `curl -sI -H 'Accept-Encoding: br' https://clocktower.chrisshi.com/assets/town3d-BNrxKKg_.js` ×3; `curl -s -H 'Accept-Encoding: br' … \| wc -c` | `content-encoding: br`, `vary: Accept-Encoding`, `cache-control: public, max-age=31536000, immutable`, `content-length: 290358`; cf-cache-status **MISS, then HIT, HIT**; body **290 358 B = the build's `.br` exactly** (Cloudflare passes the origin's q11 through; v3.0/v3.1 edge q4 ≈ 336 600 B); gzip body 348 635 B |
+| edge: the same for `/assets/town-v3-Droan-y4.json` | `content-encoding: br`, 11 661 B (= the `.br`; raw 225 805), vary + immutable, cf-cache-status **DYNAMIC ×3** (the owner's `/assets/*` cache rule, fullstack.md §10.3, is not set yet) |
+
+Stills (this machine, gitignored): `tests/v3/shots/v3.2/{square-1920x1080,waiting-room-1440x900-dpr2}.png`.
+
 ## 2026-10-18 — v3.1 release gate (`v31-release`, branch `v3-game`, the host, sandbox `v31-release`)
 
 Tree = v3.0 + `78caa62` (cherry-picked `docs/perf-v3/client.md`) + merges of `v31-fixes` (`8b7e642`), `v31-stage`
