@@ -1,7 +1,7 @@
 {
  "image": "panels.png",
  "width": 512,
- "height": 178,
+ "height": 391,
  "frames": {
   "panel": {
    "x": 1,
@@ -588,71 +588,71 @@
   "badge-notready": {
    "x": 172,
    "y": 130,
-   "w": 43,
+   "w": 44,
    "h": 11
   },
   "badge-ready": {
-   "x": 216,
+   "x": 217,
    "y": 130,
-   "w": 27,
+   "w": 28,
    "h": 11
   },
   "badge-st": {
-   "x": 244,
+   "x": 246,
    "y": 130,
    "w": 51,
    "h": 11
   },
   "badge-alive": {
-   "x": 296,
+   "x": 298,
    "y": 130,
    "w": 27,
    "h": 11
   },
   "badge-dead": {
-   "x": 324,
+   "x": 326,
    "y": 130,
-   "w": 23,
+   "w": 25,
    "h": 11
   },
   "badge-now": {
-   "x": 348,
+   "x": 352,
    "y": 130,
    "w": 22,
    "h": 11
   },
   "badge-next": {
-   "x": 371,
+   "x": 375,
    "y": 130,
    "w": 24,
    "h": 11
   },
   "badge-saved": {
-   "x": 396,
+   "x": 400,
    "y": 130,
-   "w": 27,
+   "w": 28,
    "h": 11
   },
   "badge-good": {
-   "x": 424,
+   "x": 429,
    "y": 130,
-   "w": 23,
+   "w": 24,
    "h": 11
   },
   "badge-evil": {
-   "x": 448,
+   "x": 454,
    "y": 130,
    "w": 23,
    "h": 11
   },
   "spinner_0": {
-   "x": 472,
+   "x": 478,
    "y": 130,
    "w": 13,
    "h": 13
   },
   "spinner_1": {
-   "x": 486,
+   "x": 492,
    "y": 130,
    "w": 13,
    "h": 13
@@ -974,6 +974,48 @@
    "y": 161,
    "w": 7,
    "h": 7
+  },
+  "chat-dock_sample": {
+   "x": 1,
+   "y": 178,
+   "w": 196,
+   "h": 128
+  },
+  "chat-tabs_sample": {
+   "x": 198,
+   "y": 178,
+   "w": 196,
+   "h": 22
+  },
+  "chat-crier-line_sample": {
+   "x": 1,
+   "y": 307,
+   "w": 196,
+   "h": 12
+  },
+  "chat-folded_sample": {
+   "x": 198,
+   "y": 307,
+   "w": 168,
+   "h": 41
+  },
+  "chat-folded_crier": {
+   "x": 1,
+   "y": 349,
+   "w": 168,
+   "h": 41
+  },
+  "chat-folded_read": {
+   "x": 170,
+   "y": 349,
+   "w": 168,
+   "h": 41
+  },
+  "chat-peek_sample": {
+   "x": 339,
+   "y": 349,
+   "w": 168,
+   "h": 21
   }
  },
  "meta": {
@@ -1447,7 +1489,8 @@
    "toggle_*": "7x7 notebook mark toggles (toggle_<n>-off = flat textDim mark, no outline)",
    "badge-unread": "chat unread count pill 9-slice (v2 .ct-chat-unread, danger; LABEL digits, 99+ cap)",
    "badge-count": "crier new-count pill 9-slice (v2 .ct-chat-dot, violet)",
-   "checkbox-pop": "checkbox pop drawing (on, 1 step smaller tick)"
+   "checkbox-pop": "checkbox pop drawing (on, 1 step smaller tick)",
+   "chat-*": "chat dock samples (row 44, composed from the kit; screens.js chat / chatFolded): chat-dock_sample (open), chat-tabs_sample, chat-crier-line_sample, chat-folded_sample / _crier / _read (peek line + Chat toggle + unread pill), chat-peek_sample"
   },
   "paletteAudit": {
    "colours": 50,

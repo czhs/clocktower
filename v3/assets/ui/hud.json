@@ -408,17 +408,17 @@
   "ctc-chip_sample_bedtime": {
    "x": 141,
    "y": 53,
-   "w": 83,
+   "w": 84,
    "h": 15
   },
   "ctc-chip_sample_paused": {
-   "x": 225,
+   "x": 226,
    "y": 53,
-   "w": 75,
+   "w": 76,
    "h": 15
   },
   "ctc-chip_sample_due": {
-   "x": 301,
+   "x": 303,
    "y": 53,
    "w": 94,
    "h": 15
@@ -756,23 +756,23 @@
   "cth-phase_sample_day": {
    "x": 312,
    "y": 461,
-   "w": 41,
+   "w": 42,
    "h": 11
   },
   "cth-phase_sample_day_gathered": {
-   "x": 354,
+   "x": 355,
    "y": 461,
-   "w": 41,
+   "w": 42,
    "h": 11
   },
   "cth-phase_sample_first_night": {
-   "x": 396,
+   "x": 398,
    "y": 461,
    "w": 66,
    "h": 11
   },
   "cth-phase_sample_night": {
-   "x": 463,
+   "x": 465,
    "y": 461,
    "w": 43,
    "h": 11
@@ -780,41 +780,41 @@
   "cth-phase_sample_bedtime": {
    "x": 1,
    "y": 477,
-   "w": 59,
+   "w": 60,
    "h": 11
   },
   "cth-phase_sample_dawn": {
-   "x": 61,
+   "x": 62,
    "y": 477,
-   "w": 41,
+   "w": 42,
    "h": 11
   },
   "cth-phase_sample_finished": {
-   "x": 103,
+   "x": 105,
    "y": 477,
    "w": 59,
    "h": 11
   },
   "cth-phase_sample_setup": {
-   "x": 163,
+   "x": 165,
    "y": 477,
    "w": 62,
    "h": 11
   },
   "cth-phase_sample_countdown": {
-   "x": 226,
+   "x": 228,
    "y": 477,
-   "w": 78,
+   "w": 79,
    "h": 11
   },
   "cth-phase_sample_visit": {
-   "x": 305,
+   "x": 308,
    "y": 477,
    "w": 51,
    "h": 11
   },
   "cth-toast_info_9s": {
-   "x": 357,
+   "x": 360,
    "y": 477,
    "w": 24,
    "h": 15
@@ -1128,7 +1128,7 @@
   "ct-hint_sample": {
    "x": 1,
    "y": 674,
-   "w": 268,
+   "w": 269,
    "h": 29
   },
   "ct-hint_sample_touch": {
@@ -1158,101 +1158,101 @@
   "kbd_d": {
    "x": 294,
    "y": 704,
-   "w": 9,
+   "w": 10,
    "h": 9
   },
   "kbd_e": {
-   "x": 304,
+   "x": 305,
    "y": 704,
    "w": 9,
    "h": 9
   },
   "kbd_enter": {
-   "x": 314,
+   "x": 315,
    "y": 704,
    "w": 26,
    "h": 9
   },
   "kbd_help": {
-   "x": 341,
+   "x": 342,
    "y": 704,
    "w": 9,
    "h": 9
   },
   "ct-countdown_sample": {
-   "x": 351,
+   "x": 352,
    "y": 704,
    "w": 15,
    "h": 5
   },
   "ct-countdown-low_0": {
-   "x": 367,
+   "x": 368,
    "y": 704,
    "w": 15,
    "h": 5
   },
   "ct-countdown-low_1": {
-   "x": 383,
+   "x": 384,
    "y": 704,
    "w": 15,
    "h": 5
   },
   "ct-countdown_display": {
-   "x": 399,
+   "x": 400,
    "y": 704,
    "w": 23,
    "h": 7
   },
   "ctv-dot-ok": {
-   "x": 423,
+   "x": 424,
    "y": 704,
    "w": 9,
    "h": 9
   },
   "ctv-dot-live": {
-   "x": 433,
+   "x": 434,
    "y": 704,
    "w": 9,
    "h": 9
   },
   "ctv-dot-wait_0": {
-   "x": 443,
+   "x": 444,
    "y": 704,
    "w": 9,
    "h": 9
   },
   "ctv-dot-wait_1": {
-   "x": 453,
+   "x": 454,
    "y": 704,
    "w": 9,
    "h": 9
   },
   "ctv-dot-bad": {
-   "x": 463,
+   "x": 464,
    "y": 704,
    "w": 9,
    "h": 9
   },
   "ctv-dot": {
-   "x": 473,
+   "x": 474,
    "y": 704,
    "w": 9,
    "h": 9
   },
   "ctv-wave_0": {
-   "x": 483,
+   "x": 484,
    "y": 704,
    "w": 7,
    "h": 7
   },
   "ctv-wave_1": {
-   "x": 491,
+   "x": 492,
    "y": 704,
    "w": 7,
    "h": 7
   },
   "ctv-wave_2": {
-   "x": 499,
+   "x": 500,
    "y": 704,
    "w": 7,
    "h": 7
