@@ -14,7 +14,7 @@ import { FONTS } from '../kit.js';
 
 export const PX = 128;
 export const UPM = 8 * PX;
-const ASC = 6, DESC = 4;
+const ASC0 = 6, DESC0 = 4;
 
 /** Glyph list from a kit font: [{ cp, adv (px), rows[], top }] (space first after .notdef). */
 function glyphsOf(font) {
@@ -52,8 +52,14 @@ class W {
 }
 const sum32 = (b) => { let s = 0; for (let i = 0; i < b.length; i += 4) s = (s + ((b[i] << 24) >>> 0) + ((b[i + 1] ?? 0) << 16) + ((b[i + 2] ?? 0) << 8) + (b[i + 3] ?? 0)) >>> 0; return s; };
 
-/** Build the TTF bytes (Uint8Array) for a kit font. */
-export function buildTTF(font = FONTS.body, name = 'CT Pixel Body') {
+/**
+ * Build the TTF bytes (Uint8Array) for a kit font. (density round, additive) opts {asc, desc, em} in font pixels:
+ * defaults 6 / 4 / 8 (the 1x body face, unchanged); the D=2 body face (FONTS['body@2']) uses 12 / 8 / 16, so
+ * `font-size: calc(16px * var(--hdpx))` draws one glyph pixel as --hdpx CSS px and the line box is 20 glyph px
+ * (= the notebook rule pitch 10 at D=2).
+ */
+export function buildTTF(font = FONTS.body, name = 'CT Pixel Body', { asc = ASC0, desc = DESC0, em = 8 } = {}) {
+  const ASC = asc, DESC = desc, UPM = em * PX;
   const G = [{ cp: null, adv: font.space + font.tracking, rows: [], top: 0 }, ...glyphsOf(font)];
   const n = G.length;
   // glyf + loca
@@ -138,8 +144,8 @@ export function buildTTF(font = FONTS.body, name = 'CT Pixel Body') {
 }
 
 /** base64 of the TTF (for a data: URI in notebook.css). */
-export function ttfBase64(font, name) {
-  const b = buildTTF(font, name);
+export function ttfBase64(font, name, opts) {
+  const b = buildTTF(font, name, opts);
   let s = '';
   for (let i = 0; i < b.length; i++) s += String.fromCharCode(b[i]);
   return typeof btoa === 'function' ? btoa(s) : Buffer.from(b).toString('base64');

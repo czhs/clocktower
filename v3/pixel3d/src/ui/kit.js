@@ -19,6 +19,12 @@
 //   nineSlice             9-slice from baked art (panels group)
 //   GRID_HZ, holdsFor, frameAt, popScale, dissolve   stepped animation on the 30 Hz game grid
 //   packAtlas, atlasJson  shelf packer + v2-shaped manifest (frame names kept verbatim)
+//   (density round, additive; docs/UI.md §2.10) DensityView / densityView / hdPiece / withHD / upscale (draw any 1x art
+//                         into a D=2 image), fontAt / derive2x / HD_TEXT + FONTS['body@2' | 'tiny@2' | 'label@2'] (+ 'display@2'
+//                         from src/ui/fonts.js), drawText/textWidth/wrapText/drawRuns `density`, drawBoxHD / HD_FRAME.
+//                         Default behaviour (density 1) is byte-identical to before (shots/ui-hd/regress.mjs).
+
+import { BODY2_GLYPHS, BODY2_METRICS, TINY2_GLYPHS, TINY2_METRICS } from './fonts-hd.js';
 
 // ------------------------------------------------------------------------------------------------ colour
 const _hexCache = new Map();
@@ -274,6 +280,72 @@ export class PixelImage {
   colors() { const s = new Set(); for (let i = 0; i < this.data.length; i += 4) if (this.data[i + 3]) s.add(hex([this.data[i], this.data[i + 1], this.data[i + 2]])); return s; }
 }
 
+// ------------------------------------------------------------------------------------------------ density (D=2 UI)
+/**
+ * (density round, docs/UI.md "Density") A density VIEW: a PixelImage-compatible window onto an HD image `base` whose
+ * pixels are D times smaller than the view's logical (1x) pixels. Every 1x art function draws through it unchanged:
+ *   - set / rect / line / disc / outline ... paint D x D blocks (the 1x look, at the same on-screen size);
+ *   - drawText / drawRuns draw the D=2 faces (twice the detail, identical layout: advances are exactly D x);
+ *   - drawBox draws the D=2 frames (drawBoxHD: finer line, rounder corners, same content rect);
+ *   - blit(src) uses src.hd when present (a D x larger hand-drawn version, optionally offset by src.hdOff = {x, y}
+ *     HD px), else blocks: attach HD art to a 1x sprite once (withHD(sprite, hd)) and every caller that blits it gets it.
+ * (ox, oy) = where the view's logical origin sits in `base` (HD px; may be any integer). w / h = floor(base / D).
+ * Direct writers of img.data do not see a view (use the HD image itself).
+ */
+export class DensityView extends PixelImage {
+  constructor(base, D = 2, ox = 0, oy = 0) {
+    super(0, 0, new Uint8ClampedArray(0));
+    this.base = base; this.density = D; this.ox = ox | 0; this.oy = oy | 0; this.isView = true;
+    this.w = Math.floor((base.w - this.ox) / D); this.h = Math.floor((base.h - this.oy) / D);
+  }
+  clone() { return new DensityView(this.base.clone(), this.density, this.ox, this.oy); }
+  clear() { this.base.clear(); return this; }
+  fill(c) { this.base.fill(c); return this; }
+  get(x, y) { if (!this.inside(x, y)) return [0, 0, 0, 0]; return this.base.get(x * this.density + this.ox, y * this.density + this.oy); }
+  alpha(x, y) { return this.inside(x, y) ? this.base.alpha(x * this.density + this.ox, y * this.density + this.oy) : 0; }
+  set(x, y, c) { x |= 0; y |= 0; const D = this.density; this.base.rect(x * D + this.ox, y * D + this.oy, D, D, c); return this; }
+  rect(x, y, w, h, c) { const D = this.density; this.base.rect(x * D + this.ox, y * D + this.oy, w * D, h * D, c); return this; }
+  erase(x, y) { const D = this.density; for (let j = 0; j < D; j++) for (let i = 0; i < D; i++) this.base.erase(x * D + this.ox + i, y * D + this.oy + j); return this; }
+  blit(src, dx, dy, opts = {}) {
+    const D = this.density, { sx = 0, sy = 0, sw = src.w, sh = src.h, flipX = false, flipY = false, tint = null, scale = 1 } = opts;
+    const full = sx === 0 && sy === 0 && sw === src.w && sh === src.h;
+    if (scale === 1 && src.hd && (full || !src.hdOff)) {
+      const o = src.hdOff ?? { x: 0, y: 0 };
+      this.base.blit(src.hd, (dx | 0) * D + this.ox + o.x, (dy | 0) * D + this.oy + o.y,
+        full ? { flipX, flipY, tint } : { sx: sx * D, sy: sy * D, sw: sw * D, sh: sh * D, flipX, flipY, tint });
+      return this;
+    }
+    if (scale === 1 && src.isView && src.density === D) {      // a view into a view of the same density: copy the HD pixels
+      this.base.blit(src.base, (dx | 0) * D + this.ox, (dy | 0) * D + this.oy, { sx: sx * D + src.ox, sy: sy * D + src.oy, sw: sw * D, sh: sh * D, flipX, flipY, tint });
+      return this;
+    }
+    return super.blit(src, dx, dy, opts);
+  }
+  crop(x, y, w, h) { const D = this.density; return new DensityView(this.base.crop(x * D + this.ox, y * D + this.oy, w * D, h * D), D); }
+  bbox() { const b = this.base.bbox(); if (!b) return null; const D = this.density; const x0 = Math.floor((b.x - this.ox) / D), y0 = Math.floor((b.y - this.oy) / D); return { x: x0, y: y0, w: Math.ceil((b.x + b.w - this.ox) / D) - x0, h: Math.ceil((b.y + b.h - this.oy) / D) - y0 }; }
+  colors() { return this.base.colors(); }
+}
+/** densityView(hdImage, D = 2, ox = 0, oy = 0) -> a DensityView (see there). */
+export const densityView = (base, D = 2, ox = 0, oy = 0) => new DensityView(base, D, ox, oy);
+/** Attach a hand-drawn D x version to a 1x sprite (returns the sprite). Views blit `hd` instead of blocks. */
+export function withHD(sprite, hd, off = null) { sprite.hd = hd; if (off) sprite.hdOff = off; return sprite; }
+/** Nearest-neighbour integer upscale (the compat path for 1x art that has no HD version yet). */
+export function upscale(img, D = 2) {
+  const o = new PixelImage(img.w * D, img.h * D);
+  o.blit(img, 0, 0, { scale: D });
+  return o;
+}
+/**
+ * An HD piece: draw 1x art through a view into a fresh (w·D x h·D) image. fn(view) gets the view (logical size w x h);
+ * returns the HD PixelImage (its `.view` = the view). Cache it like any sprite and blit it into an HD layer.
+ */
+export function hdPiece(w, h, fn, D = 2) {
+  const im = new PixelImage(w * D, h * D), v = new DensityView(im, D);
+  im.r = fn(v) ?? null;
+  im.view = v;
+  return im;
+}
+
 // ------------------------------------------------------------------------------------------------ fonts
 // 'body': cap height 6, x-height 4, descender 2 (rows 0..7, baseline under row 5), proportional, 1 px tracking,
 // line advance 9 (10 with an outline). 'tiny': 3x5 caps + digits (v2 scripts/fx/font.ts glyphs, upper-cased) for
@@ -312,6 +384,7 @@ const BODY_GLYPHS = {
   '—': G('#####', 3), '–': G('####', 3), '←': G('..#../.#.../#####/.#.../..#..', 1), '→': G('..#../...#./#####/...#./..#..', 1),
   '↑': G('..#../.###./#.#.#/..#../..#../..#..'), '↓': G('..#../..#../..#../#.#.#/.###./..#..'),
   '✓': G('....#/...#./#.#../.#...', 1), '≡': G('###/.../###/.../###', 1), '⚙': G('.#.#./#####/##.##/#####/.#.#.', 1), '♪': G('.##/.#./.#./##./##.', 0), '☾': G('.##/#../#../#../.##', 1),
+  '★': G('..#../#####/.###./.#.#.', 1),   // (density round, additive) the notebook's trust mark; body@2 has the same advance
 };
 const TINY_SRC = {
   a: '010101111101101', b: '110101110101110', c: '011100100100011', d: '110101101101110', e: '111100110100111', f: '111100110100100',
@@ -334,16 +407,21 @@ Object.assign(TINY_GLYPHS, Object.fromEntries(Object.entries({
   '–': '..../..../####/..../....', "'": '#/#/./././.'.slice(0, 9),
 }).map(([k, r]) => [k, { rows: r.split('/'), top: 0 }])));
 
-function makeFont(name, glyphs, { lineH, space, tracking = 1, cap, xh, desc = 0, upper = false }) {
+function makeFont(name, glyphs, { lineH, space, tracking = 1, cap, xh, desc = 0, upper = false, density = 1, base = null }) {
   const map = new Map();
-  for (const [ch, g] of Object.entries(glyphs)) map.set(ch, { ...g, w: Math.max(...g.rows.map((r) => r.length)) });
-  return { name, map, lineH, space, tracking, cap, xh, desc, upper };
+  for (const [ch, g] of Object.entries(glyphs)) map.set(ch, { ...g, w: g.w ?? Math.max(...g.rows.map((r) => r.length)) });
+  return { name, map, lineH, space, tracking, cap, xh, desc, upper, density, base };
 }
 export const FONTS = {
   body: makeFont('body', BODY_GLYPHS, { lineH: 9, space: 2, cap: 6, xh: 4, desc: 2 }),
   tiny: makeFont('tiny', TINY_GLYPHS, { lineH: 6, space: 2, cap: 5, xh: 5, upper: true }),
 };
 FONTS.label = { ...FONTS.tiny, name: 'label' };     // alias (hud LABEL = tiny with the wide M/W/N, now the kit's own)
+// (density round, additive) the D=2 faces (src/ui/fonts-hd.js): same advances x2, twice the detail. Keyed '<name>@2';
+// fontAt(font, 2) / drawText({density: 2}) / a density view pick them. 'display@2' is registered by src/ui/fonts.js.
+FONTS['body@2'] = makeFont('body@2', BODY2_GLYPHS, { ...BODY2_METRICS, density: 2, base: 'body' });
+FONTS['tiny@2'] = makeFont('tiny@2', TINY2_GLYPHS, { ...TINY2_METRICS, density: 2, base: 'tiny' });
+FONTS['label@2'] = { ...FONTS['tiny@2'], name: 'label@2', base: 'label' };
 /**
  * Register a font object under a FONTS key (module fix). kit.js cannot import group modules (circular + ownership),
  * so pages register group faces at load: scenes/ui-hud.js and scenes/ui-bake.js register the hud group's DISPLAY face
@@ -355,6 +433,7 @@ export function registerFont(key, font, metrics = null) {
   return FONTS[key];
 }
 const _fold = new Map();
+const _scaledGlyphs = new WeakMap();
 function glyphOf(font, ch) {
   const f = typeof font === 'string' ? FONTS[font] : font;
   if (f.upper) ch = ch.toLowerCase();
@@ -367,6 +446,17 @@ function glyphOf(font, ch) {
     _fold.set(ch, k);
   }
   if (k && k !== ch) { g = f.map.get(f.upper ? k.toLowerCase() : k); if (g) return g; }
+  // (density round) a D>1 face without this glyph: the 1x face's glyph, block-scaled (same advance, never a '?' that
+  // the 1x face would not show)
+  if (f.density > 1 && f.base) {
+    const b = fontOf(f.base);
+    if (b !== FONTS.body || f.base === 'body') {
+      let m = _scaledGlyphs.get(f);
+      if (!m) { m = new Map(); _scaledGlyphs.set(f, m); }
+      if (!m.has(ch)) m.set(ch, scaleGlyph(glyphOf(b, ch), f.density));
+      return m.get(ch);
+    }
+  }
   return f.map.get('?');
 }
 const _warned = new Set();
@@ -376,17 +466,89 @@ const fontOf = (font) => {
   if (typeof font === 'string' && !_warned.has(font)) { _warned.add(font); console.warn(`kit: font '${font}' not registered, using body`); }
   return FONTS.body;
 };
-/** Width in px of a single line of text (no outline). */
-export function textWidth(s, font = 'body') {
+/** One glyph block-scaled by an integer D (rows, top, advance x D). */
+function scaleGlyph(g, D) {
+  const rows = [];
+  for (const r of g.rows) { const s = [...r].map((c) => c.repeat(D)).join(''); for (let k = 0; k < D; k++) rows.push(s); }
+  return { rows, top: g.top * D, w: g.w * D };
+}
+/** Scale2x (EPX) of a binary glyph: 2x the rows with 45-degree steps smoothed and convex corners kept (AdvMAME2x rule). */
+function scale2xGlyph(g) {
+  const h = g.rows.length, w = Math.max(0, ...g.rows.map((r) => r.length));
+  const at = (x, y) => (y >= 0 && y < h && x >= 0 && x < w && g.rows[y][x] === '#');
+  const out = Array.from({ length: 2 * h }, () => Array(2 * w).fill('.'));
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const E = at(x, y), B = at(x, y - 1), D = at(x - 1, y), F = at(x + 1, y), H = at(x, y + 1);
+    const e0 = D === B && B !== F && D !== H ? D : E, e1 = B === F && B !== D && F !== H ? F : E;
+    const e2 = D === H && D !== B && H !== F ? D : E, e3 = H === F && D !== H && B !== F ? F : E;
+    out[2 * y][2 * x] = e0 ? '#' : '.'; out[2 * y][2 * x + 1] = e1 ? '#' : '.';
+    out[2 * y + 1][2 * x] = e2 ? '#' : '.'; out[2 * y + 1][2 * x + 1] = e3 ? '#' : '.';
+  }
+  return { rows: out.map((r) => r.join('')), top: g.top * 2, w: g.w * 2 };
+}
+/**
+ * (density round) A D=2 face derived from a 1x face: every glyph Scale2x-smoothed (smooth, default) or block-scaled,
+ * advances / metrics x2, so layouts stay identical. thin = 1-px horizontal hairlines: a 1x pixel with no ink above or
+ * below (a horizontal stroke) keeps one of its two HD rows (the top row in the upper half of the cap, else the bottom
+ * one), which gives the thick/thin contrast of the hand-drawn D=2 faces. Used for faces without a hand-drawn D=2
+ * version (display@2 = derive2x(DISPLAY), src/ui/fonts.js) and as the fallback of fontAt().
+ */
+export function derive2x(font, { smooth = true, thin = false, name = null } = {}) {
+  const f = fontOf(font), glyphs = {};
+  for (const [ch, g] of f.map) {
+    let o = smooth ? scale2xGlyph(g) : scaleGlyph(g, 2);
+    if (thin) {
+      const at = (x, y) => (y >= 0 && y < g.rows.length && g.rows[y][x] === '#');
+      const rows = o.rows.map((r) => [...r]);
+      g.rows.forEach((r, y) => { for (let x = 0; x < r.length; x++) {
+        if (r[x] !== '#' || at(x, y - 1) || at(x, y + 1) || !(at(x - 1, y) || at(x + 1, y))) continue;
+        const drop = g.top + y < f.cap / 2 ? 1 : 0;              // upper half: keep the top row
+        rows[2 * y + drop][2 * x] = '.'; rows[2 * y + drop][2 * x + 1] = '.';
+      } });
+      o = { ...o, rows: rows.map((r) => r.join('')) };
+    }
+    glyphs[ch] = o;
+  }
+  return makeFont(name ?? `${f.name}@2`, glyphs, { lineH: f.lineH * 2, space: f.space * 2, tracking: f.tracking * 2, cap: f.cap * 2,
+    xh: f.xh * 2, desc: f.desc * 2, upper: f.upper, density: 2, base: f.name });
+}
+const _derivedFonts = new WeakMap();
+/**
+ * (density round) The face to draw `font` with at UI density d: d = 1 -> the font itself; d = 2 -> FONTS['<name>@2']
+ * (body@2, tiny@2, label@2, display@2 once src/ui/fonts.js registered it), else a derive2x() of it (cached). A font
+ * that already is a D>1 face is returned as is.
+ */
+export function fontAt(font, d = 1) {
   const f = fontOf(font);
+  if (!(d > 1) || (f.density ?? 1) > 1) return f;
+  const reg = FONTS[`${f.name}@${d}`];
+  if (reg) return reg;
+  let m = _derivedFonts.get(f);
+  if (!m) { m = new Map(); _derivedFonts.set(f, m); }
+  if (!m.has(d)) {
+    if (d === 2) m.set(d, derive2x(f));
+    else {                                            // other densities: block-scaled (no hand-drawn faces exist)
+      const glyphs = {};
+      for (const [ch, g] of f.map) glyphs[ch] = scaleGlyph(g, d);
+      m.set(d, makeFont(`${f.name}@${d}`, glyphs, { lineH: f.lineH * d, space: f.space * d, tracking: f.tracking * d, cap: f.cap * d,
+        xh: f.xh * d, desc: f.desc * d, upper: f.upper, density: d, base: f.name }));
+    }
+  }
+  return m.get(d);
+}
+/** Width in px of a single line of text (no outline). density d > 1: the D=d face's width (= d x the 1x width). */
+export function textWidth(s, font = 'body', d = 1) {
+  const f = fontAt(font, d);
   let w = 0, n = 0;
   for (const ch of String(s)) { w += ch === ' ' ? f.space : glyphOf(f, ch).w; n++; }
   return n ? w + (n - 1) * f.tracking : 0;
 }
 /**
  * Word-wrap to maxW px; at most maxLines lines (the last one is cut with '…' if needed). Returns string[].
+ * density d: maxW is in D=d px (the wrap points are the same as at 1x with maxW / d).
  */
-export function wrapText(s, maxW, { font = 'body', maxLines = 99 } = {}) {
+export function wrapText(s, maxW, { font: font0 = 'body', maxLines = 99, density = 1 } = {}) {
+  const font = fontAt(font0, density);
   const words = String(s).replace(/\s+/g, ' ').trim().split(' ');
   const lines = [];
   let cur = '';
@@ -408,28 +570,50 @@ export function wrapText(s, maxW, { font = 'body', maxLines = 99 } = {}) {
  * Draw one line of text. (x, y) = top-left of the glyph box (row 0 = cap top); align 'left'|'center'|'right'
  * moves x. opts: font, color, outline (1-px 8-neighbour ring, for text over the 3D world), shadow (1 px down,
  * for text on panels that needs lift). Returns {x, y, w, h} of the drawn box (incl. outline).
+ * (density round, additive) density d: draw the D=d face (fontAt) at (x, y) in px of `img` (an HD image).
+ * outlineW: rings of the outline (default 1). img = a density view (densityView(hd, D)): x, y, align and the returned
+ * box are in the view's logical (1x) px, the glyphs are the D=d face drawn into the HD image underneath
+ * (outlineW default HD_TEXT.outlineW, shadow HD_TEXT.shadowDy HD px down).
  */
-export function drawText(img, x, y, s, { font = 'body', color = DAY.text, outline = null, shadow = null, align = 'left' } = {}) {
-  const f = fontOf(font);
+export function drawText(img, x, y, s, opts = {}) {
+  if (img?.isView) return drawTextView(img, x, y, s, opts);
+  const { font = 'body', color = DAY.text, outline = null, shadow = null, align = 'left', density = 1, outlineW = 1, shadowDy = 1 } = opts;
+  const f = fontAt(font, density);
   const w = textWidth(s, f);
   if (align === 'center') x -= Math.floor(w / 2); else if (align === 'right') x -= w;
   x |= 0; y |= 0;
-  const H = f.cap + f.desc;
-  const target = outline ? new PixelImage(w + 2, H + 2) : img;
-  const ox = outline ? 1 : x, oy = outline ? 1 : y;
+  const H = f.cap + f.desc, ow = outline ? Math.max(1, outlineW | 0) : 0;
+  const target = outline ? new PixelImage(w + 2 * ow, H + 2 * ow) : img;
+  const ox = outline ? ow : x, oy = outline ? ow : y;
   const pass = (dst, col, dy) => {
     let cx = ox;
     for (const ch of String(s)) {
       if (ch === ' ') { cx += f.space + f.tracking; continue; }
-      const g = glyphOf(f, ch);
-      g.rows.forEach((r, j) => { for (let i = 0; i < r.length; i++) if (r[i] === '#') dst.set(cx + i, oy + g.top + j + dy, col); });
+      const g = glyphOf(f, ch), gx = cx + (g.dx || 0);
+      g.rows.forEach((r, j) => { for (let i = 0; i < r.length; i++) if (r[i] === '#') dst.set(gx + i, oy + g.top + j + dy, col); });
       cx += g.w + f.tracking;
     }
   };
-  if (shadow && !outline) pass(img, shadow, 1);   // shadow first, glyphs on top
+  if (shadow && !outline) pass(img, shadow, shadowDy);   // shadow first, glyphs on top
   pass(target, color, 0);
-  if (outline) { target.outline(outline, { diag: true }); img.blit(target, x - 1, y - 1); return { x: x - 1, y: y - 1, w: w + 2, h: H + 2 }; }
-  return { x, y, w, h: H + (shadow ? 1 : 0) };
+  if (outline) {
+    for (let k = 0; k < ow; k++) target.outline(outline, { diag: true });
+    img.blit(target, x - ow, y - ow);
+    return { x: x - ow, y: y - ow, w: w + 2 * ow, h: H + 2 * ow };
+  }
+  return { x, y, w, h: H + (shadow ? shadowDy : 0) };
+}
+/** Defaults for text drawn through a density view (tunable per call: outlineW / shadowDy). */
+export const HD_TEXT = { outlineW: 2, shadowDy: 1 };   // outline 2 HD px = the 1x ring's weight (finer glyphs inside)
+function drawTextView(view, x, y, s, opts) {
+  const D = view.density, { font = 'body', align = 'left', outline = null, shadow = null } = opts;
+  const f1 = fontOf(font), w = textWidth(s, f1);
+  if (align === 'center') x -= Math.floor(w / 2); else if (align === 'right') x -= w;
+  x |= 0; y |= 0;
+  drawText(view.base, x * D + view.ox, y * D + view.oy, s, { ...opts, font: fontAt(f1, D), density: 1, align: 'left',
+    outlineW: opts.outlineW ?? (D > 1 ? HD_TEXT.outlineW : 1), shadowDy: opts.shadowDy ?? (D > 1 ? HD_TEXT.shadowDy : 1) });
+  const H = f1.cap + f1.desc;
+  return outline ? { x: x - 1, y: y - 1, w: w + 2, h: H + 2 } : { x, y, w, h: H + (shadow ? 1 : 0) };
 }
 
 /**
@@ -438,8 +622,8 @@ export function drawText(img, x, y, s, { font = 'body', color = DAY.text, outlin
  * x += textWidth(run) glues the next run's first glyph to the last one). opts as drawText (font, outline, shadow);
  * align 'left' | 'center' | 'right' applies to the whole line. Returns {x, y, w, h} of the line.
  */
-export function drawRuns(img, x, y, runs, { font = 'body', outline = null, shadow = null, align = 'left' } = {}) {
-  const f = fontOf(font);
+export function drawRuns(img, x, y, runs, { font = 'body', outline = null, shadow = null, align = 'left', density = 1 } = {}) {
+  const f = img?.isView ? fontOf(font) : fontAt(font, density);   // a view lays out in logical px (drawText draws HD)
   const list = runs.map((r) => (Array.isArray(r) ? r : [r.text, r])).map(([t, c]) => [String(t), typeof c === 'object' && c && !Array.isArray(c) ? c : { color: c }]);
   const w = list.reduce((a, [t], i) => a + textWidth(t, f) + (i ? f.tracking : 0), 0);
   if (align === 'center') x -= Math.floor(w / 2); else if (align === 'right') x -= w;
@@ -511,6 +695,11 @@ const tok = (T, k) => (k == null ? null : T[k] ?? k);
  * T = token set (tokens(tod)). Returns the inner content rect {x, y, w, h} (inside line + edge + 1 px padding 0).
  */
 export function drawBox(img, x, y, w, h, style = 'panel', T = DAY) {
+  if (img?.isView) {                       // (density round) a density view: the D=2 frame, same logical content rect
+    const D = img.density;
+    drawBoxHD(img.base, x * D + img.ox, y * D + img.oy, w * D, h * D, style, T, D);
+    return { x: x + 2, y: y + 2, w: w - 4, h: h - 4 };
+  }
   const S = typeof style === 'string' ? FRAMES[style] : style;
   const line = tok(T, S.line), edge = tok(T, S.edge), fill = tok(T, S.fill), hi = tok(T, S.hi), sh = tok(T, S.sh);
   const c = S.corner || 0;
@@ -533,6 +722,60 @@ export function drawBox(img, x, y, w, h, style = 'panel', T = DAY) {
     img.set(x + i, y + j, col);
   }
   return { x: x + 2, y: y + 2, w: w - 4, h: h - 4 };
+}
+/**
+ * (density round) Geometry of the D=2 frames (drawBoxHD; a density view's drawBox). The 1x frame is line 1 + edge 1
+ * texels (= 4 HD px) before the content; at D=2 the same 4 px are a finer 1-px line, a 2-px keyline (edge) and 1 px
+ * of fill (or the 1-px hi bevel row), so the logical content rect is unchanged. Corners are rounder: per-row cuts from
+ * each corner (1x notch -> [2, 1], 1x pill -> [4, 2, 1, 1]); the ring distance is 4-neighbour, so the line and the
+ * keyline follow the rounded corner. Drop shadow: 2 HD rows (= the 1x 1-texel row), the box shape shifted 2 px.
+ */
+export const HD_FRAME = { lineW: 1, edgeW: 2, shadowH: 2, cuts: { 0: [], 1: [2, 1], 2: [4, 2, 1, 1] } };
+const _cornerDist = new Map();
+function cornerDist(cuts) {                     // 4-neighbour distance to the outside in an 8x8 corner patch
+  const k = cuts.join(',');
+  if (_cornerDist.has(k)) return _cornerDist.get(k);
+  const P = 8, out = (i, j) => i < 0 || j < 0 || (j < cuts.length && i < cuts[j]);
+  const d = Array.from({ length: P }, (_, j) => Array.from({ length: P }, (_, i) => (out(i, j) ? -1 : 99)));
+  for (let pass = 0; pass < 2 * P; pass++) for (let j = 0; j < P; j++) for (let i = 0; i < P; i++) {
+    if (d[j][i] < 0) continue;
+    const nb = [[i - 1, j], [i + 1, j], [i, j - 1], [i, j + 1]].map(([a, b]) => (out(a, b) ? -1 : a >= P || b >= P ? 99 : d[b][a]));
+    d[j][i] = Math.min(d[j][i], Math.min(...nb) + 1);
+  }
+  _cornerDist.set(k, d);
+  return d;
+}
+/**
+ * The D=2 frame of a FRAMES style at (x, y, w, h) in HD px of `img` (w, h = D x the logical size). Same tokens and
+ * styles as drawBox; returns the HD content rect (inset 2·D). Other densities: the 1x frame block-scaled.
+ */
+export function drawBoxHD(img, x, y, w, h, style = 'panel', T = DAY, D = 2) {
+  if (D !== 2) {
+    const t = new PixelImage(Math.ceil(w / D), Math.ceil(h / D) + 1);
+    drawBox(t, 0, 0, t.w, t.h - 1, style, T);
+    img.blit(t, x, y, { scale: D });
+    return { x: x + 2 * D, y: y + 2 * D, w: w - 4 * D, h: h - 4 * D };
+  }
+  const S = typeof style === 'string' ? FRAMES[style] : style;
+  const line = tok(T, S.line), edge = tok(T, S.edge), fill = tok(T, S.fill), hi = tok(T, S.hi), sh = tok(T, S.sh);
+  const cuts = HD_FRAME.cuts[S.corner || 0] ?? [], cd = cornerDist(cuts), lw = HD_FRAME.lineW, bw = lw + HD_FRAME.edgeW;
+  const dist = (i, j) => {
+    if (i < 0 || j < 0 || i >= w || j >= h) return -1;
+    const dx = Math.min(i, w - 1 - i), dy = Math.min(j, h - 1 - j);
+    return dx < 8 && dy < 8 ? cd[dy][dx] : Math.min(dx, dy);
+  };
+  if (S.shadow) for (let r = 0; r < HD_FRAME.shadowH; r++) for (let i = 2; i < w; i++) if (dist(i - 2, h - HD_FRAME.shadowH + r) >= 0) img.set(x + i, y + h + r, T.shadow);
+  for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+    const d = dist(i, j);
+    if (d < 0) continue;
+    let col = fill;
+    if (d < lw) col = line;
+    else if (d < bw) col = edge;
+    else if (hi && (j === bw || (i === bw && S.press))) col = hi;
+    else if (sh && j === h - 1 - bw) col = sh;
+    img.set(x + i, y + j, col);
+  }
+  return { x: x + 4, y: y + 4, w: w - 8, h: h - 8 };
 }
 /** 9-slice from baked art: src image with insets {l, t, r, b}; returns draw(img, x, y, w, h). Edges/centre TILE. */
 export function nineSlice(src, { l, t, r, b }) {

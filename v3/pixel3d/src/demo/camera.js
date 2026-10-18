@@ -102,7 +102,16 @@ export function installFollowCamera(demo, rig = demo.camera) {
       inside = r.id; wasFollow = false;
       cam.set({ yaw: want, pitch: C.pitch ?? PITCH });
     } else if (!cam.rotating && Math.abs(Math.sin((cam.yaw - want) / 2)) > 1e-4) cam.rotateTo(want, 0.3, { steps: 3, exact: true });
-    cam.viewHeight = C.viewHeight;
+    // (critic P2-7) a narrow canvas (a portrait phone): the room's floor width + 0.6 m must fit across, so the view grows
+    // (never below the room's preset): the stair / landing / pendulum were off-screen on the phone
+    let vh = C.viewHeight;
+    const fl = r.floor, aspect = cam.lowW / Math.max(1, cam.lowH);
+    if (fl && aspect < 1.2) {
+      const cy = Math.cos(cam.yaw), sy = Math.sin(cam.yaw);
+      const us = [[fl.x0, fl.z0], [fl.x1, fl.z0], [fl.x0, fl.z1], [fl.x1, fl.z1]].map(([x, z]) => x * cy - z * sy);
+      vh = Math.max(vh, (Math.max(...us) - Math.min(...us) + 0.6) / aspect);
+    }
+    cam.viewHeight = vh;
     // the preset target (authored for C.yaw) turned about the room's pivot with the camera
     const yaw = cam.yaw, B0 = basis(C.yaw, BA), B = basis(yaw, BB), pv = r.pivot;
     const ox = C.target.x - pv.x, oz = C.target.z - pv.z;
@@ -110,7 +119,7 @@ export function installFollowCamera(demo, rig = demo.camera) {
     const tx = pv.x + oa * B.Rx + ob * B.Fx, tz = pv.z + oa * B.Rz + ob * B.Fz;
     // it stays put (texel-stable) and only slides when the player nears the frame edge (rooms bigger than the view)
     const p = demo.player.position, sp = Math.sin(cam.pitch);
-    const halfH = C.viewHeight / 2, halfW = halfH * (cam.lowW / cam.lowH);
+    const halfH = vh / 2, halfW = halfH * (cam.lowW / cam.lowH);
     const px = p.x - tx, pz = p.z - tz;
     const a = px * B.Rx + pz * B.Rz, b = px * B.Fx + pz * B.Fz;
     // limits: the feet stay 0.6 m above the bottom edge, the head (~1.6 m up = 1.6 cos(pitch) / sin(pitch) m of

@@ -12,6 +12,7 @@
 //   --ab 6       : synced bursts alternating window.__demo.rtopt(false/true) in the same page (A/B of the runtime opts)
 //   node tools/demo-perf.mjs [--q "tod=night&quality=low&at=7,18"] [--size 1280x720] [--secs 5] [--frames 60]
 //        [--throttle 1] [--alloc] [--prof] [--hitch ...] [--shot out.png] [--json out.json] [--label name]
+//        [--page demo.html]   (the page under the repo root, e.g. dist/v3-art-demo/index.html: a static bundle)
 // Exit 1 on any console error / pageerror / __demo.errors.
 import { chromium } from 'playwright';
 import fs from 'node:fs';
@@ -46,7 +47,7 @@ const out = { label, q, size: [W, H], throttle };
 let code = 0;
 try {
   const t0 = Date.now();
-  await page.goto(`http://pixel3d.local/demo.html?intro=0${q ? '&' + q : ''}`);
+  await page.goto(`http://pixel3d.local/${opt('page', 'demo.html')}?intro=0${q ? '&' + q : ''}`);   // --page dist/<x>/index.html: a bundle (before / after)
   await page.waitForFunction(() => window.__demo && (window.__demo.ready || window.__demo.errors.length), null, { timeout: 240000 });
   out.load = await page.evaluate(() => {
     const e = window.__demo.demo?.engine, s = e?.stats ?? {};
@@ -71,7 +72,7 @@ try {
       };
       P.restore.push(() => { obj[key] = fn; });
     };
-    for (const m of ['player', 'camera', 'intro', 'cut', 'time', 'ui', 'deploy']) wrap(d[m], 'update', 'demo:' + m);
+    for (const m of ['player', 'camera', 'intro', 'cut', 'time', 'ui', 'deploy', 'passB']) wrap(d[m], 'update', 'demo:' + m);   // (B) + passB
     for (const [id, p] of d.town.registry.map) wrap(p, 'update', 'piece:' + id);
     // every engine updater (town pieces, the demo's, life's Characters, shadow cull, sprite placement ...): 'upd:all'
     e.updaters.forEach((fn, i) => wrap(e.updaters, i, 'upd:all'));

@@ -543,7 +543,19 @@ export default function build(engine, ctx) {
         belfry: W3(V3(0, 9.1, CZ + F.hz)), vane: W3(V3(0, SP.yA + 0.92, CZ)),
       },
     },
-    api: { setTime, ring, setDoor, setLit, get time() { return shown; } },
+    api: { setTime, ring, setDoor, setLit, get time() { return shown; },
+      // (B) additive hook for the demo (docs/TOWN.md §4 "clocktower hooks"): the four dials in WORLD space (centre on
+      // the face, outward normal, radii, the face's frame: +z out, +y up, origin = the dial centre) and the live hands
+      // group (the demo's tower timer hides it and draws its own hands on the same frames); body dimensions (local)
+      dials: dials.map(({ fr, k }) => {
+        const m = group.matrixWorld.clone().multiply(fr);
+        const center = new THREE.Vector3().setFromMatrixPosition(m);
+        const normal = new THREE.Vector3(0, 0, 1).transformDirection(m);
+        return { matrix: m, local: fr.clone(), center, normal, k, dial: DIAL.Rd * k, bezel: DIAL.Rb * k, surround: DIAL.Rs * k };
+      }),
+      hands,
+      body: { cz: CZ, base: { ...BASE }, stage: { ...STAGE }, belfry: { ...BELF }, door: { w: DOOR.w, y0: DOOR.y0, zFront: zF }, dialY: DIAL.y, bellPivotY: BELL.pivotY },
+    },
     stats: { dials: 4 },
   };
 }

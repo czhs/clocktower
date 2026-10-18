@@ -112,6 +112,8 @@ character).
 1. **One pixel grid.** 1 UI px = 1 scene texel. The frame is 640×360 internal, integer-upscaled (×2 at 720p, ×3 at
    1080p). UI art is authored at that size and never scaled by a non-integer, rotated, filtered or sub-pixel positioned.
    Rubric #2 applies to UI exactly as to the world: every feature is a multiple of one texel.
+   (Opt-in since 2026-10-17: UI DENSITY D=2, §2.10 — UI art drawn at 2 UI px per texel on the `L.hd` tiers, same
+   on-screen size, still an integer device scale; there every feature is a multiple of one HD px.)
 2. **Same palette logic as the world** (ART_DIRECTION §0, rubric #5/#8): ≤ 3 tones per material + its line + an optional
    cream rim; lines are a darker, cooler shade of their own fill (never black, never one global ink); shadows cool
    (violet/slate), lights warm (cream/gold); no pure white or black.
@@ -245,6 +247,245 @@ line}` in OKLab (light warmer, shadow cooler/violet, line darker+cooler); `PIN_R
 | U5 | game speed + cadence | stepped on the 30 Hz grid, v2 durations kept, 1× GIFs read |
 | U6 | drop-in completeness | every v2 frame name of the group present (`uibake --strict`), anchors/fps/meta keys kept |
 
+### 2.10 Density (D=2: UI px smaller than the scene texel) — UI lead, 2026-10-17
+User feedback on the demo at 1280×720 (1 UI px = 2–3 device px): pin icons unclear, "most of the text … even the notebook
+… basically all of the UI could benefit from higher pixel density". Density is the foundation for that upgrade: UI art
+drawn at **D = 2 UI px per scene texel**, at the same on-screen size, so every element gets twice the detail and still
+reads as pixel art (binary alpha, integer device scale, own-colour lines, tokens). Opt-in everywhere; with no option the
+library is byte-identical to before (`shots/ui-hd/regress.mjs`: 524 kit checks, 0 differences; the mock HUD with
+`?uidensity=2` attached but nothing drawn on it: pixel-identical frame).
+Comparisons (all rendered on render-host and looked at): `shots/ui-hd/` (`docs/UI_GALLERY.md` §3.5).
+
+**Tiers** (`src/ui/hd/layers.js`; `createUILayers(engine, { density: 2 })` in `src/ui/layer.js` AND
+`src/ui/runtime/layer.js`, or `?uidensity=2` on any page) attach `L.hd`:
+| tier | image | composited | use |
+|---|---|---|---|
+| S-HD | `L.hd.screen` (canvas / `L.hd.scale`) | after the upscale, OVER `L.screen` | HUD, panels, dock, toolbar, tip, toasts |
+| A-HD | `L.hd.world` (padded frame × k) | after the upscale, rides the camera's sub-texel offset in whole device px (anchored like `L.world`); over the scene + `L.world`, UNDER `L.screen` | labels, person pins, bubbles, pops |
+| A-HD depth | `L.hd.useDepth()` + `L.hd.putDepth(src, x, y, d[, k])` | same overlay; hidden where the scene is nearer than `d − L.hd.depthEps` (samples the scene depth texture per device px); `L.world` texels stay on top | place pins (checked: `zoom-1280-depth-occlusion.png`) |
+`L.ground` / `L.world` / `L.screen` are unchanged (1x). The night veil and other full-screen `.data` writers stay on `L.screen` (under the HD HUD).
+
+**Scale rule.** `L.hd.scale` (device px per HD px) `= max(1, round(pixelScale / D))` (policy `'round'`, default;
+`'floor'` / `'ceil'` / a number via `{policy}` or `?uipolicy=`). `L.hd.k = pixelScale / scale` (HD px per texel). Art
+density `L.hd.d = D` when `k ≥ 1.5`, else 1 (pixelScale 1 = phones / small windows: the 1x art, nothing to gain).
+| pixelScale | round | floor |
+|---|---|---|
+| 2 (720p) | scale 1, k 2 — exact: 1 HD px = 1 device px, logical px = 1 texel | same |
+| 3 (1080p) | scale 2, k 1.5 — HD art 4/3 the size of the 1x art (logical px 4 device px vs a 3-px texel) | scale 1, k 3 — 2/3 the size (2 device px) |
+| 4 | scale 2, k 2 (exact) | same |
+| 5 | scale 3, k 1.67 | scale 2, k 2.5 |
+Never a non-integer device scale: an odd pixelScale changes the SIZE of HD art, not its crispness. `cmp-1920x1080.png`
+(round) / `cmp-1920x1080-floor.png` (floor). Fit mode (`?scale=fit`, non-integer pixelScale): offsets rounded to device px.
+
+**Coordinates.** `L.hd.at(p)` = HD world px (the scene texel's top-left: HD anchors step with the 1x world; `atFine(p)`
+without the snap) · `L.hd.atScreen(p)` HD screen px · `from1x(x, y)` / `to1x(hx, hy)` 1x screen ↔ HD screen ·
+`fromClient(cx, cy)` HD screen px under a pointer (bottom-left anchoring like the 1x overlay) · `logical(cx, cy)` view px.
+**Logical px** = HD px / d: a density view's coordinate system (= 1x screen texels at even pixel scales; at 1080p round
+the logical canvas is 480×270 instead of 640×360 — lay the screen tier out in logical px, `W() = L.hd.screenView.w`).
+
+**Views = the compat path** (`kit.js DensityView`, `densityView(hdImage, D)`, `L.hd.screenView` / `worldView` /
+`L.hd.view(img)`, `hdPiece(w, h, fn)`): a PixelImage-compatible window onto an HD image. EVERY 1x drawer draws through it
+unchanged, at the same on-screen size: `set / rect / line / disc / outline …` paint D×D blocks (the 1x look);
+`drawText / drawRuns / wrapText` use the D=2 faces; `drawBox` draws the D=2 frame; `blit(src)` uses `src.hd` when present
+(attach once: `withHD(sprite, hd[, off])`), else blocks. Nothing breaks when an element is not redrawn yet; it upgrades
+the moment its sprites get `.hd`. Limits: code that writes `img.data` directly (fastBlit-style, the night veil) draws
+nothing into a view — use `view.base` at HD px (`L.hd.screen` / `L.hd.world`), or keep it 1x; a drawer that builds its OWN
+`new PixelImage` and blits it (bubbles, events caption, panels 9-slices, actionbar button) stays 1x blocks until it draws
+into the image it is given. `?uiscreen=hd` / `{screenTier: 'hd'}` makes `L.screen` itself the HD view (the whole screen
+tier at once, no group change: `hud-whole-screen-d2-1280.png` vs `hud-whole-1x-1280.png`) — fine for mock pages, NOT for
+the demo (its fastBlit writes `.data`).
+
+**Fonts** (`src/ui/fonts-hd.js`, kit `fontAt(font, 2)`): `body@2` (cap 12, x-height 8, descender 4) and `tiny@2` /
+`label@2` (cap 10, caps) are hand-drawn: 2-px stems, 1-px horizontals, round bowls, real descenders, single-storey a/g like
+the 1x face, all of `· … × — – ← → ↑ ↓ ✓ ≡ ⚙ ♪ ☾ ★`. `display@2` = `derive2x(DISPLAY)` (Scale2x: the display face already
+has 2-px stems; round bowls, clean diagonals), registered by `src/ui/fonts.js`. **Contract: every D=2 advance is exactly
+2× its 1x advance, metrics exactly 2×** (`checkDensityFaces()` = []), so `textWidth(s, f, 2) === 2·textWidth(s, f)`
+and a 1x layout is pixel-identical at D=2. A glyph the D=2 face lacks = the 1x glyph block-scaled. Text over the world
+through a view: outline `HD_TEXT.outlineW` = 2 HD px (the 1x ring's weight; 1 read too thin on cobbles), shadows 1 HD px.
+`★` was added to the 1x body face (5 wide) so both faces share it. Sheet: `shots/ui-hd/sheet/fonts*.png`.
+**Frames** (`drawBoxHD`, `HD_FRAME`): the 1x line+edge (4 HD px) become a 1-px line, a 2-px keyline and 1 px of fill (or
+the 1-px bevel row); corners rounder (`[2,1]`, pill `[4,2,1,1]`); same content rect; shadow 2 HD rows.
+
+**DOM** (`src/ui/hd/css.js`): `installHDCss(document)` adds `@font-face 'CT Pixel Body HD'` (a TTF built at runtime from
+`body@2` by `notebook/ttf.js buildTTF(font, name, {asc: 12, desc: 8, em: 16})`, ~10 KB, deterministic), `.ct-pixel-hd`
+(any DOM text: 16 × `--hdpx` px, line 18 × `--hdpx`) and `.ctn.ctn-pixelfont-hd .ctn-text` (the notebook page: line 20 ×
+`--hdpx` = the rule pitch, rule tile re-sized with it). Set `--hdpx` = `L.hd.scale`. 720p: identical page geometry to
+`.ctn-pixelfont`; 1080p round: lines 40 CSS px (the page holes stay on the `--px` frame).
+
+**HD art** (`src/ui/hd/art.js`): `pinHD(color, T)` 36×52 world pin with a 24-px socket (`pinWithIconHD(color, icon, T,
+key)`: the 24×24 portrait AVATAR goes in 1:1 — the clear "who pinned" icon; a 12×12 icon is ×2), `swatchHD(color, T,
+{icon: 'dot' | <portrait image> | 'bust' | 'none'})` 18×24 palette pins (round socket + a clear centre dot by default; the
+1x swatch's cream square read as an unclear icon), `pinGlyphHD` 14×18 (Pin toggle), `gloveHD` 18×18, `glyphHD.notebook |
+gear | help | close | bulb(lit)` 16-px toolbar glyphs, `toolButtonHD(key, state, T, {lit})` 30×30 buttons,
+`drawClockChipHD(view, …)` (HD chip frame + the hud dial at 30 px). `prepareHD(T, {swatchIcon})` attaches `.hd` to the
+memoized emotes sprites (pinIcon / pinIconSmall / emotePointSmall) and wraps hud `GLYPH.close | notebook | gear | help`
+once (their sprites carry `.hd`; 1x callers never read it): after it `E.drawDock(view, …)` / `HA.drawKeyHint(view, …)`
+draw HD with no other change. Anchors: `ANCHORS_HD` = 2 × markers `ANCHORS`.
+**Runtime helpers** (`src/ui/hd/draw.js`): `fastBlit` (marks the dirty band), `up2`, `drawPlacePinHD(L, {p, color, icon,
+iconKey, age, removeAt, settled, still, hover})` (depth tier; markers drop / removal timing), `drawPersonPinsHD(L, {cx,
+labelTopHD, pins, t, still})`, `labelHD(L, head, name, variant, T)` (cached; returns the HD box + label top;
+additive opts `{top, x}`: the HD label top / the HD x of its centre instead of the head's, for a caller that clamps or
+de-collides labels; no opts = as before). Also additive (2026-10-17, the demo's critic round): hud `drawStClock` o.done
+(the countdown at zero: the stage's due label and a "Start" button instead of "Pause"; no o.done = as before).
+
+**Perf** (render-host RTX 4090, headless; `scenes/ui-density-perf.js` + `shots/ui-hd/bench.mjs`: the demo's typical UI —
+clock + phase chips, toolbar, tip, open dock + button, 4 labels, a person pin, 2 place pins — as cached pieces through
+the LIVE runtime layer, 60 warm-up + 400 timed frames, wall ms incl. a GPU sync, two runs each):
+| | 1280×720 | 1920×1080 |
+|---|---|---|
+| 1x (today) | 1.08–1.11 ms / frame · UI draw 0.08 ms · 106 k px uploaded / frame | 1.13–1.23 ms · 0.08–0.10 ms · 106 k px |
+| density attached, nothing HD drawn | 1.17 ms · 0.09 ms · 106 k px | 1.11–1.22 ms · 0.09–0.10 ms · 106 k px |
+| everything at D=2 (+ depth pins) | 1.50–1.56 ms · UI draw 0.29–0.31 ms · 327 k px / frame (1.3 MB) | 1.49–1.50 ms · 0.30 ms · 299 k px |
+≈ +0.4 ms / frame and ×3 upload bytes for a full HD HUD; the HD images are dirty-band tracked (only drawn bands are
+cleared / uploaded; a static HUD still re-uploads its bands every frame — see follow-ups). Memory: HD screen 3.7 MB at
+720p (2.1 MB at 1080p round), HD world 3.75 MB, depth tier + 3.75 MB RGBA + 3.75 MB R32F.
+
+#### 2.10.1 Adoption in the demo (src/demo/gameui.js, notebook.js, ui.css) — exact changes
+Recommended: move the WHOLE screen tier to `L.hd.screen` in one step (one logical coordinate system), the world labels /
+pins to `L.hd.world` / the depth tier, keep the night veil on `L.screen`. `?uidensity=1` stays the A/B for today.
+1. **Layer** (gameui.js `const L = createUILayers(engine, { tod, timeFn })`): `createUILayers(engine, { tod: …, timeFn: (t)
+   => t, density: Number(params.get('uidensity') ?? 2) })` (runtime/layer.js; NOT `screenTier: 'hd'`); then
+   `if (L.hd) L.hd.useDepth();`. Imports: `hdPiece` (kit), `prepareHD, toolButtonHD, drawClockChipHD` (`../ui/hd/art.js`),
+   `drawPlacePinHD, drawPersonPinsHD, labelHD` (`../ui/hd/draw.js`), `installHDCss` (`../ui/hd/css.js`).
+2. **setPx** (runs before `L` exists today): after `L` is created also set `--hdpx` = `L.hd?.scale ?? 1` on
+   `document.documentElement` (on resize too) and call `installHDCss(document)` once.
+3. **One logical system for the screen tier**: `const d = () => L.hd?.d ?? 1, SV = () => L.hd?.screenView ?? L.screen`;
+   `W = () => SV().w`, `H = () => SV().h`; `toScreen(cx, cy)` → `L.hd ? L.hd.logical(cx, cy) : <today>`; `measureCover`:
+   `k = (engine.width / c.width) / (L.hd ? L.hd.scale * L.hd.d : engine.pixelScale)`. Hit rects `R.*` keep working
+   (they are logical px). In the HUD callback (`L.add(…, 60)`): `const img = SV()`.
+4. **Screen pieces**: every cached screen builder (`piece`, `probe`, `tipImage`, `textImg`, `btnImg`, the toast / tool /
+   dock / gold / dockbtn / prompt caches) builds with `hdPiece(w, h, fn, d())` when `L.hd` (`fn` gets a view: all kit and
+   group drawers work); blit them with `fastBlit(L.hd.screen, im, x * d(), y * d())` (one helper `putS(im, x, y)`).
+   `piece()`'s bbox crop works on the HD image: keep `dx = Math.floor(bb.x / d())`, `dy` likewise (crop at HD px).
+   `HA.envelopeFx` dy → `dy * d()`; the tip fly `shrink()` works on the HD image unchanged. Direct calls on `img`
+   (E.drawArmed, E.drawPie, popover drawBox, AB.tooltipImage blits) take the view as is.
+5. **Clock chip**: `HA.drawClockChip(im, 2, 2, T, …)` → `drawClockChipHD(view, 2, 2, T, …)` inside the hdPiece. Phase
+   chip: `HA.drawPhaseChip(view, 118, 1, …)` in an hdPiece; crop `(r.x·d, 0, (r.w+1)·d, 13·d)`.
+6. **Toolbar**: the `tool${b.k}` cache → `toolButtonHD({tip: 'tip', notebook: 'notebook', panel: 'gear', help: 'help'}[b.k],
+   st, T, { lit })`; the bulb halo through the view (blocks; HD halo = follow-up).
+7. **Dock**: `if (L.hd) prepareHD(T)` at the top of the HUD callback (idempotent; `prepareHD(T, { swatchIcon:
+   iconOf(you.id).icon })` for the portrait swatches) then `E.drawDock(view, 0, 0, T, …)` in an hdPiece; dock button +
+   goldFrame via the view (blocks until a 48-px avatar exists).
+8. **Tip**: `tipImage` → hdPiece of the same code (HA.drawKeyHint + the never row + checkbox through the view; the ×
+   is HD after prepareHD).
+9. **Action bar** (`src/demo/actionbar.js` AB.button builds its own PixelImage): make it draw into a given image
+   (`AB.buttonInto(img, T, o)` = today's body with `im` passed in) and build `hdPiece(BTN + 2, BTN + 2, (v) =>
+   AB.buttonInto(v, T, o))`; text + frame HD at once, glyphs / hint plates blocks until redrawn.
+10. **Events**: EV.drawCaption / EV.drawVoteHud get `LS = Object.create(LL, { screen: { get: () => SV() } })` (the vote
+   HUD draws straight into it = HD; the caption ribbon builds its own image = blocks). Keep EV.drawNightVeil on `LL`
+   (1x `L.screen`, full screen, `.data` writes) — it now sits under the HD HUD, as intended.
+11. **Labels** (z 20): `piece(lab…)` + `fastBlit(LL.world, …)` → `const lb = labelHD(LL, m.head(), m.name, ghostly ?
+   'ghost' : 'player', T)` (keep the 1x top-row / cover tests); stack bookkeeping stays in texels: `m._labelTop =
+   Math.floor(lb.y / L.hd.k)`. Talk glyph / chevron / ring / bubbles stay 1x on `L.world` / `L.ground` (follow-ups).
+12. **Person pins** (pointDraw 'main'): `drawPersonPinsHD(LL, { cx: L.hd.at(m.head()).x, labelTopHD: Math.round((m._stack +
+   1) * L.hd.k), pins: list.map((p) => ({ color: p.color, icon: avatarImg(you.id), iconKey: 'a' + you.id, age: t - p.t0,
+   removeAt: p.removeAt })), t, still: reduced })`; `m._stack -= Math.ceil(52 / L.hd.k)`.
+13. **Place pins**: when `L.hd`, skip `createPinPass` and draw `drawPlacePinHD(LL, { p: pin.p, color, icon:
+   avatarImg(you.id), iconKey, age, removeAt, hover, still })` in an `L.add(…, 31)` callback; `pinAt` keeps its 18×26-texel
+   box (at k ≠ 2 use `36 / k × 52 / k`). The hover tooltip: `E.drawPinTip(L.hd.worldView, …)` at `L.hd.at(pin.p)` / d.
+   `iconOf()` stays for the 1x path.
+14. **notebook.js**: `createNotebook(demo, { …, hd: !!L.hd })` → the panel class `ctn-pixelfont` becomes
+   `ctn-pixelfont-hd` (the hidden twin inherits it; PAGE_PROPS already copies font-family / font-size / line-height /
+   background-size / background-position). Optional: `class="ct-pixel-hd"` on `.dnb-status` and the mark buttons.
+15. **ui.css**: no change needed (the `.dui-*` panel keeps its vector serif). Optional: drop the `font:` of `.dnb-status`
+   when it carries `.ct-pixel-hd`.
+
+#### 2.10.2 Follow-up redraw waves (art at D=2; effort = one agent)
+| group / art | what | effort |
+|---|---|---|
+| indicators | `bubble` / `bubblePop` drawing INTO a given image (then HD for free), talk glyph 18×18, you-chevron + you-ring, ghost wisp, edge discs (offscreen arrows: the 24-px avatar 1:1), compass pill | **wave 1 done (§2.10.3)**: bubbles (draw-into + `bubbleHD`), talk glyph, chevron, ring, edge discs; left: ghost wisp, compass pill |
+| markers | finger `point_<dir>_<f>` at 40×40 (paintGrid on hand-doubled grids, 8 dirs × 3), trail dots, ping rings (annulus at 2×: finer rings), pin_drop sparkle, pin shadow, remove badge, ST pick crosshair | **wave 1 done (§2.10.3)** except the ST pick crosshair (1x) |
+| emotes | pie (pieImage0 builds its own images → draw-into), pop bubbles + pop glyphs, dock-button ring, armed pill icon, kbd caps, pin tooltip | 0.5–1 d |
+| hud | the ~40 `GLYPH` 7/9-px sprites at 14/18 px, clock chip urgent glow + paused dashes, toasts (glyphs), prompt lock, role chip / card, vote card, voice pill / dots / wave, joystick, phase icons | 1–1.5 d |
+| events | caption ribbon drawn into the given image + its glyphs (moon / sun / hand / bell), vote clock dial at 2× (as the clock chip), tally chips; world FX (execution, wisp, poof) can stay 1x | 1 d |
+| portraits | 48×48 avatars (render the 3D character at 2× texel density) for the dock button / notebook rows; 24×24 icons exist (pins use the avatars) | **wave 1 done (§2.10.3)**: 24×24 icons + 48×48 avatars re-rendered at 2× texel density, every roster id |
+| demo actionbar | `buttonInto`, the hint plate in tiny@2 (+ `[ ] \` =` at D=2), the ~30 action glyphs at 14×14, bulb halo | 1 d |
+| panels (DOM) | the 9-slice skins (`panels.css`) at `--hdpx` (finer borders), notebook page rule / holes at D=2 | 1 d |
+| kit | accented D=2 glyphs (é è ü …, today folded to the base letter), an HD italic, dashed HD edges, skip re-uploading unchanged bands (static HUD) | 0.5 d |
+
+#### 2.10.3 Wave 1 — markers, indicators, portraits at D=2 (2026-10-17; done)
+Redrawn at twice the detail on the same footprint (every HD sprite is exactly 2× its 1x frame; anchors 2×), tokens only,
+binary alpha, deterministic. The 1x art is untouched: re-baking all 8 1x atlases (markers, -night, -v2size, -v2size-night,
+indicators, -night, portraits, -night) gives **pixel- and manifest-identical** files (`shots/ui-hd-wave1/regress.py`:
+8 atlases, 0 differences) and the kit regression still reads 524 checks, 0 differences. `shots/ui-hd-wave1/check.mjs`
+(748 checks, 0 failures) checks sizes and anchors, that attaching HD frames leaves the 1x frames unchanged, and the
+view / draw-into paths.
+| item | HD art (file) | what changed vs 1x |
+|---|---|---|
+| pointing finger, both `pointerScale` variants | `markers/hd.js` `drawHandHD`, frames `point_<dir>_<f>` 40×40 ('new', anchor 20,20) / 48×48 ('v2', 24,24) | 'new': hand-drawn HD grids (`RIGHT_HD` 26×18, `UPRIGHT_HD` 24×24): thumb along the index finger with its crease, rounded tip, knuckle crease, 3 curled fingers cut by 1-px creases, gold cuff + seam; 'v2': `refine2x` (Scale2x + 1-px creases + seam) of the v2-size grids; 8 directions = exact permutations, shaded after; 2-HD-px own-family line (holds on cobbles); 3 thin speed ticks on the jab |
+| marching trail | `trail_0/1` 6×6 | round beads (octagon + line, cream glint) instead of plus signs |
+| ping rings | `ping_0..3` 56×28 | clean ellipse bands (3 px at the sides), lit far-left arc, 1-px line; finer wave rings; the last one dissolves in a 1-px dot pattern. Drawn as a GROUND decal on the HD depth tier (`putGroundHD`: per-row ground depth, hidden under characters like `L.ground`) |
+| landing sparkle | `pin_drop_0..3` 52×32 | real 4-point twinkles (hi core, 1-px tapering rays), finer dust ring + puffs |
+| remove badge / pin shadow / place chevron | `pin_remove` 18×18, `pin_shadow` 24×10, `ping_mark` 18×12 | lit danger disc + a clean 2-px cream ×; 2-tone contact ellipse; stepped chevron |
+| place + person pins | `hd/art.js pinWithIconHD` (lead's 36×52 pin) + `hd/draw.js drawPlacePinHD / drawPersonPinsHD` (now with the HD shadow, sparkle, badge; the person-pin badge drawn over the whole fan) | the socket takes the dropper's **24×24 HD icon** (`icon.hd`, the portraits re-render): the face fills the socket — clear at a glance (`zoom-1280-personpins.png`) |
+| speech bubbles | `indicators/hd.js bubbleHD(lines, tailX, T, {pop})`, `bubbleInto(img, x, y, lines, tailX, T, {pop})` | D=2 frame (1-px line, 2-px keyline, rounder corners), body@2 text, a stepped HD tail grown out of the frame (seamless joint, shadow continues); `bubbleInto` draws INTO a given image (view → HD, 1x image → `art.bubble`) |
+| talk glyph | `talkGlyphHD(step, kind, T)` 18×18 | 2-px voice bars with lit caps; `selfIdle` dashes; `muted` = a real mic (capsule, grille, cradle, foot) + 2-px slash |
+| "you" chevron + ring | `youChevronHD(T)` 18×12, `youRingHD(k, T)` 66×34 (anchor 32,16) | chevron with a centre crease + 2-px line; ring = 4 finer arcs (3-px band, lit far-left, 1-px line both sides), a ground decal (`putGroundHD`) |
+| off-screen discs | `edgeDiscHD(icon, T, name, ghost, ghostReady)` (48×48 avatar → 56×56, 24×24 icon → 36×36, none → a parchment initial), `edgeDiscPointerHD(disc, dir8, T)` (tail 14 px) | the 48-px HD avatar inside a 1-px outline / 2-px iron ring with a lit glint arc; smooth gold tail with a 2-px line |
+| portraits | `portraits/hd.js` → `out/ui/portraits-hd{,-night}.{png,json}` (`tools/uibake.sh portraits:portraits-hd`, `portraits:portraits-hd-night`) | `icon_<id>` 24×24 + `avatar_<id>` 48×48 (+ `/ghost`, `/ghost-spent`, `/dead`) **re-rendered from the 3D cast at 2× the texel density** (ppm × 2, same framing rule / art direction / feature boost), redrawn disc, frame and variant cues (2-px halo arc, cracked ring). 35 roster ids = the 31 1x ids + `wanderer`, `keeper`, `hound`, `duelist` (no 1x portrait; the demo used their roster thumbs). 250 frames per atlas, 1024×419 |
+
+**Loaders / hooks** (all additive; no option = today's behaviour):
+- `loadPortraits(base, tod, { hd: true })` (`src/ui/portraits/atlas.js`): loads the 1x atlas AND `portraits-hd{,-night}`;
+  every `icon()` / `avatar()` crop carries `.hd`, plus `iconHD(id, v)` / `avatarHD(id, v)` (also the four HD-only ids).
+  Missing HD atlas = a warning and the 1x loader. `loadPortraitsHD(base, tod)` = the HD atlas alone. `goldFrame(av, T)`
+  keeps the HD twin (`goldFrameHD`) on `.hd`. `pinWithIconHD` uses `icon.hd` when present (cache key includes it).
+- `markerFramesHD(T, 'new' | 'v2')` (Map, `.anchors`, `.point`); `attachMarkersHD(F, T)` = `withHD` on a 1x frame set, so
+  markers `draw.js put()` / any `img.blit(frame)` THROUGH A VIEW draws HD (limit: its dissolve path clones → blocks for
+  3 grid frames). `drawPointHD(L, FH, {head, aim, spot, spotP, person, age, still})` (HD world px from `L.hd.at`; L.phase
+  'trail' / 'main' as `drawPoint`); `putGroundHD(L.hd, img, x, y, worldPoint, {anchorRow, k})` (needs `L.hd.useDepth()`).
+
+**Demo switch, per item** (`src/demo/gameui.js`; with §2.10.1 steps 1–3 done: `L.hd`, `L.hd.useDepth()`, `d = L.hd.d`).
+Keep every layout computation in texels as today and convert positions with `hk = (v) => Math.floor(v * L.hd.k)` (1x
+world texel → HD world px; = 2v at 720p); sprite offsets are art px → `× d`. Imports: `import * as IH from
+'../ui/indicators/hd.js'`, `import { markerFramesHD, drawPointHD, putGroundHD } from '../ui/markers/hd.js'`, `import
+{ goldFrameHD } from '../ui/portraits/atlas.js'`, `import { swatchHD, gloveHD } from '../ui/hd/art.js'` (+ §2.10.1's).
+1. **Portraits** (`loadPortraits('out/ui/')`, ~line 135): `loadPortraits('out/ui/', 'noon', { hd: !!L.hd })` (create `L`
+   first). Then `avatarImg(id)` / `iconOf()` return crops carrying `.hd` (nothing else changes for the 31 ids); add
+   `const avatarHD = (id) => PORT?.avatarHD?.(id) ?? null, iconHD = (id) => PORT?.iconHD?.(id) ?? null;` and in `iconOf`
+   before the thumb fallback: `if (L.hd && iconHD(id)) return { icon: iconHD(id), iconKey: 'h:' + id };` (the four).
+   `avatarURL(id)` (notebook rows, panel tiles: DOM): `const a = (L.hd && avatarHD(id)) || PORT?.avatar(id)` — the 48-px
+   image at the same CSS size (`width: 24 × --px`, `image-rendering: pixelated`) shows 2× detail.
+2. **You-ring** (z 20: `fastBlit(LL.ground, … IA.youRing(k, T)), f.x - 16, f.y - 8)`): `const F2 = LL.hd.at(m.pos);
+   putGroundHD(LL.hd, IH.youRingHD(k, T), F2.x - 32, F2.y - 16, m.pos, { anchorRow: 16 });` (hidden under characters,
+   like `L.ground`; keep the big-book exception).
+3. **Talk glyph** (`fastBlit(LL.world, … IA.talkGlyph(step, kind, T)), lx + lab.im.w + 1, top - 1)`): with the HD label
+   of §2.10.1 step 11 (`lb = labelHD(…)`): `fastBlit(LL.hd.world, IH.talkGlyphHD(step, kind, T), lb.x + lb.w + d, lb.y)`
+   (cached inside `IH`).
+4. **Chevron** (`IA.youChevron(T)` at `p.x - 4, top - 8 - bob`): `fastBlit(LL.hd.world, IH.youChevronHD(T), hk(p.x) - 4 * d,
+   hk(top) - (8 + bob) * d)`.
+5. **Speech bubbles** (z 20 loop): keep `lines / sz / left / tailX / topY / m._stack` as today; replace the image and
+   blit by `let im = IH.bubbleHD(lines, tailX, T, { pop: env.pop })` (cached), `if (env.dissolve > 0) im = dissolve(im.clone(),
+   env.dissolve, …)`, anchored at its tail tip so it stays on the speaker at any k: `const ax = hk(left + tailX), ay =
+   hk(topY + sz.h + IA.BUBBLE_TAIL_H); fastBlit(LL.hd.world, im, ax - tailX * d, ay - (sz.h + IA.BUBBLE_TAIL_H) * d)`. At
+   1080p round (k 1.5) the HD bubble is 4/3 taller: `m._stack = Math.floor((ay - (sz.h + IA.BUBBLE_TAIL_H) * d) / L.hd.k) - 1`.
+6. **Point emote** (`pointDraw`, both phases): `const FH = markerFramesHD(L.tok, hud.uiOptions.pointerScale === 'v2' ? 'v2'
+   : 'new'), H = LL.hd, hp = you.pos.clone().setY(you.pos.y + you.height * 0.72);` person: `drawPointHD(LL, FH, { head:
+   H.at(hp), aim: H.at(aimPoint), spot: H.at(m.pos), spotP: m.pos, person: true, age, still: reduced })`; place: the same
+   with `aim = spot = H.at(point.target.p), spotP: point.target.p, person: false`. LL keeps its phase (trail z 15 under the
+   labels, main z 30); the ping lands on the depth tier.
+7. **Person pins**: §2.10.1 step 12 with `icon/iconKey` from `iconOf(you.id, you.name)` (carries `.hd`) and `hover: hv`;
+   hit rects: the HD pin is 36×52 HD px = 18×26 texels at k 2 (`× d / k` otherwise).
+8. **Place pins**: §2.10.1 step 13 (`drawPlacePinHD(LL, { p, color, ...iconOf(you.id, you.name), age, removeAt, hover,
+   still })`) — shadow / sparkle / badge are now the markers HD frames.
+9. **Off-screen discs** (z 57, today on `LL.screen`): lay out in the logical screen px of §2.10.1 step 3 (`SV()`); build
+   `dp = cached(…, () => IH.edgeDiscPointerHD(IH.edgeDiscHD(icon, T, o.name), d8, T))` with `icon = o.icon?.hd ?? avatarHD(id)
+   ?? o.icon` (48-px avatars); the radius in logical px `r = (dp.img.w / 2 - dp.pad) / d`, margin `m = r + IA.EDGE_TAIL + 3`;
+   blit `fastBlit(L.hd.screen, dp.img, x * d - (dp.img.w >> 1), y * d - (dp.img.h >> 1))`. `pinDiscIcon(c)` → a 24×24 image
+   with `swatchHD(c, T, { icon: 'dot' })` centred; `pointDiscIcon` → 24×24 with `gloveHD(T)` centred (both → 36×36 discs).
+10. **Dock button**: `goldFrame(av, T)` now carries `.hd`: draw it through the view (`SV().blit(goldFrame(av, T), bxr, by)`)
+   or `fastBlit(L.hd.screen, goldFrame(av, T).hd, bxr * d, by * d)`; the four HD-only ids: `goldFrameHD(avatarHD(id), T)`.
+`?uidensity=1` (no `L.hd`) keeps every line above on today's 1x path.
+
+**Evidence** (render-host, looked at; `docs/UI_GALLERY.md` §3.6): `scenes/ui-density-wave1.js` (left 1x, right D=2:
+`?tod=night`, `?pointer=v2`, `?age=`), `shots/ui-hd-wave1/`. **Limits / left**: ST pick crosshair, ghost wisp and compass
+pill stay 1x; at 1080p round (k 1.5) HD world art is 4/3 the 1x size (the lead's scale rule) — layouts that stack in texels
+need the `/ k` conversions above; markers `draw.js` frames dissolving through a view fall back to blocks (clone without
+`.hd`): use the HD runtime (`drawPointHD`, `hd/draw.js`). Learnings: hand-drawn HD grids beat Scale2x for the 'new'
+finger (its diagonal hand read as a magnifier until the fist got knuckle creases and a thumb line); a ground decal on the
+depth tier needs per-ROW depth (reasoned, not rendered: one depth per sprite puts the ring's front arc ~0.37 m behind
+the ground it lies on, beyond depthEps 0.25, so the ground itself would hide it); the 24-px HD
+icon (head fitted to the disc) is the clear pin mark — the 24-px avatar 1:1 showed head + shoulders and a frame edge.
+
 ---------------------------------------------------------------------------------------------------------------------
 
 ## 3. Contract
@@ -252,7 +493,7 @@ line}` in OKLab (light warmer, shadow cooler/violet, line darker+cooler); `PIN_R
 ### 3.1 File ownership
 | owner | files |
 |---|---|
-| UI lead | `docs/UI.md` §0–§5, `src/ui/kit.js`, `src/ui/layer.js`, `src/ui/placeholders.js`, `src/ui/kit-bake.js`, `src/ui/social-bake.js`, `src/ui/fonts.js`, `scenes/ui-hud.js`, `scenes/ui-bake.js`, `tools/uibake.{mjs,sh}`, `tools/uigif.sh`, `refs/ui/**`, `shots/ui-lead/`, `out/ui/kit.*`, `out/ui/social.*` |
+| UI lead | `docs/UI.md` §0–§5, `src/ui/kit.js`, `src/ui/layer.js`, `src/ui/placeholders.js`, `src/ui/kit-bake.js`, `src/ui/social-bake.js`, `src/ui/fonts.js`, `src/ui/fonts-hd.js`, `src/ui/hd/**`, `src/ui/runtime/dirty.js`, `scenes/ui-density*.js`, `shots/ui-hd/`, `scenes/ui-hud.js`, `scenes/ui-bake.js`, `tools/uibake.{mjs,sh}`, `tools/uigif.sh`, `refs/ui/**`, `shots/ui-lead/`, `out/ui/kit.*`, `out/ui/social.*` |
 | group `<g>` ∈ markers, emotes, indicators, portraits, hud, panels, events | `src/ui/<g>/**` (must contain `hud.js` + `bake.js`), `scenes/ui-<g>.js`, `shots/ui-<g>/`, `out/ui/<g>.{png,json}` (+ extra atlases named `out/ui/<g>-*.{png,json}` or the v2 file names listed in §4), append-only notes in §6 |
 | read-only for UI agents | everything else: `src/core`, `src/world`, `src/post`, `src/chars`, `characters/*`, `src/ambient`, `src/town/**` (town session), `scenes/char-stage.js` (import its helpers, never edit) |
 Shared needs (a kit helper, a token, a font glyph, a tool option): put a `CONTRACT-REQUEST:` line in your final report /
@@ -281,6 +522,12 @@ Shared needs (a kit helper, a token, a font glyph, a tool option): put a `CONTRA
   tokens, seat signs). Same semantics as `src/ui/markers/pinPass.js`, which can migrate to it. Evidence: a bar 0.8 m
   behind the Storyteller is hidden by the body, one 0.8 m in front covers it, a label stays on top
   (module-fix scratch test, `ui-depth:303` in the pass list).
+- Density (UI lead 2026-10-17, additive, opt-in; full contract §2.10): `createUILayers(engine, {density: 2, policy,
+  screenTier})` (both layer files; `?uidensity=2&uipolicy=&uiscreen=hd`) → `L.hd = {d, scale, k, screen, world,
+  screenView, worldView, view(img), at, atFine, atScreen, from1x, to1x, fromClient, logical, useDepth, putDepth, depthOf,
+  depthEps, stats}`; kit `DensityView / densityView / hdPiece / withHD / upscale / fontAt / derive2x / HD_TEXT / drawBoxHD /
+  HD_FRAME`, `density` on `drawText / textWidth(s, f, d) / wrapText / drawRuns`, `FONTS['body@2' | 'tiny@2' | 'label@2' |
+  'display@2']`; `src/ui/hd/{layers,art,draw,css}.js`; `src/ui/runtime/dirty.js` (trackedImage + band uploader).
 
 ### 3.3 Scenes and the mock HUD slot
 - `scenes/ui-hud.js` exports `buildHudStage(engine, params, {cast, storyteller, ring})` → `hud` = `{ engine, params, P,
@@ -915,3 +1162,12 @@ for `poof_*`, `glow_warm`, `glow_cool`).
     fr-*.png), `shots/ui-book3d/gifs/c-close-{noon,night}/` (1x, 30 fps). Helpers: `shots/ui-book3d/{hbz.sh,pz.sh,frames.py}`.
   - Learning: a status prop at ankle height reads as dropped, not held; anything carried should float at least at the waist.
     Face-on views of a thin prop lose all thickness cues: a small yaw off the screen axis is cheaper than more geometry.
+- **2026-10-17, demo density adoption (ui owner of src/demo; small additive fixes in `src/ui`, as allowed):**
+  `src/ui/hd/draw.js labelHD(L, head, name, variant, T, { top })` — `top` overrides the HD label top (the demo clamps
+  labels near the top edge inward), the cache key carries the ghost ink; (the person-pin hover / sparkle I added there
+  was superseded by wave 1's `markerFramesHD` version in the merge). Learnings: (1) keep ONE logical system for the
+  whole screen tier and expose `unit` (CSS px per logical px) in automation, so tests never mix texels and HD px;
+  (2) a world sprite stacked in texels above an HD label must convert with `/ k` (1080p 'round': k 1.5), anchor bubbles
+  at their tail tip; (3) the HD DOM panel skin is only right at an exact density (k 2): at 1080p 'round' its 9-slices
+  are 4/3 of the 1x insets and fixed-width buttons truncate, so the demo keeps the 1x skin there; (4) a page that reads
+  a skin from a hidden twin must keep the twin outside a scope class whose generic `textarea` rule out-ranks it.

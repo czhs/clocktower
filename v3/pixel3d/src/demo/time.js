@@ -47,6 +47,7 @@ import { TIME_PRESETS } from '../world/sky.js';
 import { ensureToonUniforms } from '../materials/toon.js';
 import { addFog } from '../post/fog.js';
 import { PHASES, SEAT_COUNT, presetForHour } from './api.js';
+import { downAt, pushChange, scheduleCeremony, OPEN_LEAD, VOTE_PER } from './sealvote.js';
 
 const DEG = Math.PI / 180;
 const clamp01 = (x) => (x < 0 ? 0 : x > 1 ? 1 : x);
@@ -137,7 +138,7 @@ export function periodOf(h) {
 }
 
 // ------------------------------------------------------------------------------------------------ light anchors
-const KIND_BONUS = { lamp: 2.0, holy: 1.5, fire: 1.5, lantern: 1.5, window: -2.0 };
+const KIND_BONUS = { lamp: 2.0, holy: 1.5, fire: 1.5, lantern: 1.5, window: -2.0, court: 60 };   // (B) court: chosen first while staged
 /** installLights' wall hugging (src/town/api.js hugWall, not exported): lanterns / windows a few cm in front of their
  *  building's door wall sit 6 cm in front of it (no hard disc painted on the facade). */
 function hugged(l, layout) {
@@ -218,6 +219,14 @@ export function createTime(demo) {
   const offs = [];
   const info = { lights: 0, lit: 0, aims: 0, handSteps: 0, strikes: 0, lastStrike: null, fog: false, folk: false, glass: 0 };
   const clouds = quality === 'high' && params.get('clouds') !== '0';
+  // (vote-fix5, critic-4 P2-6: "your own figure shows the shadow tint for ~5 s after sitting AND on entering the tower")
+  // ROOT CAUSE: the drifting CLOUD SHADOWS (high tier, uCloud + uCloudWind on engine time; a character takes the cloud
+  // at its anchor as a whole, look.js cloud 'root'). A cloud lay over your seat stone for 5-15 s (?clouds=0: lit from the
+  // first frame), and inside a room - the town parked, the room far out at x 650 - the town's cloud field still shaded
+  // the figures under the room's roof. Cloud shadows are HELD OFF inside a room and while the vote camera is up (the
+  // vote is a staged moment: one light for all 15 seats); applyHours re-runs when the hold changes.
+  let cloudHeld = false;
+  const cloudHold = () => !!demo.player?.interior || store.state.camera === 'vote';
 
   let hours = ((Number(store.state.timeOfDay) % 24) + 24) % 24;
   let preset = presetForHour(hours), period = periodOf(hours);
@@ -322,6 +331,26 @@ export function createTime(demo) {
     key: a.piece === 'props' && a.kind === 'lamp' ? a.pos : slot.has(a.piece) ? a.piece : null,
     score: 0, d: 0,
   }));
+  // (B) the vote COURT (votestage.js: the seated cast stand in a crescent before the tower door while the vote camera
+  // is up): at dusk / night three warm candle-light anchors over the crescent join the pool's candidates, so the cast
+  // read warm next to their vote candles. NO new light: the constant pool re-aims two or three of its lights here
+  // while the court is staged (score bonus), and back to the town's lamps afterwards.
+  const COURT_LIGHTS = [[17.4, 11.3], [22.5, 11.8], [27.6, 11.3]];
+  for (const [k, [x, z]] of COURT_LIGHTS.entries()) {
+    anchors.push({ piece: `court-${k}`, kind: 'court', court: true, pos: new THREE.Vector3(x, 1.6, z), color: new THREE.Color('#ffb45c'),
+      r: 5.5, base: 1.7, i: n, ph: (n++ * 7.31) % 13, flicker: true, key: null, score: 0, d: 0 });
+  }
+  const courtOn = () => !!demo.passB?.stage?.court;
+  // (vote-fix5, critic-4 P3) the vote camera ON THE STONES at night: the seated cast read as near-silhouettes. Six warm
+  // RING anchors just inside the seat ring (r 5.2, 60 deg apart, 2.4 m up: they light the faces turned to the dais) join the pool's candidates (score bonus) while the
+  // vote camera is up on the stones in the dark: the constant pool re-aims six of its lights there (no new light), and
+  // back to the town's lamps afterwards. A gentle lift (base 0.8, reach 4 m), not a stage wash.
+  const RING_LIGHTS = Array.from({ length: 6 }, (_, k) => { const a = (k / 6) * Math.PI * 2 + Math.PI / 6, C = layout.CIRCLE; return [C.cx + Math.sin(a) * 5.2, C.cz - Math.cos(a) * 5.2]; });
+  for (const [k, [x, z]] of RING_LIGHTS.entries()) {
+    anchors.push({ piece: `ring-${k}`, kind: 'court', ring: true, pos: new THREE.Vector3(x, 2.4, z), color: new THREE.Color('#ffc078'),
+      r: 4.2, base: 1.0, i: n, ph: (n++ * 7.31) % 13, flicker: true, key: null, score: 0, d: 0 });
+  }
+  const ringOn = () => store.state.camera === 'vote' && !courtOn() && !demo.player?.interior && (!demo.passB?.stage || demo.passB.stage.onStones);
   const fireAnchor = daisPiece ? anchors.find((a) => a.piece === 'dais' && a.kind === 'fire') ?? null : null;
   const lightGroup = new THREE.Group(); lightGroup.name = 'demo-time-lights';
   engine.scene.add(lightGroup);
@@ -342,7 +371,51 @@ export function createTime(demo) {
   // the dais' brazier light is pinned (dais.js finds it by position at its first live frame and recolours it)
   const pinned = fireAnchor ? recs[0] : null;
   if (pinned) assign(pinned, fireAnchor);
-  const gainOf = (a, h) => (a.room ? roomGain(a) : a.kind === 'fire' ? fireGain : a.key !== null ? (lit.get(a.key) ? 1 : 0) : onAt(GENERIC, h) ? 1 : 0);
+  // (P1.3) a CARRIED light: the player's character holds a light (spec.lights, e.g. the Storyteller's lantern; the
+  // Character is built without it, characters.js lightless): the LAST light of the pool follows its socket every frame
+  // (world position, colour, reach, decay; intensity [day, dusk, night] by the toon ramp's daylight level x the spec's
+  // stepped flicker on the character's own clock, the formula of src/chars/character.js). The light count never
+  // changes, so swapping to the Storyteller compiles no program. While it is carried the town / room aim uses one slot less.
+  const carryRec = recs.length > (pinned ? 2 : 1) ? recs[recs.length - 1] : null;
+  let carry = null;          // { h (handle), L, node, decay0 }
+  const isSlot = (r) => r !== pinned && !(carry && r === carryRec);
+  const carriedOf = () => { const h = demo.player?.handle; return h?.lights?.length ? h : null; };
+  const wpos = new THREE.Vector3();
+  function syncCarry() {
+    const h = carriedOf();
+    if ((carry?.h ?? null) === h) return;
+    if (carry) { carryRec.light.decay = carry.decay0; assign(carryRec, null); }
+    carry = h && carryRec ? { h, L: h.lights[0].L, node: h.lights[0].node, decay0: carryRec.light.decay } : null;
+    if (carry) {
+      assign(carryRec, null);
+      carryRec.light.color.set(carry.L.color ?? '#FFB060'); carryRec.light.distance = carry.L.distance ?? 2.4; carryRec.light.decay = carry.L.decay ?? 1.5;
+    }
+    info.carried = carry ? { id: h.id, socket: carry.L.socket ?? carry.L.bone } : null;
+    // re-distribute the other slots (one more / one less)
+    if (inRoom) aimRoom(inRoom); else { aimX = aimZ = 1e9; aimT = -1; }
+  }
+  function lightCarry() {
+    if (!carry) return;
+    const { L, node, h } = carry;
+    node.updateWorldMatrix(true, false);
+    node.getWorldPosition(wpos);
+    carryRec.light.position.copy(wpos);
+    const c = engine.toonUniforms?.uRampHi?.value;
+    const l = c ? 0.299 * c.r + 0.587 * c.g + 0.114 * c.b : 1;
+    const u = Math.min(1, Math.max(0, (l - 0.35) / 0.25)), night = 1 - u * u * (3 - 2 * u);
+    const lvl = l < 0.45 ? 2 : l < 0.85 ? 1 : 0;
+    let I = Array.isArray(L.intensity) ? L.intensity[lvl] : (L.intensity ?? 2.6) * (L.nightOnly === false ? 1 : night);
+    const F = L.flicker === false ? null : { fps: 7.5, levels: [0.62, 0.78, 0.9, 1.0], seed: 17, ...(L.flicker || {}) };
+    if (F) {
+      const step = Math.floor(Math.max(0, h.clock) * F.fps + 0.001);
+      const qx = Math.imul(step | 0, 1597334673) >>> 0, qy = Math.imul(F.seed, 3812015801 | 0) >>> 0;
+      const hh = (Math.imul((qx ^ qy) >>> 0, 1597334673) >>> 0) / 4294967295;
+      I *= F.levels[Math.min(F.levels.length - 1, Math.floor(hh * F.levels.length))];
+    }
+    carryRec.light.intensity = I;
+    info.carried.intensity = +I.toFixed(2);
+  }
+  const gainOf = (a, h) => (a.room ? roomGain(a) : a.ring ? (ringOn() && fireGain > 0.05 ? fireGain : 0) : a.court ? (courtOn() && fireGain > 0.05 ? fireGain : 0) : a.kind === 'fire' ? fireGain : a.key !== null ? (lit.get(a.key) ? 1 : 0) : onAt(GENERIC, h) ? 1 : 0);
   // ---- inside a cottage (interior.js / src/town/interiors: room.lights = [{pos, color, r, kind, intensity}], world):
   // the hearth always burns, candles / lanterns are lit by day too but brighter at night, the window light follows the
   // daylight (the kit's window panes show the sky through room.setTimeOfDay, called by the player on 'tod').
@@ -360,7 +433,7 @@ export function createTime(demo) {
   };
   function aimRoom(room) {
     inRoom = room;
-    const slots = recs.filter((r) => r !== pinned);
+    const slots = recs.filter(isSlot);
     if (!room) {
       for (const r of slots) assign(r, null);
       roomLook = null;
@@ -404,11 +477,11 @@ export function createTime(demo) {
       pool.push(a);
     }
     pool.sort((x, y) => x.score - y.score || x.i - y.i);
-    const want = new Set(), pieces = new Set(), slots = recs.length - (pinned ? 1 : 0);
+    const want = new Set(), pieces = new Set(), slots = recs.filter(isSlot).length;
     for (const a of pool) if (want.size < slots && a.d < near && a.score < 900 && !pieces.has(a.piece)) { pieces.add(a.piece); want.add(a); }
     for (const a of pool) if (want.size < slots) want.add(a);
     const free = [];
-    for (const r of recs) { if (r === pinned) continue; if (r.a && want.has(r.a)) want.delete(r.a); else free.push(r); }
+    for (const r of recs) { if (!isSlot(r)) continue; if (r.a && want.has(r.a)) want.delete(r.a); else free.push(r); }
     for (const a of want) assign(free.shift(), a);
     for (const r of free) assign(r, null);
     aimX = cx; aimZ = cz; aimVersion = litVersion; info.aims++;
@@ -487,7 +560,7 @@ export function createTime(demo) {
     const o = engine.style.outline; o.line.copy(L.line); o.rim.copy(L.rim); o.rimStrength = L.rimStrength;
     CU.uVegHi.value.copy(L.vegHi); CU.uVegMid.value.copy(L.vegMid); CU.uVegSh.value.copy(L.vegSh); CU.uVegLift.value.copy(L.vegLift);
     // clouds (high tier only, as applyTownTime): fixed scale, the cover threshold fades them in / out
-    if (clouds && L.cloudCover < 0.86) { T.uCloud.value.set(0.06, L.cloudCover, L.cloudSoft, 10); T.uCloudShape.value.y = L.cloudStrength; }
+    if (clouds && !cloudHold() && L.cloudCover < 0.86) { T.uCloud.value.set(0.06, L.cloudCover, L.cloudSoft, 10); T.uCloudShape.value.y = L.cloudStrength; }
     else { T.uCloud.value.x = 0; T.uCloud.value.z = L.cloudSoft; }
 
     // lights in order, glow, fires, darkness
@@ -521,25 +594,48 @@ export function createTime(demo) {
   }
 
   // ---- game state -> dais (+ seated folk)
+  // (B) the SEAL VOTE (sealvote.js): `seals` = per seat the time-sorted [t, down] changes of its wax seal (scripted
+  // voters written ahead, the player's / setVote's at engine.time); `votes` = the seats whose seal lies on the ground NOW
+  // (re-derived every update: the dais' vote hands, the seated folk)
   const votes = new Set();
+  const seals = new Map();
+  const sealDown = (i, t = engine.time) => downAt(seals.get(i), t);
+  function setSeal(i, on, at = engine.time) {
+    if (!seals.has(i)) seals.set(i, []);
+    const ch = pushChange(seals.get(i), at, !!on);
+    syncVotes(engine.time);
+    return ch;
+  }
+  function syncVotes(t) {
+    let changed = false;
+    for (let i = 0; i < SEAT_COUNT; i++) { const d = sealDown(i, t); if (d !== votes.has(i)) { changed = true; if (d) votes.add(i); else votes.delete(i); } }
+    if (changed) applySeats();
+  }
+  const clearSeals = () => { seals.clear(); votes.clear(); };
   const seatSince = new Float32Array(SEAT_COUNT).fill(-1e9);
-  let vote = { from: 0, t0: 0, per: 0.55 };
+  let vote = { from: 0, t0: 0, per: VOTE_PER };
   const seatOn = (st) => st.occupied || st.dead;
   const nomineeOf = (s) => { if (s.nominee !== null && s.nominee !== undefined) return s.nominee; const i = s.seats.findIndex((x) => x.nominated); return i >= 0 ? i : null; };
+  // (B) while the vote court is staged (votestage.js `court`: the cast left the stones for the crescent before the
+  // tower door) the dais is PARKED: its stones are empty (candles out, no vote glow, no ghost lights), no sweep, and the
+  // long brass hand points north at the court (seat XII's angle) - the vote marks draw the court's own clock hand
   function applyPhase(restart = true) {
     const s = store.state;
     if (!dais) return;
-    if (s.phase === 'vote') {
-      if (restart) vote = { from: nomineeOf(s) ?? 0, t0: engine.time + 0.4, per: 0.55 };
-      dais.setPhase('vote', { from: vote.from, t0: vote.t0, perSeat: vote.per });
-    } else dais.setPhase(s.phase);
+    // (seal vote) the hand starts OPEN_LEAD s after the vote opens: the opening slaps land before it moves
+    if (s.phase === 'vote' && restart) vote = { from: nomineeOf(s) ?? 0, t0: engine.time + OPEN_LEAD, per: VOTE_PER, open: engine.time };
+    if (courtOn()) { dais.setPhase('day'); dais.setHand?.(0); return; }
+    dais.setHand?.(null);
+    if (s.phase === 'vote') dais.setPhase('vote', { from: vote.from, t0: vote.t0, perSeat: vote.per });
+    else dais.setPhase(s.phase);
   }
   function applySeats() {
     const s = store.state;
     if (!dais) return;
     const nom = s.nominee, active = s.phase === 'nomination' || s.phase === 'vote' || s.phase === 'execution';
+    const parked = courtOn();
     s.seats.forEach((st, i) => {
-      if (!seatOn(st)) { dais.setSeat(i, 'empty'); return; }
+      if (!seatOn(st) || parked) { dais.setSeat(i, 'empty'); return; }
       dais.setSeat(i, {
         dead: !!st.dead, ghostVote: !!st.ghostVote,
         nominated: !st.dead && (!!st.nominated || (active && i === nom)),
@@ -582,20 +678,38 @@ export function createTime(demo) {
   let cer = null;
   function playCeremony() {
     const K = CEREMONY;
-    votes.clear();
+    clearSeals();
+    // (seal vote) the sweep starts OPEN_LEAD s after the vote opens: the execution and the night come that much later;
+    // (vote-fix5) and the slower hand (VOTE_PER vs the life ceremony's perSeat) adds its 14 extra steps: the execution
+    // still comes ~1.9 s after the hand reaches the last seat
+    const LAG = OPEN_LEAD - 0.4 + (SEAT_COUNT - 1) * (VOTE_PER - K.perSeat);
     const seats = Array.from({ length: SEAT_COUNT }, () => ({ occupied: false, dead: false, ghostVote: true, nominated: false, onBlock: false }));
     store.set({ phase: 'day', nominee: null, seats }, 'time');
     const steps = [];
     const at = (dt, fn) => steps.push([dt, fn]);
     K.order.forEach((i, k) => at(0.2 + k * 0.32, () => store.setSeat(i, K.dead.includes(i) ? { occupied: true, dead: true, ghostVote: !!K.ghost[i] } : { occupied: true }, 'time')));
     at(K.nominate - 2, () => store.set({ phase: 'nomination', nominee: K.nominee }, 'time'));
-    at(K.vote - 2, () => { for (const v of K.voters) votes.add(v); store.set({ phase: 'vote' }, 'time'); });
-    at(K.execute - 2, () => { store.set({ phase: 'execution' }, 'time'); ringBell(); });
-    at(K.die - 2, () => store.setSeat(K.nominee, { dead: true, ghostVote: true, nominated: false }, 'time'));
-    at(K.night - 2, () => { votes.clear(); cer = null; store.set({ phase: 'night', nominee: null }, 'time'); });
+    // the vote: the phase first (applyPhase sets the sweep), then the script's seals written AHEAD (sealvote.js:
+    // the opening cascade, a late slap, a withdrawal, the ghost's vote); the player's seat is theirs (seatcast yours)
+    at(K.vote - 2, () => {
+      store.set({ phase: 'vote' }, 'time');
+      const mine = demo.passB?.seats?.yours ?? -1;
+      scheduleCeremony(seals, { from: vote.from, t0: vote.t0, per: vote.per, open: engine.time, skip: new Set(mine >= 0 ? [mine] : []) });
+      syncVotes(engine.time);
+    });
+    at(K.execute - 2 + LAG, () => { store.set({ phase: 'execution' }, 'time'); ringBell(); });
+    at(K.die - 2 + LAG, () => store.setSeat(K.nominee, { dead: true, ghostVote: true, nominated: false }, 'time'));
+    // ---- (critic P2-4, ui pass) the ceremony's night is REAL night: the night phase drops the game UI's veil, and
+    // while it covers the screen (its 650-ms fall, events TIMING.night.outF) the clock is scrubbed to 21:30 when it
+    // shows a daytime hour (the veil lifted onto full sun with NIGHT on the chip). Pass B's vote camera goes back to
+    // follow 3 s after the night phase: both happen under / after the veil.
+    at(K.night - 2 + LAG, () => { clearSeals(); store.set({ phase: 'night', nominee: null }, 'time'); });
+    at(K.night - 2 + LAG + 0.75, () => { cer = null; if (hours >= 6 && hours < 20) { store.set({ timeOfDay: 21.5 }, 'ceremony'); info.ceremonyNight = 21.5; } });
+    // ---- (end P2-4)
     cer = { t0: engine.time, k: 0, steps };
+    events.emit('ceremony', { start: true, t0: engine.time });
     if (store.state.camera === 'follow') store.set({ camera: 'vote' }, 'time');
-    events.emit('toast', { text: 'the voting ceremony' });
+    events.emit('toast', { text: 'The voting ceremony begins' });
   }
   const stopCeremony = () => { cer = null; };
 
@@ -633,11 +747,13 @@ export function createTime(demo) {
   offs.push(
     store.on('phase', ({ source, value, prev }) => {
       if (source !== 'time') cer = null;
-      if (source !== 'time' && prev === 'vote' && value !== 'execution') votes.clear();
+      if (source !== 'time' && prev === 'vote' && value !== 'execution') clearSeals();
       applyPhase(); applySeats();
     }),
     store.on('nominee', () => { applyPhase(store.state.phase === 'vote'); applySeats(); }),
     store.on('life', applyLife),
+    // (vote-fix5) the ring lights come / go with the vote camera: re-aim the pool on the next frame
+    store.on('camera', () => { aimX = aimZ = 1e9; aimT = -1; }),
     store.on('timeOfDay', ({ value, source }) => { if (source !== 'time') { hours = value; jumpedAt = engine.time; } }),
     store.on('quality', ({ source }) => {
       if (source === 'reload' || source === 'url') return;
@@ -681,16 +797,25 @@ export function createTime(demo) {
     get preset() { return preset; },
     get period() { return period; },
     get votes() { return votes; },
+    /** (B) the seal vote's log (sealvote.js): { log (Map seat -> [[t, down]]), downAt(i, t), set(i, on, at) } */
+    seals: { log: seals, downAt: sealDown, set: setSeal },
+    /** the dais' vote sweep of the current / last vote phase: { from (seat), t0 (engine s), per (s per seat) } */
+    get sweep() { return { ...vote }; },
     get ceremony() { return cer ? { t: engine.time - cer.t0, step: cer.k, of: cer.steps.length } : null; },
     presets: CLOCK_PRESETS, schedule: SCHEDULE, info,
     ringBell, jumpTo, nextPreset, playCeremony, stopCeremony,
-    setVote(i, on) { if (on) votes.add(i); else votes.delete(i); applySeats(); },
+    /** slap (on) / take back (off) seat i's seal now (sealvote.js; the hand locks what lies there when it arrives) */
+    setVote(i, on) { setSeal(i, on); },
+    /** (B) the vote court was staged / unstaged (votestage.js): park / restore the dais, re-aim the light pool */
+    restage() { applyPhase(false); applySeats(); aimX = aimZ = 1e9; aimT = -1; info.court = courtOn(); },
     update(t, dt) {
       const s = store.state;
       if (!s.paused && s.timeSpeed > 0) hours = (hours + (s.timeSpeed / 60) * dt) % 24;
       // (perf) the look is re-derived when the clock moved >= 15 game seconds (or jumped): at 1 game min / s that is
       // every 15 real seconds instead of every frame (ramps change < 0.3 % in that time; the sun is stepped to 0.5 deg)
       if (hours !== applied && (Math.abs(hours - applied) >= 1 / 240 || t - jumpedAt < 0.05 || s.paused || s.timeSpeed === 0)) { applyHours(hours); applied = hours; }
+      // (vote-fix5) the cloud hold changed (a room, the vote camera): the clouds go / come back this frame
+      if (clouds && cloudHold() !== cloudHeld) { cloudHeld = cloudHold(); applyHours(hours); applied = hours; }
       showTime(hours, t - jumpedAt < 0.05);
       // store write-back: every game minute, at most 10x per real second (high speeds)
       const min = Math.floor(hours * 60);
@@ -701,6 +826,7 @@ export function createTime(demo) {
       // the count never changes), and the town aim resumes on leaving.
       const room = demo.player?.interior ?? null;
       if (room !== inRoom) aimRoom(room);
+      syncCarry();
       const p = (s.camera === 'follow' && demo.player?.position) || engine.camera.target;
       if (!inRoom && (Math.abs(p.x - aimX) + Math.abs(p.z - aimZ) > 2.5 || aimVersion !== litVersion) && t - aimT > 0.25) { aimT = t; aim(p.x, p.z); }
       if (inRoom) T.uPointShape.value.y = Math.min(T.uPointShape.value.y, ROOM_REACH);
@@ -725,8 +851,11 @@ export function createTime(demo) {
         r.light.intensity = a.base * g * f;
       }
       info.lit = nLit;
+      info.ringLit = recs.reduce((n2, r) => n2 + (r.a?.ring && r.light.intensity > 0 ? 1 : 0), 0);   // (vote-fix5)
+      lightCarry();
 
       if (!lifeOn) for (const L of lifeLights) L.light.intensity = 0;
+      syncVotes(t);
       if (cer) { const ct = t - cer.t0; while (cer && cer.k < cer.steps.length && ct >= cer.steps[cer.k][0]) cer.steps[cer.k++][1](); }
       if (folk) folk.update(t, rootOff, firstUpdate);
       firstUpdate = false;

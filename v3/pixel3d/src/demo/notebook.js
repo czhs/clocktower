@@ -34,7 +34,7 @@ const h = (tag, props = {}, ...kids) => {
   return e;
 };
 
-export function createNotebook(demo, { avatarURL = () => null, people = () => [] } = {}) {
+export function createNotebook(demo, { avatarURL = () => null, people = () => [], hd = false, hdpx = () => 1 } = {}) {
   const engine = demo.engine;
   const now = () => engine.time ?? 0;
   const root = document.getElementById('demo-ui') ?? document.body;
@@ -54,7 +54,9 @@ export function createNotebook(demo, { avatarURL = () => null, people = () => []
   const text = h('textarea', { class: 'ctn-text', spellcheck: 'false', maxlength: String(TEXT_MAX), placeholder: HINT, 'aria-label': 'notes' });
   text.value = notes;
   const notesPage = h('div', { class: 'dnb-page dnb-notes', role: 'tabpanel', 'aria-label': 'Notes' }, text);
-  const el = h('div', { class: 'dnb ctn ctn-pixelfont ctp-panel ctp-skin', role: 'dialog', 'aria-label': 'Notebook', hidden: '' },
+  // (density, docs/DEMO.md §4.7 "Density") hd: the page in the D=2 pixel face (.ctn-pixelfont-hd, line = 20 HD px at
+  // --hdpx) and the notebook's own text (status, names, marks, notes, foot) in it too (.dnb-hd: ui.css, 16 px = 1 glyph px)
+  const el = h('div', { class: `dnb ctn ${hd ? 'ctn-pixelfont-hd dnb-hd' : 'ctn-pixelfont'} ctp-panel ctp-skin`, role: 'dialog', 'aria-label': 'Notebook', hidden: '' },
     h('div', { class: 'dnb-head' }, h('span', { class: 'ctp-glyph-notebook' }), h('span', { class: 'dnb-title' }, 'Notebook'), status,
       h('div', { class: 'ctn-tabs', role: 'tablist', 'aria-label': 'notebook pages' }, tabSeats, tabNotes), closeBtn),
     seatsPage, notesPage);
@@ -88,7 +90,8 @@ export function createNotebook(demo, { avatarURL = () => null, people = () => []
       const src = avatarURL(p.id);
       const pic = h('span', { class: 'ctn-portrait dnb-pic' }, src ? h('img', { src, alt: '' }) : String(p.name || p.id)[0].toUpperCase());
       const marks = MARKS.map(([k, g, label]) => {
-        const b = h('button', { type: 'button', class: `dnb-mark m-${k}`, title: label, 'aria-label': `${p.name}: ${label}`, 'aria-pressed': rec.mark === k ? 'true' : 'false' }, g);
+        // (density: the D=2 face has no ✗; its × reads small at 16 px: a capital X)
+        const b = h('button', { type: 'button', class: `dnb-mark m-${k}`, title: label, 'aria-label': `${p.name}: ${label}`, 'aria-pressed': rec.mark === k ? 'true' : 'false' }, hd && g === '✗' ? 'X' : g);
         b.addEventListener('click', () => { rec.mark = rec.mark === k ? null : k; for (const o of marks) o.setAttribute('aria-pressed', o === b && rec.mark === k ? 'true' : 'false'); queueSave('seats'); b.blur(); });
         return b;
       });
@@ -110,9 +113,12 @@ export function createNotebook(demo, { avatarURL = () => null, people = () => []
     'background-clip', 'color', 'caret-color', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left', 'line-height',
     'font-family', 'font-size', 'outline-style', 'box-shadow'];
   const twin = h('textarea', { class: 'ctn-text', tabindex: '-1', 'aria-hidden': 'true' });
-  const twinBox = h('div', { class: 'dnb-twin' }, twin);
+  // (density / wave 2) the twin lives OUTSIDE #demo-ui: the HD panel skin (.ctp-hd scope on #demo-ui, src/ui/hd/panels.js)
+  // has a generic `.ctp-hd textarea` input skin that out-ranks the page's `.ctn-text`; the twin carries the page
+  // classes itself (.ctn + the pixel-font class) so the notebook.css / hd css.js page rules still match it
+  const twinBox = h('div', { class: `dnb-twin ctn ${hd ? 'ctn-pixelfont-hd' : 'ctn-pixelfont'}` }, twin);
   twinBox.style.cssText = 'position:absolute;left:-9999px;top:0;visibility:hidden;pointer-events:none;';
-  el.append(twinBox);
+  document.body.append(twinBox);
   const pinPage = () => {
     const cs = getComputedStyle(twin);
     if (!cs.getPropertyValue('border-image-source') || cs.getPropertyValue('border-image-source') === 'none') return false;   // sheet not loaded yet
@@ -121,13 +127,23 @@ export function createNotebook(demo, { avatarURL = () => null, people = () => []
   };
 
   // ---- layout: the textarea height snapped to whole rule rows (notebook.css: border box = (8 + 10 n) texels)
+  let rowsShown = null;
   const fit = () => {
     el.style.setProperty('--px', String(px()));
     // a phone (< 700 px wide, ui.css): the panel is capped at 40 % of the height (the reader stays in view below it)
     const narrow = innerWidth < 700;
     const avail = narrow ? Math.max(60, innerHeight * 0.4 - 64) : Math.max(120, innerHeight - 16 - 130);
-    const rowsN = Math.max(narrow ? 3 : 6, Math.min(18, Math.floor((avail / px() - 8) / 10)));
-    text.style.setProperty('--ctn-rows', String(rowsN));
+    if (hd) {
+      // (density) the HD page's line is 20 HD px = 20 x --hdpx CSS px (at 1080p 'round': 40 px, not the 30-px rule of
+      // the --px frame): whole HD lines, the frame's --ctn-rows set so its height = 8 texels + n HD lines exactly
+      const lh = 20 * Math.max(1, hdpx()), n = Math.max(narrow ? 3 : 6, Math.min(18, Math.floor((avail - 8 * px()) / lh)));
+      text.style.setProperty('--ctn-rows', String((n * lh) / (10 * px())));
+      rowsShown = n;
+    } else {
+      const rowsN = Math.max(narrow ? 3 : 6, Math.min(18, Math.floor((avail / px() - 8) / 10)));
+      text.style.setProperty('--ctn-rows', String(rowsN));
+      rowsShown = rowsN;
+    }
     pinPage();
   };
 
@@ -181,8 +197,8 @@ export function createNotebook(demo, { avatarURL = () => null, people = () => []
     refresh() { if (state.open && state.page === 'seats') buildRows(); },
     get text() { return text; },
     info: () => ({ open: state.open, page: state.page, openAt: state.openAt, closeAt: state.closeAt, typing: nb.typing(), chars: notes.length,
-      saved: state.saved, storage: state.storage, rows: rows.children.length, textRows: Number(text.style.getPropertyValue('--ctn-rows')) || null }),
-    dispose() { clearTimeout(state.saveTimer); removeEventListener('resize', fit); el.remove(); },
+      saved: state.saved, storage: state.storage, rows: rows.children.length, textRows: rowsShown, hd }),
+    dispose() { clearTimeout(state.saveTimer); removeEventListener('resize', fit); el.remove(); twinBox.remove(); },
   };
   return nb;
 }

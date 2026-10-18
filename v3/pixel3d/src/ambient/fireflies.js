@@ -120,6 +120,8 @@ const VARIANTS = {
   fWhi:   { p: 'flWhiP', P: 'flWhiM', q: 'flWhiS', g: 'stemM', G: 'stemS' },
   glow:   { C: 'gwC', M: 'gwM', P: 'gwP', D: 'gwD' },
   gold:   { c: 'gfC', a: 'gfA', d: 'gfD' },
+  // (additive, demo ui pass / critic P2-7: opts.night.mothGlint) a moth away from its lamp keeps a LIT wing tip
+  mGlint: { H: 'mLitH', M: 'mDimM', S: 'mDimS', o: 'mDimO' },
 };
 const FRAMES_SPEC = [
   ...['lilac', 'yellow', 'white'].flatMap((v) => ['bOpen', 'bHalf', 'bClosed'].map((d) => [v, d])),
@@ -129,6 +131,7 @@ const FRAMES_SPEC = [
   ['shade', 'shd2'], ['shade', 'shd1'],
   ['glow', 'gwBig'], ['glow', 'gwSmall'], ['glow', 'gwDip'], ['glow', 'gwDim'],
   ['gold', 'gfPx'], ['gold', 'gfPlus'],
+  ...['mUp', 'mDown', 'mOpen'].map((d) => ['mGlint', d]),   // (additive: appended, earlier frame indices unchanged)
 ];
 const FRAME = Object.fromEntries(FRAMES_SPEC.map(([v, d], i) => [`${v}.${d}`, i]));
 const CELL = 8, ACOLS = 8;
@@ -527,8 +530,22 @@ export default defineSystem({
     const fliers = agents.filter((a) => a.kind === 'bfly' || a.kind === 'bee');
     const nAtlas = fliers.length + blooms.length + agents.length;       // every agent has an atlas slot (golden ff, glow-worms)
     const nGlow = agents.filter((a) => a.kind === 'ff').length;
+    // (additive, demo ui pass / critic P2-7 "night fireflies are barely visible") opts.night = { core: 2, halo: 4,
+    // gain: 1.5, haloGain: 0.3, mothGlint: true }: each night firefly = a bright 2x2 core + a dim 4x4 additive halo
+    // (a second sprite in the same batch: still ONE draw call), the flash a 2x2 core in a 6x6 halo; moths away from
+    // their lamp keep a lit wing tip (mGlint). Without opts.night: unchanged.
+    const NB = opts.night ?? null;
     const atlas = createAtlasBatch(engine, { max: Math.max(1, nAtlas), parent: ctx.root, name: 'ambient-fireflies-atlas' });
-    const glows = createSpriteBatch(engine, { max: Math.max(1, nGlow), emissive: true, haloGain: 0.5, name: 'ambient-fireflies-glow', parent: ctx.root });
+    const glows = createSpriteBatch(engine, { max: Math.max(1, nGlow * (NB ? 2 : 1)), emissive: true, haloGain: 0.5, name: 'ambient-fireflies-glow', parent: ctx.root });
+    const NBC = NB ? { gain: NB.gain ?? 1.5, haloGain: NB.haloGain ?? 0.3, core: NB.core ?? 2, halo: NB.halo ?? 4 } : null;
+    const _bc = new THREE.Color(), _hc = new THREE.Color();
+    const setGlow = (a, look) => {
+      const base = look === 1 ? C.ffDim : C.ff;
+      if (!NBC) { glows.set(a.gslot, P, base, look === 2 ? 3 : 1, look === 2 ? 1 : 0); return; }
+      const flash = look === 2;
+      glows.set(a.gslot, P, _bc.copy(base).multiplyScalar(NBC.gain * (flash ? 1.3 : 1)), NBC.core, 0);
+      glows.set(nGlow + a.gslot, P, _hc.copy(base).multiplyScalar(NBC.haloGain * (flash ? 1.4 : 1)), NBC.halo + (flash ? 2 : 0), 0);
+    };
     atlas.setPalette(tod?.name);
     let ai = 0, gi = 0;
     for (const a of fliers) a.shadeSlot = ai++;                          // shadows first: everything draws over them
@@ -558,7 +575,7 @@ export default defineSystem({
           const rec = a.rec, on = active(a);
           if (on) counts[rec.s]++;
           if (a.shadeSlot !== undefined) atlas.hide(a.shadeSlot);
-          atlas.hide(a.slot); if (a.gslot !== undefined) glows.hide(a.gslot);
+          atlas.hide(a.slot); if (a.gslot !== undefined) { glows.hide(a.gslot); if (NBC) glows.hide(nGlow + a.gslot); }
           if (!on) continue;
           const age = Math.max(0, gridTime(t) - rec.t0), R = RX[a.kind].opts;
           posAt(a, t, P);
@@ -578,7 +595,7 @@ export default defineSystem({
               // golden hour: no dim 1-px look (it sinks into the ochre grass): bright core + dark under-shadow, or the
               // plus flash with its shadow — value contrast instead of hue
               atlas.set(a.slot, P, FRAME[look === 2 ? 'gold.gfPlus' : 'gold.gfPx'], 0);
-            } else glows.set(a.gslot, P, look === 1 ? C.ffDim : C.ff, look === 2 ? 3 : 1, look === 2 ? 1 : 0);
+            } else setGlow(a, look);
             vis.ff++;
           } else if (a.kind === 'glow') {
             let look = 2;                                                // 2 bright, 1 dim, 0 off
@@ -598,7 +615,7 @@ export default defineSystem({
             const lit = tod?.name === 'golden' || P.distanceTo(a.lamp) < 0.75;
             const beat = clockIndex(t, 2, a.i % 2);
             const d = hash(Math.floor(beat / 3), a.i, seed) < 0.18 ? 'mOpen' : beat % 2 ? 'mDown' : 'mUp';
-            atlas.set(a.slot, P, FRAME[`${lit ? 'mLit' : 'mDim'}.${d}`], screenDir(a, t) > 0 ? 1 : 0);
+            atlas.set(a.slot, P, FRAME[`${lit ? 'mLit' : NB?.mothGlint ? 'mGlint' : 'mDim'}.${d}`], screenDir(a, t) > 0 ? 1 : 0);
             vis.moth++;
           } else {
             // butterflies / bees

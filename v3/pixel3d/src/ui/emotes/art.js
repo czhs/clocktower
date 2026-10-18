@@ -11,7 +11,14 @@
 //
 // Language (docs/UI.md §2): 1 px = 1 texel, light from the upper left, every sprite outlined in its own line tone,
 // binary alpha, stepped 30 Hz motion (pop = 1 smaller grid frame, disappear = 3-step Bayer dissolve at 15 fps).
-import { PixelImage, PIN_RAMPS, PIN_COLORS, ramp, drawBox, drawText, textWidth, wrapText, dissolve, GRID_HZ, hex } from '../kit.js';
+import { PixelImage, PIN_RAMPS, PIN_COLORS, ramp, drawBox, drawText, textWidth, wrapText, dissolve, GRID_HZ, hex, withHD } from '../kit.js';
+
+/**
+ * (density wave 2, additive; docs/UI-HD-WAVE2.md) Empty unless src/ui/hd/emotes.js prepareEmotesHD() fills it: then
+ * drawPie / drawKbd draw HD when the target is a density VIEW, dockButton / popFrame return their 1x image with `.hd`.
+ * With no hooks (the default) every function here is byte-identical to before (shots/ui-hd-wave2/regress.mjs).
+ */
+export const HD_HOOKS = {};
 
 // ------------------------------------------------------------------------------------------------ constants (v2)
 /** v2 apps/client/src/game/social/radial.ts PIE_RADIUS (CSS px) and radialLogic.ts DEAD_ZONE_PX. */
@@ -86,6 +93,8 @@ function shade(rows, mats, { pad = 1, prefer = null, diag = false } = {}) {
   for (const [x, y, c] of hits) img.set(x, y, c);
   return img;
 }
+/** (emoji emotes, additive; docs/UI-EMOJI.md) the template shader above, for src/ui/emotes/emoji.js. */
+export const shadeRows = shade;
 const parchMat = (T) => ({ hi: T.parchmentHi, mid: T.parchment, sh: T.parchmentSh, line: T.parchmentLine });
 const goldMat = (T) => ({ hi: T.goldHi, mid: T.gold, sh: T.goldSh, line: T.goldLine });
 
@@ -226,6 +235,11 @@ export function popGlyph(kind, T, color = 'gold') {
 }
 /** Pop frame f of kind (color = the dropped pin's colour for kind 'pin'). */
 export function popFrame(kind, f, T, color = 'gold') {
+  const im = popFrame0(kind, f, T, color);
+  if (HD_HOOKS.popFrame && !im.hd) withHD(im, HD_HOOKS.popFrame(kind, f, T, color));
+  return im;
+}
+function popFrame0(kind, f, T, color) {
   return memo(`pop${kind}${kind === 'pin' ? color : ''}${f}` + tkey(T), () => {
     if (f === 0) return bubble(T, 11, 12).img;
     const { img, x0, y0 } = bubble(T, 15, 16);
@@ -374,13 +388,14 @@ function pieImage0(T, { size, items, hot, color, off, show, back, hub, icons, id
       if (!vis.has(i)) continue;
       const it = items[i], a = wedgeAngle(i, n), isHot = i === hot;
       const rm = G.rm - Math.round(shrink / 2) + (isHot ? 1 : 0);
-      let ic = it.kind === 'point' ? emotePoint(T) : it.kind === 'unpin' ? removeIcon(T) : pinIcon(it.color, T);
+      // (emoji emotes, additive) an item may carry its own icon factory: it.icon(T) (emoji wedges, docs/UI-EMOJI.md)
+      let ic = it.icon ? it.icon(T) : it.kind === 'point' ? emotePoint(T) : it.kind === 'unpin' ? removeIcon(T) : pinIcon(it.color, T);
       if (off?.has(i)) { const s = new PixelImage(ic.w, ic.h); s.blit(ic, 0, 0, { tint: T.ironSh }); ic = s; }
       const ix = Math.round(c + rm * Math.cos(a) - ic.w / 2), iy = Math.round(c + rm * Math.sin(a) - ic.h / 2) - (isHot ? 1 : 0);
       img.blit(ic, ix, iy);
       // (r3) no text labels on touch wedges: v2 PieMenu draws none, and 'Point' / 'Remove' overflowed into the hub and
       // the neighbouring wedges at 46 texels; the caption plate names the hot wedge.
-      if (it.kind === 'pin' && it.color === color && !off?.has(i)) {
+      if (it.kind === 'pin' && it.color === color && !it.current && !off?.has(i)) {   // (emoji) a lone current-colour Pin wedge: no arc
         // v2 .ctp-current. UI integration r2 (whole-screen critic: the 2x2 colour dot beside the pin read as a stray
         // dot): the current colour is marked as a gold arc ON the wedge's outer rim (the hub's gold = "yours / chosen"),
         // 7 rim texels centred on the wedge's centre line, so it reads as part of the pie, not as a speck.
@@ -402,6 +417,7 @@ function pieImage0(T, { size, items, hot, color, off, show, back, hub, icons, id
  * since commit), cancel: t (s since cancel), reduced }. Returns false when nothing is drawn.
  */
 export function drawPie(img, cx, cy, T, st) {
+  if (img.isView && HD_HOOKS.drawPie) return HD_HOOKS.drawPie(img, cx, cy, T, st);
   if (st.pressOnly) { pressDot(img, cx, cy, T); return true; }
   const size = st.size || 'mouse', G = PIE[size];
   const items = st.items || pieItems({ name: 'Bram' }), n = items.length;
@@ -476,6 +492,7 @@ const CLEAR_HOVER = { line: 'outline', edge: 'goldSh', fill: 'inkRaised', hi: 'i
  */
 export const KBD_H = 9;
 export function drawKbd(img, x, y, s, T) {
+  if (img.isView && HD_HOOKS.drawKbd) return HD_HOOKS.drawKbd(img, x, y, s, T);
   const w = textWidth(s, 'tiny') + 4;
   img.rect(x + 1, y, w - 2, KBD_H, T.goldSh); img.rect(x, y + 1, w, KBD_H - 2, T.goldSh);   // 1-px notched corners
   img.rect(x + 1, y + 1, w - 2, KBD_H - 2, T.inkRaised);
@@ -493,7 +510,11 @@ export function drawKbd(img, x, y, s, T) {
 export function drawDock(img, x, y, T, o = {}) {
   const { mode = 'idle', color = 'crimson', mine = 2, hover = null, framesOnly = false } = o;
   const full = mine >= TIMING.MAX_PINS_PER_MEMBER;
-  const grey = (im) => { const s = new PixelImage(im.w, im.h); s.blit(im, 0, 0, { tint: T.ironSh }); return s; };
+  const grey = (im) => {
+    const s = new PixelImage(im.w, im.h); s.blit(im, 0, 0, { tint: T.ironSh });
+    if (im.hd) { const h = new PixelImage(im.hd.w, im.hd.h); h.blit(im.hd, 0, 0, { tint: T.ironSh }); withHD(s, h, im.hdOff); }   // (density wave 2) keep the HD art
+    return s;
+  };
   const r = {};
   const inner = drawBox(img, x, y, DOCK.w, DOCK.h, 'panel', T);
   if (framesOnly) return r;
@@ -556,7 +577,7 @@ export function dockButton(T, { state = 'normal', color = null, size = 24 } = {}
   for (let y = 3; y < size - 3; y++) for (let x = 3; x < size - 3; x++) img.erase(x, y);
   if (state === 'open') { img.hline(3, 2, size - 6, T.goldHi); img.vline(2, 3, size - 6, T.goldHi); }
   if (color) img.blit(dockDot(color, T), size - 6, size - 6);
-  return img;
+  return HD_HOOKS.dockButton ? withHD(img, HD_HOOKS.dockButton(T, { state, color, size })) : img;
 }
 /** 7x7 pin-colour dot (the dock button's corner badge). Black: solid body in the dark UI outline (like the black pin). */
 export const dockDot = (color, T) => memo('dot' + color + (T ? tkey(T) : ''), () => {

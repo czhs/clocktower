@@ -22,7 +22,9 @@ export const TOD_HOURS = { night: 0, morning: 8, noon: 12.5, afternoon: 16, gold
  *  between the dial ring and the kerb, clear of house-9's roof at the gameplay camera. */
 export const SPAWN = { x: layout.PLAYER_SPAWN.x + 0.5, z: layout.PLAYER_SPAWN.z + 0.1 };
 /** Default character id (characters.js may override with its own first completed character). */
-export const DEFAULT_CHARACTER = 'wanderer';
+// (critic P1-2) a character with the FULL game emote set (talk, vote, point, die, ghost + a signature; tools/demo-emotes.mjs):
+// the shipped Wanderer has none of them (5 of 6 palette emotes greyed). Keep in sync with characters.js DEFAULT_ID.
+export const DEFAULT_CHARACTER = 'frog';
 
 export const emptySeat = () => ({ occupied: false, dead: false, ghostVote: true, nominated: false, onBlock: false });
 
@@ -54,7 +56,7 @@ export const DEFAULT_STATE = Object.freeze({
 export const BOOK_STYLES = ['held', 'big'];
 export const POINTER_SCALES = ['new', 'v2'];
 /** Valid values of state.location. */
-export const LOCATION_RX = /^(town|house-(?:[0-9]|1[0-4]))$/;
+export const LOCATION_RX = /^(town|clocktower|house-(?:[0-9]|1[0-4]))$/;   // (B) + clocktower (pass B: the tower interior)
 
 // ------------------------------------------------------------------------------------------------ store + events
 /** Tiny event emitter: on(name, fn) -> unsubscribe, off, emit(name, payload). '*' listeners get (name, payload). */
@@ -230,6 +232,16 @@ export function createInput(target = window) {
       return () => { const l = binds.get(code); const i = l?.indexOf(b); if (i >= 0) l.splice(i, 1); };
     },
     bindings: () => [...binds.values()].flat().map(({ code, desc, group }) => ({ code, desc, group })),
+    /** Run every press binding of `code` once, as a key press would (the game UI's action-bar buttons: the SAME code
+     *  path as the key). Returns how many bindings ran. */
+    press(code) {
+      const list = binds.get(code);
+      if (!list?.length) return 0;
+      for (const b of [...list]) { try { b.fn({ code, repeat: false, synthetic: true, preventDefault() {} }); } catch (err) { console.error('[demo] press', code, err); } }
+      return list.length;
+    },
+    /** Is anything bound to `code`? */
+    has: (code) => !!binds.get(code)?.length,
     dispose() { target.removeEventListener('keydown', kd); target.removeEventListener('keyup', ku); target.removeEventListener('blur', blur); },
   };
 }
@@ -376,7 +388,7 @@ export function createCutController(demo) {
   };
   let sig = '';
   // (perf) the rebuild key as numbers (the string key was built every frame): on, onSquare, house, cell x / z, yaw
-  const K = [null, null, null, NaN, NaN, NaN];
+  const K = [null, null, null, NaN, NaN, NaN, NaN];
   const info = { on: false, circle: false, house: null, boxes: 0, inside: false };
   // entering / leaving a cottage: rebuild on the next town frame (the doorstep cell on the way out is the same cell
   // as on the way in, so the quantised key alone would not notice that the cut was switched off meanwhile)
@@ -408,8 +420,12 @@ export function createCutController(demo) {
       // quantise the player box to 5 cm: the boxes are rebuilt only when something really changed
       const px = p ? Math.round(p.x * 20) / 20 : 0, pz = p ? Math.round(p.z * 20) / 20 : 0;
       const hid = house?.id ?? null, yq = Math.round(c.yaw * 1000);
-      if (sig === 'town' && K[0] === on && K[1] === onSquare && K[2] === hid && K[3] === px && K[4] === pz && K[5] === yq) return;
-      sig = 'town'; K[0] = on; K[1] = onSquare; K[2] = hid; K[3] = px; K[4] = pz; K[5] = yq;
+      // (vote-fix4) the vote camera (pitch 23): the circle's protected cylinder grows to hold the seals in front of the
+      // near arc (seat r 6.25 + 0.95 m) and the tallest seated figure: house-8's chimney stood 6.94 m out, just outside
+      // r 6.9, right under YOUR seat on the near arc (it read as a pillar you stood on)
+      const vq = s.camera === 'vote' ? 1 : 0;
+      if (sig === 'town' && K[0] === on && K[1] === onSquare && K[2] === hid && K[3] === px && K[4] === pz && K[5] === yq && K[6] === vq) return;
+      sig = 'town'; K[0] = on; K[1] = onSquare; K[2] = hid; K[3] = px; K[4] = pz; K[5] = yq; K[6] = vq;
       const boxes = [];
       if (on && p) boxes.push({ min: [px - 0.45, 0.03, pz - 0.45], max: [px + 0.45, 1.8, pz + 0.45] });
       if (house) {
@@ -418,7 +434,7 @@ export function createCutController(demo) {
       } else cut.setKeep(null);
       cut.setBoxes(boxes);
       cut.setLifts([]);
-      cut.setCircle(on && onSquare ? { cx: layout.CIRCLE.cx, cz: layout.CIRCLE.cz, r: 6.9, top: 1.6 } : null);
+      cut.setCircle(on && onSquare ? { cx: layout.CIRCLE.cx, cz: layout.CIRCLE.cz, r: vq ? 7.5 : 6.9, top: vq ? 2.0 : 1.6 } : null);
       cut.enabled = on && (boxes.length > 0 || onSquare);
       Object.assign(info, { on: cut.enabled, circle: on && onSquare, house: house?.id ?? null, boxes: boxes.length });
     },

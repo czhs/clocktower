@@ -25,7 +25,7 @@
 // Controls (bound through demo.input): W A S D / arrows walk in 8 directions relative to the camera (W = screen up),
 // Shift runs; click / tap the ground to walk there along an A* path (click a cottage = walk to its door, the dais =
 // to its foot; Shift+click runs); [ / ] previous / next complete character; 1-6 emotes (talk, vote, point, die,
-// ghost, the signature), Space = the signature emote. ?collide=1 draws the collision shapes and door normals (red);
+// ghost, the signature; critic P1-2: Space is the game UI's, it opens the emote palette). ?collide=1 draws the collision shapes and door normals (red);
 // ?at=x,z spawn.
 //
 // Speed: the game's ONE speed, 4 body heights per second (CHARACTERS.md / locomotion.js gameSpeed, the cast's
@@ -52,6 +52,7 @@ import { gameSpeed } from '../chars/locomotion.js';
 const RUN_FACTOR = 1.75;
 const DOOR_NEAR = 1.6, DOOR_LEAVE = 2.1;     // m from the door's centre (in front of it)
 const EMOTE_KEYS = ['talk', 'vote', 'point', 'die', 'ghost', null];   // Digit1..6 (null = the signature)
+const EMOTE_LOOP_S = 4;   // (critic P2-4) a looping emote (talk) plays this long, then the idle (or the ghost idle) returns
 const HIST = 24;
 const AXES = { fwd: new THREE.Vector3(), right: new THREE.Vector3() };   // (perf) cameraAxes' reused output
 const NPC_R = 0.3;
@@ -75,7 +76,11 @@ export async function createPlayer(demo) {
   // the feet's ground: the town terrain (ground piece heightAt), or the room's flat floor (the terrain far out at the
   // rooms' origins is not flat: the character floated 5.9 m up at x 200)
   const groundApi = demo.town?.registry?.get?.('ground')?.api;
-  const ground = { heightAt: (x, z) => (room ? room.floorY : typeof groundApi?.heightAt === 'function' ? groundApi.heightAt(x, z) : 0) };
+  // (seal vote) on YOUR seat stone in the vote (seatcast.js yours) the feet stand on the stone's top (0.235 m)
+  const seatLift = (x, z) => { const y = demo.passB?.seats?.yours ?? -1; if (y < 0) return 0; const q = layout.seatPos(y); return Math.hypot(x - q.x, z - q.z) < 0.5 ? 0.235 : 0; };
+  const ground = { heightAt: (x, z) => (room ? (room.raw?.heightAt?.(x, z) ?? room.floorY) : (typeof groundApi?.heightAt === 'function' ? groundApi.heightAt(x, z) : 0) + seatLift(x, z)) };   // (B) raw.heightAt: the tower room's stairs / landing
+  // (B) the clock tower is enterable once pass B registered its interior (tower-interior.js); otherwise a landmark
+  const enterable = (id) => id !== 'clocktower' || (!!demo.passB?.interior && !!interiors.has?.('clocktower'));
   const at = demo.params.get('at')?.split(',').map(Number);
   const position = new THREE.Vector3(SPAWN.x, 0, SPAWN.z);
   if (at && at.length === 2 && at.every(Number.isFinite)) position.set(at[0], 0, at[1]);
@@ -91,6 +96,14 @@ export async function createPlayer(demo) {
   let facing = 0, handle = null, loading = null, nearDoor = null, lastT = 0, moving = false, running = false;
   let path = null;          // { pts: [{x, z}], run, face, stuck }
   let emoting = null;       // clip name of a looping / held emote (released when walking)
+  let emoteUntil = null;    // (critic P2-4) when a looping emote (talk) ends by itself (engine.time)
+  // the GHOST STATE (a dead player who keeps walking, Clocktower rules; the user's bug "after ghost-emoting, walking
+  // turns me back"): the ghost emote (5 / its button) is a TOGGLE. On: the character's idle loop is its 'ghost' clip and
+  // ch.ghost = 1 (the character library's walking-ghost override, src/chars/character.js _ghostLevel), so walking, the
+  // other emotes and standing all stay ghost-shaded; off: ch.ghost = null + the normal idle. It survives a character
+  // swap / a teleport (re-applied to the new character when it can be a ghost: a 'ghost' clip; the Storyteller never
+  // ghosts, nor a character without one: the state is cleared with a toast).
+  let ghosted = false;
 
   // ------------------------------------------------------------------------------------------------ character
   const speeds = () => {
@@ -125,9 +138,41 @@ export async function createPlayer(demo) {
     engine.scene.add(h.root);
     if (prev) prev.dispose();
     handle = h; emoting = null;
+    if (ghosted && !applyGhost(true)) {
+      ghosted = false;
+      events.emit('player:ghost', { on: false, reason: 'character' });
+      if (!silent) events.emit('toast', { text: `${h.name ?? h.id} cannot be a ghost: the ghost state is cleared` });
+    }
     if (store.state.character !== id) store.set({ character: id }, 'player');
     if (!silent) events.emit('player:character', { id, handle: h });
     return h;
+  }
+  /** The character's ghost clip name, or null (no clip; the Storyteller never ghosts). */
+  const ghostClip = (h = handle) => {
+    if (!h || h.id === 'storyteller') return null;
+    const n = h.emotes ? h.emotes.ghost : 'ghost';
+    return n && h.spec.clips?.[n] ? n : null;
+  };
+  /** Put the current character into (on) / out of (off) the ghost state. Returns false when it cannot be a ghost. */
+  function applyGhost(on) {
+    if (!handle?.ch) return false;
+    const clip = on ? ghostClip() : null;
+    if (on && !clip) return false;
+    handle.ch.ghost = on ? 1 : null;
+    play(on ? clip : 'idle');
+    return true;
+  }
+  /** Ghost on / off (the ghost emote's toggle). Returns the new state, or null when this character cannot ghost. */
+  function setGhost(on) {
+    on = !!on;
+    if (on === ghosted) return ghosted;
+    if (on && !ghostClip()) return null;
+    path = null; emoting = null;
+    ghosted = on;
+    applyGhost(on);
+    events.emit('player:ghost', { on });
+    events.emit('player:emote', { clip: 'ghost', name: on ? ghostClip() : null, off: !on });
+    return ghosted;
   }
   store.on('character', ({ value, source }) => { if (source !== 'player' && value !== handle?.id) setCharacter(value).catch(() => {}); });
   const complete = () => (demo.characters ?? []).filter((c) => c.complete).map((c) => c.id);
@@ -140,16 +185,29 @@ export async function createPlayer(demo) {
   const play = (name) => (handle?.play ? handle.play(name) : handle?.ch.play(name));
   function emote(clip) {
     if (!handle) return false;
+    if (clip === 'ghost') {
+      if (ghosted) { setGhost(false); return true; }
+      if (handle.id === 'storyteller') { events.emit('toast', { text: 'The Storyteller never becomes a ghost' }); return false; }
+      if (ghostClip()) { setGhost(true); return true; }
+    }
     // game emotes: characters.js maps them to the spec's clips (handle.emotes; combat clips are never offered)
     const name = handle.emotes ? handle.emotes[clip ?? 'signature'] ?? null : clip ?? handle.spec.emote ?? null;
     if (!name || !handle.spec.clips?.[name]) {
+      // the game UI draws a fallback for some emotes (P2.8: the point pop glyph over a character without a point clip)
+      if (demo.gameui?.emoteFallback?.(clip)) { events.emit('player:emote', { clip, name: null, fallback: true }); return true; }
       events.emit('toast', { text: `${handle.name ?? handle.id} has no ${clip ? `'${clip}'` : 'signature'} emote` });
       return false;
     }
     path = null;
-    play(name);
     const c = handle.spec.clips[name];
+    // (critic P2-4) a one-shot played over a looping emote (talk) returns to the IDLE (or the ghost idle when
+    // ghosted), not to the loop: release the loop first
+    if (emoting && !(c.loop || c.hold)) { play(ghosted ? ghostClip() ?? 'idle' : 'idle'); emoting = null; }
+    play(name);
+    events.emit('player:emote', { clip: clip ?? 'signature', name });
     emoting = c.loop || c.hold || name === 'vote' || name === 'die' ? name : null;
+    // a LOOPING emote (talk) is time-boxed: EMOTE_LOOP_S, then back to the idle (it never ended while standing still)
+    emoteUntil = c.loop && !c.hold && name !== 'vote' && name !== 'die' ? (lastT ?? engine.time ?? 0) + EMOTE_LOOP_S : null;
     return true;
   }
 
@@ -185,7 +243,7 @@ export async function createPlayer(demo) {
     flip ^= 1;
     if ((best?.id ?? null) !== (nearDoor?.id ?? null)) {
       nearDoor = best ? { id: best.id, pos: best.pos, normal: best.normal, anchor: best.anchor, mismatch: best.mismatch } : null;
-      if (best && best.id !== 'clocktower') interiors.prefetch(best.id);    // build the room while the door swings
+      if (best && enterable(best.id)) interiors.prefetch(best.id);    // build the room while the door swings ((B) the tower too)
     }
   }
 
@@ -202,7 +260,7 @@ export async function createPlayer(demo) {
     for (let i = 0; i < 15; i++) { const s = layout.seatPos(i); out[`seat-${i}`] = { x: s.x, z: s.z, face: Math.atan2(layout.CIRCLE.cx - s.x, layout.CIRCLE.cz - s.z) }; }
     return out;
   }
-  function teleport(x, z, face, { exact = false, location: loc, internal = false } = {}) {
+  function teleport(x, z, face, { exact = false, location: loc, internal = false, keepCamera = false } = {}) {
     // a teleport asked for while the screen fades (enter / leave) runs when the fade is over (the last request wins)
     if (transition && !internal) { pending = { kind: 'teleport', args: [x, z, face, { exact, location: loc }] }; return { x, z }; }
     // from inside a house, a point outside the room means the town: leave at once (no fade)
@@ -225,7 +283,8 @@ export async function createPlayer(demo) {
     // a fresh character at the new spot (the running one would read the jump as a sprint); it keeps drawing at the
     // new spot until the new one is ready (specs are cached: a few ms)
     if (handle) setCharacter(handle.id, { silent: true }).catch(() => {});
-    demo.camera?.snapTo?.(position);
+    // (seal vote) taking your seat in the vote camera must not move the camera (keepCamera)
+    if (!keepCamera) demo.camera?.snapTo?.(position);
     events.emit('player:teleport', { x: position.x, z: position.z });
     return { x: position.x, z: position.z };
   }
@@ -269,7 +328,7 @@ export async function createPlayer(demo) {
   }
   /** Go into house `id` (fade, or `instant`). Resolves true once inside (false: refused). */
   async function enter(id, { instant = false } = {}) {
-    if (id === 'clocktower') return false;
+    if (!enterable(id)) return false;   // (B) was: the clocktower is never entered
     if (transition) { if (doors.some((q) => q.id === id)) pending = { kind: 'location', value: id }; return false; }
     if (location === id) return false;
     const d = doors.find((q) => q.id === id);
@@ -278,7 +337,7 @@ export async function createPlayer(demo) {
     const rp = interiors.get(id);
     path = null;
     if (instant) { placeInside(await rp); return true; }
-    const name = layout.houses.find((h) => h.id === id)?.name ?? id;
+    const name = layout.houses.find((h) => h.id === id)?.name ?? (id === 'clocktower' ? 'The Clocktower' : id);   // (B)
     return new Promise((resolve) => {
       transition = { kind: 'enter', id, d, t0: lastT };
       fade.run(lastT, { label: name, onBlack: async () => { try { placeInside(await rp); resolve(true); } catch (e) { console.error('[demo] enter', id, e); endTransition(); resolve(false); } } });
@@ -299,7 +358,7 @@ export async function createPlayer(demo) {
   function checkEnter(t, dt) {
     let hit = null;
     if (viaKeys && moving && t >= cooldownUntil) for (const d of doors) {
-      if (!d.near || d.id === 'clocktower') continue;
+      if (!d.near || !enterable(d.id)) continue;   // (B)
       const dx = position.x - d.pos.x, dz = position.z - d.pos.z;
       const s = dx * d.normal[0] + dz * d.normal[1], lat = Math.abs(dx * d.normal[1] - dz * d.normal[0]);
       const inward = -(lastMv[0] * d.normal[0] + lastMv[1] * d.normal[1]);
@@ -376,7 +435,19 @@ export async function createPlayer(demo) {
     if (location !== 'town') return ground ? walkTo(ground.x, ground.z, { run }) : false;
     if (piece && piece !== 'dais') {
       const d = doors.find((q) => q.id === piece);
-      if (d) { const f = doorFront(d); return walkTo(f.x, f.z, { run, face: f.face, enter: d.id === 'clocktower' ? null : d.id }); }
+      if (d) { const f = doorFront(d); return walkTo(f.x, f.z, { run, face: f.face, enter: enterable(d.id) ? d.id : null }); }   // (B)
+    }
+    // (critic P3-12) a tap IN an open doorway or on its doorstep (the ray passes the door opening and meets the ground
+    // at the threshold: no piece) counts as a tap on that door: walk to it and in, in one tap (the tower took two)
+    if (!piece && ground) {
+      let best = null, bd = 1.4;
+      for (const q of doors) {
+        // in the opening: at / behind the threshold (along the door's outward normal), within its width
+        const dx = ground.x - q.pos.x, dz = ground.z - q.pos.z, s = dx * q.normal[0] + dz * q.normal[1], lat = Math.abs(dx * q.normal[1] - dz * q.normal[0]);
+        const dd = Math.hypot(dx, dz);
+        if (s < 1.0 && s > -1.5 && lat < 0.9 && dd < bd && enterable(q.id)) { bd = dd; best = q; }   // (the doorstep counts)
+      }
+      if (best) { const f = doorFront(best); return walkTo(f.x, f.z, { run, face: f.face, enter: best.id }); }
     }
     if (piece === 'dais' && ground) {
       const c = layout.CIRCLE, a = Math.atan2(ground.x - c.cx, ground.z - c.cz);
@@ -391,7 +462,8 @@ export async function createPlayer(demo) {
     input.bind('BracketLeft', () => cycle(-1), { desc: 'previous character', group: 'player' }),
     input.bind('BracketRight', () => cycle(1), { desc: 'next character', group: 'player' }),
     ...EMOTE_KEYS.map((c, i) => input.bind(`Digit${i + 1}`, () => emote(c), { desc: `emote: ${c ?? 'signature'}`, group: 'player' })),
-    input.bind('Space', () => emote(null), { desc: 'signature emote', group: 'player' }),
+    // (critic P1-2) Space no longer plays the signature (most characters' first press was "<name> has no signature
+    // emote"): gameui.js binds it to the emote palette; the signature is 6 and the palette's star
   ];
 
   // ------------------------------------------------------------------------------------------------ overlay
@@ -428,6 +500,12 @@ export async function createPlayer(demo) {
     get running() { return running; },
     get path() { return path?.pts ?? null; },
     setCharacter, teleport, walkTo, goTo, spots, speeds, emote,
+    /** The ghost state (the ghost emote's toggle): get / set (setGhost(on) -> new state | null = cannot ghost). */
+    get ghost() { return ghosted; },
+    setGhost,
+    /** The ghost level the character's material shows now (rig.ghostLevel 0 | 1 | 2; 0 for a spec without spec.ghost,
+     *  whose ghost clip carries its own look): tests. */
+    get ghostLevel() { return handle?.ch?.rig?.ghostLevel ?? 0; },
     /** Test hook: click / tap at a screen point (the same code path as a real click). */
     clickAt: (x, y, run) => clickTo(x, y, run),
     /** What a screen point shows: { piece (house / tower / dais id under it) | null, ground: {x, z} on the y 0 plane | null }
@@ -492,8 +570,10 @@ export async function createPlayer(demo) {
         else { mv.set(dx / d, 0, dz / d); want = Math.min(want, d / Math.max(dt, 1e-3)); }
       }
       moving = want > 0;
+      if (emoting && emoteUntil !== null && t >= emoteUntil && !moving) { play(ghosted ? ghostClip() ?? 'idle' : 'idle'); emoting = null; emoteUntil = null; }
       if (moving) {
-        if (emoting) { play('idle'); emoting = null; }
+        // (a ghost's held / looping emote returns to the ghost loop; ch.ghost = 1 keeps the walk ghost-shaded)
+        if (emoting) { play(ghosted ? ghostClip() ?? 'idle' : 'idle'); emoting = null; }
         const step = want * dt;
         const got = collision.move(position, mv.x * step, mv.z * step);
         if (location === 'town') pushNPCs();

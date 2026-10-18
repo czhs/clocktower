@@ -20,8 +20,18 @@
 //   drawJoystick / drawUseButton  ct-touch-stick + knob, ct-touch-use (+locked)
 //   drawConn / drawLoading / spinner   ct-conn(-lost), ct-game-loading/failed, ct-spinner
 //   glyphs: GLYPH[name](T) 9x9 / 7x7 sprites (toolbar, phase, house, ghost, lock, mic, close, kbd)
-import { PixelImage, drawText, textWidth, wrapText, drawBox, ramp, withAlpha, dissolve, GRID_HZ } from '../kit.js';
+import { PixelImage, drawText, textWidth, wrapText, drawBox, ramp, withAlpha, dissolve, GRID_HZ, withHD } from '../kit.js';
 import { DISPLAY, LABEL, italicize } from './font.js';
+
+// ------------------------------------------------------------------------------------------------ density (D=2) hooks
+/**
+ * (density wave 2, additive; docs/UI-HD-WAVE2.md) Empty unless src/ui/hd/hud.js prepareHudHD() fills it. Drawers that
+ * build their own images take the HD route only when the target is a density VIEW (img.isView); the small sprite
+ * factories return the same 1x pixels with an extra `.hd` (a view blits it, a plain image never reads it). With no
+ * hooks (the default) every function below is byte-identical to before (shots/ui-hd-wave2/regress.mjs).
+ */
+export const HD_HOOKS = {};
+const hdOf = (k, im, ...a) => (HD_HOOKS[k] ? withHD(im, HD_HOOKS[k](...a)) : im);
 
 // ------------------------------------------------------------------------------------------------ timing (v2, kept)
 /** v2 durations (ms) — game rules / UX tuning, kept exactly; animation is expressed in whole 30 Hz grid frames. */
@@ -134,7 +144,7 @@ export function dial(T, { stage = 'discussion', frac = 1, paused = false, size =
     im.line(mid, mid, Math.round(mid + Math.sin(a) * r), Math.round(mid - Math.cos(a) * r), T.parchmentHi);
     im.set(mid, mid, T.gold);
   }
-  return im;
+  return hdOf('dial', im, T, { stage, frac, paused, size });
 }
 
 // ------------------------------------------------------------------------------------------------ clock chip (ctc-chip)
@@ -153,6 +163,7 @@ export function pulseBands(t, period = TIMING.PULSE_MS) {
  * null|'normal'|'on'|'disabled', t, reduced, st}. The dial medallion is set into the chip's left end. Returns {w, h}.
  */
 export function drawClockChip(img, x, y, T, o) {
+  if (img.isView && HD_HOOKS.drawClockChip) return HD_HOOKS.drawClockChip(img, x, y, T, o);
   const P = stagePal(o.paused ? 'paused' : o.stage, T), w = clockChipWidth(o), H = CHIP_H;
   const edge = o.urgent ? T.danger : P.edge;
   const shape = new PixelImage(w + 4, H + 4);
@@ -342,7 +353,7 @@ export function drawPhaseChip(img, rx, y, T, { phase = 'day', day = 1, gathered 
   if (visit) {
     const on = reduced || gf(t) % Math.round(TIMING.VISIT_PULSE_MS / 1000 * GRID_HZ) < 36;   // v2 2.4 s pulse: lit 1.2 s, dim 1.2 s
     const c = GLYPH.candle(T);
-    img.blit(on ? c : c.clone(), cx - 1, y + 2, on ? {} : { tint: T.goldSh });
+    img.blit(on ? c : (c.hd ? withHD(c.clone(), c.hd, c.hdOff) : c.clone()), cx - 1, y + 2, on ? {} : { tint: T.goldSh });
   }
   return { x, w, h };
 }
@@ -396,7 +407,7 @@ export const badgeImg = (n, T) => {
   im.disc(4.5, 4.5, 4.4, T.danger); im.set(2, 2, r.hi); im.set(3, 1, r.hi); im.set(1, 3, r.hi);
   for (let y = 0; y < 9; y++) for (let x = 0; x < 9; x++) if (im.alpha(x, y) && Math.hypot(x + 0.5 - 4.5, y + 0.5 - 4.5) > 3.6) im.set(x, y, r.line);
   drawText(im, 4, 2, String(Math.min(n, 9)), { font: LABEL, color: T.parchmentHi, align: 'center' });
-  return im;
+  return hdOf('badge', im, n, T);
 };
 /**
  * cth-card closed: role (display small caps, team colour) · ⌂ house sub-pill · Dead (· ghost · 1 vote) sub-pill ·
@@ -456,6 +467,7 @@ export function drawPill(img, x, y, s, tone, T) {
 }
 /** Italic body line (pixel shear, ./font.js italicize). */
 export function drawItalic(img, x, y, s, color) {
+  if (img.isView && HD_HOOKS.drawItalic) return HD_HOOKS.drawItalic(img, x, y, s, color);
   const w = tw(s) + 4, tmp = new PixelImage(w, 9);
   drawText(tmp, 1, 0, s, { color });
   img.blit(italicize(tmp, 0, 6), x - 1, y);
@@ -584,7 +596,8 @@ export function drawToast(img, x, y, w, T, { text: s = 'Ada nominates Cleo.', ki
     return { w: bw, h };
   }
   drawBox(img, x, y, w, h, { line: 'outline', edge: st.edge, fill: st.fill, hi: null, corner: 1, shadow: true }, T);
-  img.rect(x + 1, y + 1, 2, h - 2, st.rule); img.set(x + 1, y + 1, st.ruleHi); img.set(x + 2, y + 1, st.ruleHi);
+  if (img.isView && HD_HOOKS.toastRule) HD_HOOKS.toastRule(img, x, y, h, st, T);
+  else { img.rect(x + 1, y + 1, 2, h - 2, st.rule); img.set(x + 1, y + 1, st.ruleHi); img.set(x + 2, y + 1, st.ruleHi); }
   if (st.title) text(img, x + 7, y + 2, s, st.text, DISPLAY);
   else wrapText(s, w - 20, { maxLines: 3 }).forEach((l, i) => segLine(img, x + 7, y + 3 + i * 9, l, st.text, name ? [[name, T.goldHi]] : []));
   if (close) img.blit(GLYPH.close(T, hoverClose ? T.text : T.textDim), x + w - 9, y + 4);
@@ -734,14 +747,14 @@ export function voiceDot(state, T, t = 0, reduced = false) {
     if (dim) shade(T.goldSh, { hi: T.gold, sh: T.goldLine }); else shade(T.gold, { hi: T.goldHi, sh: T.goldSh });
   } else if (state === 'bad') { const r = ramp(T.danger); im.disc(4.5, 4.5, 2.6, T.danger); im.set(4, 4, r.line); im.set(4, 5, r.line); im.set(5, 4, r.line); im.set(5, 5, r.line); }
   else shade(T.iron, { hi: T.ironHi, sh: T.ironSh });
-  return im;
+  return hdOf('voiceDot', im, state, T, t, reduced);
 }
 /** ctv-wave: 3 one-px bars stepping at 7.5 fps (4 drawings), centred in 7x7. reduced = frame 0. */
 export const WAVE = [[2, 5, 3], [4, 3, 5], [5, 2, 4], [3, 4, 2]];
 export function wave(T, k, color = T.ok) {
   const im = new PixelImage(7, 7);
   WAVE[k % 4].forEach((h, i) => im.rect(1 + i * 2, 3 - Math.floor((h - 1) / 2), 1, h, color));
-  return im;
+  return hdOf('wave', im, T, k, color);
 }
 /** ctv-mic chip: idle (iron keyline), live ("On air", red fill), muted (dark red, pink text, struck mic). Returns {w}. */
 export function drawMicChip(img, x, y, T, { state = 'idle', label = null } = {}) {
@@ -779,6 +792,7 @@ export function drawVoicePill(img, rx, y, T, { link = 'ok', mic = 'idle', talker
  * sphere r 13 (v2 52 px) offset by (kx, ky) texels while dragging.
  */
 export function drawJoystick(img, x, y, T, { active = false, kx = 0, ky = 0 } = {}) {
+  if (img.isView && HD_HOOKS.drawJoystick) return HD_HOOKS.drawJoystick(img, x, y, T, { active, kx, ky });
   const D = 64, c = D / 2, RIM = 5;
   for (let j = 0; j < D; j++) for (let i = 0; i < D; i++) {
     const dx = i + 0.5 - c, dy = j + 0.5 - c, d = Math.hypot(dx, dy);
@@ -808,7 +822,7 @@ export function knob(T) {
     im.set(i, j, l < 0.42 ? T.goldHi : l < 1.05 ? T.gold : T.goldSh);
   }
   im.rect(8, 8, 2, 2, T.parchmentHi); im.set(10, 8, T.parchmentHi);
-  return im;
+  return hdOf('knob', im, T);
 }
 /** ct-touch-use: a gold pill (door glyph + "Walk in"), locked = ink + iron + lock + dim italic. Returns {w, h}. */
 export function drawUseButton(img, x, y, T, { label = 'Walk in', locked = false, pressed = false } = {}) {
@@ -828,7 +842,7 @@ export function spinner(T, k, { head = T.goldHi, mid = T.gold, tail = T.goldSh, 
   const P = [[4, 1], [6, 2], [7, 4], [6, 6], [4, 7], [2, 6], [1, 4], [2, 2]];
   const im = new PixelImage(9, 9);
   P.forEach(([x, y], i) => { const d = (k - i + 8) % 8; im.set(x, y, d === 0 ? head : d === 1 ? mid : d === 2 ? tail : rest); });
-  return im;
+  return hdOf('spinner', im, T, k, { head, mid, tail, rest });
 }
 /** ct-conn: reconnecting banner (spinner + v2 text) or lost (text + [Try again]). Centred at cx. Returns {x, w, h}. */
 export function drawConn(img, cx, y, T, { lost = false, t = 0, reduced = false } = {}) {
@@ -865,16 +879,19 @@ export function drawLoading(img, cx, cy, T, { failed = false, t = 0, reduced = f
  * row 2 "Set" [−] "5 min" [+] "for"; row 3 the stage buttons (the running stage selected). w ≈ 160. Returns {w, h}.
  */
 export function drawStClock(img, x, y, w, T, o = {}) {
-  const { isSet = true, stage = 'nominations', time = '4:12', paused = false, urgent = false, minutes = 5, hover = null, onTheBlock = true } = o;
+  // (additive, 2026-10-17, the demo critic's P3-13) o.done: the countdown is at zero: the stage's due label ("Nominations
+  // open") and a "Start" button (restart) instead of "Pause" beside the 0:00; the clear x (reset) stays. No o.done = as before.
+  const { isSet = true, stage = 'nominations', time = '4:12', paused = false, urgent = false, minutes = 5, hover = null, onTheBlock = true, done = false } = o;
   const h = 58;
+  const goLabel = paused ? 'Resume' : done ? 'Start' : 'Pause', goKey = paused ? 'resume' : done ? 'start' : 'pause';
   drawBox(img, x, y, w, h, S.panel('iron'), T);
   text(img, x + 6, y + 4, 'Town clock:', T.textDim);
   if (isSet) {
-    const P = stagePal(paused ? 'paused' : stage, T), lab = stageLabel(stage, { paused, onTheBlock }).toUpperCase();
+    const P = stagePal(paused ? 'paused' : stage, T), lab = stageLabel(stage, { paused, onTheBlock, due: done }).toUpperCase();
     // UI integration r2: a long stage label ('NOMINATIONS CLOSE IN') pushed the timer under the row-1 buttons, which
     // then covered its top rows. Measure the buttons first; when the label + timer would reach them, drop the line 4 px
     // (below the buttons, still above row 2).
-    const btnW = 13 + buttonWidth('+1m', 4) + buttonWidth(paused ? 'Resume' : 'Pause', 4) + 7 + 6;
+    const btnW = 13 + buttonWidth('+1m', 4) + buttonWidth(goLabel, 4) + 7 + 6;
     const dy = x + 6 + tw(lab, LABEL) + 4 + tw(time, DISPLAY) > x + w - 5 - btnW - 2 ? 4 : 0;
     text(img, x + 6, y + 15 + dy, lab, P.label, LABEL);
     text(img, x + 6 + tw(lab, LABEL) + 4, y + 12 + dy, time, urgent ? ramp(T.danger).hi : P.time, DISPLAY);
@@ -882,7 +899,7 @@ export function drawStClock(img, x, y, w, T, o = {}) {
   // row-1 buttons (right)
   if (isSet) {
     let bx = x + w - 5;
-    const items = [['clear', null, GLYPH.close(T, T.text), 13], ['add', '+1m', null, buttonWidth('+1m', 4)], [paused ? 'resume' : 'pause', paused ? 'Resume' : 'Pause', paused ? GLYPH.play(T) : GLYPH.pause(T), 0]];
+    const items = [['clear', null, GLYPH.close(T, T.text), 13], ['add', '+1m', null, buttonWidth('+1m', 4)], [goKey, goLabel, paused || done ? GLYPH.play(T) : GLYPH.pause(T), 0]];
     items[2][3] = buttonWidth(items[2][1], 4) + 7;
     for (const [k, l, g, bw] of items) { bx -= bw; btn(img, bx, y + 3, bw, 13, l, hover === k ? 'hover' : 'normal', T, { glyph: g }); bx -= 2; }
   }

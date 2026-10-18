@@ -4,11 +4,17 @@
 //
 // Timelines are expressed in whole 30 Hz grid frames (docs/UI.md §2.8); v2 durations are kept exactly (V2_MS -> TIMING).
 import * as THREE from 'three';
-import { PixelImage, drawText, textWidth, wrapText, drawBox, frameAt, dissolve, GRID_HZ } from '../kit.js';
+import { PixelImage, drawText, textWidth, wrapText, drawBox, frameAt, dissolve, GRID_HZ, withHD } from '../kit.js';
 import * as A from './art.js';
 import { tokens } from '../kit.js';
 const TOK_NIGHT = tokens('night');
 
+/**
+ * (density wave 2, additive; docs/UI-HD-WAVE2.md) Empty unless src/ui/hd/events.js prepareEventsHD() fills it: then
+ * drawCaption / drawBanner / the vote-clock hand draw HD when L.screen is a density VIEW. With no hooks (the default)
+ * every function here is byte-identical to before (shots/ui-hd-wave2/regress.mjs).
+ */
+export const HD_HOOKS = {};
 export const gf = (ms) => Math.round((ms * GRID_HZ) / 1000);          // ms -> whole grid frames
 /** Grid frame index of a time since an event (0.01-frame tolerance: capture times come back rounded, docs/UI.md §6). */
 export const gridK = (dt) => Math.floor(dt * GRID_HZ + 0.01);
@@ -41,7 +47,7 @@ export function put(img, F, name, x, y, anchorKey = null) {
 const _cache = new Map();
 export const cached = (key, fn) => { let v = _cache.get(key); if (!v) { v = fn(); _cache.set(key, v); if (_cache.size > 600) _cache.delete(_cache.keys().next().value); } return v; };
 /** A copy of an image with a Bayer dissolve applied (k 0..1). */
-export const dissolved = (im, k) => (k <= 0 ? im : dissolve(im.clone(), k));
+export const dissolved = (im, k) => (k <= 0 ? im : im.hd ? withHD(dissolve(im.clone(), k), dissolve(im.hd.clone(), k), im.hdOff) : dissolve(im.clone(), k));
 /** Standard group envelope on grid frames: pop for popF frames, then hold, then a 3-step dissolve (15 fps). */
 export function env(k, durF, { popF = 2, outHold = 2 } = {}) {
   if (k < 0) return null;
@@ -242,12 +248,16 @@ export function drawVoteHud(hud, L, F, v, r, { t = L.t, still = false, title = n
     let d = i1 - i0; if (d < 0) d += n;
     const fi = i0 + d * (still ? 1 : S.hand.u), a = (fi / n) * Math.PI * 2 - Math.PI / 2;
     const ex = Math.round(fx + c - 0.5 + Math.cos(a) * (A.VC.r - 7)), ey = Math.round(fy + c - 0.5 + Math.sin(a) * (A.VC.r - 7));
-    const hm = new PixelImage(A.VC.size, A.VC.size);
-    hm.line(Math.round(c - 0.5), Math.round(c - 0.5), ex - fx, ey - fy, T.gold);
-    hm.outline(T.goldLine);
-    L.screen.blit(hm, fx, fy);
+    if (L.screen.isView && HD_HOOKS.voteHand) HD_HOOKS.voteHand(L.screen, fx, fy, a, T, { hand: true });
+    else {
+      const hm = new PixelImage(A.VC.size, A.VC.size);
+      hm.line(Math.round(c - 0.5), Math.round(c - 0.5), ex - fx, ey - fy, T.gold);
+      hm.outline(T.goldLine);
+      L.screen.blit(hm, fx, fy);
+    }
   }
-  L.screen.disc(fx + c, fy + c, 2.6, T.gold); L.screen.set(fx + c - 1, fy + c - 1, T.goldHi);
+  if (L.screen.isView && HD_HOOKS.voteHand) HD_HOOKS.voteHand(L.screen, fx, fy, 0, T, { hand: false });
+  else { L.screen.disc(fx + c, fy + c, 2.6, T.gold); L.screen.set(fx + c - 1, fy + c - 1, T.goldHi); }
   seats.forEach((m, i) => {
     const s = S.seats[m.seat] || {};
     const raisedK = still ? 0 : frameAt(t, 2.5, 2);
@@ -293,7 +303,9 @@ export function captionImage(F, text, glyphName, T, { narrow = 0 } = {}) {
   return img;
 }
 /** Phase caption in the events slot (screen, centred at cx, top y): pop (2 frames, narrower), hold durF, dissolve. */
-export function drawCaption(L, F, { text, glyph = null, k, durF, cx = null, y = 23, still = false }) {
+export function drawCaption(L, F, opts) {
+  if (L.screen.isView && HD_HOOKS.drawCaption) return HD_HOOKS.drawCaption(L, F, opts);
+  const { text, glyph = null, k, durF, cx = null, y = 23, still = false } = opts;
   const e = env(k, durF);
   if (!e) return;
   const T = L.tok;
@@ -416,7 +428,9 @@ function bannerImage(F, kind, T, frac = 1, showText = true) {
 /** Banner top y (r3): the upper third, 4 px under the caption slot (caption rows 23..37): clear of the Storyteller in
  *  the centre of the square and of the bottom pills (critic c1/banner-start-night.png); the emblem rows are mostly empty. */
 export const BANNER_Y = 42;
-export function drawBanner(L, F, kind, k, { cx = null, y = BANNER_Y, still = false } = {}) {
+export function drawBanner(L, F, kind, k, opts = {}) {
+  if (L.screen.isView && HD_HOOKS.drawBanner) return HD_HOOKS.drawBanner(L, F, kind, k, opts);
+  const { cx = null, y = BANNER_Y, still = false } = opts;
   const B = TIMING.banner, T = L.tok;
   if (k < 0) return;
   const unF = B.unfurlDrawings * B.unfurlHold;

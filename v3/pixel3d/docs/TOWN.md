@@ -195,6 +195,7 @@ Required piece APIs (keep them working; extend freely):
 |---|---|
 | house-N | `setDoor(f)` (0..1), `setLit(bool)` (windows glow or go dark: occupied / empty houses) |
 | clocktower | `setTime(h, m)` (hands are live in the game), optional `ring(t0)` (bell swing from t0); `api.time` (total minutes) is read by house-9's dial (a documented `getTime()` → `[h, m]` is requested from the owner, §12) |
+| clocktower (pass-B hook, additive) | `api.dials` = the four dials in WORLD space `[{matrix (world frame of the face: +z out, +y = XII, origin = dial centre), local (the same in the piece's group frame), center, normal, k (1 front, 0.86 sides / back), dial, bezel, surround (radii m)}]`; `api.hands` = the live hands' group (the demo's tower timer hides it while it shows the countdown on the same frames and shows it again after); `api.body` = `{cz, base, stage, belfry, door {w, y0, zFront}, dialY, bellPivotY}` (local dimensions: where the demo hangs its hour-board over the door). Nothing else in the piece changed (docs/DEMO.md §4.9). |
 | dais | `seatPos(i, n)`, `setSeat(i, state)` (`'empty'|'alive'|'dead'|'nominated'|'voting'`, or an object `{occupied, dead, ghostVote, nominated, onBlock, voteHand}`), `setPhase('day'|'night'|'vote'|'execution'|'nomination')`, `setPhase('vote', {from, t0, perSeat})`, `setHand(i)`, `setNight(bool)` |
 | ground | `heightAt(x, z)`, `terrain` (the createTerrain result or equivalent) |
 | props, foliage | none required; expose `spots` / `perches` / `lights` anchors |
@@ -866,3 +867,17 @@ CONTRACT-REQUESTS (round 6):
   position). Door rays visible with no cut-away: 0.89 (vis=1). Keep it there.
   Follow-up (user: "rookery house door is still not visible"): house-12 is now ry -25 deg, dx -3.0, dz 3.0 — the chamfer door
   with its wreath faces the camera at yaw 0 (vis=1: 1.0).
+
+## 13. Demo pass B hooks (2026-10-17, the demo's vote camera / tower timer / tower interior; docs/DEMO.md §4.9)
+
+One additive change in `src/town/pieces/clocktower.js` (the `api` object only; the build, the geometry, the hands' own
+`setTime` and the anchors are untouched): `api.dials`, `api.hands`, `api.body` (table in §4). Uses in the demo:
+- `src/demo/votecam.js` frames the vote camera on the dial that faces it (`dials[i].center / normal / surround`);
+- `src/demo/towertimer.js` draws the countdown wedge + hand on all four `dials[i].local` frames (a child group of the
+  piece's group), hides `api.hands` while the timer is not idle, and hangs the hour-board from `body.door.zFront` /
+  the base cornice (also a child group of the piece's group, so the cut-away / town park treat it as the tower's);
+- `src/demo/tower-interior.js` (the walkable clockwork room) is demo-side: the tower piece stays a landmark built the
+  same way; the demo's player enters through the piece's own door anchor (`clocktower-door`, unchanged).
+Without the hook (an older piece) the demo falls back to the constants of the piece's header (DIAL 5.45 m, stage half
+sizes 1.75 x 1.6, body centre z -0.2) for the camera; the dials then keep the time of day and the countdown shows on
+the hour-board + the HUD chip only.

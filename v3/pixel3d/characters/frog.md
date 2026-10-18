@@ -4,6 +4,26 @@
 `shots/char-frog/self/`. Identity source (read only): `pipgws/packages/assets/scripts/cast/frog.ts`, `refs/cast/frog.png`.
 Rendered on render-host (RTX 4090, every report.txt GPU line).
 
+## Ghost port (2026-10-17) — shared `spec.ghost` (supersedes the t2 ghost recipe below)
+- **Why:** the t2 ghost was a per-clip shader trick (`ghostFlag`/`halo` bones + `material.tones`), so a dead player
+  WALKING as the frog (the demo's default character) looked alive until he stopped. Now `spec.ghost` (playbook wave-3
+  banner) draws the look and `ch.ghost = 1` keeps the walk, talk and emotes ghost-shaded.
+- **Spec:** `ghost: { hover: 0.14, keepHue: 0.3, spent: ['#3A4260', '#B0BACE'] }` — keepHue 0.3: mint skin + red cape are
+  the identity (pale mint-blue ghost, pink cape); spent light end lifted from #98A2BA (the default left a murky slate
+  frog, `shots/ghost-port/frog/z-g8.png` r1). Default halo (head, lift 0.12, r 0.15) floats clear of the domes
+  (`ghost.islands` 2 → 2). Removed: `ghostFlag` + `halo` bones, the 8-box halo parts, `GHOST` / `ghostMaterial()` and the
+  `three` import. Skeleton 22 bones (was 24).
+- **Clips (pose only, `dynamics: 'hold'`):** ghost f 0/18/36/54: `pos` y = bob [0, 0.028, 0.056, 0.028] (the module adds
+  the 0.14 m hover + floating FK legs), spine −3, chest −4, head −6, arms drifting out (+0/2/4/2°), cape0 −6−a, knees
+  bent (thigh 16, shin −26, foot 28). ghost-spent: 1 texel lower, bob [0, 0.028, 0.028, 0], chest +6, head +14 with roll
+  [3, 0, −3, 0], eyes half shut, arms hanging, cape down.
+- **Checks (render-host):** pack `shots/ghost-port/frog/pack/` (`--preset cast --raw`) 108 pass / 20 warn / 0 fail (= before);
+  ghost amplitude 24 %, key_delta 51 %, off_grid 0, flicker 0, islands 2 → 2; spent amplitude 9 %, key_delta 13 %.
+  Living renders unchanged: 0 / 2329 raw frames differ vs the pre-port pack (`shots/ghost-port/gp_ab.py`). Walking ghost in
+  the demo (`?char=frog`, key 5, D held): rig ghost level 1, `ch.ghost` 1 while moving, pale at noon and self-lit at night
+  (`shots/ghost-port/frog/walking-ghost-{noon,night}.png`). The t2 notes below on the ghost mechanism and the ghost
+  timing line are historical.
+
 ## T2 touch-up (2026-10-16, Clocktower-only rule) — what changed
 - **New game clips:** `point` (one-shot 36 f: wind-up 4 → sword arm out to his right-forward at shoulder height, wrist
   turned so the BLADE points back behind the fist = he points with the gauntlet, head + chest turned along the arm, jaw
@@ -101,9 +121,9 @@ sig_ground noon-sun dH 33, noon-shade dL +21 %, golden-sun dH 31, golden-shade d
 - oath (t2): f0 coil (5) · f5 SALUTE upperArmR [20, 0, 100], forearmR 40, handR [60, 0, −60], `sparkle@weapon` (10) ·
   f15 PLEDGE upperArmR [30, 0, 12], forearmR 105 (10) · f25 bowed, eyes half-shut, `emote:drop@crown` (24) · f49 idle.
 - point (t2): f0 wind-up (4) · f4 POINT upperArmR [24, 0, 72], handR [−90, 90, 0], jaw 18 (12) · f16 beat (8) · f24 point (12) · f36 idle.
-- ghost / ghost-spent (t2, loop 72): pos y 0.32 + bob [0, 0.028, 0.056, 0.028] (spent half) at f 0/18/36/54;
-  `ghostFlag.s` [1,1,1] / [0.5,0.5,0.5]; `halo.p` [0, 0.47, −0.02] (ghost only). The loop path IK's the legs to the
-  ground plants, the hips dip 0.1 → net hover ≈ 0.22 m, legs hang straight (dithered).
+- ghost / ghost-spent (ghost port, loop 72, hold): pos y = bob [0, 0.028, 0.056, 0.028] (spent: −0.028 + [0, 0.028,
+  0.028, 0]) at f 0/18/36/54 on top of the module hover 0.14 m (FK floating legs, knees 16/−26); halo + ramps from
+  `spec.ghost`. (t2 was pos 0.32 + `ghostFlag.s` + `halo.p`.)
 - walk/run (LegGait hop): cycle [0.3, 0.267] s, 4 drawings, duty [0.25, 0.2], hop [0.38, 0.46]·H, lift [0.05, 0.06] m.
 - turn: 45° steps held 2 grid frames, then recovery hops (turn.foot_slide 4.33, unchanged).
 

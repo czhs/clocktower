@@ -30,19 +30,30 @@
 // for art; partial alpha only for the scrim token and banded glows (docs/UI.md §2.3).
 // Cost: two texture uploads per frame (~0.9 MB + 0.9 MB at 640x360) + one fullscreen pass + one overlay quad.
 // CONTRACT-REQUEST (lead): a pipeline.postRender[] hook would replace the render() wrapper below.
+// (density round, opt-in) createUILayers(engine, { density: 2 [, policy: 'round'|'floor'|'ceil'|n] }) or ?uidensity=2
+// [&uipolicy=floor] attaches L.hd: UI px SMALLER than the scene texel (L.hd.screen / L.hd.world / L.hd.useDepth +
+// putDepth, density views). src/ui/hd/layers.js, docs/UI.md "Density". Without the option nothing changes.
 import * as THREE from 'three';
 import { MARGIN } from '../core/PixelCamera.js';
 import { PixelImage, tokens, dissolve as dissolveImg } from './kit.js';
+import { attachHD } from './hd/layers.js';
 
 const SRGB_GLSL = /* glsl */`
 vec3 uiSrgbToLin(vec3 c) { return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c)); }`;
 
-export function createUILayers(engine, { order = 300, tod = null, timeFn = null } = {}) {
+export function createUILayers(engine, { order = 300, tod = null, timeFn = null, density = null, policy = null, screenTier = null } = {}) {
+  density ??= Number(engine.params?.get?.('uidensity') || 1);
+  policy ??= engine.params?.get?.('uipolicy') || 'round';
+  if (/^\d+$/.test(String(policy))) policy = Number(policy);
+  // (density round, opt-in) screenTier 'hd' (?uiscreen=hd, with a density > 1): L.screen IS the D=2 screen view
+  // (L.hd.screenView): every existing screen-tier drawer upgrades with no change (D=2 faces + frames, HD sprites where
+  // attached, 1x sprites block-scaled = the same size). Writers of L.screen.data directly draw nothing (use view.base).
+  const hdScreen = density > 1 && (screenTier ?? engine.params?.get?.('uiscreen')) === 'hd';
   const fns = [];
   let world = null, ground = null, screen = null, texW = null, texG = null, texS = null;
   const L = {
     engine, MARGIN, enabled: true, screenEnabled: true,
-    get world() { return world; }, get ground() { return ground; }, get screen() { return screen; },
+    get world() { return world; }, get ground() { return ground; }, get screen() { return hdScreen && L.hd ? L.hd.screenView : screen; },
     tok: tokens(tod || engine.style?.timeOfDay || 'noon'),
     t: 0,
     /** Integer pixel (x right, y down) of world point p in L.world. */
@@ -54,9 +65,12 @@ export function createUILayers(engine, { order = 300, tod = null, timeFn = null 
       return { x: Math.floor((p.dot(R) - cx) / t + engine.lowW / 2 + MARGIN), y: Math.floor(engine.lowH / 2 + MARGIN - (p.dot(U) - cy) / t) };
     },
     /** Same point in L.screen coordinates (sub-texel offset ignored: < 1 px). */
-    atScreen(p) { const q = L.at(p); return { x: q.x - MARGIN, y: q.y - MARGIN }; },
+    atScreen(p) {
+      if (hdScreen && L.hd) { const q = L.hd.atScreen(p); return { x: Math.floor(q.x / L.hd.d), y: Math.floor(q.y / L.hd.d) }; }
+      const q = L.at(p); return { x: q.x - MARGIN, y: q.y - MARGIN };
+    },
     /** Is a screen-layer point inside the visible frame (with a margin)? */
-    onScreen(x, y, m = 0) { return x >= m && y >= m && x < engine.lowW - m && y < engine.lowH - m; },
+    onScreen(x, y, m = 0) { const w = hdScreen && L.hd ? L.screen.w : engine.lowW, h = hdScreen && L.hd ? L.screen.h : engine.lowH; return x >= m && y >= m && x < w - m && y < h - m; },
     add(fn, z = 0) { fns.push({ fn, z }); fns.sort((a, b) => a.z - b.z); return fn; },
     remove(fn) { const i = fns.findIndex((f) => f.fn === fn); if (i >= 0) fns.splice(i, 1); },
     setTod(name) { L.tok = tokens(name); },
@@ -162,7 +176,9 @@ export function createUILayers(engine, { order = 300, tod = null, timeFn = null 
     ensureDepth();
     if (dimg) { dimg.clear(); ddepth.fill(1e9); dany = false; engine.camera.snapWorld(_tmp2.set(0, 0, 0), _tmp); }
     L.t = timeFn ? timeFn(engine.time ?? 0) : engine.time ?? 0;   // UI clock (a frozen stage clock freezes UI too)
+    L.hd?.begin();
     if (L.enabled) for (const { fn } of fns) fn(L);
+    L.hd?.end();
     texW.needsUpdate = true; texG.needsUpdate = true; texS.needsUpdate = true;
   };
 
@@ -210,14 +226,18 @@ export function createUILayers(engine, { order = 300, tod = null, timeFn = null 
   const render0 = pipeline.render.bind(pipeline);
   pipeline.render = function renderWithUI() {
     render0();
-    if (!L.enabled || !L.screenEnabled || !pass.enabled || !screen) return;
+    if (!L.enabled || !pass.enabled) return;
     const r = engine.renderer;
+    L.hd?.renderWorld(r);                       // (density) A-HD over the scene + L.world, under the screen tier
+    if (!L.screenEnabled || !screen) return;
     overlayMat.uniforms.uScale.value = engine.pixelScale;
     r.setRenderTarget(null);
     const ac = r.autoClear; r.autoClear = false;
     r.render(overlayScene, overlayCam);
     r.autoClear = ac;
+    L.hd?.renderScreen(r);                      // (density) S-HD over the 1x screen tier
   };
   L.pass = pass;
+  if (density > 1) L.hd = attachHD(L, engine, { density, policy, getWorldTex: () => texW });
   return L;
 }

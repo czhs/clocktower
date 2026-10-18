@@ -26,12 +26,23 @@
 //   6c touch          a phone (390 x 844 @2x, touch): the HUD below the folded panel, a tap on the toolbar notebook opens it, the
 //                     notebook above the reader, the panel's notebook button folds the panel, long press = the touch pie
 //                     (sticky, tap a wedge = a pin, no walking), a short tap still walks, the dock's touch hints
-//   7 quality reload  store quality=low -> the page reloads; character / phase / clock / position must survive
+//   6d gameui2        the action bar (every key binding has a button; palette / tray / pin / point / dock / notebook by
+//                     REAL clicks, the tooltip), the tip (first run, the bulb, the fly + glow, never show again), the
+//                     ambient layer (pigeons scatter, day / night insects, life off hides it, 0 lights), the events
+//                     (captions, vote clock, execution, night veil, dawn, the ghost reveal), off-screen arrows, labels
+//                     under the panel; programs constant
+//   6e storyteller    a ?wip=1 night page: the swap to the Storyteller compiles <= 3 programs (no lantern PointLight),
+//                     the carried lantern light is lit, the poof plays, no long frame
+//   8 passb           (B) pass B (tools/demo-play-passb.mjs): the vote camera's stepped transition + framing (every
+//                     seat + the clock face, panel open / hidden), the seated cast, the tower timer by keys + the ST
+//                     control (dial / hour-board / chip agree), walking into / out of the tower, no program compiled
+//   7 quality reload  store quality=low -> the page reloads; character / phase / clock / position must survive; the
+//                     tip stays away after "never show again" (the bulb stays)
 // Exit 1 on any console / page / shader error, __demo.errors, a door not reached, a swap that fails, a key that did nothing.
 //
 //   tools/remote.sh node tools/demo-play.mjs [--out shots/demo-deploy/play] [--doors auto|house-9,house-14,...]
 //        [--every 400] [--gif-fps 8] [--gif-scale 0.4] [--size 1280x720] [--q "..."] [--base http://<tailnet-ip>:8090]
-//        [--skip loading,crates,houses,doors,roster,time,phases,ceremony,controls,gameui,touch,reload] [--day-speed 120] [--chars 5]
+//        [--skip loading,crates,houses,doors,roster,time,phases,ceremony,controls,gameui,gameui2,storyteller,touch,passb,reload] [--day-speed 120] [--chars 5]
 //        [--houses auto|house-3,house-9,house-12]
 //   rsync -az render-host:pixel3d/shots/demo-deploy/play/ shots/demo-deploy/play/ --exclude frames/      # then LOOK at them
 // Writes <out>/NN-<step>.png, <out>/play.gif (tools/sheet.py gif), <out>/sheet.png (contact sheet), <out>/play.json.
@@ -158,7 +169,7 @@ async function waitReady() {
 async function townGrid() {
   return page.evaluate(async () => {
     const L = window.__demo.demo.layout;
-    const api = await import(new URL('src/demo/api.js', location.href).href);
+    const api = await import(new URL('src/demo/api.js', (document.querySelector('script[src*="src/demo/main.js"]')?.src ?? location.href).replace(/src\/demo\/main\.js.*$/, '')).href);
     const W = L.TOWN_W, H = L.TOWN_H, g = [];
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) g.push(L.blocked(x, y) ? 1 : 0);
     const doors = {};
@@ -323,7 +334,7 @@ try {
   if (!SKIP.has('loading')) {
     for (let k = 0; k < 400; k++) {
       const smp = await page.evaluate(async () => {
-        const m = await import(new URL('src/demo/loading.js', location.href).href).catch(() => null);
+        const m = await import(new URL('src/demo/loading.js', (document.querySelector('script[src*="src/demo/main.js"]')?.src ?? location.href).replace(/src\/demo\/main\.js.*$/, '')).href).catch(() => null);
         const el = document.getElementById('demo-loading');
         return { t: Math.round(performance.now()), value: m?.loading?.value ?? null, label: m?.loading?.label ?? null, done: m?.loading?.done ?? null,
           shown: !!el && getComputedStyle(el).display !== 'none', ready: !!window.__demo?.ready, err: window.__demo?.errors?.length ?? 0 };
@@ -378,7 +389,7 @@ try {
     // a walk-through prop with free ground 1.3 m either side (an axis-aligned line through its centre)
     const plan = await page.evaluate(async () => {
       const d = window.__demo.demo, L = d.layout, col = d.player.collision;
-      const cm = await import(new URL('src/demo/collision.js', location.href).href);
+      const cm = await import(new URL('src/demo/collision.js', (document.querySelector('script[src*="src/demo/main.js"]')?.src ?? location.href).replace(/src\/demo\/main\.js.*$/, '')).href);
       const out = [];
       for (const o of L.objects) {
         if (!cm.walkable(o)) continue;
@@ -726,7 +737,8 @@ try {
     note(cKey ? `ceremony key: ${cKey}` : 'no ceremony key: time.playCeremony()');
     const seen = [], t0 = Date.now();
     let last = null, maxSeats = 0, deadNominee = false, shots = 0;
-    while (Date.now() - t0 < 40000) {
+    // (vote-fix5) the ceremony runs ~36 s now (the hand 1.1 s per seat, 3 s after the vote opens)
+    while (Date.now() - t0 < 60000) {
       const i = await info();
       const c = await page.evaluate(() => window.__demo.demo.time?.ceremony ?? null);
       const ph = i.state.phase;
@@ -736,10 +748,17 @@ try {
       if (!c && seen.length > 1) break;
       await sleep(250);
     }
-    report.steps.ceremony = { phases: seen, maxSeats, deadSeen: deadNominee, ms: Date.now() - t0 };
-    console.log(`   phases ${seen.join(' -> ')}, seats up to ${maxSeats}, ${Date.now() - t0} ms`);
+    // (critic P2-4) the ceremony's night is real night: under the veil the clock is scrubbed into the night hours (it
+    // started at 17:00) and the chips read night (clock chip NIGHT, phase chip "NIGHT 1" + the moon)
+    await sleep(1500);
+    const ni = await info(), chips = await page.evaluate(() => window.__demo.demo.gameui?.info?.().chips ?? null);
+    const nh = ni.state.timeOfDay;
+    report.steps.ceremony = { phases: seen, maxSeats, deadSeen: deadNominee, ms: Date.now() - t0, night: { hours: nh, chips } };
+    console.log(`   phases ${seen.join(' -> ')}, seats up to ${maxSeats}, ${Date.now() - t0} ms · after: ${nh.toFixed(2)} h, chips ${JSON.stringify(chips)}`);
     for (const want of ['nomination', 'vote', 'execution', 'night']) if (!seen.includes(want)) fail(`ceremony: never reached ${want} (${seen.join(' -> ')})`);
     if (maxSeats < 5) fail(`ceremony: only ${maxSeats} seats filled`);
+    if (!(nh >= 20 || nh < 6)) fail(`ceremony: the night phase left the clock at ${nh.toFixed(2)} h (daylight under NIGHT, critic P2-4)`);
+    if (chips && (chips.phase !== 'Night 1' || chips.icon !== 'moon' || chips.clock !== 'Night')) fail(`ceremony: the chips after the night fall read ${JSON.stringify(chips)}`);
     await setState({ camera: 'follow', phase: 'day', nominee: null });
     await sleep(500);
   }
@@ -816,10 +835,15 @@ try {
     else {
       await setState({ camera: 'follow', timeOfDay: 12.5, timeSpeed: 0, phase: 'day', nominee: null, zoom: 12, yaw: 0, ui: true, bookStyle: 'held', pointerScale: 'new' });
       await page.evaluate(() => { window.__playNoReload = 1; });
+      // (B) the seats empty first: pass B puts CAST characters (game-UI townsfolk) on the occupied seats, so a click
+      // beside the player at the south seats would pin a person, not a place
+      await page.evaluate(() => window.__demo.demo.store.set({ seats: Array.from({ length: 15 }, () => ({ occupied: false, dead: false, ghostVote: true, nominated: false, onBlock: false })) }, 'test'));
       await steerTo({ x: 22.5, z: 25.5 }, { timeout: 5000 }).catch(() => {});
       await sleep(600);
       const prog0 = (await info()).programs;
-      const S = await page.evaluate(() => window.__demo.demo.engine.pixelScale);
+      // (density) gameui rects / points are in its LOGICAL screen px: CSS px = unit x logical (unit = 2 at 1280x720 for
+      // both D=2 and 1x; 4 at 1080p 'round' D=2)
+      const S = await page.evaluate(() => window.__demo.demo.gameui?.info?.().unit ?? window.__demo.demo.engine.pixelScale);
       const px = (s, dy = 0) => ({ x: s.x * S + S / 2, y: (s.y + dy) * S + S / 2 });
       const visibleNpc = (g) => g.members.find((m) => !m.you && m.screen.x > 24 && m.screen.x < g.screen[0] - g.cover.right - 24 && m.screen.y > 40 && m.screen.y < g.screen[1] - 50);
       const r = report.steps.gameui = {};
@@ -850,7 +874,9 @@ try {
       r.pointPlace = g.point;
       if (g.point?.kind !== 'place') fail(`gameui: right-click on the ground did not point at a spot (${JSON.stringify(g.point)})`);
       await sleep(3300);
-      // -- the pie: right-hold, hover teal, release = a teal pin with the drop animation
+      // -- the pie: right-hold, hover the Pin wedge (your colour: teal here), release = a teal pin with the drop animation
+      // (emoji, docs/UI-EMOJI.md: the pie = Point, the 7 reactions, ONE Pin wedge in your current colour)
+      await page.evaluate(() => { window.__demo.demo.gameui.color = 'teal'; });
       g = await gi();
       const pinsBefore = g.pins.length;
       const pc = px({ x: you().screen.x - 70, y: you().screen.y + 30 });
@@ -861,6 +887,11 @@ try {
       r.pie = g.pie;
       if (!g.pie?.open) fail('gameui: holding the right button did not open the pie');
       else {
+        // the wedges: Point, the 7 reactions, one Pin (no colour wedges)
+        const EJK = ['agree', 'heart', 'laugh', 'shocked', 'question', 'suspicious', 'disagree'].map((x) => `emoji:${x}`);
+        r.pieItems = g.pie.items;
+        if (g.pie.items[0] !== 'point' || !EJK.every((x) => g.pie.items.includes(x)) || g.pie.items.filter((x) => x.startsWith('pin:')).length !== 1 || g.pie.items.length !== 9)
+          fail(`gameui: the pie's wedges are not Point + 7 reactions + one Pin (${JSON.stringify(g.pie.items)})`);
         const k = g.pie.items.indexOf('pin:teal'), n = g.pie.items.length, ang = -Math.PI / 2 + k * 2 * Math.PI / n;
         await page.mouse.move((g.pie.at[0] + Math.cos(ang) * 26) * S, (g.pie.at[1] + Math.sin(ang) * 26) * S, { steps: 4 });
         await sleep(200);
@@ -879,7 +910,23 @@ try {
       if (!teal) fail('gameui: releasing on the teal wedge dropped no teal pin');
       if (!g.pops.some((p) => p.who === 'you' && p.kind === 'pin' && p.color === 'teal')) fail('gameui: no pin pop over the player');
       await shot('ui-pin');
+      // -- a REACTION from the pie: right-hold, hover the laugh wedge, release = the laugh emoji pops over you
+      await sleep(900);
+      {
+        const pr = px({ x: you().screen.x - 60, y: you().screen.y + 40 });
+        await page.mouse.move(pr.x, pr.y); await page.mouse.down({ button: 'right' }); await sleep(400);
+        g = await gi();
+        const k = g.pie?.items?.indexOf('emoji:laugh') ?? -1;
+        if (k >= 0) { const n = g.pie.items.length, ang = -Math.PI / 2 + k * 2 * Math.PI / n; await page.mouse.move((g.pie.at[0] + Math.cos(ang) * 26) * S, (g.pie.at[1] + Math.sin(ang) * 26) * S, { steps: 4 }); await sleep(150); }
+        await page.mouse.up({ button: 'right' }); await sleep(300);
+        await shot('ui-react-pop');
+        g = await gi();
+        r.reactPie = g.pops.filter((p) => p.kind === 'emoji').map((p) => [p.who, p.emoji]);
+        if (!g.pops.some((p) => p.who === 'you' && p.kind === 'emoji' && p.emoji === 'laugh')) fail(`gameui: the pie's laugh wedge popped no laugh over you (${JSON.stringify(g.pops)})`);
+        if (g.pins.length !== (await gi()).pins.length) fail('gameui: a reaction dropped a pin');
+      }
       // right-drag (moves past RIGHT_DRAG_PX at once) + release in the dead zone = sticky; then click the crimson wedge
+      await page.evaluate(() => { window.__demo.demo.gameui.color = 'crimson'; });
       const pd = px({ x: you().screen.x + 80, y: you().screen.y - 10 });
       await page.mouse.move(pd.x, pd.y);
       await page.mouse.down({ button: 'right' });
@@ -897,24 +944,48 @@ try {
         g = await gi();
         if (!g.pins.some((p) => p.color === 'crimson' && !p.removing)) fail('gameui: clicking the crimson wedge of the sticky pie dropped no pin');
       }
-      // the dock: G, the violet swatch, F at the cursor
+      // the dock (the REACTIONS dock): G; no swatch row; its small colour button opens the AUTO + 8-dot picker, violet
+      // picked (saved in localStorage 'ct-pin-color'), F at the cursor = a violet pin; 1-7 react while it is open
       await press('KeyG');
       await sleep(200);
       g = await gi();
-      if (!g.dock?.open || !g.dock.rects) fail('gameui: G did not open the social dock');
+      if (!g.dock?.open || !g.dock.rects) fail('gameui: G did not open the reactions dock');
       else {
-        const sw = g.dock.rects['swatch:violet'];
-        await page.mouse.click((sw.x + sw.w / 2) * S, (sw.y + sw.h / 2) * S);
-        await sleep(150);
+        const keys = Object.keys(g.dock.rects);
+        r.dockRects = keys;
+        if (keys.some((k) => k.startsWith('swatch:'))) fail(`gameui: the dock still has a swatch row (${keys.join(',')})`);
+        if (keys.filter((k) => k.startsWith('emoji:')).length !== 7 || !g.dock.rects.pinColor) fail(`gameui: the dock lacks the 7 reactions / the colour button (${keys.join(',')})`);
+        await shot('ui-dock-reactions');
+        const cb = g.dock.rects.pinColor;
+        await page.mouse.click((cb.x + cb.w / 2) * S, (cb.y + cb.h / 2) * S);
+        await sleep(200);
+        g = await gi();
+        if (!g.dock.picker?.rects?.['color:violet']) fail(`gameui: the colour button opened no picker (${JSON.stringify(g.dock.picker)})`);
+        else {
+          await shot('ui-pin-picker');
+          const sw = g.dock.picker.rects['color:violet'];
+          await page.mouse.click((sw.x + sw.w / 2) * S, (sw.y + sw.h / 2) * S);
+          await sleep(200);
+        }
         const pf = px({ x: you().screen.x + 30, y: you().screen.y - 46 });
         await page.mouse.move(pf.x, pf.y);
         await press('KeyF');
         await sleep(600);
         g = await gi();
-        r.dock = { color: g.dock.color, pins: g.pins.map((p) => p.color) };
-        if (g.dock.color !== 'violet') fail(`gameui: the violet swatch set the colour to ${g.dock.color}`);
+        const stored = await page.evaluate(() => { try { return localStorage.getItem('ct-pin-color'); } catch { return null; } });
+        r.dock = { color: g.dock.color, pins: g.pins.map((p) => p.color), pinColor: g.pinColor, stored, picker: !!g.dock.picker };
+        if (g.dock.color !== 'violet' || g.pinColor?.auto !== false) fail(`gameui: the picker's violet set the colour to ${g.dock.color} (auto ${g.pinColor?.auto})`);
+        if (stored !== 'violet') fail(`gameui: the picked colour was not saved (localStorage ${stored})`);
+        if (g.dock.picker) fail('gameui: the picker stayed open after a pick');
         if (!g.pins.some((p) => p.color === 'violet' && !p.removing)) fail('gameui: F at the cursor dropped no violet pin');
         await shot('ui-dock');
+        // number keys while the dock is open: 3 = the question reaction (eaten: no point emote)
+        await sleep(900);
+        await press('Digit3'); await sleep(250);
+        g = await gi();
+        r.dockKeys = { pops: g.pops.filter((p) => p.who === 'you').map((p) => [p.kind, p.emoji]), point: g.point, clip: g.members.find((m) => m.you)?.clip };
+        if (!g.pops.some((p) => p.who === 'you' && p.emoji === 'question')) fail(`gameui: 3 with the dock open popped no question reaction (${JSON.stringify(r.dockKeys)})`);
+        if (/point/.test(r.dockKeys.clip ?? '')) fail('gameui: 3 with the dock open also played the point emote');
       }
       // left-click your own pin = remove it; Clear my pins
       g = await gi();
@@ -925,6 +996,59 @@ try {
         g = await gi();
         if (!g.pins.some((p) => p.color === 'teal' && p.removing) && g.pins.some((p) => p.color === 'teal')) fail('gameui: clicking your own teal pin did not remove it');
       }
+      // -- PERSON pins (the user's bug: five of their pins stacked over the Hound, no way to remove them): one pin per
+      //    townsperson (F on them again: same colour = removed, another colour = recoloured), a click / hover on the pin
+      //    (hand cursor + remove badge) removes it, the pie's "Remove my pin" on the townsperson, Clear my pins (below)
+      g = await gi();
+      const pn = visibleNpc(g);
+      if (!pn) fail('gameui: no townsperson on screen for the person-pin checks');
+      else {
+        const livePP = (x) => x.pins.filter((p) => p.kind === 'person' && !p.removing);
+        const body = px(pn.screen, -12);
+        const pp = r.personPins = { npc: pn.id };
+        await page.mouse.move(body.x, body.y); await press('KeyF'); await sleep(500);
+        g = await gi(); pp.first = livePP(g).map((p) => p.color);
+        await press('KeyF'); await sleep(400); g = await gi(); pp.sameColour = livePP(g).length;
+        await press('KeyF'); await sleep(300);
+        await page.evaluate(() => { window.__demo.demo.gameui.color = 'teal'; });
+        await press('KeyF'); await sleep(700); g = await gi(); pp.recolour = livePP(g).map((p) => p.color);
+        await shot('person-pin-on');
+        const rc = g.personPins?.find((x) => !x.removing);
+        if (rc) {
+          await page.mouse.move((rc.x + rc.w / 2) * S, (rc.y + rc.h / 2) * S); await sleep(250);
+          g = await gi(); pp.hover = g.hover; pp.cursor = g.cursor;
+          await shot('person-pin-hover');
+          await page.mouse.click((rc.x + rc.w / 2) * S, (rc.y + rc.h / 2) * S); await sleep(700);
+          g = await gi(); pp.clicked = livePP(g).length;
+          await page.mouse.move(body.x + 200, body.y + 120); await sleep(200);
+          await shot('person-pin-removed');
+        } else pp.rect = null;
+        // the pie's "Remove my pin" on the townsperson
+        await page.mouse.move(body.x, body.y); await press('KeyF'); await sleep(500);
+        pp.beforePie = livePP(await gi()).length;
+        await page.mouse.down({ button: 'right' }); await sleep(400);
+        g = await gi(); pp.pieItems = g.pie?.items ?? null;
+        const k = g.pie?.items?.indexOf('unpin') ?? -1;
+        if (k >= 0) { const n = g.pie.items.length, ang = -Math.PI / 2 + k * 2 * Math.PI / n; await page.mouse.move((g.pie.at[0] + Math.cos(ang) * 26) * S, (g.pie.at[1] + Math.sin(ang) * 26) * S, { steps: 4 }); await sleep(150); }
+        await page.mouse.up({ button: 'right' }); await sleep(600);
+        g = await gi(); pp.pieRemoved = livePP(g).length;
+        // one more for Clear my pins
+        await page.mouse.move(body.x, body.y); await press('KeyF'); await sleep(500);
+        g = await gi(); pp.beforeClear = livePP(g).length;
+        console.log(`   person pins on ${pn.id}: ${JSON.stringify(pp)}`);
+        if (pp.first.length !== 1) fail(`gameui: F on ${pn.id} did not drop one person pin (${JSON.stringify(pp.first)})`);
+        if (pp.sameColour !== 0) fail(`gameui: F again (same colour) on ${pn.id} did not remove the pin (${pp.sameColour} left)`);
+        if (pp.recolour.length !== 1 || pp.recolour[0] !== 'teal') fail(`gameui: F in another colour did not recolour the one pin (${JSON.stringify(pp.recolour)})`);
+        if (!rc) fail('gameui: no hit rect for the person pin');
+        else {
+          if (pp.hover?.kind !== 'pin' || pp.cursor !== 'pointer') fail(`gameui: hovering the person pin: ${JSON.stringify(pp.hover)} cursor ${pp.cursor}`);
+          if (pp.clicked !== 0) fail('gameui: clicking your person pin did not remove it');
+        }
+        if (k < 0) fail(`gameui: the pie on a townsperson carrying your pin has no "Remove my pin" (${JSON.stringify(pp.pieItems)})`);
+        else if (pp.pieRemoved !== 0) fail(`gameui: the pie's "Remove my pin" left ${pp.pieRemoved} person pin(s)`);
+        if (pp.beforeClear !== 1) fail('gameui: could not drop the person pin for the Clear my pins check');
+      }
+      g = await gi();
       if (g.dock?.rects?.clear) {
         await page.mouse.click((g.dock.rects.clear.x + 20) * S, (g.dock.rects.clear.y + 5) * S);
         await sleep(700);
@@ -932,6 +1056,21 @@ try {
         if (g.pins.some((p) => !p.removing)) fail(`gameui: Clear my pins left ${JSON.stringify(g.pins)}`);
       }
       await press('KeyG');
+      // the dock closed: 1 is the character's talk emote again (no reaction); it ends by itself (critic P2-4: ~4 s)
+      {
+        await sleep(1000);
+        const nE0 = (await gi()).reactions?.you ?? 0;
+        await press('Digit1'); await sleep(500);
+        g = await gi();
+        const c1 = g.members.find((m) => m.you)?.clip;
+        r.keysClosed = { clip: c1, reactions: [nE0, g.reactions?.you] };
+        if (g.reactions?.you !== nE0) fail('gameui: 1 with the dock closed sent a reaction');
+        if (c1 !== 'talk') fail(`gameui: 1 with the dock closed did not play the talk emote (${c1})`);
+        await sleep(4200);
+        const c2 = (await gi()).members.find((m) => m.you)?.clip;
+        r.keysClosed.after = c2;
+        if (c2 === 'talk') fail('gameui: the talk emote did not end by itself (critic P2-4)');
+      }
       // -- the notebook: J, Seats, the Notes tab, typing (quill), saved, Esc
       await press('KeyJ');
       await sleep(700);
@@ -1007,6 +1146,345 @@ try {
     }
   }
 
+  // ---------------------------------------------------------------------------------------------- 6d game UI round 2
+  // the user's requests + the audit gaps (src/demo/gameui.js, actionbar.js, ambient.js; docs/DEMO.md §4.7 / §4.8),
+  // REAL mouse input on the action bar:
+  //   bar       6 buttons; EVERY key binding of the demo is reachable from a button (bar / emote palette / tray);
+  //             emote palette (open, greyed emotes, point = the P2.8 pop fallback), the tray (Q / E / = / - / T / B / L
+  //             / [ ] / Esc by click), pin + point armed from the bar, the dock and the notebook from the bar; a hover
+  //             shows the tooltip; a click elsewhere closes a popover
+  //   tip       the first-run tip was shown and went by itself; the bulb reopens it, its x makes it FLY into the bulb
+  //             and the bulb glows, "never show again" closes it + saves (localStorage); (step 7: no tip after the reload)
+  //   ambient   systems birds / fireflies / fire / props, 0 lights, declared calls <= 16; pigeons scatter when you walk
+  //             at them; butterflies by day, fireflies + moths at night; hidden with life off
+  //   events    phase captions, the vote clock in the vote phase, the execution, the night veil, dawn; your ghost
+  //             reveal (+ the ghost label) with a ghost-clip character
+  //   arrows    a place pin off screen gets an edge disc; labels under the panel are not drawn
+  //   programs  constant through all of it
+  if (!SKIP.has('gameui2')) {
+    console.log('6d game UI round 2 (action bar, tip + bulb, ambient, events, arrows)');
+    const r = report.steps.gameui2 = {};
+    const gi = () => page.evaluate(() => window.__demo.demo.gameui?.info?.() ?? null);
+    try {
+      await setState({ camera: 'follow', timeOfDay: 12.5, timeSpeed: 0, phase: 'day', nominee: null, zoom: 12, yaw: 0, ui: true, life: true, paused: false });
+      await page.evaluate(() => { window.__demo.demo.gameui.clearPins(); });
+      // (B) the seats empty first: pass B puts CAST characters (game-UI townsfolk) on the occupied seats, so a click
+      // beside the player at the south seats would pin a person, not a place
+      await page.evaluate(() => window.__demo.demo.store.set({ seats: Array.from({ length: 15 }, () => ({ occupied: false, dead: false, ghostVote: true, nominated: false, onBlock: false })) }, 'test'));
+      await steerTo({ x: 22.5, z: 25.5 }, { timeout: 5000 }).catch(() => {});
+      await sleep(700);
+      const prog0 = (await info()).programs;
+      const S = await page.evaluate(() => window.__demo.demo.gameui?.info?.().unit ?? window.__demo.demo.engine.pixelScale);   // (density: logical px)
+      const px = (rc) => ({ x: (rc.x + rc.w / 2) * S, y: (rc.y + rc.h / 2) * S });
+      const clickR = async (rc, o = {}) => { const a = px(rc); await page.mouse.click(a.x, a.y, o); await sleep(260); };
+      let g = await gi();
+      // -- the bar: 6 buttons, every binding covered
+      r.bar = g.bar?.map((b) => b.k);
+      if (!g.bar || g.bar.length !== 6) fail(`gameui2: the action bar has ${g.bar?.length ?? 0} buttons (want 6)`);
+      const binds = await bindings();
+      const covered = new Set(['KeyF', 'KeyG', 'KeyJ', 'Space']);   // bar pin / dock / notebook; Space = the bar's emote button (the palette)
+      // the palette / tray codes come from the module's own tables
+      const tables = await page.evaluate(() => { const a = window.__demo.demo.gameui?.actions; return a ? { e: a.emotes.map((x) => x.code), t: a.tray.flat().map((x) => x.code) } : null; });
+      for (const c of [...(tables?.e ?? []), ...(tables?.t ?? [])]) covered.add(c);
+      const missing = [...new Set(binds.map((b) => b.code))].filter((c) => !covered.has(c));
+      r.bindings = binds.length; r.missingButtons = missing;
+      if (!tables) fail('gameui2: could not read the action bar tables (src/demo/actionbar.js)');
+      if (missing.length) fail(`gameui2: key bindings without a button: ${missing.join(', ')}`);
+      // -- hover tooltip, emote palette, point fallback (the default character has no point clip)
+      const bar = Object.fromEntries(g.bar.map((b) => [b.k, b]));
+      await page.mouse.move(px(bar.notebook).x, px(bar.notebook).y); await sleep(250);
+      g = await gi(); r.hover = g.hover;
+      if (g.hover?.kind !== 'bar' || g.hover.k !== 'notebook') fail(`gameui2: hovering the notebook button: ${JSON.stringify(g.hover)}`);
+      await shot('ui2-hover');
+      await clickR(bar.emote);
+      g = await gi(); r.palette = g.palette;
+      if (!g.palette?.open || g.palette.items?.length !== 6) fail(`gameui2: the emote button did not open the 6-emote palette (${JSON.stringify(g.palette)})`);
+      await shot('ui2-palette');
+      const hasPointClip = await page.evaluate(() => { const h = window.__demo.demo.player.handle; return !!(h?.emotes?.point && h.spec?.clips?.[h.emotes.point]); });
+      const pp = g.palette.items?.find((x) => x.k === 'point');
+      if (pp) {
+        await clickR(pp);
+        g = await gi(); r.pointEmote = { hasPointClip, pops: g.pops.filter((p) => p.who === 'you').map((p) => p.kind), clip: g.members.find((m) => m.you)?.clip };
+        if (!hasPointClip && !g.pops.some((p) => p.who === 'you' && p.kind === 'point')) fail(`gameui2: the palette's point (no point clip) showed no point pop (${JSON.stringify(r.pointEmote)})`);
+        if (g.palette.open) fail('gameui2: the palette stayed open after an emote');
+      } else fail('gameui2: no point in the emote palette');
+      // -- the tray: Q / E, zoom, T, B, L, [ ], Esc by click
+      await clickR(bar.more); g = await gi();
+      if (!g.tray?.open) fail('gameui2: the more button did not open the tray');
+      await shot('ui2-tray');
+      const T = Object.fromEntries((g.tray.items ?? []).map((x) => [x.code, x]));
+      const st = () => page.evaluate(() => ({ ...window.__demo.demo.store.state, seats: null }));
+      const tr = {};
+      let s0 = await st(); await clickR(T.KeyQ); let s1 = await st(); tr.Q = [s0.yaw, s1.yaw];
+      await clickR(T.KeyE); s1 = await st(); tr.E = s1.yaw;
+      s0 = await st(); await clickR(T.Equal); s1 = await st(); tr.zoomIn = [s0.zoom, s1.zoom];
+      await clickR(T.Minus); s1 = await st(); tr.zoomOut = s1.zoom;
+      await clickR(T.KeyT); s1 = await st(); tr.T = s1.paused; await clickR(T.KeyT); tr.T2 = (await st()).paused;
+      const bells0 = await page.evaluate(() => window.__demo.demo.time.info.strikes + (window.__playBells ?? 0));
+      await page.evaluate(() => { window.__playBells = 0; window.__demo.demo.events.on('bell', () => { window.__playBells++; }); });
+      await clickR(T.KeyB); tr.B = await page.evaluate(() => window.__playBells);
+      await clickR(T.KeyL); tr.L = [(await st()).life, await page.evaluate(() => window.__demo.demo.ambient?.visible ?? null)];
+      await clickR(T.KeyL); tr.L2 = (await st()).life;
+      const ch0 = (await info()).character;
+      await clickR(T.BracketRight); for (let k = 0; k < 50; k++) { if ((await info()).character !== ch0) break; await sleep(100); }
+      tr.next = (await info()).character;
+      await sleep(400);
+      g = await gi();
+      const T2 = Object.fromEntries((g.tray.items ?? []).map((x) => [x.code, x]));
+      if (T2.BracketLeft) { await clickR(T2.BracketLeft); for (let k = 0; k < 50; k++) { if ((await info()).character === ch0) break; await sleep(100); } }
+      tr.back = (await info()).character;
+      await sleep(300);
+      g = await gi();
+      if (g.tray?.open && g.tray.items) { const esc = g.tray.items.find((x) => x.code === 'Escape'); if (esc) await clickR(esc); }
+      tr.escClosed = !(await gi()).tray?.open;
+      r.tray = tr; void bells0;
+      if (tr.Q[1] !== tr.Q[0] + 45 || tr.E !== tr.Q[0]) fail(`gameui2: tray Q / E did not rotate the camera (${JSON.stringify(tr)})`);
+      if (!(tr.zoomIn[1] < tr.zoomIn[0]) || tr.zoomOut !== tr.zoomIn[0]) fail(`gameui2: tray = / - did not zoom (${JSON.stringify(tr)})`);
+      if (tr.T !== true || tr.T2 !== false) fail(`gameui2: tray T did not pause / run the clock (${tr.T}, ${tr.T2})`);
+      if (!(tr.B >= 1)) fail('gameui2: tray B rang no bell');
+      if (tr.L[0] !== false || tr.L[1] !== false || tr.L2 !== true) fail(`gameui2: tray L did not switch life (and the ambient layer) off and on (${JSON.stringify(tr.L)}, ${tr.L2})`);
+      if (tr.next === ch0 || tr.back !== ch0) fail(`gameui2: tray ] / [ did not swap the character and back (${ch0} -> ${tr.next} -> ${tr.back})`);
+      if (!tr.escClosed) fail('gameui2: the tray Esc button did not close the tray');
+      // -- (critic P1-2) Space opens the emote palette; the default spawn character has all six game emotes (none greyed);
+      //    6 plays the signature. (critic P2-5) one popover at a time: G (the dock) closes the palette, the tray closes the dock
+      {
+        await page.mouse.move(640, 300);
+        const p12 = r.space = {};
+        await press('Space'); await sleep(250); g = await gi();
+        p12.open = g.palette?.open ?? false; p12.off = (g.palette?.items ?? []).filter((x) => x.off).map((x) => x.k);
+        p12.char = (await info()).character;
+        await press('Space'); await sleep(200); p12.closed = !(await gi()).palette?.open;
+        const sigP = page.evaluate(() => new Promise((res) => { const d = window.__demo.demo; let got = null; const off = d.events.on('player:emote', (e) => { got = e; }); setTimeout(() => { off?.(); res(got); }, 700); }));
+        await press('Digit6');
+        p12.signature = await sigP;
+        await press('Space'); await sleep(200);
+        await press('KeyG'); await sleep(200); g = await gi();
+        p12.gClosesPalette = { palette: g.palette?.open ?? false, dock: g.dock.open };
+        await clickR(g.bar.find((b) => b.k === 'more')); g = await gi();
+        p12.trayClosesDock = { tray: g.tray?.open ?? false, dock: g.dock.open };
+        await clickR(g.bar.find((b) => b.k === 'more')); await sleep(150);
+        console.log(`   space / emotes ${JSON.stringify(p12)}`);
+        if (!p12.open || !p12.closed) fail(`gameui2: Space did not open / close the emote palette (${JSON.stringify(p12)})`);
+        if (p12.off.length) fail(`gameui2: the default character ${p12.char} greys emotes ${p12.off.join(', ')} (critic P1-2: a full emote set)`);
+        if (p12.signature?.clip !== 'signature' || !p12.signature?.name) fail(`gameui2: 6 played no signature emote (${JSON.stringify(p12.signature)})`);
+        if (p12.gClosesPalette.palette || !p12.gClosesPalette.dock) fail(`gameui2: G did not close the palette / open the dock (${JSON.stringify(p12.gClosesPalette)})`);
+        if (!p12.trayClosesDock.tray || p12.trayClosesDock.dock) fail(`gameui2: the tray did not close the dock (${JSON.stringify(p12.trayClosesDock)})`);
+      }
+      // -- pin + point armed from the bar, the dock, the notebook
+      g = await gi();
+      const B2 = Object.fromEntries(g.bar.map((b) => [b.k, b]));
+      await clickR(B2.pin); g = await gi(); r.armPin = g.dock.armed;
+      if (g.dock.armed !== 'pin') fail(`gameui2: the bar's pin button did not arm a pin (${g.dock.armed})`);
+      const me = g.members.find((m) => m.you);
+      const spot = { x: me.screen.x + 40, y: me.screen.y + 6, w: 0, h: 0 };
+      await clickR(spot); await sleep(400);
+      g = await gi(); r.pinFromBar = g.pins.filter((p) => !p.removing).length;
+      if (!g.pins.some((p) => p.kind === 'place' && !p.removing)) fail('gameui2: arming the pin from the bar + a click dropped no place pin');
+      await clickR(B2.point); g = await gi();
+      if (g.dock.armed !== 'point') fail(`gameui2: the bar's point button did not arm a point (${g.dock.armed})`);
+      await clickR({ x: me.screen.x - 30, y: me.screen.y + 4, w: 0, h: 0 }); await sleep(250);
+      g = await gi(); r.pointFromBar = g.point;
+      if (!g.point) fail('gameui2: arming the point from the bar + a click pointed nowhere');
+      await clickR(B2.dock); g = await gi(); const dockOn = g.dock.open; await clickR(B2.dock); g = await gi();
+      if (!dockOn || g.dock.open) fail(`gameui2: the bar's palette button did not toggle the dock (${dockOn} / ${g.dock.open})`);
+      await clickR(B2.notebook); g = await gi(); const nbOn = g.notebook.open; await shot('ui2-notebook');
+      await clickR(B2.notebook); await sleep(300); g = await gi();
+      if (!nbOn || g.notebook.open) fail(`gameui2: the bar's notebook button did not toggle the notebook (${nbOn} / ${g.notebook.open})`);
+      // -- off-screen arrows: the place pin just dropped, the player far away
+      await page.evaluate(() => window.__demo.demo.player.teleport(40, 30));
+      await sleep(1600);
+      g = await gi(); r.offscreen = g.offscreen;
+      if (!g.offscreen.some((o) => o.kind === 'pin')) fail(`gameui2: no off-screen arrow for the far place pin (${JSON.stringify(g.offscreen)})`);
+      else { const o = g.offscreen.find((x) => x.kind === 'pin'); if (o.at[0] > g.screen[0] - g.cover.right) fail(`gameui2: the off-screen arrow is under the panel (${JSON.stringify(o)} cover ${g.cover.right})`); }
+      await shot('ui2-offscreen');
+      // labels under the panel: none drawn
+      const hidden = g.members.filter((m) => m.screen.x > g.screen[0] - g.cover.right + 4 && m.shown);
+      if (hidden.length) fail(`gameui2: labels drawn under the control panel: ${hidden.map((m) => m.name).join(', ')}`);
+      await page.evaluate(() => { window.__demo.demo.gameui.clearPins(); window.__demo.demo.player.teleport(22.5, 25.5); });
+      await sleep(900);
+      // -- the tip: shown at first run, gone by itself; the bulb, the fly, the glow, never show again
+      g = await gi();
+      for (let k = 0; k < 60 && (g.tipState.shown || !g.tipState.shownCount); k++) { await sleep(250); g = await gi(); }   // (a short run: the 9 s may not be over)
+      r.tipStart = { shownCount: g.tipState.shownCount, dismissed: g.tipState.dismissed, shown: g.tipState.shown, never: g.tipState.never };
+      if (!(g.tipState.shownCount >= 1)) fail('gameui2: the first-run tip was never shown');
+      if (g.tipState.shown) fail('gameui2: the first-run tip is still up (it should hide by itself after 9 s)');
+      if (!g.toolbar?.tip) fail('gameui2: no lightbulb in the toolbar');
+      else {
+        await clickR(g.toolbar.tip); g = await gi();
+        if (!g.tipState.shown || g.tipState.auto !== false) fail(`gameui2: the bulb did not reopen the tip (${JSON.stringify(g.tipState)})`);
+        await shot('ui2-tip-bulb');
+        await clickR(g.tipState.rect.close);
+        const fl = await gi(); r.fly = { flying: fl.tipState.flying, glowing: fl.tipState.glowing };
+        await sleep(550); g = await gi(); r.glow = g.tipState.glowing;
+        await shot('ui2-tip-glow');
+        if (!r.fly.flying && !r.fly.glowing) fail('gameui2: closing the tip did not fly it into the bulb');
+        if (!r.glow) fail('gameui2: the bulb does not glow after the tip flew into it');
+        // (critic P1-1) the flight is drawn FROM the tip TOWARD the bulb (it drew at the top-left corner: NaN centres)
+        {
+          const F = g.tipState.fly, p = F?.path ?? [];
+          r.flyPath = F;
+          const fin = (q) => Number.isFinite(q?.[0]) && Number.isFinite(q?.[1]);
+          const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+          if (!F || p.length < 3 || !p.every(fin) || !fin(F.from) || !fin(F.to)) fail(`gameui2: the tip's flight was not drawn at real positions (${JSON.stringify(F)})`);
+          else {
+            const d0 = dist(p[0], F.to), d1 = dist(p[p.length - 1], F.to);
+            if (!(d1 < d0 - 10) || p.some((q) => q[0] <= 1 && q[1] <= 1)) fail(`gameui2: the tip's flight did not move toward the bulb (${JSON.stringify(F)})`);
+          }
+        }
+        await clickR(g.toolbar.tip); g = await gi();
+        await clickR(g.tipState.rect.never); await sleep(200); g = await gi();
+        r.never = { never: g.tipState.never, saved: g.tipState.neverSaved, shown: g.tipState.shown, ls: await page.evaluate(() => { try { return localStorage.getItem('hollowmere-tip:never'); } catch { return 'no storage'; } }) };
+        if (!r.never.never || r.never.shown || r.never.ls !== '1') fail(`gameui2: "never show again" (${JSON.stringify(r.never)})`);
+        if (!(await gi()).toolbar?.tip) fail('gameui2: the bulb went away after "never show again"');
+      }
+      // -- ambient: present, no lights, budget; pigeons scatter; day / night insects
+      let A = await page.evaluate(() => window.__demo.demo.ambient?.info?.() ?? null);
+      r.ambient = A && { systems: A.systems, calls: A.calls, lights: A.lights, updateMs: A.updateMs };
+      if (!A) fail('gameui2: no ambient layer (demo.ambient)');
+      else {
+        for (const s of ['birds', 'fireflies', 'fire', 'props']) if (!A.systems.includes(s)) fail(`gameui2: ambient system ${s} missing`);
+        if (A.lights !== 0) fail(`gameui2: the ambient layer owns ${A.lights} lights (want 0)`);
+        if (A.calls > 16) fail(`gameui2: the ambient layer declares ${A.calls} draw calls (budget ~14)`);
+        if (!(A.per.fireflies?.bfly > 0)) fail(`gameui2: no butterflies by day (${JSON.stringify(A.per.fireflies)})`);
+        const fl0 = A.per.birds?.flees ?? 0;
+        await page.evaluate(() => window.__demo.demo.player.teleport(20.4, 29.2));
+        await sleep(1200);
+        await hold(['KeyA'], 900); await sleep(500);
+        A = await page.evaluate(() => window.__demo.demo.ambient.info());
+        r.pigeons = { flees: [fl0, A.per.birds?.flees], states: { flee: A.per.birds?.flee, away: A.per.birds?.away } };
+        await shot('ui2-pigeons');
+        if (!(A.per.birds?.flees > fl0)) fail(`gameui2: the pigeons did not scatter when you walked at them (${JSON.stringify(r.pigeons)})`);
+        await setState({ timeOfDay: 23 }); await sleep(2200);
+        A = await page.evaluate(() => window.__demo.demo.ambient.info());
+        r.night = { ff: A.per.fireflies?.ff, moth: A.per.fireflies?.moth, tod: A.tod };
+        if (!(A.per.fireflies?.ff > 0) || !(A.per.fireflies?.moth > 0)) fail(`gameui2: no fireflies / moths at night (${JSON.stringify(r.night)})`);
+        await shot('ui2-night-ambient');
+        await setState({ timeOfDay: 12.5 }); await sleep(600);
+      }
+      // -- events: captions, vote clock, execution, night veil, dawn
+      await page.evaluate(() => window.__demo.demo.player.teleport(22.5, 25.5));
+      const seats = Array.from({ length: 15 }, (_, i) => ({ occupied: i < 9, dead: i === 2, ghostVote: i === 2, nominated: false, onBlock: false }));
+      await setState({ seats, nominee: 5, phase: 'nomination' }); await sleep(500);
+      g = await gi(); const ev = { nomination: g.events.caption };
+      await setState({ phase: 'vote' }); await sleep(1500);
+      g = await gi(); ev.vote = g.events.vote; ev.voteCaption = g.events.caption;
+      await shot('ui2-vote');
+      await setState({ phase: 'execution' }); await sleep(1200);
+      g = await gi(); ev.exec = g.events.exec; ev.execCaption = g.events.caption;
+      await shot('ui2-execution');
+      await setState({ phase: 'night' }); await sleep(500);
+      g = await gi(); ev.veil = g.events.veil; ev.nightCaption = g.events.caption;
+      await shot('ui2-nightfall');
+      await sleep(2500);
+      await setState({ phase: 'day' }); await sleep(200);
+      g = await gi(); ev.dawn = g.events.dawn; ev.dayCaption = g.events.caption;
+      await shot('ui2-dawn');
+      r.events = ev;
+      if (!/Nominations/.test(ev.nomination ?? '')) fail(`gameui2: no nomination caption (${ev.nomination})`);
+      if (!ev.vote || !/nominated/.test(ev.voteCaption ?? '')) fail(`gameui2: no vote clock / caption in the vote phase (${JSON.stringify(ev.vote)} ${ev.voteCaption})`);
+      if (!ev.exec || !/bell tolls/.test(ev.execCaption ?? '')) fail(`gameui2: no execution (${ev.exec} ${ev.execCaption})`);
+      if (!ev.veil || !/Night falls/.test(ev.nightCaption ?? '')) fail(`gameui2: no night veil (${ev.veil} ${ev.nightCaption})`);
+      if (!ev.dawn) fail('gameui2: no dawn after night -> day');
+      await setState({ seats: Array.from({ length: 15 }, () => ({ occupied: false, dead: false, ghostVote: true, nominated: false, onBlock: false })), nominee: null });
+      // -- the GHOST STATE (a toggle, player.js setGhost): a character with spec.ghost + a ghost clip; 5 = on (the reveal,
+      //    the ghost label), WALKING stays ghost (rig level 1, ch.ghost = 1), another emote keeps it, 5 = off (level 0);
+      //    on again + a swap to a character that cannot ghost clears it
+      // (a character with spec.ghost: the walking-ghost override needs it; owl / fox carry the older baked ghost clip only)
+      const ghostChar = await page.evaluate(() => { const ok = (window.__demo.demo.characters ?? []).filter((c) => c.complete).map((c) => c.id); return ['requin', 'clarabelle', 'cilantro', 'opal'].find((id) => ok.includes(id)) ?? null; });   // (requin first: not one of pass B's seated cast, so the swap reshuffles no seat)
+      if (ghostChar) {
+        const back = (await info()).character;
+        await setState({ character: ghostChar }); for (let k = 0; k < 60; k++) { if ((await info()).character === ghostChar) break; await sleep(100); }
+        await sleep(700);
+        const gs = () => page.evaluate(() => { const P = window.__demo.demo.player; return { on: P.ghost, level: P.ghostLevel, chGhost: P.handle?.ch?.ghost ?? null, moving: P.moving }; });
+        const hasGhost = await page.evaluate(() => { const h = window.__demo.demo.player.handle; return !!(h?.emotes?.ghost && h.spec?.ghost); });
+        const g0 = (await gi()).events.ghosts;
+        await press('Digit5'); await sleep(500);
+        g = await gi();
+        r.ghost = { char: ghostChar, hasGhost, ghosts: [g0, g.events.ghosts], label: g.members.find((m) => m.you)?.ghostLabel, on: await gs() };
+        await shot('ui2-ghost');
+        // walk (D held) and sample mid-walk: still a ghost
+        await page.keyboard.down('KeyD'); await sleep(450);
+        r.ghost.walking = await gs(); r.ghost.walkLabel = (await gi()).members.find((m) => m.you)?.ghostLabel;
+        await shot('ui2-ghost-walking');
+        await sleep(300); await page.keyboard.up('KeyD'); await sleep(600);
+        r.ghost.stopped = await gs();
+        await press('Digit1'); await sleep(500); r.ghost.talk = await gs();
+        await press('Digit5'); await sleep(500); r.ghost.off = await gs(); r.ghost.offLabel = (await gi()).members.find((m) => m.you)?.ghostLabel;
+        await press('Digit5'); await sleep(300);
+        // (a swap to a character WITHOUT a ghost clip drops the ghost state: the Duelist (not one of the idle NPCs, so no NPC
+        // / seat-cast reshuffle compiles a new character mid-step); the default spawn character
+        // is no longer the Wanderer since critic P1-2 and keeps the ghost across a swap, by design)
+        const noGhost = 'duelist';
+        await setState({ character: noGhost }); for (let k = 0; k < 60; k++) { if ((await info()).character === noGhost) break; await sleep(100); }
+        await sleep(400); r.ghost.swapped = await gs();
+        await setState({ character: back }); for (let k = 0; k < 60; k++) { if ((await info()).character === back) break; await sleep(100); }
+        await sleep(300);
+        const G = r.ghost;
+        if (hasGhost) {
+          if (!(G.ghosts[1] > G.ghosts[0]) || !G.label || !G.on.on || G.on.level !== 1) fail(`gameui2: ghost on (5): ${JSON.stringify(G)}`);
+          if (!G.walking.moving || !G.walking.on || G.walking.level !== 1 || G.walking.chGhost !== 1 || !G.walkLabel) fail(`gameui2: walking turned the ghost back (${JSON.stringify(G.walking)} label ${G.walkLabel})`);
+          if (G.stopped.level !== 1 || G.talk.level !== 1) fail(`gameui2: the ghost did not stay a ghost after walking / another emote (${JSON.stringify([G.stopped, G.talk])})`);
+          if (G.off.on || G.off.level !== 0 || G.off.chGhost !== null || G.offLabel) fail(`gameui2: ghost off (5 again): ${JSON.stringify(G.off)} label ${G.offLabel}`);
+          if (G.swapped.on) fail(`gameui2: swapping to 'duelist' (no ghost clip) kept the ghost state`);
+        }
+      } else note('gameui2: no ghost-clip character offered (ghost reveal not checked)');
+      await sleep(500);
+      const prog1 = (await info()).programs;
+      r.programs = [prog0, prog1];
+      console.log(`   bar ${r.bar?.join(' ')} · ${r.bindings} bindings, missing ${r.missingButtons?.length ?? '?'} · tray ${JSON.stringify(r.tray)}`);
+      console.log(`   tip ${JSON.stringify(r.tipStart)} fly ${JSON.stringify(r.fly)} glow ${r.glow} never ${JSON.stringify(r.never)}`);
+      console.log(`   ambient ${JSON.stringify(r.ambient)} pigeons ${JSON.stringify(r.pigeons)} night ${JSON.stringify(r.night)}`);
+      console.log(`   events ${JSON.stringify(r.events)} ghost ${JSON.stringify(r.ghost)} · offscreen ${JSON.stringify(r.offscreen)} · programs ${prog0} -> ${prog1}`);
+      if (prog1 > prog0 + (ghostChar ? 2 : 0)) fail(`gameui2: programs grew ${prog0} -> ${prog1} (the UI / ambient / events must compile nothing mid-game; a swapped-in character may add its own)`);
+    } catch (e) { fail('gameui2: ' + (e.stack || e.message).split('\n').slice(0, 2).join(' | ')); }
+  }
+
+  // ---------------------------------------------------------------------------------------------- 6e the Storyteller
+  // (P1.3) a ?wip=1 night page: swapping to the Storyteller adds no PointLight (the lantern is a light of the time
+  // module's constant pool pinned to its socket): programs grow by the character's own materials only (<= 3), the
+  // worst frame of the swap stays short, the carried light is lit at night, the poof plays; no errors
+  if (!SKIP.has('storyteller')) {
+    console.log('6e the Storyteller (lantern without a recompile)');
+    const r = report.steps.storyteller = {};
+    const p2 = await browser.newPage({ viewport: { width: W, height: H }, deviceScaleFactor: 1 });
+    const sbad = [];
+    p2.on('console', (m) => { if (m.type() === 'error' || SHADER_RX.test(m.text())) sbad.push(`[st console.${m.type()}] ${m.text()}`); });
+    p2.on('pageerror', (e) => sbad.push(`[st pageerror] ${e.stack || e.message}`));
+    try {
+      if (BASE === 'http://pixel3d.local') await p2.route('http://pixel3d.local/**', (route) => {
+        const u = new URL(route.request().url()), p = path.join(ROOT, decodeURIComponent(u.pathname));
+        if (!p.startsWith(ROOT) || !fs.existsSync(p) || fs.statSync(p).isDirectory()) return route.fulfill({ status: 404, body: 'nf' });
+        route.fulfill({ status: 200, body: fs.readFileSync(p), headers: { 'content-type': MIME[path.extname(p)] || 'application/octet-stream' } });
+      });
+      await p2.goto(`${BASE}/demo.html?intro=0&wip=1&tod=23&npcs=0`);
+      await p2.waitForFunction(() => window.__demo?.ready, null, { timeout: 120000 });
+      await p2.waitForTimeout(2000);
+      const offered = await p2.evaluate(() => (window.__demo.demo.characters ?? []).some((c) => c.id === 'storyteller' && c.complete));
+      if (!offered) note('storyteller: not offered with ?wip=1 (not checked)');
+      else {
+        r.before = await p2.evaluate(() => window.__demo.demo.engine.renderer.info.programs.length);
+        await p2.evaluate(() => { const g = (window.__stGaps = { max: 0, on: true }); let prev = performance.now(); const f = (n) => { g.max = Math.max(g.max, n - prev); prev = n; if (g.on) requestAnimationFrame(f); }; requestAnimationFrame(f); });
+        await p2.evaluate(() => window.__demo.set({ character: 'storyteller' }));
+        for (let k = 0; k < 80; k++) { if (await p2.evaluate(() => window.__demo.demo.player.handle?.id === 'storyteller')) break; await p2.waitForTimeout(100); }
+        await p2.waitForTimeout(2200);
+        const s = await p2.evaluate(() => { window.__stGaps.on = false; const d = window.__demo.demo, L = []; d.engine.scene.traverse((o) => { if (o.isLight && /char-light/.test(o.name)) L.push(o.name); });
+          return { programs: d.engine.renderer.info.programs.length, maxGapMs: Math.round(window.__stGaps.max), carried: d.time.info.carried, lights: d.time.info.lights, charLights: L, poofs: d.gameui?.info().events.poofs }; });
+        Object.assign(r, s);
+        await p2.screenshot({ path: path.join(OUT, `${String(++shotN).padStart(2, '0')}-storyteller-night.png`) });
+        console.log(`   programs ${r.before} -> ${s.programs} · worst frame ${s.maxGapMs} ms · carried ${JSON.stringify(s.carried)} · poofs ${s.poofs}`);
+        if (s.programs - r.before > 3) fail(`storyteller: the swap compiled ${s.programs - r.before} programs (lantern light recompile?)`);
+        if (s.charLights.length) fail(`storyteller: the Character built its own PointLight(s): ${s.charLights.join(', ')}`);
+        if (!s.carried || !(s.carried.intensity > 0.5)) fail(`storyteller: the carried lantern light is not lit at night (${JSON.stringify(s.carried)})`);
+        if (!(s.poofs >= 1)) fail('storyteller: no poof on the swap');
+        if (s.maxGapMs > 150) fail(`storyteller: a ${s.maxGapMs} ms frame during the swap`);
+      }
+      const errs = await p2.evaluate(() => window.__demo?.errors ?? []);
+      if (errs.length) sbad.push(...errs.map((e) => `[st __demo] ${e}`));
+    } catch (e) { fail('storyteller: ' + (e.stack || e.message).split('\n').slice(0, 2).join(' | ')); }
+    for (const b of sbad) fail(b);
+    await p2.close();
+  }
+
   // ---------------------------------------------------------------------------------------------- 6c touch (a phone)
   // a second page in the same browser, 390 x 844 @2x, isMobile + hasTouch (coarse pointer), REAL touch input (taps +
   // a CDP long press): the auto-folded panel is a top band the HUD drops below (cover.top), the toolbar's notebook is
@@ -1019,6 +1497,11 @@ try {
     const r = report.steps.touch = {};
     const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
     const ph = await ctx.newPage();
+    if (BASE === 'http://pixel3d.local') await ctx.route('http://pixel3d.local/**', (route) => {   // (the default base: the repo, as the main page)
+      const u = new URL(route.request().url()), p = path.join(ROOT, decodeURIComponent(u.pathname));
+      if (!p.startsWith(ROOT) || !fs.existsSync(p) || fs.statSync(p).isDirectory()) return route.fulfill({ status: 404, body: 'nf' });
+      route.fulfill({ status: 200, body: fs.readFileSync(p), headers: { 'content-type': MIME[path.extname(p)] || 'application/octet-stream' } });
+    });
     const pbad = [];
     ph.on('console', (m) => { if (m.type() === 'error' || SHADER_RX.test(m.text())) pbad.push(`[touch console.${m.type()}] ${m.text()}`); });
     ph.on('pageerror', (e) => pbad.push(`[touch pageerror] ${e.stack || e.message}`));
@@ -1029,7 +1512,7 @@ try {
       await ph.waitForTimeout(2500);
       const gi = () => ph.evaluate(() => window.__demo.demo.gameui?.info?.() ?? null);
       const cl = (x, y) => ph.evaluate(([x, y]) => {   // screen texel -> client px (gameui toScreen inverted)
-        const d = window.__demo.demo, e = d.engine, c = e.renderer.domElement, b = c.getBoundingClientRect(), s = e.pixelScale || 1, H = d.gameui.info().screen[1];
+        const d = window.__demo.demo, e = d.engine, c = e.renderer.domElement, b = c.getBoundingClientRect(), s = d.gameui.info().unitDev ?? (e.pixelScale || 1), H = d.gameui.info().screen[1];   // (density: logical px)
         return { x: b.left + (x + 0.5) * s * b.width / e.width, y: b.top + (e.height - (H - 1 - y + 0.5) * s) * b.height / e.height };
       }, [x, y]);
       const tapEl = async (sel) => { const b = await ph.evaluate((s) => { const q = document.querySelector(s)?.getBoundingClientRect(); return q ? [q.x + q.width / 2, q.y + q.height / 2] : null; }, sel); if (!b) throw new Error(`no ${sel}`); await ph.touchscreen.tap(b[0], b[1]); };
@@ -1071,6 +1554,8 @@ try {
       const cdp = await ctx.newCDPSession(ph);
       const touch = (type, x, y) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y, id: 1 }] });
       const pos0 = await ph.evaluate(() => window.__demo.info().player);
+      // (emoji) the touch pie's one Pin wedge is in your colour: teal for this check
+      await ph.evaluate(() => { if (window.__demo.demo.gameui) window.__demo.demo.gameui.color = 'teal'; });
       await touch('touchStart', sp.x, sp.y); await ph.waitForTimeout(250);
       r.pieEarly = (await gi()).pie;
       await ph.waitForTimeout(450);
@@ -1102,7 +1587,43 @@ try {
       const db = await cl(g.dock.button.x + 13, g.dock.button.y + 13);
       await ph.touchscreen.tap(db.x, db.y); await ph.waitForTimeout(600);
       if (!(await gi()).dock.open) fail('touch: tapping your portrait did not open the dock');
+      // (critic P2-5) on a narrow screen the open dock stands above the bar: none of its parts covers a bar button
+      {
+        const gd = await gi(), parts = Object.values(gd.dock.rects ?? {}), ov = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+        r.dockOverBar = (gd.bar ?? []).filter((b) => parts.some((p) => ov(p, b))).map((b) => b.k);
+        if (r.dockOverBar.length) fail(`touch: the open dock covers the bar's ${r.dockOverBar.join(', ')} (critic P2-5)`);
+      }
       await pshot('touch-dock');
+      // the action bar on a phone: 6 buttons on the canvas (above the status line), the tray by a tap, its L by a tap
+      g = await gi();
+      r.bar = g.bar?.map((b) => [b.k, b.x, b.y]);
+      if (!g.bar || g.bar.length !== 6) fail(`touch: the action bar has ${g.bar?.length ?? 0} buttons`);
+      else {
+        const more = g.bar.find((b) => b.k === 'more'), mc = await cl(more.x + 9, more.y + 9);
+        r.underBar = await ph.evaluate(([x, y]) => document.elementFromPoint(x, y)?.tagName ?? null, [mc.x, mc.y]);
+        if (r.underBar !== 'CANVAS') fail(`touch: the action bar lies under ${r.underBar}`);
+        if (g.dock.open) { const db = await cl(g.dock.button.x + 12, g.dock.button.y + 12); await ph.touchscreen.tap(db.x, db.y); await ph.waitForTimeout(400); }
+        await ph.touchscreen.tap(mc.x, mc.y); await ph.waitForTimeout(500);
+        g = await gi();
+        const L0 = await ph.evaluate(() => window.__demo.demo.store.state.life);
+        const lb = g.tray.items?.find((x) => x.code === 'KeyL');
+        if (!g.tray.open || !lb) fail(`touch: tapping 'more' did not open the tray (${JSON.stringify(g.tray.open)})`);
+        else {
+          await pshot('touch-tray');
+          const lc = await cl(lb.x + 9, lb.y + 9); await ph.touchscreen.tap(lc.x, lc.y); await ph.waitForTimeout(400);
+          const L1 = await ph.evaluate(() => window.__demo.demo.store.state.life);
+          // (critic P2-6) a finger has no hover: the tapped tray button shows its name
+          r.tapTip = (await gi()).tapTip;
+          if (r.tapTip?.kind !== 'tray' || r.tapTip?.k !== 'KeyL') fail(`touch: the tapped tray button shows no name caption (${JSON.stringify(r.tapTip)})`);
+          await pshot('touch-tray-name');
+          await ph.touchscreen.tap(lc.x, lc.y); await ph.waitForTimeout(400);
+          const L2 = await ph.evaluate(() => window.__demo.demo.store.state.life);
+          r.trayLife = [L0, L1, L2];
+          if (L1 === L0 || L2 !== L0) fail(`touch: tapping the tray's L did not switch life (${JSON.stringify(r.trayLife)})`);
+          const out = await cl(Math.round(g.screen[0] / 2), Math.round(g.screen[1] * 0.3)); await ph.touchscreen.tap(out.x, out.y); await ph.waitForTimeout(400);
+          if ((await gi()).tray.open) fail('touch: a tap on the town did not close the tray');
+        }
+      }
       r.csp = await ph.evaluate(() => window.__csp);
       if (r.csp.length) fail(`touch: CSP violations ${JSON.stringify(r.csp)}`);
       const errs = await ph.evaluate(() => window.__demo?.errors ?? []);
@@ -1114,6 +1635,17 @@ try {
     await ctx.close();
   }
 
+  // ---------------------------------------------------------------------------------------------- 8 passb (B)
+  // (B) pass B: the vote camera, the seated cast, the tower timer + readout + HUD + ST control, the tower interior
+  // (tools/demo-play-passb.mjs)
+  if (!SKIP.has('passb')) {
+    console.log('8 passb (vote camera, seated cast, tower timer, tower interior)');
+    try {
+      const { runPassB } = await import('./demo-play-passb.mjs');
+      report.steps.passb = await runPassB({ page, sleep, info, shot, fail, note, press, hold });
+    } catch (e) { fail('passb: ' + (e.stack || e.message).split('\n').slice(0, 3).join(' | ')); }
+  }
+
   // ---------------------------------------------------------------------------------------------- 7 quality reload
   if (!SKIP.has('reload')) {
     console.log('7 quality reload');
@@ -1123,6 +1655,9 @@ try {
     await setState({ character: ch, phase: 'nomination', timeOfDay: 19.25, timeSpeed: 0 });
     for (let k = 0; k < 60; k++) { if ((await info()).character === ch) break; await sleep(100); }
     const before = await info();
+    // (pass-B leftover) the tower timer runs into the reload: it must come back running with the time it had left
+    const tm0 = await page.evaluate(() => { const T = window.__demo.demo.passB?.timer; if (!T) return null; T.reset(); T.setMinutes(3); T.start(); return { at: Date.now(), ...T.state }; });
+    const pinBefore = await page.evaluate(() => { try { return { stored: localStorage.getItem('ct-pin-color') }; } catch { return null; } });
     const nav = page.waitForNavigation({ timeout: 30000 });
     await setState({ quality: 'low' });
     await nav;
@@ -1130,6 +1665,27 @@ try {
     if (!SKIP.has('loading')) await skipIntro({ flyMs: 300 });
     await sleep(1200);
     const after = await info();
+    if (tm0) {
+      const tm1 = await page.evaluate(() => window.__demo.demo.passB?.timer?.state ?? null);
+      report.steps.timerReload = { before: tm0.remaining, after: tm1?.remaining, mode: tm1?.mode, minutes: tm1?.minutes };
+      if (tm1?.mode !== 'running' || !(tm1.remaining < tm0.remaining) || tm1.remaining < tm0.remaining - (Date.now() - tm0.at) / 1000 - 5) fail(`reload: the tower timer was not kept across the quality reload (${JSON.stringify(report.steps.timerReload)})`);
+      await page.evaluate(() => window.__demo.demo.passB?.timer?.reset());
+    }
+    // (emoji) the saved pin colour (the picker, 6b) holds across the reload
+    if (pinBefore?.stored) {
+      const pinAfter = await page.evaluate(() => window.__demo.demo.gameui?.pinColor ?? null);
+      report.steps.pinColourReload = { before: pinBefore, after: pinAfter };
+      if (pinAfter?.color !== pinBefore.stored || pinAfter.auto) fail(`reload: the saved pin colour was not kept (${JSON.stringify(report.steps.pinColourReload)})`);
+    }
+    // "never show again" (6d) holds across the reload: no automatic tip, the bulb is still there
+    if (!SKIP.has('gameui2')) {
+      await sleep(2200);
+      const tp = await page.evaluate(() => ({ tip: window.__demo.demo.gameui?.info().tipState, bulb: !!window.__demo.demo.gameui?.info().toolbar?.tip, ui: window.__demo.demo.ui?.emoteTip?.skipped ?? null }));
+      report.steps.tipAfterReload = { shownCount: tp.tip?.shownCount, never: tp.tip?.never, bulb: tp.bulb, skipped: tp.ui };
+      if (tp.tip?.shownCount !== 0 || !tp.tip?.never || tp.ui !== 'never') fail(`reload: the tip came back after "never show again" (${JSON.stringify(report.steps.tipAfterReload)})`);
+      if (!tp.bulb) fail('reload: no lightbulb after the reload');
+      await page.evaluate(() => { try { localStorage.removeItem('hollowmere-tip:never'); } catch { /* none */ } });
+    }
     const keep = { quality: after.state.quality === 'low', character: after.character === before.character, phase: after.state.phase === before.state.phase,
       clock: Math.abs(after.state.timeOfDay - before.state.timeOfDay) < 0.2,
       position: Math.hypot(after.player[0] - before.player[0], after.player[1] - before.player[1]) < 0.6,

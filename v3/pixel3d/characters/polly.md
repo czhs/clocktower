@@ -6,6 +6,22 @@ bake `out/sprites/polly*` (10 clips × 8 dirs, `--game 1`, cell 58×76). r2 prob
 Identity source (read only): `pipgws/packages/assets/scripts/cast/polly.ts`, `refs/cast/polly.png`. Everything rendered on
 render-host (RTX 4090, GPU line in `report.txt`).
 
+## Ghost port (2026-10-17) — shared `spec.ghost` (supersedes the r2 crow-recipe ghost)
+- **Why:** the r2 ghost (`ghostK` bone + micro `halo` ring + `material.tones` shader) only lived inside the ghost clips,
+  so a dead player walking as Polly looked alive until she stopped. `spec.ghost` + `ch.ghost = 1` now shade walk/talk/emotes.
+- **Spec:** `ghost: { hover: 0.14, keepHue: 0.25, lo: 0.06, slope: 1.5, spent: ['#3A4260', '#B0BACE'], halo: { lift: 0.32 } }`.
+  keepHue 0.25: the red IS the identity — a pastel-pink head over a slate tee, ivory beak and white patches the lightest
+  (0.3 read close to alive, 0.2 lost the red: `shots/ghost-port/polly/z-g8.png`, `z-g8-v{A,B}.png`); lo 0.06 / slope 1.5
+  lift the charcoal tee (λ still reads); spent light end #B0BACE. Halo lift 0.32: at 0.12 / 0.2 the raked crest tip
+  pierced the ring (`pack-r1-clip-ghost.png`) — now islands 2 → 2. Removed: `halo` + `ghostK` bones, the micro ring part,
+  `GHOST`, `lin3`, `boneOrder`, `restWorld`, `ghostMaterial()`, `HALO_*`, `HOVER`, `GHOSTK`, `HALO`.
+- **Clips (pose only):** `ghostClip(lv)` keys 0/16/32/48: `pos` y 0.056 / 0.028 / 0 / 0.028 (spent 0 / −0.028 / −0.056 /
+  −0.028) over the module hover 0.14 m; wings, tail, crest laid back (34 / spent 40) and the f48 head cock as before.
+- **Checks (render-host):** pack `shots/ghost-port/polly/pack/` 112 pass / 21 warn / 0 fail (before 111 / 22); ghost amplitude
+  30 %, key_delta 41 %, off_grid 0, flicker 0, islands 2 → 2; spent amplitude 18 %, key_delta 40 %. Living renders: 0 / 2477
+  raw frames differ vs the pre-port pack. Demo walking ghost (`?char=polly`, key 5, D held): level 1 while moving, pale at
+  noon and night (`shots/ghost-port/polly/walking-ghost-{noon,night}.png`).
+
 ## 0. Brief
 - Concept: a scarlet macaw mascot in a charcoal tee with a white λ, big round red head with white eye patches and a
   hooked ivory beak, red/yellow/blue wings hanging like sleeves, long red→blue tail. Adjectives: **cheerful, chatty,
@@ -35,8 +51,8 @@ render-host (RTX 4090, GPU line in `report.txt`).
      v1 SE, at W it sticks out behind; at S it hides behind the right wing (`r3/ta3/z.png`).
    - Crest (keyed): two red plumes raked back; lags in walk passes, up in talk/vote/squawk/point, flat in die and ghost.
    - Jaw: talk 36–38°, squawk 40°, point 30° ("you!"), vote 14°.
-   - **Ghost halo** (`halo`, joint buried in the skull, micro ring offset 0.6 m up, ×1000 only in `ghost`) and **`ghostK`**
-     (part-less control bone; its scale = ghost level for the shader). Both appended LAST (living bone indices unchanged).
+   - **Ghost** (ghost port): `spec.ghost` — module ramps, the `ghostHalo` bone it appends (lift 0.32 over the crest),
+     hover 0.14 m with floating legs; the r2 `halo` / `ghostK` bones are gone.
    - FX: `speak` bubble (crown), `vote@fanTip` sparkle, `emote:exclaim@crown` on the squawk key. No die FX. No smears.
 2. **My locomotion: a bouncy WADDLE-SKIP.** LegGait plan `bird`, `plant: 'hold'`, roll 10°, head bob 6°, authored walk
    clip (`blend: 'add'`) lift +0.05 m on passes, wing flare, tail swish. **r2: toe FANS** (3 toes 0.16 m wide + a back
@@ -68,7 +84,8 @@ render-host (RTX 4090, GPU line in `report.txt`).
 red `#E85A50 / #C4323C / #7A2430` (r2 sh: hue 353°, within 15° of v1 #c4323c) · tee `#524C5A / #3A3640 / #2C2832`
 (r2: neutral charcoal, v1 #2c2834) · ivory `#FFF6E6 / #EADCC4 / #A8948E` · blue `#5E8EE6 / #3A64B4 / #34509A` (r2 sh
 lifted) · legs `#9A8C8C / #76686C / #4E4450` (r2 darker) · accent yellow `#FFDA62 / #E2B23E / #9C6A3C`. Ghost ramps
-(shader only): ghost `#3A5696 → #E2EEFA` + mist `#D4E0F2`, spent `#3A4260 → #98A2BA`, halo `#FFE08A` emissive.
+(`spec.ghost`): ghost `#3A5696 → #E2EEFA` + mist `#D4E0F2` (module defaults), spent `#3A4260 → #B0BACE`, halo `#FFE08A`
+emissive, keepHue 0.25, lo 0.06, slope 1.5.
 sig_ground: noon-sun dH 90 PASS, golden-sun dH 61 PASS, **golden-shade −29 % PASS** (r1 −24 % WARN), noon-shade −24 %
 WARN (r1 −7 %): the shade copy is now dark red, not plum (`scene-golden-crop.png`).
 
@@ -82,8 +99,9 @@ WARN (r1 −7 %): the shade copy is now dark red, not plum (`scene-golden-crop.p
 - **die (60, legs fk)**: f0 wobble, half lids (6) · f6 knees give, SHUT (6) · f12 tipping sideways roll 38 (4) · f16 on
   her side roll 82 (4) · f20 settle roll 75, held.
 - squawk (36, glyph f6): f0 crouch (6) · f6 V spread + beak 40 (8) · f14 half wings (6) · f20 V (6) · f26 settle (6) · f32.
-- **ghost / ghost-spent (loop 64, hold)**: hover 0.18/0.15/0.12/0.15 m (spent 0.12/0.10/0.08/0.10) over 16-frame holds,
-  wings drifting, crest flat, f48 head cock; spent: head bowed 6°, no halo, dimmer ramp.
+- **ghost / ghost-spent (loop 64, hold; ghost port)**: module hover 0.14 m + `pos` 0.056/0.028/0/0.028 m (spent
+  0/−0.028/−0.056/−0.028) over 16-frame holds, wings drifting, crest laid back, f48 head cock; spent: head bowed 6°, no
+  halo, dimmer ramp.
 
 ## Lights
 None.

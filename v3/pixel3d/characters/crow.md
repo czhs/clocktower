@@ -135,7 +135,7 @@ point 6 / ghost 4 / ghost-spent 4 drawings.
 | **ghost-spent** | same poses, `ghostK.s` 2, no halo, head bowed 4° | dimmer grey-blue ramp `#3E4662→#9EA8C0`, night glow 0.12 instead of 0.3. amplitude 21 % |
 | **die** (changed) | f0 was a flinch + `hurt` flash → now a resigned sigh (chin up, beak parted 14°, half lids, free hand to the chest), no `hurt` event; f6–f60 unchanged (leans on the shovel → tips over stiff → face-down, hat beside him, `land`) | die.pose_read 130 %, final hold 2.2 s, no hurt flash in `clip-die-60hz.png` |
 
-**How the ghost look works (spec-only, no shared code):** `spec.material` passes `vertexHead/vertex/fragmentHead/tones`
+**(Superseded by the ghost port, last section — kept as history.) How the ghost look worked (spec-only, no shared code):** `spec.material` passes `vertexHead/vertex/fragmentHead/tones`
 to `characterMaterial`. The vertex shader reads the ghost level from the bone texture: det(mat3(getBoneMatrix(ghostK))) /
 det(…hips) = (1 + s)³ → 1 / 8 / 27 → `vCrowGhost` 0 / 1 / 2. This does not depend on rotation, so it works for any pose or
 facing, and `.s` zero-fill means every other clip is alive. Bone indices come from a copy of rig.js's topological
@@ -143,7 +143,7 @@ order (`boneOrder`). The tones hook maps hi/mid/sh separately by perceptual ligh
 (t = (√luma − 0.16)·1.6); the halo is found by its bind position (`vCharBind`, within 0.01 m of the halo rest point).
 Shadows are untouched, so the ground shadow shows the hover gap.
 
-**Hover vs the idle leg IK:** loop clips keep the legs IK-planted, and `_solveLegs` dips the hips by up to 0.1 m when a planted
+**(Superseded: `spec.ghost` floats the legs, no +0.1.) Hover vs the idle leg IK:** loop clips keep the legs IK-planted, and `_solveLegs` dips the hips by up to 0.1 m when a planted
 foot is out of reach, so `pos` y = HOVER (0.1) + hover. The legs are invisible (dissolved), so the stretched IK never shows.
 
 **Walk re-check after the module fixes (M1–M3):** `clip-game.png`, `game-onion.png` show that he walks at stand height, the hem never
@@ -154,3 +154,23 @@ kept. It still works; moving it to an authored `clips.walk` (M1) is a possible n
 
 **Combat check:** no weapon swings or strikes. The `dig` emote is digging (the blade goes into the ground beside him, the clod is flung
 out to his side, away from anyone), so it stays.
+
+## Ghost port (2026-10-17) — shared `spec.ghost` (supersedes the touch-up ghost recipe above)
+
+- **Why:** the touch-up ghost (`ghostK` bone + micro `halo` ring + `material.tones` shader) only lived inside the ghost
+  clips, so a dead player walking as Mortimer looked alive until he stopped. `spec.ghost` + `ch.ghost = 1` now shade the
+  walk, talk and emotes too.
+- **Spec:** `ghost: { hover: 0.14, keepHue: 0.25, lo: 0.04, slope: 1.7, spent: ['#3A4260', '#B0BACE'], halo: { bone: 'hat',
+  lift: 0.22 } }`. keepHue 0.25 (dark character): the hat stays a mauve-brown over a periwinkle coat, the beak the
+  lightest mass; lo 0.04 / slope 1.7 lift the near-black feathers + charcoal coat (defaults = a dim slate figure,
+  `shots/ghost-port/crow/z-g8.png` vs `z-g8-vA.png`); spent light end #B0BACE. Halo on the hat bone (follows the tipped
+  hat), lift 0.22: at 0.12 the crown poked through the ring (`pack-r1-clip-ghost.png`) — now islands 2 → 2.
+  Removed: `halo` + `ghostK` bones, the micro ring part, `GHOST`, `lin3`, `boneOrder`, `restWorld`, `ghostMaterial()`,
+  `HALO_*`, `HOVER`, `GHOSTK`, `HALO` (THREE stays: shovel / beak geometry).
+- **Clips (pose only):** `ghostClip(lv)` keys 0/16/32/48: `pos` y 0.056 / 0.028 / 0 / 0.028 over the module hover 0.14 m
+  (spent −0.028), chest/arms/coat tails as before, look aside at 48, spent head +4.
+- **Checks (render-host):** pack `shots/ghost-port/crow/pack/` 115 pass / 17 warn / 0 fail (before 114 / 18: vote.key_speckle
+  WARN → PASS with identical raw frames); ghost amplitude 26 %, key_delta 39 %, off_grid 0, flicker 0, islands 2 → 2; spent
+  amplitude 20 %, key_delta 34 %. Living renders: 0 / 2350 raw frames differ vs the pre-port pack (the clip-talk/vote
+  strip composites changed size only). Demo walking ghost (`?char=crow`, key 5, D held): level 1 while moving, pale at
+  noon and night (`shots/ghost-port/crow/walking-ghost-{noon,night}.png`).

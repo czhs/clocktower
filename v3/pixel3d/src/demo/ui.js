@@ -138,7 +138,10 @@ export function mountUI(demo) {
   const charBtns = roster.map((c) => {
     const tile = h('span', { class: 'dui-mono-tile', style: { background: tint(c.id) } },
       c.thumb ? h('img', { src: c.thumb, alt: '' }) : String(c.name || c.id).trim()[0].toUpperCase());
-    const sub = [c.status === 'wip' ? 'WIP' : null, c.bodyPlan, Number(c.height) ? `${Number(c.height).toFixed(1)} m` : null].filter(Boolean).join(' · ') || c.blurb || 'ready';
+    // (critic P2-6) a human subtitle: the character's own line (blurb) when it has one, else its height; never the rig id
+    // ("uprightAnimal", "longNeck", "hopper")
+    const tall = Number(c.height) ? `${Number(c.height).toFixed(1)} m tall` : null;
+    const sub = (c.status === 'wip' ? ['WIP', tall] : [c.blurb || tall]).filter(Boolean).join(' · ') || 'ready';
     const b = h('button', { type: 'button', class: 'dui-char', title: c.blurb || c.name || c.id, onclick: () => pickChar(c.id) },
       tile, h('span', { class: 'dui-char-text' }, h('span', { class: 'dui-char-name' }, c.name || titleCase(c.id)), h('span', { class: 'dui-char-sub' }, sub)));
     b.dataset.id = c.id;
@@ -479,15 +482,28 @@ export function mountUI(demo) {
   // "Notebook: held / big" = store.bookStyle ('held': the small book at the reader's hands | 'big': a real 3D book
   // unfolding in front of the reader); "Pointer: new / v2 size" = store.pointerScale ('new' | 'v2': the finger at the
   // v2 size relative to the character). Both switch live (no reload); ?book= / ?pointer= seed them (docs/DEMO.md §5).
+  // (emoji, docs/UI-EMOJI.md "Pin colour: where it lives") "Pin colour": AUTO (each player's automatic colour, the
+  // default) or one of the 8, the same choice as the reactions dock's small colour button (saved by the game UI)
+  // (the colours + their hex: the UI kit's PIN_COLORS / PIN_HEX through the game UI)
+  const pinKinds = demo.gameui?.pinColors ? ['auto', ...demo.gameui.pinColors] : [];
+  const pinBtns = pinKinds.map((c) => btn(c === 'auto' ? 'auto' : h('span', { class: 'dui-pindot', style: { background: demo.gameui.pinHex?.[c] ?? '#888' } }),
+    () => demo.gameui?.setPinColor?.(c), { title: c === 'auto' ? 'automatic pin colour (each player gets their own)' : `${c} pins`, 'aria-label': c === 'auto' ? 'automatic pin colour' : `${c} pins` }));
+  const paintPin = () => {
+    const pc = demo.gameui?.pinColor;
+    if (!pc) return;
+    pinKinds.forEach((c, i) => { pressed(pinBtns[i], c === 'auto' ? pc.auto : !pc.auto && pc.color === c); pinBtns[i].classList.toggle('dui-pinauto', pc.auto && c === pc.color); });
+  };
   const gameSec = section('gameui', 'Game UI',
     stack('notebook', seg('bookStyle', BOOK_STYLES, (o) => (o === 'held' ? 'held' : 'big'), (o) => (o === 'held' ? 'Notebook: the book at the reader\'s hands' : 'Notebook: a big 3D book in front of the reader'))),
     stack('pointer', seg('pointerScale', POINTER_SCALES, (o) => (o === 'new' ? 'new' : 'v2 size'), (o) => (o === 'new' ? 'Pointer: the new finger' : 'Pointer: the v2 size relative to the character'))),
+    pinBtns.length ? stack('pin colour', h('div', { class: 'dui-seg dui-pinseg' }, pinBtns)) : null,
     h('div', { class: 'dui-btns' },
       btn('notebook', () => demo.gameui?.notebook?.toggle(), { class: 'dui-btn wide', title: 'open / close the notebook (J)' }),
-      btn('pin palette', () => { if (demo.gameui) demo.gameui.dockOpen = !demo.gameui.dockOpen; }, { class: 'dui-btn wide', title: 'the social dock: point, pins, colours (G)' })),
-    h('div', { class: 'dui-note' }, !demo.gameui ? 'Game UI off (?gameui=0)' : demo.gameui.touch ? 'Hold a finger on the town: point / pins · your portrait: the palette · the book: notebook'
-      : 'Right-click: point · right-drag: pins · F: pin · J: notebook · G: palette'),
+      btn('reactions', () => { if (demo.gameui) demo.gameui.dockOpen = !demo.gameui.dockOpen; }, { class: 'dui-btn wide', title: 'the reactions dock: react, point, pin (G)' })),
+    h('div', { class: 'dui-note' }, !demo.gameui ? 'Game UI off (?gameui=0)' : demo.gameui.touch ? 'Hold a finger on the town: point / react / pin · your portrait: the reactions · the book: notebook'
+      : 'Right-click: point · right-drag: react / pin · F: pin · J: notebook · G: reactions (1-7)'),
   );
+  if (pinBtns.length) { paintPin(); offs.push(events.on('gameui:pincolor', paintPin)); }
   const paintGameAside = (s) => { gameSec.aside.textContent = `${s.bookStyle} · ${s.pointerScale === 'v2' ? 'v2 size' : 'new'}`; };
   onKey('bookStyle', paintGameAside); onKey('pointerScale', paintGameAside);
   // (no notebook open / close toasts: the panel itself is the feedback, and the toast column covered name labels.
@@ -509,7 +525,7 @@ export function mountUI(demo) {
   }, { class: 'dui-btn icon', title: 'fold the panel' });
   const refold = () => { const a = !!autoFold(); if (a !== autoWas) { autoWas = a; override = null; paintCollapsed(); } };
   const helpBtn = btn('?', () => help(), { class: 'dui-btn icon', title: 'keys (H)' });
-  const hideBtn = btn('×', () => { set({ ui: false }); toast('Panel hidden: the backquote key ( ` ) brings it back'); }, { class: 'dui-btn icon', title: 'hide the panel (`)' });
+  const hideBtn = btn('×', () => { set({ ui: false }); toast('Panel hidden: press the backtick key (top left, under Esc) to bring it back'); }, { class: 'dui-btn icon', title: 'hide the panel (`)' });
   const body = h('div', { class: 'dui-body' }, charSec, gameSec, timeSec, townSec, renderSec, travelSec);
   // the UI library's panel skin (out/ui/panels.css, loaded by gameui.js): the ctp-panel 9-slice + ctp-skin buttons
   const skin = demo.gameui ? ' ctp-panel ctp-skin dui-skinned' : '';
@@ -523,11 +539,39 @@ export function mountUI(demo) {
   // it and the two filled the screen; never saved, the fold button unfolds it again)
   offs.push(events.on('notebook', ({ open }) => { if (open && innerWidth < NARROW_W && !folded()) { override = true; paintCollapsed(); } }));
   offs.push(() => removeEventListener('resize', refold), store.on('location', refold));
+  // (the user: "in game there won't be the side panel, so you can use the whole screen") while the VOTE camera is up the
+  // panel SLIDES OUT past the right edge (.dui-away: a 0.25 s transform; nothing saved, the store's `ui` untouched) and
+  // slides back when the camera leaves the vote: the vote frame fits the whole canvas (votecam.js measures the panel's
+  // box: off the canvas = 0) and no seat / label / mark sits under it. The status line stays.
+  const paintAway = () => panel.classList.toggle('dui-away', store.state.camera === 'vote');
+  paintAway();
+  offs.push(store.on('camera', paintAway));
   // buttons / selects must not keep keyboard focus: Space / arrows / letters belong to the game (walking, emotes)
   panel.addEventListener('click', (e) => { const b = e.target.closest?.('button'); if (b) b.blur(); });
   panel.addEventListener('mousedown', (e) => { if (e.target.closest?.('button')) e.preventDefault(); });
 
   const status = h('div', { class: 'dui-status', 'aria-live': 'off' });
+  // (vote-fix5, critic-4 P2-3) the status line hides with the panel in the vote camera: the game has neither, and the
+  // compact action bar takes its bottom-left corner so the ring's near tip can sit at the bottom centre
+  const paintStatusAway = () => status.classList.toggle('dui-away', store.state.camera === 'vote');
+  paintStatusAway();
+  offs.push(store.on('camera', paintStatusAway));
+
+  // (critic P2-6) one UI scale at every pixel scale: at 1080p 'round' (pixelScale 3) the canvas HUD is drawn 1.5x the
+  // 720p size but the DOM panel / status line / keys card stayed at the 720p size (dim 10-px subtitles, truncated
+  // "GOL…" buttons: two UIs). With the game UI (the skinned panel) they are zoomed by pixelScale / 2 (CSS zoom) and
+  // wear the --px 2 skin, so the 9-slice art lands on whole device px (2 x 1.5 = 3) and the text grows with the HUD;
+  // the max heights divide by the zoom (vh is not zoomed). 720p / phones: zoom 1, as before.
+  const zoomEls = () => [panel, status, helpCard];
+  const fitZoom = () => {
+    const ps = demo.engine?.pixelScale || 2, z = demo.gameui && ps > 2 ? ps / 2 : 1;
+    for (const e of zoomEls()) {
+      if (z === 1) { e.style.removeProperty('zoom'); e.style.removeProperty('--px'); e.style.removeProperty('--uizoom'); }
+      else { e.style.zoom = String(z); e.style.setProperty('--px', '2'); e.style.setProperty('--uizoom', String(z)); }
+    }
+  };
+  addEventListener('resize', fitZoom);
+  offs.push(() => removeEventListener('resize', fitZoom));
 
   // --- help overlay -------------------------------------------------------------------------------
   const helpCard = h('div', { class: `dui-help-card${skin}`, role: 'dialog', 'aria-label': 'keyboard shortcuts' });
@@ -546,7 +590,8 @@ export function mountUI(demo) {
     if (demo.player?.clickAt) add('move', ['click'], 'walk there (a cottage: to its door)');
     if (demo.gameui) {
       add('emote', ['right-click'], 'point at a townsperson / a spot');
-      add('emote', ['right-drag'], 'the pie: point, 8 pin colours, remove my pin');
+      add('emote', ['right-drag'], 'the pie: point, 7 reactions, a pin (your colour), remove my pin');
+      add('emote', ['G', '1-7'], 'the reactions dock; 1-7 react while it is open');
       add('emote', ['click pin'], 'remove your own pin');
     }
     for (const b of input.bindings()) add(b.group || 'misc', [keyLabel(b.code)], b.desc || b.code);
@@ -568,6 +613,7 @@ export function mountUI(demo) {
   }
 
   root.append(panel, status, toasts, helpEl);
+  fitZoom();
   onKey('ui', (s) => { panel.style.display = s.ui ? '' : 'none'; status.style.display = s.ui ? '' : 'none'; });
 
   // --- keys + event toasts ------------------------------------------------------------------------
@@ -576,12 +622,14 @@ export function mountUI(demo) {
     input.bind('Escape', () => { if (!helpEl.hidden) help(false); }, { desc: 'close the overlay', group: 'ui' }),
     input.bind('Backquote', () => {
       set({ ui: !store.state.ui });
-      if (!store.state.ui) toast('Panel hidden: the backquote key ( ` ) brings it back');
+      if (!store.state.ui) toast('Panel hidden: press the backtick key (top left, under Esc) to bring it back');
     }, { desc: 'show / hide the panel', group: 'ui' }),
     events.on('toast', (p) => toast(p?.text ?? p)),
-    events.on('bell', () => toast('The bell tolls')),
+    // (critic-3 P3) not while a vote / execution caption already says it (the threshold bell, the execution's tolls)
+    events.on('bell', () => { const ph = store.state.phase; if (ph !== 'vote' && ph !== 'execution' && store.state.camera !== 'vote') toast('The bell tolls'); }),
     // (the emote tip: shown once from update() when the player has control, see emoteTip below)
-    store.on('phase', ({ value, source }) => { if (source !== 'ui') toast(`Phase: ${value}`); }),
+    // (with the game UI the events group's phase caption ribbon says it: no toast on top of it)
+    store.on('phase', ({ value, source }) => { if (source !== 'ui' && !demo.gameui) toast(`Phase: ${value}`); }),
   );
 
   // --- the emote tip (user request: tell players they can emote; Space = the signature emote, 1-6 the others) -------
@@ -593,9 +641,11 @@ export function mountUI(demo) {
   const TIP_DELAY = 1.2, TIP_SECS = 9;
   // a touch screen (gameui.touch: coarse pointer) has no keys: finger wording
   const touchTip = !!demo.gameui?.touch;
-  const TIP_TEXT = touchTip ? 'Tip: tap to walk, hold a finger on the town to point or pin' : 'Tip: press SPACE to emote (1-6 for more)';
+  // (critic P1-2: Space opens the game UI's emote palette; 1-6 play the emotes, 6 = the signature. Without the game UI
+  // (?gameui=0) Space is unbound: the fallback tip names 1-6 only)
+  const TIP_TEXT = touchTip ? 'Tip: tap to walk, hold a finger on the town to point or pin' : 'Tip: press 1-6 to emote (6 = your signature move)';
   const TIP_TOKENS = touchTip ? [{ s: 'Tip:', b: true }, { s: ' tap to walk · hold a finger on the town to point or pin' }]
-    : [{ s: 'Tip:', b: true }, { s: ' ' }, { k: 'Space' }, { s: ' emote (' }, { k: '1' }, { s: '-' }, { k: '6' }, { s: ' more) · ' },
+    : [{ s: 'Tip:', b: true }, { s: ' ' }, { k: '1' }, { s: '-' }, { k: '6' }, { s: ' emote (6: your signature) · ' },
     { k: 'Right' }, { s: ' point, drag: pins · ' }, { k: 'J' }, { s: ' notebook' }];
   const emoteTip = { state: 'wait', wait: 0, left: TIP_SECS, el: null, shownAt: null };
   let readySeen = !!window.__demo?.ready;
@@ -612,11 +662,14 @@ export function mountUI(demo) {
     if (emoteTip.state === 'done') return;
     const step = Math.min(0.25, Math.max(0, Number(dt) || 0));
     if (emoteTip.state === 'wait') {
+      // "never show again" (the game UI's tip row, localStorage): no automatic tip; the lightbulb still opens it
+      if (demo.gameui?.tipNever) { emoteTip.state = 'done'; emoteTip.skipped = 'never'; return; }
       if (!hasControl()) { emoteTip.wait = 0; return; }
       emoteTip.wait += step;
       if (emoteTip.wait < TIP_DELAY) return;
       // with the game UI: the pixel key-hint plate at the bottom (hud art drawKeyHint), the same 9 s
-      emoteTip.el = demo.gameui?.tip ? demo.gameui.tip(TIP_TOKENS, TIP_SECS) : toast(TIP_TEXT, null);
+      // (the game UI's own tokens name the action bar; it flies into the toolbar's lightbulb when it goes)
+      emoteTip.el = demo.gameui?.tip ? demo.gameui.tip(demo.gameui.tipTokens ?? TIP_TOKENS, TIP_SECS) : toast(TIP_TEXT, null);
       emoteTip.el.classList.add('dui-tip');
       emoteTip.state = 'shown'; emoteTip.shownAt = Math.round(performance.now());
       return;

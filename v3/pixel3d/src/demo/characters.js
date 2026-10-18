@@ -31,6 +31,15 @@ import { buildCharacter } from '../chars/rig.js';
 import { loadRoster, loadSpec, probe, wipMode, publicOffer, wipOffer, isFinished } from './roster.js';
 
 let smearMod = null, fxMod = null;
+
+/** (P1.3, the Storyteller's lantern) A Character builds a PointLight for every spec.lights entry under its socket the
+ *  first time it updates: one more light in the scene = every lit material recompiles (+23 programs, a ~200 ms hitch
+ *  on the swap, audit 2026-10-17). The demo builds the Character from a shallow copy WITHOUT lights; the entries stay on
+ *  the handle (`handle.lights`, with the socket node resolved) and the time module pins one light of its constant pool
+ *  to the socket (time.js `carried`). Same spec object everywhere else (handle.spec is the original). */
+export const lightless = (spec) => (spec?.lights?.length ? { ...spec, lights: [] } : spec);
+/** The default spawn character (= api.js DEFAULT_CHARACTER; critic P1-2: one with all six game emotes). */
+export const DEFAULT_ID = 'frog';
 const optional = async (p) => { try { return await import(p); } catch (e) { console.warn(`[demo] ${p} unavailable:`, e?.message || e); return null; } };
 
 // game emotes (CHARACTERS.md clocktower rule) -> clip name in the spec (or null). 'signature' = spec.emote.
@@ -47,7 +56,7 @@ export function prefetchCharacters() {
   return loadRoster().then((roster) => {
     const wip = wipMode();
     const ids = roster.characters.filter((c) => pick === 'all' || (wip ? wipOffer(c) : publicOffer(c))).map((c) => c.id);
-    for (const id of new Set([q.get('char') ?? 'wanderer', ...ids])) loadSpec(id).catch(() => {});
+    for (const id of new Set([q.get('char') ?? DEFAULT_ID, ...ids])) loadSpec(id).catch(() => {});
   }).catch(() => {});
 }
 /** Rows of the switcher: `complete` = offered: publicly only FINISHED characters that load + animate (roster.js
@@ -133,7 +142,7 @@ export function listCharacters() {
     const offeredIds = rows.filter((r) => r.complete).map((r) => r.id);
     const cur = demo?.store?.state?.character;
     if (cur && offeredIds.length && !offeredIds.includes(cur)) {
-      const to = offeredIds.includes('wanderer') ? 'wanderer' : offeredIds[0];
+      const to = offeredIds.includes(DEFAULT_ID) ? DEFAULT_ID : offeredIds.includes('wanderer') ? 'wanderer' : offeredIds[0];
       console.info(`[demo] character '${cur}' is not offered${wip ? '' : ' publicly (work in progress: add ?wip=1)'}; starting as '${to}'`);
       demo.store.set({ character: to }, 'roster');
     }
@@ -189,7 +198,7 @@ function exercise(engine, spec, thumbs, status) {
   Object.defineProperty(proxy, 'time', { get: () => tau });
   proxy.onUpdate = () => {};
   const H = spec.height ?? 1.4, v = spec.gameSpeed?.v ?? spec.game?.speed ?? 3.95 * H, GO = 0.6;
-  const ch = new Character(proxy, spec, { autoUpdate: false, snap: false, facingSteps: 8, face: 0, position: new THREE.Vector3() });
+  const ch = new Character(proxy, lightless(spec), { autoUpdate: false, snap: false, facingSteps: 8, face: 0, position: new THREE.Vector3() });
   try {
     ch.drive((t) => ({ pos: new THREE.Vector3(0, 0, Math.max(0, t - GO) * v), face: 0 }));
     for (let i = 0; i <= 15; i++) ch.update(tau = i / 30);           // idle, 0 .. 0.5 s
@@ -345,7 +354,7 @@ export async function createCharacter(engine, id, { position, face = 0, ground, 
     // (perf) the rig build and the Character's first update (its rest-shape / dynamics setup) land in DIFFERENT frames:
     // owl's build alone is 55-90 ms and its first update 25-40 ms (2026-10-16 probe), together a >100 ms swap frame
     await nextFrame();
-    ch = new Character(proxy, spec, {
+    ch = new Character(proxy, lightless(spec), {
       rig, autoUpdate: false, snap: true, facingSteps: 8, face,
       position: position?.clone?.() ?? new THREE.Vector3(), ground: ground ?? groundOf(),
     });
@@ -365,6 +374,18 @@ export async function createCharacter(engine, id, { position, face = 0, ground, 
     throw new Error(`character '${id}': ${e?.message || e}`, { cause: e });
   }
   ch.root.name = `character:${id}`;
+  // spec.lights (not built by the Character, see lightless): an empty Object3D at each light's socket / bone (+ `at`),
+  // so the time module can read its world position; never a light itself (the light count stays constant)
+  const lights = [];
+  for (const L of spec.lights ?? []) {
+    const node = ch.rig?.sockets?.[L.socket] ?? ch.bones?.[L.bone ?? L.socket];
+    if (!node) { console.warn(`[demo] '${id}' spec.lights: no socket/bone '${L.socket ?? L.bone}'`); continue; }
+    const at = new THREE.Object3D();
+    at.name = `demo-carried-light:${L.socket ?? L.bone}`;
+    if (L.at) at.position.fromArray(L.at);
+    node.add(at);
+    lights.push({ L, node: at });
+  }
 
   const clips = Object.keys(spec.clips ?? {});
   const emotes = {};
@@ -379,6 +400,8 @@ export async function createCharacter(engine, id, { position, face = 0, ground, 
     runSpeed: loco.runSpeed ?? 3.4,
     gameSpeed: spec.gameSpeed?.v ?? spec.game?.speed ?? null,   // cast members: THE game speed (4 H/s); null = use walkSpeed
     clips, emotes,
+    /** the spec's carried lights [{ L (the spec.lights entry), node (Object3D at the socket) }]: lit by time.js */
+    lights,
     /** clips safe to play as emotes in the clocktower game (no combat / hurt, no locomotion) */
     emoteClips: clips.filter((c) => !BANNED.has(c) && !['idle', 'walk', 'run'].includes(c)),
     /** the Character's local clock (s since creation; -1 before the first update) */
@@ -423,20 +446,31 @@ export async function createNPCs(demo, { count = 3 } = {}) {
     const th = Math.PI + a;
     return new THREE.Vector3(C.cx + Math.sin(th) * r, 0, C.cz - Math.cos(th) * r);
   }).filter((p) => !layout.blocked(Math.floor(p.x), Math.floor(p.z))).slice(0, Math.max(0, Math.min(6, count || 0)));
-  const npcs = [];   // per slot: { id, slot, spot, handle, face, home, next }
-  let playerId = store.state.character, disposed = false;
+  const npcs = [];   // per slot: { id, slot, spot (live), base, away, handle, face, home, next, walking }
+  let playerId = store.state.character, disposed = false, lastT = null;
   const available = () => (demo.characters ?? []).filter((c) => c.complete).map((c) => c.id);
 
+  // (B) while the vote camera is up (any vote stage, votestage.js) the idle NPCs walk AWAY south, out of the vote frame
+  // (on the stones they stood just outside the ring and read as part of it; in the court at the frame's bottom edge), and
+  // walk back to their spots afterwards. n.spot is the LIVE position (the game UI's labels read it); n.base the spot.
+  // (radially out from the circle to r 16-11 m: the vote frames (every yaw) hold the ring + labels, r <= ~9)
+  const awayOf = (b) => {
+    const a = Math.atan2(b.x - C.cx, b.z - C.cz);
+    for (const r of [16, 15, 14, 13, 12, 11]) { const x = C.cx + Math.sin(a) * r, z = C.cz + Math.cos(a) * r; if (!layout.blocked(Math.floor(x), Math.floor(z))) return new THREE.Vector3(x, 0, z); }
+    return b.clone();
+  };
+  const WALK = 1.15;          // m / s (a stroll: the walk clip, not the run)
   async function spawn(slot, id) {
-    const spot = spots[slot];
-    const home = Math.atan2(C.cx - spot.x, C.cz - spot.z);
+    const base = spots[slot];
+    const live = npcs[slot]?.spot ?? base.clone();
+    const home = Math.atan2(C.cx - base.x, C.cz - base.z);
     let h;
-    try { h = await createCharacter(engine, id, { position: spot, face: home }); } catch (e) {
+    try { h = await createCharacter(engine, id, { position: live, face: home }); } catch (e) {
       console.warn(`[demo] NPC '${id}' failed:`, e?.message || e); return null;
     }
     if (disposed) { h.dispose(); return null; }
-    const n = { id, slot, spot, handle: h, face: home, home, next: 3 + slot * 2.9 };
-    h.ch.drive(() => ({ pos: spot, face: n.face }));
+    const n = { id, slot, spot: live, base, away: awayOf(base), handle: h, face: home, home, next: 3 + slot * 2.9, walking: false };
+    h.ch.drive(() => ({ pos: n.spot, face: n.face }));
     engine.scene.add(h.root);
     npcs[slot]?.handle?.dispose();
     npcs[slot] = n;
@@ -455,19 +489,36 @@ export async function createNPCs(demo, { count = 3 } = {}) {
   });
 
   const api = {
-    get list() { return npcs.filter(Boolean).map((n) => ({ id: n.id, pos: [n.spot.x, n.spot.z], clip: n.handle.ch.state.clip })); },
+    get list() { return npcs.filter(Boolean).map((n) => ({ id: n.id, pos: [+n.spot.x.toFixed(2), +n.spot.z.toFixed(2)], clip: n.handle.ch.state.clip, walking: !!n.walking, away: Math.hypot(n.spot.x - n.away.x, n.spot.z - n.away.z) < 0.05 })); },
     /** The live NPC records for the game UI (src/demo/gameui.js: labels, talk, pops, readers): no copies per frame.
      *  [{ slot, id, name, spot (Vector3), face (rad), height, handle }] */
     get members() { return npcs; },
     update(t) {
       const p = demo.player?.position;
+      // (B) out of the vote frame while the VOTE camera is up (any stage: on the stones, stage A, they stood just outside
+      // the ring and read as part of it; in the court they stood at the frame's bottom edge)
+      // (vote-fix5, critic-4 P1-2) and from the NOMINATION on (any camera): they are well away before the vote opens.
+      // The walk is radial (away = the same bearing at r 11-16), so it never enters the ring (they stand at r 7.6)
+      const ph = store.state.phase;
+      const out = !!demo.passB && !demo.player?.interior && (store.state.camera === 'vote' || ph === 'nomination' || ph === 'vote');
+      const dt = Math.min(0.1, Math.max(0, t - (lastT ?? t))); lastT = t;
       for (const n of npcs) {
         if (!n) continue;
+        // (B) out of the vote frame while the court is staged, back afterwards: walk (the Character's own gait)
+        const goal = out ? n.away : n.base, dx = goal.x - n.spot.x, dz = goal.z - n.spot.z, d = Math.hypot(dx, dz);
+        n.walking = d > 0.02;
+        if (n.walking) {
+          const s = Math.min(d, WALK * dt);
+          n.spot.x += (dx / d) * s; n.spot.z += (dz / d) * s;
+          n.face = Math.atan2(dx, dz);
+          n.handle.update(t);
+          continue;
+        }
         // face the player while it stands within 3.5 m (the Character turns in stop-motion 45° steps), else the circle
         const near = p && Math.hypot(p.x - n.spot.x, p.z - n.spot.z) < 3.5;
         n.face = near ? Math.atan2(p.x - n.spot.x, p.z - n.spot.z) : n.home;
         const tau = n.handle.clock;
-        if (tau >= n.next) {
+        if (tau >= n.next && !out) {
           const opts = NPC_EMOTES.filter((c) => n.handle.spec.clips?.[c]);
           if (n.handle.emotes.signature && !opts.includes(n.handle.emotes.signature)) opts.push(n.handle.emotes.signature);
           if (opts.length) n.handle.play(opts[Math.floor(tau * 7.13) % opts.length]);

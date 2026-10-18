@@ -8,8 +8,9 @@
 // Wings = the arm chain (upperArm = black tee sleeve + red coverts, forearm = yellow band + blue, hand = blue primaries).
 // Vote raises a FAN of three long primaries (fanR, authored at 4 % inside the right wing tip, scaled up in the vote).
 // r2 (critic 15/24): wedge + hook-tip beak, λ = coincident decal cut from the tee, wide swept tail, thick wings, toe
-// fans, charcoal tee / red sh 353°, point + ghost + ghost-spent clips (crow ghost shader recipe), die rolls onto her side.
-// Structure: palette → skeleton → geometry helpers → parts → ghost material → clips → spec.
+// fans, charcoal tee / red sh 353°, point + ghost + ghost-spent clips, die rolls onto her side.
+// Ghost port (2026-10-17): the crow ghost-shader recipe is replaced by the shared `spec.ghost` (walking ghosts shade too).
+// Structure: palette → skeleton → geometry helpers → parts → clips → spec.
 import * as THREE from 'three';
 import { chibi } from '../src/chars/rig.js';
 import * as K from '../src/chars/kit.js';
@@ -51,8 +52,6 @@ const SHOULDER = [0.238, 0.172, -0.01];
 export const FAN_K = 0.04;
 const FAN_UP = 1 / FAN_K - 1;
 const FAN_LEN = 0.46;
-// ghost halo: joint inside the skull (head-local), ring HALO_LIFT above it once scaled up (≈ 0.17 m over the crest tip)
-const HALO_AT = [0, 0.25, -0.02], HALO_LIFT = 0.6, HALO_MICRO = 0.001;
 
 export function skeleton() {
   const S0 = chibi({ ...BODY, tail: { n: 1, ...TAIL }, face: { eye: eyePos(), brow: false, mouth: false } });
@@ -65,11 +64,7 @@ export function skeleton() {
   }
   S.push({ name: 'crest', parent: 'head', pos: [...CREST_AT], axis: 'up' });
   S.push({ name: 'fanR', parent: 'handR', pos: [0, -m.hand, 0], axis: 'down' });
-  // r2 ghost clips (appended LAST → every living bone keeps its texture index): the gold HALO (joint buried in the
-  // skull, micro ring offset over the crest; 'halo.s' +999 in `ghost` only) and GHOSTK, a part-less control bone whose
-  // scale is the ghost level the material reads (0 alive, 'ghostK.s' 1 → ghost, 2 → ghost-spent) — crow recipe
-  S.push({ name: 'halo', parent: 'head', pos: [...HALO_AT], axis: 'up' });
-  S.push({ name: 'ghostK', parent: 'hips', pos: [0, 0, 0], axis: 'up' });
+  // (ghost port) no halo / ghostK bones any more: spec.ghost (shared ghost look) appends its own 'ghostHalo' bone
   return Object.defineProperties(S, { sockets: { value: S0.sockets }, meta: { value: m } });
 }
 
@@ -242,83 +237,7 @@ export function parts(S) {
       K.hull([[0.03, g, -0.02], [-0.03, g, -0.02], [0.025, g + 0.03, -0.02], [-0.025, g + 0.03, -0.02], [0, g, -0.1], [0, g + 0.02, -0.095]])),
     [0, 0, 0], 'legs', { name: 'toes' + sd });
   }
-  // r2 ghost halo: open octagon r 0.15 m, 0.045 m bars (≥ 1.5 texels), offset HALO_LIFT up, then built at 1/1000 size
-  const ring = [];
-  for (let i = 0; i < 8; i++) {
-    const a = (i + 0.5) * Math.PI / 4;
-    ring.push(K.xf(K.box(0.13, 0.045, 0.05), { rot: [0, a * D, 0], at: [Math.sin(a) * 0.15, HALO_LIFT, Math.cos(a) * 0.15] }));
-  }
-  add('halo', K.xf(K.merge(...ring), { scale: HALO_MICRO }), [0, 0, 0], 'yellow', { name: 'halo' });
   return P;
-}
-
-// ── r2 GHOST look (spec-only, crow recipe; no shared code). The clip sets the scale of the part-less bone `ghostK`; the
-// vertex shader reads det(ghostK) / det(hips) = (1 + s)³ → vPollyGhost 0 / 1 / 2. Fragment (`tones`): hi/mid/sh each
-// mapped by perceptual lightness onto a pale ramp (ghost: slate blue → ice; spent: dimmer grey-blue) so the red head,
-// white patches and dark pupils keep their value order; bands in BIND height fade the belly to mist and dissolve the
-// legs/toes (dither, then gone); the halo (found by its bind position) stays flat emissive gold.
-const lin3 = (hex) => { const c = new THREE.Color(hex); return `vec3(${c.r.toFixed(5)}, ${c.g.toFixed(5)}, ${c.b.toFixed(5)})`; };
-export const GHOST = {
-  ghost: ['#3A5696', '#E2EEFA'],   // [dark end, light end] sRGB (v1 ghost row: pale blue, values kept)
-  spent: ['#3A4260', '#98A2BA'],   // dimmer grey-blue (ghost vote used, no halo)
-  mist: '#D4E0F2',
-  halo: '#FFE08A',
-};
-function boneOrder(S) {   // = rig.js buildCharacter topological order (the bone texture index)
-  const by = new Map(S.map((b) => [b.name, b])), seen = new Set(), out = [];
-  const visit = (b) => { if (seen.has(b.name)) return; if (b.parent) visit(by.get(b.parent)); seen.add(b.name); out.push(b.name); };
-  S.forEach(visit);
-  return out;
-}
-function restWorld(S, name) {
-  const by = new Map(S.map((b) => [b.name, b]));
-  const p = [0, 0, 0];
-  for (let b = by.get(name); b; b = b.parent ? by.get(b.parent) : null) for (let i = 0; i < 3; i++) p[i] += (b.pos || [0, 0, 0])[i];
-  return p;
-}
-function ghostMaterial(S) {
-  const order = boneOrder(S), iG = order.indexOf('ghostK'), iH = order.indexOf('hips');
-  const h = restWorld(S, 'halo');
-  return {
-    vertexHead: 'varying float vPollyGhost;',
-    vertex: `
-      vPollyGhost = 0.0;
-      #ifdef USE_SKINNING
-      {
-        float dG = determinant(mat3(getBoneMatrix(${iG}.0))), dH = determinant(mat3(getBoneMatrix(${iH}.0)));
-        float rg = dG / max(abs(dH), 1e-6);
-        vPollyGhost = rg > 16.0 ? 2.0 : (rg > 4.0 ? 1.0 : 0.0);
-      }
-      #endif`,
-    fragmentHead: `varying float vPollyGhost;
-      vec3 pollyGhostTone(vec3 c, vec3 d, vec3 l) {
-        float v = sqrt(max(dot(c, vec3(0.2126, 0.7152, 0.0722)), 0.0));
-        return mix(d, l, clamp((v - 0.12) * 1.35, 0.0, 1.0));
-      }`,
-    tones: `
-      if (vPollyGhost > 0.5) {
-        bool pHalo = distance(vCharBind, vec3(${h.map((v) => v.toFixed(4)).join(', ')})) < 0.01;
-        if (!pHalo) {
-          bool sp = vPollyGhost > 1.5;
-          vec3 gd = sp ? ${lin3(GHOST.spent[0])} : ${lin3(GHOST.ghost[0])};
-          vec3 gl = sp ? ${lin3(GHOST.spent[1])} : ${lin3(GHOST.ghost[1])};
-          float y = vCharBind.y;
-          ivec2 px = ivec2(gl_FragCoord.xy);
-          if (y < 0.09) discard;
-          if (y < 0.16 && ((px.x + px.y) & 1) == 1) discard;
-          float fm = y < 0.22 ? 0.55 : (y < 0.32 ? 0.25 : 0.0);
-          vec3 mist = sp ? ${lin3(GHOST.spent[1])} : ${lin3(GHOST.mist)};
-          toonHi = mix(pollyGhostTone(toonHi, gd, gl), mist, fm);
-          toonMid = mix(pollyGhostTone(toonMid, gd, gl), mist, fm);
-          toonSh = mix(pollyGhostTone(toonSh, gd, gl), mist, fm);
-          float kNight = 1.0 - smoothstep(0.35, 0.6, dot(uRampHi, vec3(0.299, 0.587, 0.114)));
-          totalEmissiveRadiance += toonMid * (sp ? 0.12 : 0.3) * kNight;
-        } else {
-          totalEmissiveRadiance = ${lin3(GHOST.halo)};
-          toonHi = vec3(0.0); toonMid = vec3(0.0); toonSh = vec3(0.0);
-        }
-      }`,
-  };
 }
 
 // ── clips (pose triples [fwd, twist, out] deg) ──
@@ -343,19 +262,18 @@ const POINT = (extra = {}) => ({ chest: [0, -20, 0], head: [-8, -30, 0], crest: 
 const DEAD = (roll, extra = {}) => ({ pos: [-0.3, -0.14, 0], hips: [-15, 0, roll], head: [10, -15, -10], ...SHUT, crest: [30, 0, 0],
   ...WINGS(16), thighL: [30, 0, 10], shinL: [-40, 0, 0], thighR: [50, 0, 6], shinR: [-60, 0, 0], tail0: [-20, 0, 0], ...extra });
 
-// ghost (r2, crow recipe): hover (`pos` y carries +0.1 for the idle leg IK's reach dip, see CHARACTER_LEARNINGS), wings
-// drifting out a little, tail down, crest up; level 1 = ghost (+ halo), 2 = ghost-spent (dimmer, lower, head bowed 6°)
-const HOVER = 0.1;
-const GHOSTK = (lv) => ({ 'ghostK.s': [lv, lv, lv] });
-const HALO = { 'halo.s': [1 / HALO_MICRO - 1, 1 / HALO_MICRO - 1, 1 / HALO_MICRO - 1] };
-const ghostPose = (lv, up, d, extra = {}) => ({ pos: [0, HOVER + up, 0], ...GHOSTK(lv), ...(lv === 1 ? HALO : {}),
-  chest: [3 * d, 0, 0], head: [-3 * d + (lv === 2 ? 6 : 0), 0, 0], ...WINGS(14 + 8 * d, 0, -30), crest: [lv === 2 ? 40 : 34, 0, 0],   // crest laid flat back: clear of the halo
+// ghost (ghost port: POSE ONLY — spec.ghost draws the pale / spent ramps, the gold halo, the bind-height dissolve of
+// legs + toes, the night self-glow, and adds the 0.14 m hover with floating FK legs): wings drifting out a little, tail
+// down, crest laid back (clear of the halo), a whole-texel bob; level 1 = ghost (+ halo), 2 = ghost-spent (dimmer,
+// 2 texels lower, head bowed 6°)
+const ghostPose = (lv, up, d, extra = {}) => ({ pos: [0, up, 0],
+  chest: [3 * d, 0, 0], head: [-3 * d + (lv === 2 ? 6 : 0), 0, 0], ...WINGS(14 + 8 * d, 0, -30), crest: [lv === 2 ? 40 : 34, 0, 0],
   tail0: [16, 0, 0], ...extra });
 const ghostClip = (lv) => ({ fps: 30, loop: true, interp: 'step', length: 64, dynamics: 'hold', keys: [
-  { f: 0, pose: ghostPose(lv, lv === 1 ? 0.18 : 0.12, 0) },
-  { f: 16, pose: ghostPose(lv, lv === 1 ? 0.15 : 0.10, 0.5) },
-  { f: 32, pose: ghostPose(lv, lv === 1 ? 0.12 : 0.08, 1) },
-  { f: 48, pose: ghostPose(lv, lv === 1 ? 0.15 : 0.10, 0.5, { head: [-2 + (lv === 2 ? 6 : 0), -14, 14] }) },   // the head cock
+  { f: 0, pose: ghostPose(lv, lv === 1 ? 0.056 : 0.0, 0) },
+  { f: 16, pose: ghostPose(lv, lv === 1 ? 0.028 : -0.028, 0.5) },
+  { f: 32, pose: ghostPose(lv, lv === 1 ? 0.0 : -0.056, 1) },
+  { f: 48, pose: ghostPose(lv, lv === 1 ? 0.028 : -0.028, 0.5, { head: [-2 + (lv === 2 ? 6 : 0), -14, 14] }) },   // the head cock
 ] });
 
 // walk/run: authored upper body on top of the LegGait bird plan ('add'); f0 = left contact, one key per drawing
@@ -459,7 +377,14 @@ export function make() {
     clips: CLIPS,
     fx: { feather: ['#E85A50', '#3A64B4'], spark: ['#FFF8DC', '#FFDA62'], vote: { node: 'fanTip' }, speech: { node: 'crown' },
       soul: { node: 'chest' }, stepClips: [] },
-    material: { sides: { eyeL: 'mid', eyeR: 'mid' }, ...ghostMaterial(S) },
+    // (ghost port) the shared ghost look (was the r2 crow recipe: ghostK bone + micro halo + material.tones shader): pale
+    // ramp, gold halo over the crest (level 1), dimmer spent ramp, bind-height dissolve, night self-glow, 0.14 m hover
+    // with floating FK legs; also shades the WALK when a dead player walks (ch.ghost = 1). keepHue 0.25: the red is the
+    // identity (pastel pink head on the pale ramp; 0.3 read close to alive); lo 0.06 / slope 1.5 lift the charcoal tee;
+    // spent light end #B0BACE (shots/ghost-port/polly/z-g8-v{A,B}.png)
+    // halo lift 0.32: at 0.12 / 0.2 the raked crest tip pierced the ring (pack-r1-clip-ghost.png)
+    ghost: { hover: 0.14, keepHue: 0.25, lo: 0.06, slope: 1.5, spent: ['#3A4260', '#B0BACE'], halo: { lift: 0.32 } },
+    material: { sides: { eyeL: 'mid', eyeR: 'mid' } },
   };
 }
 

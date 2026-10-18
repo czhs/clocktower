@@ -4,6 +4,26 @@
 `shots/char-owl/self/`. Identity source (read only): `pipgws/packages/assets/scripts/cast/owl.ts`, `refs/cast/owl.png`.
 Rendered on render-host (RTX 4090).
 
+## Ghost port (2026-10-17) — shared `spec.ghost` (supersedes the r3 ghost shells below)
+- **Why:** the r3 ghost was GEOMETRY (pale shell copies `gh*`/`gs*` scaled up only in the ghost clips), so a dead player
+  walking as the owl looked alive until he stopped. `spec.ghost` + `ch.ghost = 1` now shade walk/talk/emotes too.
+- **Spec:** `ghost: { hover: 0.14, keepHue: 0.25, lo: 0.04, slope: 1.6, spent: ['#3A4260', '#B0BACE'], halo: { lift: 0.36 } }`.
+  keepHue 0.25 keeps a mauve-brown head against the pale cream disc (the owl face reads at S/SE/SW) and a periwinkle
+  robe; lo 0.04 / slope 1.6 lift the mid-dark feathers + navy robe (defaults: a grey-mauve ghost and a near-alive spent
+  owl; kh 0.15 went white and lost the disc: `shots/ghost-port/owl/z-g8.png`, `z-g8-v{A,B}.png`). Halo lift 0.36: the
+  near ear tuft leans up toward the camera, so at 0.12 the ring sat on a tuft tip and at 0.22 / 0.28 / radius 0.12 it still
+  touched it at f0 (`pack-r1-clip-ghost.png`, `z-isl.png`; ghost.islands WARN 1 → 2) — now PASS 2 → 2 with a clear gap.
+  Removed: the 8 ghost palette slots, the 6 shell bones, `GHOST_SETS` / `GHOST_DARK` / `GHOST_K` / `SHELLS` /
+  `SHELL_SKIP` / `worldOf` / `sub` / `midOf`, the shell + wisp-tail + shell-halo parts, `SHOW` / `NOFEET`. Skeleton 27 spec
+  bones (the 6 shell bones removed), palette 6 slots (was 14). The wisp tail is replaced by the module's bind-height dissolve of hem + talons.
+- **Clips (pose only):** `GHOSTK(up, extra, dy)` = `pos` y dy + 0.056·up over the module hover 0.14 m (spent dy −0.056);
+  the robe sway, head roll and the 60° head swivel stare are unchanged; feet no longer scaled away (dissolved instead).
+- **Checks (render-host):** pack `shots/ghost-port/owl/pack/` 116 pass / 12 warn / 0 fail (= before); ghost amplitude 35 %,
+  key_delta 82 %, off_grid 0, flicker 0, islands 2 → 2; spent amplitude 27 %, key_delta 69 %. Living renders: 0 / 2323 raw
+  frames differ vs the pre-port pack (the shells were invisible, and dropping them did not change the part-line ids).
+  Demo walking ghost (`?char=owl`, key 5, D held): level 1 while moving, pale at noon and night
+  (`shots/ghost-port/owl/walking-ghost-{noon,night}.png`). The r3 shell notes below are historical.
+
 ## r3 touch-up (2026-10-16, Clocktower game clips) — what changed
 - **New clips:** `point` (shared emote), `ghost` (dead, ghost vote unspent: pale + halo), `ghost-spent` (dimmer, no halo).
 - **Non-violent pass:** die f0 is a sway (no hit pose, no `hurt` flash); the emote snap puffs ledger dust (`puff@book`)
@@ -98,10 +118,8 @@ Rendered on render-host (RTX 4090).
 feather `#C69568 / #A2744E / #8E6E74` · disc `#FFF0D2 / #EED8B0 / #B49C98` · robe `#5C68A4 / #434D86 / #3C3A62` (r2:
 toward v1 navy) · mantle `#C45C6C / #943A4C / #64304A` (mantle, mouth flash) · dark `#9A6040 / #74432A / #4C3042` (r2: v1
 ledger brown — ledger cover/spine, beak, mandible, pupils, closed-eye lash) · accent amber `#FFD77A / #F0A22C / #A8643A` (irises, hem, robe edges, mantle trim, cuffs, ledger emblem).
-r3 ghost shells: ghost `#EEF4FF / #C2D4F2 / #9AA2D2` (head + robe + wings) · ghostDisc `#F4F7FC / #E4ECF8 / #BAC2E0` ·
-ghostRose `#F2D8EE / #D6B6DC / #A890C0` (mantle, ledger) · ghostGold `#FFF0BC / #F0D488 / #BCA67A` (eyes, trim, halo); spent
-(dimmer): spent `#AEB8D6 / #8C98BE / #6A729C` · spentDisc `#C8D0E4 / #AEB6D2 / #868EB0` · spentRose `#BCA8C8 / #9E8CB0 /
-#766A8C` · spentGold `#D6CC9E / #B8AA7E / #8C8268`. Ghost pupils + beak use the navy `robe` slot.
+Ghost (ghost port, `spec.ghost`; the r3 ghost/spent shell slots are gone): module ramp `#3A5696 → #E2EEFA`, spent
+`#3A4260 → #B0BACE`, keepHue 0.25, lo 0.04, slope 1.6, gold halo `#FFE08A`.
 Signature `['disc', 'feather']`, faceSlot `disc`. Measured sig_ground (r2): noon-sun dH 94, noon-shade dL +19 %, golden-sun
 dH 48, golden-shade dL +22 % (all PASS; feather sh lifted #7E6064 → #8E6E74 after golden-shade read +7 %).
 
@@ -127,11 +145,11 @@ locomotion: plan bird, walk 5.06 / run 10.11 m/s, cycleTime [0.3, 0.267], poses 
   along [−0.9, 0.4, 0.25] (out to his right and up; chest yaw −20, solved by `shots/char-owl/owl_point_solve.js`, segment
   errors ≤ 1.3°), head turned −32 along it, beak OPEN, brows stern, tufts back −12 (4) · f8 beak shut + squint, held 24 (0.8 s)
   · f32 idle. Reads at S/SE/NE/N/NW/W/SW; at E the wing is behind the body (`r3/g8-point-x3.png`).
-- ghost (r3, loop 80, dynamics hold): pale shell set `gh` + halo; hover pos +0.38/+0.44 (= 0.28/0.34 m after the 0.1 m
-  leg-reach dip) on 20-frame holds: f0 low, tail swings right (hips roll +6, spine −6) · f20 high, head roll 8 · f40 low, tail
-  left, head swivel 60° (neck −25, head −35) · f60 high, swivel held, roll −6. Feet scaled away (`foot*.s` −0.95).
-- ghost-spent (r3, loop 96): dimmer set `gs`, no halo, hover 0.22/0.28 m, chest +4 and head hung +12…14, 24-frame holds,
-  swivel 45° at f48/f72.
+- ghost (ghost port, loop 80, dynamics hold): `spec.ghost` ramp + halo; module hover 0.14 m + `pos` 0 / +0.056 on
+  20-frame holds: f0 low, robe swings right (hips roll +6, spine −6) · f20 high, head roll 8 · f40 low, robe left, head
+  swivel 60° (neck −25, head −35) · f60 high, swivel held, roll −6. Hem + talons dissolve (module fade).
+- ghost-spent (ghost port, loop 96): spent ramp, no halo, `pos` −0.056 / 0, chest +4 and head hung +12…14, 24-frame
+  holds, swivel 45° at f48/f72.
 - turn: 45° steps held 2 grid frames.
 
 ## Lights

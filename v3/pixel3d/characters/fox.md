@@ -5,6 +5,24 @@
 Render host: render-host (RTX 4090). **r2 (2026-10-16, after critic-fox 15/24):** see §r2 at the end; r2 evidence in
 `shots/char-fox/r2/`.
 
+## Ghost port (2026-10-17) — shared `spec.ghost` (supersedes the touch-up ghost shells at the end)
+- **Why:** the touch-up ghost was GEOMETRY (pale `g_*` / `s_*` shell copies scaled ×1000 only in the ghost clips), so a
+  dead player walking as Ginger looked alive until she stopped. `spec.ghost` + `ch.ghost = 1` now shade walk/talk/emotes.
+- **Spec:** `ghost: { hover: 0.14, keepHue: 0.3, halo: { lift: 0.34 } }` — keepHue 0.3: the orange fur IS the identity
+  (a pale peach-pink fox, white tail tip + muzzle the lightest, red dress a dusty rose); default ramps (the spent
+  default already reads dimmer but clearly a fox: `shots/ghost-port/fox/z-g8.png`). Halo lift 0.34: the tall upright ears
+  touched the ring at 0.12 / 0.18 / 0.26 (`pack-r1-clip-ghost.png`; islands WARN 1 → 2 at 0.26) — now PASS 2 → 2.
+  Removed: the 9 ghost palette slots (gFur…sDark, halo), the 30 shell bones, `SHELL_*`, `soup` / `bbox` / `shells()`
+  (+ wisp + disc halo), `GHOST(k, pose)`, `EAR_IN` / `EAR_SH`, the `g_` / `s_` entries in `material.sides` and the whole
+  `material.merge`. Skeleton 24 bones (was 54), palette 6 slots (was 15). Boots are no longer hidden (they dissolve).
+- **Clips (pose only, `dynamics: 'hold'`, no `legs: 'fk'` — the module floats the legs):** ghost f0/12/24/30/32/36 `pos`
+  y 0 / 0.028 / 0.056 / 0.056 / 0.056 / 0.028 over the module hover 0.14 m (paw, tail, ears, blink as before);
+  ghost-spent f0/20/40/42 `pos` −0.056 / −0.028 / −0.028 / −0.028 (slump, drooped ears, blink as before).
+- **Checks (render-host):** pack `shots/ghost-port/fox/pack/` 113 pass / 19 warn / 0 fail (before 111 / 21); ghost amplitude
+  52 %, key_delta 3 % (blink keys), off_grid 0, flicker 0, islands 2 → 2; spent amplitude 35 %, key_delta 1 % (blink).
+  Living renders: 0 / 2271 raw frames differ vs the pre-port pack. Demo walking ghost (`?char=fox`, key 5, D held):
+  level 1 while moving, pale at noon and night (`shots/ghost-port/fox/walking-ghost-{noon,night}.png`).
+
 ## 0. Brief
 - Concept: a slim innkeeper vixen in a red dress and cream apron, foaming mug in her left paw, ears always pricked
   for gossip. Adjectives: **sly, warm, nosy** → personality body f 3 ζ 0.6 r 0 (sly: late small anticipations), head
@@ -76,11 +94,11 @@ dark `#7A5048 / #4E3438 / #3E2C36` · wood `#C08A50 / #8A5A32 / #5E4038` · acce
 - point (touch-up, the game's shared emote, 31 f): f0 paw drawn in, chest +10, head −8, half-lid, ears forward (4) · f4 the
   free RIGHT paw thrown out ahead-and-right (`upperArmR [112, 0, 46]`, forearm stretched `.s` y +0.4), chest/head turned
   −16/−18 along it, eyes narrowed, jaw 12°, tail flicks up (20) · f24 paw half down (6) · f30 idle. pose_read 33 % ×20.
-- ghost (touch-up, loop 48, `dynamics 'hold'`, legs fk): pale-blue shell + gold halo, boots hidden, wisp under the hem;
-  hover pos y 0.22 / 0.26 / 0.30 / 0.30(blink f30-32) / 0.26 at f0/12/24/30/36, free paw floating forward (fwd 30→52),
-  tail sway 12° → −18°, ear flick on f12/f36. amplitude 42 %.
-- ghost-spent (touch-up, loop 60): the dimmer grey-blue shell, NO halo, hover 0.12 / 0.17 / 0.14 (f0/20/40, blink f40-42),
-  slumped (spine 8–12°), ears drooped back 40°, eyes half-lidded, paws hanging, tail low. amplitude 38 %.
+- ghost (ghost port, loop 48, `dynamics 'hold'`): `spec.ghost` ramp + gold halo, hem + boots dissolve; module hover
+  0.14 m + `pos` y 0 / 0.028 / 0.056 / 0.056 (blink f30-32) / 0.028 at f0/12/24/30/36, free paw floating forward (fwd
+  30→52), tail sway 12° → −18°, ear flick on f12/f36. amplitude 52 %.
+- ghost-spent (ghost port, loop 60): spent ramp, NO halo, `pos` −0.056 / −0.028 / −0.028 (f0/20/40, blink f40-42),
+  slumped (spine 8–12°), ears drooped back 40°, eyes half-lidded, paws hanging, tail low. amplitude 35 %.
 - whisper (emote, r2): f0 glance +15 + pupils slide (6) · f6 glance −15 (6) · f12 lean in, face up, paw beside the muzzle,
   half-lid, ears forward, `speak` (14) · f26 WINK toward the camera side (head [−14, −14, 18], right eye lid −0.7), paw
   dropped, tail flicks up (10) · f36 mug raised "on the house", jaw open (10) · f46 idle. pose_read 41 % ×8.
@@ -164,7 +182,7 @@ Evidence: `shots/char-fox/` (full pack `--preset cast --clips idle,walk,run,talk
 cell 62×77, no border warning at 134).
 - **Combat audit:** the only combat-flavoured item was the die's `hurt` flash + wide-eyed open-jaw flinch on f0 → replaced by
   a swoon (paw to brow). Talk / vote / whisper / walk are social; nothing is swung.
-- **Ghost look (no shared code):** there is no per-clip tint in the look module, so every part on 15 part-bearing bones gets
+- **(Superseded by the ghost port at the top — history.) Ghost look (no shared code):** there is no per-clip tint in the look module, so every part on 15 part-bearing bones gets
   two pale copies built in `parts()` (`shells()`): on part-less child bones `g_<bone>` (ghost) and `s_<bone>` (spent),
   geometry baked at 1/1000 size (invisible in every other clip) and inflated by 0.006 m about its own centre (split
   surfaces skull/muzzle, skirt/apron, bodice/bib share their group centre). `GHOST(k, pose)` keys `<k>_<bone>.s` 999 (×1000),

@@ -6,7 +6,7 @@
 //   4. the owners' modules, in this order: characters (list) -> player -> camera rig + live cut-away (lead, api.js)
 //      -> time -> ui -> deploy; each failure is reported, the page keeps running without that module
 //   5. shader warm-up, then the demo's own real-time loop (not Engine.start's: see the comment there)
-// One per-frame updater runs after every town piece: player -> camera -> cut-away -> time -> ui -> deploy.
+// One per-frame updater runs after every town piece: player -> camera -> cut-away -> time -> ambient -> gameui -> ui -> deploy.
 import * as THREE from 'three';
 import { Engine } from '../core/Engine.js';
 import { applyCamera } from '../town/api.js';
@@ -213,7 +213,8 @@ function installViewInset(demo) {
   let want = 0, px = 0, panelEl = null, ro = null;
   const measure = () => {
     panelEl ??= document.querySelector('#demo-ui > .dui-panel');
-    if (!panelEl || !store.state.ui || panelEl.classList.contains('collapsed') || document.body.classList.contains('ct-intro')) { want = 0; return; }
+    // (.dui-away: the panel slides out while the vote camera is up, ui.js: no band, from its first frame)
+    if (!panelEl || !store.state.ui || panelEl.classList.contains('collapsed') || panelEl.classList.contains('dui-away') || document.body.classList.contains('ct-intro')) { want = 0; return; }
     const p = panelEl.getBoundingClientRect(), c = canvas.getBoundingClientRect();
     // only a panel standing on the canvas' right part, taller than a third of it, frames anything out
     if (p.width < 1 || p.height < c.height / 3 || p.left < c.left + c.width / 2 || p.left >= c.right) { want = 0; return; }
@@ -340,6 +341,9 @@ try {
   q.set('tod', presetForHour(store.state.timeOfDay));
   q.set('quality', store.state.quality);
   q.set('life', '1');
+  // the ambient layer (src/demo/ambient.js) brings the REACTIVE moths + fireflies: life's own (non-reactive) bugs are
+  // switched off with life's own documented A/B switch, so the town never shows two sets (?ambient=0: life keeps them)
+  if (params.get('ambient') !== '0') q.set('lifeOff', [...new Set([...(q.get('lifeOff') ?? '').split(',').filter(Boolean), 'bugs'])].join(','));
   // (perf) the character specs download while the town builds (listCharacters below then finds them imported)
   import('./characters.js').then((m) => m.prefetchCharacters?.()).catch(() => {});
   say(`building Hollowmere (${store.state.quality}) ...`);
@@ -355,7 +359,7 @@ try {
     input: createInput(window),
     // npcs: a placeholder until createNPCs below (listCharacters starts them itself when demo.npcs is unset, BEFORE
     // the player exists; main creates them explicitly after the player instead)
-    characters: [], player: null, camera: null, cut: null, intro: null, npcs: { list: [], placeholder: true }, time: null, gameui: null, ui: null, deploy: null,
+    characters: [], player: null, camera: null, cut: null, intro: null, npcs: { list: [], placeholder: true }, time: null, ambient: null, gameui: null, ui: null, deploy: null,
     /** Reload the page with the current state (+ patch) in the URL: quality changes rebuild the town this way. */
     reload(patch = {}) {
       store.set(patch, 'reload');
@@ -387,11 +391,17 @@ try {
   const ld = await import('./loading.js').catch(() => null);
   if (ld?.introEnabled?.(params) && !engine.capture) demo.intro = await load('intro', './intro.js', 'createIntro', demo, { loading: ld.loading });
   demo.time = await load('time', './time.js', 'createTime', demo);
+  // the ambient library (src/ambient via src/demo/ambient.js: pigeons, fireflies / moths, the cauldron fire, props that
+  // react to the player; ?ambient=0 off), after the time module (it reads the preset)
+  demo.ambient = await load('ambient', './ambient.js', 'createAmbientLayer', demo);
   // the game UI from the pixel3d UI library (gameui.js: labels, point / pie / pins, HUD, notebook; ?gameui=0 off)
   demo.gameui = await load('gameui', './gameui.js', 'createGameUI', demo);
   demo.ui = await load('ui', './ui.js', 'mountUI', demo);
   demo.deploy = await load('deploy', './deploy.js', 'installDeploy', demo);
   try { installViewInset(demo); } catch (e) { console.error('[demo] view inset failed:', e); fail(`inset: ${e?.stack || e}`); }
+  // (B) pass B (passb.js: the vote camera wraps the rig AFTER the inset, the tower timer / readout, the seated cast,
+  // the tower interior, the timer HUD): loaded before the warm-up so its programs compile behind the loading screen
+  if (params.get('passB') !== '0') demo.passB = await load('passB', './passb.js', 'createPassB', demo);
 
   const step = (name, mod, t, dt) => {
     if (!mod?.update) return;
@@ -406,6 +416,8 @@ try {
     step('intro', demo.intro, t, dt);
     step('cut', demo.cut, t, dt);
     step('time', demo.time, t, dt);
+    step('passB', demo.passB, t, dt);   // (B)
+    step('ambient', demo.ambient, t, dt);
     step('gameui', demo.gameui, t, dt);
     step('ui', demo.ui, t, dt);
     step('deploy', demo.deploy, t, dt);
