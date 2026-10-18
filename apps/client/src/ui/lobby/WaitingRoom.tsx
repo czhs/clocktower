@@ -8,6 +8,7 @@ import {
   type LobbyRoomView,
   type MemberView,
   type StorytellerMode,
+  type WorldId,
   WORD_LOBBY_ID_RE,
 } from '@ct/protocol';
 import { useStore } from '../../net/store';
@@ -121,7 +122,7 @@ export function WaitingRoom({ conn, onLeave }: { conn: RoomConnection; account: 
             Be the Storyteller
           </button>
         )}
-        {players.length < MIN_PLAYERS && <InviteButton lobbyId={view.lobby.id} lobbyName={view.lobby.name} />}
+        {players.length < MIN_PLAYERS && <InviteButton lobbyId={view.lobby.id} lobbyName={view.lobby.name} world={worldOfLobby(view)} />}
         {notReady.length > 0 && players.length >= MIN_PLAYERS && (isSt || isHost || me?.ready) ? (
           <p class="ct-waiting-status muted ct-small" aria-live="polite">
             Waiting for {listNames(notReady.map((m) => m.displayName))} to press Ready
@@ -157,7 +158,7 @@ export function WaitingRoom({ conn, onLeave }: { conn: RoomConnection; account: 
       {!collapsed && (
         <div class="ct-waiting-body" id="ct-waiting-body">
           {view.lobby.description && <p class="ct-waiting-desc">{view.lobby.description}</p>}
-          <ShareLink lobbyId={view.lobby.id} />
+          <ShareLink lobbyId={view.lobby.id} world={worldOfLobby(view)} />
 
           <GameMode view={view} conn={conn} isHost={isHost} st={st} auto={auto} />
           {!auto &&
@@ -276,8 +277,8 @@ function ReadyButton({ conn, ready, lastOne }: { conn: RoomConnection; ready: bo
   );
 }
 
-function ShareLink({ lobbyId }: { lobbyId: string }) {
-  const url = shareUrl(lobbyId);
+function ShareLink({ lobbyId, world }: { lobbyId: string; world: WorldId }) {
+  const url = shareUrl(lobbyId, world); // (v3 URL paths) inside the lobby's own app: /lobby/x or /v2/lobby/x
   const [copied, setCopied] = useState(false);
   return (
     <>
@@ -540,7 +541,7 @@ function LobbyCharacter({
  * link itself sits in the details, which start collapsed on phones). Phones get the system share
  * sheet (Messages, WhatsApp, …); elsewhere, or if sharing is unavailable, the link is copied.
  */
-function InviteButton({ lobbyId, lobbyName }: { lobbyId: string; lobbyName: string }) {
+function InviteButton({ lobbyId, lobbyName, world }: { lobbyId: string; lobbyName: string; world: WorldId }) {
   const [done, setDone] = useState<string | null>(null);
   useEffect(() => {
     if (!done) return;
@@ -548,7 +549,7 @@ function InviteButton({ lobbyId, lobbyName }: { lobbyId: string; lobbyName: stri
     return () => clearTimeout(t);
   }, [done]);
   const invite = async () => {
-    const url = shareUrl(lobbyId);
+    const url = shareUrl(lobbyId, world);
     const nav = navigator as Navigator & { share?: (d: { title?: string; text?: string; url?: string }) => Promise<void> };
     const coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
     if (coarse && typeof nav.share === 'function') {

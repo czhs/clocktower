@@ -24,6 +24,62 @@ type PixelWindow = Window & { __pixel?: PixelGlobal };
 
 export type HostedEngine = Engine & { __ctDisposed?: boolean; __ctGrassArea?: { x0: number; x1: number; z0: number; z1: number } };
 
+// ------------------------------------------------------------------ renderer 'dispose' listeners (leak guard)
+// three's WebGLRenderer adds a 'dispose' listener to every material / texture / geometry / render target it uploads
+// and removes it only when that object is disposed. The vendor keeps some of those objects for the page's life
+// (module-level shared textures / materials, engine-keyed material caches), so every disposed renderer would stay
+// reachable from them, and with its program cache the materials' onBeforeCompile closures, the engine and the town
+// (C1 leak check: ~135 MB per mount). While a host is alive, every 'dispose' listener added to a three object is
+// recorded; the host's dispose() removes them after renderer.dispose() (those objects outlive the renderer).
+type Listener = (e: unknown) => void;
+/** target -> the 'dispose' listeners added to it while this host was the newest live one */
+type DisposeRec = Map<THREE.EventDispatcher, Set<Listener>>;
+const recorders: DisposeRec[] = [];
+let patched = false;
+function recordDisposeListeners(): DisposeRec {
+  if (!patched) {
+    patched = true;
+    const proto = THREE.EventDispatcher.prototype as unknown as { addEventListener(type: string, fn: Listener): void; removeEventListener(type: string, fn: Listener): void };
+    const add = proto.addEventListener;
+    const remove = proto.removeEventListener;
+    proto.addEventListener = function (this: THREE.EventDispatcher, type: string, fn: Listener) {
+      const rec = recorders[recorders.length - 1];
+      if (type === 'dispose' && rec) {
+        let set = rec.get(this);
+        if (!set) rec.set(this, (set = new Set()));
+        set.add(fn);
+      }
+      return add.call(this, type, fn);
+    };
+    // three removes its own listener when the object is disposed: forget it then (no growth over a long session)
+    proto.removeEventListener = function (this: THREE.EventDispatcher, type: string, fn: Listener) {
+      if (type === 'dispose')
+        for (const rec of recorders) {
+          const set = rec.get(this);
+          if (set?.delete(fn) && !set.size) rec.delete(this);
+        }
+      return remove.call(this, type, fn);
+    };
+  }
+  const rec: DisposeRec = new Map();
+  recorders.push(rec);
+  return rec;
+}
+function releaseDisposeListeners(rec: DisposeRec): void {
+  const k = recorders.indexOf(rec);
+  if (k >= 0) recorders.splice(k, 1);
+  const all = [...rec];
+  rec.clear();
+  for (const [target, fns] of all)
+    for (const fn of fns) {
+      try {
+        (target as unknown as { removeEventListener(type: string, fn: Listener): void }).removeEventListener('dispose', fn);
+      } catch {
+        /* best effort */
+      }
+    }
+}
+
 export interface EngineHost {
   engine: HostedEngine;
   tier: Tier;
@@ -80,17 +136,34 @@ function hostResize(engine: HostedEngine, parent: HTMLElement, tier: Tier): void
 
 export function createEngineHost(parent: HTMLElement, opts: EngineHostOptions): EngineHost {
   const w = window as PixelWindow;
+  const disposeRec = recordDisposeListeners();
   // Engine.constructor writes window.__pixel.gpu and throws without the object
   const ownPixel = !w.__pixel;
   w.__pixel ??= { ready: false, errors: [], renderAt: null, info: null, gpu: null };
   const params = new URLSearchParams({ quality: opts.tier === 'low' ? 'low' : 'high' });
   let engine: HostedEngine;
+  // The constructor adds an anonymous window 'resize' listener it never removes; that listener would keep the whole
+  // engine (and, through the vendor's engine-keyed material caches, the renderer and the town) alive for the page's
+  // life. Record the window listeners the constructor adds (synchronously, for its duration only) so dispose() can
+  // remove them. CONTRACT-REQUEST(pixel3d): Engine.dispose() (§9.2).
+  const winListeners: [string, EventListenerOrEventListenerObject, boolean | AddEventListenerOptions | undefined][] = [];
+  const addWin = window.addEventListener;
+  window.addEventListener = function (this: Window, type: string, fn: EventListenerOrEventListenerObject, o?: boolean | AddEventListenerOptions) {
+    winListeners.push([type, fn, o]);
+    return addWin.call(this, type, fn, o);
+  } as typeof window.addEventListener;
   try {
     engine = new Engine({ params }) as HostedEngine;
   } catch (e) {
     if (ownPixel) delete w.__pixel;
+    releaseDisposeListeners(disposeRec);
     throw e;
+  } finally {
+    window.addEventListener = addWin;
   }
+  const removeWinListeners = () => {
+    for (const [type, fn, o] of winListeners.splice(0)) window.removeEventListener(type, fn, o);
+  };
   try {
     assertEngine(engine);
   } catch (e) {
@@ -101,6 +174,8 @@ export function createEngineHost(parent: HTMLElement, opts: EngineHostOptions): 
     } catch {
       /* best effort */
     }
+    removeWinListeners();
+    releaseDisposeListeners(disposeRec);
     if (ownPixel) delete w.__pixel;
     throw e;
   }
@@ -112,7 +187,7 @@ export function createEngineHost(parent: HTMLElement, opts: EngineHostOptions): 
   canvas.style.imageRendering = 'pixelated';
   canvas.style.display = 'block';
   parent.appendChild(canvas);
-  // the constructor's window 'resize' listener calls this.resize(): the shadow wins, and no-ops after dispose
+  // the constructor's window 'resize' listener calls this.resize(): the shadow wins (dispose removes that listener)
   engine.resize = () => hostResize(engine, parent, opts.tier);
   engine.resize();
   // The canvas origin (viewport CSS px) for projection(): read lazily, only after something may have moved it
@@ -224,7 +299,9 @@ export function createEngineHost(parent: HTMLElement, opts: EngineHostOptions): 
       ro?.disconnect();
       window.removeEventListener('resize', dirtyRect);
       window.removeEventListener('scroll', dirtyRect, { capture: true });
+      removeWinListeners();
       disposeEngine(engine);
+      releaseDisposeListeners(disposeRec);
       if (ownPixel) delete w.__pixel;
     },
   };
@@ -250,8 +327,10 @@ export function disposeEngine(engine: HostedEngine): void {
     if (u) for (const k of Object.keys(u)) if (u[k]?.value && (u[k]!.value as THREE.Texture).isTexture) free(u[k]!.value);
     free(m);
   };
+  const graph: THREE.Object3D[] = [];
   try {
     engine.scene?.traverse((o) => {
+      graph.push(o);
       const mesh = o as THREE.Mesh;
       if (mesh.geometry) free(mesh.geometry);
       const mat = mesh.material;
@@ -283,6 +362,24 @@ export function disposeEngine(engine: HostedEngine): void {
     /* best effort */
   }
   canvas?.remove();
+  // Break the scene graph: V8 can keep ONE object of a vendor object literal alive through its allocation site / map
+  // (e.g. a piece api with getters whose closure holds a node of the town), and through `parent` / `children` one node
+  // would keep the whole town. Unlinked, a stray node holds only itself.
+  for (const o of graph) {
+    o.parent = null;
+    o.children.length = 0;
+  }
+  // Anything that still holds this object (the constructor's window 'resize' listener is removed by the host; a stray
+  // reference elsewhere) must not keep the town: drop EVERY field, not only the heavy ones we know (C1 leak check:
+  // pieces park town state on the engine, e.g. townLights, townCutaway, _treeSorters, _treeMats, _foliage*, stats, sun,
+  // and the vendor's engine-keyed material caches keep the renderer's dispose listeners: ~135 MB per mount).
+  // `resize` becomes a no-op that holds nothing (our shadow closed over the parent element).
   const e = engine as unknown as Record<string, unknown>;
-  for (const k of ['scene', 'pipeline', 'renderer', 'camera', 'uniforms', 'toonUniforms']) e[k] = null;
+  for (const k of Object.keys(e)) if (k !== '__ctDisposed') e[k] = null;
+  e.updaters = [];
+  e.resize = noop;
+}
+
+function noop(): void {
+  /* a disposed engine's resize */
 }

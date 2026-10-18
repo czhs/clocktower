@@ -129,7 +129,7 @@ test('each lobby renders the right town (v2 → Classic v2 map; v3 → 3D Hollow
   const info = await waitV3Ready(b.page, 240_000, 'v3 lobby host');
   expect(info.ready).toBe(true);
   expect(await classicTown(b.page)).toBeNull();
-  await expect(b.page.locator('.ct-game-canvas canvas')).toHaveCount(1);
+  await expect(b.page.locator('.ct-game-canvas > canvas')).toHaveCount(1);
 
   // a Classic client in the same v3 lobby draws the v3 map
   const c = await host(browser, 'Classic in Hollowmere', { force: false, extra: { 'ct.graphics': 'classic' } });

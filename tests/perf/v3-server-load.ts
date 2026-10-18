@@ -47,10 +47,19 @@ const HZ = Number(arg('hz', '10'));
 /** Storyteller wander speed multiplier; 1.5 = server-profile.ts parity (above MOVE_TOLERANCE 1.35: some ST corrections). */
 const ST_SPEED = Number(arg('stspeed', '1.5'));
 const SNAP2 = arg('snap2', 'yes') === 'yes';
+/** Send one moving:false move when a bot pauses (the real v3 client sends its stop pose: net/local.ts poseChanged). */
+const STOPS = arg('stops', 'yes') === 'yes';
 const CPUPROF = arg('cpuprof', 'no') === 'yes';
 const VOICE = arg('voice', 'yes') === 'yes';
 const VOICE_OPTIN = arg('voiceoptin', 'no') === 'yes';
 const MODE = arg('mode', 'source') === 'dist' ? 'dist' : 'source';
+/** Extra env for the test server, e.g. --serverenv WS_DEFLATE=off (comma-separated K=V). */
+const SERVER_ENV = Object.fromEntries(
+  arg('serverenv', '')
+    .split(',')
+    .filter((kv) => kv.includes('='))
+    .map((kv) => [kv.slice(0, kv.indexOf('=')), kv.slice(kv.indexOf('=') + 1)]),
+) as Record<string, string>;
 const OUT = path.resolve(arg('out', '/tmp/ct-v3srv'));
 const [PORT_MIN, PORT_MAX] = arg('ports', '3492-3493').split('-').map(Number) as [number, number];
 if (PORT_MIN <= 3001 || PORT_MAX <= 3001) throw new Error('refusing prod/dev ports');
@@ -165,6 +174,7 @@ function wander(bot: Bot, L: TownLayout, grid: Grid, hz: number, speedMult: numb
   let pause = 0;
   let doorWait = 0;
   let facing: Facing = 'down';
+  let lastMoving = false;
   const dt = 1 / hz;
   const timer = setInterval(() => {
     const room = bot.room;
@@ -175,7 +185,18 @@ function wander(bot: Bot, L: TownLayout, grid: Grid, hz: number, speedMult: numb
     }
     const snap = bot.latest['world:snapshot'] as WorldSnapshot | undefined;
     if (snap?.you) return; // server walk / frozen: a real client stops predicting and sending moves
-    if (pause > 0) return void (pause -= dt);
+    if (pause > 0) {
+      pause -= dt;
+      if (STOPS && lastMoving) {
+        lastMoving = false;
+        try {
+          room.send('move', { seq: seq++, x: Math.round(cur.x * 10) / 10, y: Math.round(cur.y * 10) / 10, facing, moving: false });
+        } catch {
+          /* closing */
+        }
+      }
+      return;
+    }
     if (doorWait > 0) doorWait -= dt;
     let moving = false;
     if (!path.length) {
@@ -222,6 +243,7 @@ function wander(bot: Bot, L: TownLayout, grid: Grid, hz: number, speedMult: numb
         moving = true;
       }
     }
+    lastMoving = moving;
     try {
       room.send('move', { seq: seq++, x: Math.round(cur.x * 10) / 10, y: Math.round(cur.y * 10) / 10, facing, moving });
     } catch {
@@ -313,6 +335,7 @@ async function runServer(world: 'v2' | 'v3', round: number) {
   };
   if (VOICE) Object.assign(env, { LIVEKIT_URL: 'ws://127.0.0.1:9', LIVEKIT_API_KEY: 'perfkey', LIVEKIT_API_SECRET: 'perf-secret-0123456789abcdef0123456789abcdef' });
   if (VOICE_OPTIN) env.VOICE_TEST_AUTO_OPT_IN = '1';
+  Object.assign(env, SERVER_ENV);
   const server = await startServer({ mode: MODE, port, env });
   const pid = server.pid;
   log(`${world} r${round}: server ${server.url} pid ${pid}`);
@@ -456,7 +479,7 @@ async function main() {
   const summary = {
     at: new Date().toISOString(),
     host: { cores: os.cpus().length, cpu: os.cpus()[0]?.model, loadavgStart: la0, loadavgEnd: loadavg() },
-    config: { stSpeed: ST_SPEED, worlds: WORLDS, rounds: ROUNDS, lobbies: LOBBIES, players: PLAYERS, walkS: WALK_S, stageS: STAGE_S, hz: HZ, snap2: SNAP2, cpuprof: CPUPROF, voice: VOICE, voiceOptIn: VOICE_OPTIN, mode: MODE },
+    config: { stSpeed: ST_SPEED, worlds: WORLDS, rounds: ROUNDS, lobbies: LOBBIES, players: PLAYERS, walkS: WALK_S, stageS: STAGE_S, hz: HZ, snap2: SNAP2, stops: STOPS, cpuprof: CPUPROF, voice: VOICE, voiceOptIn: VOICE_OPTIN, mode: MODE, serverEnv: SERVER_ENV },
     runs,
   };
   const file = path.join(OUT, 'v3-server-load.json');

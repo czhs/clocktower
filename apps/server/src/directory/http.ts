@@ -13,6 +13,17 @@ export const SSE_MAX_TOTAL = 200;
 /** v2.3 HOST-04: streams per client address (IPv4 / IPv6 /64); loopback (local tooling) is exempt. */
 export const SSE_MAX_PER_IP = 6;
 
+/**
+ * (v3 perf, net) The directory hands the SAME event object to every open stream: serialise it once
+ * per event, not once per subscriber (60 streams = 60 JSON.stringify of one summary before).
+ */
+const sseLines = new WeakMap<DirectoryEvent, string>();
+export function sseLine(e: DirectoryEvent): string {
+  let line = sseLines.get(e);
+  if (line === undefined) sseLines.set(e, (line = `data: ${JSON.stringify(e)}\n\n`));
+  return line;
+}
+
 /** (v2.2) A blank / missing lobby name becomes a friendly simple-words name (`Amber Lantern`). */
 function withDefaultName(body: unknown): unknown {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return body;
@@ -57,7 +68,7 @@ export function lobbiesRouter(services: Services, opts: { heartbeatMs?: number }
     req.socket.setNoDelay(true);
     req.socket.setTimeout(0);
     const write = (e: DirectoryEvent) => {
-      res.write(`data: ${JSON.stringify(e)}\n\n`);
+      res.write(sseLine(e));
     };
     res.write('retry: 3000\n\n');
     write({ type: 'snapshot', lobbies: dir.list() });

@@ -3,7 +3,28 @@
 // the feet body box (a tile is walkable iff a body standing on its centre is clear), then
 // string-pulled with the same swept-box test the movement validator uses, so every leg of the result
 // is a straight segment the server itself would accept.
-import { isBlockedPx, locationAt, tileCenterPx, type LocationId, type TownLayout } from '@ct/protocol';
+import { BODY_H, BODY_HALF_W, locationAt, tileCenterPx, type LocationId, type TownLayout } from '@ct/protocol';
+
+/**
+ * (v3 perf) Allocation-free twin of `@ct/protocol` `isBlockedPx`: the same four feet-box corners, the same
+ * tiles, the same "outside the map = blocked" rule, bit for bit (the same float expressions), so every
+ * server decision is unchanged. The protocol version builds an array of four arrays per call; this one sits
+ * in every movement sweep (2 px steps) and in path planning (1 px samples x 5), where the allocations were
+ * most of the cost (docs/perf-v3/server.md). `apps/server/test/world.blockedPx.test.ts` checks the
+ * equivalence on both layouts. CONTRACT-REQUEST(lead): adopt this body in protocol `isBlockedPx`.
+ */
+export function blockedPx(layout: TownLayout, x: number, y: number): boolean {
+  const ts = layout.tileSize;
+  const W = layout.widthTiles;
+  const tx0 = Math.floor((x - BODY_HALF_W) / ts);
+  const tx1 = Math.floor((x + BODY_HALF_W) / ts);
+  const ty0 = Math.floor((y - BODY_H) / ts);
+  const ty1 = Math.floor((y - 1) / ts);
+  if (tx0 < 0 || ty0 < 0 || tx1 >= W || ty1 >= layout.heightTiles) return true;
+  const c = layout.collision;
+  return c[ty0 * W + tx0] === 1 || c[ty0 * W + tx1] === 1 || c[ty1 * W + tx0] === 1 || c[ty1 * W + tx1] === 1;
+}
+const isBlockedPx = blockedPx;
 
 export interface Pt {
   x: number;
@@ -155,26 +176,28 @@ export function findPath(layout: TownLayout, from: Pt, to: Pt, location: Locatio
     const dy = Math.abs(Math.floor(i / W) - gy);
     return Math.max(dx, dy) + (Math.SQRT2 - 1) * Math.min(dx, dy);
   };
-  const gScore = new Map<number, number>();
-  const came = new Map<number, number>();
+  // (v3 perf) Typed arrays instead of Map / Set (same visiting order, same result).
+  const N = W * layout.heightTiles;
+  const gScore = new Float64Array(N).fill(Infinity);
+  const came = new Int32Array(N).fill(-1);
+  const closed = new Uint8Array(N);
   const heap = new Heap();
   for (const s of starts) {
-    gScore.set(s, 0);
+    gScore[s] = 0;
     heap.push(s, h(s));
   }
   let found = -1;
-  const closed = new Set<number>();
   while (heap.size) {
     const cur = heap.pop();
-    if (closed.has(cur)) continue;
-    closed.add(cur);
+    if (closed[cur]) continue;
+    closed[cur] = 1;
     if (goals.has(cur)) {
       found = cur;
       break;
     }
     const cx = cur % W;
     const cy = Math.floor(cur / W);
-    const gc = gScore.get(cur)!;
+    const gc = gScore[cur]!;
     for (let dy = -1; dy <= 1; dy++)
       for (let dx = -1; dx <= 1; dx++) {
         if (!dx && !dy) continue;
@@ -186,16 +209,16 @@ export function findPath(layout: TownLayout, from: Pt, to: Pt, location: Locatio
         // No corner cutting: a diagonal needs both orthogonal neighbours free.
         if (dx && dy && (!g.free[cy * W + nx] || !g.free[ny * W + cx])) continue;
         const ng = gc + (dx && dy ? Math.SQRT2 : 1);
-        if (ng < (gScore.get(ni) ?? Infinity)) {
-          gScore.set(ni, ng);
-          came.set(ni, cur);
+        if (ng < gScore[ni]!) {
+          gScore[ni] = ng;
+          came[ni] = cur;
           heap.push(ni, ng + h(ni));
         }
       }
   }
   if (found < 0) return null;
   const tiles: number[] = [];
-  for (let k: number | undefined = found; k !== undefined; k = came.get(k)) tiles.push(k);
+  for (let k = found; k !== -1; k = came[k]!) tiles.push(k);
   tiles.reverse();
   const raw: Pt[] = [from, ...tiles.map((i) => tileCenterPx(layout, { x: i % W, y: Math.floor(i / W) })), to];
   // String pulling: from each anchor jump to the farthest point still in straight view.

@@ -45,14 +45,15 @@ test('v3 doors: walk into the rotated door of house-5 and leave again', async ({
     expect(tap.sent('world:useDoor').some((m: { buildingId: string }) => m.buildingId === 'house-5')).toBe(true);
     await expect.poll(async () => (await cam(page)).me?.location, { timeout: 30_000, message: '3D town: own avatar inside' }).toBe('bld:house-5');
     const inside = await cam(page);
-    if (inside.stage) expect(inside.stage.drawn, 'WP3 stage draws the room').toBe('bld:house-5');
+    // the room may still be building when the server lets us in (the town stays drawn meanwhile): poll
+    if (inside.stage) await expect.poll(async () => (await cam(page)).stage?.drawn, { timeout: 30_000, message: 'WP3 stage draws the room' }).toBe('bld:house-5');
     else test.info().annotations.push({ type: 'note', description: '__ctCamera.stage() not installed: drawn location not checked' });
     await v3Shot(page, 'house-5-inside.png');
 
     await leaveByButton(p, pid);
     await expect.poll(async () => (await cam(page)).me?.location, { timeout: 30_000 }).toBe('outdoors');
     const out = await cam(page);
-    if (out.stage) expect(out.stage.drawn).toBe('outdoors');
+    if (out.stage) await expect.poll(async () => (await cam(page)).stage?.drawn, { timeout: 30_000 }).toBe('outdoors');
     await v3Shot(page, 'house-5-outside.png');
     expect(errors).toEqual([]);
   } finally {

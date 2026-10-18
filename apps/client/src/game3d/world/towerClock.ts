@@ -1,12 +1,10 @@
-// v3 WP3 (v3-stage). The clock tower as the Storyteller's timer (user request in flight 2, docs/v3/INTEGRATION.md
-// §9.1): the tower dial + an in-universe digital readout show the game's stage countdown (`game.clock`,
-// DayClockView: set / paused / extended by the Storyteller from the ST panel, or by the automatic storyteller),
-// and fall back to the time-of-day hands when no timer runs. Pure: no three, no vendor.
-//
-// The vendor clock tower does not expose a timer face yet (src/town/pieces/clocktower.js api = {setTime, ring,
-// setDoor, setLit, time}; createTime gates setTime / ring). Until the pixel3d session publishes the API requested
-// in §9.2 (`setTimer(plan | null)`), vendor/town.ts towerTimerApi() returns null and the stage keeps the hours on
-// the time-of-day hands; nothing here fakes a readout.
+// v3 WP3 (v3-stage) + C1 (integrator). The clock tower as the Storyteller's timer (user request in flight 2,
+// docs/v3/INTEGRATION.md §9.1): while the game's stage countdown (`game.clock`, DayClockView: set / paused / extended by
+// the Storyteller from the ST panel, or by the automatic storyteller) runs, the tower's four dials show it the v2 way
+// (vendor pass B src/demo/towertimer.js drawDialFace: a stage-coloured wedge = the time left, one iron hand, pause
+// bars, a flash at zero; drawn by vendor/town.ts createTowerFace over the piece's api.dials, its live hands hidden),
+// and fall back to the time-of-day hands when no timer runs. The digital readout is the HUD clock chip (the user moved
+// the in-universe readout into the HUD on the pixel3d side; the vendor's split-flap board is off). Pure: no three.
 import type { ClockStage, DayClockView } from '@ct/protocol';
 
 export interface TowerTimerPlan {
@@ -76,4 +74,60 @@ export function timerTick(clock: DayClockView | null | undefined, serverNow: num
 /** Key of what the tower shows (the stage writes the vendor api only when it changed: once a second at most). */
 export function timerKey(p: TowerTimerPlan | null): string {
   return p ? `${p.stage}|${p.paused ? 'p' : 'r'}|${p.readout}|${p.totalMs}` : 'tod';
+}
+
+// ------------------------------------------------------------------------------------------------ the dial face (C1)
+
+/** Wedge resolution (towertimer.js DIAL_STEPS: 2 deg). */
+export const DIAL_STEPS = 180;
+/** At zero the dials flash for this long (4 Hz), then hold 0 until DONE_HOLD_MS, then the hands come back. */
+export const DONE_FLASH_MS = 6000;
+export const DONE_HOLD_MS = 30_000;
+
+export interface DialFace {
+  mode: 'running' | 'paused' | 'done';
+  stage: ClockStage;
+  /** the wedge (time LEFT) in DIAL_STEPS steps: DIAL_STEPS = a full disc at the start, 0 = nothing left */
+  q: number;
+  flashOn: boolean;
+  /** the dials glow (dusk to dawn): the vendor draws the wedge solid then */
+  night: boolean;
+}
+
+/** The dials glow from 19:30 to 06:00 (towertimer.js dialsNight). */
+export const dialsNight = (hour: number): boolean => hour >= 19.5 || hour < 6;
+
+/**
+ * What the tower's dials show for this clock (null = the time-of-day hands): running = the wedge of the time left,
+ * paused = the dimmed wedge + pause bars, done (reached zero while running) = a flash for DONE_FLASH_MS, held until
+ * DONE_HOLD_MS after zero. Writes into `out` when given (allocation-free per frame).
+ */
+export function dialFace(clock: DayClockView | null | undefined, serverNow: number, hour: number, out?: DialFace): DialFace | null {
+  const p = towerTimer(clock, serverNow);
+  if (!p || !clock) return null;
+  const f = out ?? { mode: 'running', stage: 'discussion', q: 0, flashOn: false, night: false };
+  f.stage = p.stage;
+  f.night = dialsNight(hour);
+  f.flashOn = false;
+  if (p.paused) {
+    f.mode = 'paused';
+    f.q = Math.round((p.remainingMs / p.totalMs) * DIAL_STEPS);
+    return f;
+  }
+  if (p.remainingMs > 0) {
+    f.mode = 'running';
+    f.q = Math.round((p.remainingMs / p.totalMs) * DIAL_STEPS);
+    return f;
+  }
+  const since = clock.endsAt != null ? Math.max(0, serverNow - clock.endsAt) : 0;
+  if (since > DONE_HOLD_MS) return null;
+  f.mode = 'done';
+  f.q = DIAL_STEPS;
+  f.flashOn = since < DONE_FLASH_MS && Math.floor((since * 4) / 1000) % 2 === 0;
+  return f;
+}
+
+/** Key of a dial face: the face geometry is rebuilt only when it changes ('tod' = the hands). */
+export function dialFaceKey(f: DialFace | null): string {
+  return f ? `${f.mode}|${f.stage}|${f.q}|${f.flashOn ? 1 : 0}|${f.night ? 1 : 0}` : 'tod';
 }

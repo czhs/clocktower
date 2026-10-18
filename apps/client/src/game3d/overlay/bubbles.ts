@@ -92,6 +92,8 @@ export interface BubbleShown {
 
 export interface BubblesView extends OverlayView {
   shown(): BubbleShown[];
+  /** Debug: incoming chat messages added / stale / rejected, the book size and the bubbles laid out this frame. */
+  intake(): Record<string, unknown>;
 }
 
 export function createBubblesView(env: OverlayEnv, opts: { lowTier(): boolean; myPid(): string | null }): BubblesView {
@@ -122,9 +124,17 @@ export function createBubblesView(env: OverlayEnv, opts: { lowTier(): boolean; m
   const visible = (pid: string) => drawn.has(pid);
   const cap = () => (opts.lowTier() ? SPEECH.maxBubblesLow : SPEECH.maxBubbles);
 
+  /** Debug (C1): what happened to each incoming chat message. */
+  const intake = { added: 0, stale: 0, rejected: 0, lastAgeMs: null as number | null, lastDrawn: false };
   const off = deps.conn.events.on('chat:message', (m: ChatMessage) => {
-    if (typeof m.at === 'number' && serverNow() - m.at > SPEECH.staleMs) return;
-    book.add(m, performance.now(), visible, cap(), opts.myPid());
+    if (typeof m.at === 'number') intake.lastAgeMs = Math.round(serverNow() - m.at);
+    intake.lastDrawn = !!m.fromPid && drawn.has(m.fromPid);
+    if (typeof m.at === 'number' && serverNow() - m.at > SPEECH.staleMs) {
+      intake.stale++;
+      return;
+    }
+    if (book.add(m, performance.now(), visible, cap(), opts.myPid())) intake.added++;
+    else intake.rejected++;
   });
 
   function slotFor(pid: string): Slot {
@@ -374,6 +384,7 @@ export function createBubblesView(env: OverlayEnv, opts: { lowTier(): boolean; m
 
   return {
     update,
+    intake: () => ({ ...intake, list: book.list.length, shownN }),
     shown() {
       const px = surface.fx.px;
       const out: BubbleShown[] = [];

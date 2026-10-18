@@ -8,7 +8,10 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { LobbySummary } from '@ct/protocol';
 import { api } from '../../net/api';
+import { worldOfLobby } from './finder';
 import { WorldBadge } from './ModeSettings';
+import { appWorld, syncWorldPath } from '../common/appWorld';
+import { V3LoadingStep } from '../common/townLoading';
 
 type GetLobby = (id: string) => Promise<{ lobby: LobbySummary }>;
 
@@ -42,6 +45,11 @@ export function JoinPreviewView({ lobby }: { lobby: Pick<LobbySummary, 'name' | 
 
 export function JoiningLobby({ id, get = api.getLobby }: { id: string; get?: GetLobby }) {
   const [lobby, setLobby] = useState<LobbySummary | null>(null);
-  useEffect(() => fetchJoinPreview(id, get, setLobby), [id]);
+  // (v3 URL paths) a lobby of the other world (an old v2 share link at /lobby/x): the address bar moves to its
+  // app (/v2/lobby/x) as soon as the summary says so; the join itself keeps going (the room's first lobby:view
+  // re-checks it, ui/common/v3skinLobby.ts)
+  useEffect(() => fetchJoinPreview(id, get, (l) => (syncWorldPath(worldOfLobby(l)), setLobby(l))), [id]);
+  // (v3 WP8) the v3 app (`/`) shows the Hollowmere loading scene from here on; the v2 app keeps the plain line
+  if (appWorld() === 'v3') return <V3LoadingStep step="join" {...(lobby ? { label: `Joining ${lobby.name}…` } : {})} />;
   return <JoinPreviewView lobby={lobby} />;
 }

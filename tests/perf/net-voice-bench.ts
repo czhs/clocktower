@@ -33,6 +33,7 @@ const arg = (n: string, d: string) => {
 const PLAYERS = Number(arg('players', '15'));
 const MINUTES = Number(arg('minutes', '20'));
 const RTT = Number(arg('rtt', '40'));
+const LIST_ROOMS = arg('listrooms', 'yes') !== 'no';
 const OUT = path.resolve(arg('out', '/tmp/ct-netvoice'));
 mkdirSync(OUT, { recursive: true });
 const log = (...a: unknown[]) => console.log(`[voice ${new Date().toISOString().slice(11, 19)}]`, ...a);
@@ -72,15 +73,37 @@ async function lobbySim(L: TownLayout, label: string) {
   const gs = { phase: null as GamePhase | null };
   const seats = new Map<string, number>();
   const game = { onEvent() {}, phase: () => gs.phase, seatOf: (p: string) => seats.get(p) ?? null, isAlive: () => true, directoryPhase: () => 'day' } as unknown as GameModule;
-  const calls = { listParticipants: 0, removeParticipant: 0 };
+  // (net front, after the audit change) LiveKit as an honest game sees it: every grant holder is connected to
+  // exactly its room (synced once per simulated second), rooms persist after they empty; --listrooms no = a
+  // RoomService without listRooms (the coordinator's fallback path).
+  const calls = { listRooms: 0, listParticipants: 0, removeParticipant: 0 };
+  const lkRooms = new Map<string, Set<string>>();
   const rs = {
-    async removeParticipant() {
+    async removeParticipant(room: string, identity: string) {
       calls.removeParticipant++;
+      lkRooms.get(room)?.delete(identity);
     },
-    async listParticipants() {
+    async listParticipants(room: string) {
       calls.listParticipants++;
-      return [] as { identity: string }[];
+      return [...(lkRooms.get(room) ?? [])].map((identity) => ({ identity }));
     },
+    ...(LIST_ROOMS
+      ? {
+          async listRooms() {
+            calls.listRooms++;
+            return [...lkRooms].map(([name, ids]) => ({ name, numParticipants: ids.size }));
+          },
+        }
+      : {}),
+  };
+  const syncLivekit = () => {
+    for (const ids of lkRooms.values()) ids.clear();
+    for (const pid of pids) {
+      const r = voice.heldRooms(pid).zone;
+      if (!r) continue;
+      if (!lkRooms.has(r)) lkRooms.set(r, new Set());
+      lkRooms.get(r)!.add(pid);
+    }
   };
   const voice = createVoiceModule(host, {
     livekit: { url: URL, apiKey: KEY, apiSecret: SECRET, roomPrefix: 'perf', configured: true },
@@ -159,7 +182,10 @@ async function lobbySim(L: TownLayout, label: string) {
     const t0 = process.hrtime.bigint();
     voice.tick(now);
     tickCost.push(Number(process.hrtime.bigint() - t0) / 1000);
-    if (++ticks % 24 === 0) await voice.whenIdle();
+    if (++ticks % 24 === 0) {
+      await voice.whenIdle();
+      syncLivekit();
+    }
   }
   await voice.whenIdle();
   let grants = 0;
@@ -181,7 +207,9 @@ async function lobbySim(L: TownLayout, label: string) {
     grantsPerMin: r1(grants / mins),
     revokesPerMin: r1(revokes / mins),
     grantBytesPerMinLobby: Math.round(grantB / mins),
+    livekitListRoomsPerMin: r1(calls.listRooms / mins),
     livekitListParticipantsPerMin: r1(calls.listParticipants / mins),
+    livekitCallsPerMin: r1((calls.listRooms + calls.listParticipants + calls.removeParticipant) / mins),
     livekitRemoveParticipantPerMin: r1(calls.removeParticipant / mins),
     tickUs: { p50: r2(tickCost[Math.floor(tickCost.length * 0.5)]!), p99: r2(tickCost[Math.floor(tickCost.length * 0.99)]!), max: r2(tickCost.at(-1)!), avg: r2(tickCost.reduce((a, b) => a + b, 0) / tickCost.length) },
     tickCpuPctOfCore: r2((tickCost.reduce((a, b) => a + b, 0) / 1e6 / (mins * 60)) * 100),

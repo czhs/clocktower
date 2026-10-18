@@ -49,7 +49,7 @@ export default defineConfig({
   projects: [
     // (project testIgnore replaces the top-level one: keep public.spec.ts out here too)
     { name: 'chromium', testIgnore: [V3_SPECS, ...(PUBLIC ? [] : [/public\.spec\.ts/])], use: { ...devices['Desktop Chrome'], launchOptions: { args: resolveArgs } } },
-    // (v3 WP7, docs/v3/INTEGRATION.md §6.2) the 3D town specs (tests/e2e/v3-*.spec.ts): SwiftShader (CPU) only, low tier,
+    // (v3 WP7, docs/v3/INTEGRATION.md §6.2) the 3D town specs (tests/e2e/v3-*.spec.ts): host GPU by default (CT_GL below), low tier,
     // 960x540, 15 fps (helpers.ts v3InitScript: ct.debug.v3force / fps / fxQuality / camera in every v3 context).
     // Run on the host ONLY through scripts/v3/e2e.sh (host-wide lock, nice 19, E2E_PORT from the v3-qa range), which sets
     // E2E_V3=1: without it the project does not exist, so a plain `pnpm test:e2e` (the Classic suite) never starts the
@@ -62,7 +62,11 @@ export default defineConfig({
         ...devices['Desktop Chrome'],
         viewport: { width: 960, height: 540 },
         deviceScaleFactor: 1,
-        launchOptions: { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', ...resolveArgs] },
+        // GL backend (user 2026-10-18: the host GPU may be used): CT_GL=gpu (default) = the host RTX 3060 via ANGLE/Vulkan
+        // (same flags as tutorial.config.ts GPU_ARGS); CT_GL=swiftshader = CPU raster (the pre-2026-10-18 rule).
+        launchOptions: { args: [...(process.env.CT_GL === 'swiftshader'
+          ? ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist']
+          : ['--use-angle=vulkan', '--enable-features=Vulkan', '--enable-gpu', '--ignore-gpu-blocklist']), ...resolveArgs] },
       },
     }] : []),
   ],

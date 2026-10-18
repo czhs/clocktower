@@ -278,3 +278,34 @@ describe('projection (§1.5)', () => {
     expect(pixelScaleFor(100, 'high')).toBe(1);
   });
 });
+
+// ------------------------------------------------------------------------------------------------ C1: the clock tower room
+import { isTowerLocation, roomMapOf, TOWER_LOCATION, TOWER_ROOM } from '../../src/game3d/coords';
+import { towerRoomV3, townLayoutV3 as v3Layout } from '@ct/assets/hollowmere';
+
+describe('the clock tower room (bld:clocktower)', () => {
+  it('TOWER_ROOM equals the exported towerRoomV3 anchor', () => {
+    expect(TOWER_ROOM.anchorPx).toEqual(towerRoomV3.anchorPx);
+    expect({ x: TOWER_ROOM.anchorM.X, z: TOWER_ROOM.anchorM.Z }).toEqual(towerRoomV3.anchorM);
+    expect(isTowerLocation(TOWER_LOCATION)).toBe(true);
+    expect(isTowerLocation('bld:house-1')).toBe(false);
+  });
+  it('the doorway tile centre is the exit spot; the interior door / visit point land in the room; round trip exact', () => {
+    const b = v3Layout.buildings.find((x) => x.id === 'clocktower')!;
+    const m = roomMapOf('bld:clocktower', b.interior)!;
+    const D = { x: (b.interior.x + 6 + 0.5) * 16, y: (b.interior.y + 11 + 0.5) * 16 };
+    expect(m.toM(D)).toEqual({ X: 650, Z: 22.5 });
+    const door = m.toM({ x: (b.interiorDoor.x + 0.5) * 16, y: (b.interiorDoor.y + 0.875) * 16 });
+    expect(door.X).toBeCloseTo(650, 6);
+    expect(door.Z).toBeGreaterThan(20 - 2.75);
+    expect(door.Z).toBeLessThan(22.5);
+    const v = m.toM({ x: (b.visitPoint!.x + 0.5) * 16, y: (b.visitPoint!.y + 0.875) * 16 });
+    expect(v.Z).toBeLessThan(20 - 0.6); // the visit point is up on the landing (z < -0.6 room-local)
+    for (const p of [D, { x: 1800.25, y: 30.5 }]) {
+      const q = m.toPx(m.toM(p));
+      expect(q.x).toBeCloseTo(p.x, 9);
+      expect(q.y).toBeCloseTo(p.y, 9);
+    }
+    expect(locToM(D, 'bld:clocktower')).toEqual({ X: 650, Z: 22.5 });
+  });
+});

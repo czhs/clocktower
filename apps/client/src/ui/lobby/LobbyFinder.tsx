@@ -3,8 +3,9 @@ import { SCRIPTS, type LobbySummary } from '@ct/protocol';
 import { api, subscribeDirectory } from '../../net/api';
 import { lazyComponent, whenIdle } from '../common/lazy';
 import { modeOf } from '../clock/logic';
-import { ModeBadge, WorldBadge } from './ModeSettings';
-import { applyDirectoryEvent, DEFAULT_FILTERS, errorText, filterLobbies, PHASE_LABEL, SCRIPT_LABEL, sortLobbies, type FinderFilters } from './finder';
+import { ModeBadge } from './ModeSettings';
+import { appWorld, pathInWorld } from '../common/appWorld';
+import { applyDirectoryEvent, DEFAULT_FILTERS, errorText, filterLobbies, lobbiesOfWorld, PHASE_LABEL, SCRIPT_LABEL, sortLobbies, type FinderFilters } from './finder';
 
 // (v3 WP6, perf) The create dialog is its own lazy chunk (fetched on idle, so the click stays instant): the
 // lobby-name word list, the Town / mode choices and their long copy stay out of the entry chunk.
@@ -103,7 +104,10 @@ export function LobbyFinder({ onJoin }: { onJoin: (lobbyId: string, intent: 'pla
     }
   }, [filters]);
 
-  const shown = useMemo(() => sortLobbies(filterLobbies(lobbies.values(), filters)), [lobbies, filters]);
+  // (v3 URL paths) each app lists only its own world's lobbies: `/` = Hollowmere (v3), `/v2/` = Classic (v2)
+  const world = appWorld();
+  const mine = useMemo(() => lobbiesOfWorld(lobbies.values(), world), [lobbies, world]);
+  const shown = useMemo(() => sortLobbies(filterLobbies(mine, filters)), [mine, filters]);
   const set = <K extends keyof FinderFilters>(k: K, v: FinderFilters[K]) => setFilters((f) => ({ ...f, [k]: v }));
 
   return (
@@ -112,7 +116,7 @@ export function LobbyFinder({ onJoin }: { onJoin: (lobbyId: string, intent: 'pla
         <div>
           <h2>Lobby finder</h2>
           <span class="muted ct-live">
-            <span class="ct-dot" /> live · {lobbies.size} {lobbies.size === 1 ? 'lobby' : 'lobbies'}
+            <span class="ct-dot" /> live · {mine.length} {mine.length === 1 ? 'lobby' : 'lobbies'}
             {ping !== null && ` · ~${ping} ms`}
           </span>
         </div>
@@ -176,7 +180,7 @@ export function LobbyFinder({ onJoin }: { onJoin: (lobbyId: string, intent: 'pla
         )}
         {loaded && shown.length === 0 && (
           <p class="muted ct-empty">
-            {lobbies.size === 0 ? (
+            {mine.length === 0 ? (
               <>
                 No lobbies yet. <button class="ct-link" onClick={() => setCreating(true)}>Create the first one</button> and share its link.
               </>
@@ -194,6 +198,11 @@ export function LobbyFinder({ onJoin }: { onJoin: (lobbyId: string, intent: 'pla
           <LobbyRow key={l.id} lobby={l} onJoin={onJoin} />
         ))}
       </div>
+
+      <p class="muted ct-small ct-other-town">
+        {world === 'v3' ? 'Playing in the classic 2D town? ' : 'Looking for the new 3D town? '}
+        <a href={pathInWorld(world === 'v3' ? 'v2' : 'v3', '/')}>{world === 'v3' ? 'Classic town lobbies' : 'Hollowmere lobbies'}</a>
+      </p>
 
       {creating && (
         <CreateLobbyModal
@@ -218,7 +227,6 @@ function LobbyRow({ lobby: l, onJoin }: { lobby: LobbySummary; onJoin: (id: stri
           {l.name}
           <span class={`ct-phase ct-phase-${l.phase}`}>{PHASE_LABEL[l.phase]}</span>
           <ModeBadge lobby={l} />
-          <WorldBadge world={l.world} />
         </div>
         {l.description && <div class="ct-lobby-desc muted">{l.description}</div>}
         <div class="ct-lobby-meta muted">

@@ -5,23 +5,31 @@
 //     its update (wall cut-away, animated bits) runs; on the way out the room's group is detached (kept);
 //   - at most CACHE rooms stay built (least recently used beyond that are disposed, never the shown one);
 //   - rooms near the player (its own home, a door it walks up to) are prefetched, so entering rarely waits;
-//   - the window sky follows the town preset (setTimeOfDay).
+//   - the window sky follows the town preset (setTimeOfDay);
+//   - the clock tower's room (bld:clocktower, vendor pass B) is one more room of the same cache, built by
+//     `buildTower` (vendor/interiors.ts buildTowerInterior), keyed TOWER_KEY.
 // The constant light pool is re-aimed by the time facade from `shown()` (player.interior), so entering or
 // leaving never changes the light count.
 import * as THREE from 'three';
 import type { LocationId } from '@ct/protocol';
-import { houseOfLocation } from '../coords';
+import { houseOfLocation, isTowerLocation } from '../coords';
 import { buildHouseInterior, type BuiltInterior } from '../vendor/interiors';
 import type { TownPark } from './park';
 
 export const CACHE = 2;
+/** The clock tower room's cache key (cottages are keyed by their house index 0..14). */
+export const TOWER_KEY = -1;
+/** A room's cache key for a location: the cottage index, TOWER_KEY, or null (outdoors / no 3D room). */
+export function roomKeyOf(loc: LocationId): number | null {
+  return isTowerLocation(loc) ? TOWER_KEY : houseOfLocation(loc);
+}
 
 export interface InteriorManager {
   /** Show the location (own player's). Builds the room on demand; outdoors un-parks the town. */
   show(loc: LocationId): void;
-  /** Build a room in the background (no-op when cached / building / outdoors). */
+  /** Build a room in the background (no-op when cached / building / outdoors). `index` = house index or TOWER_KEY. */
   prefetch(index: number): void;
-  /** Build (or get) a room; null when it failed. */
+  /** Build (or get) a room (house index or TOWER_KEY); null when it failed. */
   load(index: number): Promise<BuiltInterior | null>;
   /** Per frame (engine updater): the shown room's update. */
   update(t: number, dt: number): void;
@@ -49,6 +57,8 @@ export interface InteriorManagerOptions {
   onError?(e: unknown): void;
   /** Allowed to park the town (after the warm-up). */
   canPark(): boolean;
+  /** Build the clock tower's room (absent = the tower shows the town, as before vendor pass B). */
+  buildTower?(): Promise<BuiltInterior>;
 }
 
 export function createInteriorManager(o: InteriorManagerOptions): InteriorManager {
@@ -83,7 +93,9 @@ export function createInteriorManager(o: InteriorManagerOptions): InteriorManage
     if (have) return Promise.resolve(have);
     const pending = building.get(i);
     if (pending) return pending;
-    const p = buildHouseInterior(o.engine, i, { tod: o.tod() })
+    const make = i === TOWER_KEY ? o.buildTower : () => buildHouseInterior(o.engine, i, { tod: o.tod() });
+    if (!make) return Promise.resolve(null);
+    const p = make()
       .then((it) => {
         building.delete(i);
         if (disposed) {
@@ -114,7 +126,7 @@ export function createInteriorManager(o: InteriorManagerOptions): InteriorManage
     if (current === it) return;
     if (current) current.group.removeFromParent();
     current = it;
-    drawnLoc = `bld:house-${it.index}` as LocationId;
+    drawnLoc = (it.index === TOWER_KEY ? 'bld:clocktower' : `bld:house-${it.index}`) as LocationId;
     it.setTimeOfDay(o.tod());
     o.scene.add(it.group);
     it.group.updateMatrixWorld(true);
@@ -128,7 +140,7 @@ export function createInteriorManager(o: InteriorManagerOptions): InteriorManage
       return lastSwitchMs;
     },
     show(loc) {
-      const i = houseOfLocation(loc);
+      const i = roomKeyOf(loc);
       if (i === want) {
         // the town may have become parkable since (warm-up done)
         if (current && !o.park.parked && o.canPark()) o.park.park();
@@ -148,7 +160,7 @@ export function createInteriorManager(o: InteriorManagerOptions): InteriorManage
       }
     },
     prefetch(i) {
-      if (disposed || built.has(i) || building.has(i) || i < 0) return;
+      if (disposed || built.has(i) || building.has(i) || (i < 0 && i !== TOWER_KEY) || (i === TOWER_KEY && !o.buildTower)) return;
       // never push the wanted / shown room out for a guess
       void build(i);
     },

@@ -7,7 +7,7 @@
 // Project `v3` only (scripts/v3/e2e.sh).
 import { expect, test } from '@playwright/test';
 import { makeBots } from '../support/bot';
-import { FrameTap, type Player, requireV3Hooks, selfEntity, setE2eWorld, v3Context, v3Shot, waitV3Ready, watchConsole } from './helpers';
+import { FrameTap, type Player, requireV3Hooks, selfEntity, setE2eWorld, v3Context, v3Shot, waitAvatarsSettled, waitV3Ready, watchConsole } from './helpers';
 
 test.beforeAll(() => setE2eWorld('v3'));
 test.afterAll(() => setE2eWorld('v2'));
@@ -42,6 +42,8 @@ test('v3 social: pin, point and bubble land on the projection', async ({ browser
     await expect
       .poll(() => page.evaluate((who) => !!(window as unknown as { __ctCamera?: { avatar?: (p: string) => unknown } }).__ctCamera?.avatar?.(who), fpid), { timeout: 120_000, message: "the friend's avatar is drawn (WP2 avatar(pid))" })
       .toBe(true);
+    // every avatar (the two bots, us, the townsfolk) built: on SwiftShader each build stalls the page for seconds
+    await waitAvatarsSettled(page, 240_000, 'social');
     const w2s = (x: number, y: number, h = 0) => page.evaluate(({ x, y, h }) => ((window as unknown as { __ctCamera: { worldToScreen: W2S } }).__ctCamera.worldToScreen(x, y, h)), { x, y, h });
 
     // ---- pin: a place pin next to us
@@ -64,7 +66,18 @@ test('v3 social: pin, point and bubble land on the projection', async ({ browser
     })();
     const at = (await w2s(spot.x, spot.y))!;
     expect(at, 'pin spot projects').not.toBeNull();
-    expect(Math.hypot(pin.x! - at.x, pin.y! - at.y), `pin tip ${pin.x},${pin.y} vs worldToScreen ${at.x},${at.y}`).toBeLessThanOrEqual(6);
+    // a new pin DROPS in (WP4 socialView: DROP_MS fall + a small bounce, tip.y + yOff): measure once it has landed
+    let last = pin;
+    await expect
+      .poll(
+        async () => {
+          const pins = (await page.evaluate(() => ((window as unknown as { __ctSocial?: { pins?: () => unknown[] } }).__ctSocial?.pins?.() ?? []) as Pin[])) as Pin[];
+          last = pins.find((q) => q.kind === 'place' && q.visible) ?? last;
+          return Math.hypot(last.x! - at.x, last.y! - at.y);
+        },
+        { timeout: 30_000, message: `the landed pin tip vs worldToScreen ${at.x},${at.y}` },
+      )
+      .toBeLessThanOrEqual(6);
 
     // ---- point: the friend points at the same spot
     friend!.send('social:emote', { kind: 'point', x: spot.x, y: spot.y });
@@ -80,15 +93,25 @@ test('v3 social: pin, point and bubble land on the projection', async ({ browser
     friend!.send('chat:send', { text });
     type Bubble = { pid: string; text: string; box: { x: number; y: number; width: number; height: number } };
     let bubble: Bubble | undefined;
-    await expect
-      .poll(
-        async () => {
-          bubble = ((await page.evaluate(() => (window as unknown as { __ctCamera?: { bubbles?: () => unknown[] } }).__ctCamera?.bubbles?.() ?? [])) as Bubble[]).find((b) => b.pid === fpid);
-          return bubble?.text.replace(/\s+/g, ' ').trim() ?? null;
-        },
-        { timeout: 30_000, message: "__ctCamera.bubbles(): the friend's bubble" },
-      )
-      .toBe(text);
+    try {
+      await expect
+        .poll(
+          async () => {
+            bubble = ((await page.evaluate(() => (window as unknown as { __ctCamera?: { bubbles?: () => unknown[] } }).__ctCamera?.bubbles?.() ?? [])) as Bubble[]).find((b) => b.pid === fpid);
+            return bubble?.text.replace(/\s+/g, ' ').trim() ?? null;
+          },
+          { timeout: 30_000, message: "__ctCamera.bubbles(): the friend's bubble" },
+        )
+        .toBe(text);
+    } catch (e) {
+      // what the page got and drew (diagnostics for the failure message)
+      const got = tap.received('chat:message').map((m: { fromPid?: string; scope?: string; text?: string }) => ({ from: m.fromPid === fpid ? 'friend' : m.fromPid, scope: m.scope, text: m.text }));
+      const drawn = await page.evaluate(() => {
+        const c = (window as unknown as { __ctCamera?: { bubbles?: () => unknown; overlay?: () => unknown } }).__ctCamera;
+        return { bubbles: c?.bubbles?.() ?? null, overlay: c?.overlay?.() ?? null };
+      });
+      throw new Error(`${(e as Error).message}\nchat:message received: ${JSON.stringify(got)}\ndrawn: ${JSON.stringify(drawn).slice(0, 1500)}`);
+    }
     const fnow = selfEntity(p, fpid) ?? fr;
     const feet = (await w2s(fnow.x, fnow.y))!;
     const cx = bubble!.box.x + bubble!.box.width / 2;

@@ -7,9 +7,11 @@
 //   - daytime only (waiting / setup / day / finished), outdoors only, never collide, no names;
 //   - they react only to Brianbi avatars drawn outdoors for this viewer (hidden / indoor / night players can never
 //     move an NPC or reveal themselves);
-//   - v3 worlds: no NPC ever stands or walks inside the town square (`inSquare`, the voting circle and its ring);
+//   - v3 worlds: no NPC ever stands or walks inside the town square (`inSquare`) or the plaza ellipse x 1.1 (Classic's
+//     TownScene npcSpot rule, which also covers the voting circle's north arc that `inSquare` misses);
 //   - low tier: only the first LOW_TIER_AMBIENCE.townsfolk of them.
 import { inSquare, isBlockedPx, locationAt, type TilePoint, type TownLayout, type WorldId } from '@ct/protocol';
+import { PLAZA } from '@ct/assets';
 import { createNpcRoamer, stepNpcRoamer, type NpcPoint, type NpcRoamer } from '../../game/npcRoaming';
 import { nearestFree, segmentClear } from '../../game/path';
 
@@ -42,16 +44,24 @@ function homePx(layout: TownLayout, t: TilePoint): NpcPoint {
   return { x: t.x * layout.tileSize + 8, y: t.y * layout.tileSize + 14 };
 }
 
-/** Where an NPC may step: outdoors, an unblocked straight segment, and (v3) never into the town square. */
+/** Classic TownScene NPC_PLAZA_CLEAR: townsfolk keep outside the plaza ellipse x this (v3 worlds). */
+export const NPC_PLAZA_CLEAR = 1.1;
+
+/** A v3 NPC may not stand here: the town square or the plaza ellipse x NPC_PLAZA_CLEAR (the voting circle + its ring). */
+export function inVotingArea(layout: TownLayout, x: number, y: number, plaza: { cx: number; cy: number; rx: number; ry: number } = PLAZA): boolean {
+  return inSquare(layout, x, y) || Math.hypot((x - plaza.cx) / plaza.rx, (y - plaza.cy) / plaza.ry) <= NPC_PLAZA_CLEAR;
+}
+
+/** Where an NPC may step: outdoors, an unblocked straight segment, and (v3) never into the square / voting circle. */
 export function npcClear(layout: TownLayout, world: WorldId): (from: NpcPoint, to: NpcPoint) => boolean {
   const noSquare = world === 'v3';
-  return (from, to) => locationAt(layout, to.x, to.y) === 'outdoors' && segmentClear(layout, from.x, from.y, to.x, to.y) && !(noSquare && inSquare(layout, to.x, to.y));
+  return (from, to) => locationAt(layout, to.x, to.y) === 'outdoors' && segmentClear(layout, from.x, from.y, to.x, to.y) && !(noSquare && inVotingArea(layout, to.x, to.y));
 }
 
 /** Build the folk on `homes` (ids sorted for a stable order; homes without a free outdoor spot are skipped). */
 export function createNpcFolk(layout: TownLayout, world: WorldId, homes: Readonly<Record<string, TilePoint>>): NpcFolk {
   const clear = npcClear(layout, world);
-  const okSpot = (x: number, y: number) => locationAt(layout, x, y) === 'outdoors' && !isBlockedPx(layout, x, y) && !(world === 'v3' && inSquare(layout, x, y));
+  const okSpot = (x: number, y: number) => locationAt(layout, x, y) === 'outdoors' && !isBlockedPx(layout, x, y) && !(world === 'v3' && inVotingArea(layout, x, y));
   const list: Npc[] = [];
   for (const id of Object.keys(homes).sort()) {
     const p = nearestFree(layout, homePx(layout, homes[id]!), 40, okSpot);

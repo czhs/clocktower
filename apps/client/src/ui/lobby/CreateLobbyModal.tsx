@@ -1,36 +1,12 @@
 // The create-lobby dialog (lazy chunk of LobbyFinder, prefetched on idle; v3 WP6 split it out of the entry chunk).
-// (v3 WP6) The "Town" choice (Classic (v2) / Hollowmere (v3), docs/v3/INTEGRATION.md §9.1 user decision) is sent
-// as CreateLobbyRequest.world. The pre-selection is ONE constant, DEFAULT_WORLD (the user decides it at C3 / Q7);
-// the dialog deliberately does not remember a previous pick, so flipping the constant reaches everyone.
+// (v3 URL paths, user decision 2026-10-18) No Town choice: the lobby's world is the page's app world
+// (`/` = Hollowmere v3, `/v2/` = Classic v2; ui/common/appWorld.ts), sent as CreateLobbyRequest.world.
 import { useEffect, useState } from 'preact/hooks';
-import { LOBBY_DESCRIPTION_MAX, LOBBY_NAME_MAX, LOBBY_NAME_MIN, MAX_PLAYERS, MIN_PLAYERS, SCRIPTS, type LobbySummary, type ScriptId, type StorytellerMode, type WorldId, wordLobbyName } from '@ct/protocol';
+import { LOBBY_DESCRIPTION_MAX, LOBBY_NAME_MAX, LOBBY_NAME_MIN, MAX_PLAYERS, MIN_PLAYERS, SCRIPTS, type LobbySummary, type ScriptId, type StorytellerMode, wordLobbyName } from '@ct/protocol';
 import { api } from '../../net/api';
-import { ModeChoice, WORLD_BADGE } from './ModeSettings';
+import { appWorld } from '../common/appWorld';
+import { ModeChoice } from './ModeSettings';
 import { createLobbyBody, errorText, SCRIPT_LABEL } from './finder';
-
-/** (v3) The two towns a lobby can be built in (fixed at creation). */
-export const WORLD_COPY: Record<WorldId, { title: string; sub: string; line: string }> = {
-  v2: { title: 'Classic', sub: WORLD_BADGE.v2.title, line: 'The 2D pixel town everyone knows. Runs on every device.' },
-  v3: { title: 'Hollowmere', sub: WORLD_BADGE.v3.title, line: 'Drawn in 3D where the device can; others see it in Classic 2D.' },
-};
-/** Pre-selected town in the create dialog: the only source of the pre-selection (Q7 decides at C3 whether it becomes 'v3'). */
-export const DEFAULT_WORLD: WorldId = 'v2';
-
-/** Town choice for the create dialog (radio semantics, like ModeChoice). */
-export function WorldChoice({ value, onChange, disabled, name = 'ct-world' }: { value: WorldId; onChange: (w: WorldId) => void; disabled?: boolean; name?: string }) {
-  return (
-    <div class="ct-modes ct-worlds" role="radiogroup" aria-label="Town">
-      {(['v2', 'v3'] as const).map((w) => (
-        <label key={w} class={`ct-mode-opt ct-world-opt-${w}${value === w ? ' on' : ''}${disabled ? ' disabled' : ''}`}>
-          <input type="radio" name={name} value={w} checked={value === w} disabled={disabled} onChange={() => onChange(w)} />
-          <span class="ct-mode-title">{WORLD_COPY[w].title}</span>
-          <span class="ct-mode-sub">{WORLD_COPY[w].sub}</span>
-          <span class="ct-mode-line">{WORLD_COPY[w].line}</span>
-        </label>
-      ))}
-    </div>
-  );
-}
 
 export function CreateLobbyModal({ onClose, onCreated }: { onClose: () => void; onCreated: (l: LobbySummary, takeStoryteller: boolean) => void }) {
   // (v2.2) prefilled with a simple-words name; ↻ suggests another; left blank -> the suggestion.
@@ -41,7 +17,6 @@ export function CreateLobbyModal({ onClose, onCreated }: { onClose: () => void; 
   const [description, setDescription] = useState('');
   const [takeSt, setTakeSt] = useState(true);
   const [mode, setMode] = useState<StorytellerMode>('human');
-  const [world, setWorld] = useState<WorldId>(DEFAULT_WORLD);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -58,7 +33,7 @@ export function CreateLobbyModal({ onClose, onCreated }: { onClose: () => void; 
     setBusy(true);
     setError(null);
     try {
-      const body = createLobbyBody({ name: finalName, maxPlayers, script, description, takeStoryteller: takeSt, mode, world });
+      const body = createLobbyBody({ name: finalName, maxPlayers, script, description, takeStoryteller: takeSt, mode, world: appWorld() });
       const st = body.takeStoryteller === true;
       const { lobby } = await api.createLobby(body);
       onCreated(lobby, st);
@@ -130,10 +105,6 @@ export function CreateLobbyModal({ onClose, onCreated }: { onClose: () => void; 
             onInput={(e) => setDescription((e.currentTarget as HTMLTextAreaElement).value)}
           />
         </label>
-        <div class="ct-field">
-          <span>Town</span>
-          <WorldChoice value={world} onChange={setWorld} name="ct-create-world" />
-        </div>
         <div class="ct-field">
           <span>Who runs the game?</span>
           <ModeChoice value={mode} onChange={setMode} name="ct-create-mode" />

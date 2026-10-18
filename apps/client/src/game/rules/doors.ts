@@ -51,6 +51,8 @@ export function doorSpots(layout: TownLayout): DoorSpot[] {
 /** A cottage is "in use" when it has a resident (game running) — empty cottages stay boarded. */
 export function houseInUse(game: { players: readonly { seat: number }[] } | null | undefined, b: BuildingDef): boolean {
   if (!game) return true; // waiting room: every cottage is a room
+  // nobody's home (the v3 clock tower, houseIndex null): always open as a room, never "Nobody lives here" / boarded
+  if (b.houseIndex === null || b.houseIndex === undefined) return true;
   return game.players.some((p) => p.seat === b.houseIndex);
 }
 

@@ -27,6 +27,12 @@
 // context takeover, zlib level 1 and 6) and without (no_context_takeover), at the ws thresholds 0 / 128 / 1024 B
 // (ws's default threshold is 1024: smaller frames are sent uncompressed). Compression CPU is the time of those
 // estimates (an upper bound: dictionary priming per call), reported per second for the WHOLE lobby (server side).
+//
+// Real wire bytes (net front, after permessage-deflate went on): every phase also reports `s2cWire*` / `c2sWire*`,
+// the TCP payload bytes of the server's established sockets on its port from `ss -ti` (bytes_acked = server ->
+// clients, bytes_received = clients -> server; WebSocket frame headers + possibly compressed payloads, plus the
+// few HTTP API calls of the phase), and `wsExtensions`, what the server negotiated with the bots (Node's global
+// WebSocket offers permessage-deflate like a browser). null when `ss` is not available.
 import { execSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
@@ -227,10 +233,49 @@ interface Tap {
   hist: number[]; // frame size buckets: <64, <128, <256, <512, <1024, <4096, >=4096
   window: Buffer; // last 32 KiB of this connection's S2C payloads (deflate context)
   defl: Deflate;
+  ext: string | null;
 }
 const BUCKETS = [64, 128, 256, 512, 1024, 4096];
-const newTap = (): Tap => ({ bytes: 0, frames: 0, hist: new Array(BUCKETS.length + 1).fill(0), window: Buffer.alloc(0), defl: { ctx1: [0, 0, 0], ctx6: [0, 0, 0], noctx6: [0, 0, 0], cpuNs: 0 } });
+const newTap = (): Tap => ({ bytes: 0, frames: 0, hist: new Array(BUCKETS.length + 1).fill(0), window: Buffer.alloc(0), defl: { ctx1: [0, 0, 0], ctx6: [0, 0, 0], noctx6: [0, 0, 0], cpuNs: 0 }, ext: null });
 const taps = new Map<Bot, Tap>();
+let SERVER_PORT = 0;
+/** Per established server socket (keyed by peer address): bytes_acked (server -> client) / bytes_received (Linux `ss`). */
+type SsMap = Map<string, { s2c: number; c2s: number }>;
+function ssSockets(port: number): SsMap | null {
+  try {
+    const out = execSync(`ss -tinH state established '( sport = :${port} )'`, { encoding: 'utf8' });
+    const m: SsMap = new Map();
+    let peer: string | null = null;
+    for (const line of out.split('\n')) {
+      const addr = /^\s*\d+\s+\d+\s+(\S+)\s+(\S+)/.exec(line);
+      if (addr) {
+        peer = addr[2]!;
+        m.set(peer, { s2c: 0, c2s: 0 });
+      }
+      if (!peer) continue;
+      const e = m.get(peer)!;
+      const a = /bytes_acked:(\d+)/.exec(line);
+      const r = /bytes_received:(\d+)/.exec(line);
+      if (a) e.s2c = Number(a[1]);
+      if (r) e.c2s = Number(r[1]);
+    }
+    return m;
+  } catch {
+    return null;
+  }
+}
+/** Bytes moved between two snapshots by the sockets alive at the end (new sockets count from 0). */
+function ssDelta(a: SsMap | null, b: SsMap | null): { s2c: number; c2s: number; conns: number } | null {
+  if (!a || !b) return null;
+  let s2c = 0;
+  let c2s = 0;
+  for (const [peer, v] of b) {
+    const o = a.get(peer);
+    s2c += v.s2c - (o?.s2c ?? 0);
+    c2s += v.c2s - (o?.c2s ?? 0);
+  }
+  return { s2c, c2s, conns: b.size };
+}
 let deflateOn = arg('deflate', 'yes') !== 'no';
 
 function onFrame(t: Tap, data: ArrayBuffer | Buffer) {
@@ -263,8 +308,9 @@ function tap(b: Bot) {
   const t = taps.get(b) ?? newTap();
   taps.set(b, t);
   t.window = Buffer.alloc(0); // a new connection = a new deflate context
-  const ws = (b.room as unknown as { connection?: { transport?: { ws?: { onmessage: ((ev: { data: ArrayBuffer }) => void) | null } } } } | null)?.connection?.transport?.ws;
+  const ws = (b.room as unknown as { connection?: { transport?: { ws?: { onmessage: ((ev: { data: ArrayBuffer }) => void) | null; extensions?: string } } } } | null)?.connection?.transport?.ws;
   if (!ws || typeof ws.onmessage !== 'function') throw new Error(`${b.name}: no raw socket to tap`);
+  t.ext = typeof ws.extensions === 'string' ? ws.extensions : null;
   const orig = ws.onmessage;
   ws.onmessage = (ev) => {
     onFrame(t, ev.data);
@@ -328,8 +374,10 @@ async function measure(label: string, bots: Bot[], meters: ReturnType<typeof met
   const tx0 = bots.map((b) => ({ bytes: b.recorder.txBytes, frames: b.recorder.txFrames }));
   const load0 = os.loadavg();
   const c0 = ticks(pid);
+  const ss0 = ssSockets(SERVER_PORT);
   const t0 = performance.now();
   await run();
+  const ss = ssDelta(ss0, ssSockets(SERVER_PORT));
   const secs = (performance.now() - t0) / 1000;
   const cpu = ((ticks(pid) - c0) / CLK / secs) * 100;
   const load1 = os.loadavg();
@@ -362,6 +410,11 @@ async function measure(label: string, bots: Bot[], meters: ReturnType<typeof met
     serverCpuPct: r1(cpu),
     s2cBytesPerSecPerClient: { avg: Math.round(avg((x) => x.bytes) / secs), max: Math.round(Math.max(...d.map((x) => x.bytes)) / secs), st: Math.round(d[0]!.bytes / secs) },
     s2cFramesPerSecPerClient: r1(avg((x) => x.frames) / secs),
+    s2cWireBytesPerSecPerClient: ss ? Math.round(ss.s2c / bots.length / secs) : null,
+    c2sWireBytesPerSecPerClient: ss ? Math.round(ss.c2s / bots.length / secs) : null,
+    s2cWireVsPayloadPct: ss && raw ? r1((ss.s2c / raw) * 100) : null,
+    serverSockets: ss?.conns ?? null,
+    wsExtensions: taps.get(bots[0]!)?.ext ?? null,
     c2sBytesPerSecPerClient: Math.round(avg((x) => x.txBytes) / secs),
     c2sFramesPerSecPerClient: r1(avg((x) => x.txFrames) / secs),
     frameSizeHistogram: Object.fromEntries(hist),
@@ -415,6 +468,7 @@ const chatLine = (i: number) => `${Array.from({ length: 4 + rand(8) }, () => WOR
 async function main() {
   const port = await pickPort(PORT_MIN, PORT_MAX);
   const server = await startServer({ mode: MODE, port, env: { LOBBY_IDLE_TIMEOUT_SEC: '120' } });
+  SERVER_PORT = port;
   log('server', server.url, 'pid', server.pid, 'layout', `${LAYOUT.widthTiles}x${LAYOUT.heightTiles}`, 'load', os.loadavg().map(r1).join(' '));
   const results: unknown[] = [];
   const recon: unknown[] = [];

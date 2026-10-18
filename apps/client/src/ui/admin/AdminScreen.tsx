@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { AccountView } from '@ct/protocol';
 import { goTo } from '../lobby/finder';
+import { appPath } from '../common/appWorld';
 import { AccountsTab } from './AccountsTab';
 import { AuditTab, LobbiesTab, SystemTab } from './OverviewTabs';
 import { GamesTab } from './GamesTab'; // (records)
@@ -69,7 +70,7 @@ export function AdminScreen({ account }: { account: AccountView }) {
 
   const pick = (t: Tab) => {
     setTab(t);
-    history.replaceState(history.state, '', `/admin#${t}`);
+    history.replaceState(history.state, '', appPath(`/admin#${t}`)); // (v3 URL paths) /admin or /v2/admin
   };
   const notify = (ok: boolean, text: string) => setNotice({ ok, text, at: Date.now() });
   const onForbidden = () => setDenied(true);

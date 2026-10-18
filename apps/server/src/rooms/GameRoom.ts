@@ -215,6 +215,8 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
   private gameDirty = false;
   private lobbyDirty = true;
   private forceGameView = new Set<string>();
+  /** (v3 perf) Members whose game view alone must be re-projected (sent only if changed); see markGameDirtyFor. */
+  private gameDirtyFor = new Set<string>();
   private lastGameView = new Map<string, string>();
   private snapshotTick = 0;
   private idleSince: number | null = null;
@@ -1061,6 +1063,9 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
       markGameDirty() {
         room.gameDirty = true;
       },
+      markGameDirtyFor(pid) {
+        room.gameDirtyFor.add(pid);
+      },
       markLobbyDirty() {
         room.lobbyDirty = true;
       },
@@ -1370,12 +1375,12 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
         this.sendTo(s, 'lobby:view', view);
       }
     }
-    if (this.gameDirty || this.forceGameView.size) {
+    if (this.gameDirty || this.forceGameView.size || this.gameDirtyFor.size) {
       const all = this.gameDirty;
       this.gameDirty = false;
       for (const s of this.connectedSeats()) {
         const pid = s.member.pid;
-        if (!all && !this.forceGameView.has(pid)) continue;
+        if (!all && !this.forceGameView.has(pid) && !this.gameDirtyFor.has(pid)) continue;
         let view: ReturnType<GameModule['viewFor']>;
         try {
           view = this.game.viewFor(pid);
@@ -1390,6 +1395,7 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
         this.sendTo(s, 'game:view', view);
       }
       this.forceGameView.clear();
+      this.gameDirtyFor.clear();
     }
   }
 

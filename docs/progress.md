@@ -196,48 +196,48 @@ Contract: `docs/v3/INTEGRATION.md` (§8 Status table, §10 "How to continue", §
   mock-world harness + v3 e2e specs (`E2E_V3=1`, `scripts/v3/e2e.sh`) and the v3 perf recon tooling (`docs/perf-v3/`).
 - **Gate C1a:** typecheck, build, full `pnpm test` on the host (numbers in `docs/test-results.md`). The user's
   acceptance "town choice from the UI" + "each lobby renders the right town" passes (`v3-lobby-choice`).
-- **Not yet:** WP1 / WP2 / WP4 are not wired into `game3d/TownGame3d.ts`, so the 3D client still draws only the own
-  stub avatar (no remote players, labels or bubbles). Only WP3's stage is wired.
+- **C1 (2026-10-18, integrator, not yet committed):** WP1 / WP2 / WP4 are wired into `game3d/TownGame3d.ts` (one
+  net/input/camera core per mount + the lifecycle: context-loss rebuild then Classic; avatars with prediction, remote
+  players, ghosts, lanterns, talking rims; overlay labels / DOM bubbles / pins / boards / house names / seat markers /
+  hints; `__ctCamera` / `__ctSocial`), and the four pixel3d user requests are wired on the game side: the
+  voting-circle camera (computed frame, ±45° yaw, 23° pitch, stepped in and out), the clock tower dials as the
+  Storyteller timer (readout = the HUD clock chip), no NPCs in the circle, the enterable clock tower room. Also: join
+  preview + one v3 skin per connection (LobbyRoute), `publishRender` + a fresh-URL chunk retry (GameScreen), the tower
+  is never "Nobody lives here", and a dispose leak (~135 MB of town per mount kept by the vendor Engine's window
+  listener) is fixed. Details and test results: INTEGRATION.md §8 Status, §9.1, §11 "C1".
 - **Open issues:** `v3-fallback` "chunk fails": the one chunk retry in `GameScreen.importTown3d` never re-requests the
   chunk (INTEGRATION.md §9.3, lead); WP6's Graphics status line and join preview wait on lead / world-art wiring
   (`publishRender`, `useV3Skin` in `InLobby`, `JoiningLobby`); art checks pending (billboard talking rim washed out,
   WP3 soft-layer fade behind thatched cottages, WP4 bubble details); pixel3d-side requests are collected in
   INTEGRATION.md §9.2.
 
-### v3 handoff (2026-10-18, after checkpoint C1a)
+### v3 handoff (2026-10-18 ~08:20 PDT, swarms stopped for a user break — RESTART FROM HERE)
 
-Two swarms were stopped by account usage limits; their work is now committed as **"v3 C1a: …"** on `v3-game` (on
-top of "v3 C1 WIP"). State per package (details: INTEGRATION.md §8 Status, §10 "How to continue"):
+Pushed checkpoints on `v3-game`: `f838b6a` **v3 C1a** (phase-1 packages WP1-WP6 finished, not wired; D1-D4; WP7a harness
++ v3 e2e; perf recon tooling) → `5fb072f` merge of `v3-dev` pass A+B (vendor reviewed as text, nothing unsafe; up to
+`bd4c9ff`) → `182d220` **vendor B** (assets imported; the clock tower exported as an enterable 16th building, no server
+change needed; NPC homes off the circle). On top: **"v3 WIP: …" (this handoff commit) = UNTESTED work in progress** of
+three streams that were stopped mid-work:
 
-| Package | State |
-|---|---|
-| WP1 core (`game3d/{net,input,debug}`) | done + reviewed + fixed; unit tests pass; **not wired** |
-| WP2 avatars (`game3d/avatars`, `vendor/characters.ts`) | done + reviewed (13 issues) + fixed; unit tests + SwiftShader smoke 47/47; **not wired** |
-| WP3 stage (`game3d/world`, `vendor/{town,interiors,time}.ts`) | done + reviewed + fixed; unit tests + stage smoke 27/27; **wired** (minimal) |
-| WP4 overlay (`game3d/overlay`) | done + reviewed + fixed, D2 DOM bubbles + its review fix round; unit tests pass; **not wired** |
-| WP5b Classic in a v3 world | done + reviewed + fixed; `classic-in-v3` + `doors` e2e 4/4 |
-| WP6 UI skin, Graphics, Town choice | done + reviewed + fixed; unit + `v23-settings` / `lobby` e2e 8/8; 4 contract requests open for C1 |
-| WP7a harness + v3 e2e | done for what runs before C1: `v3-boot`, `v3-lobby-choice` (2 acceptance tests), harness `projection` + `cycles` pass; rest pending C1 |
-| D3 touch pie edge (v2 Classic) | fixed; `v2-social` 3/3 |
-| perf recon (`docs/perf-v3/`, `tests/perf/*`, `scripts/perf/*`) | measurement tooling only, committed for the later perf swarm |
+| Stream | State in the WIP commit | Restart with |
+|---|---|---|
+| **C1 integrate** (`game3d/TownGame3d.ts` wiring WP1 net/input/debug + WP2 avatars + WP4 overlay + pass-B: vote camera, tower timer/readout, tower interior) | mostly wired; its last e2e batch: `v3-boot` ✓, `v3-vote` ✓, `v3-lobby-choice` ✓ (3/3), `v3-mixed` ✓, **`v3-social` ✘** (pins / points / bubbles on the projection), `v3-doors` ✘ in an earlier batch | an integrator that continues from the tree: typecheck, fix `v3-social`/`v3-doors`, then the C1 review → fix → gate (typecheck, build, full `pnpm test`, commit "v3 C1", push) |
+| **WP8 paths + loading screen** (user 2026-10-18: `/` = v3, `/v2/` = v2, world from the URL path, no Town choice; a new v3 loading screen; INTEGRATION.md §11) | partial (server `/v2` SPA route, path→world module, lobby filter, loading screen component, `tests/e2e/v3-paths.spec.ts`); the `ui/lobby/LobbyRoute.tsx` redirect and the loading-screen wiring in `GameScreen.tsx` were left for after C1 | finish after the C1 gate; delete `v3-lobby-choice.spec.ts` once `v3-paths` passes |
+| **v3 perf (server, network)** — user: only v3 perf matters now | partial optimisations in `apps/server/src/**`, notes `docs/perf-v3/net.md`; recon in `docs/perf-v3/recon-*.md` | re-measure before/after, keep tests green, propose `budgets.mjs` keys |
+| **CPU-only tier prototype** — user goal: v3 playable with software GL (SwiftShader), target ≥ 20 fps at 960×540 with 8-15 players | lives only in the host scratch sandbox `~/clocktower/work/v3-perf-cpu-proto` (not in git); levers: low internal resolution, no shadows/post, fewer lights, cheaper materials, character LOD, software-renderer auto-detect → `cpu` tier | read its diff vs `182d220`, write `docs/perf-v3/cpu-tier.md` + patch plan, apply in the v3 perf swarm |
 
-**Next, in order:**
-1. **C1 proper (lead):** wire WP1, WP2, WP4 into `TownGame3d.ts` and resolve the open contract requests (exact list in
-   INTEGRATION.md §10 "Next"): `selfReady(5000)`, `publishRender`, the chunk-retry bug, `useV3Skin` in `InLobby`,
-   `JoiningLobby`, `__ctCamera.setCamera`, WP3's qualified interior budget in §7. Full gate, commit.
-2. **C2 QA (WP7b):** run the pending `v3-*` e2e (doors, social, vote, life, mixed, fallback context-loss / perf
-   sampler, join preview), `hd-cast` v3 branch, harness stills, all Classic e2e; art critics; owner fix rounds; gate.
-3. **Then the performance swarm** (user request) on the v3 renderer + v3 server world; budgets into
-   `scripts/perf/budgets.mjs`. The recon from 2026-10-17 is in `docs/perf-v3/`.
-4. C3 (user decides which world is pre-selected; Q7 stills from WP5b) and deploy to the dev service at a milestone.
-   Never prod without asking.
+**Next, in order** (target: dev deploy the same day):
+1. C1 finish → review → fix → **gate C1** (commit + push).
+2. WP8 paths + loading screen finish (then the `LobbyRoute` redirect) — no separate review; the gate + `v3-paths` e2e cover it.
+3. **C2 QA on the host GPU** (`CT_GL=gpu`, default) + a small `CT_GL=swiftshader` set: every `v3-*` e2e, `hd-cast` v3 branch,
+   harness stills to `tests/v3/shots/` (send them to the user), one playtest + one art critic (read-only) **in parallel with**
+   the v3 perf swarm (load, frame, characters/memory, CPU tier, server, network; time-box ~3 h); then ONE combined fix round.
+4. Final gate (full suite + budgets in `scripts/perf/budgets.mjs`) + **deploy `v3-game` to the dev service** and tell the user.
+   **Never prod without asking.**
 
-**pixel3d-side changes to pick up when published on `v3-dev`** (user requests to the other session; game-side wiring
-is specified in INTEGRATION.md §9.1): voting-circle camera reframe; clock tower clock = Storyteller timer with an
-in-universe digital readout; no NPCs in the voting circle; enterable clock tower. Refresh = `git merge -X theirs v3-dev`
-(vendor side wins in `v3/pixel3d/**`) + `scripts/v3/import-assets.sh`, then re-run the Hollowmere export check
-(INTEGRATION.md §10).
-
-**Process notes:** workflow agents could not spawn their own subagents (no Agent tool inside workflow agents), so
-parallelism comes from the orchestrating workflow only. Heavy host commands go under `flock ~/clocktower/v3-heavy.lock`,
-browsers also under `~/clocktower/browser.lock`; SwiftShader only (never the host GPU); v3 ports 3450-3499.
+**Rules in force since 2026-10-18** (INTEGRATION.md §11): the host GPU and the render host are allowed (prod idle; heavy
+host load OK); host lock: builds/tests take `flock -s` (shared), perf measurements take it exclusive; e2e `E2E_PORT` per
+agent (3450-3499); `CT_GL=gpu|swiftshader`. Usage: one 5-hour window of the full swarm used ~15 % of the weekly limit;
+keep a check-in that resumes work after a limit reset and never blind-resume a parallel workflow (continue from the files).
+Stopped agents leave host commands queued on the lock: after stopping a swarm, kill the leftover `clocktower/work/v3-*`
+processes by PID (not `pkill -f` from a shell whose own command line matches).

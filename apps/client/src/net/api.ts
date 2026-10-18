@@ -55,16 +55,39 @@ export const api = {
   adminCloseLobby: (id: string) => call<{ ok: true }>('POST', `/api/admin/lobbies/${encodeURIComponent(id)}/close`, {}),
 };
 
-/** Live lobby directory over SSE with automatic reconnect (EventSource) + periodic resync. */
+/** Resync cadence while the stream is down or refused (SR-6: more tabs than streams fall back to this). */
+const DIRECTORY_RESYNC_MS = 30_000;
+/** (v3 perf, net) Safety-net resync while the stream is healthy (it sends a snapshot on every (re)connect). */
+const DIRECTORY_HEALTHY_RESYNC_MS = 5 * 60_000;
+/** The server sends a heartbeat every 20 s (directory/http.ts SSE_HEARTBEAT_MS): silence beyond this = unhealthy. */
+const DIRECTORY_STALE_MS = 45_000;
+
+/**
+ * Live lobby directory over SSE with automatic reconnect (EventSource) + resync. (v3 perf, net) The full
+ * `GET /api/lobbies` ran every 30 s even while the stream was healthy (≈ 10 KB per open finder per 30 s at
+ * 30 lobbies, all of a quiet directory's traffic); now it runs every 30 s only while the stream is not
+ * open or has gone quiet, and every 5 min otherwise.
+ */
 export function subscribeDirectory(onEvent: (e: DirectoryEvent) => void): () => void {
   const es = new EventSource('/api/lobbies/stream', { withCredentials: true });
-  es.onmessage = (m) => onEvent(JSON.parse(m.data) as DirectoryEvent);
+  let lastEventAt = 0;
+  let lastSyncAt = Date.now();
+  es.onmessage = (m) => {
+    const e = JSON.parse(m.data) as DirectoryEvent;
+    lastEventAt = Date.now();
+    if (e.type === 'snapshot') lastSyncAt = lastEventAt;
+    onEvent(e);
+  };
   const resync = setInterval(() => {
+    const now = Date.now();
+    const healthy = es.readyState === EventSource.OPEN && now - lastEventAt < DIRECTORY_STALE_MS;
+    if (healthy && now - lastSyncAt < DIRECTORY_HEALTHY_RESYNC_MS) return;
+    lastSyncAt = now;
     api
       .listLobbies()
       .then(({ lobbies }) => onEvent({ type: 'snapshot', lobbies }))
       .catch(() => undefined);
-  }, 30000);
+  }, DIRECTORY_RESYNC_MS);
   return () => {
     clearInterval(resync);
     es.close();

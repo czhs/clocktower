@@ -1,5 +1,5 @@
 import { createRequire } from 'node:module';
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig, type Plugin } from 'vite';
@@ -102,10 +102,17 @@ function packageDir(name: string): string {
   return d;
 }
 export const threeDir = packageDir('three');
+// (v3 perf, net front; docs/perf-v3/net.md) the vendor UI atlases are PNG only; packages/assets/scripts/v3/ui-webp.ts
+// writes lossless WebP twins (bit-identical RGBA, ≈ 70 % smaller; test/v3ui-webp.test.ts). Every
+// `@v3assets/<name>.png?url` with a twin resolves to it (v3atlas.ts and game3d/overlay/atlas.ts unchanged); a sheet
+// without one keeps the PNG.
+const v3UiWebpDir = path.join(repoRoot, 'packages/assets/generated/v3ui');
+const v3UiWebp = existsSync(v3UiWebpDir) ? readdirSync(v3UiWebpDir).filter((f) => /^[a-z0-9-]+\.webp$/.test(f)).map((f) => f.slice(0, -5)) : [];
 export const v3Aliases = [
   { find: /^three$/, replacement: path.join(threeDir, 'build/three.module.js') },
   { find: /^three\/addons\/(.*)$/, replacement: path.join(threeDir, 'examples/jsm/$1') },
   { find: /^@pixel3d\//, replacement: path.join(repoRoot, 'v3/pixel3d/src/') },
+  ...(v3UiWebp.length ? [{ find: new RegExp(`^@v3assets/(${v3UiWebp.join('|')})\\.png\\?url$`), replacement: `${path.join(v3UiWebpDir, '$1')}.webp?url` }] : []),
   { find: /^@v3assets\//, replacement: path.join(repoRoot, 'v3/assets/ui/') },
 ];
 

@@ -6,11 +6,12 @@
 //      town.js houseBox); the nearest hit means that house: its outdoor door tile centre, location 'outdoors';
 //   2. else the ground (Y = heightAt, refined twice) -> px.
 // Inside house i: the interior floor plane (Y = INTERIOR_FLOOR_Y) through the §2.3 interior translation -> px
-// of the band room. Other buildings (no 3D interior): null.
+// of the band room; inside the clock tower its room translation, on its floor heights (stair / landing: `floorAt`,
+// refined like the ground). Other buildings (no 3D interior): null.
 //
 // Pure maths over coords.ts (no three, no DOM): unit tested with hand-built camera states.
 import { tileCenterPx, type BuildingDef, type LocationId, type TownLayout } from '@ct/protocol';
-import { cssToRay, houseOfLocation, interiorMap, PX_PER_M, rayAtHeight, rayGround, type ProjectionState, type Ray } from '../coords';
+import { cssToRay, PX_PER_M, rayGround, roomMapOf, type ProjectionState, type Ray } from '../coords';
 import type { Px } from '../contract';
 
 /** The interior floor height (m): pixel3d interiors/kit.js Room floors sit at y = 0 around originOf(i). */
@@ -93,6 +94,8 @@ export interface PickCtx {
   proxies: readonly HouseProxy[];
   /** The location the camera shows (the viewer's). */
   shown: LocationId;
+  /** Room floor height (m) at a world point inside a room (the clock tower's stair / landing); default flat 0. */
+  floorAt?(X: number, Z: number): number;
 }
 
 /** The building whose interior is `loc` (null outdoors / unknown). */
@@ -112,16 +115,16 @@ export function pickRay(ray: Ray, ctx: PickCtx): PickResult | null {
   const { layout } = ctx;
   if (ctx.shown !== 'outdoors') {
     const b = buildingOf(layout, ctx.shown);
-    const i = houseOfLocation(ctx.shown);
-    if (!b || i === null) return null;
-    const hit = rayAtHeight(ray, INTERIOR_FLOOR_Y);
-    if (!hit) return null;
+    if (!b) return null;
     let m;
     try {
-      m = interiorMap(i, b.interior);
+      m = roomMapOf(ctx.shown, b.interior);
     } catch {
       return null; // no 3D interior for this house index
     }
+    if (!m) return null;
+    const hit = rayGround(ray, ctx.floorAt ?? (() => INTERIOR_FLOOR_Y), ctx.floorAt ? 2 : 0);
+    if (!hit) return null;
     const p = m.toPx(hit);
     return { x: p.x, y: p.y, location: ctx.shown };
   }

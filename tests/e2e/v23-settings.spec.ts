@@ -4,7 +4,8 @@
 // focus back to the gear, and the phone layout is one scrolling sheet with a chip row.
 // Screenshots: docs/screenshots/v23-settings-*.png.
 // (v3 WP6) Also the "Town graphics" row (ct.graphics, game3d/select.ts): in a v2 lobby it says the lobby uses
-// the classic town; in a Hollowmere (v3) lobby created from the UI's Town choice the page wears the v3 skin
+// the classic town; in a Hollowmere (v3) lobby (since the 2026-10-18 URL-path decision: any lobby created at `/`,
+// the v3 app; no Town choice any more) the page wears the v3 skin
 // (html[data-graphics=v3], kit tokens on the theme variables, the vendor panel sheet) until it leaves.
 // Screenshots: docs/screenshots/v3-ui-*.png.
 import path from 'node:path';
@@ -138,8 +139,8 @@ test('settings dialog: sections, persistence, rebinding, reset, phone sheet', as
   await Promise.all(bots.map((b) => b.leave()));
 });
 
-// (v3 WP6) Town choice → a v3 lobby wears the v3 skin; the Graphics row explains what draws the town.
-test('v3 lobby: town choice, world badge, v3 skin and the graphics row', async ({ browser, baseURL }) => {
+// (v3 WP6 + URL paths) A lobby created at `/` is a v3 lobby and wears the v3 skin; the Graphics row explains what draws it.
+test('v3 lobby: created at /, world badge, v3 skin and the graphics row', async ({ browser, baseURL }) => {
   test.setTimeout(120_000);
   const url = baseURL!;
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, extraHTTPHeaders: { 'X-Forwarded-For': '10.98.3.3' } });
@@ -152,10 +153,7 @@ test('v3 lobby: town choice, world badge, v3 skin and the graphics row', async (
   await page.getByRole('button', { name: 'Create lobby' }).first().click();
   const form = page.getByRole('dialog', { name: 'Create lobby' });
   await expect(form).toBeVisible();
-  const town = form.getByRole('radiogroup', { name: 'Town' });
-  await expect(town.getByRole('radio', { name: /^Classic/ })).toBeChecked(); // pre-selected until C3 (Q7)
-  await town.getByText('Hollowmere').click();
-  await expect(town.getByRole('radio', { name: /^Hollowmere/ })).toBeChecked();
+  await expect(form.getByRole('radiogroup', { name: 'Town' }), 'no Town choice: `/` is the v3 app').toHaveCount(0);
   // a long-ish (16 character) name must fit the waiting-room title next to the town badge
   const NAME = 'Lantern Crossing';
   await form.getByLabel('Lobby name').fill(NAME);
@@ -175,7 +173,7 @@ test('v3 lobby: town choice, world badge, v3 skin and the graphics row', async (
   const title = waiting.locator('h2.ct-waiting-name');
   await expect(title).toHaveText(NAME);
   expect(await title.evaluate((h) => h.scrollWidth <= h.clientWidth + 1)).toBe(true);
-  expect(await ls(page, 'ct.create.world')).toBeNull(); // no remembered pick: DEFAULT_WORLD is the only pre-selection
+  expect(new URL(page.url()).pathname).toMatch(/^\/lobby\//); // the v3 app: no /v2 prefix
   await expect.poll(() => page.evaluate(() => document.documentElement.dataset.graphics ?? null)).toBe('v3');
   await expect.poll(() => page.evaluate(() => document.documentElement.dataset.tod ?? null)).toBe('day');
   // kit.json day tokens on the theme variables (shadow → --bg, gold → --accent)
@@ -208,16 +206,9 @@ test('v3 lobby: town choice, world badge, v3 skin and the graphics row', async (
   await expect.poll(() => page.evaluate(() => document.documentElement.dataset.graphics ?? null)).toBeNull();
   expect(await page.evaluate(() => document.documentElement.style.getPropertyValue('--bg'))).toBe('');
   expect(await page.evaluate(() => document.querySelector('link[data-ct-css="v3-panels"]'))).toBeNull();
-  // the lobby row in the finder carries the badge
-  await expect(page.locator('.ct-lobby .ct-world-badge-v3').first()).toBeVisible({ timeout: 15_000 });
-  // the next create dialog pre-selects Classic again (one constant, nothing remembered)
-  await page.getByRole('button', { name: 'Create lobby' }).first().click();
-  const again = page.getByRole('dialog', { name: 'Create lobby' });
-  await expect(again.getByRole('radiogroup', { name: 'Town' }).getByRole('radio', { name: /^Classic/ })).toBeChecked();
-  // Cancel, not Escape: the dialog's Escape listener is a Preact effect (registered after paint), so an Escape
-  // sent right after the radio check can arrive before it exists (seen on the host, 2026-10-18)
-  await again.getByRole('button', { name: 'Cancel' }).click();
-  await expect(again).toHaveCount(0);
+  // back in the v3 app's finder (the address bar keeps the app: `/`, not `/v2/`)
+  await expect(page.getByRole('heading', { name: 'Lobby finder' })).toBeVisible({ timeout: 15_000 });
+  expect(new URL(page.url()).pathname).toBe('/');
   expect(errors).toEqual([]);
   await ctx.close();
 });

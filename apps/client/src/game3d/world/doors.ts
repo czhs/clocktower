@@ -33,10 +33,13 @@ export interface DoorTile {
   y: number;
 }
 
-/** Door tile centres (px) of every cottage `house-i` of a layout. */
+/** Buildings whose door art the game swings: the cottages and (v3, vendor pass B) the enterable clock tower. */
+export const SWING_DOOR = /^(house-\d+|clocktower)$/;
+
+/** Door tile centres (px) of every cottage `house-i` (and the enterable clock tower) of a layout. */
 export function doorTiles(layout: Pick<TownLayout, 'buildings' | 'tileSize'>): DoorTile[] {
   const T = layout.tileSize;
-  return layout.buildings.filter((b) => /^house-\d+$/.test(b.id)).map((b) => ({ id: b.id, x: (b.door.x + 0.5) * T, y: (b.door.y + 0.5) * T }));
+  return layout.buildings.filter((b) => SWING_DOOR.test(b.id)).map((b) => ({ id: b.id, x: (b.door.x + 0.5) * T, y: (b.door.y + 0.5) * T }));
 }
 
 /** The cottage whose door tile is nearest to (x, y) within DOOR_NEAR_PX, or null. */
@@ -69,9 +72,9 @@ export function doorOpenAt(s: number): number {
   return 0;
 }
 
-/** `house-<i>` of a location (null outdoors / other buildings). */
+/** `house-<i>` (or `clocktower`) of a location (null outdoors / other buildings). */
 export function houseIdOf(loc: LocationId): string | null {
-  const m = /^bld:(house-\d+)$/.exec(loc);
+  const m = /^bld:(house-\d+|clocktower)$/.exec(loc);
   return m ? m[1]! : null;
 }
 

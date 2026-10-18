@@ -15,24 +15,28 @@
 // Visibility: the vendor's live cut-away follows the own player (vendor/town.ts createCutDriver: player box,
 // door cottage, voting circle), and every outdoor avatar (own + remotes) opens a dithered hole in the tree
 // crowns / soft dressing in front of it (world/canopy.ts, lead decision D1); both are uniforms only.
-// Hooks for user requests in flight (§9.1): the tower timer face (world/towerClock.ts; driven only once the
-// vendor publishes clocktower api.setTimer) and the vendor's live vote framing (`voteCamera()`).
+// User requests (§9.1, vendor pass B): the tower's dials show the Storyteller's stage timer (world/towerClock.ts
+// dialFace -> vendor/town.ts createTowerFace), time-of-day hands otherwise; the voting-circle camera frame
+// (`voteCamera()`, world/voteFrame.ts: the vendor's computed votecam fit); the enterable clock tower's room
+// (bld:clocktower, vendor/interiors.ts buildTowerInterior) shown like a cottage; the tower door swings too.
 import * as THREE from 'three';
 import type { LocationId, TownLayout } from '@ct/protocol';
 import { serverNow } from '../../net/serverTime';
 import { PX_PER_M } from '../coords';
 import type { Layer3d, Scene3dState, Tier } from '../contract';
 import type { EngineHost } from '../vendor/engineHost';
-import { buildDoorBoards, buildHollowmere, canopyMaterials, createCutDriver, daisApi, doorAngles, gateHouseLights, groundHeight, houseApis, houseLightAnchors, houseProxies, lifePiece, lifeStats, poolLights, towerTimerApi, voteCameraPreset, warmViews, warmWholeTown, type BuiltTown, type HouseBox, type VendorCameraShot } from '../vendor/town';
+import { buildDoorBoards, buildHollowmere, canopyMaterials, createCutDriver, createTowerFace, daisApi, releaseTown, doorAngles, gateHouseLights, groundHeight, houseApis, houseLightAnchors, houseProxies, lifePiece, lifeStats, poolLights, seatStones, towerDials, towerDoorApi, voteCameraPreset, warmViews, warmWholeTown, type BuiltTown, type HouseApi, type HouseBox, type VendorCameraShot } from '../vendor/town';
+import { buildTowerInterior, type TowerRoomFacade } from '../vendor/interiors';
 import { createTownTime, presetForHour, type TownTime } from '../vendor/time';
 import { createDaisDriver, daisDebug, daisPlan, showcasePlan, type DaisApi, type DaisPlan } from './dais';
 import { boardedHouses, createBoardDriver, createDoorDriver, doorTiles } from './doors';
 import { createHourClock, darkness, HOURS, stageHour, type HourInput, type StagePhase } from './hour';
-import { createInteriorManager, type InteriorManager } from './interiors';
+import { createInteriorManager, TOWER_KEY, type InteriorManager } from './interiors';
 import { createLightReserve, dimNearAnchors, LIGHT_BUDGET, RESERVE, type BorrowedLight, type BorrowOptions, type LightAnchorFn } from './lights';
 import { createTownPark } from './park';
 import { createCanopyFade, createCanopyUniforms, patchCanopyMaterial, type CanopyPoint } from './canopy';
-import { timerKey, timerTick, towerTimer } from './towerClock';
+import { dialFace, dialFaceKey, DIAL_STEPS, timerTick, towerTimer, type DialFace } from './towerClock';
+import { chooseVoteFrame, keepOuts, voteFrameKey, type VoteFrame } from './voteFrame';
 
 export interface StageOptions {
   layout: TownLayout;
@@ -69,10 +73,13 @@ export interface Stage {
   /** Pick proxies of the drawn cottages (input/pick's `HouseProxy` shape; vendor houseBox). */
   houseProxies(): HouseBox[];
   /**
-   * The vendor's vote framing (town/api.js CAMERAS.vote, read live; user request in flight 1), for input/camera
-   * during a nomination / vote on the square. Null when the vendor drops the preset.
+   * The voting-circle frame (user request 1, world/voteFrame.ts: every seat stone + the facing tower dial, the
+   * vendor's computed votecam fit at staging A) for a canvas of lowW x lowH texels at `pixelScale`; recomputed only
+   * when those change. input/camera's `RigScene.voteCamera` during nominations / votes on the square.
    */
-  voteCamera(): VendorCameraShot | null;
+  voteCamera(lowW: number, lowH: number, pixelScale: number): VendorCameraShot | null;
+  /** Floor height (m) at any world point: the town ground, a cottage's flat floor, the clock tower room's stair / landing. */
+  floorAt(x: number, z: number): number;
   /** Debug members merged into __ctCamera (also `layer.debug`). */
   debug(): Record<string, () => unknown>;
   destroy(): void;
@@ -98,6 +105,10 @@ export async function createStage(host: EngineHost, o: StageOptions): Promise<St
   const heightAt = groundHeight(town);
   const houses = houseApis(town);
   const houseIds = [...houses.keys()];
+  // door art the game swings: the 15 cottages + the enterable clock tower (vendor pass B)
+  const doorApis = new Map<string, HouseApi>(houses);
+  const towerDoor = towerDoorApi(town);
+  if (towerDoor && layout.buildings.some((b) => b.id === 'clocktower')) doorApis.set('clocktower', towerDoor);
   const vdais = daisApi(town);
   const proxies = houseProxies(town);
 
@@ -121,12 +132,34 @@ export async function createStage(host: EngineHost, o: StageOptions): Promise<St
     position: () => (havePos ? playerPos : null),
     interior: () => interiors?.shown() ?? null,
   });
+  // the clock tower room's `demo` (tower-interior.js): the countdown, the bell, the hours
+  const bellFns = new Set<(e?: { t?: number }) => void>();
+  let engineT = 0;
+  const towerTimerState = { mode: 'idle', frac: 1, stage: 'discussion', doneAt: null as number | null, remaining: 0, duration: 0 };
+  const towerFacade: TowerRoomFacade = {
+    engine,
+    events: {
+      on(name, fn) {
+        if (name !== 'bell') return () => undefined;
+        bellFns.add(fn);
+        return () => bellFns.delete(fn);
+      },
+    },
+    passB: { timer: { state: towerTimerState } },
+    time: {
+      get hours() {
+        return clock.hour;
+      },
+    },
+  };
+  const hasTower = layout.buildings.some((b) => b.id === 'clocktower');
   interiors = createInteriorManager({
     engine,
     scene: engine.scene,
     park,
     tod: () => time.preset,
     canPark: () => isReady,
+    ...(hasTower ? { buildTower: async () => buildTowerInterior(engine, towerFacade) } : {}),
     onError: (e) => {
       console.warn('[town3d] interior failed to build:', e);
       o.onError?.(e);
@@ -182,20 +215,31 @@ export async function createStage(host: EngineHost, o: StageOptions): Promise<St
     p.priority = priority;
     canopyN++;
   };
-  // the tower timer face: only when the vendor publishes it (towerClock.ts); else the hands keep the hour
-  const tower = towerTimerApi(town);
-  let towerKey = '';
+  // the tower's dials: the Storyteller's countdown face (towerClock.ts dialFace), else the time-of-day hands
+  const towerFace = createTowerFace(engine, town);
+  let towerFaceKey = 'tod';
+  const faceBuf: DialFace = { mode: 'running', stage: 'discussion', q: 0, flashOn: false, night: false };
   let towerReadout: string | null = null;
-  // the plan is rebuilt only when the clock object or its shown second changes (timerTick)
+  // the readout (debug) only when the clock object or its shown second changes (timerTick)
   let towerClockRef: unknown = undefined;
   let towerTick = NaN;
   offs.push(time.on('tod', (p) => rooms.setTod(String((p as { preset?: string })?.preset ?? time.preset))));
   let bells = 0;
-  offs.push(time.on('bell', () => bells++));
+  offs.push(
+    time.on('bell', () => {
+      bells++;
+      for (const fn of bellFns) fn({ t: engineT });
+    }),
+  );
+  // the voting-circle frame (world/voteFrame.ts), cached per canvas size
+  const voteSeats = seatStones();
+  let voteKey = '';
+  let voteShot: VendorCameraShot | null = null;
+  let voteLast: VoteFrame | null = null;
 
   // ---- drivers
   const dais = createDaisDriver(vdais as unknown as DaisApi);
-  const doors = createDoorDriver((id, f) => houses.get(id)?.setDoor(f), doorTiles(layout));
+  const doors = createDoorDriver((id, f) => doorApis.get(id)?.setDoor(f), doorTiles(layout));
   const board = createBoardDriver(houseIds, (id, on) => {
     gate.setBoarded(id, on);
     const b = boards.get(id);
@@ -206,6 +250,7 @@ export async function createStage(host: EngineHost, o: StageOptions): Promise<St
   // per-frame vendor work runs inside renderAt, after the pieces' own updaters (as the demo orders it)
   engine.onUpdate((t: number, dt: number) => {
     if (destroyed) return;
+    engineT = t;
     time.update(t, dt);
     dimNearAnchors(pool, boardedAnchors);
     rooms.update(t, dt);
@@ -240,9 +285,10 @@ export async function createStage(host: EngineHost, o: StageOptions): Promise<St
     if (!me || me.location !== 'outdoors') return;
     let best: { i: number; d: number } | null = null;
     for (const b of layout.buildings) {
-      if (!/^house-\d+$/.test(b.id)) continue;
+      const tower = b.id === 'clocktower';
+      if (!tower && !/^house-\d+$/.test(b.id)) continue;
       const d = Math.hypot((b.door.x + 0.5) * layout.tileSize - me.x, (b.door.y + 0.5) * layout.tileSize - me.y);
-      if (d < PREFETCH_PX && (!best || d < best.d)) best = { i: Number(b.id.slice(6)), d };
+      if (d < PREFETCH_PX && (!best || d < best.d)) best = { i: tower ? TOWER_KEY : Number(b.id.slice(6)), d };
     }
     if (best) rooms.prefetch(best.i);
   };
@@ -276,18 +322,27 @@ export async function createStage(host: EngineHost, o: StageOptions): Promise<St
         board.apply(boardedHouses(layout, g));
         boardedAnchors = [...board.boarded].flatMap((id) => (lanternsOf.get(id) ?? []).map((p) => ({ x: p.x, z: p.z })));
       }
-      // the tower: the Storyteller's stage timer when the vendor can show one (else time-of-day hands)
+      // the tower: the Storyteller's stage timer on the four dials (else the time-of-day hands)
       const tick = timerTick(clk, sNow);
       if (clk !== towerClockRef || tick !== towerTick) {
         towerClockRef = clk;
         towerTick = tick;
         const plan = towerTimer(clk, sNow);
         towerReadout = plan?.readout ?? null;
-        const tk = timerKey(plan);
-        if (tower && tk !== towerKey) {
-          towerKey = tk;
-          tower.setTimer(plan);
-        }
+        towerTimerState.remaining = plan ? plan.remainingMs / 1000 : 0;
+        towerTimerState.duration = plan ? plan.totalMs / 1000 : 0;
+      }
+      const face = dialFace(clk, sNow, clock.hour, faceBuf);
+      const fk = dialFaceKey(face);
+      if (fk !== towerFaceKey) {
+        towerFaceKey = fk;
+        towerFace?.show(face, fk);
+        const wasDone = towerTimerState.mode === 'done';
+        towerTimerState.mode = face?.mode ?? 'idle';
+        towerTimerState.frac = face ? face.q / DIAL_STEPS : 1;
+        towerTimerState.stage = face?.stage ?? 'discussion';
+        if (face?.mode === 'done' && !wasDone) towerTimerState.doneAt = engineT - Math.max(0, sNow - (clk?.endsAt ?? sNow)) / 1000;
+        else if (face?.mode !== 'done') towerTimerState.doneAt = null;
       }
       // doors: anybody going in / out through a cottage door
       doors.observe(state, t);
@@ -340,6 +395,8 @@ export async function createStage(host: EngineHost, o: StageOptions): Promise<St
     layer,
     borrowLight: (anchor, opts) => reserve.borrow(anchor, opts),
     async warmUp(renderNow) {
+      // the tower's countdown face once (kit solid + glass: the town's programs; this proves it), then the hands again
+      towerFace?.show({ mode: 'running', stage: 'nominations', q: DIAL_STEPS / 2, flashOn: false, night: false }, 'warm');
       // two real frames (every updater runs: the facade's first look, the dais, the pool aim) ...
       renderNow(0);
       renderNow(1 / 60);
@@ -350,6 +407,8 @@ export async function createStage(host: EngineHost, o: StageOptions): Promise<St
       }
       dais.invalidate();
       lastPlan = null; // the first real frame writes the real seats again
+      towerFace?.show(null, 'tod');
+      towerFaceKey = 'tod'; // the first real frame shows the real timer (if one runs)
       // ... the whole town, and one room (the interior kit's materials), behind the loading state
       const townP = warmWholeTown(engine);
       let roomP: number | null = null;
@@ -371,7 +430,27 @@ export async function createStage(host: EngineHost, o: StageOptions): Promise<St
       return c ? { X: c.target.x, Y: c.target.y, Z: c.target.z, viewHeight: c.viewHeight } : null;
     },
     houseProxies: () => proxies,
-    voteCamera: () => voteCameraPreset(),
+    voteCamera(lowW, lowH, pixelScale) {
+      if (!(lowW > 0 && lowH > 0)) return null;
+      const k = voteFrameKey(lowW, lowH, pixelScale);
+      if (k !== voteKey) {
+        voteKey = k;
+        try {
+          const f = chooseVoteFrame({ lowW, lowH, seats: voteSeats, dials: towerDials(town), keep: keepOuts(lowW, lowH, pixelScale) });
+          voteLast = f;
+          voteShot = { X: f.target.x, Y: 0, Z: f.target.z, viewHeight: f.viewHeight, yaw: f.yaw, pitch: f.pitch };
+        } catch (e) {
+          console.warn('[town3d] vote frame failed', e);
+          voteShot = null;
+        }
+      }
+      return voteShot;
+    },
+    floorAt: (x, z) => {
+      if (x < 100) return heightAt(x, z);
+      const it = rooms.shown();
+      return it?.heightAt ? it.heightAt(x, z) : 0;
+    },
     debug: () => ({
       dais: () => daisDebug(dais.shown),
       stage: () => ({
@@ -388,8 +467,8 @@ export async function createStage(host: EngineHost, o: StageOptions): Promise<St
         lights: { pool: poolN, poolFound: pool.length, reserve: reserve.size, lent: reserve.lent, boardedAnchors: boardedAnchors.length },
         cut: cut ? cut.info() : null,
         canopy: { patched: canopyPatched, ...canopy.debug() },
-        timer: { available: !!tower, readout: towerReadout },
-        vote: voteCameraPreset(),
+        timer: { available: !!towerFace, readout: towerReadout, face: towerFaceKey, ...(towerFace ? { info: towerFace.info() } : {}) },
+        vote: voteLast ? { yaw: Math.round((voteLast.yaw * 180) / Math.PI), pitch: Math.round((voteLast.pitch * 180) / Math.PI), viewHeight: +voteLast.viewHeight.toFixed(3), target: [+voteLast.target.x.toFixed(3), +voteLast.target.z.toFixed(3)], key: voteKey } : { preset: voteCameraPreset() },
         warm,
         time: time.info(),
       }),
@@ -399,6 +478,11 @@ export async function createStage(host: EngineHost, o: StageOptions): Promise<St
       destroyed = true;
       for (const off of offs.splice(0)) off();
       rooms.dispose();
+      towerFace?.dispose();
+      // the piece registry: a closure the vendor keeps (V8 allocation-site feedback of a piece api literal) must not
+      // reach every piece of this town after the unmount (C1 leak check)
+      releaseTown(town);
+      bellFns.clear();
       reserve.dispose();
       time.dispose();
       gate.restore();

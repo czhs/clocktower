@@ -22,7 +22,7 @@ import { castIdentity } from '../../game/rules/cast';
 import { remoteEntities } from '../../net/localPlayer';
 import { noteServerTime } from '../../net/serverTime';
 import type { Layer3d, MemberLook, Pose, Scene3dState, Tier, TownBridge3d } from '../contract';
-import { CameraRig, type CameraFrameInput, type Plaza, type RigHost, type RigScene } from '../input/camera';
+import { CameraRig, turnKeys, type CameraFrameInput, type Plaza, type RigHost, type RigScene } from '../input/camera';
 import { createCrosshair, type Crosshair } from '../input/crosshair';
 import { createKeyInput, type KeyInput, type KeyTarget } from '../input/keys';
 import { createPointerInput, type PointerInput } from '../input/pointer';
@@ -108,6 +108,17 @@ export interface Core3d {
 export interface VoteState {
   voting: boolean;
   nominationOpen: boolean;
+}
+
+/**
+ * The voting-circle camera is wanted (user request 1, §9.1): the nominations are open, or a nomination is pending /
+ * being voted on, during the day. input/camera.ts applies it only while the viewer stands on the square.
+ */
+export function voteCameraWanted(g: GameView | null): boolean {
+  if (!g || g.phase !== 'day' || !g.day) return false;
+  if (g.day.nominationsOpen) return true;
+  for (const n of g.day.nominations ?? []) if (n.status === 'pending' || n.status === 'voting') return true;
+  return false;
 }
 
 /** Vote / nomination state of a game view (safe moment, vote framing); fills `out` when given (no allocation). */
@@ -219,7 +230,9 @@ export function createCore3d(o: Core3dOptions): Core3d {
   // ------------------------------------------------------------------ camera + input
   const view = new CameraRig(layout, o.plaza);
   const vs: VoteState = { voting: false, nominationOpen: false };
-  const camIn: CameraFrameInput = { me: null, voting: false, snap: false };
+  const camIn: CameraFrameInput = { me: null, voting: false, snap: false, still: false };
+  /** The held keys turned by the camera yaw (keys stay screen-relative under the ±45° vote frame). */
+  const turned = { vx: 0, vy: 0 };
   const safeIn: SafeMomentInput = { phase: 'waiting', voting: false, nominationOpen: false };
   const keys = createKeyInput(
     {
@@ -407,14 +420,17 @@ export function createCore3d(o: Core3dOptions): Core3d {
       const dt = Math.min(0.1, Math.max(0, (n - lastAt) / 1000));
       lastAt = n;
       if (destroyed) return state;
-      me.step(dt, keys.vector());
+      const kv = keys.vector();
+      const yaw = view.yaw();
+      // keys stay screen-relative when the vote frame turns the camera (±45°)
+      me.step(dt, yaw !== 0 && (kv.vx !== 0 || kv.vy !== 0) ? turnKeys(kv, yaw, turned) : kv);
       remotes.step(n);
       me.updateHud();
       gpFrame = gameplay.frame();
-      voteState(game, vs);
       camIn.me = me.ready ? me.me : null;
-      camIn.voting = vs.voting || vs.nominationOpen;
+      camIn.voting = voteCameraWanted(game);
       camIn.snap = snapCamera;
+      camIn.still = reducedMotion();
       view.step(dt, camIn);
       snapCamera = false;
       fillState(n);

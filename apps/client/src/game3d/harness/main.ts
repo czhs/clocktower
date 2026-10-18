@@ -266,7 +266,8 @@ async function runCycles(s: Scenario): Promise<void> {
       H.consoleErrors.push(`cycle ${i}: ${String((e as Error)?.message ?? e).slice(0, 200)}`);
     }
     const readyMs = Math.round(performance.now() - t0);
-    const canvasesAtReady = parent.querySelectorAll('canvas').length;
+    // the 3D canvas (a direct child; WP4's overlay draws its own 2D FX canvas inside .ct-v3-overlay)
+    const canvasesAtReady = parent.querySelectorAll(':scope > canvas').length;
     fake.teleport(sp.x, sp.y, sp.location, 'spawn');
     await new Promise((r) => setTimeout(r, 300));
     const camHook = () => (window as unknown as { __ctCamera?: { me?: () => { x: number } | null; v3?: () => unknown } }).__ctCamera;

@@ -16,6 +16,7 @@ import * as layoutNS from '@pixel3d/town/layout.js';
 import { PLAZA } from '@pixel3d/town/layout.js';
 import * as townNS from '@pixel3d/town/town.js';
 import { buildTown } from '@pixel3d/town/town.js';
+import * as towerTimerNS from '@pixel3d/demo/towertimer.js';
 import type { HostedEngine } from './engineHost';
 
 /** The parts of src/town/layout.js / town.js this wrapper reads beyond pixel3d.d.ts (lead-owned typings). */
@@ -24,9 +25,11 @@ interface VendorHouseRec {
   doorPoint: { x: number; z: number };
   doorNormal: [number, number];
 }
-const vlayout = layoutNS as unknown as { houses: VendorHouseRec[]; TOWN_W: number; TOWN_H: number };
+const vlayout = layoutNS as unknown as { houses: VendorHouseRec[]; TOWN_W: number; TOWN_H: number; seatPos(i: number, n: number): { x: number; z: number } };
 interface KitBuilder {
   box(w: number, h: number, d: number, o?: Record<string, unknown>): KitBuilder;
+  push(m: THREE.Matrix4): KitBuilder;
+  pop(): KitBuilder;
   build(o?: { castShadow?: boolean; receiveShadow?: boolean; name?: string }): THREE.Group;
 }
 const Builder = (kitNS as unknown as { Builder: new (engine: unknown, o?: { name?: string }) => KitBuilder }).Builder;
@@ -56,6 +59,20 @@ export async function buildHollowmere(engine: HostedEngine, o: TownBuildOptions)
     return await buildTown(engine, q, { strict: 'all' });
   } finally {
     delete engine.__ctGrassArea;
+  }
+}
+
+/**
+ * After the unmount: empty the town's piece registry (and its anchors), so a vendor closure that outlives the engine
+ * (e.g. through V8's allocation-site feedback of a piece api literal) reaches an empty registry, not every piece.
+ */
+export function releaseTown(town: BuiltTown): void {
+  const reg = town.registry as unknown as { map?: Map<unknown, unknown>; clear?: () => void } & Record<string, unknown>;
+  try {
+    if (typeof reg.clear === 'function') reg.clear();
+    for (const v of Object.values(reg)) if (v instanceof Map || v instanceof Set) v.clear();
+  } catch {
+    /* best effort */
   }
 }
 
@@ -364,19 +381,152 @@ export function poolLights(engine: HostedEngine, town: BuiltTown): THREE.PointLi
   return out;
 }
 
-// ------------------------------------------------------------------------------------------------ in-flight hooks
+// ------------------------------------------------------------------------------------------------ the clock tower
+
+/** The clock tower's door (the 16th building of the v3 world: enterable since vendor pass B), or null. */
+export function towerDoorApi(town: BuiltTown): HouseApi | null {
+  const api = town.registry.get('clocktower')?.api as AnyApi;
+  if (!api || typeof api.setDoor !== 'function') return null;
+  const setDoor = api.setDoor as (f: number) => void;
+  return { id: 'clocktower', setDoor: (f) => setDoor(f) };
+}
+
+/** A tower dial in world metres (world/voteFrame.ts Dial). */
+export interface TowerDial {
+  c: { x: number; y: number; z: number };
+  n: { x: number; y: number; z: number };
+  r: number;
+  k: number;
+}
 
 /**
- * The clock tower's TIMER face (user request in flight 2, world/towerClock.ts), or null while the vendor does not
- * publish one. Requested in docs/v3/INTEGRATION.md §9.2: clocktower `api.setTimer({remainingMs, totalMs, paused,
- * progress, readout, stage} | null)` (null = back to the time-of-day hands), passing createTime's tower gate.
+ * The tower's four dials in WORLD metres, from the clocktower api's dials (pass-B hook: `local` = the face frame in the
+ * piece, multiplied by the piece group's CURRENT matrixWorld: the api's own `center` / `normal` were captured while
+ * the piece was being built, before the composer placed it). Falls back to the vendor's clocktower.js constants
+ * (votecam.js towerDials) when the hook is missing.
  */
-export function towerTimerApi(town: BuiltTown): { setTimer(plan: unknown): void } | null {
-  const api = town.registry.get('clocktower')?.api as AnyApi;
-  if (!api || typeof api.setTimer !== 'function') return null;
-  const setTimer = api.setTimer as (plan: unknown) => void;
-  return { setTimer: (plan) => setTimer(plan) };
+export function towerDials(town: BuiltTown): TowerDial[] {
+  const piece = town.registry.get('clocktower') as { group?: THREE.Object3D; api?: { dials?: { local: THREE.Matrix4; k: number; surround: number }[] } } | undefined;
+  const dials = piece?.api?.dials;
+  const g = piece?.group;
+  if (g && Array.isArray(dials) && dials.length) {
+    g.updateWorldMatrix(true, false);
+    const m = new THREE.Matrix4();
+    const c = new THREE.Vector3();
+    const n = new THREE.Vector3();
+    return dials.map((d) => {
+      m.multiplyMatrices(g.matrixWorld, d.local);
+      c.setFromMatrixPosition(m);
+      n.set(0, 0, 1).transformDirection(m);
+      return { c: { x: c.x, y: c.y, z: c.z }, n: { x: n.x, y: n.y, z: n.z }, r: Number(d.surround) || 1.42, k: Number(d.k) || 1 };
+    });
+  }
+  const cx = 22.5;
+  const cz = 7 - 0.2;
+  const y = 5.45;
+  return [
+    { c: { x: cx, y, z: cz + 1.6 }, n: { x: 0, y: 0, z: 1 }, r: 1.42, k: 1 },
+    { c: { x: cx + 1.75, y, z: cz }, n: { x: 1, y: 0, z: 0 }, r: 1.42 * 0.86, k: 0.86 },
+    { c: { x: cx, y, z: cz - 1.6 }, n: { x: 0, y: 0, z: -1 }, r: 1.42 * 0.86, k: 0.86 },
+    { c: { x: cx - 1.75, y, z: cz }, n: { x: -1, y: 0, z: 0 }, r: 1.42 * 0.86, k: 0.86 },
+  ];
 }
+
+/** The 15 dais seat stones (vendor layout.js seatPos(i, 15)) in world metres, y = the stone top (votecam SEAT_TOP). */
+export function seatStones(top = 0.235): { x: number; y: number; z: number }[] {
+  return Array.from({ length: 15 }, (_, i) => {
+    const s = vlayout.seatPos(i, 15);
+    return { x: Number(s.x), y: top, z: Number(s.z) };
+  });
+}
+
+/** What the tower's four dials show instead of the hands (world/towerClock.ts dialFace). */
+export interface TowerFacePlan {
+  mode: 'running' | 'paused' | 'done';
+  stage: 'discussion' | 'nominations' | 'bedtime';
+  /** wedge size in DIAL_STEPS (180) steps */
+  q: number;
+  flashOn: boolean;
+  night: boolean;
+}
+
+export interface TowerFace {
+  /** null = the live time-of-day hands again. Rebuilds the face geometry only when `key` changed. */
+  show(plan: TowerFacePlan | null, key: string): void;
+  info(): { shown: boolean; key: string; rebuilds: number; dials: number };
+  dispose(): void;
+}
+
+/**
+ * The Storyteller's countdown on the clock tower (user request in flight 2): while a stage timer runs, the piece's
+ * live hands are hidden and all four dials show the vendor's countdown face (src/demo/towertimer.js drawDialFace: a
+ * stage-coloured wedge = the time left, one iron hand, pause bars, a flash at zero), built with the kit Builder on
+ * each dial's frame (the town's shared kit solid / glass materials: no new program). One persistent mesh per kit layer
+ * whose geometry is swapped on a rebuild (the demo's dynMeshes). Null when the vendor clocktower has no dial hook.
+ */
+export function createTowerFace(engine: HostedEngine, town: BuiltTown): TowerFace | null {
+  const piece = town.registry.get('clocktower') as { group?: THREE.Object3D; api?: { dials?: { local: THREE.Matrix4; k: number }[]; hands?: THREE.Object3D } } | undefined;
+  const draw = (towerTimerNS as unknown as { drawDialFace?: (b: unknown, o: Record<string, unknown>) => void }).drawDialFace;
+  const dials = piece?.api?.dials;
+  const g = piece?.group;
+  if (!g || !Array.isArray(dials) || !dials.length || typeof draw !== 'function') return null;
+  const hands = piece?.api?.hands ?? g.getObjectByName('clocktower-hands') ?? null;
+  const root = new THREE.Group();
+  root.name = 'ct-tower-timer';
+  g.add(root);
+  const meshes = new Map<string, THREE.Mesh>();
+  let key = 'tod';
+  let rebuilds = 0;
+  const hideAll = () => {
+    for (const m of meshes.values()) m.visible = false;
+  };
+  return {
+    show(plan, k) {
+      if (k === key) return;
+      key = k;
+      if (hands) hands.visible = !plan;
+      if (!plan) return hideAll();
+      const b = new Builder(engine, { name: 'ct-tower-timer' });
+      for (const d of dials) {
+        b.push(d.local);
+        draw(b, { frac: plan.q / 180, mode: plan.mode, stage: plan.stage, flashOn: plan.flashOn, k: d.k, night: plan.night });
+        b.pop();
+      }
+      const built = b.build({ name: 'ct-tower-timer', castShadow: false, receiveShadow: true });
+      const got = new Set<string>();
+      for (const child of [...built.children]) {
+        const m = child as THREE.Mesh;
+        const layer = String((m.userData as { layer?: string }).layer ?? m.name);
+        got.add(layer);
+        const cur = meshes.get(layer);
+        if (!cur) {
+          m.name = `ct-tower-timer-${layer}`;
+          root.add(m);
+          meshes.set(layer, m);
+          continue;
+        }
+        cur.geometry.dispose();
+        cur.geometry = m.geometry;
+        cur.visible = true;
+      }
+      for (const [layer, m] of meshes) if (!got.has(layer)) m.visible = false;
+      root.updateMatrixWorld(true);
+      rebuilds++;
+    },
+    info: () => ({ shown: key !== 'tod', key, rebuilds, dials: dials.length }),
+    dispose() {
+      for (const m of meshes.values()) {
+        m.geometry.dispose();
+        m.removeFromParent();
+      }
+      meshes.clear();
+      root.removeFromParent();
+      if (hands) hands.visible = true;
+    },
+  };
+}
+
+// ------------------------------------------------------------------------------------------------ in-flight hooks
 
 export interface VendorCameraShot {
   X: number;
@@ -388,9 +538,9 @@ export interface VendorCameraShot {
 }
 
 /**
- * The vendor's vote framing (src/town/api.js CAMERAS.vote: today the plaza centre at viewHeight 19, yaw 0; user
- * request in flight 1 asks the pixel3d session for a reframe that shows more players and the tower clock), read
- * LIVE so a re-publish is picked up without a game change. `pitch` defaults to the fixed pi/6.
+ * The vendor's old fixed vote preset (src/town/api.js CAMERAS.vote: the plaza centre at viewHeight 19, yaw 0), read
+ * live. Since vendor pass B the game frames the vote with world/voteFrame.ts (the vendor's computed votecam fit);
+ * this stays as the fallback / debug value. `pitch` defaults to the fixed pi/6.
  */
 export function voteCameraPreset(): VendorCameraShot | null {
   const cams = (townApiNS as unknown as { CAMERAS?: Record<string, { yaw?: number; pitch?: number; viewHeight?: number; target?: number[] }> }).CAMERAS;

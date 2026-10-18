@@ -51,7 +51,7 @@ async function expectClassicInPlace(page: Page, what: string, timeout = 120_000)
   expect(await classicTown(page), `${what}: Classic draws the v3 map`).toMatchObject({ world: 'v3', widthTiles: layoutOf('v3').widthTiles });
   expect(await v3Gone(page), `${what}: __ctCamera.v3 removed`).toBe(true);
   expect(await marked(page), `${what}: no page reload`).toBe(42);
-  await expect(page.locator('.ct-game-canvas canvas')).toHaveCount(1);
+  await expect(page.locator('.ct-game-canvas > canvas')).toHaveCount(1);
 }
 
 test('3D chunk fails to load → one retry, then Classic in place', async ({ browser, baseURL }) => {
@@ -82,7 +82,7 @@ test('WebGL context loss → full rebuild; a second loss → Classic in place', 
   await mark(page);
   const lose = () =>
     page.evaluate(() => {
-      const c = document.querySelector<HTMLCanvasElement>('.ct-game-canvas canvas');
+      const c = document.querySelector<HTMLCanvasElement>('.ct-game-canvas > canvas');
       if (!c) return 'no canvas';
       c.dataset.e2eOld = '1';
       const gl = (c.getContext('webgl2') ?? c.getContext('webgl')) as WebGLRenderingContext | null;
@@ -98,7 +98,7 @@ test('WebGL context loss → full rebuild; a second loss → Classic in place', 
   const t0 = Date.now();
   for (;;) {
     const st = await page.evaluate(() => {
-      const c = document.querySelector<HTMLCanvasElement>('.ct-game-canvas canvas');
+      const c = document.querySelector<HTMLCanvasElement>('.ct-game-canvas > canvas');
       const cam = (window as unknown as { __ctCamera?: { v3?: () => { ready: boolean }; town?: unknown } }).__ctCamera;
       if (typeof cam?.town === 'function') return 'classic';
       return !!c && c.dataset.e2eOld !== '1' && !!cam?.v3?.().ready ? 'rebuilt' : 'waiting';

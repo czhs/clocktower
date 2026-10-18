@@ -1,7 +1,6 @@
-// (v3 WP6, v3-ui) The per-lobby town choice (docs/v3/INTEGRATION.md §9.1 user decision): the create dialog's
-// "Town" radios (Classic (v2) / Hollowmere (v3)), the ONE pre-selection constant (no remembered pick), the request
-// body it sends (validated by the server's CreateLobbyRequest schema), and the world badge on lobby rows, the
-// waiting room and the join preview. Node, no DOM: the Preact components are called as functions and their
+// (v3 WP6, v3-ui; v3 URL paths 2026-10-18) The lobby's town: the create dialog sends the page's app world (no Town
+// choice since the URL-path decision, docs/v3/INTEGRATION.md §11), the request body (validated by the server's
+// CreateLobbyRequest schema), and the world badge on the waiting room and the join preview. Node, no DOM: the Preact components are called as functions and their
 // vnode trees inspected. Runs under the root vitest.config.ts or apps/client's vite config alike (the zod schema
 // is imported from the full protocol source: apps/client aliases '@ct/protocol' to the schema-free client entry).
 import { readFileSync } from 'node:fs';
@@ -13,7 +12,6 @@ import { CreateLobbyRequest } from '../../../packages/protocol/src/lobby';
 import { WORLDS } from '../../../packages/protocol/src/world';
 import { createLobbyBody, worldOfLobby } from '../src/ui/lobby/finder';
 import { WORLD_BADGE, WorldBadge } from '../src/ui/lobby/ModeSettings';
-import { DEFAULT_WORLD, WORLD_COPY, WorldChoice } from '../src/ui/lobby/CreateLobbyModal';
 import { fetchJoinPreview, JoinPreviewView } from '../src/ui/lobby/JoinPreview';
 
 type Node = VNode<Record<string, unknown>>;
@@ -29,44 +27,22 @@ const text = (n: Node): string => {
 const ROOT = path.resolve(import.meta.dirname, '../../..');
 const src = (f: string) => readFileSync(path.join(ROOT, 'apps/client/src', f), 'utf8');
 
-describe('town choice (create dialog)', () => {
-  it('pre-selects Classic until the user decides (C3): one constant, no remembered pick', () => {
-    expect(DEFAULT_WORLD).toBe('v2');
+describe('town of a new lobby (create dialog): the URL path, no Town choice (user decision 2026-10-18)', () => {
+  it('has no Town radios and sends the page\'s app world (appWorld(): `/` = v3, `/v2/` = v2)', () => {
     const dialog = src('ui/lobby/CreateLobbyModal.tsx');
-    expect(dialog).toMatch(/useState<WorldId>\(DEFAULT_WORLD\)/);
-    expect(dialog).toMatch(/<WorldChoice value=\{world\} onChange=\{setWorld\}/);
-    // nothing else decides the pre-selection: no stored pick is read or written anywhere in the client
+    expect(dialog).not.toMatch(/WorldChoice|DEFAULT_WORLD|WORLD_COPY|radiogroup|aria-label="Town"/);
+    expect(dialog).toMatch(/createLobbyBody\(\{[^}]*world: appWorld\(\) \}\)/);
+    // nothing else decides the world: no stored pick is read or written anywhere in the client
     for (const f of ['ui/lobby/CreateLobbyModal.tsx', 'ui/lobby/LobbyFinder.tsx', 'ui/lobby/finder.ts']) expect(src(f), f).not.toMatch(/ct\.create\.world|CREATE_WORLD_KEY/);
   });
 
-  it('the create dialog is a lazy chunk (its long copy stays out of the entry)', () => {
+  it('the create dialog is a lazy chunk (its copy stays out of the entry)', () => {
     const finder = src('ui/lobby/LobbyFinder.tsx');
     expect(finder).toMatch(/lazyComponent\(\s*\(\) => import\('\.\/CreateLobbyModal'\)/);
     expect(finder).not.toMatch(/from '\.\/CreateLobbyModal'/);
-    expect(src('ui/lobby/ModeSettings.tsx')).not.toMatch(/WORLD_COPY|Runs on every device/);
   });
 
-  it('renders a labelled radio group with Classic (v2) and Hollowmere (v3), the value checked', () => {
-    for (const value of WORLDS) {
-      const picks: WorldId[] = [];
-      const tree = WorldChoice({ value, onChange: (w) => picks.push(w), name: 'ct-create-world' }) as Node;
-      expect(tree.props.role).toBe('radiogroup');
-      expect(tree.props['aria-label']).toBe('Town');
-      const inputs = all(tree).filter((n) => n.type === 'input');
-      expect(inputs.map((i) => i.props.value)).toEqual(['v2', 'v3']);
-      expect(inputs.map((i) => i.props.checked)).toEqual([value === 'v2', value === 'v3']);
-      expect(inputs.every((i) => i.props.type === 'radio' && i.props.name === 'ct-create-world')).toBe(true);
-      const labels = kids(tree);
-      expect(text(labels[0]!)).toContain('Classic');
-      expect(text(labels[0]!)).toContain('(v2)');
-      expect(text(labels[1]!)).toContain('Hollowmere');
-      expect(text(labels[1]!)).toContain('(v3)');
-      for (const i of inputs) (i.props.onChange as () => void)();
-      expect(picks).toEqual(['v2', 'v3']);
-    }
-  });
-
-  it('sends the picked world in the create request, which the server schema accepts', () => {
+  it('sends the world in the create request, which the server schema accepts', () => {
     const base = { name: 'Moss Lane', maxPlayers: 10, script: 'trouble-brewing' as const, description: '  hi ', takeStoryteller: true, mode: 'human' as const };
     for (const world of WORLDS) {
       const body = createLobbyBody({ ...base, world });
@@ -97,11 +73,10 @@ describe('world badge', () => {
       expect(b.props.title).toBe(WORLD_BADGE[want].title);
     }
     expect(WORLD_BADGE.v3.badge).toBe('Hollowmere');
-    expect(WORLD_COPY.v3.sub).toBe(WORLD_BADGE.v3.title);
   });
 
-  it('is shown on the lobby rows, the waiting room title and the join preview', () => {
-    expect(src('ui/lobby/LobbyFinder.tsx')).toMatch(/<WorldBadge world=\{l\.world\} \/>/);
+  it('is shown on the waiting room title and the join preview; not on list rows (each path lists one world)', () => {
+    expect(src('ui/lobby/LobbyFinder.tsx')).not.toMatch(/WorldBadge/);
     // waiting room: in the meta line under the title, so a long lobby name keeps the whole title width
     expect(src('ui/lobby/WaitingRoom.tsx')).toMatch(/<div class="muted ct-small ct-waiting-meta">\s*<WorldBadge world=\{worldOfLobby\(view\)\} \/>/);
     expect(src('ui/lobby/WaitingRoom.tsx')).toMatch(/<h2 class="ct-waiting-name">\{view\.lobby\.name\}<\/h2>/);

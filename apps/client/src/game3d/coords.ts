@@ -3,7 +3,8 @@
 //
 // Outdoors:  X = x_px / 16, Z = y_px / 16 (y-down px = +Z = south; no flips), Y = ground height.
 // Interiors: house i's server band room R_i maps onto the 3D room at originOf(i) by a pure translation
-//            (1 m = 16 px), anchored so the doorway centre lands on the doorway tile's centre (§2.3).
+//            (1 m = 16 px), anchored so the doorway centre lands on the doorway tile's centre (§2.3); the
+//            clock tower's room (bld:clocktower, band column 6) the same way, anchored on its exit spot.
 // Screen:    the pixel camera renders MARGIN texels wider per side, snaps to the texel grid and keeps the
 //            sub-texel remainder in camera.offset; the final pass samples s + MARGIN + off. worldToCss
 //            reproduces that exactly (a naive project() is off by MARGIN·scale CSS px).
@@ -127,15 +128,45 @@ export function houseOfLocation(loc: LocationId): number | null {
   return m ? Number(m[1]) : null;
 }
 
+// ------------------------------------------------------------------------------------ the clock tower's room
+
+/** The enterable clock tower's location (v3 world; §2.2 "The clock tower room"). */
+export const TOWER_LOCATION = 'bld:clocktower' as LocationId;
+/**
+ * bld:clocktower (§2.3): the same pure translation as a cottage, anchored on the vendor room's EXIT spot
+ * (src/demo/tower-interior.js ORIGIN (650, 20) + exit z 2.5) = the doorway tile's centre px. Equal to
+ * `towerRoomV3` of @ct/assets/hollowmere (coords.test pins it), copied so this module stays data-free.
+ */
+export const TOWER_ROOM = { anchorPx: { x: 1896, y: 200 }, anchorM: { X: 650, Z: 22.5 }, origin: { X: 650, Z: 20 } } as const;
+
+/** Is this location the clock tower's room? */
+export function isTowerLocation(loc: LocationId): boolean {
+  return loc === TOWER_LOCATION;
+}
+
+/** The px <-> m translation of a room location (a cottage or the clock tower); null for other locations. */
+export function roomMapOf(loc: LocationId, room?: TileRect): Pick<InteriorMap, 'toM' | 'toPx'> | null {
+  if (isTowerLocation(loc)) {
+    const a = TOWER_ROOM.anchorPx;
+    const m = TOWER_ROOM.anchorM;
+    return {
+      toM: (p) => ({ X: m.X + (p.x - a.x) / PX_PER_M, Z: m.Z + (p.y - a.y) / PX_PER_M }),
+      toPx: (q) => ({ x: a.x + (q.X - m.X) * PX_PER_M, y: a.y + (q.Z - m.Z) * PX_PER_M }),
+    };
+  }
+  const i = houseOfLocation(loc);
+  if (i === null || i >= HOUSE_COUNT) return null;
+  return interiorMap(i, room);
+}
+
 /**
  * px + location -> metres. Outdoors the plain scale; inside house i the interior translation (room =
- * that building's interior rect when known). Other buildings (no 3D interior): null.
+ * that building's interior rect when known); inside the clock tower its own translation. Other buildings: null.
  */
 export function locToM(p: P2, loc: LocationId, room?: TileRect): { X: number; Z: number } | null {
   if (loc === 'outdoors') return { X: p.x / PX_PER_M, Z: p.y / PX_PER_M };
-  const i = houseOfLocation(loc);
-  if (i === null || i >= HOUSE_COUNT) return null;
-  return interiorMap(i, room).toM(p);
+  const map = roomMapOf(loc, room);
+  return map ? map.toM(p) : null;
 }
 
 // ------------------------------------------------------------------------------------ projection

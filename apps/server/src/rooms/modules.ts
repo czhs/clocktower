@@ -80,6 +80,12 @@ export interface RoomHost {
   emit(event: RoomEvent): void;
   /** Ask the room to re-send per-client game views at the end of this tick. */
   markGameDirty(): void;
+  /**
+   * (v3 perf) Re-project only this member's game view at the end of this tick (re-sent if it changed), for a
+   * change that only that member's view can show (the Storyteller's stage). Optional: callers fall back to
+   * markGameDirty().
+   */
+  markGameDirtyFor?(pid: string): void;
   /** Ask the room to re-send the lobby view (and directory summary) at the end of this tick. */
   markLobbyDirty(): void;
   readonly game: GameModule;

@@ -7,7 +7,7 @@ import { expect, test } from '@playwright/test';
 import type { PlayerGameView, StorytellerGameView } from '../../packages/protocol/src/index';
 import { makeBots } from '../support/bot';
 import { until } from '../support/game';
-import { FrameTap, inject, requireV3Hooks, setE2eWorld, v3Context, v3Shot, waitV3Ready, watchConsole } from './helpers';
+import { FrameTap, inject, requireV3Hooks, setE2eWorld, v3Context, v3Shot, waitAvatarsSettled, waitV3Ready, watchConsole } from './helpers';
 
 test.beforeAll(() => setE2eWorld('v3'));
 test.afterAll(() => setE2eWorld('v2'));
@@ -26,6 +26,11 @@ test('v3 vote: 5-player nomination drives the dais (seats, clock hand, vote lamp
   const page = await ctx.newPage();
   const errors: string[] = [];
   watchConsole(page, 'vote', errors);
+  // (diagnostics) every page warning / error and the 3D town's own log lines, in the run log
+  page.on('console', (m) => {
+    if (m.type() === 'warning' || m.type() === 'error' || /\[town3d\]|\[avatars\]/.test(m.text())) console.log('[vote page]', m.type(), m.text().slice(0, 300));
+  });
+  page.on('pageerror', (e) => console.log('[vote page] pageerror', String(e).slice(0, 300)));
   const tap = new FrameTap('Voter', page);
   const dais = () => page.evaluate(() => ((window as unknown as { __ctCamera?: { dais?: () => unknown } }).__ctCamera?.dais?.() ?? null) as Dais | null);
   try {
@@ -37,6 +42,7 @@ test('v3 vote: 5-player nomination drives the dais (seats, clock hand, vote lamp
     await tap.until(() => tap.last('lobby:view')?.youPid, 30_000, 'lobby:view');
     await waitV3Ready(page, 240_000, 'vote');
     await requireV3Hooks(page, 'WP3 dais', ['dais']);
+    console.log('[v3-vote] ready', await page.evaluate(() => JSON.stringify((window as unknown as { __ctCamera?: { camera3d?: () => unknown } }).__ctCamera?.camera3d?.() ?? null)));
     for (const p of players) p.send('lobby:ready', { ready: true });
     await inject(page, 'lobby:ready', { ready: true });
     await until(() => st!.lobbyView?.canStart, 15_000, 'canStart');
@@ -54,6 +60,17 @@ test('v3 vote: 5-player nomination drives the dais (seats, clock hand, vote lamp
     await until(() => stView()?.phase === 'day', 10_000, 'day');
     await tap.until(() => (tap.last('game:view') as PlayerGameView | undefined)?.phase === 'day', 30_000, 'page: day');
 
+    // every avatar built before the vote (a SwiftShader rig build stalls the page's frames for seconds)
+    const progress = () =>
+      page.evaluate(() => {
+        const c = (window as unknown as { __ctCamera?: { camera3d?: () => { frames: number; mode: string }; avatars3d?: () => { key: string; building: boolean; texture: string | null; parked: boolean }[] } }).__ctCamera;
+        const a = c?.avatars3d?.() ?? [];
+        return `frames ${c?.camera3d?.().frames} mode ${c?.camera3d?.().mode} avatars ${a.length} building ${a.filter((e) => e.building).map((e) => e.key).join(',')} built ${a.filter((e) => e.texture).length} parked ${a.filter((e) => e.parked).length}`;
+      });
+    test.info().annotations.push({ type: 'v3-progress-day', description: await progress() });
+    await waitAvatarsSettled(page, 240_000, 'vote');
+    test.info().annotations.push({ type: 'v3-progress-settled', description: await progress() });
+    console.log('[v3-vote]', await progress());
     // the dais: N occupied stones on the server's stone mapping
     await expect.poll(async () => (await dais())?.seats.filter((s) => s.occupied).length ?? null, { timeout: 60_000, message: '__ctCamera.dais(): occupied stones' }).toBe(N);
     const d0 = (await dais())!;
@@ -82,7 +99,14 @@ test('v3 vote: 5-player nomination drives the dais (seats, clock hand, vote lamp
         const yes = Object.entries(n.votes).filter(([, v]) => v).map(([k]) => stoneOf(Number(k), N)).sort((a, b) => a - b);
         const lamps = d.seats.filter((x) => x.voteHand).map((x) => x.stone).sort((a, b) => a - b);
         if (yes.length && JSON.stringify(yes) === JSON.stringify(lamps)) seen.lamps = true;
-        seen.samples.push(`voter ${n.currentVoterSeat} hand ${d.hand} yes ${yes} lamps ${lamps}`);
+        const diag = await page.evaluate(() => {
+          const c = (window as unknown as { __ctCamera?: { camera3d?: () => { mode: string; yaw: number; frames: number }; stage?: () => { drawn?: string; phase?: string }; v3?: () => { frameMs: { p50: number; p95: number } } } }).__ctCamera;
+          const cm = c?.camera3d?.();
+          const f = c?.v3?.().frameMs;
+          const st = c?.stage?.();
+          return `${cm?.mode ?? '?'}@${cm?.yaw ?? '?'} frames ${cm?.frames ?? '?'} since ${(cm as { sinceFrameMs?: number } | undefined)?.sinceFrameMs ?? '?'} lc ${(cm as { lifecycle?: string } | undefined)?.lifecycle ?? '?'} p50 ${f?.p50 ?? '?'} drawn ${st?.drawn ?? '?'} ${document.visibilityState}`;
+        });
+        seen.samples.push(`voter ${n.currentVoterSeat} hand ${d.hand} yes ${yes} lamps ${lamps} [${diag}]`);
       }
       if (stView()?.day?.nominations.find((x) => x.id === nom.id)?.status === 'tallied' && n?.status !== 'voting') break;
       if (Date.now() - t0 > 180_000) throw new Error(`vote did not finish in 180 s (${seen.samples.slice(-6).join(' | ')})`);

@@ -42,6 +42,8 @@ const Env = z.object({
   CLIENT_DIST: z.string().default(''),
   /** Optional folder of standalone static demos, each served at /<name>/ (e.g. /v3-art-demo/). */
   DEMOS_DIR: z.string().default(''),
+  /** (v3 perf, net) permessage-deflate on the game WebSocket (app.ts). 'off' = the pre-v3 uncompressed socket. */
+  WS_DEFLATE: z.enum(['on', 'off']).default('on'),
 });
 
 export type AppConfig = ReturnType<typeof loadConfig>;
@@ -89,6 +91,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     signupPerHour: e.HOST_SIGNUP_PER_HOUR ?? (e.APP_ENV === 'test' ? 0 : 100),
     clientDist: e.CLIENT_DIST,
     demosDir: e.DEMOS_DIR,
+    wsDeflate: e.WS_DEFLATE === 'on',
     // (v2.3 OPS-2, sec-ops) env overrides for the runtime ops switches (moderation/ops.ts).
     ops: {
       signupMode: e.OPS_SIGNUP_MODE,

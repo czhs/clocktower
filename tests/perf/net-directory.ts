@@ -104,10 +104,14 @@ async function partA() {
     dir.update(s);
   }
   let written = 0;
+  // (net front, after) the stream's real line builder when the tree has it (directory/http.ts sseLine: one
+  // JSON.stringify per event, cached for every stream); before that change, one stringify per subscriber.
+  const http = (await import('../../apps/server/src/directory/http.js')) as { sseLine?: (e: DirectoryEvent) => string };
+  const lineOf = http.sseLine ?? ((e: DirectoryEvent) => `data: ${JSON.stringify(e)}\n\n`);
   const writers: ((e: DirectoryEvent) => void)[] = [];
   for (let k = 0; k < S; k++) {
     const w = (e: DirectoryEvent) => {
-      written += `data: ${JSON.stringify(e)}\n\n`.length;
+      written += lineOf(e).length;
     };
     writers.push(w);
     dir.subscribe(w);
@@ -128,7 +132,7 @@ async function partA() {
     return s;
   };
   let before = written;
-  const changed = bench(`update() changed → fan-out to ${S} subs (stringify per sub, today)`, (i) => dir.update(next(i)), 5_000);
+  const changed = bench(`update() changed → fan-out to ${S} subs (${http.sseLine ? 'real sseLine' : 'stringify per sub'})`, (i) => dir.update(next(i)), 5_000);
   if (written === before) throw new Error('fan-out bench published nothing');
   // Proposed: publish() stringifies once and hands every stream the same line.
   const once = (e: DirectoryEvent) => {
@@ -140,7 +144,7 @@ async function partA() {
   if (written === before) throw new Error('proposed bench wrote nothing');
   const list = bench(`list() + snapshot JSON (${M} lobbies, per new stream / resync)`, () => JSON.stringify({ type: 'snapshot', lobbies: dir.list() }), 5_000);
   void written;
-  const res = { lobbies: M, subscribers: S, snapshotEventB: snapshotB, resyncGetBodyB: listBodyB, upsertEventB: upsertB, upsertEventWithoutWorldB: v2Upsert, usUpdateUnchanged: noChange, usUpdateFanoutToday: changed, usUpdateFanoutStringifyOnce: changedOnce, usListSnapshot: list };
+  const res = { lobbies: M, subscribers: S, snapshotEventB: snapshotB, resyncGetBodyB: listBodyB, upsertEventB: upsertB, upsertEventWithoutWorldB: v2Upsert, usUpdateUnchanged: noChange, usUpdateFanoutToday: changed, fanoutUsesSseLine: Boolean(http.sseLine), usUpdateFanoutStringifyOnce: changedOnce, usListSnapshot: list };
   log('partA', JSON.stringify(res));
   return res;
 }

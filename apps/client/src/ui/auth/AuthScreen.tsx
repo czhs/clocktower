@@ -2,6 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { DISPLAY_NAME_MAX, type AccountView, type Cosmetics } from '@ct/protocol';
 import { api } from '../../net/api';
 import { copyText, errorText } from '../lobby/finder';
+import { stripWorldPrefix } from '../common/appWorld';
 import { HowToPlayHost, openHelp } from '../common/HowToPlay';
 import { CharacterPicker, randomCharacter } from '../lobby/CharacterPicker';
 import { Hero } from './Hero';
@@ -22,7 +23,7 @@ type Mode = { m: 'choose' } | { m: 'create' } | { m: 'reveal'; account: AccountV
 
 export function AuthScreen({ onSignedIn }: { onSignedIn: (a: AccountView) => void }) {
   const [mode, setMode] = useState<Mode>({ m: 'choose' });
-  const invited = /^\/lobby\/[A-Za-z0-9_-]{4,32}\/?$/.test(location.pathname);
+  const invited = /^\/lobby\/[A-Za-z0-9_-]{4,32}\/?$/.test(stripWorldPrefix(location.pathname)); // (v3 URL paths) also /v2/lobby/x
   const intro = useIntro();
   const onTour = (r: IntroReason) => {
     // "Join" from the tour, or skipping it when invited, goes straight to account creation.

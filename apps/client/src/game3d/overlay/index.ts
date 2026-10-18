@@ -214,7 +214,7 @@ export function createOverlayLayer(deps: OverlayDeps): OverlayLayer {
       /** Door boards with tokens right now, by building id (v2 boardTokens.inspect shape + `screen`). */
       doorBoards: () => boards.inspect(),
       /** Overlay DOM cost: cumulative write counters and per-second rates (the v3WalkDomMutPerSec key). */
-      overlay: () => ({ ...stats, ...rate.sample(performance.now()), labels: avatars.length, talking: labels.talking(), poofs: gameplay.poofs(), atlas: atlas.ready() }),
+      overlay: () => ({ ...stats, ...rate.sample(performance.now()), labels: avatars.length, talking: labels.talking(), poofs: gameplay.poofs(), atlas: atlas.ready(), bubblesIn: bubbles.intake(), drawn: [...drawn] }),
     }),
     destroy() {
       if (destroyed) return;

@@ -34,7 +34,7 @@ test('v3 boot: 3D town ready on SwiftShader, hooks answer, no errors / CSP viola
     const readyMs = Date.now() - t0;
     test.info().annotations.push({ type: 'v3-ready-ms', description: String(readyMs) }, { type: 'v3-info', description: JSON.stringify(info) });
     expect(await townRenderer(page)).toBe('v3');
-    await expect(page.locator('.ct-game-canvas canvas')).toHaveCount(1);
+    await expect(page.locator('.ct-game-canvas > canvas')).toHaveCount(1);
     expect(info.tier).toBe('low'); // ct.fxQuality = low (§1.2 row 9)
     expect(info.pixelScale).toBeGreaterThanOrEqual(1);
     expect(info.programs, 'programs reported').not.toBeNull();
@@ -70,7 +70,7 @@ test('v3 boot: 3D town ready on SwiftShader, hooks answer, no errors / CSP viola
     await expect(page.getByRole('heading', { name: 'Lobby finder' })).toBeVisible({ timeout: 30_000 });
     await page.waitForTimeout(500);
     // (the finder itself draws small 2D canvases, e.g. portraits: only the town's mount point must be gone)
-    expect(await page.evaluate(() => ({ cam: '__ctCamera' in window, pixel: '__pixel' in window, town: document.querySelectorAll('.ct-game-canvas canvas').length }))).toEqual({ cam: false, pixel: false, town: 0 });
+    expect(await page.evaluate(() => ({ cam: '__ctCamera' in window, pixel: '__pixel' in window, town: document.querySelectorAll('.ct-game-canvas > canvas').length }))).toEqual({ cam: false, pixel: false, town: 0 });
   } finally {
     await ctx.close();
     await hostBot!.leave();

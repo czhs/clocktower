@@ -14,9 +14,11 @@ import { ChatPanel } from '../chat';
 import { lazyComponent, whenIdle } from '../common/lazy';
 import { preloadTownParts } from '../common/lazyTown';
 import { navigate } from '../common/route';
-import { LoadingScreen, lobbyErrorCopy, StatusScreen } from '../common/StatusScreen';
+import { lobbyErrorCopy, StatusScreen } from '../common/StatusScreen';
 import { errorText } from './finder';
 import { WaitingRoom } from './WaitingRoom';
+import { JoiningLobby } from './JoinPreview'; // (v3 WP6) the join-by-id preview: lobby name + world badge
+import { useV3Skin } from '../common/v3skinLobby'; // (v3 WP6) the v3 skin lives as long as the connection
 import { ensureLayout, selectLayoutIfLoaded } from '../../net/layout';
 import { mayUseV3 } from '../../game3d/select';
 import type { WorldId } from '@ct/protocol';
@@ -106,8 +108,8 @@ export function LobbyRoute({ id, intent, account }: { id: string; intent: 'playe
             : [{ ...retry, primary: true }, home];
     return <StatusScreen icon={copy.icon} title={copy.title} message={copy.message} actions={actions} />;
   }
-  if (!conn) return <LoadingScreen text="Joining lobby…" />;
-  return <InLobby conn={conn} account={account} />;
+  if (!conn) return <JoiningLobby id={id} />;
+  return <InLobby id={id} conn={conn} account={account} />;
 }
 
 /**
@@ -134,8 +136,11 @@ function useLobbyLayout(conn: RoomConnection): 'pending' | 'ready' | 'error' {
   return state;
 }
 
-function InLobby({ conn, account }: { conn: RoomConnection; account: AccountView }) {
+function InLobby({ id, conn, account }: { id: string; conn: RoomConnection; account: AccountView }) {
   const layout = useLobbyLayout(conn);
+  // (v3 WP6 CONTRACT-REQUEST, lead) one skin ref for the whole connection: a renderer swap / fallback / rejoin
+  // never flashes the v2 look (WaitingRoom / SocialPalette keep their own, now harmless, refs)
+  useV3Skin(conn);
   if (layout === 'error')
     return (
       <StatusScreen
@@ -148,7 +153,7 @@ function InLobby({ conn, account }: { conn: RoomConnection; account: AccountView
         ]}
       />
     );
-  if (layout !== 'ready') return <LoadingScreen text="Joining lobby…" />;
+  if (layout !== 'ready') return <JoiningLobby id={id} />;
   return <InLobbyTown conn={conn} account={account} />;
 }
 

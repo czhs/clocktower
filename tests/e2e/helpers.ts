@@ -1137,7 +1137,7 @@ export async function classicTown(page: Page): Promise<{ world: string; widthTil
 
 /**
  * Wait until the 3D town reports ready (`__ctCamera.v3().ready`). Fails fast and clearly when Classic mounted instead
- * (no WebGL2 / a crash fallback), and asserts the GPU string is SwiftShader (never the host GPU, §6.2).
+ * (no WebGL2 / a crash fallback), and asserts the GPU string matches CT_GL (host GPU by default; SwiftShader with CT_GL=swiftshader).
  */
 export async function waitV3Ready(page: Page, timeoutMs = 240_000, label = 'page'): Promise<V3Info> {
   const t0 = Date.now();
@@ -1149,7 +1149,9 @@ export async function waitV3Ready(page: Page, timeoutMs = 240_000, label = 'page
     if (r === 'classic' && Date.now() - t0 > 20_000) throw new Error(`${label}: the Classic renderer is drawing this lobby, not the 3D town (fallback? ${JSON.stringify(last.pixel)})`);
     if (info?.ready) {
       const gpu = info.gpu ?? ((last.pixel as { gpu?: string } | null)?.gpu ?? null);
-      expect(gpu, `${label}: WebGL renderer must be SwiftShader on the game host (never its GPU)`).toMatch(/SwiftShader/i);
+      // CT_GL=gpu (default since 2026-10-18, user allowed the host GPU) expects the real GPU; CT_GL=swiftshader the CPU raster.
+      if (process.env.CT_GL === 'swiftshader') expect(gpu, `${label}: WebGL renderer must be SwiftShader (CT_GL=swiftshader)`).toMatch(/SwiftShader/i);
+      else expect(gpu, `${label}: WebGL renderer must be the host GPU (CT_GL=gpu), not a software fallback`).not.toMatch(/SwiftShader|llvmpipe|software/i);
       return info;
     }
     await page.waitForTimeout(1000);
@@ -1219,6 +1221,43 @@ export async function waitingRoomWorld(page: Page, timeout = 30_000): Promise<{ 
  * timeout: before C1 the composition root (game3d/TownGame3d.ts) does not register every package's layer yet.
  * `members` are `__ctCamera` members, `social` ones `__ctSocial` members (ct.debug.social = 1).
  */
+/**
+ * Wait until the 3D town has built every avatar it currently knows (players + townsfolk: WP2 `__ctCamera.avatars3d()`,
+ * no entry building, each one with a body, failed or parked) AND frames flow again (≥ 5 in 3 s). On SwiftShader the
+ * GPU process compiles each new body's shader programs for seconds and rAF stalls meanwhile, so a spec that needs live
+ * frames (a short chat bubble, a vote in progress) waits for both first. Returns the number of entries.
+ */
+export async function waitAvatarsSettled(page: Page, timeoutMs = 240_000, label = 'page'): Promise<number> {
+  type E = { key: string; building: boolean; failed: boolean; parked: boolean; texture: string | null };
+  const t0 = Date.now();
+  let last: E[] = [];
+  const trace: string[] = [];
+  const frames = () => page.evaluate(() => (window as unknown as { __ctCamera?: { camera3d?: () => { frames?: number } } }).__ctCamera?.camera3d?.().frames ?? 0);
+  // 1. every avatar it knows has a body (or failed / is parked)
+  for (;;) {
+    last = (await page.evaluate(() => ((window as unknown as { __ctCamera?: { avatars3d?: () => unknown } }).__ctCamera?.avatars3d?.() ?? []) as never)) as E[];
+    trace.push(`${Math.round((Date.now() - t0) / 1000)}s:b${last.filter((e) => e.texture).length}/${last.length}`);
+    if (last.length && last.every((e) => !e.building && (!!e.texture || e.failed || e.parked))) break;
+    if (Date.now() - t0 > timeoutMs)
+      throw new Error(`${label}: avatars still building after ${timeoutMs} ms: ${JSON.stringify(last.filter((e) => e.building || !(e.texture || e.failed || e.parked)).map((e) => e.key))}`);
+    await page.waitForTimeout(1000);
+  }
+  // 2. the frames flow again: SwiftShader's GPU process works off the new bodies' shader programs AFTER the JS side
+  //    is done (no KHR_parallel_shader_compile), and rAF stalls until it has (C1: 0 frames for seconds, step 3 ms)
+  for (;;) {
+    const f0 = await frames();
+    await page.waitForTimeout(3000);
+    const f1 = await frames();
+    trace.push(`f${f0}->${f1}`);
+    if (f1 - f0 >= 5) break;
+    if (Date.now() - t0 > timeoutMs) throw new Error(`${label}: the 3D town renders no frames (${trace.join(' ')})`);
+  }
+  const msg = `${label}: ${trace.join(' ')} (${Math.round((Date.now() - t0) / 1000)} s)`;
+  test.info().annotations.push({ type: 'v3-avatar-builds', description: msg });
+  console.log('[v3-avatars]', msg);
+  return last.length;
+}
+
 export async function requireV3Hooks(page: Page, what: string, members: string[], social: string[] = []): Promise<void> {
   const missing = await page.evaluate(
     ({ members, social }) => {

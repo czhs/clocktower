@@ -8,6 +8,7 @@ import {
   type NominationView,
   type PublicPlayerView,
 } from '@ct/protocol';
+import { appPath } from '../common/appWorld';
 
 export const PHASE_LABEL: Record<GamePhase, string> = {
   setup: 'Setting up',
@@ -146,7 +147,7 @@ export function VoteClock({ nom, players, size = 150 }: { nom: NominationView; p
 }
 
 export function goHome() {
-  history.pushState({ name: 'home' }, '', '/');
+  history.pushState({ name: 'home' }, '', appPath('/')); // (v3 URL paths) stay in this app (/ or /v2/)
   window.dispatchEvent(new CustomEvent('ct:navigate', { detail: { name: 'home' } }));
 }
 

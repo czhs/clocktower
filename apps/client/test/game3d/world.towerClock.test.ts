@@ -77,3 +77,45 @@ describe('timerTick (the stage rebuilds the plan only when it or the clock objec
     expect([...ticks]).toEqual([60, 59, 58, 57, 56]);
   });
 });
+
+// ------------------------------------------------------------------------------------------------ C1: the dial face
+import { dialFace, dialFaceKey, dialsNight, DIAL_STEPS, DONE_FLASH_MS, DONE_HOLD_MS } from '../../src/game3d/world/towerClock';
+
+describe('dialFace (the Storyteller timer on the tower dials)', () => {
+  const NOON = 12;
+  it('no timer: null = the time-of-day hands', () => {
+    expect(dialFace(null, 0, NOON)).toBeNull();
+    expect(dialFace(clock({}), 0, NOON)).toBeNull();
+    expect(dialFaceKey(null)).toBe('tod');
+  });
+  it('running: the wedge is the time LEFT in DIAL_STEPS steps, in the stage colour', () => {
+    const c = clock({ stage: 'nominations', endsAt: 200_000, totalMs: 300_000 });
+    expect(dialFace(c, 50_000, NOON)).toEqual({ mode: 'running', stage: 'nominations', q: DIAL_STEPS / 2, flashOn: false, night: false });
+    expect(dialFace(c, -100_000, NOON)?.q).toBe(DIAL_STEPS); // just set: a full disc
+    expect(dialFace(c, 199_000, NOON)?.q).toBe(1);
+  });
+  it('paused: the dimmed wedge of what is left', () => {
+    expect(dialFace(clock({ paused: true, remainingMs: 75_000 }), 0, NOON)).toMatchObject({ mode: 'paused', q: 45, stage: 'discussion' });
+  });
+  it('done: flashes at 4 Hz for DONE_FLASH_MS after zero, holds a full face until DONE_HOLD_MS, then the hands again', () => {
+    const c = clock({ stage: 'bedtime', endsAt: 100_000 });
+    expect(dialFace(c, 100_000, NOON)).toMatchObject({ mode: 'done', q: DIAL_STEPS, flashOn: true, stage: 'bedtime' });
+    expect(dialFace(c, 100_300, NOON)?.flashOn).toBe(false);
+    expect(dialFace(c, 100_500, NOON)?.flashOn).toBe(true);
+    expect(dialFace(c, 100_000 + DONE_FLASH_MS + 1, NOON)).toMatchObject({ mode: 'done', flashOn: false });
+    expect(dialFace(c, 100_000 + DONE_HOLD_MS + 1, NOON)).toBeNull();
+  });
+  it('night: the dials glow 19:30 .. 06:00 (the vendor draws the wedge solid then)', () => {
+    expect([dialsNight(19.4), dialsNight(19.5), dialsNight(23), dialsNight(5.9), dialsNight(6)]).toEqual([false, true, true, true, false]);
+    expect(dialFace(clock({ endsAt: 10_000 }), 0, 23)?.night).toBe(true);
+  });
+  it('the key changes only with what the face shows (2 deg steps, mode, stage, flash, night); `out` is reused', () => {
+    const c = clock({ endsAt: 300_000 });
+    const out = dialFace(c, 0, NOON)!;
+    const k0 = dialFaceKey(out);
+    expect(dialFace(c, 100, NOON, out)).toBe(out);
+    expect(dialFaceKey(out)).toBe(k0); // 0.1 s is less than one 2-degree step of a 5-minute stage
+    dialFace(c, 3000, NOON, out);
+    expect(dialFaceKey(out)).not.toBe(k0);
+  });
+});

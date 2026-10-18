@@ -18,6 +18,7 @@ import { LobbySafety } from '../ui/lobby/moderation'; // (v2.3 OPS-6) in-game re
 import { chooseRendererHere, onGraphicsChange, rememberAutoFallback } from '../game3d/select';
 import { resetBootGuard } from '../game3d/bootGuard';
 import type { FallbackReason, RendererKind, Tier, TownBridge3d, TownHandle } from '../game3d/contract';
+import { publishRender } from '../ui/common/graphicsStatus'; // (v3 WP6) what actually draws, for the Settings status line
 import './game.css';
 
 // Mounts the Phaser town for this lobby; renders `children` (HUD, Storyteller panel, voice panel,
@@ -50,6 +51,9 @@ export function GameScreen(props: { conn: RoomConnection; account: AccountView; 
     [world],
   );
 
+  // (v3 WP6) the Settings status line forgets the mounted town on unmount
+  useEffect(() => () => publishRender(null), []);
+
   // Effect A (per connection): ambience + sound + the audio unlock. A renderer swap never restarts it.
   useEffect(() => {
     applyAmbientVolume();
@@ -71,11 +75,12 @@ export function GameScreen(props: { conn: RoomConnection; account: AccountView; 
     let game: TownHandle | null = null;
     let cancelled = false;
     setStatus('loading');
+    publishRender({ kind: render.kind, tier: render.tier, ...(render.fallback ? { fallback: render.fallback } : {}) });
     const fallback = (reason: FallbackReason) => {
       if (cancelled) return;
       if (reason === 'perf') rememberAutoFallback();
       setNotice(reason === 'perf' ? 'perf' : 'error');
-      setRender({ kind: 'classic', tier: 'low', row: 0 });
+      setRender({ kind: 'classic', tier: 'low', row: 0, fallback: reason });
     };
     const bridge: TownBridge3d = {
       conn: props.conn,
@@ -408,15 +413,38 @@ function HomeCompass({ conn }: { conn: RoomConnection }) {
 
 // ------------------------------------------------------------------------------------ graphics (v3)
 
-type Render = { kind: RendererKind; tier: Tier; row: number };
+type Render = { kind: RendererKind; tier: Tier; row: number; /** set when this render is a runtime fallback */ fallback?: FallbackReason };
 function pickRenderer(world: WorldId | undefined): Render {
   const c = chooseRendererHere(world);
   return { kind: c.renderer, tier: c.tier, row: c.row };
 }
 
-/** The 3D town chunk; a chunk-load error (usually deploy skew) is retried once after 1 s. */
-function importTown3d(): Promise<typeof import('../game3d/TownGame3d')> {
-  return import('../game3d/TownGame3d').catch(() => new Promise<void>((r) => setTimeout(r, 1000)).then(() => import('../game3d/TownGame3d')));
+type Town3dModule = typeof import('../game3d/TownGame3d');
+/**
+ * The 3D town chunk; a chunk-load error (usually deploy skew) is retried once after 1 s. Chromium keeps a failed
+ * module fetch in its module map (the same URL rejects again at once, without a request: INTEGRATION.md §9.3), so
+ * the retry asks for the failed chunk under a fresh same-origin URL (its own imports resolve to the normal URLs).
+ */
+function importTown3d(): Promise<Town3dModule> {
+  return import('../game3d/TownGame3d').catch((e: unknown) =>
+    new Promise<void>((r) => setTimeout(r, 1000)).then(() => {
+      const url = retryUrl(e);
+      return url ? (import(/* @vite-ignore */ url) as Promise<Town3dModule>) : import('../game3d/TownGame3d');
+    }),
+  );
+}
+/** The failed chunk's URL from a dynamic-import error, with a cache-busting query; null unless same-origin. */
+export function retryUrl(e: unknown, origin = typeof location !== 'undefined' ? location.origin : ''): string | null {
+  const m = /(https?:\/\/[^\s'"]+?\.(?:js|ts|tsx|mjs))(?:\?[^\s'"]*)?/.exec(String((e as Error | null)?.message ?? e ?? ''));
+  if (!m) return null;
+  try {
+    const u = new URL(m[1]!);
+    if (u.origin !== origin) return null;
+    u.searchParams.set('retry', String(Date.now()));
+    return u.href;
+  } catch {
+    return null;
+  }
 }
 
 type GraphicsNoticeKind = 'boot-guard' | 'perf' | 'error';

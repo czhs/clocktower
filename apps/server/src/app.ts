@@ -223,6 +223,23 @@ export async function startAppServer(config: AppConfig, log: Logger, options: Ap
     // whole private notebook (NOTEBOOK_MAX_BYTES = 20 KiB of JSON + msgpack framing). Every message
     // is still Zod-capped per field and token-bucket rate-limited per pid.
     maxPayload: 24 * 1024,
+    // (v3 perf, net front; docs/perf-v3/net.md) permessage-deflate (RFC 7692) on the game socket.
+    // 99 % of S2C frames are < 256 B (12 Hz world:snap2 deltas), so ws's default 1024 B threshold
+    // would compress nothing; with context takeover and a 64 B threshold the measured downstream of
+    // a 1 ST + 15 v3 lobby drops by ~53 % in a day walk, ~68 % with pins and ~80 % during a vote
+    // (no-context-takeover saves ~3 %: the frames are too small on their own), for ~+1.2 % of a core
+    // per 16-client lobby. Full 32 KiB window: an 8 KiB window measured 71 % instead of 80 % in a
+    // vote (the Storyteller's ~10 KB game:view no longer fits). zlib state ≈ 256 KiB deflate +
+    // ~40 KiB inflate per socket. Inflated client messages still obey maxPayload (ws enforces it
+    // while inflating) and the HOST-11 socket budget meters the inflated bytes. A client that does
+    // not offer the extension (or a proxy that strips the header) gets uncompressed frames, as before.
+    // WS_DEFLATE=off (config.ts) switches it off without a code change.
+    perMessageDeflate: config.wsDeflate && {
+      threshold: 64,
+      serverMaxWindowBits: 15,
+      zlibDeflateOptions: { level: 1, memLevel: 8 },
+      concurrencyLimit: 4,
+    },
     // (No verifyClient pre-check: rejecting at the HTTP upgrade breaks colyseus.js's reconnect
     // retry after a network drop. Seat reservations are still enforced by the transport, and the
     // rate-limited logger below absorbs the log noise from junk upgrades — SR-4.)

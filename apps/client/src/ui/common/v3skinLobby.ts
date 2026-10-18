@@ -16,6 +16,7 @@ import type { Store } from '../../net/store';
 import { loadV3Atlas, v3AtlasPending, v3AtlasRef, v3Skin, type SkinLook, type V3SkinState } from './v3skin';
 import { setPortraitAlt, type PortraitAlt } from './castPortrait';
 import { worldOfLobby } from '../lobby/finder';
+import { syncWorldPath } from './appWorld';
 
 // ------------------------------------------------------------------------------------ hour (§3.1)
 
@@ -103,7 +104,11 @@ function start(conn: Conn): () => void {
   let live = true;
   const update = () => {
     if (!live) return;
-    const on = worldOfLobby(conn.lobbyView.get()) === 'v3';
+    const view = conn.lobbyView.get();
+    // (v3 URL paths) the lobby's world decides which app the address bar shows (/ = v3, /v2/ = v2): an old v2
+    // share link opened at / moves to /v2/lobby/x in place (no reload; the connection is untouched)
+    if (view) syncWorldPath(worldOfLobby(view));
+    const on = worldOfLobby(view) === 'v3';
     const g = conn.gameView.get();
     const ph: GamePhase | 'waiting' = g?.phase ?? 'waiting';
     if (ph !== phase) {

@@ -3,15 +3,18 @@
 // Outdoors (fixed yaw 0, pitch 30°; Q2 default): rest on the square while the viewer is in it; outside it lean
 // 0.85 from the square toward the viewer, smoothed 1 − e^(−5·dt), clamped to the town; the focus is snapped to
 // the texel grid (PixelCamera.snapWorld). viewHeight comes from the vendor zoom ladder: 12 m (the gameplay preset)
-// on a 16:9 screen, the next stop up when a narrow (portrait) screen would not show the whole square. During a
-// nomination / vote, on the square, the vendor's vote framing (plaza centre, 19 m; §9.1 user request 1).
+// on a 16:9 screen, the next stop up when a narrow (portrait) screen would not show the whole square. During the
+// nominations and a vote, on the square: the voting-circle frame (§9.1 user request 1: every seat + the tower dial,
+// computed by the stage, world/voteFrame.ts, at its own yaw (0 / ±45°) and pitch (23°, portrait 30°); without a stage
+// the old fixed shot, plaza centre at 19 m). Into / out of it the camera steps through TRANS_STEPS whole key poses
+// over TRANS_S (the vendor votecam's stop-motion rule; reduced motion jumps). Keys stay screen-relative (`yaw()`).
 // Inside: the room's dollhouse view (from the built interior when WP3 provides it, else from the §2.3 room).
 //
 // View3d: worldToScreen / screenToWorld / cssPerPx over coords.ts (the only projection maths) and input/pick.ts.
 import * as THREE from 'three';
 import { PLAZA } from '@ct/assets';
 import { locationAt, type LocationId, type TownLayout } from '@ct/protocol';
-import { cssToRay, houseOfLocation, interiorMap, interiorOrigin, INTERIOR_ROOMS, locToM, PX_PER_M, rayAtHeight, ROOM_T, worldToCss, type ProjectionState } from '../coords';
+import { cssToRay, houseOfLocation, interiorOrigin, INTERIOR_ROOMS, isTowerLocation, locToM, PX_PER_M, rayAtHeight, roomMapOf, ROOM_T, TOWER_ROOM, worldToCss, type ProjectionState } from '../coords';
 import type { Px, View3d } from '../contract';
 import { buildingOf, INTERIOR_FLOOR_Y, layoutProxies, pickScreen, type HouseProxy, type PickResult } from './pick';
 
@@ -58,7 +61,15 @@ export interface CameraShot {
   Y: number;
   Z: number;
   viewHeight: number;
+  /** radians; default YAW / PITCH */
+  yaw?: number;
+  pitch?: number;
 }
+
+/** Into / out of the vote frame: TRANS_STEPS whole key poses over TRANS_S (vendor votecam.js TRANS_S / TRANS_STEPS). */
+export const TRANS_S = 0.75;
+export const TRANS_STEPS = 4;
+export type CameraMode = 'follow' | 'vote' | 'room';
 
 export interface CameraGoalInput {
   layout: TownLayout;
@@ -67,10 +78,23 @@ export interface CameraGoalInput {
   /** The viewer (px) once placed, else null (rest on the square). */
   me: { x: number; y: number; location: LocationId } | null;
   aspect: number;
-  /** A nomination / vote is open (the vote framing applies on the square). */
+  /** Nominations / a vote are on (net/core.ts voteCameraWanted): the vote framing applies on the square. */
   voting: boolean;
   /** The built interior's camera for the viewer's room (WP3), when known. */
   interior?: CameraShot | null;
+  /** The stage's voting-circle frame (world/voteFrame.ts), when known; else the fixed plaza shot. */
+  vote?: CameraShot | null;
+}
+
+/** On the square (the plaza ellipse × 1.08 around the feet - 8 px), or not placed yet. */
+export function onSquare(me: CameraGoalInput['me'], pl: Plaza): boolean {
+  return !me || Math.hypot((me.x - pl.cx) / pl.rx, (me.y - 8 - pl.cy) / pl.ry) <= 1.08;
+}
+
+/** Which camera applies: a room's, the vote frame (nominations / vote while on the square), or the follow camera. */
+export function cameraMode(i: Pick<CameraGoalInput, 'me' | 'voting' | 'plaza'>): CameraMode {
+  if (i.me && i.me.location !== 'outdoors') return 'room';
+  return i.voting && onSquare(i.me, i.plaza ?? PLAZA) ? 'vote' : 'follow';
 }
 
 /** Where the camera wants to be this frame (pure; v2 TownScene.updateCamera in metres). */
@@ -81,8 +105,8 @@ export function cameraGoal(i: CameraGoalInput): CameraShot {
   if (me && me.location !== 'outdoors') return i.interior ?? interiorShot(me.location, i.aspect) ?? restShot(pl, i.aspect);
   const restX = pl.cx / PX_PER_M;
   const restZ = pl.cy / PX_PER_M;
-  const inSq = !!me && Math.hypot((me.x - pl.cx) / pl.rx, (me.y - 8 - pl.cy) / pl.ry) <= 1.08;
-  if (i.voting && (inSq || !me)) return { X: restX, Y: 0, Z: restZ, viewHeight: Math.max(VOTE_VIEW_HEIGHT, fitViewHeight(i.aspect)) };
+  const inSq = !!me && onSquare(me, pl);
+  if (i.voting && (inSq || !me)) return i.vote ?? { X: restX, Y: 0, Z: restZ, viewHeight: Math.max(VOTE_VIEW_HEIGHT, fitViewHeight(i.aspect)) };
   const vh = fitViewHeight(i.aspect);
   let X = restX;
   let Z = restZ;
@@ -113,6 +137,9 @@ function restShot(pl: Plaza, aspect: number): CameraShot {
  * aspect-aware).
  */
 export function interiorShot(loc: LocationId, aspect: number): CameraShot | null {
+  // the clock tower's room before it is built: the vendor's framing (tower-interior.js camera: 3.4 m behind the
+  // room's origin, viewHeight 8.2)
+  if (isTowerLocation(loc)) return { X: TOWER_ROOM.origin.X, Y: 0, Z: TOWER_ROOM.origin.Z - 3.4, viewHeight: 8.2 };
   const i = houseOfLocation(loc);
   const dims = i === null ? undefined : INTERIOR_ROOMS[i];
   if (i === null || !dims) return null;
@@ -143,10 +170,14 @@ export interface RigHost {
 export interface RigScene {
   host: RigHost;
   heightAt(X: number, Z: number): number;
+  /** Room floor height (m) at a world point (the clock tower's stair / landing); default flat INTERIOR_FLOOR_Y. */
+  floorAt?(X: number, Z: number): number;
   /** House pick proxies (WP3: oriented boxes from the drawn town); default = layout footprints. */
   proxies?: readonly HouseProxy[];
   /** The built interior's camera (WP3), when that room is built. */
   interiorCamera?(location: LocationId): CameraShot | null;
+  /** The voting-circle frame for a canvas of lowW x lowH texels at pixelScale (WP3 stage.voteCamera). */
+  voteCamera?(lowW: number, lowH: number, pixelScale: number): CameraShot | null;
 }
 
 export interface CameraFrameInput {
@@ -154,6 +185,49 @@ export interface CameraFrameInput {
   voting: boolean;
   /** Jump to the goal (teleport, location change, first frame). */
   snap: boolean;
+  /** Reduced motion: no stepped transitions (jump). */
+  still?: boolean;
+}
+
+/** A camera pose (ground focus m, viewHeight, yaw / pitch radians). */
+export interface CameraPose {
+  X: number;
+  Y: number;
+  Z: number;
+  viewHeight: number;
+  yaw: number;
+  pitch: number;
+}
+
+/**
+ * Screen-relative keys under a turned camera: the held key vector (screen px directions, y down) as a world px
+ * direction for a camera at `yaw` (screen right = (cos, -sin), screen down = (sin, cos) on the ground). Writes `out`.
+ */
+export function turnKeys(kv: { vx: number; vy: number }, yaw: number, out: { vx: number; vy: number }): { vx: number; vy: number } {
+  const c = Math.cos(yaw);
+  const s = Math.sin(yaw);
+  out.vx = kv.vx * c + kv.vy * s;
+  out.vy = -kv.vx * s + kv.vy * c;
+  return out;
+}
+
+const easeInOutSine = (u: number) => -(Math.cos(Math.PI * u) - 1) / 2;
+const wrapPi = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
+
+/**
+ * The stepped pose `u` (0..1) of the way from `a` to `b` (vendor votecam.js stepPose): TRANS_STEPS whole key poses on
+ * an inOutSine spacing, the first one at once; the yaw turns the short way; u >= 1 is exactly `b`. Writes into `out`.
+ */
+export function steppedPose(a: CameraPose, b: CameraPose, u: number, out: CameraPose): CameraPose {
+  const k = Math.min(TRANS_STEPS, Math.floor(Math.max(0, u) * TRANS_STEPS) + 1);
+  const e = u >= 1 ? 1 : easeInOutSine(k / (TRANS_STEPS + 1));
+  out.X = a.X + (b.X - a.X) * e;
+  out.Y = a.Y + (b.Y - a.Y) * e;
+  out.Z = a.Z + (b.Z - a.Z) * e;
+  out.viewHeight = a.viewHeight + (b.viewHeight - a.viewHeight) * e;
+  out.yaw = u >= 1 ? b.yaw : a.yaw + wrapPi(b.yaw - a.yaw) * e;
+  out.pitch = u >= 1 ? b.pitch : a.pitch + (b.pitch - a.pitch) * e;
+  return out;
 }
 
 export class CameraRig implements View3d {
@@ -167,6 +241,17 @@ export class CameraRig implements View3d {
   private init = false;
   private shown: LocationId = 'outdoors';
   private vh = GAMEPLAY_VIEW_HEIGHT;
+  private curYaw = YAW;
+  private curPitch = PITCH;
+  private mode: CameraMode = 'follow';
+  /** rig clock (s, the sum of dt) for the stepped transitions */
+  private clock = 0;
+  private trans: { t0: number; from: CameraPose } | null = null;
+  private lastGoalKey = '';
+  private readonly goalPose: CameraPose = { X: 0, Y: 0, Z: 0, viewHeight: GAMEPLAY_VIEW_HEIGHT, yaw: YAW, pitch: PITCH };
+  private readonly pose: CameraPose = { X: 0, Y: 0, Z: 0, viewHeight: GAMEPLAY_VIEW_HEIGHT, yaw: YAW, pitch: PITCH };
+  /** A debug / harness camera override (__ctCamera.setCamera), shown instead of the goal while set. */
+  private override: CameraShot | null = null;
 
   constructor(
     private readonly layout: TownLayout,
@@ -192,9 +277,26 @@ export class CameraRig implements View3d {
   location(): LocationId {
     return this.shown;
   }
-  /** The current focus (m) and viewHeight. */
+  /** The current focus (m), viewHeight, yaw and pitch. */
   shot(): CameraShot {
-    return { X: this.focus.x, Y: this.focus.y, Z: this.focus.z, viewHeight: this.vh };
+    return { X: this.focus.x, Y: this.focus.y, Z: this.focus.z, viewHeight: this.vh, yaw: this.curYaw, pitch: this.curPitch };
+  }
+  /** The camera's current yaw (radians): keys move screen-relative (net/core.ts rotates the key vector by it). */
+  yaw(): number {
+    return this.curYaw;
+  }
+  /** Which camera applies now ('vote' while the voting-circle frame is up). */
+  cameraMode(): CameraMode {
+    return this.mode;
+  }
+  /** Hold the camera on this shot (harness stills; null = back to the game camera, snapped). */
+  setOverride(shot: CameraShot | null): void {
+    this.override = shot ? { ...shot } : null;
+    this.init = false;
+  }
+  /** A stepped transition is running (debug). */
+  get transitioning(): boolean {
+    return !!this.trans;
   }
 
   /** Once per frame before the render. */
@@ -204,21 +306,65 @@ export class CameraRig implements View3d {
     const e = s.host.engine;
     const aspect = e.height > 0 ? e.width / e.height : 16 / 9;
     const loc = f.me?.location ?? 'outdoors';
-    const interior = loc !== 'outdoors' ? (s.interiorCamera?.(loc) ?? null) : null;
-    const g = cameraGoal({ layout: this.layout, plaza: this.plaza, me: f.me, aspect, voting: f.voting, interior });
-    const jump = f.snap || !this.init || dt <= 0 || loc !== this.shown;
-    this.shown = loc;
-    if (jump) this.focus.set(g.X, g.Y, g.Z);
-    else {
-      const k = 1 - Math.exp(-dt * SMOOTH_RATE);
-      this.focus.x += (g.X - this.focus.x) * k;
-      this.focus.y += (g.Y - this.focus.y) * k;
-      this.focus.z += (g.Z - this.focus.z) * k;
+    this.clock += Math.max(0, dt);
+    const mode = cameraMode({ me: f.me, voting: f.voting, plaza: this.plaza });
+    const interior = mode === 'room' ? (s.interiorCamera?.(loc) ?? null) : null;
+    // a room that is still being built (the stage keeps the old place drawn): hold the camera where it is, so the
+    // view never flies to an empty void for those frames; the shown location switches when the room is drawn
+    if (mode === 'room' && s.interiorCamera && !interior && this.init && !this.override && loc !== this.shown) return;
+    let vote: CameraShot | null = null;
+    if (mode === 'vote' && s.voteCamera) {
+      const ps = e.pixelScale > 0 ? e.pixelScale : 1;
+      vote = s.voteCamera(Math.ceil(e.width / ps), Math.ceil(e.height / ps), ps);
     }
+    const g = this.override ?? cameraGoal({ layout: this.layout, plaza: this.plaza, me: f.me, aspect, voting: f.voting, interior, vote });
+    const gp = this.goalPose;
+    gp.X = g.X;
+    gp.Y = g.Y;
+    gp.Z = g.Z;
+    gp.viewHeight = g.viewHeight;
+    gp.yaw = g.yaw ?? YAW;
+    gp.pitch = g.pitch ?? PITCH;
+    const jump = f.snap || !this.init || dt <= 0 || loc !== this.shown || !!this.override;
+    const modeChanged = mode !== this.mode;
+    // the vote frame itself changed (resize, the dial / seats re-fitted): step to it like a transition
+    const goalKey = mode === 'vote' ? `${gp.X.toFixed(2)}|${gp.Z.toFixed(2)}|${gp.viewHeight.toFixed(2)}|${gp.yaw.toFixed(3)}|${gp.pitch.toFixed(3)}` : '';
+    const reframed = mode === 'vote' && !modeChanged && goalKey !== this.lastGoalKey && this.lastGoalKey !== '';
+    this.lastGoalKey = goalKey;
+    this.shown = loc;
+    const p = this.pose;
+    if (jump || f.still) {
+      this.trans = null;
+      Object.assign(p, gp);
+    } else {
+      // into / out of the vote frame (or a re-fit of it): whole key poses, never a glide
+      if ((modeChanged && (mode === 'vote' || this.mode === 'vote')) || reframed) this.trans = { t0: this.clock, from: { ...p } };
+      if (this.trans) {
+        const u = (this.clock - this.trans.t0) / TRANS_S;
+        steppedPose(this.trans.from, gp, u, p);
+        if (u >= 1) this.trans = null;
+      } else if (mode === 'vote') Object.assign(p, gp);
+      else {
+        // follow / room: smoothed focus, the goal's lens
+        const k = 1 - Math.exp(-dt * SMOOTH_RATE);
+        p.X += (gp.X - p.X) * k;
+        p.Y += (gp.Y - p.Y) * k;
+        p.Z += (gp.Z - p.Z) * k;
+        p.viewHeight = gp.viewHeight; // ladder stops: a jump, never a continuous crawl
+        p.yaw = gp.yaw;
+        p.pitch = gp.pitch;
+      }
+    }
+    this.mode = mode;
     this.init = true;
-    this.vh = g.viewHeight; // ladder stops: a jump, never a continuous crawl
-    this.lens.viewHeight = this.vh;
-    e.camera.set(this.lens); // first: the snap grid depends on viewHeight
+    this.focus.set(p.X, p.Y, p.Z);
+    this.vh = p.viewHeight;
+    this.curYaw = p.yaw;
+    this.curPitch = p.pitch;
+    this.lens.viewHeight = p.viewHeight;
+    this.lens.yaw = p.yaw;
+    this.lens.pitch = p.pitch;
+    e.camera.set(this.lens); // first: the snap grid depends on yaw / pitch / viewHeight
     this.aim.target = e.camera.snapWorld ? e.camera.snapWorld(this.focus, this.tmp) : this.tmp.copy(this.focus);
     e.camera.set(this.aim);
   }
@@ -241,14 +387,14 @@ export class CameraRig implements View3d {
     const room = buildingOf(this.layout, location)?.interior;
     const m = locToM(p, location, room);
     if (!m) return null;
-    const Y = location === 'outdoors' ? s.heightAt(m.X, m.Z) + heightM : INTERIOR_FLOOR_Y + heightM;
+    const Y = (location === 'outdoors' ? s.heightAt(m.X, m.Z) : (s.floorAt?.(m.X, m.Z) ?? INTERIOR_FLOOR_Y)) + heightM;
     return worldToCss(s.host.projection(), m.X, Y, m.Z);
   }
 
   screenToWorld(cssX: number, cssY: number): PickResult | null {
     const s = this.scene;
     if (!s) return null;
-    return pickScreen(s.host.projection(), { layout: this.layout, heightAt: s.heightAt, proxies: this.proxies, shown: this.shown }, cssX, cssY);
+    return pickScreen(s.host.projection(), { layout: this.layout, heightAt: s.heightAt, proxies: this.proxies, shown: this.shown, ...(s.floorAt ? { floorAt: s.floorAt } : {}) }, cssX, cssY);
   }
 
   /**
@@ -263,7 +409,6 @@ export class CameraRig implements View3d {
     const xs: number[] = [];
     const ys: number[] = [];
     const room = buildingOf(this.layout, this.shown);
-    const i = houseOfLocation(this.shown);
     for (const [cx, cy] of [
       [pr.rect.left, pr.rect.top],
       [pr.rect.left + w, pr.rect.top],
@@ -274,9 +419,9 @@ export class CameraRig implements View3d {
       const hit = ray ? rayAtHeight(ray, this.shown === 'outdoors' ? 0 : INTERIOR_FLOOR_Y) : null;
       if (!hit) continue;
       let p = { x: hit.X * PX_PER_M, y: hit.Z * PX_PER_M };
-      if (this.shown !== 'outdoors' && room && i !== null) {
+      if (this.shown !== 'outdoors' && room) {
         try {
-          p = interiorMap(i, room.interior).toPx(hit);
+          p = roomMapOf(this.shown, room.interior)?.toPx(hit) ?? p;
         } catch {
           /* no 3D interior: metres as px */
         }

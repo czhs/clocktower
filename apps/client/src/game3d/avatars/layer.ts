@@ -61,6 +61,8 @@ export interface AvatarServices {
   tier: Tier;
   /** Town ground height (m) outdoors; interiors are flat at y = 0. Default: flat 0. */
   heightAt?: (X: number, Z: number) => number;
+  /** Room floor height (m) at a world point inside a room (x >= 100 m: the clock tower's stair / landing). Default 0. */
+  floorAt?: (X: number, Z: number) => number;
   /** WP1's view (anchors, picks). Default: a projection-only view over the engine camera (project.ts). */
   view?: View3d;
   /** WP3's constant light pool, for carried lanterns. Absent = lanterns stay dark. */
@@ -176,8 +178,10 @@ interface EngineLike {
 export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
   const engine = svc.engine as EngineLike;
   const heightAt = svc.heightAt ?? (() => 0);
-  /** Feet height: the town terrain outdoors; interiors (x ≥ 100 m, origins at 200 + 30 i) are flat. */
-  const groundAt = (X: number, Z: number) => (X >= 100 ? 0 : heightAt(X, Z));
+  /** Feet height: the town terrain outdoors; interiors (x ≥ 100 m, origins at 200 + 30 i) are flat, except the clock
+   *  tower's room (x 650: its stair and 1.1 m landing, `floorAt`). */
+  const floorAt = svc.floorAt;
+  const groundAt = (X: number, Z: number) => (X >= 100 ? (floorAt ? floorAt(X, Z) : 0) : heightAt(X, Z));
   const drawSelf = svc.self !== false;
   const lite = svc.tier === 'low';
   const entries = new Map<string, Entry>();

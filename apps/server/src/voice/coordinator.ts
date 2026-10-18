@@ -76,6 +76,13 @@ export interface VoiceTuning {
   auditIntervalMs: number;
   /** How long a room is audited after a revocation (token TTL + LiveKit refresh-token life). */
   auditWindowMs: number;
+  /**
+   * (v3 perf, net) A room whose audit found nobody unauthorised is listed again after 1, 2, 4 …
+   * audit intervals, at most this far apart; a new revocation from the room or an intruder found
+   * resets it to every interval. Rooms LiveKit reports empty are not listed at all, and a room with
+   * more participants than grants is listed at the next interval whatever its back-off (runAudits).
+   */
+  auditBackoffMaxMs: number;
   maxHeartbeatCreditMs: number;
   squareMarginPx: number;
   zoneDebounceMs: number;
@@ -95,6 +102,7 @@ export const DEFAULT_TUNING: VoiceTuning = {
   announceIdleMs: VOICE_DEFAULTS.announceIdleMs,
   auditIntervalMs: 15_000,
   auditWindowMs: VOICE_DEFAULTS.tokenTtlSec * 1000 + 10 * 60_000,
+  auditBackoffMaxMs: 60_000,
   maxHeartbeatCreditMs: VOICE_DEFAULTS.maxHeartbeatCreditMs,
   squareMarginPx: VOICE_DEFAULTS.squareMarginPx,
   zoneDebounceMs: VOICE_DEFAULTS.zoneDebounceMs,
@@ -182,6 +190,35 @@ interface MemberVoice {
   disconnectedAt: number | null;
 }
 
+/** One audited room (VOICE-9 revocation audit). */
+interface Audit {
+  /** Audited until (extended by new revocations / intruders). */
+  until: number;
+  /** Next listParticipants is due at (0 = the next audit run). */
+  nextAt: number;
+  /** Back-off step: the n-th clean listing in a row. */
+  step: number;
+}
+
+/**
+ * (v3 perf, net) One `listRooms` per process per few seconds, shared by every lobby's coordinator
+ * (they all use the same RoomServiceClient): room name -> participant count (undefined = unknown).
+ * Failures are not cached.
+ */
+const roomCounts = new WeakMap<VoiceRoomService, { at: number; p: Promise<Map<string, number | undefined>> }>();
+function sharedRoomCounts(rs: VoiceRoomService, now: number, maxAgeMs: number): Promise<Map<string, number | undefined>> | null {
+  if (!rs.listRooms) return null;
+  const hit = roomCounts.get(rs);
+  if (hit && now - hit.at >= 0 && now - hit.at < maxAgeMs) return hit.p;
+  const p = rs.listRooms().then((list) => new Map(list.map((r) => [r.name, r.numParticipants] as const)));
+  const entry = { at: now, p };
+  roomCounts.set(rs, entry);
+  p.catch(() => {
+    if (roomCounts.get(rs) === entry) roomCounts.delete(rs);
+  });
+  return p;
+}
+
 interface Removal {
   room: string;
   pid: string;
@@ -230,7 +267,7 @@ export function createVoiceCoordinator(host: RoomHost, deps: VoiceDeps): VoiceCo
   const tracker = new ZoneTracker({ squareMarginPx: tune.squareMarginPx, debounceMs: tune.zoneDebounceMs });
   const state = new Map<string, MemberVoice>();
   const pending = new Set<Promise<unknown>>();
-  const audits = new Map<string, number>(); // room -> audit until
+  const audits = new Map<string, Audit>(); // room -> audit state
   const auditing = new Set<string>();
   const removals = new Map<string, Removal>(); // `${room}\0${pid}`
   const epochs = new Map<AcousticZoneId, string>();
@@ -386,7 +423,20 @@ export function createVoiceCoordinator(host: RoomHost, deps: VoiceDeps): VoiceCo
   // from inside a building or through the night (two such clients could talk at night).
   const scheduleAudit = (room: string, _zone: AcousticZoneId, now: number) => {
     if (!deps.roomService || !configured) return;
-    audits.set(room, Math.max(audits.get(room) ?? 0, now + tune.auditWindowMs));
+    const a = audits.get(room);
+    if (!a) audits.set(room, { until: now + tune.auditWindowMs, nextAt: 0, step: 0 });
+    else {
+      a.until = Math.max(a.until, now + tune.auditWindowMs);
+      a.nextAt = 0; // a fresh revocation: list it at the next run, then back off again
+      a.step = 0;
+    }
+  };
+
+  /** Members holding a grant for `room` (an upper bound of who may legitimately be connected to it). */
+  const grantsFor = (room: string): number => {
+    let n = 0;
+    for (const [pid, s] of state) if ((s.zone?.room === room || s.announce?.room === room) && authorizedFor(pid, room)) n++;
+    return n;
   };
 
   const evict = (room: string, identity: string) => {
@@ -394,31 +444,85 @@ export function createVoiceCoordinator(host: RoomHost, deps: VoiceDeps): VoiceCo
     removeFromRoom(room, identity, true);
   };
 
+  const auditRoom = (rs: VoiceRoomService, room: string, a: Audit, now: number) => {
+    auditing.add(room);
+    track(
+      rs
+        .listParticipants(room)
+        .then((list) => {
+          let intruders = 0;
+          for (const p of list) {
+            if (!authorizedFor(p.identity, room)) {
+              intruders++;
+              evict(room, p.identity);
+            }
+          }
+          const t = host.now();
+          if (intruders) {
+            // A connected intruder receives LiveKit refresh tokens and may re-join: keep watching closely.
+            a.until = Math.max(a.until, t + tune.auditWindowMs);
+            a.step = 0;
+            a.nextAt = t + tune.auditIntervalMs;
+          } else {
+            a.step++;
+            a.nextAt = now + Math.min(tune.auditBackoffMaxMs, tune.auditIntervalMs * 2 ** a.step);
+          }
+        })
+        .catch(() => undefined)
+        .finally(() => auditing.delete(room)),
+    );
+  };
+
+  /**
+   * (v3 perf, net) Before: listParticipants for EVERY audited room every 15 s for 20 min after each
+   * revocation (≈ 390 LiveKit calls / min for one busy 16-member lobby, docs/perf-v3/net.md). Now:
+   * one shared listRooms decides which audited rooms have anyone in them at all. An empty / gone room
+   * costs nothing; a room with more participants than grants (someone kept a revoked token) is listed
+   * at once; every other occupied room is listed on its back-off schedule (15 s after a revocation,
+   * then 30 s, then every 60 s), so an intruder hiding behind a granted member who is not connected
+   * is still found within a minute (and the process reconciler lists every room every reconcileMs).
+   * Without listRooms (or when it fails) every due room is listed, as before but with the back-off.
+   */
   const runAudits = (now: number) => {
-    if (!deps.roomService) return;
-    for (const [room, until] of audits) {
-      if (now > until) {
+    const rs = deps.roomService;
+    if (!rs) return;
+    const live: [string, Audit][] = [];
+    for (const [room, a] of audits) {
+      if (now > a.until) {
         audits.delete(room);
         continue;
       }
-      if (auditing.has(room)) continue;
-      auditing.add(room);
-      track(
-        deps.roomService
-          .listParticipants(room)
-          .then((list) => {
-            for (const p of list) {
-              if (!authorizedFor(p.identity, room)) {
-                evict(room, p.identity);
-                // A connected intruder receives LiveKit refresh tokens and may re-join: keep watching.
-                audits.set(room, Math.max(audits.get(room) ?? 0, host.now() + tune.auditWindowMs));
-              }
-            }
-          })
-          .catch(() => undefined)
-          .finally(() => auditing.delete(room)),
-      );
+      if (!auditing.has(room)) live.push([room, a]);
     }
+    if (!live.length) return;
+    const counts = sharedRoomCounts(rs, now, Math.min(5_000, tune.auditIntervalMs / 3));
+    const due = (a: Audit) => now >= a.nextAt;
+    if (!counts) {
+      for (const [room, a] of live) if (due(a)) auditRoom(rs, room, a, now);
+      return;
+    }
+    for (const [room] of live) auditing.add(room); // no second listing of these while listRooms is in flight
+    track(
+      counts
+        .then(
+          (byName) => {
+            for (const [room, a] of live) {
+              auditing.delete(room);
+              if (disposed) continue;
+              const n = byName.has(room) ? byName.get(room) : 0;
+              if (n === 0) continue; // nobody there: nothing to find (it stays due for when someone is)
+              if ((n !== undefined && n > grantsFor(room)) || due(a)) auditRoom(rs, room, a, now);
+            }
+          },
+          () => {
+            for (const [room, a] of live) {
+              auditing.delete(room);
+              if (!disposed && due(a)) auditRoom(rs, room, a, now);
+            }
+          },
+        )
+        .catch(() => undefined),
+    );
   };
 
   // -- grants -----------------------------------------------------------------------------
