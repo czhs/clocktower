@@ -96,7 +96,7 @@ function Dock({ conn, touch }: { conn: RoomConnection; touch: boolean }) {
         el = v;
         if (v && typeof ResizeObserver === 'function') {
           ro = new ResizeObserver(measure);
-          ro.observe(v);
+          ro.observe(v, { box: 'border-box' });
         }
       }
       if (!v) return setPlace(null);
@@ -106,7 +106,12 @@ function Dock({ conn, touch }: { conn: RoomConnection; touch: boolean }) {
       setPlace((p) => (p && p.right === next.right && p.bottom === next.bottom ? p : next));
     };
     measure();
-    const t = setInterval(measure, 1500); // the voice panel may mount / unmount later
+    // the voice panel may mount / unmount later: poll only its identity (no layout read); its size changes come from
+    // the ResizeObserver and the viewport from 'resize' ((v3 perf ui) was a getBoundingClientRect every 1.5 s, a
+    // forced style + layout flush in the middle of the 3D town's frames)
+    const t = setInterval(() => {
+      if (document.querySelector('.ctv') !== el) measure();
+    }, 1500);
     window.addEventListener('resize', measure);
     return () => {
       clearInterval(t);
