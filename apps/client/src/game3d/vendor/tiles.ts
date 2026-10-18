@@ -55,12 +55,13 @@ export interface TilesInfo {
   why: string;
   staticMeshes: number;
   demoted: number;
+  demotedWhy: string[];
   patchedMats: number;
   ring: RingSpec | null;
   ringMB: number;
   tiles: { valid: number; stale: number };
-  frame: { visible: number; missing: number; baked: number; rects: number; live: boolean };
-  totals: { frames: number; activeFrames: number; liveFallback: number; bakes: number; bakeMs: number; maxBakeMsFrame: number; relights: number; flushes: number; invalidations: number };
+  frame: { visible: number; missing: number; baked: number; rects: number; rectMeshes: number; live: boolean; tickMs: number };
+  totals: { tickMs: number; frames: number; activeFrames: number; liveFallback: number; bakes: number; bakeMs: number; maxBakeMsFrame: number; relights: number; flushes: number; invalidations: number };
 }
 
 export interface TileLayer {
@@ -71,16 +72,32 @@ export interface TileLayer {
 
 interface StaticRec {
   mesh: THREE.Mesh;
-  m: Float32Array;
+  m: Float64Array;
   geo: THREE.BufferGeometry;
   ver: number;
   dr0: number;
   dr1: number;
+  /** cell bounds [k0, k1, l0, l1] of its world box in the current snap space (null until computed) */
+  cb: [number, number, number, number] | null;
 }
 
 const BAKE_HEAD = /* glsl */ `
 uniform float uCtBake;
-uniform float uCtBakeL;`;
+uniform float uCtBakeL;
+uniform vec4 uCtRects[8];
+uniform float uCtRectN;`;
+// a static mesh drawn LIVE inside the cut windows only (the rest of it comes from the cache)
+const RECT_TEST = /* glsl */ `
+  if (uCtRectN > 0.5) {
+    vec2 ctPx = floor(gl_FragCoord.xy);
+    bool ctIn = false;
+    for (int i = 0; i < 8; i++) {
+      if (float(i) >= uCtRectN) break;
+      vec4 r = uCtRects[i];
+      if (ctPx.x >= r.x && ctPx.y >= r.y && ctPx.x < r.z && ctPx.y < r.w) ctIn = true;
+    }
+    if (!ctIn) discard;
+  }`;
 const BAND_LINE = 'vec3 toonW = bandWeights(toonL, vToonCut);';
 const TAIL = '#include <dithering_fragment>';
 const KEY = '|ct-tiles1';
@@ -125,19 +142,20 @@ export function installTiles(engine: HostedEngine, town: BuiltTown, o: TilesOpti
       if (/^ct-|hands|timer/.test(mesh.name) || /^ct-|hands/.test(mesh.parent?.name ?? '')) return;
       const mat = mesh.material;
       if (!mat || Array.isArray(mat)) return;
-      if (!(mat.userData as { toon?: unknown }).toon || o.canopy.has(mat) || mat.transparent || mat.name === 'town-kit-glass') return;
-      if ((mesh.userData as { layer?: string }).layer === 'glass' || (mesh.userData as { layer?: string }).layer === 'soft') return;
+      if (!(mat.userData as { toon?: unknown }).toon || o.canopy.has(mat) || mat.transparent) return;
+      if ((mesh.userData as { layer?: string }).layer === 'soft') return;
       if (mesh.customDepthMaterial || mesh.layers.mask !== 1 || !mesh.receiveShadow || mesh.onBeforeRender !== defBefore) return;
       if (!Object.prototype.hasOwnProperty.call(mat, 'customProgramCacheKey') || !isVisible(mesh)) return;
       const g = mesh.geometry;
       if (!g.boundingBox) g.computeBoundingBox();
-      statics.push({ mesh, m: new Float32Array(mesh.matrixWorld.elements), geo: g, ver: attrVer(g), dr0: g.drawRange.start, dr1: g.drawRange.count });
+      statics.push({ mesh, m: new Float64Array(mesh.matrixWorld.elements), geo: g, ver: attrVer(g), dr0: g.drawRange.start, dr1: g.drawRange.count, cb: null });
       mats.add(mat);
     });
   }
 
   // ---------------------------------------------------------------- material patch (before the warm-up compiles)
-  const bake = { uCtBake: { value: 0 }, uCtBakeL: { value: 0 } };
+  const rects = Array.from({ length: MAX_RECTS }, () => new THREE.Vector4());
+  const bake = { uCtBake: { value: 0 }, uCtBakeL: { value: 0 }, uCtRects: { value: rects }, uCtRectN: { value: 0 } };
   const lightUniforms = new Set<Record<string, { value: unknown }>>();
   let patchedMats = 0;
   for (const mat of mats) {
@@ -147,9 +165,11 @@ export function installTiles(engine: HostedEngine, town: BuiltTown, o: TilesOpti
       prev?.call(this, shader, r);
       if (!shader.fragmentShader.includes(BAND_LINE) || !shader.fragmentShader.includes(TAIL)) return;
       Object.assign(shader.uniforms, bake);
+      const own = (this as unknown as { __ctRectN?: { value: number } }).__ctRectN;
+      if (own) shader.uniforms.uCtRectN = own;
       lightUniforms.add(shader.uniforms as Record<string, { value: unknown }>);
       shader.fragmentShader = shader.fragmentShader
-        .replace('void main() {', `${BAKE_HEAD}\nvoid main() {`)
+        .replace('void main() {', `${BAKE_HEAD}\nvoid main() {\n${RECT_TEST}`)
         .replace(BAND_LINE, `if (uCtBake > 0.5) toonL = uCtBakeL;\n        ${BAND_LINE}`)
         .replace(TAIL, `${TAIL}\n        if (uCtBake > 1.5 && uCtBake < 2.5) gl_FragColor.a = toonLit;`);
     } as Compile;
@@ -166,7 +186,6 @@ export function installTiles(engine: HostedEngine, town: BuiltTown, o: TilesOpti
   });
 
   // ---------------------------------------------------------------- composite quad (drawn first in the live passes)
-  const rects = Array.from({ length: MAX_RECTS }, () => new THREE.Vector4());
   const cu = {
     tSh: { value: null as THREE.Texture | null },
     tMid: { value: null as THREE.Texture | null },
@@ -338,16 +357,16 @@ void main() {
   let why = 'init';
   let geoKey = '';
   let litKey = '';
-  const totals = { frames: 0, activeFrames: 0, liveFallback: 0, bakes: 0, bakeMs: 0, maxBakeMsFrame: 0, relights: 0, flushes: 0, invalidations: 0 };
-  const frame = { visible: 0, missing: 0, baked: 0, rects: 0, live: false };
+  const totals = { tickMs: 0, frames: 0, activeFrames: 0, liveFallback: 0, bakes: 0, bakeMs: 0, maxBakeMsFrame: 0, relights: 0, flushes: 0, invalidations: 0 };
+  const frame = { visible: 0, missing: 0, baked: 0, rects: 0, rectMeshes: 0, live: false, tickMs: 0 };
+  const rectMeshes: THREE.Mesh[] = [];
   let demoted = 0;
+  const demotedWhy: string[] = [];
   const R = new THREE.Vector3();
   const Up = new THREE.Vector3();
   const F = new THREE.Vector3();
   const bakeCam = new THREE.OrthographicCamera();
   bakeCam.layers.set(STATIC_LAYER);
-  const subCam = new THREE.OrthographicCamera();
-  subCam.layers.set(STATIC_LAYER);
   let ax = axisFrame(0, 1);
   let ay = axisFrame(0, 1);
   let liveRects: PxRect[] = [];
@@ -391,7 +410,22 @@ void main() {
   };
 
   /** A static mesh that changed (moved, shown / hidden, geometry rewritten): back to the live set, footprint dropped. */
+  let armed = false;
+  const snapshot = (s: StaticRec) => {
+    s.m.set(s.mesh.matrixWorld.elements);
+    s.geo = s.mesh.geometry;
+    s.ver = attrVer(s.geo);
+    s.dr0 = s.geo.drawRange.start;
+    s.dr1 = s.geo.drawRange.count;
+  };
   const checkStatics = () => {
+    if (!armed) {
+      // the first enabled frame: the matrices of the last rendered frame are the reference (the install ran before
+      // the composer's placement was folded into matrixWorld)
+      armed = true;
+      for (const s of statics) snapshot(s);
+      return;
+    }
     for (let k = statics.length - 1; k >= 0; k--) {
       const s = statics[k]!;
       const me = s.mesh;
@@ -406,11 +440,22 @@ void main() {
       const ver = attrVer(g);
       if (!moved && g === s.geo && ver === s.ver && g.drawRange.start === s.dr0 && g.drawRange.count === s.dr1 && isVisible(me)) continue;
       // demote
+      if (demotedWhy.length < 16) demotedWhy.push(`${me.name || me.parent?.name || '?'}:${moved ? 'moved' : g !== s.geo ? 'geometry' : ver !== s.ver ? 'attr' : !isVisible(me) ? 'hidden' : 'drawRange'}`);
       statics.splice(k, 1);
       me.layers.set(0);
       demoted++;
       invalidateMesh(s);
     }
+  };
+  const meshCells = (_m: THREE.Mesh, g: THREE.BufferGeometry, mw: THREE.Matrix4, pad: number): [number, number, number, number] | null => {
+    if (!g.boundingBox) return null;
+    const pts: { r: number; u: number }[] = [];
+    tmpBox.copy(g.boundingBox).applyMatrix4(mw);
+    for (let c = 0; c < 8; c++) {
+      corner.set(c & 1 ? tmpBox.max.x : tmpBox.min.x, c & 2 ? tmpBox.max.y : tmpBox.min.y, c & 4 ? tmpBox.max.z : tmpBox.min.z);
+      pts.push({ r: corner.dot(R), u: corner.dot(Up) });
+    }
+    return cellBounds(pts, pcam.texelWorld, ax.parity, ay.parity, pad);
   };
   const invalidateMesh = (s: StaticRec) => {
     if (!book || !s.geo.boundingBox) return;
@@ -506,6 +551,15 @@ void main() {
 
   /** Before the vendor pipeline renders: decide, bake, set the composite's uniforms. */
   const tick = () => {
+    const tt = performance.now();
+    try {
+      tickInner();
+    } finally {
+      frame.tickMs = performance.now() - tt;
+      totals.tickMs += frame.tickMs;
+    }
+  };
+  const tickInner = () => {
     totals.frames++;
     frame.baked = 0;
     frame.missing = 0;
@@ -537,6 +591,7 @@ void main() {
       geoKey = gk;
       book.flush();
       totals.flushes++;
+      for (const st of statics) st.cb = meshCells(st.mesh, st.geo, st.mesh.matrixWorld, 2);
     }
     const lk = computeLightKey();
     if (lk !== litKey) {
@@ -602,31 +657,23 @@ void main() {
     why = 'active';
   };
 
-  /** Static meshes inside one live rect of the current target (cropped camera: only meshes in the rect are drawn). */
-  const renderRect = (r: PxRect, target: THREE.WebGLRenderTarget, orig: (s: THREE.Object3D, c: THREE.Camera) => void) => {
-    const t = pcam.texelWorld;
-    subCam.left = cam.left + r.x0 * t;
-    subCam.right = cam.left + r.x1 * t;
-    subCam.bottom = cam.bottom + r.y0 * t;
-    subCam.top = cam.bottom + r.y1 * t;
-    subCam.near = cam.near;
-    subCam.far = cam.far;
-    subCam.updateProjectionMatrix();
-    subCam.position.copy(cam.position);
-    subCam.quaternion.copy(cam.quaternion);
-    subCam.updateMatrixWorld(true);
-    const vp = target.viewport.clone();
-    target.viewport.set(r.x0, r.y0, r.x1 - r.x0, r.y1 - r.y0);
-    target.scissor.set(r.x0, r.y0, r.x1 - r.x0, r.y1 - r.y0);
-    target.scissorTest = true;
-    renderer.setRenderTarget(target);
-    orig.call(renderer, scene, subCam);
-    target.scissorTest = false;
-    target.viewport.copy(vp);
-    target.scissor.set(0, 0, target.width, target.height);
-    renderer.setRenderTarget(target);
-  };
-
+  // the rect test is per OBJECT (the kit materials are shared with live meshes: doors, the dais, boards): a clipped
+  // static mesh draws with a twin of its material whose uCtRectN is live (same program: same cache key)
+  let rectCount = 0;
+  const rectN = { get value() { return rectCount; }, set value(_v: number) { /* read-only */ } };
+  const rectMats = new Map<THREE.Material, THREE.Material>();
+  const origMats = new Map<THREE.Material, THREE.Material>();
+  for (const mat of mats) {
+    const twin = mat.clone();
+    twin.onBeforeCompile = mat.onBeforeCompile;
+    twin.customProgramCacheKey = mat.customProgramCacheKey;
+    // Material.copy keeps neither `defines` (toon: TOON_TONE_ATTR, TOON_UNLIT_SH ...) nor the vendor's extra fields
+    const md = (mat as unknown as { defines?: Record<string, unknown> }).defines;
+    if (md) (twin as unknown as { defines: Record<string, unknown> }).defines = { ...md };
+    (twin as unknown as { __ctRectN?: unknown }).__ctRectN = rectN;
+    rectMats.set(mat, twin);
+    origMats.set(twin, mat);
+  }
   // ---------------------------------------------------------------- hooks
   let inPipeline = false;
   const origRender = renderer.render;
@@ -644,6 +691,25 @@ void main() {
     }
     const target = renderer.getRenderTarget();
     if (!active || !target || (target !== pipe.rtScene && target !== pipe.rtNormal)) return origRender.call(this, s, c);
+    // static meshes that touch a cut window draw LIVE in this render, clipped to the windows (RECT_TEST); the rest of
+    // the static set comes from the composite quad
+    const n = liveRects.length;
+    rectMeshes.length = 0;
+    if (n)
+      for (const st of statics) {
+        const cb = st.cb;
+        if (!cb) continue;
+        for (let k = 0; k < n; k++) {
+          const r = liveRects[k]!;
+          if (cb[0] - ax.origin < r.x1 && cb[1] - ax.origin > r.x0 && cb[2] - ay.origin < r.y1 && cb[3] - ay.origin > r.y0) {
+            rectMeshes.push(st.mesh);
+            st.mesh.layers.enable(0);
+            st.mesh.material = rectMats.get(st.mesh.material as THREE.Material) ?? st.mesh.material;
+            break;
+          }
+        }
+      }
+    rectCount = n;
     cam.layers.disable(STATIC_LAYER);
     quad.visible = true;
     try {
@@ -651,15 +717,21 @@ void main() {
     } finally {
       quad.visible = false;
       cam.layers.enable(STATIC_LAYER);
+      for (const m of rectMeshes) {
+        m.layers.disable(0);
+        const orig = origMats.get(m.material as THREE.Material);
+        if (orig) m.material = orig;
+      }
+      frame.rectMeshes = rectMeshes.length;
     }
-    for (const r of liveRects) renderRect(r, target, origRender as (s: THREE.Object3D, c: THREE.Camera) => void);
   } as typeof renderer.render;
   // the sun's shadow map is rendered inside the live colour pass (the main camera's layers): keep the static casters
   const sm = renderer.shadowMap as THREE.WebGLShadowMap & { render(lights: THREE.Light[], scene: THREE.Object3D, camera: THREE.Camera): void };
   const origShadow = sm.render;
   sm.render = function (this: unknown, lights: THREE.Light[], s: THREE.Object3D, c: THREE.Camera) {
     const m = c.layers.mask;
-    c.layers.enable(STATIC_LAYER);
+    // every caster: the static set, and the main camera's layers (a cut-window sub-camera sees only the static layer)
+    c.layers.mask = m | cam.layers.mask | (1 << STATIC_LAYER);
     try {
       return origShadow.call(this, lights, s, c);
     } finally {
@@ -690,12 +762,13 @@ void main() {
       why,
       staticMeshes: statics.length,
       demoted,
+      demotedWhy: [...demotedWhy],
       patchedMats,
       ring,
       ringMB: ring ? +(ringBytes(ring, 4) / 2 ** 20).toFixed(1) : 0,
       tiles: book ? book.count() : { valid: 0, stale: 0 },
       frame: { ...frame },
-      totals: { ...totals, bakeMs: +totals.bakeMs.toFixed(1), maxBakeMsFrame: +totals.maxBakeMsFrame.toFixed(2) },
+      totals: { ...totals, tickMs: +totals.tickMs.toFixed(1), bakeMs: +totals.bakeMs.toFixed(1), maxBakeMsFrame: +totals.maxBakeMsFrame.toFixed(2) },
     }),
     dispose() {
       if (disposed) return;

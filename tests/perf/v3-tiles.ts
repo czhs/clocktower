@@ -287,6 +287,8 @@ async function main() {
             calls: pf.calls ?? null,
             tris: pf.tris ?? null,
             shadowCalls: pf.shadowCalls ?? null,
+            stageCalls: Object.fromEntries(Object.entries((split.stageCalls ?? {}) as Record<string, { mean: number }>).map(([k, v]) => [k, v.mean])),
+            tilesFrame: ((await cam<{ frame?: unknown }>('tiles')) ?? {}).frame ?? null,
             taskMsPerSec: r2(((g(mB, 'TaskDuration') - g(mA, 'TaskDuration')) * 1000) / (split.wallMs / 1000)),
             tilesDelta: t0 && t1 ? Object.fromEntries(Object.keys(t1).map((k) => [k, r2(Number(t1[k]) - Number(t0[k] ?? 0))])) : null,
             tilesMaxBakeMsFrame: t1?.maxBakeMsFrame ?? null,
