@@ -114,7 +114,7 @@ function walk(dir, base = dir, acc = []) {
   for (const e of readdirSync(dir, { withFileTypes: true })) {
     const p = path.join(dir, e.name);
     if (e.isDirectory()) walk(p, base, acc);
-    else acc.push(path.relative(base, p));
+    else if (!/\.(br|gz)$/.test(e.name)) acc.push(path.relative(base, p)); // (v3.2) skip apps/client/build/precompress.mjs siblings
   }
   return acc;
 }
