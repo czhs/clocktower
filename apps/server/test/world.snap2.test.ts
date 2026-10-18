@@ -33,6 +33,17 @@ beforeAll(async () => {
           (computed.get(pid) ?? computed.set(pid, []).get(pid)!).push(s);
           return s;
         };
+        // (v3 perf) the room's 12 Hz fan-out goes through snapshotFanout (same per-viewer snapshots): record those too
+        const innerFan = w.snapshotFanout?.bind(w);
+        if (innerFan)
+          w.snapshotFanout = () => {
+            const f = innerFan();
+            return (pid) => {
+              const s = f(pid);
+              (computed.get(pid) ?? computed.set(pid, []).get(pid)!).push(s);
+              return s;
+            };
+          };
         return w;
       },
     },

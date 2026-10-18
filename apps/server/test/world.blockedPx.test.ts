@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest';
 import { townLayout } from '@ct/assets';
 import { townLayoutV3 } from '@ct/assets/hollowmere';
 import { isBlockedPx, locationAt, tileCenterPx, type LocationId, type TownLayout } from '@ct/protocol';
-import { blockedPx, findPath, pathGrid, segmentClear } from '../src/world/path.js';
+import { blockedPx, findPath, marginBlockedPx, pathGrid, segmentClear, segmentSafe } from '../src/world/path.js';
 
 const LAYOUTS: [string, TownLayout][] = [
   ['v2', townLayout],
@@ -215,6 +215,35 @@ describe.each(LAYOUTS)('v3 perf: path.ts fast paths are exact (%s layout)', (_na
     }
     expect(mismatches).toBe(0);
     expect(blocked).toBeGreaterThan(0);
+  });
+
+  it('marginBlockedPx === the four offset isBlockedPx calls (quarter pixels + random points), segmentSafe === ref', () => {
+    const four = (x: number, y: number) => isBlockedPx(L, x - 1, y) || isBlockedPx(L, x + 1, y) || isBlockedPx(L, x, y - 1) || isBlockedPx(L, x, y + 1);
+    let mismatches = 0;
+    let blocked = 0;
+    for (let y = -20; y <= hPx + 20; y += 0.25)
+      for (let x = -20; x <= wPx + 20; x += 0.25) {
+        const a = four(x, y);
+        if (a !== marginBlockedPx(L, x, y)) mismatches++;
+        if (a) blocked++;
+      }
+    const r = rng(11);
+    for (let k = 0; k < 300_000; k++) {
+      const x = r() * (wPx + 40) - 20;
+      const y = r() * (hPx + 40) - 20;
+      if (four(x, y) !== marginBlockedPx(L, x, y)) mismatches++;
+    }
+    let segMismatch = 0;
+    for (let k = 0; k < 20_000; k++) {
+      const ax = r() * wPx;
+      const ay = r() * hPx;
+      const bx = ax + (r() - 0.5) * 160;
+      const by = ay + (r() - 0.5) * 160;
+      if (segmentSafe(L, ax, ay, bx, by) !== refSegmentSafe(L, ax, ay, bx, by)) segMismatch++;
+    }
+    expect(blocked).toBeGreaterThan(1000);
+    expect(mismatches).toBe(0);
+    expect(segMismatch).toBe(0);
   });
 
   it('findPath === the previous implementation, and every leg passes the movement sweep', () => {

@@ -142,6 +142,12 @@ export interface WorldModule {
   positionOf(pid: string): { x: number; y: number } | null;
   /** Visibility-filtered snapshot for this viewer (night: own home only; ST sees all). */
   snapshotFor(pid: string): WorldSnapshot;
+  /**
+   * (v3 perf) For one synchronous snapshot fan-out: a snapshotFor twin whose viewers share the viewer-independent
+   * work (rounded entity states, door locks, door tags). Each call still returns exactly snapshotFor(pid); the
+   * returned function must not outlive the fan-out (state changes are not seen). Optional (test doubles).
+   */
+  snapshotFanout?(): (pid: string) => WorldSnapshot;
   /** Storyteller fast-travel / forced relocation (e.g. 'visit_home'). */
   sendHome(pid: string, reason: 'bedtime' | 'night'): void;
   teleportToBuilding(pid: string, buildingId: string, reason: 'storyteller' | 'door'): void;

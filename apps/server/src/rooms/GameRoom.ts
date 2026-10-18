@@ -1323,9 +1323,11 @@ export class GameRoom extends Room<any, any, RoomUserData, RoomAuthData> {
   }
 
   private sendSnapshots() {
+    // (v3 perf) one fan-out: viewers share the viewer-independent work; visibility is still per viewer.
+    const snapshotFor = this.world.snapshotFanout?.() ?? ((pid: string) => this.world.snapshotFor(pid));
     for (const s of this.connectedSeats()) {
       try {
-        const snap = this.world.snapshotFor(s.member.pid);
+        const snap = snapshotFor(s.member.pid);
         // (v2, social-server) pins of the viewer's location; omitted only when there are none
         // (every snapshot is complete, never a delta: absent = no pins).
         const pins = this.social.pinsFor(s.member.pid);
