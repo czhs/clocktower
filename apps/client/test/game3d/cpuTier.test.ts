@@ -4,10 +4,12 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
-import { cheapKitMaterial, CPU_KIT_PAT_SHADE, CPU_KIT_SHADE, CPU_KIT_SWAP, swapKit, toonUniformsOf, cheapenToonChunks, CPU_REWRITES, CPU_SHADE_DEFAULT, cpuShadeFrom, hookShaderSource, rewriteCpuShader, swapFn, CPU_FPS_CAP, CPU_LIGHT_LAYER, CPU_TOON_CHUNK, CPU_TOON_MACROS, cpuPassOff, cpuPixelScale, hideLights, installCpuTier, tierFpsLimit, type CpuEngine } from '../../src/game3d/vendor/cpuTier';
+import { cheapToonMaterial, toonHooksOf, twinPick, CPU_GROUND_SHADE, CPU_TWIN_KIT_SHADE, cheapKitMaterial, CPU_KIT_PAT_SHADE, CPU_KIT_SHADE, CPU_KIT_SWAP, swapKit, toonUniformsOf, cheapenToonChunks, CPU_REWRITES, CPU_SHADE_DEFAULT, cpuShadeFrom, hookShaderSource, rewriteCpuShader, swapFn, CPU_FPS_CAP, CPU_LIGHT_LAYER, CPU_TOON_CHUNK, CPU_TOON_MACROS, cpuPassOff, cpuPixelScale, hideLights, installCpuTier, tierFpsLimit, type CpuEngine } from '../../src/game3d/vendor/cpuTier';
 import { pixelScaleFor } from '../../src/game3d/coords';
 // @ts-expect-error vendor JS (no types)
 import { kitMaterial } from '@pixel3d/town/kit.js';
+// @ts-expect-error vendor JS (no types)
+import { patchCutMaterial } from '@pixel3d/town/cutaway.js';
 
 function fakeEngine() {
   const calls: string[] = [];
@@ -173,10 +175,11 @@ describe('cpu tier', () => {
 
   it('shade set: default = flight + the kit swap, none, a filtered list; text without anchors is untouched', () => {
     expect([...cpuShadeFrom(null)]).toEqual([...CPU_SHADE_DEFAULT]);
-    expect(CPU_SHADE_DEFAULT).toEqual(['flight', CPU_KIT_SHADE]);
+    expect(CPU_SHADE_DEFAULT).toEqual(['flight']);
     expect([...cpuShadeFrom('')]).toEqual([...CPU_SHADE_DEFAULT]);
     expect(cpuShadeFrom('none').size).toBe(0);
     expect([...cpuShadeFrom('flight, bogus,kitBasic')]).toEqual(['flight', 'kitBasic']);
+    expect([...cpuShadeFrom('kitBasic,kitVtx')]).toEqual(['kitBasic', 'kitVtx']);
     const plain = 'uniform vec3 diffuse;\nvoid main() { gl_FragColor = vec4(diffuse, 1.0); }';
     expect(rewriteCpuShader(plain, cpuShadeFrom(null))).toBe(plain);
     expect(CPU_SHADE_DEFAULT.some((n) => n.startsWith('x'))).toBe(false); // diagnostics never ship by default
@@ -281,6 +284,9 @@ describe('cpu tier', () => {
     f.scene.add(mesh);
     const cpu = installCpuTier(f.engine);
     cpu.beforeRender();
+    expect(mesh.material).toBe(solid); // the twins are opt-in
+    (f.engine as unknown as { __ctCpuShade: Set<string> }).__ctCpuShade.add(CPU_KIT_SHADE);
+    cpu.beforeRender();
     expect((mesh.material as THREE.Material).name).toBe('town-kit-solid-cpu');
     expect(cpu.info().kitSwapped).toBe(1);
     const shade = (f.engine as unknown as { __ctCpuShade: Set<string> }).__ctCpuShade;
@@ -290,10 +296,69 @@ describe('cpu tier', () => {
     shade.add(CPU_KIT_SHADE);
     cpu.beforeRender();
     expect(mesh.material).not.toBe(solid);
-    shade.add(CPU_KIT_PAT_SHADE); // patterns on: rebuilt with the vendor head
+    shade.add(CPU_KIT_PAT_SHADE).add('kitVtx'); // the per-vertex kit with patterns: rebuilt with the vendor head
     cpu.beforeRender();
     expect((mesh.material as THREE.Material).userData.ctCpuPat).toBe(true);
     cpu.dispose();
     expect(mesh.material).toBe(solid);
+  });
+
+  it('toon twin: captures the vendor hooks and re-hosts them on MeshBasic with the band per pixel', () => {
+    const engine = { uniforms: { uPassMode: { value: 0 }, uTime: { value: 0 }, uSunDir: { value: new THREE.Vector3(0, 1, 0) }, uCameraPos: { value: new THREE.Vector3() }, uTexelWorld: { value: 0.02 } }, toonUniforms: {}, params: null };
+    const glass = kitMaterial(engine, 'glass') as THREE.Material;
+    const h = toonHooksOf(glass)!;
+    expect(h).not.toBeNull();
+    expect(h.vHead).toContain('attribute vec2 aPat;');
+    expect(h.vBegin).toContain('vKitPat = aPat;');
+    expect(h.vProject).toContain('vToonWorld = (modelMatrix * tw).xyz;');
+    expect(h.fHead).toContain('float kitPattern(');
+    expect(h.fColor).toContain('kitPattern(vToonWorld');
+    const t = cheapToonMaterial(glass)!;
+    expect(t.defines).toHaveProperty('TOON_TONE_ATTR');
+    expect(t.blending).toBe(glass.blending);
+    const lib = THREE.ShaderLib.basic;
+    const sh = { uniforms: {} as Record<string, { value: unknown }>, vertexShader: lib.vertexShader, fragmentShader: lib.fragmentShader };
+    (t.onBeforeCompile as (s: unknown, r: unknown) => void)(sh, null);
+    expect(sh.uniforms.uSunDir).toBe(engine.uniforms.uSunDir);
+    expect(sh.vertexShader).toContain('vCtWN = normalize(mat3(modelMatrix) * ctOn);');
+    expect(sh.vertexShader.indexOf('vKitPat = aPat;')).toBeGreaterThan(sh.vertexShader.indexOf('#include <begin_vertex>'));
+    expect(sh.fragmentShader).toContain('vec3 totalEmissiveRadiance = vec3(0.0);');
+    expect(sh.fragmentShader).toContain('bandWeights(toonLit, vToonCut)');
+    expect(sh.fragmentShader).not.toContain('directionalLights');
+    // the vendor cut-away wrapper (town/cutaway.js) rides along: its attributes, the discard at main() and the rim
+    const engine2 = { ...engine, toonUniforms: {} };
+    const solid = kitMaterial(engine2, 'solid') as THREE.Material;
+    expect(patchCutMaterial(engine2, solid)).toBe(true);
+    const hc = toonHooksOf(solid)!;
+    expect(hc.vPre).toContain('attribute vec4 aTownPart;');
+    expect(hc.vProject).toContain('aTownPart.xyz');
+    expect(hc.fMain).toContain('discard');
+    expect(hc.fOpaque).toContain('townCutRim');
+    const tc = cheapToonMaterial(solid)!;
+    const shc = { uniforms: {} as Record<string, { value: unknown }>, vertexShader: lib.vertexShader, fragmentShader: lib.fragmentShader };
+    (tc.onBeforeCompile as (s: unknown, r: unknown) => void)(shc, null);
+    expect(shc.vertexShader.indexOf('attribute vec4 aTownPart;')).toBeLessThan(shc.vertexShader.indexOf('void main() {'));
+    expect(shc.fragmentShader).toContain('if (townDiscard(vToonLightPos)) discard;');
+    expect(shc.fragmentShader).toContain('townCutRim(vToonWorld');
+    expect(shc.uniforms.uCutOn).toBeDefined();
+    // a material that is not a vendor toon: no twin
+    expect(cheapToonMaterial(new THREE.MeshLambertMaterial())).toBeNull();
+  });
+
+  it('twinPick: the kit by material name, the ground by mesh name, each behind its shade name', () => {
+    const kitM = { name: 'town-kit-solid' } as THREE.Material;
+    const softM = { name: 'town-kit-soft' } as THREE.Material;
+    const gM = { name: '' } as THREE.Material;
+    const ground = { name: 'ground-terrain' } as THREE.Mesh;
+    const house = { name: 'house-1' } as THREE.Mesh;
+    const pick = (names: string[]) => twinPick(new Set(names));
+    expect(pick([CPU_KIT_SHADE])(house, kitM)).toBe('twin');
+    expect(pick([CPU_KIT_SHADE, 'kitVtx'])(house, kitM)).toBe('kit');
+    expect(pick([CPU_KIT_SHADE, 'kitVtx', CPU_KIT_PAT_SHADE])(house, kitM)).toBe('kitPat');
+    expect(pick([CPU_KIT_SHADE, CPU_TWIN_KIT_SHADE])(house, kitM)).toBe('twin');
+    expect(pick([CPU_KIT_SHADE])(house, softM)).toBeNull();
+    expect(pick([CPU_KIT_SHADE])(ground, gM)).toBeNull();
+    expect(pick([CPU_GROUND_SHADE])(ground, gM)).toBe('twin');
+    expect(pick([CPU_GROUND_SHADE])(house, kitM)).toBeNull();
   });
 });

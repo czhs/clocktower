@@ -26,6 +26,10 @@ case "$P" in
   kit)
     $T --tiers cpu --levers shadeToonKit,shadeKitPat,unlitGround,unlitChars,charsHidden,res135,postOff \
       --sets "${SETS:-v30=shadeToonKit;kitPat=shadeKitPat}" --out "$OUT" ;;
+  # v3.1: the generic toon twin (kit per pixel, ground) vs the per-vertex kit
+  twin)
+    $T --tiers cpu --levers shadeToonKit,shadeKitPat,shadeKitTwin,shadeGroundTwin,shadeTwins,unlitChars,charsHidden \
+      --sets "${SETS:-twins=shadeTwins;v30=shadeToonKit}" --out "$OUT" ;;
   gpu)
     $T --tiers "${TIERS:-high,low,cpu}" --levers none --gl gpu --out "$OUT" ;;
   *) echo "unknown profile $P" >&2; exit 2 ;;

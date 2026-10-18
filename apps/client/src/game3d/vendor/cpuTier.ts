@@ -18,8 +18,10 @@
 //                both sides of a branch (masked SIMD), so a uniform that switches them off saves nothing (measured);
 //                they are compiled out with two macros (CPU_TOON_MACROS) appended to a fragment chunk three includes
 //                after the vendor's shader head and before main()
-//   kit (v3.1)   the town kit walls / roofs (town-kit-solid / -glass) drawn with a MeshBasicMaterial twin that
-//                evaluates the same toon band per vertex (one colour varying instead of ~8): see "cheap kit" below
+//   twins (v3.1) the town kit walls / roofs (town-kit-solid / -glass) and the ground drawn with a MeshBasicMaterial
+//                "toon twin" that re-hosts the vendor's own hooks (patterns, tones, the cut-away) with the same toon
+//                band per pixel, without the MeshLambertMaterial program around it: see "toon twin" below
+//                (the per-vertex "cheap kit" is kept as a diagnostic: it does not carry the cut-away)
 //   rewrites     the final program text through named rewrites (the ground's intro-flight branches -> constant 0)
 //
 // ct.debug.cpuShade (localStorage) overrides the v3.1 set for A/B runs: 'none' = the v3.0 cpu tier, or a comma list.
@@ -127,8 +129,11 @@ export const CPU_REWRITES: readonly CpuRewrite[] = [
 /** What the cpu tier applies by default: the shipping rewrites + the kit swap (ct.debug.cpuShade overrides: 'none' or
  *  a comma list). Measured and left out (v3.1, docs/perf-v3/cpu.md §7): grid lane setts instead of the voronoi, cheap kit
  *  patterns, hard toon bands — all within noise (< 5 %), because per-pixel arithmetic is not where the frame goes. */
-export const CPU_SHADE_DEFAULT: readonly string[] = [...CPU_REWRITES.filter((r) => !r.diag).map((r) => r.name), 'kitBasic'];
-const SHADE_NAMES = new Set([...CPU_REWRITES.map((r) => r.name), 'kitBasic', 'kitPat']);
+// The twins ('kitBasic', 'groundTwin') are opt-in: once they carry the vendor cut-away (as they must: the game uses
+// it) they measure within noise of the toon materials (190 vs 191 ms), because the cut-away's per-pixel test is the
+// expensive part (docs/perf-v3/cpu.md §7). Default = the pixel-identical rewrite only.
+export const CPU_SHADE_DEFAULT: readonly string[] = CPU_REWRITES.filter((r) => !r.diag).map((r) => r.name);
+const SHADE_NAMES = new Set([...CPU_REWRITES.map((r) => r.name), 'kitBasic', 'kitPat', 'kitVtx', 'kitTwin', 'groundTwin']);
 
 /** The rewrite set from a ct.debug.cpuShade value: null / '' = the default; 'none' = no rewrites; else a comma list. */
 export function cpuShadeFrom(v: string | null | undefined): Set<string> {
@@ -269,6 +274,12 @@ export const CPU_KIT_SWAP = /^town-kit-(solid|glass)$/;
 export const CPU_KIT_SHADE = 'kitBasic';
 /** The shade-set name that keeps the vendor's kit patterns (block joints, boards, thatch) on the swapped kit. */
 export const CPU_KIT_PAT_SHADE = 'kitPat';
+/** The shade-set name that draws the kit with the generic per-pixel toon twin instead (see "toon twin"). */
+export const CPU_TWIN_KIT_SHADE = 'kitTwin';
+/** The shade-set name that draws the ground with the generic toon twin. */
+export const CPU_GROUND_SHADE = 'groundTwin';
+/** The vendor ground mesh (town/pieces/ground.js: the drawn 20 m tiles share this name and the material). */
+export const CPU_GROUND_MESH = /^ground-terrain$/;
 
 type U = { value: unknown };
 /** The uniform objects a vendor toon material binds (captured by running its onBeforeCompile on an empty shader). */
@@ -410,8 +421,157 @@ export function cheapKitMaterial(src: THREE.Material, patterns = false, uniforms
   return m;
 }
 
-/** Swap (on) or restore (off) the kit materials of every mesh under `root`; `swapped` remembers mesh -> source. */
-export function swapKit(root: THREE.Object3D, on: boolean, swapped: Map<THREE.Mesh, THREE.Material>, cache: Map<THREE.Material, THREE.Material>, patterns = false): number {
+// ------------------------------------------------------------------------------------------ toon twin (v3.1)
+// The generic twin: the vendor toon material's OWN shader hooks (vertex head / normal / begin / project hooks, the
+// fragment head and the albedo + tone block after <color_fragment>), captured by running its onBeforeCompile on a
+// marker shader, re-hosted on a MeshBasicMaterial with the toon band evaluated per PIXEL from the world normal (the
+// vendor's bandWeights / shadowDefinition / hemiTerm / toneSat / rampFor from that head). At the cpu tier (no
+// shadows, clouds, point lights, normal pass) it draws the same pixels as the vendor's lighting block, without the
+// MeshLambertMaterial program around it. Only for materials without lightMod / cloud / lightNormal / outgoing hooks
+// (the ground and the kit; never characters or canopy-patched materials).
+
+export interface ToonHooks {
+  vHead: string;
+  vNormal: string;
+  vBegin: string;
+  vProject: string;
+  fHead: string;
+  fColor: string;
+  /** What wrappers (the vendor cut-away, town/cutaway.js) insert before / at the start of main() and at the output. */
+  vPre: string;
+  vMain: string;
+  fPre: string;
+  fMain: string;
+  fOpaque: string;
+}
+const between = (s: string, a: string, b: string): string | null => {
+  const i = s.indexOf(a);
+  const j = i < 0 ? -1 : s.indexOf(b, i + a.length);
+  return i < 0 || j < 0 ? null : s.slice(i + a.length, j);
+};
+/** The vendor toon hooks of a material (null when its onBeforeCompile does not fill the marker shader as expected). */
+export function toonHooksOf(m: THREE.Material): ToonHooks | null {
+  const fake = {
+    uniforms: {} as Record<string, U>,
+    vertexShader: '#include <common>\n//@A\nvoid main() {\n//@M\n#include <beginnormal_vertex>\n//@B\n#include <begin_vertex>\n//@C\n#include <project_vertex>\n//@D\n',
+    fragmentShader: '#include <common>\n//@F\nvoid main() {\n//@N\n#include <color_fragment>\n//@G\n#include <opaque_fragment>\n//@H\n',
+    defines: {},
+  };
+  try {
+    (m.onBeforeCompile as (s: unknown, r: unknown) => void)(fake, null);
+  } catch {
+    return null;
+  }
+  const v = fake.vertexShader;
+  const f = fake.fragmentShader;
+  const h = {
+    vHead: between(v, '#include <common>', '//@A'),
+    vNormal: between(v, '#include <beginnormal_vertex>', '//@B'),
+    vBegin: between(v, '#include <begin_vertex>', '//@C'),
+    vProject: between(v, '#include <project_vertex>', '//@D'),
+    fHead: between(f, '#include <common>', '//@F'),
+    fColor: between(f, '#include <color_fragment>', '//@G'),
+    vPre: between(v, '//@A', 'void main() {'),
+    vMain: between(v, 'void main() {', '//@M'),
+    fPre: between(f, '//@F', 'void main() {'),
+    fMain: between(f, 'void main() {', '//@N'),
+    fOpaque: between(f, '//@G', '//@H'),
+  };
+  if (Object.values(h).some((x) => x === null)) return null;
+  if (!h.fOpaque!.includes('#include <opaque_fragment>')) return null;
+  if (!h.vProject!.includes('vToonWorld') || !h.fHead!.includes('vec3 bandWeights(') || !h.fColor!.includes('vec3 toonMid')) return null;
+  return h as ToonHooks;
+}
+
+const TWIN_BAND = /* glsl */ `
+{
+  vec3 toonN = normalize(vCtWN);
+  float toonNdotL = dot(toonN, normalize(uSunDir));
+  float toonUpY = toonN.y;
+  float toonLit = max(toonNdotL, 0.0);
+  if (toonUpY > 0.55 && toonNdotL > 0.0) toonLit = max(toonLit, uToneShape.z);
+  vec3 toonW = bandWeights(toonLit, vToonCut);
+  float toonDef = shadowDefinition(toonNdotL);
+  toonHi = toneSat(toonHi); toonMid = toneSat(toonMid); toonSh = toneSat(toonSh);
+  vec3 toonShTone = toonSh * rampFor(uRampSh, toonSh) * toonDef * hemiTerm(toonUpY);
+  vec3 ctOut = toonW.z * toonHi * rampFor(uRampHi, toonHi) + toonW.y * toonMid * rampFor(uRampMid, toonMid) + toonW.x * toonShTone;
+  #ifdef TOON_UNLIT_SH
+    ctOut = toonSh * rampFor(uRampSh, toonSh);
+  #endif
+  diffuseColor.rgb = ctOut + totalEmissiveRadiance;
+}
+`;
+
+/** The generic toon twin of a vendor toon material (null when its hooks cannot be captured). */
+export function cheapToonMaterial(src: THREE.Material, hooks: ToonHooks | null = toonHooksOf(src), uniforms: Record<string, U> = toonUniformsOf(src)): THREE.MeshBasicMaterial | null {
+  if (!hooks) return null;
+  const s = src as THREE.MeshLambertMaterial;
+  const m = new THREE.MeshBasicMaterial({ color: s.color, map: s.map, vertexColors: s.vertexColors, side: s.side, transparent: s.transparent, opacity: s.opacity, alphaTest: s.alphaTest, depthWrite: s.depthWrite, depthTest: s.depthTest });
+  m.blending = s.blending;
+  m.blendEquation = s.blendEquation;
+  m.blendSrc = s.blendSrc;
+  m.blendDst = s.blendDst;
+  m.blendEquationAlpha = s.blendEquationAlpha;
+  m.blendSrcAlpha = s.blendSrcAlpha;
+  m.blendDstAlpha = s.blendDstAlpha;
+  m.name = `${src.name || 'toon'}-cpu`;
+  m.defines = { ...(s.defines ?? {}) };
+  m.onBeforeCompile = (sh) => {
+    Object.assign(sh.uniforms, uniforms);
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', `#include <common>\n${hooks.vHead}\nvarying vec3 vCtWN;`)
+      .replace(
+        '#include <begin_vertex>',
+        `#if !defined( USE_ENVMAP ) && !defined( USE_SKINNING )
+  vec3 objectNormal = vec3( normal );
+#endif
+${hooks.vNormal}
+{
+  vec3 ctOn = objectNormal;
+  #ifdef USE_INSTANCING
+    ctOn = mat3(instanceMatrix) * ctOn;
+  #endif
+  vCtWN = normalize(mat3(modelMatrix) * ctOn);
+}
+#include <begin_vertex>
+${hooks.vBegin}`,
+      )
+      .replace('#include <project_vertex>', `#include <project_vertex>\n${hooks.vProject}`)
+      .replace('void main() {', `${hooks.vPre}\nvoid main() {\n${hooks.vMain}`);
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', `#include <common>\n${hooks.fHead}\nvarying vec3 vCtWN;`)
+      .replace('#include <color_fragment>', `#include <color_fragment>\nvec3 totalEmissiveRadiance = vec3(0.0);\n${hooks.fColor}\n${TWIN_BAND}`)
+      .replace('#include <opaque_fragment>', hooks.fOpaque)
+      .replace('void main() {', `${hooks.fPre}\nvoid main() {\n${hooks.fMain}`);
+  };
+  const key = `ct-cpu-twin-${src.uuid}`;
+  m.customProgramCacheKey = () => key;
+  m.userData.ctCpuSource = src;
+  return m;
+}
+
+/** Which twin a mesh's material gets at the cpu tier: 'kit' / 'kitPat' (per-vertex kit), 'twin' (generic), or null. */
+export type TwinPick = (mesh: THREE.Mesh, mat: THREE.Material) => string | null;
+
+/** The cpu tier's pick from the shade set: the kit layers by material name, the ground by mesh name. */
+export function twinPick(shade: ReadonlySet<string>): TwinPick {
+  // the per-vertex kit ('kit' / 'kitPat') does not carry the vendor cut-away: diagnostics only (kitPat / kitVtx names)
+  const kit = shade.has(CPU_KIT_SHADE) ? (shade.has('kitVtx') ? (shade.has(CPU_KIT_PAT_SHADE) ? 'kitPat' : 'kit') : 'twin') : null;
+  const ground = shade.has(CPU_GROUND_SHADE) ? 'twin' : null;
+  return (mesh, mat) => (CPU_KIT_SWAP.test(mat.name) ? kit : CPU_GROUND_MESH.test(mesh.name) ? ground : null);
+}
+
+function makeTwin(src: THREE.Material, key: string): THREE.Material | null {
+  const m = key === 'twin' ? cheapToonMaterial(src) : cheapKitMaterial(src, key === 'kitPat');
+  if (m) m.userData.ctCpuKey = key;
+  return m;
+}
+
+/**
+ * Swap every toon material under `root` that `pick` names for its cpu twin (cached per source + kind), or restore
+ * them all (on = false). `swapped` remembers mesh -> source. Returns how many meshes changed.
+ */
+export function swapTwins(root: THREE.Object3D, on: boolean, swapped: Map<THREE.Mesh, THREE.Material>, cache: Map<THREE.Material, THREE.Material>, pick: TwinPick): number {
   let n = 0;
   if (!on) {
     for (const [mesh, src] of swapped) {
@@ -424,18 +584,30 @@ export function swapKit(root: THREE.Object3D, on: boolean, swapped: Map<THREE.Me
   root.traverse((o) => {
     const mesh = o as THREE.Mesh;
     const mat = mesh.material as THREE.Material | THREE.Material[] | undefined;
-    if (!mesh.isMesh || !mat || Array.isArray(mat) || !CPU_KIT_SWAP.test(mat.name) || !(mat.userData as { toon?: unknown }).toon) return;
+    if (!mesh.isMesh || !mat || Array.isArray(mat) || !(mat.userData as { toon?: unknown }).toon) return;
+    const key = pick(mesh, mat);
+    if (!key) return;
     let cheap = cache.get(mat);
-    if (cheap && cheap.userData.ctCpuPat !== patterns) {
+    if (cheap && cheap.userData.ctCpuKey !== key) {
       cheap.dispose();
+      cache.delete(mat);
       cheap = undefined;
     }
-    if (!cheap) cache.set(mat, (cheap = cheapKitMaterial(mat, patterns)));
+    if (!cheap) {
+      const made = makeTwin(mat, key);
+      if (!made) return;
+      cache.set(mat, (cheap = made));
+    }
     mesh.material = cheap;
     swapped.set(mesh, mat);
     n++;
   });
   return n;
+}
+
+/** The kit swap alone (per-vertex kit twin; tests / probes). */
+export function swapKit(root: THREE.Object3D, on: boolean, swapped: Map<THREE.Mesh, THREE.Material>, cache: Map<THREE.Material, THREE.Material>, patterns = false): number {
+  return swapTwins(root, on, swapped, cache, (_m, mat) => (CPU_KIT_SWAP.test(mat.name) ? (patterns ? 'kitPat' : 'kit') : null));
 }
 
 export function installCpuTier(engine: CpuEngine): CpuTier {
@@ -468,10 +640,9 @@ export function installCpuTier(engine: CpuEngine): CpuTier {
   } as typeof r.render;
   offShadows();
   hideLights(engine.scene, hidden);
-  const kitSwapped = new Map<THREE.Mesh, THREE.Material>();
-  const kitCache = new Map<THREE.Material, THREE.Material>();
-  let kitOn = false;
-  let kitPat = false;
+  const twinSwapped = new Map<THREE.Mesh, THREE.Material>();
+  const twinCache = new Map<THREE.Material, THREE.Material>();
+  let twinSig: string | null = null;
   return {
     beforeRender() {
       offShadows();
@@ -483,27 +654,26 @@ export function installCpuTier(engine: CpuEngine): CpuTier {
           off++;
         }
       passesOff = off;
-      const wantKit = shade.has(CPU_KIT_SHADE);
-      const wantPat = shade.has(CPU_KIT_PAT_SHADE);
-      if (kitOn && wantPat !== kitPat) swapKit(engine.scene, false, kitSwapped, kitCache); // rebuilt below
-      if (wantPat !== kitPat) kitOn = false;
-      kitPat = wantPat;
       const rescan = ++frames % RESCAN_FRAMES === 1;
       if (rescan) {
         hideLights(engine.scene, hidden);
         findHiddenMeshes(engine.scene, hiddenMeshes);
       }
-      // kit pieces built later (rooms, rebuilt houses) are picked up by the re-scan
-      if (wantKit !== kitOn || (wantKit && rescan)) swapKit(engine.scene, wantKit, kitSwapped, kitCache, kitPat);
-      kitOn = wantKit;
+      // the twins follow the shade set (a probe may change it); pieces built later are picked up by the re-scan
+      const sig = [...shade].sort().join(',');
+      if (sig !== twinSig) {
+        swapTwins(engine.scene, false, twinSwapped, twinCache, twinPick(shade));
+        twinSig = sig;
+        swapTwins(engine.scene, true, twinSwapped, twinCache, twinPick(shade));
+      } else if (rescan) swapTwins(engine.scene, true, twinSwapped, twinCache, twinPick(shade));
       for (const m of hiddenMeshes) m.visible = false;
     },
-    info: () => ({ lightsHidden: hidden.size, meshesHidden: hiddenMeshes.size, normalSkipped, passesOff, shade: [...shade], shadersRewritten: srcHook?.changed() ?? 0, kitSwapped: kitSwapped.size }),
+    info: () => ({ lightsHidden: hidden.size, meshesHidden: hiddenMeshes.size, normalSkipped, passesOff, shade: [...shade], shadersRewritten: srcHook?.changed() ?? 0, kitSwapped: twinSwapped.size }),
     dispose() {
       // the sources go back into the scene first: disposeEngine frees what the scene holds
-      swapKit(engine.scene, false, kitSwapped, kitCache);
-      for (const m of kitCache.values()) m.dispose();
-      kitCache.clear();
+      swapTwins(engine.scene, false, twinSwapped, twinCache, () => null);
+      for (const m of twinCache.values()) m.dispose();
+      twinCache.clear();
       if (r.render !== prevRender) r.render = prevRender;
       restoreChunks();
       srcHook?.restore();

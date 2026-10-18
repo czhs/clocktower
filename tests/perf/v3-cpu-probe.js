@@ -258,8 +258,12 @@
     shadeNone: reshade([]),
     // the v3.0 cpu tier's look (no kit swap) / the v3.1 default (vendor/cpuTier.ts CPU_SHADE_DEFAULT)
     shadeToonKit: reshade(['flight']),
-    shadeDefault: reshade(['flight', 'kitBasic']),
-    shadeKitPat: reshade(['flight', 'kitBasic', 'kitPat']),
+    shadeDefault: reshade(['flight', 'kitBasic', 'groundTwin']),
+    shadeKitPat: reshade(['flight', 'kitBasic', 'kitVtx', 'kitPat']),
+    shadeKitVtx: reshade(['flight', 'kitBasic', 'kitVtx']),
+    shadeKitTwin: reshade(['flight', 'kitBasic', 'kitTwin']),
+    shadeGroundTwin: reshade(['flight', 'kitBasic', 'groundTwin']),
+    shadeTwins: reshade(['flight', 'kitBasic', 'kitTwin', 'groundTwin']),
     // diagnostics (dead-code elimination of one family's fragment shading), on top of the v3.0 look
     shadeKitFlat: reshade(['flight', 'xKitFlat']),
     shadeGroundFlat: reshade(['flight', 'xGroundFlat']),

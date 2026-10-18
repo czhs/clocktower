@@ -1742,6 +1742,20 @@ additive clocktower hook, vendor `docs/TOWN.md` §13). Game-side wiring per item
 - (WP3) `demo/api.js createCutController`: optional extra protected points (remote avatars), or more than 3 boxes;
   today only the own player gets the hard cut-away box and every other avatar relies on the game's canopy dither
   (`world/canopy.ts`, D1), which covers crowns / soft dressing only.
+- (v3.1 cpu) `town/cutaway.js`: a cheap cut-away variant for software GL (or a build flag the game can set at its
+  `cpu` tier): no section rim (`townCutRim` = 4 extra `townCut` evaluations per pixel), and `townCut` / `townDiscard`
+  with the lift / box loops sized to the live counts at compile time (e.g. `#define`d `CUT_MAX_BOXES` /
+  `CUT_MAX_LIFTS` the patch reads, so the game can compile 1 box / 1 lift). Measured on SwiftShader
+  (docs/perf-v3/cpu.md §7): the toon arithmetic itself is cheap (the ground and kit patterns plus the whole lighting
+  block dead-code-eliminated: −9 %); a MeshBasic host WITHOUT the cut-away hooks is −48 % of a cpu frame, the same
+  host WITH them is −5 %, so the cut-away code is most of what is left of the colour pass. SwiftShader runs every
+  side of every branch, so a uniform that disables the rim / loops saves nothing; it has to be compiled out.
+- (v3.1 cpu) `materials/toon.js`: optionally a supported MeshBasic-hosted toon variant (same hooks, the band from
+  `bandWeights(N·L)` per pixel, no shadow / cloud / penumbra / point-light / pass-mode code). The game does this from
+  outside today (`vendor/cpuTier.ts` "toon twin", opt-in: it captures each material's hook text by running its
+  `onBeforeCompile` on a marker shader), which is brittle and cannot serve `lightMod` / `outgoing` materials
+  (characters). Also: a `flight: false` build flag for `town/pieces/ground.js` (the `uCamFlight` branches; the game
+  compiles them out with a program-text rewrite).
 
 ### 9.3 Risks
 
