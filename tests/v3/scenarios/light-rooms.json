@@ -1,0 +1,100 @@
+{
+ "name": "light-rooms",
+ "world": "v3",
+ "viewport": [
+  960,
+  540
+ ],
+ "tier": "low",
+ "members": [
+  {
+   "pid": "me",
+   "name": "You",
+   "cast": "frog",
+   "seat": 0
+  },
+  {
+   "pid": "p1",
+   "name": "Agnes",
+   "cast": "mushroom",
+   "seat": 1
+  },
+  {
+   "pid": "p2",
+   "name": "Bart",
+   "cast": "fox",
+   "seat": 2
+  },
+  {
+   "pid": "p3",
+   "name": "Cordelia",
+   "cast": "owl",
+   "seat": 3
+  },
+  {
+   "pid": "p4",
+   "name": "Desmond",
+   "cast": "crow",
+   "seat": 4
+  },
+  {
+   "pid": "p5",
+   "name": "Eloise",
+   "cast": "nicksong",
+   "seat": 5
+  },
+  {
+   "pid": "st",
+   "name": "The Storyteller",
+   "cast": "storyteller",
+   "role": "storyteller",
+   "seat": null
+  }
+ ],
+ "spawn": {
+  "x": 360,
+  "y": 420
+ },
+ "steps": [
+  {
+   "at": 0,
+   "game": {
+    "phase": "night",
+    "dayNumber": 2
+   }
+  },
+  {
+   "at": 1500,
+   "teleport": {
+    "x": 856,
+    "y": 408,
+    "location": "bld:house-5",
+    "reason": "door"
+   }
+  },
+  {
+   "at": 4500,
+   "teleport": {
+    "x": 360,
+    "y": 152,
+    "location": "bld:clocktower",
+    "reason": "door"
+   }
+  }
+ ],
+ "shots": [
+  {
+   "at": 1000,
+   "name": "light-rooms-night-out"
+  },
+  {
+   "at": 4000,
+   "name": "light-rooms-house-5"
+  },
+  {
+   "at": 7500,
+   "name": "light-rooms-tower"
+  }
+ ],
+ "duration": 8500
+}

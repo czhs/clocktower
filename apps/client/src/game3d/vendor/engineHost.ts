@@ -268,6 +268,13 @@ export function createEngineHost(parent: HTMLElement, opts: EngineHostOptions): 
           // (ct.debug.fps < 0: uncapped, for perf runs that measure per-frame cost on an unthrottled browser)
           maxFps: opts.fpsLimit !== undefined && opts.fpsLimit < 0 ? 0 : V3_MAX_FPS,
           step(t, dtMs) {
+            // v33-light (perf stills): `window.__ctV3Freeze = <seconds>` renders every frame at that time with dt 0
+            // (pixel diffs of A/B builds at the same instant); debug only, unset in the game
+            const fz = (window as Window & { __ctV3Freeze?: unknown }).__ctV3Freeze;
+            if (typeof fz === 'number') {
+              t = fz;
+              dtMs = 0;
+            }
             frame(t, dtMs);
             if (disposed) return;
             renderNow(t);

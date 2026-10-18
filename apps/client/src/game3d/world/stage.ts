@@ -28,6 +28,7 @@ import type { EngineHost } from '../vendor/engineHost';
 import { buildDoorBoards, buildHollowmere, canopyMaterials, createCutDriver, createTowerFace, daisApi, releaseTown, removeDaisCandles, doorAngles, gateHouseLights, groundHeight, houseApis, houseLightAnchors, houseProxies, lifePiece, lifeStats, poolLights, seatStones, towerDials, towerDoorApi, voteCameraPreset, warmViews, warmWholeTown, type BuiltTown, type HouseApi, type HouseBox, type VendorCameraShot } from '../vendor/town';
 import { buildTowerInterior, type TowerRoomFacade } from '../vendor/interiors';
 import { createTownTime, presetForHour, type TownTime } from '../vendor/time';
+import { installDeferredPool, installLightStats, installSplitShadows, leversFor, readLightSwitches } from '../vendor/light';
 import { createDaisDriver, daisDebug, daisPlan, showcasePlan, type DaisApi, type DaisPlan } from './dais';
 import { boardedHouses, createBoardDriver, createDoorDriver, doorTiles } from './doors';
 import { createHourClock, darkness, HOURS, stageHour, type HourInput, type StagePhase } from './hour';
@@ -211,6 +212,12 @@ export async function createStage(host: EngineHost, o: StageOptions): Promise<St
   let canopyPatched = 0;
   if (!canopyOff) for (const m of canopyMaterials(town)) if (patchCanopyMaterial(m, canopyU)) canopyPatched++;
   const canopy = createCanopyFade(canopyU);
+  // v3.3 perf prototype (v33-light, docs/perf-v3/light.md): split sun shadows / deferred light pool behind
+  // ct.debug.v3light (read once per build; nothing is installed when unset). Before the warm-up compiles anything.
+  const lightSw = leversFor(tier, readLightSwitches());
+  const lightStats = lightSw.stats ? installLightStats(engine) : null;
+  const splitShadows = lightSw.shadow ? installSplitShadows(engine, tier) : null;
+  const lightPool = lightSw.pool ? installDeferredPool(engine) : null;
   // a reused point pool (one object per avatar slot, never per frame)
   const canopyPts: CanopyPoint[] = [];
   let canopyN = 0;
@@ -451,6 +458,7 @@ export async function createStage(host: EngineHost, o: StageOptions): Promise<St
       }
       warm = { town: townP, room: roomP, programs: engine.renderer.info.programs?.length ?? 0 };
       isReady = true;
+      splitShadows?.setLive();
       time.ready();
     },
     hour: () => clock.hour,
@@ -484,6 +492,16 @@ export async function createStage(host: EngineHost, o: StageOptions): Promise<St
     },
     debug: () => ({
       dais: () => daisDebug(dais.shown),
+      light: () => ({
+        switches: lightSw,
+        renderAt: lightStats?.renderAt() ?? null,
+        shadow: lightStats?.shadow() ?? null,
+        split: splitShadows?.info() ?? null,
+        pool: lightPool?.info() ?? null,
+        programs: engine.renderer.info.programs?.length ?? 0,
+        calls: engine.renderer.info.render.calls,
+      }),
+      lightReset: () => lightStats?.reset(),
       stage: () => ({
         hour: +clock.hour.toFixed(3),
         targetHour: +targetHour.toFixed(3),
@@ -511,6 +529,9 @@ export async function createStage(host: EngineHost, o: StageOptions): Promise<St
       destroyed = true;
       for (const off of offs.splice(0)) off();
       rooms.dispose();
+      lightPool?.dispose();
+      splitShadows?.dispose();
+      lightStats?.dispose();
       shadowMap.autoUpdate = true;
       towerFace?.dispose();
       // the piece registry: a closure the vendor keeps (V8 allocation-site feedback of a piece api literal) must not
