@@ -214,15 +214,20 @@ v2; v3.0 is on the dev service, see "v3 handoff" below.)
 
 ### v3 handoff (2026-10-18 evening, after the v3.0 release — RESTART FROM HERE)
 
-- **v3.0 = the commit "v3.0: release gate + docs" on `v3-game`, tag `v3.0`, deployed to the DEV service only**
+- **v3.0 = the commit "v3.0: release gate + docs" on `v3-game`, tag `v3.0`, deployed to dev, then to PROD (below)**
   (`clocktower-dev`, 127.0.0.1:3001, reached through `scripts/dev.sh`; the tunnel serves only prod). Contents: C1 + WP8
   (`/` = v3, `/v2/` = v2, the v3 loading screen, no voting-circle candles, laptop-first note) + the merged perf branches
   stage (low-tier shadow cadence), ui, learn (60 fps cap), server (Storyteller view throttle, path planning, LiveKit
   calls; deflate opt-in), cpu (`cpu` tier on software GL) + the cherry-picked client commit (smaller `town3d`, parallel
   fetches). Gate: docs/test-results.md "v3.0 release gate". Release note: docs/RELEASE-v3.md.
-- **Prod still runs v2.4 (`4ca13aa`). Deploy v3 to prod only after the user says so.** Prod keeps `/v3-art-demo/`
-  through its `DEMOS_DIR`; `v3-game` carries the same route (`app.ts`), so a future prod deploy keeps it as long as
-  `prod.env` keeps `DEMOS_DIR`.
+- **PROD runs v3.0 since 2026-10-18 13:45 PDT** (user: "I want 3.0 published to whatever is live in
+  clocktower.chrisshi.com"): `scripts/deploy-hshi-u1.sh prod 4be9bb4` exit 0 (pre-deploy backup by the script + a manual
+  `clocktower-backup-prod` run first; prod had no joins in the 3 h before). Verified: `/internal/version` = 4be9bb4;
+  public `/`, `/v2/`, `/lobby/x`, `/v2/lobby/x` serve the app; `/v3-art-demo/` still serves "Hollowmere demo" (prod.env
+  `DEMOS_DIR`); `scripts/verify-public-endpoint.sh` all pass except its two loopback checks, which fail only because it
+  ssh-es the `ct-u1` alias from the host itself (`ss -tln`: 3000 and 3001 listen on 127.0.0.1 only). Rollback:
+  `scripts/deploy-hshi-u1.sh prod 4ca13aa` (v2.4, release kept). Dev also runs 4be9bb4. Future v3.x prod deploys still
+  need the user's word each time.
 - **Next = v3.1:** (1) the remaining work on the perf branches `v3-perf-cpu`, `v3-perf-client` and `v3-perf-server`
   (their agents were still running at the release; review each as text and re-gate); (2) C2 QA on the host GPU plus a
   small `CT_GL=swiftshader` set, the art checks, and one combined fix round; (3) the plan in
