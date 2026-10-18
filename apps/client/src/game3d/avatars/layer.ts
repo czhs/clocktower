@@ -33,9 +33,20 @@ import { createNpcFolk, DAYLIKE, npcHomesFor, type Npc, type NpcFolk } from './n
 import { fallbackView, pxToMetres } from './project';
 import { nextBuild, type BuildCandidate } from './queue';
 import { createRigBody } from './rigBody';
+import { createSpriteBody, spriteDebug } from './sprites/spriteBody';
+import { releaseSheets, sheetStats } from './sprites/bake';
 import { RIM_DEFAULT } from './ghostTint';
 import { dir8, toFacing } from '../../game/rules/input';
 import { LOW_TIER_AMBIENCE } from '../../game/fx/tier';
+
+/** v3.3 sprites prototype: localStorage['ct.debug.v3sprites'] = '1' draws rig specs as baked sprites (sprites/). */
+export function spritesEnabled(): boolean {
+  try {
+    return globalThis.localStorage?.getItem('ct.debug.v3sprites') === '1';
+  } catch {
+    return false;
+  }
+}
 
 /** Low tier: characters farther than this from the camera target skip the normal pass and cast no shadow (§4). */
 export const LOD_FAR_M = 12;
@@ -280,12 +291,14 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
   };
 
   // ------------------------------------------------------------------ builds
-  type Attempt = { kind: 'rig'; spec: string; tint: string | null } | { kind: 'billboard'; id: string; tint: string | null };
+  type Attempt = { kind: 'rig' | 'sprite'; spec: string; tint: string | null } | { kind: 'billboard'; id: string; tint: string | null };
+  const sprites = spritesEnabled();
   const attemptsFor = (e: Entry): Attempt[] => {
     const cm = castMap(e.castId);
     const pinTint = standinTint(e.pid ?? e.key);
     const standin: Attempt = { kind: 'rig', spec: STANDIN_SPEC, tint: pinTint };
     const out: Attempt[] = [];
+    if (cm.spec && sprites) out.push({ kind: 'sprite', spec: cm.spec, tint: null });
     if (cm.spec) out.push({ kind: 'rig', spec: cm.spec, tint: null });
     if (cm.fallback === 'billboard' && hasBillboardArt(e.castId)) out.push({ kind: 'billboard', id: e.castId, tint: null });
     out.push(standin);
@@ -306,7 +319,11 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
     const run = async (): Promise<{ body: AvatarBody; tint: string | null } | null> => {
       for (const a of attempts) {
         try {
-          if (a.kind === 'rig') {
+          if (a.kind === 'sprite') {
+            const body = await createSpriteBody(engine, a.spec, { x: at.X, z: at.Z, face, heightAt: groundAt, tint: a.tint });
+            return { body, tint: a.tint };
+          }
+          if (a.kind !== 'billboard') {
             const body = await createRigBody(engine, a.spec, { x: at.X, z: at.Z, face, heightAt: groundAt, lite, tint: a.tint, lantern: e.carriesLantern });
             return { body, tint: a.tint };
           }
@@ -314,7 +331,7 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
           return { body, tint: a.tint };
         } catch (err) {
           if (destroyed || e.removed || gen !== e.gen) return null;
-          console.warn(`[avatars] ${a.kind} '${a.kind === 'rig' ? a.spec : a.id}' for cast '${e.castId}' failed:`, (err as Error)?.message ?? err);
+          console.warn(`[avatars] ${a.kind} '${a.kind !== 'billboard' ? a.spec : a.id}' for cast '${e.castId}' failed:`, (err as Error)?.message ?? err);
         }
       }
       return null;
@@ -629,6 +646,7 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
       entries.clear();
       warmCheck.clear();
       releaseBillboardSheets(engine as object);
+      releaseSheets(engine as object);
       warmRT?.dispose();
       warmRT = null;
       doneSelf();
@@ -661,6 +679,8 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
           })),
         /** shader pre-warm: builds pre-compiled, resolved / timed out, first frames that still compiled (misses; unchecked = another pre-warm ran in between), total ms */
         avatarsWarm: () => ({ ...warm, ms: Math.round(warm.ms) }),
+        /** v3.3 sprites prototype: live sprite bodies, re-bakes, baked sheets (bake ms, atlas bytes) */
+        sprites: async () => ({ enabled: sprites, ...spriteDebug, sheets: await sheetStats(engine as object) }),
       };
     },
 
