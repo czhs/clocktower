@@ -14,6 +14,8 @@
 // Until the sheet has loaded (or for an id the sheet does not have yet) a small silhouette in the
 // character's own colour is drawn instead, so layouts never jump and nothing is ever blank.
 // The manifest is looked up with import.meta.glob; the image URLs (WebP or PNG) come from @ct/assets/runtime.
+// (v3 WP6) An alternative portrait source can be installed (`setPortraitAlt`): in a v3 lobby ./v3portrait.ts
+// (lobby chunk, so none of it ships before sign-in) draws from the pixel3d strip v3/assets/ui/cast-portraits.*.
 import { h } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { atlasFormat, castGhostsUrl, castHdPortraitsUrl, castHdUrl, castUrl, portraitsUrl } from '@ct/assets/runtime';
@@ -23,6 +25,7 @@ import portraitStrip from '@ct/assets/generated/cast-portraits.json';
 // imported directly (it has no imports of its own).
 import { CAST_DIRS, CAST_FH, CAST_FRAMES, CAST_FW, CAST_HD_SCALE, castById, type CastDir } from '../../../../../packages/assets/src/cast';
 import { reducedMotion } from '../../game/fx/motion';
+import { createStore, useStore } from '../../net/store';
 
 export interface CastManifest {
   image: string;
@@ -132,6 +135,8 @@ export type CastCrop = 'frame' | 'fit' | 'bust';
 export interface CastPortraitOpts {
   /** true = ghost with their vote (halo), 'spent' = ghost whose vote is used. */
   ghost?: boolean | 'spent';
+  /** (v3) The memorial portrait (`<id>/dead`: the v3 strip only; elsewhere the ghost / living look). */
+  dead?: boolean;
   dir?: CastDir;
   /** 0 = idle, 1..4 = walk frames. */
   frame?: number;
@@ -151,7 +156,7 @@ export interface CastPortraitOpts {
   dpr?: number;
 }
 
-export const castSheetKey = (id: string, ghost?: boolean | 'spent'): string => (ghost ? `${id}/${ghost === 'spent' ? 'ghost-spent' : 'ghost'}` : id);
+export const castSheetKey = (id: string, ghost?: boolean | 'spent', dead?: boolean): string => (dead ? `${id}/dead` : ghost ? `${id}/${ghost === 'spent' ? 'ghost-spent' : 'ghost'}` : id);
 
 type Box = { x: number; y: number; w: number; h: number };
 const bboxCache = new Map<string, Box>();
@@ -265,8 +270,34 @@ interface FrameReq {
   key: string;
   r: number;
   f: number;
+  /** (v3) drawn by the installed PortraitAlt */
+  alt?: true;
 }
+
+type Src = { img: HTMLImageElement; sx: number; sy: number; ix: number; iy: number };
+/** (v3 WP6) An alternative portrait source (the v3 strip in a v3 lobby, ./v3portrait.ts); null = the v2 art. */
+export interface PortraitAlt {
+  /** Sheet key + frame that draws `id` (null: use the v2 art for it). */
+  req(id: string, opts: CastPortraitOpts): { key: string; f: number } | null;
+  /** The decoded image and cell of `key` frame `f` (null until loaded). */
+  cell(key: string, f: number): Src | null;
+  load(): Promise<unknown>;
+  /** Its art is still loading (draw the silhouette, then wait): never flash the v2 art meanwhile. */
+  pending(): Promise<unknown> | null;
+  /** Walk cadence for `id` (ms per drawing). */
+  stepMs(id: string): number;
+}
+let alt: PortraitAlt | null = null;
+/** Bumped when the alternative source changes or its art lands: mounted portraits repaint. */
+export const portraitRev = createStore(0);
+export function setPortraitAlt(a: PortraitAlt | null): void {
+  alt = a;
+  portraitRev.set((n) => n + 1);
+}
+
 function frameReq(id: string, opts: CastPortraitOpts): FrameReq | null {
+  const a = alt?.req(id, opts);
+  if (a) return { ...a, r: STRIP_ROW, alt: true };
   const k = castSheetKey(id, opts.ghost);
   const key = MANIFEST?.sheets[k] || GHOSTS?.sheets[k] ? k : MANIFEST?.sheets[id] ? id : null;
   if (!key) return null;
@@ -280,7 +311,8 @@ const inStrip = (q: FrameReq): boolean => q.r === STRIP_ROW && q.f < (STRIP.shee
  * The decoded image holding the frame, its top-left (sx, sy) and the top-left of the same row's
  * idle frame (ix, iy) — or null while neither the strip (when it has the frame) nor the sheet is ready.
  */
-function source(q: FrameReq): { img: HTMLImageElement; sx: number; sy: number; ix: number; iy: number } | null {
+function source(q: FrameReq): Src | null {
+  if (q.alt) return alt?.cell(q.key, q.f) ?? null;
   const p = STRIP.sheets[q.key];
   if (strip && p && inStrip(q)) return { img: strip, sx: p.x + q.f * CAST_FW, sy: p.y, ix: p.x, iy: p.y };
   const o = MANIFEST?.sheets[q.key];
@@ -294,6 +326,7 @@ function source(q: FrameReq): { img: HTMLImageElement; sx: number; sy: number; i
 }
 /** Load whatever `q` needs: the strip if it has the frame (the full sheet if the strip fails), else the sheet. */
 async function loadFor(q: FrameReq): Promise<void> {
+  if (q.alt) return void (await alt?.load());
   if (inStrip(q) && (await loadPortraitStrip())) return;
   if (GHOSTS?.sheets[q.key]) await loadGhostSheet();
   else await loadCastSheet();
@@ -305,13 +338,19 @@ async function loadFor(q: FrameReq): Promise<void> {
  * frame once it is. Resolves true when real art was drawn, false for the fallback.
  */
 export async function drawCastPortrait(canvas: HTMLCanvasElement, id: string, opts: CastPortraitOpts = {}): Promise<boolean> {
+  // (v3) an alternative source still loading: the silhouette, then its art (never a v2 flash)
+  const pending = alt?.pending();
+  if (pending) {
+    drawFallback(canvas, id, opts);
+    await pending;
+  }
   const q = frameReq(id, opts);
   const placeholder = !q || !source(q);
   if (placeholder) drawFallback(canvas, id, opts);
   if (!q) return false;
   if (placeholder) await loadFor(q);
   if (!source(q) && placeholder) return false;
-  if (isHd(q.key) || isHd(id)) {
+  if (!q.alt && (isHd(q.key) || isHd(id))) {
     // (v2.4) the regular frame first, the smoothed HD one once its (small) strip has arrived
     if (!hdSource(q.r)) {
       paint(canvas, id, opts);
@@ -333,16 +372,17 @@ function paint(canvas: HTMLCanvasElement, id: string, opts: CastPortraitOpts): b
   const { key, r, f } = q;
   // Crop from the idle frame's bounds so walk frames don't make the box breathe; photo-real members
   // swing their arms/feet much wider, so they use a fixed union of all their poses instead.
-  const n = isHd(key) && !opts.ghost && (img === sheet || inStrip({ key, r, f: CAST_FRAMES.length - 1 })) ? CAST_FRAMES.length : 1;
-  let bounds = frameBounds(img, src0.ix, src0.iy, `${key}|${r}`);
+  const hdOk = !q.alt; // (v3) the v3 strip has no HD rows
+  const n = hdOk && isHd(key) && !opts.ghost && (img === sheet || inStrip({ key, r, f: CAST_FRAMES.length - 1 })) ? CAST_FRAMES.length : 1;
+  let bounds = frameBounds(img, src0.ix, src0.iy, `${q.alt ? 'alt|' : ''}${key}|${r}`);
   for (let i = 1; i < n; i++) {
     const b = frameBounds(img, src0.ix + i * CAST_FW, src0.iy, `${key}|${r}|${i}`);
     const x0 = Math.min(bounds.x, b.x);
     const y0 = Math.min(bounds.y, b.y);
     bounds = { x: x0, y: y0, w: Math.max(bounds.x + bounds.w, b.x + b.w) - x0, h: Math.max(bounds.y + bounds.h, b.y + b.h) - y0 };
   }
-  const src = cropRect(bounds, crop, isHd(key));
-  const hdKey = isHd(key) ? key : isHd(id) ? id : null;
+  const src = cropRect(bounds, crop, hdOk && isHd(key));
+  const hdKey = !hdOk ? null : isHd(key) ? key : isHd(id) ? id : null;
   const hdSrc = hdKey !== null ? hdSource(r) : null;
   const hd = hdSrc?.img ?? null;
   const { k, dx, dy } = layout(canvas, src.w, src.h, { ...opts, crop }, !!hd);
@@ -381,6 +421,7 @@ export function CastPortrait({
   id,
   size = 48,
   ghost,
+  dead,
   crop = 'fit',
   dir = 'down',
   animate = false,
@@ -390,6 +431,8 @@ export function CastPortrait({
   id: string;
   size?: number;
   ghost?: boolean | 'spent';
+  /** (v3) memorial portrait (v3 strip `<id>/dead`; v2 shows the ghost / living look). */
+  dead?: boolean;
   crop?: CastCrop;
   dir?: CastDir;
   /** Walk in place (off under reduced motion). */
@@ -399,33 +442,34 @@ export function CastPortrait({
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const [real, setReal] = useState(false);
+  const rev = useStore(portraitRev); // (v3) repaint when the portrait source changes
   useEffect(() => {
     const c = ref.current;
     if (!c) return;
     let live = true;
-    void drawCastPortrait(c, id, { ghost, crop, dir, size }).then((ok) => live && setReal(ok));
+    void drawCastPortrait(c, id, { ghost, dead, crop, dir, size }).then((ok) => live && setReal(ok));
     if (!animate) return () => void (live = false);
     let i = 0;
     const t = setInterval(() => {
       if (!ref.current) return;
       const still = reducedMotion();
       const next = (i + 1) % WALK.length;
-      const opts = { ghost, crop, dir, size, frame: still ? 0 : WALK[next] };
+      const opts = { ghost, dead, crop, dir, size, frame: still ? 0 : WALK[next] };
       const q = frameReq(id, opts);
       if (!q) return;
       if (!source(q)) return void loadFor(q); // not decoded yet (e.g. a frame only the full sheet has)
       i = next;
       paint(ref.current, id, opts);
-    }, 140);
+    }, alt?.req(id, {}) ? alt.stepMs(id) : 140); // (v3) the strip's own game-speed cadence
     return () => {
       live = false;
       clearInterval(t);
     };
-  }, [id, size, ghost, crop, dir, animate]);
+  }, [id, size, ghost, dead, crop, dir, animate, rev]);
   return h('canvas', {
     ref,
     class: `ct-cast-portrait${real ? '' : ' is-fallback'}${cls ? ` ${cls}` : ''}`,
-    style: { width: `${size}px`, height: `${size}px`, imageRendering: isHd(id) ? 'auto' : 'pixelated', display: 'block', flex: 'none' },
+    style: { width: `${size}px`, height: `${size}px`, imageRendering: isHd(id) && !alt?.req(id, {}) ? 'auto' : 'pixelated', display: 'block', flex: 'none' },
     'data-cast': id,
     ...(label ? { role: 'img', 'aria-label': label } : { 'aria-hidden': 'true' }),
   });

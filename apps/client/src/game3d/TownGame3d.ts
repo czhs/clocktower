@@ -28,7 +28,7 @@ import { BootTracker, markBooting } from './bootMark';
 import { cssToRay, PX_PER_M, rayGround, worldToCss } from './coords';
 import type { Layer3d, Pose, Scene3dState, Tier, TownBridge3d, TownHandle } from './contract';
 import { createEngineHost, type EngineHost } from './vendor/engineHost';
-import { buildHollowmere, groundHeight } from './vendor/town';
+import { createStage, type Stage } from './world/stage';
 import { driveAlong, spawnCharacter, type CharacterHandle, type Track } from './vendor/characters';
 
 /** Layers in update order. WP1-WP4 add theirs here (factories get the shared services). Empty in WP0. */
@@ -37,6 +37,8 @@ export interface Layer3dServices {
   engine: unknown;
   bridge: TownBridge3d;
   tier: Tier;
+  /** WP3: the town stage (light pool `borrowLight`, `heightAt`, `interiorCamera`, `houseProxies`, `drawnLocation`). */
+  stage: Stage;
 }
 const LAYERS: readonly LayerFactory[] = [];
 
@@ -64,6 +66,7 @@ export function createTownGame3d(parent: HTMLElement, bridge: TownBridge3d, opts
   let handle: CharacterHandle | null = null;
   let track: Track | null = null;
   let heightAt: (x: number, z: number) => number = () => 0;
+  let stage: Stage | null = null;
   let debugHook: Record<string, unknown> | null = null;
 
   // ------------------------------------------------------------------ state
@@ -370,6 +373,7 @@ export function createTownGame3d(parent: HTMLElement, bridge: TownBridge3d, opts
     state.game = gview;
     state.phase = phase();
     state.reducedMotion = reducedMotion();
+    if (stage) state.hour = stage.hour();
     return state;
   };
 
@@ -496,10 +500,14 @@ export function createTownGame3d(parent: HTMLElement, bridge: TownBridge3d, opts
     };
     canvas.addEventListener('webglcontextlost', lost);
     offs.push(() => canvas.removeEventListener('webglcontextlost', lost));
-    const town = await buildHollowmere(host.engine, { quality: opts.tier });
-    if (destroyed) return;
-    host.installRuntimeOpts();
-    heightAt = groundHeight(town);
+    // WP3 stage: town (strict) -> runtime opts -> boards / light gates / carried-light reserve -> time facade
+    stage = await createStage(host, { layout, tier: opts.tier, initial: { phase: phase(), game: gview } });
+    if (destroyed) {
+      stage.destroy();
+      stage = null;
+      return;
+    }
+    heightAt = stage.heightAt;
     const X = me.x / PX_PER_M;
     const Z = me.y / PX_PER_M;
     handle = await spawnCharacter(host.engine, STUB_CHARACTER, { x: X, z: Z, heightAt, lite: opts.tier === 'low' });
@@ -511,11 +519,13 @@ export function createTownGame3d(parent: HTMLElement, bridge: TownBridge3d, opts
     host.engine.scene.add(handle.root);
     track = driveAlong(handle, heightAt);
     track.reset(0, X, Z);
-    for (const f of LAYERS) layers.push(f({ engine: host.engine, bridge, tier: opts.tier }));
+    layers.push(stage.layer);
+    for (const f of LAYERS) layers.push(f({ engine: host.engine, bridge, tier: opts.tier, stage }));
     stepCamera(0);
-    // shader warm-up behind the loading state: t = 0 and one more frame (programs compile here)
-    host.renderNow(0);
-    host.renderNow(1 / 60);
+    // shader warm-up behind the loading state (WP3 stage: two frames, the whole town, one room; then 'ready')
+    const h = host;
+    await stage.warmUp((t) => h.renderNow(t));
+    if (destroyed) return;
     tracker?.rendered();
     installDebug();
     resolveReady();
@@ -536,6 +546,8 @@ export function createTownGame3d(parent: HTMLElement, bridge: TownBridge3d, opts
           console.warn('[town3d] layer destroy failed', e);
         }
       }
+      stage?.destroy(); // idempotent (it is a layer too); covers a destroy during the build
+      stage = null;
       try {
         handle?.dispose();
       } catch (e) {

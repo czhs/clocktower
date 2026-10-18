@@ -195,3 +195,44 @@ Contract: `docs/v3/INTEGRATION.md` (§8 Status table, §10 "How to continue", §
   `tests/e2e/v2-social.spec.ts` "desktop and phone" flaky (world-art/qa-deploy, INTEGRATION.md §9.3); WP0s review
   lows (import-closure scan misses re-exports/dynamic imports; `GameplayFrame.picking` exposes `onPick`);
   pixel3d-side requests are collected in INTEGRATION.md §9.2.
+
+### v3 handoff (2026-10-17, lead) — phase 1 interrupted, work saved as WIP
+
+The swarm was stopped mid phase 1 for a session handoff. Everything in the tree was committed as **"v3 C1 WIP"**
+(untested as a whole; typecheck/full suite NOT run on this commit). State per package (INTEGRATION.md §8):
+
+| Package | State |
+|---|---|
+| WP1 core (`game3d/{net,input,debug}`) | author → review (8 issues) → fix done; unit tests pass on the host; **not wired into `TownGame3d.ts`** |
+| WP4 overlay (`game3d/overlay`) | author → review (10 issues) → fix done (7 fixed, 3 left as lead decisions below); unit tests pass; **not wired** |
+| WP2 avatars (`game3d/avatars`, `vendor/characters.ts`) | author **interrupted** mid-work; untested, unreviewed |
+| WP3 stage (`game3d/world`, `vendor/{town,interiors,time}.ts`) | author **interrupted**; untested, unreviewed |
+| WP5b Classic in a v3 world (`packages/assets` v3 atlases, `town-v3.json`, `classic-in-v3.spec.ts`) | author **interrupted**; untested, unreviewed |
+| WP6 UI skin + Graphics setting + v2/v3 lobby choice (`ui/common/v3*`, `ui/lobby/*`, Settings) | author **interrupted**; untested, unreviewed |
+
+**Next, in order:**
+1. Re-run each interrupted author (WP2, WP3, WP5b, WP6) telling it to *continue from the files already in the tree*,
+   then review → fix (same author/review/fix loop as before).
+2. C1 integrate: wire WP1–WP4 into `game3d/TownGame3d.ts` (lead-owned), resolve contract requests, full gate, commit.
+3. C2 QA (WP7): mock-world harness, `v3-*` e2e (incl. creating one v2 and one v3 lobby from the UI), all Classic e2e,
+   SwiftShader stills in `tests/v3/shots/`, playtest + art critics, owner fix rounds, gate, commit.
+4. **Then a performance swarm** (user request) on the v3 renderer + v3 server world; budgets into `scripts/perf/budgets.mjs`.
+5. C3 (user decides which world is pre-selected) and deploy to the dev service at a milestone. Never prod without asking.
+
+**Lead decisions still open (decide, record in INTEGRATION.md §11):**
+- Canopy rule A or B: ~96 walkable tiles under tree crowns hide remote avatars in 3D (incl. house-12's door approach,
+  the south bay before house-9) — WP5a/WP3.
+- WP4: labels/bubble text in DOM sit above the FX canvas (a name can show through a bubble) — move text onto the
+  canvas or accept; the walking DOM-write budget WP4 redefined needs sign-off.
+- Contract request (world-art/qa-deploy): v2 pie-menu edge clamp in `social/radial.ts` keeps `v2-social` phone step red.
+- `tests/e2e/playwright.config.ts` hardcodes port 3398; v3 runs should use `E2E_PORT` in 3450-3499.
+
+**pixel3d-side changes to pick up when published on `v3-dev`** (user requests to the other session; game-side wiring
+is specified in INTEGRATION.md §9.1): voting-circle camera reframe; clock tower clock = Storyteller timer with an
+in-universe digital readout; no NPCs in the voting circle; enterable clock tower. Refresh = `git merge -X theirs v3-dev`
+(vendor side wins in `v3/pixel3d/**`) + `scripts/v3/import-assets.sh`, then re-run the Hollowmere export check
+(INTEGRATION.md §10).
+
+**Process notes:** workflow agents could not spawn their own subagents (no Agent tool inside workflow agents), so
+parallelism comes from the orchestrating workflow only. Heavy host commands go under `flock ~/clocktower/v3-heavy.lock`,
+browsers also under `~/clocktower/browser.lock`; SwiftShader only (never the host GPU); v3 ports 3450-3499.

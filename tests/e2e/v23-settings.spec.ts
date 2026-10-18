@@ -3,6 +3,10 @@
 // push-to-talk can be rebound from Settings, Reset to defaults restores them, Esc closes and gives
 // focus back to the gear, and the phone layout is one scrolling sheet with a chip row.
 // Screenshots: docs/screenshots/v23-settings-*.png.
+// (v3 WP6) Also the "Town graphics" row (ct.graphics, game3d/select.ts): in a v2 lobby it says the lobby uses
+// the classic town; in a Hollowmere (v3) lobby created from the UI's Town choice the page wears the v3 skin
+// (html[data-graphics=v3], kit tokens on the theme variables, the vendor panel sheet) until it leaves.
+// Screenshots: docs/screenshots/v3-ui-*.png.
 import path from 'node:path';
 import { devices, expect, test, type Page } from '@playwright/test';
 import { makeBots } from '../support/bot';
@@ -63,6 +67,13 @@ test('settings dialog: sections, persistence, rebinding, reset, phone sheet', as
   expect(await ls(page, 'ct.fxQuality')).toBe('low');
   expect(await ls(page, 'ct.reducedMotion')).toBe('1');
   expect(await ls(page, 'ct.talkOutline')).toBe('top');
+  // (v3) the renderer row: a v2 lobby always draws the classic town; the choice is still remembered
+  await expect(dlg.getByText('This lobby uses the classic town.')).toBeVisible();
+  const gfx = dlg.getByRole('radiogroup', { name: 'Graphics', exact: true });
+  await expect(gfx.getByRole('radio', { name: 'Auto' })).toHaveAttribute('aria-checked', 'true');
+  await gfx.getByRole('radio', { name: 'v3 3D' }).click();
+  expect(await ls(page, 'ct.graphics')).toBe('v3');
+  expect(await page.evaluate(() => document.documentElement.dataset.graphics ?? null)).toBeNull();
 
   // push-to-talk rebinding from Settings (the voice client's prefs); Esc during capture only cancels
   await dlg.getByRole('tab', { name: 'Audio & voice' }).click();
@@ -86,6 +97,7 @@ test('settings dialog: sections, persistence, rebinding, reset, phone sheet', as
   await dlg.getByRole('button', { name: 'Reset', exact: true }).click();
   expect(await ls(page, 'ct.fxQuality')).toBeNull();
   expect(await ls(page, 'ct.reducedMotion')).toBeNull();
+  expect(await ls(page, 'ct.graphics')).toBeNull(); // (v3)
   const vp = JSON.parse((await ls(page, 'ct.voice.prefs')) ?? '{}');
   expect([vp.pttKey, vp.crowdMute]).toEqual(['KeyV', true]);
 
@@ -124,4 +136,68 @@ test('settings dialog: sections, persistence, rebinding, reset, phone sheet', as
   await expect(pd).toHaveCount(0);
   await phone.close();
   await Promise.all(bots.map((b) => b.leave()));
+});
+
+// (v3 WP6) Town choice → a v3 lobby wears the v3 skin; the Graphics row explains what draws the town.
+test('v3 lobby: town choice, world badge, v3 skin and the graphics row', async ({ browser, baseURL }) => {
+  test.setTimeout(120_000);
+  const url = baseURL!;
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, extraHTTPHeaders: { 'X-Forwarded-For': '10.98.3.3' } });
+  await ctx.addInitScript(quiet);
+  const page = await ctx.newPage();
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  expect((await page.request.post(`${url}/api/auth/create`, { data: { displayName: 'Hollow' } })).ok()).toBe(true);
+  await page.goto(`${url}/`);
+  await page.getByRole('button', { name: 'Create lobby' }).first().click();
+  const form = page.getByRole('dialog', { name: 'Create lobby' });
+  await expect(form).toBeVisible();
+  const town = form.getByRole('radiogroup', { name: 'Town' });
+  await expect(town.getByRole('radio', { name: /^Classic/ })).toBeChecked(); // pre-selected until C3 (Q7)
+  await town.getByText('Hollowmere').click();
+  await expect(town.getByRole('radio', { name: /^Hollowmere/ })).toBeChecked();
+  await page.screenshot({ path: path.join(SHOTS, 'v3-ui-create.png') });
+  await form.getByRole('button', { name: 'Create', exact: true }).click();
+
+  // the waiting room shows the town; the page wears the v3 skin
+  const waiting = page.getByRole('dialog', { name: 'Waiting room' });
+  await expect(waiting).toBeVisible({ timeout: 30_000 });
+  await expect(waiting.locator('.ct-world-badge')).toHaveText('Hollowmere');
+  expect(await ls(page, 'ct.create.world')).toBe('v3');
+  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.graphics ?? null)).toBe('v3');
+  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.tod ?? null)).toBe('day');
+  // kit.json day tokens on the theme variables (shadow → --bg, gold → --accent)
+  await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--bg').trim())).toBe('#120e19');
+  expect(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--accent').trim())).toBe('#e3bd62');
+  const panels = await page.evaluate(() => document.querySelector<HTMLLinkElement>('link[data-ct-css="v3-panels"]')?.href ?? null);
+  expect(panels).toMatch(/\/assets\/panels-[\w-]+\.css$/);
+  expect((await page.request.get(panels!)).ok()).toBe(true);
+  await page.waitForTimeout(800);
+  await page.screenshot({ path: path.join(SHOTS, 'v3-ui-waiting.png') });
+
+  // Graphics row: this host's browser has no hardware GL, so Classic 2D draws Hollowmere; pick Classic explicitly
+  await page.getByRole('button', { name: 'Settings' }).click();
+  const dlg = page.getByRole('dialog', { name: 'Settings' });
+  await dlg.getByRole('tab', { name: 'Graphics' }).click();
+  const status = dlg.locator('.ct-set-graphics-status');
+  await expect(status).toHaveText(/Classic 2D|3D town is on/);
+  const gfx = dlg.getByRole('radiogroup', { name: 'Graphics', exact: true });
+  await gfx.getByRole('radio', { name: 'Classic 2D' }).click();
+  expect(await ls(page, 'ct.graphics')).toBe('classic');
+  await expect(status).toHaveText('Classic 2D draws this town.');
+  await page.screenshot({ path: path.join(SHOTS, 'v3-ui-settings-graphics.png') });
+  await gfx.getByRole('radio', { name: 'Auto' }).click();
+  expect(await ls(page, 'ct.graphics')).toBe('auto');
+  await page.keyboard.press('Escape');
+  await expect(dlg).toHaveCount(0);
+
+  // leaving the lobby takes the skin off again
+  await waiting.getByRole('button', { name: 'Leave' }).click();
+  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.graphics ?? null)).toBeNull();
+  expect(await page.evaluate(() => document.documentElement.style.getPropertyValue('--bg'))).toBe('');
+  expect(await page.evaluate(() => document.querySelector('link[data-ct-css="v3-panels"]'))).toBeNull();
+  // the lobby row in the finder carries the badge
+  await expect(page.locator('.ct-lobby .ct-world-badge-v3').first()).toBeVisible({ timeout: 15_000 });
+  expect(errors).toEqual([]);
+  await ctx.close();
 });

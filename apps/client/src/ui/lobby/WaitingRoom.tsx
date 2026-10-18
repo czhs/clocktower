@@ -17,7 +17,8 @@ import { CastPortrait } from '../common/castPortrait';
 import { CharacterPicker, characterOf, takenBy } from './CharacterPicker';
 import { copyText, SCRIPT_LABEL, shareUrl } from './finder';
 import { MODE_COPY, modeOf, timingsOf, timingsSummary } from '../clock/logic';
-import { AutoTimingsEditor, useTimingsDraft } from './ModeSettings';
+import { AutoTimingsEditor, useTimingsDraft, WorldBadge } from './ModeSettings';
+import { useV3Skin } from '../common/v3skinLobby'; // (v3 WP6) a v3 lobby wears the v3 DOM skin
 import { StPrepareButton } from '../storyteller/prepareSlot'; // (v2.2) the Storyteller's tools before the game
 import { AutoStorylineSetting } from '../common/lazyTown'; // (v2.2) automatic games: storyline (v2.4: lazy chunk)
 import { ChatFilterSetting, MemberModTools, MutedBadge, RemovedList } from './moderation'; // (v2.3 OPS-6)
@@ -33,6 +34,7 @@ const narrow = () => typeof matchMedia === 'function' && matchMedia('(max-width:
 export function WaitingRoom({ conn, onLeave }: { conn: RoomConnection; account: AccountView; onLeave: () => void }) {
   const view = useStore(conn.lobbyView);
   const status = useStore(conn.status);
+  useV3Skin(conn);
   const [notice, setNotice] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(narrow);
   const [pickOpen, setPickOpen] = useState(false);
@@ -91,7 +93,9 @@ export function WaitingRoom({ conn, onLeave }: { conn: RoomConnection; account: 
           <span class="ct-sr-only">{collapsed ? 'Show lobby details' : 'Hide lobby details'}</span>
         </button>
         <div class="ct-waiting-title">
-          <h2>{view.lobby.name}</h2>
+          <h2>
+            {view.lobby.name} <WorldBadge world={view.world ?? view.lobby.world} />
+          </h2>
           <div class="muted ct-small">
             {players.length}/{view.lobby.maxPlayers} players · {readyCount} ready
             {!collapsed && <> · {SCRIPT_LABEL[view.lobby.script]}</>}

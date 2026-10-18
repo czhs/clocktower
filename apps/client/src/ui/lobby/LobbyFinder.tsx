@@ -9,14 +9,26 @@ import {
   type LobbySummary,
   type ScriptId,
   type StorytellerMode,
+  type WorldId,
   wordLobbyName,
 } from '@ct/protocol';
 import { api, subscribeDirectory } from '../../net/api';
 import { modeOf } from '../clock/logic';
-import { ModeBadge, ModeChoice } from './ModeSettings';
+import { DEFAULT_WORLD, ModeBadge, ModeChoice, WorldBadge, WorldChoice } from './ModeSettings';
 import { applyDirectoryEvent, DEFAULT_FILTERS, errorText, filterLobbies, PHASE_LABEL, SCRIPT_LABEL, sortLobbies, type FinderFilters } from './finder';
 
 const FILTER_KEY = 'ct.finder.filters';
+/** (v3) The town last picked in the create dialog (a convenience; never sent anywhere but the create request). */
+const WORLD_KEY = 'ct.create.world';
+function loadWorld(): WorldId {
+  try {
+    const w = localStorage.getItem(WORLD_KEY);
+    if (w === 'v2' || w === 'v3') return w;
+  } catch {
+    // storage unavailable
+  }
+  return DEFAULT_WORLD;
+}
 
 function loadFilters(): FinderFilters {
   try {
@@ -209,6 +221,7 @@ function LobbyRow({ lobby: l, onJoin }: { lobby: LobbySummary; onJoin: (id: stri
           {l.name}
           <span class={`ct-phase ct-phase-${l.phase}`}>{PHASE_LABEL[l.phase]}</span>
           <ModeBadge lobby={l} />
+          <WorldBadge world={l.world} />
         </div>
         {l.description && <div class="ct-lobby-desc muted">{l.description}</div>}
         <div class="ct-lobby-meta muted">
@@ -247,6 +260,7 @@ export function CreateLobbyModal({ onClose, onCreated }: { onClose: () => void; 
   const [description, setDescription] = useState('');
   const [takeSt, setTakeSt] = useState(true);
   const [mode, setMode] = useState<StorytellerMode>('human');
+  const [world, setWorld] = useState<WorldId>(loadWorld);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -264,7 +278,12 @@ export function CreateLobbyModal({ onClose, onCreated }: { onClose: () => void; 
     setError(null);
     try {
       const st = mode === 'human' && takeSt;
-      const { lobby } = await api.createLobby({ name: finalName, maxPlayers, script, description: description.trim(), takeStoryteller: st, ...(mode === 'auto' ? { storytellerMode: 'auto' as const } : {}) });
+      const { lobby } = await api.createLobby({ name: finalName, maxPlayers, script, description: description.trim(), takeStoryteller: st, ...(mode === 'auto' ? { storytellerMode: 'auto' as const } : {}), world });
+      try {
+        localStorage.setItem(WORLD_KEY, world);
+      } catch {
+        // storage unavailable
+      }
       onCreated(lobby, st);
     } catch (err) {
       setError(errorText(err));
@@ -334,6 +353,10 @@ export function CreateLobbyModal({ onClose, onCreated }: { onClose: () => void; 
             onInput={(e) => setDescription((e.currentTarget as HTMLTextAreaElement).value)}
           />
         </label>
+        <div class="ct-field">
+          <span>Town</span>
+          <WorldChoice value={world} onChange={setWorld} name="ct-create-world" />
+        </div>
         <div class="ct-field">
           <span>Who runs the game?</span>
           <ModeChoice value={mode} onChange={setMode} name="ct-create-mode" />

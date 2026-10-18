@@ -421,6 +421,8 @@ export interface BoardTokenEnv {
   textRes(): number;
   /** The low render tier (fewer extras). */
   lowTier(): boolean;
+  /** (v3 WP5b) The town's per-house overlay anchors (square-props meta.houses of the lobby's world); default v2. */
+  houses?: Record<string, HouseFx>;
 }
 
 interface Hit {
@@ -448,6 +450,7 @@ export interface BoardTokenLayer {
 }
 
 export function createBoardTokenLayer(scene: Phaser.Scene, env: BoardTokenEnv): BoardTokenLayer {
+  const spans = env.houses ? boardSpans(env.houses) : SPANS; // (v3 WP5b) the board slots of this world
   const hits = new Map<string, Hit[]>();
   const rects = new Map<string, { x: number; y: number; w: number; h: number }>();
   /** "+N" badge per board and how many token hits precede it (for `inspect`). */
@@ -513,7 +516,7 @@ export function createBoardTokenLayer(scene: Phaser.Scene, env: BoardTokenEnv): 
       if (!shown.length) return objs;
       // the board, grown so its parchment face holds the grid, foot on the art's anchor — within
       // its room between the doorway and the neighbouring board (smaller tokens when crowded)
-      const span = SPANS[buildingId];
+      const span = spans[buildingId];
       const fit = fitBoard(shown.length, view.overflow, tokenWorldSize(env.cssZoom()), bx, span);
       const t = fit.t;
       const size = fit.size;

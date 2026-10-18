@@ -3,32 +3,63 @@
 // around it, "Remove" at 6 o'clock when the press was on a pin you may remove. A caption plate above
 // names the picked wedge. Renders nothing (and subscribes to one store) while closed.
 import { useStore } from '../../net/store';
+import { v3AtlasNow, v3Skin } from '../common/v3skin';
 import { SOCIAL_SHEET } from '../../game/social/art';
 import { PIN_HEX } from '../../game/social/logic';
 import { pieControl, pieMenu, PIE_RADIUS } from '../../game/social/radial';
 import { DEAD_ZONE_PX, wedgeAngle, type PieItem } from '../../game/social/radialLogic';
 import './pie.css';
 
-function Sprite({ frame, scale }: { frame: string; scale: number }) {
-  const f = SOCIAL_SHEET?.json.frames[frame];
+/** One sprite frame on a sheet (v2 social sheet or a v3 atlas). */
+export interface SpriteFrame {
+  url: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  sheetW: number;
+  sheetH: number;
+}
+function v2Frame(name: string): SpriteFrame | null {
+  const f = SOCIAL_SHEET?.json.frames[name];
   if (!SOCIAL_SHEET || !f) return null;
   const W = SOCIAL_SHEET.json.width ?? Math.max(...Object.values(SOCIAL_SHEET.json.frames).map((r) => r.x + r.w));
   const H = SOCIAL_SHEET.json.height ?? Math.max(...Object.values(SOCIAL_SHEET.json.frames).map((r) => r.y + r.h));
+  return { url: SOCIAL_SHEET.url, x: f.x, y: f.y, w: f.w, h: f.h, sheetW: W, sheetH: H };
+}
+
+/**
+ * (v3 WP6) The art lookup for the social dock and pie: v2 lobbies use the v2 social sheet; v3 lobbies use the
+ * v3 atlases (emotes / portraits / markers, `-night` by the game hour) and keep v2 art only for the documented
+ * skips (nick_face, icon_nicksong, icon_brianbi). Until the v3 atlas has loaded, nothing (the emoji / dot /
+ * portrait fallbacks show) rather than v2 art.
+ */
+/** The frames with no v3 art (= v3atlas.ts V3_SKIPPED_FRAMES; kept here so the lazy atlas stays out of this chunk). */
+export const SKIPPED: readonly string[] = ['nick_face', 'icon_nicksong', 'icon_brianbi'];
+export function useSocialArt(): (name: string) => SpriteFrame | null {
+  const skin = useStore(v3Skin); // re-render on skin, look and atlas-data changes
+  if (!skin.on) return v2Frame;
+  const v3 = v3AtlasNow();
+  return (name) => (SKIPPED.includes(name) ? v2Frame(name) : (v3?.frame(name, skin.night) ?? null));
+}
+
+/** A sheet frame as a crisp CSS sprite (null when the frame is missing). */
+export function SpriteIcon({ frame, scale = 1, class: cls }: { frame: SpriteFrame | null; scale?: number; class?: string }) {
+  if (!frame) return null;
   return (
     <span
-      class="ctp-sprite"
+      class={cls}
       aria-hidden="true"
       style={{
-        width: `${f.w * scale}px`,
-        height: `${f.h * scale}px`,
-        backgroundImage: `url(${SOCIAL_SHEET.url})`,
-        backgroundPosition: `${-f.x * scale}px ${-f.y * scale}px`,
-        backgroundSize: `${W * scale}px ${H * scale}px`,
+        width: `${frame.w * scale}px`,
+        height: `${frame.h * scale}px`,
+        backgroundImage: `url(${frame.url})`,
+        backgroundPosition: `${-frame.x * scale}px ${-frame.y * scale}px`,
+        backgroundSize: `${frame.sheetW * scale}px ${frame.sheetH * scale}px`,
       }}
     />
   );
 }
-const hasFrame = (f: string) => !!SOCIAL_SHEET?.json.frames[f];
 
 /** SVG path of an annular sector (angles in radians, screen coords). */
 function sector(cx: number, cy: number, r0: number, r1: number, a0: number, a1: number): string {
@@ -37,12 +68,14 @@ function sector(cx: number, cy: number, r0: number, r1: number, a0: number, a1: 
   return `M ${p(r1, a0)} A ${r1} ${r1} 0 ${large} 1 ${p(r1, a1)} L ${p(r0, a1)} A ${r0} ${r0} 0 ${large} 0 ${p(r0, a0)} Z`;
 }
 
-function Icon({ it }: { it: PieItem }) {
+function Icon({ it, art }: { it: PieItem; art: (name: string) => SpriteFrame | null }) {
   const a = it.action;
+  const point = art('emote_point');
+  const pin = a.kind === 'pin' ? art(`pin_${a.color}`) : null;
   if (a.kind === 'point')
     return (
       <>
-        {hasFrame('emote_point') ? <Sprite frame="emote_point" scale={2} /> : <span class="ctp-emoji">👉</span>}
+        {point ? <SpriteIcon frame={point} scale={2} class="ctp-sprite" /> : <span class="ctp-emoji">👉</span>}
         <small>Point</small>
       </>
     );
@@ -55,11 +88,12 @@ function Icon({ it }: { it: PieItem }) {
         <small>Remove</small>
       </>
     );
-  return hasFrame(`pin_${a.color}`) ? <Sprite frame={`pin_${a.color}`} scale={1} /> : <span class="ctp-dot" style={{ background: PIN_HEX[a.color].fill, borderColor: PIN_HEX[a.color].dark }} />;
+  return pin ? <SpriteIcon frame={pin} scale={1} class="ctp-sprite" /> : <span class="ctp-dot" style={{ background: PIN_HEX[a.color].fill, borderColor: PIN_HEX[a.color].dark }} />;
 }
 
 export function PieMenu() {
   const m = useStore(pieMenu);
+  const art = useSocialArt();
   if (!m) return null;
   const touch = m.input === 'touch';
   const R = PIE_RADIUS[m.input];
@@ -109,7 +143,7 @@ export function PieMenu() {
         const a = wedgeAngle(i, n);
         return (
           <span key={`ico-${it.key}`} class={`ctp-icon${m.hot === i ? ' hot' : ''}`} style={{ left: `${rm * Math.cos(a)}px`, top: `${rm * Math.sin(a)}px` }} aria-hidden="true">
-            <Icon it={it} />
+            <Icon it={it} art={art} />
           </span>
         );
       })}

@@ -216,6 +216,9 @@ button.ct-ready-on { border-color: #3d6b3a; color: #bfe0b9; }
 
 .ct-mode-badge { font-size: 0.8rem; line-height: 1.2; padding: 1px 6px; border-radius: 3px; border: 1px solid var(--border); color: var(--muted); }
 .ct-mode-badge-auto { color: #c8d4f6; border-color: #4a5590; background: #232a4a66; }
+/* (v3 WP6) the lobby's town: badge in rows / the waiting room, choice in the create dialog */
+.ct-world-badge { font-family: var(--font); font-variant: normal; letter-spacing: 0; vertical-align: middle; white-space: nowrap; }
+.ct-world-badge-v3 { color: #f0d58c; border-color: #a57b36; background: #3a2c1866; }
 
 .ct-mode-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
 .ct-mode-head h3 { margin-bottom: 6px; }

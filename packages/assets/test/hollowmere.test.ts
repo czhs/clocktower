@@ -122,8 +122,9 @@ describe('hollowmere export: shape of the data', () => {
       if (/import\(\s*['"]@ct\/assets\/hollowmere['"]\s*\)/.test(code)) dynamics.add(rel);
     }
     expect(statics, 'static imports of the v3 data in apps/client/src').toEqual([]);
-    // a new lazy consumer is fine (it shares the chunk) but deliberate: add it here
-    expect([...dynamics].sort()).toEqual(['game/sound/areas.ts', 'net/layout.ts']);
+    // a new lazy consumer is fine (it shares the chunk) but deliberate: add it here. game3d/** (the lazy 3D town
+    // chunk, e.g. WP2's NPC homes) may import() it freely: that whole tree is dynamic-only (game3d boundary test).
+    expect([...dynamics].filter((f) => !f.startsWith('game3d/')).sort()).toEqual(['game/sound/areas.ts', 'net/layout.ts']);
     // and the package index never re-exports it (layoutFor is the pure helper)
     expect(readFileSync(join(ROOT, 'packages/assets/src/index.ts'), 'utf8')).not.toMatch(/hollowmere\/(layoutV3|meta)|\.json['"]/);
   });
