@@ -1,7 +1,7 @@
 // v3 WP2 (v3-avatars). Build order of the character rigs (docs/v3/INTEGRATION.md §4 "Costs"): a rig build is
 // 55-90 ms + 25-40 ms for its first update, so the layer starts at most ONE build per frame and keeps at most
 // one in flight. Order: the own player first, then avatars in the viewer's location by distance, then the rest
-// of the players (prebuilt for when they come into view), then the townsfolk. Pure (avatars.queue.test.ts).
+// of the players (prebuilt for when they come into view), then the townsfolk. Pure (tested in avatars.parts.test.ts).
 
 export interface BuildCandidate {
   key: string;

@@ -156,6 +156,9 @@ test('v3 lobby: town choice, world badge, v3 skin and the graphics row', async (
   await expect(town.getByRole('radio', { name: /^Classic/ })).toBeChecked(); // pre-selected until C3 (Q7)
   await town.getByText('Hollowmere').click();
   await expect(town.getByRole('radio', { name: /^Hollowmere/ })).toBeChecked();
+  // a long-ish (16 character) name must fit the waiting-room title next to the town badge
+  const NAME = 'Lantern Crossing';
+  await form.getByLabel('Lobby name').fill(NAME);
   await page.screenshot({ path: path.join(SHOTS, 'v3-ui-create.png') });
   await form.getByRole('button', { name: 'Create', exact: true }).click();
 
@@ -163,7 +166,16 @@ test('v3 lobby: town choice, world badge, v3 skin and the graphics row', async (
   const waiting = page.getByRole('dialog', { name: 'Waiting room' });
   await expect(waiting).toBeVisible({ timeout: 30_000 });
   await expect(waiting.locator('.ct-world-badge')).toHaveText('Hollowmere');
-  expect(await ls(page, 'ct.create.world')).toBe('v3');
+  // the badge leads the meta line and is never clipped; the name keeps the title width and is not ellipsised
+  expect(await waiting.locator('.ct-world-badge').evaluate((b) => {
+    const line = b.closest('.ct-waiting-meta')!.getBoundingClientRect();
+    const r = b.getBoundingClientRect();
+    return r.width > 20 && r.left >= line.left - 0.5 && r.right <= line.right + 0.5;
+  })).toBe(true);
+  const title = waiting.locator('h2.ct-waiting-name');
+  await expect(title).toHaveText(NAME);
+  expect(await title.evaluate((h) => h.scrollWidth <= h.clientWidth + 1)).toBe(true);
+  expect(await ls(page, 'ct.create.world')).toBeNull(); // no remembered pick: DEFAULT_WORLD is the only pre-selection
   await expect.poll(() => page.evaluate(() => document.documentElement.dataset.graphics ?? null)).toBe('v3');
   await expect.poll(() => page.evaluate(() => document.documentElement.dataset.tod ?? null)).toBe('day');
   // kit.json day tokens on the theme variables (shadow → --bg, gold → --accent)
@@ -176,8 +188,8 @@ test('v3 lobby: town choice, world badge, v3 skin and the graphics row', async (
   await page.screenshot({ path: path.join(SHOTS, 'v3-ui-waiting.png') });
 
   // Graphics row: this host's browser has no hardware GL, so Classic 2D draws Hollowmere; pick Classic explicitly
-  await page.getByRole('button', { name: 'Settings' }).click();
-  const dlg = page.getByRole('dialog', { name: 'Settings' });
+  await page.getByRole('button', { name: 'Settings', exact: true }).click(); // not "Lobby settings…"
+  const dlg = page.getByRole('dialog', { name: 'Settings', exact: true });
   await dlg.getByRole('tab', { name: 'Graphics' }).click();
   const status = dlg.locator('.ct-set-graphics-status');
   await expect(status).toHaveText(/Classic 2D|3D town is on/);
@@ -198,6 +210,14 @@ test('v3 lobby: town choice, world badge, v3 skin and the graphics row', async (
   expect(await page.evaluate(() => document.querySelector('link[data-ct-css="v3-panels"]'))).toBeNull();
   // the lobby row in the finder carries the badge
   await expect(page.locator('.ct-lobby .ct-world-badge-v3').first()).toBeVisible({ timeout: 15_000 });
+  // the next create dialog pre-selects Classic again (one constant, nothing remembered)
+  await page.getByRole('button', { name: 'Create lobby' }).first().click();
+  const again = page.getByRole('dialog', { name: 'Create lobby' });
+  await expect(again.getByRole('radiogroup', { name: 'Town' }).getByRole('radio', { name: /^Classic/ })).toBeChecked();
+  // Cancel, not Escape: the dialog's Escape listener is a Preact effect (registered after paint), so an Escape
+  // sent right after the radio check can arrive before it exists (seen on the host, 2026-10-18)
+  await again.getByRole('button', { name: 'Cancel' }).click();
+  await expect(again).toHaveCount(0);
   expect(errors).toEqual([]);
   await ctx.close();
 });

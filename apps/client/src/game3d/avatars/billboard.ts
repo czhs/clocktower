@@ -1,7 +1,10 @@
 // v3 WP2 (v3-avatars). Flat v2-sprite billboards (docs/v3/INTEGRATION.md §4 "Billboards"; Q3 lead default):
 // brianbi (photo-real, cast-hd.*) and nicksong (cast.*), and the last-resort body for any cast id whose rig and
-// stand-in both failed. A camera-facing quad, 1.3 m tall, anchored at the feet, 8 directions from the v2 frames,
-// on the COLOR_ONLY layer (no outline pass, no shadow), lit like up-facing ground by the toon ramp.
+// stand-in both failed. A CYLINDRICAL billboard: a vertical quad anchored at the feet, turned about Y to face the
+// camera and stretched by 1 / cos(pitch), so on screen it is exactly v2's 1.3 m cell while in the world it stands
+// upright at the feet (a fully camera-facing quad leaned back ≈ 0.7 m at pitch 30° and was clipped by any wall
+// just north of it, e.g. at every door). 8 directions from the v2 frames, on the COLOR_ONLY layer (no outline
+// pass, no shadow), lit like up-facing ground by the toon ramp.
 // Frame names keep the v2 format `<key>|<dir8>|<n>`.
 //
 // No v3/assets/sprites/<id>.json bake exists for nicksong or brianbi (the contract's preferred source); when one
@@ -16,6 +19,9 @@ import type { AvatarBody, BodyFrameCtx } from './body';
 import {
   BILLBOARD_HEIGHT_M,
   billboardArt,
+  billboardHeadM,
+  cylinderFacing,
+  DEFAULT_PITCH,
   cellUv,
   frameCell,
   frameIndex,
@@ -25,7 +31,7 @@ import {
   type CastSheetManifest,
   type SheetKind,
 } from './billboardFrames';
-import { createTintUniforms, patchTint, setColourTint, setFade, setGhostTint } from './ghostTint';
+import { createTintUniforms, patchTint, setColourTint, setFade, setGhostTint, setRim } from './ghostTint';
 import { TINT_HOVER_M } from './rigBody';
 
 const CAST = castJson as unknown as CastSheetManifest;
@@ -117,7 +123,7 @@ export async function createBillboardBody(engine: object, id: string, o: Billboa
   const geo = new THREE.PlaneGeometry(w, h);
   geo.translate(w / 2 - art.anchor.x * s, h / 2 - (art.cellH - art.anchor.y) * s, 0);
   const uv = geo.getAttribute('uv') as THREE.BufferAttribute;
-  const U = createTintUniforms();
+  const U = createTintUniforms(true);
   setColourTint(U, o.tint);
   const mat = billboardMaterial(engine, { map: living.tex, programKey: PROGRAM_KEY }) as THREE.MeshLambertMaterial;
   patchTint(mat, U);
@@ -141,6 +147,8 @@ export async function createBillboardBody(engine: object, id: string, o: Billboa
   let frameName = '';
   let cellKey = '';
   let disposed = false;
+  let cosPitch = Math.cos(DEFAULT_PITCH);
+  mesh.scale.y = 1 / cosPitch;
   const inset = art.sheet === 'cast-hd' ? 0.5 : 0;
 
   const setCell = (sheet: SheetKind, key: string, n: number) => {
@@ -167,7 +175,9 @@ export async function createBillboardBody(engine: object, id: string, o: Billboa
     kind: 'billboard',
     texture: `v3-billboard:${id}`,
     specId: null,
-    heightM: BILLBOARD_HEIGHT_M * (art.anchor.y / art.cellH),
+    get heightM() {
+      return billboardHeadM(art, cosPitch);
+    },
     widthM: w * 0.6,
     holder,
     ghostMode: 'tint',
@@ -177,6 +187,7 @@ export async function createBillboardBody(engine: object, id: string, o: Billboa
     get hoverM() {
       return hover;
     },
+    crownM: 0,
     place(_t, X, Z, face, isMoving, jump) {
       const dx = X - lastX;
       const dz = Z - lastZ;
@@ -205,12 +216,21 @@ export async function createBillboardBody(engine: object, id: string, o: Billboa
     setFade(a) {
       setFade(U, a);
     },
+    setRim(hex) {
+      setRim(U, hex);
+    },
     setLod() {
       /* already colour-only, no shadow */
     },
     update(t, _dt, ctx: BodyFrameCtx) {
       if (disposed) return;
-      mesh.quaternion.copy(ctx.camQuat); // face the (orthographic) pixel camera
+      // face the (orthographic) pixel camera about Y only; keep v2's on-screen height
+      const f = cylinderFacing(ctx.camQuat);
+      mesh.rotation.set(0, f.yaw, 0);
+      if (Math.abs(f.cosPitch - cosPitch) > 1e-4) {
+        cosPitch = f.cosPitch;
+        mesh.scale.y = 1 / cosPitch;
+      }
       if (dead && ghost && art.ghostKey) {
         const key = level === 2 && art.spentKey ? art.spentKey : art.ghostKey;
         setCell(ghostSheet!, key, ghostSheet === 'cast-ghosts' ? ghostFrameIndex(t, ctx.still) : 0);
@@ -223,7 +243,7 @@ export async function createBillboardBody(engine: object, id: string, o: Billboa
       return false;
     },
     lookInfo() {
-      return { ghostK: U.uCtGhost.value.x, alpha: +U.uCtGhost.value.y.toFixed(2), tint: U.uCtTint.value.w, hover, ghostArt: dead && !!ghost && !!art.ghostKey };
+      return { ghostK: U.uCtGhost.value.x, alpha: +U.uCtGhost.value.y.toFixed(2), tint: U.uCtTint.value.w, rim: U.uCtRim.value.w, hover, ghostArt: dead && !!ghost && !!art.ghostKey };
     },
     dispose() {
       if (disposed) return;

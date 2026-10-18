@@ -6,14 +6,17 @@
 //
 // The holder is at the origin (+ the ghost hover) for living characters: the Character's own drive puts it at
 // the feet. For 'clips' ghosts the driver slides (the Character stays where it died, so its gait never leaves
-// the held ghost loop) and the holder carries the motion instead (feet − slide anchor).
+// the held ghost loop) and the holder carries the motion instead (feet − slide anchor). A revival leaves the slide in
+// place: the Character is reset at the feet (vendor/characters.ts resetMotion, no velocity kick), no rebuild.
 import * as THREE from 'three';
 import { dir8 } from '../../game/rules/input';
 import {
   charState,
   COLOR_ONLY_LAYER,
   createDriver,
+  extrasOf,
   isLoopClip,
+  motionOf,
   loadSpecCaps,
   propMaterial,
   setGhostLevel,
@@ -24,9 +27,9 @@ import {
   type Driver,
 } from '../vendor/characters';
 import type { AvatarBody, BodyFrameCtx } from './body';
-import { ghostModeOf, type GhostMode } from './castMap';
+import { ghostModeOf, type GhostMode, type SpecCaps } from './castMap';
 import { clipTransition, NO_CLIPS, type ClipWant } from './clips';
-import { createTintUniforms, patchTint, patchTintTree, setColourTint, setFade, setGhostTint, type TintUniforms } from './ghostTint';
+import { createTintUniforms, patchTint, patchTintTree, setColourTint, setFade, setGhostTint, setRim, type TintUniforms } from './ghostTint';
 
 /** Hover of a 'tint' ghost (m). */
 export const TINT_HOVER_M = 0.15;
@@ -56,14 +59,15 @@ export async function createRigBody(engine: unknown, specId: string, o: RigBodyO
   const caps = await loadSpecCaps(specId);
   const handle = await spawnCharacter(engine, specId, { x: o.x, z: o.z, face: o.face ?? 0, heightAt: o.heightAt, lite: o.lite });
   try {
-    return wrapHandle(engine, specId, handle, ghostModeOf(caps), o);
+    return wrapHandle(engine, specId, handle, caps, o);
   } catch (e) {
     handle.dispose();
     throw e;
   }
 }
 
-function wrapHandle(engine: unknown, specId: string, handle: CharacterHandle, ghostMode: GhostMode, o: RigBodyOptions): AvatarBody {
+function wrapHandle(engine: unknown, specId: string, handle: CharacterHandle, caps: SpecCaps, o: RigBodyOptions): AvatarBody {
+  const ghostMode: GhostMode = ghostModeOf(caps);
   suppressSpecLights(handle);
   const U: TintUniforms = createTintUniforms();
   const patched = patchTintTree(handle.root, U);
@@ -100,12 +104,16 @@ function wrapHandle(engine: unknown, specId: string, handle: CharacterHandle, gh
   let far = false;
 
   let hover = 0;
+  /** extra height above the head (the shared ghost's halo at level 1), for anchors */
+  let crown = 0;
   let dead = false;
-  let applied: ClipWant = NO_CLIPS;
-  let want: ClipWant = NO_CLIPS;
+  // own mutable copies (callers may reuse their ClipWant objects)
+  const applied: ClipWant = { ...NO_CLIPS };
+  const want: ClipWant = { ...NO_CLIPS };
   let onceUntil = -1;
   let lastX = o.x;
   let lastZ = o.z;
+  let lastT = 0;
   let disposed = false;
 
   const playAll = (names: string[]) => {
@@ -118,7 +126,8 @@ function wrapHandle(engine: unknown, specId: string, handle: CharacterHandle, gh
   };
   const applyClips = () => {
     playAll(clipTransition(applied, want));
-    applied = want;
+    applied.action = want.action;
+    applied.loop = want.loop;
   };
 
   const body: AvatarBody = {
@@ -135,18 +144,30 @@ function wrapHandle(engine: unknown, specId: string, handle: CharacterHandle, gh
     get hoverM() {
       return hover;
     },
+    get crownM() {
+      return crown;
+    },
     place(t, X, Z, face, _moving, jump) {
       if (jump) driver.reset(t, X, Z, face);
       else driver.push(t, X, Z, face);
       lastX = X;
       lastZ = Z;
+      lastT = t;
       refreshHolder();
     },
     setGhost(isDead, level) {
       dead = isDead;
-      if (ghostMode === 'shared') setGhostLevel(handle, dead ? level : null);
-      else if (ghostMode === 'clips') {
-        driver.setSlide(dead);
+      if (ghostMode === 'shared') {
+        setGhostLevel(handle, dead ? level : null);
+        // the vendor lifts a standing shared ghost by spec.ghost.hover and draws the halo above the head at level 1
+        hover = dead ? (caps.ghostHover ?? 0) : 0;
+        crown = dead && level === 1 ? (caps.ghostHalo ?? 0) : 0;
+      } else if (ghostMode === 'clips') {
+        if (!dead && driver.sliding) {
+          // revive in place: leave the slide, the Character re-starts at rest at the feet (no rebuild, no pop)
+          driver.setSlide(false);
+          driver.reset(lastT, lastX, lastZ, null);
+        } else driver.setSlide(dead);
         setGhostTint(U, dead ? 0.5 : 0);
       } else {
         setGhostTint(U, dead ? 1 : 0);
@@ -155,7 +176,8 @@ function wrapHandle(engine: unknown, specId: string, handle: CharacterHandle, gh
       refreshHolder();
     },
     setClips(next) {
-      want = next;
+      want.action = next.action;
+      want.loop = next.loop;
       if (onceUntil < 0) applyClips();
     },
     playOnce(clip, t) {
@@ -169,6 +191,9 @@ function wrapHandle(engine: unknown, specId: string, handle: CharacterHandle, gh
     setFade(a) {
       setFade(U, a);
     },
+    setRim(hex) {
+      setRim(U, hex);
+    },
     setLod(isFar) {
       if (isFar === far) return;
       far = isFar;
@@ -181,8 +206,11 @@ function wrapHandle(engine: unknown, specId: string, handle: CharacterHandle, gh
       if (disposed) return;
       if (onceUntil >= 0 && t >= onceUntil) {
         onceUntil = -1;
-        playAll(['idle', ...(want.loop ? [want.loop] : []), ...(want.action ? [want.action] : [])]);
-        applied = want;
+        handle.play('idle');
+        if (want.loop) handle.play(want.loop);
+        if (want.action) handle.play(want.action);
+        applied.action = want.action;
+        applied.loop = want.loop;
       } else if (onceUntil < 0 && (applied.action !== want.action || applied.loop !== want.loop)) applyClips();
       handle.update(t);
     },
@@ -195,9 +223,14 @@ function wrapHandle(engine: unknown, specId: string, handle: CharacterHandle, gh
       lanternAt.getWorldPosition(out);
       return true;
     },
+    compileRoots() {
+      return [holder, ...extrasOf(handle)];
+    },
     lookInfo() {
       const g = U.uCtGhost.value;
-      return { patched, ghostK: g.x, alpha: +g.y.toFixed(2), fade: +g.z.toFixed(2), tint: U.uCtTint.value.w, hover, sliding: driver.sliding, vendorGhost: (handle.ch as { ghost?: number | null }).ghost ?? null, far };
+      const st = charState(handle);
+      const mo = motionOf(handle);
+      return { patched, ghostK: g.x, alpha: +g.y.toFixed(2), fade: +g.z.toFixed(2), tint: U.uCtTint.value.w, rim: U.uCtRim.value.w, hover, crown, sliding: driver.sliding, vendorGhost: (handle.ch as { ghost?: number | null }).ghost ?? null, far, mode: st.mode, run: st.run, lean: mo?.lean ?? null, vel: mo?.vel ?? null };
     },
     dispose() {
       if (disposed) return;

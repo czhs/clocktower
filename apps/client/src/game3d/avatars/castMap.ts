@@ -28,6 +28,10 @@ export interface CastBody {
 export interface SpecCaps {
   /** spec.ghost (the shared ghost block) is present. */
   ghost: boolean;
+  /** spec.ghost.hover (m): the shared ghost's lift while standing (0 without spec.ghost). */
+  ghostHover?: number;
+  /** The shared ghost's halo lift above the head at level 1 (m; rig.js ghostOpts default 0.12; 0 = no halo). */
+  ghostHalo?: number;
   /** Names of spec.clips. */
   clips: readonly string[];
   /** spec.height (m), when set. */

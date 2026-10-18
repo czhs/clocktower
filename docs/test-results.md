@@ -2,6 +2,43 @@
 
 All commands run on **the host** via `scripts/remote.sh` unless stated otherwise.
 
+## 2026-10-18 — v3 checkpoint C1a gate (`v3-gate`, branch `v3-game`, the host, sandbox `v3-gate`, capped remote.sh)
+
+Tree = "v3 C1 WIP" (`4998ca5`) + the finished phase-1 packages (WP1-WP6, reviewed and fixed; WP1 / WP2 / WP4 not
+wired into `TownGame3d.ts` yet), lead decisions D1-D4, WP7a harness + v3 e2e specs, perf recon tooling. Contract and
+per-package detail: `docs/v3/INTEGRATION.md` §8 Status.
+
+| Command (gate, one run under `flock ~/clocktower/v3-heavy.lock`) | Result |
+|---|---|
+| `pnpm -r run typecheck` | ✅ |
+| `pnpm build` | ✅ |
+| `pnpm test` (after the build, so `tests/security/web-client.test.ts` reads the production `dist`) | ✅ 159 files passed, 1 skipped; 1870 tests passed, 3 skipped (132 s) |
+| `pnpm vitest run tests/security/repo-hygiene.test.ts` after the doc edits (no lock) | ✅ 17/17 |
+| `bash scripts/secret-scan.sh --staged` (editing machine, before the commit) | ✅ clean (144 files) |
+
+Package agents' runs that this checkpoint relies on (all via `CT_AGENT=v3-<name> scripts/remote.sh`, SwiftShader /
+CPU only, heavy + browser locks for browsers):
+
+| Package / agent | Command | Result |
+|---|---|---|
+| WP2 fix (`v3-avatars`) | client `tsc --noEmit`; `vitest run test/game3d` | ✅; 27 files / 370 tests |
+| WP2 fix | DEV smoke `avatars/dev/avatarSmoke.mjs` (`SMOKE_PORT=3462`) | run A ❌ (rim probe moved the camera: one extra program; brianbi rim hidden by a roof) → probe fixed; runs B and C ✅ 47/47 (low: programs 63 constant, build of 38 bodies ≈ 319 s; high: programs 42 constant, late joiners pre-warmed) |
+| WP3 fix (`v3-stage`) | `vitest run apps/client/test/game3d/world packages/assets/test/hollowmere.test.ts`; `vitest run packages/assets apps/client/test` | ✅ 9 files / 104; ✅ 70 files / 967 (3 skipped) |
+| WP3 fix | `scripts/v3/stage-smoke.mjs` (port 3465, low tier, canopy on) | ✅ 27/27 (programs 41 constant; prefetched interior switch 1 ms; cold ST teleport 144 ms) |
+| WP4 D2 + fix (`v3-overlay`) | `vitest run apps/client/test/game3d/overlay`; `vitest run apps/client/test/game3d`; client tsc | ✅ 5 files / 53; ✅ 25 files / 335; ✅ |
+| WP5b verify (`v3-world`) | e2e `--project=chromium classic-in-v3 doors.spec` (`E2E_PORT=3475`) | ✅ 4/4 (2.2 min; all 15 cottages through their v3 doors, v2 → v3 in one page, Q7 phone shots) |
+| WP5b fix | `classicV3.test.ts`; `pnpm -r run typecheck`; `tsc -p tests/tsconfig.json` | ✅ 18/18; first run ❌ (duplicate `npcs` key in a TownScene debug hook, fixed) then ✅; ✅ |
+| WP6 fix (`v3-ui`) | WP6 unit set + `lobby.world.test.ts` | ✅ 10 files / 139 |
+| WP6 fix | e2e `v23-settings` + `lobby` (`E2E_PORT=3480`) | first run ❌ 1/8 (second create dialog not closed by an Escape sent right after the radio check: post-paint key-listener race; test now uses Cancel) → ✅ 8/8 |
+| WP6 fix | `pnpm build`; `tests/security/web-client.test.ts`; `budgets.mjs` | ✅; ✅ 31/31 (❌ 2 when run against the dist the e2e webServer builds under `NODE_ENV=test`); ✅ entry JS 42.7/45, entry CSS 11.5/15, LobbyRoute 67/72, TownGame 295.9/300 KiB br |
+| WP7a (`v3-qa`) | `harness.scenario.test.ts`; tsc over client, `tests/`, `tests/v3/` | ✅ 11/11; ✅ |
+| WP7a | harness `projection`, `cycles` (port 3460) | ✅ (15 samples at scales 2/3/4); ✅ 5 mounts + 2 tier rebuilds + 1 crash (heap figures bucketed: re-run with `--enable-precise-memory-info` pending) |
+| WP7a | `E2E_V3=1 … --project=v3 v3-boot v3-fallback v3-lobby-choice` (`E2E_PORT=3485`) | ✅ `v3-boot`, `v3-lobby-choice` "town choice from the UI" + "each lobby renders the right town", `v3-fallback` "leftover boot mark"; ❌ `v3-fallback` "chunk fails" (real bug: the one retry never re-requests the chunk, INTEGRATION.md §9.3); ❌ pending C1: context-loss rebuild, perf sampler fallback, join preview |
+| WP7a | `--project=chromium doors.spec chat-bubbles door-boards` (`E2E_PORT=3486`) | ✅ 3/3 |
+| D3 (`v3-radial`) | `social.radial` + `social.controller` + `social.logic` unit | ✅ 3 files / 83 (`social.radial` 45); mutation check: 17/45 fail with the gate disabled, as intended |
+| D3 | `pnpm -r build` then `v2-social.spec.ts` ×3 (`E2E_PORT=3456`) | first version ❌ (slide-to-pin committed Point; discarded); final ✅ 2/2 three times |
+| perf recon (`v3-perf-*`) | measurement tooling only (`docs/perf-v3/recon-*.md` list each run) | frame / load / classic / net recon ran; the `chars` and `server` runs were cut off by the usage limit (tools committed, results partial) |
+
 ## 2026-10-16 — v2.4 release gate (lead, hshi-u1, sandbox `lead`, capped remote.sh)
 
 Tree = v2.3 (`28a9d6e`) + v2.4 P1 (client runtime), P2 (load path), P3 (server CPU) + lead fixes

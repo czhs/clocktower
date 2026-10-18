@@ -3,7 +3,10 @@
 // Labels: interim DOM labels (§3 "Name labels") until pixel3d publishes in-canvas `L.world` labels [Q6].
 // One <span> per drawn avatar, text set with textContent only (user text is never parsed as HTML), the
 // kit.json label tokens (labelText / st / ghost, an 8-neighbour 1-px labelLine outline as text-shadow).
-// Moved with transform only; the size is measured once whenever the name or the font size changes.
+// Moved with transform only; the size is measured once whenever the name or the font size changes (and once
+// more when the web fonts arrive). A label lives as long as its avatar is DRAWN in the viewer's place
+// (OverlayFrame.drawn), not just while its head is on the canvas: a walker crossing the view edge costs one
+// visibility write, not a destroy + rebuild (create, text, 4 styles, a layout read) each time.
 //
 // Talking (§3 "Talking outline", interim until pixel3d `createTalkOutline` [Q6]): reads the voice client's
 // `voicePresence` (already only people this client actually hears) and draws, for avatars the town draws
@@ -17,8 +20,8 @@
 import { voicePresence } from '../../voice/VoiceClient';
 import { readTalkOutlineMode, type TalkOutlineMode } from '../../game/fx/talkingPref';
 import { glyphAt, labelBox } from './anchors';
-import { newPlaceState, place, setStyle, setText, type PlaceState } from './place';
-import { labelFontPx } from './surface';
+import { newPlaceState, place, setShown, setStyle, setText, type PlaceState } from './place';
+import { labelFontPx, measureEl } from './surface';
 import type { OverlayEnv, OverlayFrame, OverlayView } from './types';
 
 interface Label {
@@ -30,9 +33,8 @@ interface Label {
   shadow: string;
   w: number;
   h: number;
-  /** Needs measuring (content / font changed). */
+  /** Needs measuring (content / font changed, web fonts arrived, or it measured 0 × 0 while hidden). */
   dirty: boolean;
-  seen: number;
   /** The reused label box (published as DrawnAvatar.label). */
   box: { x: number; y: number; w: number; h: number };
 }
@@ -62,7 +64,6 @@ export interface LabelsView extends OverlayView {
 export function createLabelsView(env: OverlayEnv): LabelsView {
   const { surface, atlas, stats } = env;
   const labels = new Map<string, Label>();
-  let frameNo = 0;
   let speaking: readonly string[] = voicePresence.get().speaking;
   let selfTx = voicePresence.get().selfTransmitting;
   const off = voicePresence.subscribe((p) => {
@@ -79,49 +80,69 @@ export function createLabelsView(env: OverlayEnv): LabelsView {
     stats.content++;
     labels.delete(pid);
   }
+  const toMeasure: Label[] = [];
+  let fontSeen = surface.fontEpoch();
+
+  /** Text, colour and font of one label (writes only on change). */
+  function content(l: Label, name: string, storyteller: boolean, ghost: boolean, f: OverlayFrame, font: number, shadow: string) {
+    const text = name || '…';
+    if (l.text !== text) {
+      l.text = text;
+      setText(l.el, text, stats);
+      l.dirty = true;
+    }
+    const color = storyteller ? f.tokens.st : ghost ? f.tokens.ghost : f.tokens.labelText;
+    if (l.color !== color) {
+      l.color = color;
+      setStyle(l.el, 'color', color, stats);
+    }
+    if (l.font !== font) {
+      l.font = font;
+      setStyle(l.el, 'fontSize', `${font}px`, stats);
+      l.dirty = true;
+    }
+    if (l.shadow !== shadow) {
+      l.shadow = shadow;
+      setStyle(l.el, 'textShadow', shadow, stats);
+    }
+  }
 
   function update(f: OverlayFrame) {
-    frameNo++;
     const px = f.px;
     const font = labelFontPx(px);
     const shadow = shadowOf(f.tokens.labelLine);
-    const toMeasure: Label[] = [];
-    // 1. content (writes only)
-    for (const a of f.avatars) {
-      let l = labels.get(a.pid);
+    const fe = surface.fontEpoch();
+    const fontsChanged = fe !== fontSeen;
+    fontSeen = fe;
+    toMeasure.length = 0;
+    // 0. forget the avatars that are no longer drawn in our place (left, went inside, hidden)
+    for (const [pid, l] of labels) if (!f.drawn.has(pid)) drop(pid, l);
+    // 1. content (writes only): on-screen avatars from the frame; a drawn avatar whose head is off the canvas
+    //    keeps its label (hidden), and one first seen off the canvas gets its label made now, hidden, so
+    //    walking into view is one visibility write
+    for (const pid of f.drawn) {
+      const a = f.byPid.get(pid);
+      let l = labels.get(pid);
       if (!l) {
-        l = { el: surface.text('label'), st: newPlaceState(), text: '', color: '', font: 0, shadow: '', w: 0, h: 0, dirty: true, seen: frameNo, box: { x: 0, y: 0, w: 0, h: 0 } };
+        l = { el: surface.text('label'), st: newPlaceState(), text: '', color: '', font: 0, shadow: '', w: 0, h: 0, dirty: true, box: { x: 0, y: 0, w: 0, h: 0 } };
         setStyle(l.el, 'fontWeight', '700', stats);
-        labels.set(a.pid, l);
+        labels.set(pid, l);
+        if (!a) {
+          const m = f.state.members.get(pid);
+          content(l, m?.name ?? '', m?.role === 'storyteller', f.dead.has(pid), f, font, shadow);
+        }
       }
-      l.seen = frameNo;
-      const text = a.name || '…';
-      if (l.text !== text) {
-        l.text = text;
-        setText(l.el, text, stats);
-        l.dirty = true;
-      }
-      const color = a.storyteller ? f.tokens.st : a.ghost ? f.tokens.ghost : f.tokens.labelText;
-      if (l.color !== color) {
-        l.color = color;
-        setStyle(l.el, 'color', color, stats);
-      }
-      if (l.font !== font) {
-        l.font = font;
-        setStyle(l.el, 'fontSize', `${font}px`, stats);
-        l.dirty = true;
-      }
-      if (l.shadow !== shadow) {
-        l.shadow = shadow;
-        setStyle(l.el, 'textShadow', shadow, stats);
-      }
+      if (a) content(l, a.name, a.storyteller, a.ghost, f, font, shadow);
+      else setShown(l.el, l.st, false, stats); // off the canvas: hidden, text and size kept
+      if (fontsChanged) l.dirty = true;
       if (l.dirty) toMeasure.push(l);
     }
-    // 2. sizes (one layout read batch, only for changed labels)
+    // 2. sizes (one layout read batch, only for changed labels); 0 × 0 (hidden town) = measure again later
     for (const l of toMeasure) {
-      l.w = l.el.offsetWidth;
-      l.h = l.el.offsetHeight;
-      l.dirty = false;
+      const m = measureEl(l.el);
+      l.w = m.w;
+      l.h = m.h;
+      l.dirty = l.w === 0 && l.text !== '';
     }
     // 3. place + publish the label boxes for the views above the label
     for (const a of f.avatars) {
@@ -133,7 +154,6 @@ export function createLabelsView(env: OverlayEnv): LabelsView {
       a.label = box;
       place(l.el, l.st, box.x, box.y, stats, { w: f.w, h: f.h, margin: 64 });
     }
-    for (const [pid, l] of labels) if (l.seen !== frameNo) drop(pid, l);
 
     // 4. talking glyph + ripple (fx canvas; nothing while nobody talks)
     shown.length = 0;

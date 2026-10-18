@@ -1,4 +1,4 @@
-import type { DirectoryEvent, LobbySummary, ScriptId } from '@ct/protocol';
+import type { CreateLobbyRequest, DirectoryEvent, LobbySummary, ScriptId, StorytellerMode, WorldId } from '@ct/protocol';
 
 // Pure lobby-finder logic (sorting/filtering happens client-side over the public summaries).
 
@@ -14,6 +14,33 @@ export interface FinderFilters {
 }
 
 export const DEFAULT_FILTERS: FinderFilters = { search: '', status: 'waiting', size: 'any', minPlayers: 0, script: 'any' };
+
+// ------------------------------------------------------------------------------------ (v3 WP6) the town
+
+/** The world a lobby summary or room view uses (`view.world`, else `view.lobby.world`; absent = 'v2', every
+ * lobby created before v3). The one copy of this rule for the client. */
+export const worldOfLobby = (l: { world?: WorldId; lobby?: { world?: WorldId } } | null | undefined): WorldId => l?.world ?? l?.lobby?.world ?? 'v2';
+
+/** The create dialog's fields → the POST /api/lobbies body (pure; `world` is always sent, docs/v3 §9.1). */
+export function createLobbyBody(f: {
+  name: string;
+  maxPlayers: number;
+  script: ScriptId;
+  description: string;
+  takeStoryteller: boolean;
+  mode: StorytellerMode;
+  world: WorldId;
+}): Partial<CreateLobbyRequest> & { name: string; maxPlayers: number } {
+  return {
+    name: f.name,
+    maxPlayers: f.maxPlayers,
+    script: f.script,
+    description: f.description.trim(),
+    takeStoryteller: f.mode === 'human' && f.takeStoryteller,
+    ...(f.mode === 'auto' ? { storytellerMode: 'auto' as const } : {}),
+    world: f.world,
+  };
+}
 
 const SIZE_RANGES: Record<Exclude<FinderFilters['size'], 'any'>, [number, number]> = {
   small: [5, 8],

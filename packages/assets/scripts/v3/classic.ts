@@ -9,8 +9,9 @@
 //   square-props-v3.json   meta.houses for the v3 world (boarded / unlit overlays, door glow, board and smoke
 //                          anchors in v3 world px); its frames are the v2 square-props.* atlas, which it reuses
 //   objects-v3.{png,webp,json}  the few sprites only the v3 world draws (placement.ts GENERIC_SOUTH cottages:
-//                          building, door leaf / doorway, boarded / unlit overlays); objects and overlays that use
-//                          them carry `atlas: 'objects-v3'`
+//                          building, door leaf / doorway, boarded / unlit overlays; the dais plinth `dais@v3`);
+//                          objects and overlays that use them carry `atlas: 'objects-v3'`
+//   (town-v3.json also carries the outdoor filler pieces, placement.ts outdoorFiller, and `sourceHash`)
 //
 // Runs after the v2 pass (it reads generated/objects.json and generated/square-props.json) in its own process,
 // because scripts/ground.ts derives the world it paints at import time (scripts/lib/world.ts):
@@ -30,14 +31,14 @@ if (process.env.CT_ASSETS_WORLD !== 'v3') {
 
 const { PROP_DEFS, TS } = await import('../../src/layout.js');
 const { townLayoutV3, townMapV3, npcHomesV3 } = await import('../../src/hollowmere/layoutV3.js');
-const { classicWorldV3, drawnBuildings } = await import('./placement.js');
+const { classicSourceHash, classicWorldV3, daisObject, drawnBuildings, outdoorFiller, outdoorProps, spriteCover } = await import('./placement.js');
 const { renderGround, sliceTiles } = await import('../ground.js');
 const { WORLD } = await import('../lib/world.js');
 const { cottageFront, drawBuildings, EXTRA } = await import('../buildings.js');
 const { houseMetaFor } = await import('../fx/houses.js');
 const { DECAL_NAMES, drawDecals } = await import('../decals.js');
 const { losslessWebP, optimisedPNG } = await import('../lib/encode.js');
-const { Img } = await import('../lib/img.js');
+const { dpick, hash, Img } = await import('../lib/img.js');
 type ImgT = InstanceType<typeof Img>;
 if (WORLD !== 'v3') throw new Error('classic v3: scripts/lib/world.ts did not select the v3 world');
 
@@ -94,6 +95,21 @@ for (const d of drawn.values()) {
   for (const [n, img] of h.frames) extraFrames.set(n, img);
   extraHouseFx.set(d.id, h.meta);
 }
+// the dais in the middle of the voting circle (blocked in v3): a raised stone plinth, v3-only frame
+const dais = daisObject();
+if (dais) extraFrames.set(dais.frame!, drawDais(dais.w, dais.h));
+// outdoors, no invisible walls: decorative blocking pieces on blocked town tiles nothing drawn covers
+// (placement.ts outdoorFiller); coverage = the opaque pixels of the building and dais sprites as placed
+const coverSprites = [...drawn.values()].map((d) => {
+  const img = sprites.get(d.id)!.img;
+  return { x: d.footprint.x * TS, y: (d.footprint.y + d.footprint.h) * TS - img.h, w: img.w, h: img.h, alpha: (sx: number, sy: number) => img.alpha(sx, sy) };
+});
+if (dais) {
+  const img = extraFrames.get(dais.frame!)!;
+  coverSprites.push({ x: dais.x * TS, y: (dais.y + 1) * TS - img.h, w: img.w, h: img.h, alpha: (sx: number, sy: number) => img.alpha(sx, sy) });
+}
+const filler = outdoorFiller(spriteCover(coverSprites), [...outdoorProps(), ...(dais ? [dais] : [])]);
+log(`outdoor filler: ${filler.length} pieces${dais ? `, dais ${dais.w}x${dais.h}` : ''}`);
 const extraRects: Record<string, { x: number; y: number; w: number; h: number }> = {};
 {
   let x = 0;
@@ -115,7 +131,7 @@ let oid = 1;
 type Prop = { name: string; type: string; value: string | number | boolean };
 const tobj = (name: string, type: string, x: number, y: number, w: number, h: number, props: Prop[]) => ({ id: oid++, name, type, class: type, x, y, width: w, height: h, rotation: 0, visible: true, properties: props });
 const objects: ReturnType<typeof tobj>[] = [];
-for (const o of world.townMap.objects) {
+for (const o of [...world.townMap.objects, ...filler]) {
   const frame = o.kind === 'building' ? `bld_${o.frame}` : (o.frame ?? o.kind);
   const r = rectOf(frame);
   if (!r) throw new Error(`classic v3: missing atlas frame ${frame}`);
@@ -206,6 +222,8 @@ const tiled = {
     { name: 'square', type: 'string', value: JSON.stringify(L.square) },
     { name: 'plaza', type: 'string', value: JSON.stringify(townMapV3.plaza) },
     { name: 'npcHomes', type: 'string', value: JSON.stringify(npcHomes) },
+    // freshness: the v3 layout + map + the generator sources this file was made from (classicV3.test.ts)
+    { name: 'sourceHash', type: 'string', value: classicSourceHash() },
   ],
   tilesets: [tsDef('terrain', 'terrain-v3.png', terrainImg.w, terrainImg.h, 1), tsDef('decor', 'decor.png', decorW, TS, decorGid0), tsDef('collision', 'collision.png', TS, TS, collisionGid)],
   layers: [
@@ -278,3 +296,58 @@ if (review) {
   log('review images written (.review/town-v3.png, .review/interiors-v3.png)');
 }
 log('done');
+
+/**
+ * The dais (the blocked tiles in the middle of the voting circle) as Classic draws it: a round stone plinth raised
+ * LIFT px, its top a ring of dial stone with a brass band and a seal in the middle, its south face in kerb stone with
+ * block joints. `wT` x `hT` = the dais tiles' bounding box; the sprite is LIFT px taller (the raised face).
+ */
+function drawDais(wT: number, hT: number): ImgT {
+  const LIFT = 6;
+  const w = wT * TS;
+  const h = hT * TS + LIFT;
+  const img = new Img(w, h);
+  const KERB = ['#3a3442', '#4a4352', '#5b5463', '#6c6573', '#7e7684', '#8f8894'];
+  const TOP = ['#57505c', '#615966', '#6a6270', '#736b78', '#7e7682'];
+  const BRASS = ['#3e2c12', '#634a1e', '#8a6a2c', '#ad8a3e', '#cfae5c'];
+  const DIAL = ['#4e403e', '#5e4d48', '#6d5a52', '#7c675c', '#8b7566'];
+  const cx = w / 2;
+  const r = Math.min(w, hT * TS) / 2 - 1; // base radius (ground contact)
+  const cyBase = LIFT + (hT * TS) / 2; // base centre
+  const cyTop = cyBase - LIFT;
+  const rTop = r - 1.5;
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      const px = x + 0.5;
+      const py = y + 0.5;
+      const dx = px - cx;
+      const dT = Math.hypot(dx, py - cyTop);
+      if (dT <= rTop) {
+        // top face: concentric courses, a brass band, the seal; lit from the north-west, darker rim to the south
+        const lit = (-dx - (py - cyTop)) / (rTop * 2.8);
+        if (dT > rTop - 1.2) img.set(x, y, py < cyTop ? KERB[5]! : KERB[2]!);
+        else if (dT > rTop - 6.5 && dT < rTop - 4) img.set(x, y, dpick(BRASS, 0.55 + lit + (hash(x, y, 7) - 0.5) * 0.2, x, y));
+        else if (dT < 9) img.set(x, y, dT > 7.5 ? BRASS[1]! : dpick(DIAL, 0.55 + lit * 1.5 + (hash(x, y, 9) - 0.5) * 0.25, x, y));
+        else {
+          const course = Math.floor(dT / 6);
+          const ang = Math.atan2(py - cyTop, dx);
+          const joint = Math.abs(((ang / (2 * Math.PI)) * (8 + course * 5) + course * 0.37) % 1) < 0.06 || dT % 6 < 0.9;
+          const v = 0.5 + lit + (hash(course, Math.floor(((ang + Math.PI) / (2 * Math.PI)) * (8 + course * 5)), 3) - 0.5) * 0.35;
+          img.set(x, y, joint ? TOP[0]! : dpick(TOP, v, x, y));
+        }
+        continue;
+      }
+      // the raised face: inside the base circle swept up by t in [0, LIFT]
+      let t = -1;
+      for (let k = 0; k <= LIFT; k++) if (Math.hypot(dx, py - (cyTop + k)) <= rTop + (k / LIFT) * 1.5) {
+        t = k;
+        break;
+      }
+      if (t < 0) continue;
+      const ang = Math.atan2(py - cyBase, dx);
+      const joint = Math.abs(((ang / (2 * Math.PI)) * 22) % 1) < 0.07 || t === Math.floor(LIFT / 2);
+      const v = 0.5 - t / (LIFT * 2.2) - dx / (r * 4) + (hash(x, y, 5) - 0.5) * 0.15;
+      img.set(x, y, joint ? KERB[0]! : dpick(KERB.slice(0, 4), v, x, y));
+    }
+  return img;
+}

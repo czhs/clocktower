@@ -1,0 +1,382 @@
+{
+ "name": "phone-390x844",
+ "world": "v3",
+ "viewport": [
+  390,
+  844
+ ],
+ "tier": "low",
+ "members": [
+  {
+   "pid": "me",
+   "name": "You",
+   "cast": "frog",
+   "seat": 0
+  },
+  {
+   "pid": "p1",
+   "name": "Agnes",
+   "cast": "mushroom",
+   "seat": 1
+  },
+  {
+   "pid": "p2",
+   "name": "Bart",
+   "cast": "fox",
+   "seat": 2
+  },
+  {
+   "pid": "p3",
+   "name": "Cordelia",
+   "cast": "owl",
+   "seat": 3
+  },
+  {
+   "pid": "p4",
+   "name": "Desmond",
+   "cast": "crow",
+   "seat": 4
+  },
+  {
+   "pid": "p5",
+   "name": "Eloise",
+   "cast": "nicksong",
+   "seat": 5
+  },
+  {
+   "pid": "st",
+   "name": "The Storyteller",
+   "cast": "storyteller",
+   "role": "storyteller",
+   "seat": null
+  }
+ ],
+ "spawn": {
+  "x": 360,
+  "y": 420
+ },
+ "steps": [
+  {
+   "at": 0,
+   "game": {
+    "phase": "day",
+    "dayNumber": 1
+   }
+  },
+  {
+   "at": 0,
+   "snapshot": {
+    "entities": [
+     {
+      "id": "p1",
+      "x": 430.0,
+      "y": 330.0,
+      "location": "outdoors"
+     },
+     {
+      "id": "p2",
+      "x": 402.0,
+      "y": 402.7,
+      "location": "outdoors"
+     },
+     {
+      "id": "p3",
+      "x": 311.0,
+      "y": 414.9,
+      "location": "outdoors"
+     },
+     {
+      "id": "p4",
+      "x": 290.0,
+      "y": 330.0,
+      "location": "outdoors"
+     },
+     {
+      "id": "p5",
+      "x": 318.0,
+      "y": 257.3,
+      "location": "outdoors"
+     },
+     {
+      "id": "st",
+      "x": 409.0,
+      "y": 245.1,
+      "location": "outdoors"
+     }
+    ]
+   }
+  },
+  {
+   "at": 1500,
+   "snapshot": {
+    "entities": [
+     {
+      "id": "p1",
+      "x": 425.1,
+      "y": 355.6,
+      "location": "outdoors"
+     },
+     {
+      "id": "p2",
+      "x": 372.4,
+      "y": 413.1,
+      "location": "outdoors"
+     },
+     {
+      "id": "p3",
+      "x": 283.3,
+      "y": 391.0,
+      "location": "outdoors"
+     },
+     {
+      "id": "p4",
+      "x": 294.9,
+      "y": 304.4,
+      "location": "outdoors"
+     },
+     {
+      "id": "p5",
+      "x": 347.6,
+      "y": 246.9,
+      "location": "outdoors"
+     },
+     {
+      "id": "st",
+      "x": 436.7,
+      "y": 269.0,
+      "location": "outdoors"
+     }
+    ]
+   }
+  },
+  {
+   "at": 2000,
+   "chat": {
+    "from": "p1",
+    "text": "Can you see me on the phone?"
+   }
+  },
+  {
+   "at": 3000,
+   "snapshot": {
+    "entities": [
+     {
+      "id": "p1",
+      "x": 411.2,
+      "y": 377.7,
+      "location": "outdoors"
+     },
+     {
+      "id": "p2",
+      "x": 341.1,
+      "y": 411.9,
+      "location": "outdoors"
+     },
+     {
+      "id": "p3",
+      "x": 266.3,
+      "y": 358.7,
+      "location": "outdoors"
+     },
+     {
+      "id": "p4",
+      "x": 308.8,
+      "y": 282.3,
+      "location": "outdoors"
+     },
+     {
+      "id": "p5",
+      "x": 378.9,
+      "y": 248.1,
+      "location": "outdoors"
+     },
+     {
+      "id": "st",
+      "x": 453.7,
+      "y": 301.3,
+      "location": "outdoors"
+     }
+    ]
+   }
+  },
+  {
+   "at": 4500,
+   "snapshot": {
+    "entities": [
+     {
+      "id": "p1",
+      "x": 390.2,
+      "y": 393.2,
+      "location": "outdoors"
+     },
+     {
+      "id": "p2",
+      "x": 312.5,
+      "y": 399.3,
+      "location": "outdoors"
+     },
+     {
+      "id": "p3",
+      "x": 262.3,
+      "y": 322.4,
+      "location": "outdoors"
+     },
+     {
+      "id": "p4",
+      "x": 329.8,
+      "y": 266.8,
+      "location": "outdoors"
+     },
+     {
+      "id": "p5",
+      "x": 407.5,
+      "y": 260.7,
+      "location": "outdoors"
+     },
+     {
+      "id": "st",
+      "x": 457.7,
+      "y": 337.6,
+      "location": "outdoors"
+     }
+    ]
+   }
+  },
+  {
+   "at": 6000,
+   "snapshot": {
+    "entities": [
+     {
+      "id": "p1",
+      "x": 365.0,
+      "y": 399.8,
+      "location": "outdoors"
+     },
+     {
+      "id": "p2",
+      "x": 290.4,
+      "y": 377.0,
+      "location": "outdoors"
+     },
+     {
+      "id": "p3",
+      "x": 271.9,
+      "y": 287.1,
+      "location": "outdoors"
+     },
+     {
+      "id": "p4",
+      "x": 355.0,
+      "y": 260.2,
+      "location": "outdoors"
+     },
+     {
+      "id": "p5",
+      "x": 429.6,
+      "y": 283.0,
+      "location": "outdoors"
+     },
+     {
+      "id": "st",
+      "x": 448.1,
+      "y": 372.9,
+      "location": "outdoors"
+     }
+    ]
+   }
+  },
+  {
+   "at": 7500,
+   "snapshot": {
+    "entities": [
+     {
+      "id": "p1",
+      "x": 339.0,
+      "y": 396.8,
+      "location": "outdoors"
+     },
+     {
+      "id": "p2",
+      "x": 278.0,
+      "y": 348.3,
+      "location": "outdoors"
+     },
+     {
+      "id": "p3",
+      "x": 293.7,
+      "y": 257.8,
+      "location": "outdoors"
+     },
+     {
+      "id": "p4",
+      "x": 381.0,
+      "y": 263.2,
+      "location": "outdoors"
+     },
+     {
+      "id": "p5",
+      "x": 442.0,
+      "y": 311.7,
+      "location": "outdoors"
+     },
+     {
+      "id": "st",
+      "x": 426.3,
+      "y": 402.2,
+      "location": "outdoors"
+     }
+    ]
+   }
+  },
+  {
+   "at": 9000,
+   "snapshot": {
+    "entities": [
+     {
+      "id": "p1",
+      "x": 316.0,
+      "y": 384.5,
+      "location": "outdoors"
+     },
+     {
+      "id": "p2",
+      "x": 277.0,
+      "y": 317.0,
+      "location": "outdoors"
+     },
+     {
+      "id": "p3",
+      "x": 324.7,
+      "y": 238.6,
+      "location": "outdoors"
+     },
+     {
+      "id": "p4",
+      "x": 404.0,
+      "y": 275.5,
+      "location": "outdoors"
+     },
+     {
+      "id": "p5",
+      "x": 443.0,
+      "y": 343.0,
+      "location": "outdoors"
+     },
+     {
+      "id": "st",
+      "x": 395.3,
+      "y": 421.4,
+      "location": "outdoors"
+     }
+    ]
+   }
+  }
+ ],
+ "shots": [
+  {
+   "at": 3000,
+   "name": "phone-390x844"
+  }
+ ],
+ "duration": 4000
+}

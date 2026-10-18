@@ -12,23 +12,29 @@
 //   3. per entry: shown only in the viewer's location; feet = the pose px through coords.ts (no clamp); jumps
 //      (> ST_JUMP_PX, location change, first placement) reset the track (no slide; WP4 draws the poof);
 //      deaths (clips.ts stepDeath: 'die' held 1.5 s when seen) -> the ghost look of the body's GhostMode;
-//      raised hands -> held 'vote'; lanterns at night borrow a pool light (lanterns.ts); low tier: LOD > 12 m;
-//      body.update(t) only for shown bodies.
+//      raised hands -> held 'vote'; lanterns at night borrow a pool light (lanterns.ts; living carriers and the
+//      Storyteller only, as v2); low tier: LOD > 12 m; body.update(t) only for shown bodies.
+// A landed build is pre-compiled (renderer.compileAsync into a scratch render target, so the variants match the
+// pipeline's render-target passes) and stays hidden until that resolves: no synchronous compile hitch on its first
+// draw for a player who joins mid-game. A revived 'clips' ghost leaves its slide in place (rigBody.ts), no rebuild.
+// The per-frame path reuses its containers (no per-frame Sets / Maps / closures / anchor objects).
 // Coordinates crossing the layer boundary are v2 px + LocationId (contract.ts); metres stay inside.
 import { ST_JUMP_PX } from '../../game/rules/movement';
 import type { Facing, LocationId } from '@ct/protocol';
 import * as THREE from 'three';
 import type { Anchor3d, AvatarDebug, AvatarRegistry, Layer3d, Pose, Px, Scene3dState, Tier, View3d } from '../contract';
 import { preloadSpecs } from '../vendor/characters';
-import type { AvatarBody } from './body';
+import type { AvatarBody, BodyFrameCtx } from './body';
 import { createBillboardBody, hasBillboardArt, releaseBillboardSheets } from './billboard';
 import { carriesLantern, castMap, fallbackCastId, STANDIN_SPEC, standinTint } from './castMap';
-import { ghostLevel, newDeathState, raisedHands, resolveEmote, stepDeath, wantClips, type DeathState } from './clips';
+import { ghostLevel, newDeathState, raisedHands, resolveEmote, stepDeath, wantClips, type ClipInputs, type ClipWant, type DeathState } from './clips';
 import { syncLantern, lanternHour, type LanternSlot, type LightAnchorFn, type LightPool } from './lanterns';
 import { createNpcFolk, DAYLIKE, npcHomesFor, type Npc, type NpcFolk } from './npcs';
 import { fallbackView, pxToMetres } from './project';
 import { nextBuild, type BuildCandidate } from './queue';
 import { createRigBody } from './rigBody';
+import { RIM_DEFAULT } from './ghostTint';
+import { dir8, toFacing } from '../../game/rules/input';
 import { LOW_TIER_AMBIENCE } from '../../game/fx/tier';
 
 /** Low tier: characters farther than this from the camera target skip the normal pass and cast no shadow (§4). */
@@ -37,6 +43,17 @@ export const LOD_FAR_M = 12;
 export const CAST_WAIT_MS = 2000;
 /** Teleport cross-fade length (s). */
 export const FADE_S = 0.12;
+/** anchorOf().headTopCss sits this far above the drawn head (m): WP4 stacks the name label on it (anchors.ts). */
+export const HEAD_PAD_M = 0.1;
+/** A landed body stays hidden at most this long while its shaders pre-compile (ms). */
+export const PREWARM_MAX_MS = 3000;
+
+/** The spec module to preload for a cast id (billboards have none; unknown ids load the stand-in). */
+export function preloadIdOf(castId: string): string | null {
+  const cm = castMap(castId);
+  if (cm.fallback === 'billboard') return null;
+  return cm.spec ?? STANDIN_SPEC;
+}
 
 /** Structurally a TownGame3d Layer3dServices ({engine, bridge, tier}) plus the optional services WP2 can use. */
 export interface AvatarServices {
@@ -54,15 +71,29 @@ export interface AvatarServices {
   npcs?: boolean;
 }
 
+/** contract.ts AvatarRegistry + `isShown` (WP4's CONTRACT-REQUEST; overlay/types.ts `avatarShown` default). */
+export interface AvatarRegistry3d extends AvatarRegistry {
+  /** The avatar of `pid` is drawn in the viewer's location this frame (has a body, is shown), on screen or not. */
+  isShown(pid: string): boolean;
+}
+
 export interface AvatarLayer extends Layer3d {
-  /** anchorOf / pidAt / debug(pid) over the drawn avatars (contract.ts AvatarRegistry). */
-  readonly registry: AvatarRegistry;
+  /** anchorOf / pidAt / debug(pid) / isShown over the drawn avatars (contract.ts AvatarRegistry). */
+  readonly registry: AvatarRegistry3d;
   /** Play a game emote / safe clip on a player's avatar (clips.ts fallback chain); false if nothing plays. */
   playEmote(pid: string, name: string): boolean;
-  /** Voice: hold the 'talk' loop while a player talks (living rigs with a talk clip only). */
-  setTalking(pid: string, on: boolean): void;
-  /** Resolves once the own avatar has a body (or could not get one), or the layer is destroyed. */
-  selfReady(): Promise<void>;
+  /**
+   * Voice: while a player talks, hold the 'talk' loop (living rigs with a talk clip only) and light the
+   * emissive talking rim (§3 "Talking outline" interim; WP4's request, driven by the composition root from
+   * voicePresence + readTalkOutlineMode). `rim`: a CSS hex colour, undefined = RIM_DEFAULT, null = no rim
+   * (clip only). Uniforms only: no program change.
+   */
+  setTalking(pid: string, on: boolean, rim?: string | null): void;
+  /**
+   * Resolves once the own avatar has a body (or could not get one), or the layer is destroyed; with `timeoutMs`,
+   * at the latest after that long (a stalled spec import must not block the mount; the avatar appears later).
+   */
+  selfReady(timeoutMs?: number): Promise<void>;
   /** Whether every known player has a body or has definitively failed (warm-up / tests). */
   settled(): boolean;
   /**
@@ -110,13 +141,36 @@ interface Entry {
   parked: boolean;
   /** build token while a build of this entry is in flight */
   token: number;
+  /** the rim colour last applied to the body ('' = none / not yet) */
+  rim: string;
+  /** a Storyteller (keeps a lantern lit whatever happens) */
+  storyteller: boolean;
+  /** the landed body is pre-compiling (kept hidden) */
+  compiling: boolean;
+  /** reused per frame */
+  want: ClipWant;
+  anchor: Anchor3d;
+}
+
+interface PubRecord {
+  alive: boolean;
+  ghost: boolean;
+  /** frame stamp: stale records (players gone from the game view) are ignored */
+  n: number;
 }
 
 const FACE_YAW: Record<Facing, number> = { down: 0, right: Math.PI / 2, up: Math.PI, left: -Math.PI / 2 };
 
+interface RendererLike {
+  compileAsync?(o: THREE.Object3D, camera: THREE.Camera, scene?: THREE.Scene | null): Promise<unknown>;
+  getRenderTarget?(): THREE.WebGLRenderTarget | null;
+  setRenderTarget?(rt: THREE.WebGLRenderTarget | null): void;
+  info?: { programs?: unknown[] | null };
+}
 interface EngineLike {
   scene: THREE.Scene | null;
   camera: { cam: THREE.Camera; target: THREE.Vector3 } | null;
+  renderer?: RendererLike | null;
 }
 
 export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
@@ -127,7 +181,8 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
   const drawSelf = svc.self !== false;
   const lite = svc.tier === 'low';
   const entries = new Map<string, Entry>();
-  const talking = new Set<string>();
+  /** pid -> rim colour ('' = talking without a rim) */
+  const talking = new Map<string, string>();
   /** pid -> fade start (engine s); NaN = start on the next frame */
   const fades = new Map<string, number>();
   const raised = new Set<string>();
@@ -136,6 +191,8 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
   let view: (View3d & { frame?(): void }) | null = svc.view ?? null;
   let folk: NpcFolk | null = null;
   let folkWorld: string | null = null;
+  /** folk.list[i]'s entry */
+  const folkEntries: (Entry | undefined)[] = [];
   /** token of the one build in flight (0 = none) */
   let inFlight = 0;
   let tokens = 0;
@@ -147,6 +204,18 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
   const camQuat = new THREE.Quaternion();
   /** Scratch for lantern anchors (the pool copies it out at once). */
   const lanternAt = new THREE.Vector3();
+  // per-frame scratch (no allocations on the hot path)
+  const seen = new Set<string>();
+  const pub = new Map<string, PubRecord>();
+  let frameNo = 0;
+  const ctx: BodyFrameCtx = { still: false, camQuat };
+  const metres = { X: 0, Z: 0 };
+  const clipIn: ClipInputs = { dying: false, handUp: false, dead: false, ghostMode: 'tint', ghostVoteAvailable: true, talking: false, clips: [], emotes: {} };
+  /** scratch render target for the pre-warm (created on first use) */
+  let warmRT: THREE.WebGLRenderTarget | null = null;
+  const warm = { builds: 0, compiled: 0, timedOut: 0, misses: 0, unchecked: 0, ms: 0 };
+  /** bumped by every pre-warm: a miss check is only meaningful when no other pre-warm compiled in between */
+  let warmSeq = 0;
 
   const doneSelf = () => {
     selfResolve?.();
@@ -179,14 +248,21 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
       removed: false,
       parked: false,
       token: 0,
+      rim: '',
+      storyteller: false,
+      compiling: false,
+      want: { action: null, loop: null },
+      anchor: { feet: { x: 0, y: 0 }, displayFeet: { x: 0, y: 0 }, headTopCss: { x: 0, y: 0 }, heightM: 0 },
     };
     return e;
   };
 
   const dropBody = (e: Entry) => {
-    e.gen++; // an in-flight build for this entry is discarded when it lands
-    if (e.building && e.token === inFlight) inFlight = 0; // the queue moves on at once
+    // an in-flight build for this entry is discarded when it lands; `inFlight` stays set until it settles (its
+    // .finally clears it), so a second build never runs beside the discarded one
+    e.gen++;
     e.building = false;
+    e.compiling = false;
     if (e.lantern.lease) {
       e.lantern.lease.release();
       e.lantern.lease = null;
@@ -196,6 +272,7 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
     e.appliedGhost = null;
     e.placed = null;
     e.tint = null;
+    e.rim = '';
   };
 
   // ------------------------------------------------------------------ builds
@@ -253,8 +330,10 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
         e.tint = r.tint;
         e.placed = null;
         e.appliedGhost = null;
-        r.body.holder.visible = false; // shown by the next update, once placed
+        e.rim = '';
+        r.body.holder.visible = false; // shown by an update once placed (and pre-compiled)
         engine.scene?.add(r.body.holder);
+        prewarm(e, r.body);
       })
       .catch((err) => {
         e.building = false;
@@ -267,9 +346,62 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
       });
   };
 
+  /**
+   * Compile the new body's programs before its first draw (renderer.compileAsync, parallel where the browser has
+   * KHR_parallel_shader_compile), into a scratch render target: the pipeline draws the scene into render targets,
+   * so the variants match (linear output, no tone mapping) instead of adding canvas variants. The entry stays
+   * hidden until it resolves (at most PREWARM_MAX_MS).
+   */
+  const prewarm = (e: Entry, body: AvatarBody) => {
+    const r = engine.renderer;
+    const cam = engine.camera?.cam;
+    const scene = engine.scene;
+    if (!r?.compileAsync || !r.setRenderTarget || !r.getRenderTarget || !cam || !scene) return;
+    warm.builds++;
+    warmSeq++;
+    const gen = e.gen;
+    const t0 = performance.now();
+    const ps: Promise<unknown>[] = [];
+    const prev = r.getRenderTarget();
+    try {
+      warmRT ??= new THREE.WebGLRenderTarget(1, 1);
+      r.setRenderTarget(warmRT);
+      for (const o of body.compileRoots?.() ?? [body.holder]) ps.push(r.compileAsync(o, cam, scene)); // compiles synchronously inside the call
+    } catch (err) {
+      console.warn('[avatars] shader pre-warm failed', err);
+    } finally {
+      r.setRenderTarget(prev);
+    }
+    if (!ps.length) return;
+    e.compiling = true;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const timeout = new Promise<'timeout'>((res) => (timer = setTimeout(() => res('timeout'), PREWARM_MAX_MS)));
+    Promise.race([Promise.all(ps), timeout])
+      .then((v) => {
+        if (v === 'timeout') warm.timedOut++;
+        else warm.compiled++;
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (timer) clearTimeout(timer);
+        warm.ms += performance.now() - t0;
+        if (e.gen === gen) {
+          e.compiling = false;
+          warmCheck.set(e, { n: programCount(), seq: warmSeq });
+        }
+      });
+  };
+  const programCount = () => engine.renderer?.info?.programs?.length ?? 0;
+  /**
+   * entry -> program count (and pre-warm sequence) when its pre-warm ended; checked once after its first drawn frame
+   * (debug: misses). Another pre-warm in between makes the count meaningless: `unchecked`.
+   */
+  const warmCheck = new Map<Entry, { n: number; seq: number }>();
+
+  const cands: (BuildCandidate & { e: Entry })[] = [];
   const pumpQueue = (me: Px | null) => {
     if (inFlight !== 0 || destroyed) return;
-    const cands: (BuildCandidate & { e: Entry })[] = [];
+    cands.length = 0;
     const now = performance.now();
     for (const e of entries.values()) {
       if (e.body || e.building || e.failed || e.removed || e.parked) continue;
@@ -293,16 +425,18 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
       .then((homes) => {
         if (destroyed || folkWorld !== state.world) return;
         folk = createNpcFolk(layout, state.world, homes);
+        folkEntries.length = 0;
         for (const n of folk.list) {
           const key = `npc:${n.id}`;
           if (!entries.has(key)) entries.set(key, newEntry(key, null, n, false, n.id, { x: n.x, y: n.y, location: 'outdoors', facing: 'down', moving: false }));
+          folkEntries.push(entries.get(key));
         }
       })
       .catch((err) => console.warn('[avatars] townsfolk unavailable', err));
   };
 
   // ------------------------------------------------------------------ per frame
-  const upsertPlayer = (state: Scene3dState, pid: string, p: Pose, self: boolean, seen: Set<string>) => {
+  const upsertPlayer = (state: Scene3dState, pid: string, p: Pose, self: boolean) => {
     seen.add(pid);
     const look = state.members.get(pid);
     const castId = look?.castId ?? '';
@@ -310,7 +444,7 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
     if (!e) {
       e = newEntry(pid, pid, null, self, castId, p);
       entries.set(pid, e);
-      if (castId) preloadSpecs([castId]);
+      preload(castId);
     } else if (castId && castId !== e.castId) {
       // a new character pick (or the cast id arriving after the pid-hash stand-in): rebuild
       const hadBody = !!e.body || e.building;
@@ -318,7 +452,7 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
       e.carriesLantern = carriesLantern(castId);
       e.failed = false;
       if (hadBody) dropBody(e);
-      preloadSpecs([castId]);
+      preload(castId);
     }
     e.self = self;
     e.pose.x = p.x;
@@ -326,12 +460,20 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
     e.pose.location = p.location;
     e.pose.facing = p.facing;
     e.pose.moving = p.moving;
-    if (look?.role === 'storyteller') e.carriesLantern = true;
+    e.storyteller = look?.role === 'storyteller';
+    if (e.storyteller) e.carriesLantern = true;
+  };
+  const preloadOne: string[] = [''];
+  const preload = (castId: string) => {
+    const id = castId ? preloadIdOf(castId) : null;
+    if (!id) return;
+    preloadOne[0] = id;
+    preloadSpecs(preloadOne);
   };
 
   const placeEntry = (e: Entry, t: number) => {
     const body = e.body!;
-    const m = layoutRef ? pxToMetres(layoutRef, e.pose, e.pose.location) : null;
+    const m = layoutRef ? pxToMetres(layoutRef, e.pose, e.pose.location, metres) : null;
     if (!m) return false;
     const pl = e.placed;
     const jump = !pl || pl.location !== e.pose.location || Math.hypot(pl.x - e.pose.x, pl.y - e.pose.y) > ST_JUMP_PX;
@@ -362,19 +504,27 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
       ensureFolk(state);
 
       // 1. players
-      const seen = new Set<string>();
-      if (drawSelf && state.me && state.myPid) upsertPlayer(state, state.myPid, state.me, true, seen);
-      for (const [pid, p] of state.remotes) if (pid !== state.myPid) upsertPlayer(state, pid, p, false, seen);
-      for (const e of [...entries.values()]) {
+      seen.clear();
+      if (drawSelf && state.me && state.myPid) upsertPlayer(state, state.myPid, state.me, true);
+      for (const [pid, p] of state.remotes) if (pid !== state.myPid) upsertPlayer(state, pid, p, false);
+      for (const e of entries.values()) {
+        // (deleting the current key while iterating a Map is safe)
         if (e.npc || seen.has(e.key)) continue;
         e.removed = true;
         dropBody(e);
+        warmCheck.delete(e);
         entries.delete(e.key);
       }
 
       // 2. game state
-      const pub = new Map<string, { alive: boolean; ghost: boolean }>();
-      for (const p of state.game?.players ?? []) pub.set(p.pid, { alive: p.alive, ghost: p.ghostVoteAvailable });
+      const n = ++frameNo;
+      for (const p of state.game?.players ?? []) {
+        let r = pub.get(p.pid);
+        if (!r) pub.set(p.pid, (r = { alive: true, ghost: true, n }));
+        r.alive = p.alive;
+        r.ghost = p.ghostVoteAvailable;
+        r.n = n;
+      }
       raisedHands(state.game, raised);
       const night = lanternHour(state.hour);
       const day = DAYLIKE.has(state.phase);
@@ -386,15 +536,17 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
           for (const e of entries.values()) if (!e.npc && e.castId === 'brianbi' && e.shown && e.pose.location === 'outdoors') brianbis.push(e.pose);
         const active = day && viewerLoc === 'outdoors' ? (lite ? LOW_TIER_AMBIENCE.townsfolk : folk.list.length) : 0;
         folk.step(dt, performance.now(), brianbis, active);
-        folk.list.forEach((n, i) => {
-          const e = entries.get(`npc:${n.id}`);
-          if (!e) return;
-          e.pose.x = n.x;
-          e.pose.y = n.y;
-          e.pose.moving = Math.hypot(n.dx, n.dy) > 0.01;
+        for (let i = 0; i < folk.list.length; i++) {
+          const nn = folk.list[i]!;
+          const e = folkEntries[i];
+          if (!e) continue;
+          e.pose.x = nn.x;
+          e.pose.y = nn.y;
+          e.pose.moving = Math.hypot(nn.dx, nn.dy) > 0.01;
+          if (e.pose.moving) e.pose.facing = toFacing(dir8(nn.dx, nn.dy), nn.dx, nn.dy); // an idle NPC keeps its last heading
           // out only while active (never at night / for an indoor viewer / beyond the low-tier count)
           e.parked = i >= active;
-        });
+        }
       }
 
       // 4. builds
@@ -403,9 +555,10 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
       // 5. bodies
       const cam = engine.camera?.cam;
       if (cam) camQuat.copy(cam.quaternion);
-      const ctx = { still: state.reducedMotion, camQuat };
+      ctx.still = state.reducedMotion;
       for (const e of entries.values()) {
-        const p = e.pid ? pub.get(e.pid) : undefined;
+        const rec = e.pid ? pub.get(e.pid) : undefined;
+        const p = rec && rec.n === n ? rec : undefined;
         e.dead = !!p && !p.alive;
         e.ghostVote = p ? p.ghost : true;
         const here = !e.parked && e.pose.location === viewerLoc;
@@ -415,34 +568,40 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
           e.shown = false;
           continue;
         }
-        // ghost look (after the collapse); a 'clips' body cannot leave its slide cleanly: revive = rebuild
-        const ghostKey = e.dead && !dying ? `dead:${ghostLevel(e.ghostVote)}` : 'alive';
+        // ghost look (after the collapse); a revived 'clips' ghost leaves its slide in place (rigBody.ts)
+        const ghostKey = e.dead && !dying ? (e.ghostVote ? 'dead:1' : 'dead:2') : 'alive';
         if (ghostKey !== e.appliedGhost) {
-          if (e.appliedGhost?.startsWith('dead') && ghostKey === 'alive' && body.ghostMode === 'clips') {
-            dropBody(e);
-            e.shown = false;
-            continue;
-          }
           body.setGhost(ghostKey !== 'alive', ghostLevel(e.ghostVote));
           e.appliedGhost = ghostKey;
         }
-        const show = here && placeEntry(e, t);
+        const wasShown = e.shown;
+        const show = here && !e.compiling && placeEntry(e, t);
         body.holder.visible = show;
         e.shown = show;
-        syncLantern(e.lantern, svc.lights, show && night && e.carriesLantern, e.lanternAnchor);
+        if (wasShown && warmCheck.has(e)) {
+          // one frame was drawn with it visible: did that still compile programs? (debug: pre-warm misses)
+          const w = warmCheck.get(e)!;
+          if (w.seq !== warmSeq) warm.unchecked++;
+          else if (programCount() > w.n) warm.misses++;
+          warmCheck.delete(e);
+        }
+        // v2: a ghost carries no lantern (TownScene hasLantern = lantern && !ghost); the Storyteller always does
+        syncLantern(e.lantern, svc.lights, show && night && e.carriesLantern && (!e.dead || e.storyteller), e.lanternAnchor);
         if (!show) continue;
-        body.setClips(
-          wantClips({
-            dying,
-            handUp: !!e.pid && raised.has(e.pid) && !dying,
-            dead: e.dead,
-            ghostMode: body.ghostMode,
-            ghostVoteAvailable: e.ghostVote,
-            talking: !!e.pid && talking.has(e.pid),
-            clips: body.clipNames,
-            emotes: body.emotes,
-          }),
-        );
+        clipIn.dying = dying;
+        clipIn.handUp = !!e.pid && raised.has(e.pid) && !dying;
+        clipIn.dead = e.dead;
+        clipIn.ghostMode = body.ghostMode;
+        clipIn.ghostVoteAvailable = e.ghostVote;
+        clipIn.talking = !!e.pid && talking.has(e.pid);
+        clipIn.clips = body.clipNames;
+        clipIn.emotes = body.emotes;
+        body.setClips(wantClips(clipIn, e.want));
+        const rim = e.pid ? (talking.get(e.pid) ?? '') : '';
+        if (rim !== e.rim) {
+          body.setRim(rim || null);
+          e.rim = rim;
+        }
         const f = e.pid ? fades.get(e.pid) : undefined;
         if (f !== undefined) {
           const start = Number.isNaN(f) ? t : f;
@@ -464,7 +623,10 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
         dropBody(e);
       }
       entries.clear();
+      warmCheck.clear();
       releaseBillboardSheets(engine as object);
+      warmRT?.dispose();
+      warmRT = null;
       doneSelf();
     },
 
@@ -488,14 +650,17 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
             ghost: e.appliedGhost,
             building: e.building,
             failed: e.failed,
+            parked: e.parked,
             frame: e.body?.frame() ?? null,
             lantern: !!e.lantern.lease,
             look: e.body?.lookInfo?.() ?? null,
           })),
+        /** shader pre-warm: builds pre-compiled, resolved / timed out, first frames that still compiled (misses; unchecked = another pre-warm ran in between), total ms */
+        avatarsWarm: () => ({ ...warm, ms: Math.round(warm.ms) }),
       };
     },
 
-    registry: null as unknown as AvatarRegistry, // set below
+    registry: null as unknown as AvatarRegistry3d, // set below
 
     playEmote(pid, name) {
       const e = entries.get(pid);
@@ -509,12 +674,15 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
       fades.set(pid, NaN);
     },
 
-    setTalking(pid, on) {
-      if (on) talking.add(pid);
+    setTalking(pid, on, rim) {
+      if (on) talking.set(pid, rim === undefined ? RIM_DEFAULT : (rim ?? ''));
       else talking.delete(pid);
     },
 
-    selfReady: () => selfP,
+    selfReady(timeoutMs) {
+      if (timeoutMs === undefined) return selfP;
+      return Promise.race([selfP, new Promise<void>((r) => setTimeout(r, Math.max(0, timeoutMs)))]);
+    },
 
     settled() {
       for (const e of entries.values()) if (!e.npc && !e.body && !e.failed) return false;
@@ -522,19 +690,25 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
     },
   };
 
-  const registry: AvatarRegistry & { isShown(pid: string): boolean } = {
+  const registry: AvatarRegistry3d = {
     /** Drawn in the viewer's location this frame (has a body and is shown), regardless of the camera (WP4). */
     isShown(pid) {
       const e = entries.get(pid);
       return !!e && !e.npc && !!e.body && e.shown;
     },
+    /** The returned object is reused per avatar (copy what you keep across frames). */
     anchorOf(pid) {
       const e = entries.get(pid);
       if (!e || e.npc || !e.body || !e.shown || !view) return null;
-      const h = e.body.heightM + e.body.hoverM;
-      const head = view.worldToScreen(e.pose, e.pose.location, h);
+      const h = e.body.heightM + e.body.hoverM + e.body.crownM;
+      const head = view.worldToScreen(e.pose, e.pose.location, h + HEAD_PAD_M);
       if (!head) return null;
-      const a: Anchor3d = { feet: { x: e.pose.x, y: e.pose.y }, displayFeet: { x: e.pose.x, y: e.pose.y }, headTopCss: head, heightM: h };
+      const a = e.anchor;
+      a.feet.x = a.displayFeet.x = e.pose.x;
+      a.feet.y = a.displayFeet.y = e.pose.y;
+      a.headTopCss.x = head.x;
+      a.headTopCss.y = head.y;
+      a.heightM = h;
       return a;
     },
 
@@ -561,20 +735,20 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
         texture: e.body.texture,
         frame: e.body.frame(),
         width: e.body.widthM * 16,
-        height: (e.body.heightM + e.body.hoverM) * 16,
+        height: (e.body.heightM + e.body.hoverM + e.body.crownM) * 16,
         x: e.pose.x,
         y: e.pose.y,
         screen: b ?? { x: 0, y: 0, w: 0, h: 0 },
       };
     },
   };
-  (layer as { registry: AvatarRegistry }).registry = registry;
+  (layer as { registry: AvatarRegistry3d }).registry = registry;
 
   /** CSS box of an avatar (feet at the bottom centre, head top at the top). */
   const screenBox = (e: Entry): { x: number; y: number; w: number; h: number } | null => {
     if (!view || !e.body) return null;
     const feet = view.worldToScreen(e.pose, e.pose.location, e.body.hoverM);
-    const head = view.worldToScreen(e.pose, e.pose.location, e.body.heightM + e.body.hoverM);
+    const head = view.worldToScreen(e.pose, e.pose.location, e.body.heightM + e.body.hoverM + e.body.crownM);
     if (!feet || !head) return null;
     const w = Math.max(4, e.body.widthM * 16 * view.cssPerPx());
     return { x: feet.x - w / 2, y: head.y, w, h: Math.max(4, feet.y - head.y) };

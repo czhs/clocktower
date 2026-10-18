@@ -2,11 +2,21 @@
 import { describe, expect, it } from 'vitest';
 import { townLayout } from '@ct/assets';
 import type { LocationId } from '@ct/protocol';
-import { boardedHouses, createBoardDriver, createDoorDriver, DOOR_OPEN_S, DOOR_SWING_S, doorOpenAt, houseIdOf } from '../../src/game3d/world/doors';
+import { boardedHouses, createBoardDriver, createDoorDriver, DOOR_NEAR_PX, DOOR_OPEN_S, DOOR_SWING_S, doorNear, doorOpenAt, doorTiles, houseIdOf, VIEW_SETTLE_S } from '../../src/game3d/world/doors';
 import type { Pose } from '../../src/game3d/contract';
 
-const pose = (pid: string, location: LocationId): Pose => ({ pid, x: 0, y: 0, location, facing: 'down', moving: false });
+const pose = (pid: string, location: LocationId, x = 0, y = 0): Pose => ({ pid, x, y, location, facing: 'down', moving: false });
 const st = (me: Pose | null, ...remotes: Pose[]) => ({ me, remotes: new Map(remotes.map((p) => [p.pid, p])) });
+// the real visibility (apps/server/src/world snapshotFor): an outdoor player is sent outdoor entities only
+const TILES = doorTiles(townLayout);
+const tile = (id: string) => TILES.find((d) => d.id === id)!;
+/** Observe the same state every 1/30 s over [t0, t1). */
+const hold = (d: ReturnType<typeof createDoorDriver>, s: Parameters<ReturnType<typeof createDoorDriver>['observe']>[0], t0: number, t1: number) => {
+  for (let t = t0; t < t1; t += 1 / 30) {
+    d.observe(s, t);
+    d.tick(t);
+  }
+};
 
 describe('door swing curve', () => {
   it('opens over 300 ms, holds, closes, ends shut', () => {
@@ -36,7 +46,7 @@ describe('door driver', () => {
     expect(d.open()).toEqual([]);
   });
 
-  it('a remote entering and the own player leaving swing that house door open and shut again', () => {
+  it('explicit location changes (own player; every remote in the Storyteller view) swing that house door open and shut again', () => {
     const writes: [string, number][] = [];
     const d = createDoorDriver((id, f) => writes.push([id, f]));
     d.observe(st(pose('me', 'bld:house-5'), pose('a', 'outdoors')), 0);
@@ -73,6 +83,63 @@ describe('door driver', () => {
     d.observe(st(null, pose('a', 'bld:house-0')), 2);
     for (let t = 2; t < 4; t += 0.1) d.tick(t);
     expect(writes).toEqual([]);
+  });
+});
+
+describe('door driver: remotes seen through the real per-location visibility', () => {
+  const MEp = () => pose('me', 'outdoors', 30 * 16, 30 * 16);
+  it('door tiles: one per cottage, doorNear within DOOR_NEAR_PX only', () => {
+    const houses = townLayout.buildings.filter((b) => /^house-\d+$/.test(b.id));
+    expect(TILES.length).toBe(houses.length);
+    const d = tile('house-3');
+    expect(doorNear(TILES, d.x, d.y + 10)).toBe('house-3');
+    expect(doorNear(TILES, d.x, d.y + DOOR_NEAR_PX + 1)).not.toBe('house-3');
+  });
+
+  it('a remote vanishing at a cottage door (it went in) swings that door; vanishing in the open swings nothing', () => {
+    const writes: [string, number][] = [];
+    const d = createDoorDriver((id, f) => writes.push([id, f]), TILES);
+    const d3 = tile('house-3');
+    hold(d, st(MEp(), pose('a', 'outdoors', d3.x, d3.y + 8), pose('b', 'outdoors', 30 * 16, 40 * 16)), 0, VIEW_SETTLE_S + 0.5);
+    expect(writes).toEqual([]);
+    // a goes in (drops out of the outdoor snapshot), b disconnects in the open
+    hold(d, st(MEp()), VIEW_SETTLE_S + 0.5, VIEW_SETTLE_S + 0.5 + DOOR_SWING_S + 0.2);
+    expect([...new Set(writes.map(([id]) => id))]).toEqual(['house-3']);
+    expect(Math.max(...writes.map(([, f]) => f))).toBe(1);
+    expect(writes[writes.length - 1]![1]).toBe(0);
+    expect(d.open()).toEqual([]);
+  });
+
+  it('a remote appearing at a cottage door (it came out) swings that door; appearing in the open swings nothing', () => {
+    const writes: string[] = [];
+    const d = createDoorDriver((id) => writes.push(id), TILES);
+    hold(d, st(MEp()), 0, VIEW_SETTLE_S + 0.2);
+    const d7 = tile('house-7');
+    hold(d, st(MEp(), pose('a', 'outdoors', d7.x - 6, d7.y + 12), pose('b', 'outdoors', 30 * 16, 40 * 16)), VIEW_SETTLE_S + 0.2, VIEW_SETTLE_S + 2);
+    expect([...new Set(writes)]).toEqual(['house-7']);
+  });
+
+  it('no swing while the own view settles: the first snapshot, coming out of a room, the night / dawn switch, the Storyteller', () => {
+    const writes: string[] = [];
+    const d = createDoorDriver((id) => writes.push(id), TILES);
+    const d1 = tile('house-1');
+    const atDoor = pose('a', 'outdoors', d1.x, d1.y);
+    // first snapshot: a is already standing at a door
+    d.observe(st(MEp(), atDoor), 0.1);
+    hold(d, st(MEp(), atDoor), 0.1, 2);
+    // the own player goes in (the outdoor remotes vanish with the view) ...
+    hold(d, { ...st(pose('me', 'bld:house-5')) }, 2, 3);
+    // ... and comes out again next to its door (they reappear)
+    hold(d, st(MEp(), atDoor), 3, 5);
+    // night: the server stops sending outdoor remotes; dawn: they are back
+    hold(d, { ...st(MEp()), phase: 'night' }, 5, 7);
+    hold(d, { ...st(MEp(), atDoor), phase: 'dawn' }, 7, 9);
+    // the Storyteller sees every location: a vanish there is a disconnect, not a door
+    const s2 = createDoorDriver((id) => writes.push(id), TILES);
+    hold(s2, { ...st(MEp(), atDoor), amStoryteller: true }, 0, 2);
+    hold(s2, { ...st(MEp()), amStoryteller: true }, 2, 3);
+    // the explicit door swing of the own player going in / out at house-5 is the only one
+    expect([...new Set(writes)]).toEqual(['house-5']);
   });
 });
 

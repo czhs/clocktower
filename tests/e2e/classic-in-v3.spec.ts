@@ -2,9 +2,13 @@
 //   1. a Classic client (Graphics = Classic) in a v3 lobby draws Hollowmere and walks into all 15 cottages through
 //      their real v3 doors (tap the cottage -> the client's own path + door rule -> world:useDoor -> 'door' teleport)
 //   2. one page leaves a v2 lobby and joins a v3 lobby without a reload and draws the v3 town
-//   3. screenshots for the user's Q7 review (day boards / boarded houses, inside, night, phone) in test-results/classic-v3/
+//   3. screenshots for the user's Q7 review (day boards / boarded houses, inside, night, phone in the town) in
+//      test-results/classic-v3/; townsfolk stay off the voting circle; a phone taps into a cottage by touch
 // WP7 owns the v3 e2e project and the world-aware helpers; this spec is self-contained (its own geometry from
-// townLayoutV3) so it runs in the default project today. Run on the host (own server on a v3-world port):
+// townLayoutV3) so it runs in the default project today. Run on the host, on a v3-world port (3475-3479), under
+// flock ~/clocktower/v3-heavy.lock + ~/clocktower/browser.lock (SwiftShader, no GPU flags):
+//   E2E_PORT=3475 pnpm exec playwright test -c tests/e2e/playwright.config.ts classic-in-v3      (lead decision D4,
+//       once the config reads E2E_PORT), or against a server you started yourself on that port:
 //   E2E_BASE_URL=http://127.0.0.1:3475 pnpm exec playwright test -c tests/e2e/playwright.config.ts classic-in-v3
 import { mkdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -34,7 +38,8 @@ const L: TownLayout = {
 };
 let ipNo = 0;
 type Me = { x: number; y: number; location: string; moving: boolean };
-type Town = { world: string; widthTiles: number; heightTiles: number };
+type Town = { world: string; widthTiles: number; heightTiles: number; plaza?: { cx: number; cy: number; rx: number; ry: number } };
+type NpcAt = { id: string; x: number; y: number };
 
 async function classicContext(browser: Browser, viewport = { width: 1280, height: 800 }, extra: Record<string, unknown> = {}): Promise<BrowserContext> {
   const ctx = await browser.newContext({ viewport, extraHTTPHeaders: { 'X-Forwarded-For': `10.97.${process.pid % 200}.${++ipNo}` }, ...extra });
@@ -136,6 +141,29 @@ async function leave(page: Page) {
     if (m.location === 'outdoors') return;
   }
   throw new Error(`could not leave ${(await me(page))?.location}`);
+}
+
+/** Touch-tap the nearest cottage door that is on screen (a phone's way in); returns the building entered. */
+async function touchIntoNearest(page: Page, log: string[]): Promise<string> {
+  const m = (await me(page))!;
+  const near = [...L.buildings].sort((a, b) => {
+    const da = tileCenterPx(L, a.door);
+    const db = tileCenterPx(L, b.door);
+    return Math.hypot(da.x - m.x, da.y - m.y) - Math.hypot(db.x - m.x, db.y - m.y);
+  });
+  const scr = await onCanvas(page, near.map((b) => tileCenterPx(L, b.door)));
+  for (let k = 0, tries = 0; k < near.length && tries < 3; k++) {
+    const s = scr[k];
+    const b = near[k]!;
+    if (!s || !findPath(L, { x: m.x, y: m.y }, tileCenterPx(L, b.door), 'outdoors')) continue;
+    tries++;
+    await page.touchscreen.tap(s.x, s.y);
+    log.push(`touch door of ${b.id} @${Math.round(s.x)},${Math.round(s.y)} from ${Math.round(m.x)},${Math.round(m.y)}`);
+    const r = await settle(page, (x) => x.location === `bld:${b.id}`, 30_000);
+    if (r.location === `bld:${b.id}`) return b.id;
+    if (r.location !== 'outdoors') await leave(page);
+  }
+  throw new Error(`no cottage entered by touch (log ${log.join(' | ')})`);
 }
 
 /** Tap our way into a cottage: tap its door when it is on screen, else the visible ground spot nearest to it. */
@@ -251,6 +279,8 @@ test('one page: a v2 lobby, then a v3 lobby, each draws its own town (no reload)
   const v3 = await lobbyOf(hosts[1]!, 'v3');
   const ctx = await classicContext(browser);
   const page = await ctx.newPage();
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(String(e))); // a scene build / teardown error on a lobby switch
   await signIn(page, 'World hopper');
   await page.goto(`/lobby/${v2}`);
   const a = await waitTown(page, 'v2');
@@ -278,6 +308,7 @@ test('one page: a v2 lobby, then a v3 lobby, each draws its own town (no reload)
   const c = await waitTown(page, 'v2');
   expect(c.widthTiles).toBe(a.widthTiles);
   expect(await page.evaluate(() => (window as unknown as { __ctNoReload?: number }).__ctNoReload)).toBe(1);
+  expect(errors).toEqual([]);
   await ctx.close();
   for (const h of hosts) await h.leave().catch(() => {});
 });
@@ -295,6 +326,8 @@ test('Q7 screenshots: a v3 game seen in Classic (day boards + boarded houses, ni
   const ctx = await classicContext(browser);
   const page = await ctx.newPage();
   const tap = new FrameTap('Q7 player', page);
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(`desktop: ${String(e)}`));
   try {
     await signIn(page, 'Q7 player');
     await page.goto(`/lobby/${id}`);
@@ -313,6 +346,14 @@ test('Q7 screenshots: a v3 game seen in Classic (day boards + boarded houses, ni
     st!.send('st:command', { type: 'teleport', who: 'all', to: { kind: 'square' } });
     await page.waitForTimeout(2500);
     await shot(page, '11-day-square');
+    // user request "no NPCs in the voting circle" (§9.1): the townsfolk keep out of the plaza (x 1.1) in a v3 world
+    const pz = (await town(page))!.plaza!;
+    for (let k = 0; k < 6; k++) {
+      const npcs = await page.evaluate(() => (window as unknown as { __ctCamera: { npcs(): NpcAt[] } }).__ctCamera.npcs());
+      expect(npcs.length, 'townsfolk shown by day').toBeGreaterThan(0);
+      for (const n of npcs) expect(Math.hypot((n.x - pz.cx) / pz.rx, (n.y - pz.cy) / pz.ry), `${n.id} at ${Math.round(n.x)},${Math.round(n.y)}`).toBeGreaterThan(1.1);
+      await page.waitForTimeout(500);
+    }
     st!.send('st:command', { type: 'force_phase', to: 'bedtime' });
     await page.waitForTimeout(3000);
     await shot(page, '12-bedtime');
@@ -334,13 +375,25 @@ test('Q7 screenshots: a v3 game seen in Classic (day boards + boarded houses, ni
     });
     await page.close();
     const pp = await phone.newPage();
+    pp.on('pageerror', (e) => errors.push(`phone: ${String(e)}`));
     await pp.goto(`/lobby/${id}`);
     await waitTown(pp, 'v3'); // a phone gets Classic under Auto (§1.2 row 8)
+    // after the night everyone is still at home: bring them out so the phone shots show the town
+    st!.send('st:command', { type: 'teleport', who: 'all', to: { kind: 'square' } });
+    await expect.poll(async () => (await me(pp))?.location, { timeout: 15_000 }).toBe('outdoors');
+    await pp.waitForTimeout(2500);
     await shot(pp, '14-phone-portrait');
     await pp.setViewportSize({ width: 844, height: 390 });
     await pp.waitForTimeout(2000);
     await shot(pp, '15-phone-landscape');
+    // doors by touch (what v2-phone exercises): tap a visible v3 door, walk there, go in
+    const log: string[] = [];
+    const entered = await touchIntoNearest(pp, log);
+    await expect(pp.locator('.ct-inside')).toBeVisible({ timeout: 10_000 });
+    console.log(`phone entered ${entered}: ${log.join(' | ')}`);
+    await shot(pp, '16-phone-inside');
     await phone.close();
+    expect(errors).toEqual([]);
   } finally {
     await ctx.close().catch(() => {});
     for (const b of bots) await b.leave().catch(() => {});

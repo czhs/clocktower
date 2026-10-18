@@ -8,7 +8,10 @@
 //   nothing is picked. Release on a wedge -> 'commit'; release in the dead zone after having left it
 //   -> 'cancel'; release in the dead zone without ever leaving it (a still hold) -> 'sticky' (the pie
 //   stays open for a click; a click elsewhere / Esc / a timeout closes it).
-// Touch: the long-press (LONG_PRESS_MS, logic.ts) opens the same pie; then exactly as above.
+// Touch: the long-press (LONG_PRESS_MS, logic.ts) opens the same pie; then exactly as above, except that
+// the dead zone is measured from the PRESS point (`touchGate`, lead decision D3): near the viewport edge the drawn
+// pie is clamped away from the finger, and measuring from its centre made a lift in place commit a wedge. Outside
+// the press point's dead zone the drawn wedge under the finger is picked (`pieWedgeAt`).
 import { PIN_COLORS, type PinColor } from '@ct/protocol';
 import { PIN_HEX } from './logic';
 
@@ -82,6 +85,26 @@ export function clampCenter(cx: number, cy: number, vw: number, vh: number, r: n
   return { x, y };
 }
 
+/**
+ * (D3) Touch only: the press point, around which the dead zone is measured (null for the mouse = the drawn centre,
+ * unchanged v2.2 behaviour). Near the viewport edge the touch pie is drawn clamped on screen, away from the finger;
+ * measured from the drawn centre, a lift in place landed on a wedge and committed it.
+ */
+export function touchGate(input: PieInput, press: { x: number; y: number }): { x: number; y: number } | null {
+  return input === 'touch' ? { x: press.x, y: press.y } : null;
+}
+
+/**
+ * The wedge under a pointer at (cx, cy): inside the dead zone of the `gate` (the touch press point) nothing; else the
+ * DRAWN wedge under it (direction from the drawn `center`, no outer limit, the same angles as the pie on screen), so a
+ * slide from the press point toward a wedge picks it wherever the pie had to be drawn. Without a gate = `wedgeAt`.
+ */
+export function pieWedgeAt(cx: number, cy: number, n: number, input: PieInput, center: { x: number; y: number }, gate: { x: number; y: number } | null = null): number | null {
+  const dz = DEAD_ZONE_PX[input];
+  if (gate && Math.hypot(cx - gate.x, cy - gate.y) < dz) return null;
+  return wedgeAt(cx - center.x, cy - center.y, n, dz);
+}
+
 // ---------------------------------------------------------------------------------------
 // gesture state machine
 
@@ -118,11 +141,14 @@ export function gestureTick(g: PieGesture, t: number): PieGesture {
 
 export type PieRelease = { kind: 'click' } | { kind: 'commit'; index: number } | { kind: 'sticky' } | { kind: 'cancel' };
 
-/** The button / finger lifts at (cx, cy). `n` = wedge count; `center` = where the pie is drawn. */
-export function gestureRelease(g: PieGesture, cx: number, cy: number, t: number, n: number, center: { x: number; y: number } = { x: g.x0, y: g.y0 }): PieRelease {
-  const g2 = gestureTick(gestureMove(g, cx, cy, center), t);
+/**
+ * The button / finger lifts at (cx, cy). `n` = wedge count; `center` = where the pie is drawn; `gate` = the touch
+ * press point (`touchGate`, D3): the dead zone and "left" are measured from it instead of the drawn centre.
+ */
+export function gestureRelease(g: PieGesture, cx: number, cy: number, t: number, n: number, center: { x: number; y: number } = { x: g.x0, y: g.y0 }, gate: { x: number; y: number } | null = null): PieRelease {
+  const g2 = gestureTick(gestureMove(g, cx, cy, gate ?? center), t);
   if (g2.phase === 'pending') return { kind: 'click' };
-  const i = wedgeAt(cx - center.x, cy - center.y, n, DEAD_ZONE_PX[g.input]);
+  const i = pieWedgeAt(cx, cy, n, g.input, center, gate);
   if (i !== null) return { kind: 'commit', index: i };
   return g2.left ? { kind: 'cancel' } : { kind: 'sticky' };
 }

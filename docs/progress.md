@@ -165,7 +165,7 @@ The pre-pivot art-overhaul WIP is preserved on branch `wip/art-overhaul`.
   - The Vite preload-helper patch (`apps/client/build/cssOrder.ts`) is tied to Vite 7.3; on a Vite
     upgrade the build fails loudly until it is updated.
 
-## v3 status (2026-10-17, branch `v3-game`) — the pixel3d / three.js town in the real game
+## v3 status (2026-10-18, branch `v3-game`) — the pixel3d / three.js town in the real game
 
 Contract: `docs/v3/INTEGRATION.md` (§8 Status table, §10 "How to continue", §11 decision log). v3 is opt-in per lobby
 (`world: 'v2' | 'v3'`, fixed at creation); v2 "Classic" stays the default and is unchanged. Nothing v3 is deployed.
@@ -187,45 +187,50 @@ Contract: `docs/v3/INTEGRATION.md` (§8 Status table, §10 "How to continue", §
   `scripts/v3/export-hollowmere.mjs --check`); the server now creates `world: 'v3'` lobbies with the Hollowmere
   layout and the client loads it lazily (`layoutV3` chunk 5.65 KiB br); `sound/areas.ts` surfaces follow the world.
 - **Gate C0b:** typecheck, build, full `pnpm test` (131 files / 1506 tests pass, 1 file / 3 tests skipped) on the host.
-- **Next:** phase 1 in parallel: WP1 (net/input/debug on the core + controller), WP2 avatars, WP3 stage
-  (town/interiors/time), WP4 overlays, WP5b (Classic 2D in a v3 world), WP6 UI; then C1, WP7 QA harness + e2e (C2), C3.
-- **Open issues:** the stub draws no interiors or remote avatars; WebGL context loss swaps to Classic (rebuild is
-  WP1); the C0 5x cycle ran in `smoke-mount.mjs`, not yet in the WP7 harness; pre-existing v2 bug: a phone
-  long-press near the screen edge commits a pie wedge on lift (`social/radial.ts` clamps the centre), which makes
-  `tests/e2e/v2-social.spec.ts` "desktop and phone" flaky (world-art/qa-deploy, INTEGRATION.md §9.3); WP0s review
-  lows (import-closure scan misses re-exports/dynamic imports; `GameplayFrame.picking` exposes `onPick`);
-  pixel3d-side requests are collected in INTEGRATION.md §9.2.
+- **Works (C1a checkpoint, committed 2026-10-18):** every phase-1 package is authored, reviewed, fixed and tested
+  in its own files: WP1 3D core (net / input / camera / lifecycle / debug), WP2 avatars (rigs, billboards, ghosts,
+  talking rim, lanterns, townsfolk), WP3 stage (town, interiors, time of day, dais, doors, canopy fade, tower-clock
+  hook), WP4 overlay (labels, DOM chat bubbles, pins / emotes / pie, boards), WP5b Classic 2D in a v3 world (all 15
+  cottages enterable, phone shots for Q7), WP6 UI (v3 skin, Graphics setting, Town choice + world badges, Classic
+  pre-selected). Plus lead decisions D1-D4 (canopy fade, DOM bubbles, touch pie-edge fix, `E2E_PORT`), the WP7a
+  mock-world harness + v3 e2e specs (`E2E_V3=1`, `scripts/v3/e2e.sh`) and the v3 perf recon tooling (`docs/perf-v3/`).
+- **Gate C1a:** typecheck, build, full `pnpm test` on the host (numbers in `docs/test-results.md`). The user's
+  acceptance "town choice from the UI" + "each lobby renders the right town" passes (`v3-lobby-choice`).
+- **Not yet:** WP1 / WP2 / WP4 are not wired into `game3d/TownGame3d.ts`, so the 3D client still draws only the own
+  stub avatar (no remote players, labels or bubbles). Only WP3's stage is wired.
+- **Open issues:** `v3-fallback` "chunk fails": the one chunk retry in `GameScreen.importTown3d` never re-requests the
+  chunk (INTEGRATION.md §9.3, lead); WP6's Graphics status line and join preview wait on lead / world-art wiring
+  (`publishRender`, `useV3Skin` in `InLobby`, `JoiningLobby`); art checks pending (billboard talking rim washed out,
+  WP3 soft-layer fade behind thatched cottages, WP4 bubble details); pixel3d-side requests are collected in
+  INTEGRATION.md §9.2.
 
-### v3 handoff (2026-10-17, lead) — phase 1 interrupted, work saved as WIP
+### v3 handoff (2026-10-18, after checkpoint C1a)
 
-The swarm was stopped mid phase 1 for a session handoff. Everything in the tree was committed as **"v3 C1 WIP"**
-(untested as a whole; typecheck/full suite NOT run on this commit). State per package (INTEGRATION.md §8):
+Two swarms were stopped by account usage limits; their work is now committed as **"v3 C1a: …"** on `v3-game` (on
+top of "v3 C1 WIP"). State per package (details: INTEGRATION.md §8 Status, §10 "How to continue"):
 
 | Package | State |
 |---|---|
-| WP1 core (`game3d/{net,input,debug}`) | author → review (8 issues) → fix done; unit tests pass on the host; **not wired into `TownGame3d.ts`** |
-| WP4 overlay (`game3d/overlay`) | author → review (10 issues) → fix done (7 fixed, 3 left as lead decisions below); unit tests pass; **not wired** |
-| WP2 avatars (`game3d/avatars`, `vendor/characters.ts`) | author **interrupted** mid-work; untested, unreviewed |
-| WP3 stage (`game3d/world`, `vendor/{town,interiors,time}.ts`) | author **interrupted**; untested, unreviewed |
-| WP5b Classic in a v3 world (`packages/assets` v3 atlases, `town-v3.json`, `classic-in-v3.spec.ts`) | author **interrupted**; untested, unreviewed |
-| WP6 UI skin + Graphics setting + v2/v3 lobby choice (`ui/common/v3*`, `ui/lobby/*`, Settings) | author **interrupted**; untested, unreviewed |
+| WP1 core (`game3d/{net,input,debug}`) | done + reviewed + fixed; unit tests pass; **not wired** |
+| WP2 avatars (`game3d/avatars`, `vendor/characters.ts`) | done + reviewed (13 issues) + fixed; unit tests + SwiftShader smoke 47/47; **not wired** |
+| WP3 stage (`game3d/world`, `vendor/{town,interiors,time}.ts`) | done + reviewed + fixed; unit tests + stage smoke 27/27; **wired** (minimal) |
+| WP4 overlay (`game3d/overlay`) | done + reviewed + fixed, D2 DOM bubbles + its review fix round; unit tests pass; **not wired** |
+| WP5b Classic in a v3 world | done + reviewed + fixed; `classic-in-v3` + `doors` e2e 4/4 |
+| WP6 UI skin, Graphics, Town choice | done + reviewed + fixed; unit + `v23-settings` / `lobby` e2e 8/8; 4 contract requests open for C1 |
+| WP7a harness + v3 e2e | done for what runs before C1: `v3-boot`, `v3-lobby-choice` (2 acceptance tests), harness `projection` + `cycles` pass; rest pending C1 |
+| D3 touch pie edge (v2 Classic) | fixed; `v2-social` 3/3 |
+| perf recon (`docs/perf-v3/`, `tests/perf/*`, `scripts/perf/*`) | measurement tooling only, committed for the later perf swarm |
 
 **Next, in order:**
-1. Re-run each interrupted author (WP2, WP3, WP5b, WP6) telling it to *continue from the files already in the tree*,
-   then review → fix (same author/review/fix loop as before).
-2. C1 integrate: wire WP1–WP4 into `game3d/TownGame3d.ts` (lead-owned), resolve contract requests, full gate, commit.
-3. C2 QA (WP7): mock-world harness, `v3-*` e2e (incl. creating one v2 and one v3 lobby from the UI), all Classic e2e,
-   SwiftShader stills in `tests/v3/shots/`, playtest + art critics, owner fix rounds, gate, commit.
-4. **Then a performance swarm** (user request) on the v3 renderer + v3 server world; budgets into `scripts/perf/budgets.mjs`.
-5. C3 (user decides which world is pre-selected) and deploy to the dev service at a milestone. Never prod without asking.
-
-**Lead decisions still open (decide, record in INTEGRATION.md §11):**
-- Canopy rule A or B: ~96 walkable tiles under tree crowns hide remote avatars in 3D (incl. house-12's door approach,
-  the south bay before house-9) — WP5a/WP3.
-- WP4: labels/bubble text in DOM sit above the FX canvas (a name can show through a bubble) — move text onto the
-  canvas or accept; the walking DOM-write budget WP4 redefined needs sign-off.
-- Contract request (world-art/qa-deploy): v2 pie-menu edge clamp in `social/radial.ts` keeps `v2-social` phone step red.
-- `tests/e2e/playwright.config.ts` hardcodes port 3398; v3 runs should use `E2E_PORT` in 3450-3499.
+1. **C1 proper (lead):** wire WP1, WP2, WP4 into `TownGame3d.ts` and resolve the open contract requests (exact list in
+   INTEGRATION.md §10 "Next"): `selfReady(5000)`, `publishRender`, the chunk-retry bug, `useV3Skin` in `InLobby`,
+   `JoiningLobby`, `__ctCamera.setCamera`, WP3's qualified interior budget in §7. Full gate, commit.
+2. **C2 QA (WP7b):** run the pending `v3-*` e2e (doors, social, vote, life, mixed, fallback context-loss / perf
+   sampler, join preview), `hd-cast` v3 branch, harness stills, all Classic e2e; art critics; owner fix rounds; gate.
+3. **Then the performance swarm** (user request) on the v3 renderer + v3 server world; budgets into
+   `scripts/perf/budgets.mjs`. The recon from 2026-10-17 is in `docs/perf-v3/`.
+4. C3 (user decides which world is pre-selected; Q7 stills from WP5b) and deploy to the dev service at a milestone.
+   Never prod without asking.
 
 **pixel3d-side changes to pick up when published on `v3-dev`** (user requests to the other session; game-side wiring
 is specified in INTEGRATION.md §9.1): voting-circle camera reframe; clock tower clock = Storyteller timer with an

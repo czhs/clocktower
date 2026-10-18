@@ -36,11 +36,18 @@ function v2Frame(name: string): SpriteFrame | null {
  */
 /** The frames with no v3 art (= v3atlas.ts V3_SKIPPED_FRAMES; kept here so the lazy atlas stays out of this chunk). */
 export const SKIPPED: readonly string[] = ['nick_face', 'icon_nicksong', 'icon_brianbi'];
+/** The lookup for a skin state and the loaded v3 atlas (null while it loads). Pure (unit: ui.v3atlas.test.ts). */
+export function socialArtFor(
+  skin: { on: boolean; night: boolean },
+  v3: { frame(name: string, night?: boolean): SpriteFrame | null } | null,
+  v2: (name: string) => SpriteFrame | null = v2Frame,
+): (name: string) => SpriteFrame | null {
+  if (!skin.on) return v2;
+  return (name) => (SKIPPED.includes(name) ? v2(name) : (v3?.frame(name, skin.night) ?? null));
+}
 export function useSocialArt(): (name: string) => SpriteFrame | null {
   const skin = useStore(v3Skin); // re-render on skin, look and atlas-data changes
-  if (!skin.on) return v2Frame;
-  const v3 = v3AtlasNow();
-  return (name) => (SKIPPED.includes(name) ? v2Frame(name) : (v3?.frame(name, skin.night) ?? null));
+  return socialArtFor(skin, v3AtlasNow());
 }
 
 /** A sheet frame as a crisp CSS sprite (null when the frame is missing). */

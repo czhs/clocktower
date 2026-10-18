@@ -112,3 +112,26 @@ export function createLightReserve(scene: THREE.Scene, n: number): LightReserve 
     },
   };
 }
+
+/** A pool light this close (m, on x and z) to a boarded cottage's light anchor is that anchor's (time.js hugs ≤ 0.39 m). */
+export const BOARDED_LIGHT_M = 0.5;
+
+/**
+ * Boarded cottages keep their lantern pools dark (vendor createTime's lit-in-order map does not know them): after each
+ * `time.update`, zero every lit pool light within `r` m (x and z) of a boarded anchor. Only intensities change: the
+ * light count and positions stay. Returns how many were zeroed.
+ */
+export function dimNearAnchors(pool: readonly THREE.PointLight[], anchors: readonly { x: number; z: number }[], r = BOARDED_LIGHT_M): number {
+  if (!anchors.length) return 0;
+  let n = 0;
+  for (const l of pool) {
+    if (l.intensity <= 0) continue;
+    for (const a of anchors)
+      if (Math.abs(l.position.x - a.x) < r && Math.abs(l.position.z - a.z) < r) {
+        l.intensity = 0;
+        n++;
+        break;
+      }
+  }
+  return n;
+}

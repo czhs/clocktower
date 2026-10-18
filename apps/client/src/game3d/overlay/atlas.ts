@@ -116,6 +116,12 @@ export const FALLBACK_TOKENS: Tokens = {
 export interface Atlas {
   /** A frame of a sheet (the night variant when `night`), or null while loading / unknown. */
   frame(sheet: SheetName, name: string, night?: boolean): Frame | null;
+  /**
+   * A frame cropped into its own image, as a `data:` URL (CSP `img-src 'self' data: blob:`), for CSS
+   * `border-image` / `background-image` (the DOM chat bubbles, D2). Made once per decoded frame (cached),
+   * null while loading or where a 2D canvas cannot export (then the caller uses plain token colours).
+   */
+  url(sheet: SheetName, name: string, night?: boolean): string | null;
   /** A sheet's JSON `meta` (day variant), or null while loading. */
   meta(sheet: SheetName): Record<string, unknown> | null;
   tokens(tod: Tod): Tokens;
@@ -176,7 +182,36 @@ export function createAtlas(): Atlas {
       .catch(() => undefined);
 
   const tokenCache = new Map<Tod, Tokens>();
-  return {
+  /** Cropped frame images (data: URLs) by decoded Frame object (frame() hands out one object per frame). */
+  const urls = new WeakMap<Frame, string | null>();
+  let scratch: HTMLCanvasElement | null = null;
+  const crop = (f: Frame): string | null => {
+    if (typeof document === 'undefined') return null;
+    scratch ??= document.createElement('canvas');
+    if (typeof scratch.toDataURL !== 'function') return null;
+    scratch.width = f.w;
+    scratch.height = f.h;
+    const ctx = scratch.getContext('2d');
+    if (!ctx) return null;
+    ctx.clearRect(0, 0, f.w, f.h);
+    ctx.drawImage(f.img, f.x, f.y, f.w, f.h, 0, 0, f.w, f.h);
+    try {
+      return scratch.toDataURL('image/png');
+    } catch {
+      return null; // a tainted canvas (never for our same-origin sheets)
+    }
+  };
+  const api: Atlas = {
+    url(sheet, name, night = false) {
+      const f = api.frame(sheet, name, night);
+      if (!f) return null;
+      let u = urls.get(f);
+      if (u === undefined) {
+        u = crop(f);
+        urls.set(f, u);
+      }
+      return u;
+    },
     frame(sheet, name, night = false) {
       const ck = night ? `${sheet}-night` : sheet;
       let byName = frameCache.get(ck);
@@ -227,6 +262,8 @@ export function createAtlas(): Atlas {
         s.img = null;
       }
       sheets.clear();
+      scratch = null;
     },
   };
+  return api;
 }

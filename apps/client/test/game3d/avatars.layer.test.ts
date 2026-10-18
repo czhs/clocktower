@@ -1,6 +1,7 @@
 // v3 WP2: the avatar layer's orchestration with fake bodies (no WebGL): build queue (one in flight, own first),
-// fallback chain (rig -> tinted stand-in -> billboard), location visibility, deaths -> ghost looks, raised hands,
-// cast changes, lanterns, the AvatarRegistry and the __ctCamera members.
+// fallback chain (rig -> tinted stand-in -> billboard), location visibility, deaths -> ghost looks (a revived
+// 'clips' ghost keeps its body), raised hands, cast changes (a discarded build keeps the queue busy), lanterns (none
+// for ghosts), the shader pre-warm (hidden until compiled), selfReady's timeout, the AvatarRegistry and __ctCamera.
 import type { LocationId, PlayerGameView, PublicPlayerView } from '@ct/protocol';
 import { townLayoutV3 } from '@ct/assets/hollowmere';
 import * as THREE from 'three';
@@ -34,6 +35,7 @@ function fakeBody(kind: 'rig' | 'billboard', id: string, ghostMode: AvatarBody['
     emotes: kind === 'rig' ? { talk: 'talk', vote: 'vote', point: 'point', die: 'die', ghost: 'ghost' } : {},
     emoteClips: kind === 'rig' ? ['talk', 'vote', 'point', 'die', 'ghost'] : [],
     hoverM: 0,
+    crownM: 0,
     log: [],
     placed: null,
     ghost: null,
@@ -54,6 +56,9 @@ function fakeBody(kind: 'rig' | 'billboard', id: string, ghostMode: AvatarBody['
       return true;
     },
     setLod() {},
+    setRim(hex) {
+      b.log.push(`rim:${hex}`);
+    },
     setFade(a) {
       b.log.push(`fade:${a.toFixed(2)}`);
     },
@@ -100,9 +105,10 @@ vi.mock('../../src/game3d/avatars/billboard', () => ({
       return body;
     }),
 }));
-vi.mock('../../src/game3d/vendor/characters', () => ({ preloadSpecs: () => undefined }));
+const preloaded: string[] = [];
+vi.mock('../../src/game3d/vendor/characters', () => ({ preloadSpecs: (ids: Iterable<string>) => void preloaded.push(...ids) }));
 
-const { createAvatarLayer } = await import('../../src/game3d/avatars/layer');
+const { createAvatarLayer, preloadIdOf } = await import('../../src/game3d/avatars/layer');
 
 const flush = async () => {
   for (let i = 0; i < 6; i++) await Promise.resolve();
@@ -140,6 +146,7 @@ beforeEach(() => {
   failBillboards = new Set();
   pending.length = 0;
   deferBuilds = false;
+  preloaded.length = 0;
   engine.scene.clear();
 });
 
@@ -209,7 +216,7 @@ describe('avatar layer', () => {
     L2.destroy();
   });
 
-  it('deaths: collapse when seen, then the ghost look; revive of a clips ghost rebuilds', async () => {
+  it('deaths: collapse when seen, then the ghost look; a revived clips ghost keeps its body and anchor', async () => {
     const L = mk();
     const s = makeState();
     const players = [pub('me', 0)];
@@ -233,16 +240,17 @@ describe('avatar layer', () => {
     L.update(s, 5, 1 / 60);
     expect(frog.ghost).toEqual({ dead: true, level: 2 });
     expect(frog.clips.loop).toBe('ghost-spent');
-    // revived (a rematch): the clips-mode body is rebuilt
+    // revived (a rematch): the clips-mode body leaves its slide in place, no rebuild, never without an anchor
     players[0] = pub('me', 0, true, true);
-    L.update(s, 6, 1 / 60);
-    expect(frog.disposed).toBe(true);
-    for (let i = 0; i < 3; i++) {
-      L.update(s, 7 + i, 1 / 60);
+    for (let i = 0; i < 4; i++) {
+      L.update(s, 6 + i, 1 / 60);
+      expect(L.registry.anchorOf('me')).not.toBeNull();
       await flush();
     }
-    expect(made).toHaveLength(2);
-    expect(made[1]!.body.ghost).toEqual({ dead: false, level: 1 });
+    expect(frog.disposed).toBe(false);
+    expect(made).toHaveLength(1);
+    expect(frog.ghost).toEqual({ dead: false, level: 1 });
+    expect(frog.clips).toEqual({ action: null, loop: null });
     L.destroy();
   });
 
@@ -312,7 +320,7 @@ describe('avatar layer', () => {
     }
     const a = L.registry.anchorOf('me')!;
     expect(a.feet).toEqual({ x: 360, y: 440 });
-    expect(a.headTopCss).toEqual({ x: 360, y: 440 - 1.25 * 16 });
+    expect(a.headTopCss).toEqual({ x: 360, y: 440 - (1.25 + 0.1) * 16 }); // HEAD_PAD_M above the drawn head
     expect(a.heightM).toBeCloseTo(1.25);
     expect(L.registry.pidAt(360, 435)).toBe('a'); // both boxes overlap: 'a' stands further south
     expect(L.registry.pidAt(360, 425)).toBe('me'); // only the own box reaches up there
@@ -320,6 +328,37 @@ describe('avatar layer', () => {
     const dbg = L.debug!();
     expect((dbg.avatar as (p: string) => unknown)('me')).toMatchObject({ texture: 'v3:frog', x: 360, y: 440, width: 0.8 * 16, height: 1.25 * 16 });
     expect(dbg.npcs!()).toEqual([]);
+    L.destroy();
+  });
+
+  it('talking: holds the talk loop and lights the rim (default / custom / none), uniforms only', async () => {
+    const L = mk();
+    const s = makeState();
+    for (let i = 0; i < 3; i++) {
+      L.update(s, i, 1 / 60);
+      await flush();
+    }
+    const b = made.find((m) => m.id === 'frog')!.body;
+    expect(b.log.filter((x) => x.startsWith('rim:'))).toEqual([]);
+    L.setTalking('me', true);
+    L.update(s, 4, 1 / 60);
+    expect(b.clips.loop).toBe('talk');
+    expect(b.log.at(-1)).toBe('rim:#ffe2a0');
+    L.update(s, 5, 1 / 60);
+    expect(b.log.filter((x) => x.startsWith('rim:')).length).toBe(1); // applied as a diff, not per frame
+    L.setTalking('me', true, '#80c0ff');
+    L.update(s, 6, 1 / 60);
+    expect(b.log.at(-1)).toBe('rim:#80c0ff');
+    L.setTalking('me', true, null); // clip only (talking outlines off)
+    L.update(s, 7, 1 / 60);
+    expect(b.log.at(-1)).toBe('rim:null');
+    expect(b.clips.loop).toBe('talk');
+    L.setTalking('me', true);
+    L.update(s, 8, 1 / 60);
+    L.setTalking('me', false);
+    L.update(s, 9, 1 / 60);
+    expect(b.log.at(-1)).toBe('rim:null');
+    expect(b.clips.loop).toBeNull();
     L.destroy();
   });
 
@@ -347,10 +386,132 @@ describe('avatar layer', () => {
     L.update(s, 5, 1 / 60);
     expect(leases).toBe(1);
     expect(anchored).toMatchObject({ x: 1, y: 1, z: 1 }); // the body's lantern socket (world m)
-    expect((L.registry as unknown as { isShown(p: string): boolean }).isShown('me')).toBe(true);
+    expect(L.registry.isShown('me')).toBe(true);
+    expect(L.registry.isShown('nobody')).toBe(false);
     s.hour = 9;
     L.update(s, 6, 1 / 60);
     expect(released).toBe(1);
+    L.destroy();
+  });
+
+  it('lanterns: a dead moth (a ghost) releases its lease; a living one keeps it', async () => {
+    let leases = 0;
+    const lights = { borrowLight: () => (leases++, { release: () => void leases-- }) };
+    const L = mk({ lights });
+    const s = makeState();
+    (s.members as Map<string, unknown>).set('me', { name: 'M', castId: 'moth', seat: 0, role: 'player' });
+    const players = [pub('me', 0)];
+    s.game = { kind: 'player', phase: 'night', players, day: null } as unknown as PlayerGameView;
+    s.phase = 'night';
+    s.hour = 23;
+    for (let i = 0; i < 4; i++) {
+      L.update(s, i, 1 / 60);
+      await flush();
+    }
+    expect(leases).toBe(1);
+    players[0] = pub('me', 0, false, true);
+    L.update(s, 5, 1 / 60);
+    expect(leases).toBe(0);
+    players[0] = pub('me', 0, true, true);
+    L.update(s, 6, 1 / 60);
+    expect(leases).toBe(1);
+    L.destroy();
+    expect(leases).toBe(0);
+  });
+
+  it('a cast change during a build keeps the queue busy until the discarded build settles; preloads the mapped spec', async () => {
+    deferBuilds = true;
+    const L = mk();
+    const s = makeState();
+    (s.remotes as Map<string, Pose>).set('a', pose('a', 380, 440));
+    (s.members as Map<string, unknown>).set('a', { name: 'A', castId: 'owl', seat: 1, role: 'player' });
+    L.update(s, 0, 1 / 60);
+    expect(pending).toHaveLength(1); // frog (own) in flight
+    (s.members as Map<string, unknown>).set('me', { name: 'Me', castId: 'goat', seat: 0, role: 'player' });
+    L.update(s, 1 / 60, 1 / 60); // the frog build is discarded ...
+    L.update(s, 2 / 60, 1 / 60);
+    expect(pending).toHaveLength(1); // ... but no second build starts beside it
+    pending.shift()!();
+    await flush();
+    expect(made[0]!.body.disposed).toBe(true); // the discarded frog
+    L.update(s, 3 / 60, 1 / 60);
+    expect(pending).toHaveLength(1); // now the goat
+    pending.shift()!();
+    await flush();
+    expect(made.map((m) => m.id)).toEqual(['frog', 'goat']);
+    expect(preloaded).toEqual(['frog', 'owl', 'goat']);
+    expect([preloadIdOf('brianbi'), preloadIdOf('nicksong'), preloadIdOf('no-such-cast'), preloadIdOf('fox')]).toEqual([null, null, 'wanderer', 'fox']);
+    for (const f of pending.splice(0)) f();
+    await flush();
+    L.destroy();
+  });
+
+  it('a landed body is pre-compiled into a scratch render target and stays hidden until that resolves', async () => {
+    let resolveCompile: (() => void) | null = null;
+    const targets: unknown[] = [];
+    let current: unknown = 'canvas';
+    const renderer = {
+      info: { programs: [] as unknown[] },
+      getRenderTarget: () => current,
+      setRenderTarget: (rt: unknown) => void (current = rt),
+      compileAsync: (o: THREE.Object3D) => {
+        targets.push(current);
+        expect(o).toBeInstanceOf(THREE.Object3D);
+        return new Promise<void>((r) => (resolveCompile = r));
+      },
+    };
+    const eng = { ...engine, renderer };
+    const L = createAvatarLayer({ engine: eng, tier: 'high', view, npcs: false });
+    const s = makeState();
+    for (let i = 0; i < 3; i++) {
+      L.update(s, i, 1 / 60);
+      await flush();
+    }
+    expect(made).toHaveLength(1);
+    expect(targets).toHaveLength(1);
+    expect(targets[0]).toBeInstanceOf(THREE.WebGLRenderTarget); // not the canvas
+    expect(current).toBe('canvas'); // restored
+    expect(made[0]!.body.holder.visible).toBe(false);
+    expect(L.registry.anchorOf('me')).toBeNull();
+    resolveCompile!();
+    await flush();
+    await flush();
+    L.update(s, 3, 1 / 60);
+    expect(made[0]!.body.holder.visible).toBe(true);
+    expect(L.registry.anchorOf('me')).not.toBeNull();
+    L.update(s, 4, 1 / 60);
+    expect((L.debug!().avatarsWarm as () => Record<string, number>)()).toMatchObject({ builds: 1, compiled: 1, timedOut: 0, misses: 0, unchecked: 0 });
+    L.destroy();
+  });
+
+  it('selfReady(timeout) gives up waiting for a stalled own build', async () => {
+    deferBuilds = true;
+    const L = mk();
+    L.update(makeState(), 0, 1 / 60);
+    let done = false;
+    void L.selfReady(20).then(() => (done = true));
+    await new Promise((r) => setTimeout(r, 40));
+    expect(done).toBe(true);
+    for (const f of pending.splice(0)) f();
+    await flush();
+    L.destroy();
+  });
+
+  it('anchors include the ghost hover and the halo crown; the anchor object is reused', async () => {
+    const L = mk();
+    const s = makeState();
+    for (let i = 0; i < 3; i++) {
+      L.update(s, i, 1 / 60);
+      await flush();
+    }
+    const b = made[0]!.body as { hoverM: number; crownM: number };
+    const a1 = L.registry.anchorOf('me')!;
+    const y1 = a1.headTopCss.y;
+    Object.assign(b, { hoverM: 0.14, crownM: 0.12 });
+    const a2 = L.registry.anchorOf('me')!;
+    expect(a2).toBe(a1);
+    expect(a2.headTopCss.y).toBeCloseTo(y1 - (0.14 + 0.12) * 16);
+    expect(a2.heightM).toBeCloseTo(1.25 + 0.26);
     L.destroy();
   });
 });

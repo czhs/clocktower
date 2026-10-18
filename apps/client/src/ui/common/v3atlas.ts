@@ -7,8 +7,10 @@
 //   emotes      emote_* (point, pins, pops)            no -night variant: the day sheet serves both
 //   portraits   icon_<cast>, avatar_<cast> (+ /ghost, /ghost-spent, /dead)  + portraits-night
 //   markers     pin_<color>, point_<dir>_<n>, ping_<n>  + markers-night
-//   indicators  label_*, talk_*, bubble_nine/tail, you_*, guide_* (WP4's labels and bubbles) + indicators-night
-//   kit.json    meta.tokens (day/golden/night colour tokens), meta.nineSlice (frame insets)
+//   indicators  label_*, talk_*, bubble_nine/tail, you_*, guide_* + indicators-night (looked up here for completeness;
+//               the in-world labels / bubbles are WP4's: game3d/overlay/atlas.ts keeps its own canvas-image loader,
+//               which also needs the `events` sheet and decoded images, so this module serves DOM/CSS sprites only)
+//   kit.json    meta.tokens (day/golden/night colour tokens), meta.nineSlice (frame insets, `inset(name)`)
 //   cast-portraits  the 'down' portrait strip that replaces packages/assets/generated/cast-portraits.* (§5.1)
 //   panels.css  the vendor DOM panel skin for the v2 classes (.panel, .ct-modal, inputs, …; data: URIs only)
 // `frame(name)` looks a frame up over emotes → portraits → markers → indicators (first wins; the names do not
@@ -319,53 +321,6 @@ export function stripFrom(j: CastStripJson, url: string): V3CastStrip | null {
   };
 }
 
-// ------------------------------------------------------------------------------------ 9-slices (§5.4)
-
-/** Indicator frames drawn as 9-slices, and the kit inset that describes them. */
-const NINE_OF: Record<string, string> = { bubble_nine: 'frame_bubble' };
-const sliceCache = new Map<string, Promise<string | null>>();
-
-function cropToDataUrl(f: AtlasFrame): Promise<string | null> {
-  const key = `${f.url}#${f.x},${f.y},${f.w},${f.h}`;
-  const hit = sliceCache.get(key);
-  if (hit) return hit;
-  const p = new Promise<string | null>((resolve) => {
-    if (typeof Image === 'undefined' || typeof document === 'undefined') return resolve(null);
-    const img = new Image();
-    img.decoding = 'async';
-    img.onload = () => {
-      try {
-        const c = document.createElement('canvas');
-        c.width = f.w;
-        c.height = f.h;
-        const g = c.getContext('2d');
-        if (!g) return resolve(null);
-        g.imageSmoothingEnabled = false;
-        g.drawImage(img, f.x, f.y, f.w, f.h, 0, 0, f.w, f.h);
-        resolve(c.toDataURL('image/png'));
-      } catch {
-        resolve(null);
-      }
-    };
-    img.onerror = () => resolve(null);
-    img.src = f.url;
-  });
-  sliceCache.set(key, p);
-  return p;
-}
-
-/** CSSOM properties for an element framed by a 9-slice frame (e.g. 'bubble_nine') at UI scale `px`. */
-export interface NineSliceStyle {
-  borderStyle: 'solid';
-  borderColor: 'transparent';
-  borderWidth: string;
-  borderImageSource: string;
-  borderImageSlice: string;
-  borderImageWidth: string;
-  borderImageRepeat: 'stretch';
-  imageRendering: 'pixelated';
-}
-
 // ------------------------------------------------------------------------------------ facade
 
 const store = new AtlasStore();
@@ -389,28 +344,6 @@ export const v3atlas = {
   tokens: (look: SkinLook) => store.tokens(look),
   inset: (name: string) => store.inset(name),
   castStrip: () => store.castStrip(),
-
-  /** A 9-slice frame as CSSOM properties (§5.4: bubble_nine with kit frame_bubble insets 3/3/3/4). */
-  async nineSlice(name: string, px: number, night = false): Promise<NineSliceStyle | null> {
-    await store.ready(night);
-    const f = store.frame(name, night);
-    const ins = store.inset(NINE_OF[name] ?? name) ?? store.inset('frame_panel');
-    if (!f || !ins) return null;
-    const url = await cropToDataUrl(f);
-    if (!url) return null;
-    const k = Math.max(1, Math.round(px));
-    const w = `${ins.t * k}px ${ins.r * k}px ${ins.b * k}px ${ins.l * k}px`;
-    return {
-      borderStyle: 'solid',
-      borderColor: 'transparent',
-      borderWidth: w,
-      borderImageSource: `url("${url}")`,
-      borderImageSlice: `${ins.t} ${ins.r} ${ins.b} ${ins.l} fill`,
-      borderImageWidth: w,
-      borderImageRepeat: 'stretch',
-      imageRendering: 'pixelated',
-    };
-  },
 
   /** Apply the v3 skin for `look` (tokens → theme variables, --px, the panel skin). Idempotent. */
   skin(look: SkinLook): void {

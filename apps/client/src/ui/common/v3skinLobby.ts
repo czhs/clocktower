@@ -3,14 +3,19 @@
 //
 // The look follows the hour: tokens day < 16:00, golden < 19:45, else night; the `-night` atlases are used
 // when the hour is ≥ 19:45 or < 06:15 (the same rule as the tokens' night set).
-// Mount: `useV3Skin(conn)` in any component that lives as long as the lobby (ref-counted, so several mounts
-// of the same connection are fine). Nothing here is sent anywhere; nothing is stored.
+// Mount: `useV3Skin(conn)` in a component that lives exactly as long as the lobby connection (ref-counted, so
+// several mounts of the same connection are fine). The one mount that covers a whole game is LobbyRoute's
+// `InLobby` (CONTRACT-REQUEST(lead), docs/v3/INTEGRATION.md §5 "Skin lifetime"): the WaitingRoom / SocialPalette
+// mounts alone leave gaps whenever GameScreen leaves `status === 'ready'` after game start (an in-place renderer
+// swap, a perf / error fallback, a mid-game reload or rejoin before the town is ready). Nothing here is sent
+// anywhere; nothing is stored.
 import { useEffect } from 'preact/hooks';
-import type { DayClockView, GamePhase, LobbyRoomView, PlayerGameView, StorytellerGameView, WorldId } from '@ct/protocol';
+import type { DayClockView, GamePhase, LobbyRoomView, PlayerGameView, StorytellerGameView } from '@ct/protocol';
 import { serverNow } from '../../net/serverTime';
 import type { Store } from '../../net/store';
 import { loadV3Atlas, v3AtlasPending, v3AtlasRef, v3Skin, type SkinLook, type V3SkinState } from './v3skin';
 import { setPortraitAlt, type PortraitAlt } from './castPortrait';
+import { worldOfLobby } from '../lobby/finder';
 
 // ------------------------------------------------------------------------------------ hour (§3.1)
 
@@ -68,8 +73,6 @@ export const isNightHour = (hour: number): boolean => hour >= 19.75 || hour < 6.
 
 type Conn = { lobbyView: Store<LobbyRoomView | null>; gameView: Store<PlayerGameView | StorytellerGameView | null> };
 
-const worldOf = (l: LobbyRoomView | null): WorldId => l?.world ?? l?.lobby.world ?? 'v2';
-
 interface Attached {
   conn: Conn;
   users: number;
@@ -91,7 +94,7 @@ function applyRoot(s: V3SkinState): void {
 
 /** Until the lazy atlas chunk installs the v3 strip (./v3portrait.ts), portraits in a v3 lobby wait for it
  * (silhouette, never a v2 flash). */
-const PENDING: PortraitAlt = { req: () => null, cell: () => null, load: () => Promise.resolve(), pending: () => v3AtlasPending(), stepMs: () => 140 };
+export const PENDING_PORTRAITS: PortraitAlt = { req: () => null, cell: () => null, load: () => Promise.resolve(), pending: () => v3AtlasPending(), stepMs: () => 140 };
 let portraitsInstalled = false;
 
 function start(conn: Conn): () => void {
@@ -100,7 +103,7 @@ function start(conn: Conn): () => void {
   let live = true;
   const update = () => {
     if (!live) return;
-    const on = worldOf(conn.lobbyView.get()) === 'v3';
+    const on = worldOfLobby(conn.lobbyView.get()) === 'v3';
     const g = conn.gameView.get();
     const ph: GamePhase | 'waiting' = g?.phase ?? 'waiting';
     if (ph !== phase) {
@@ -117,7 +120,7 @@ function start(conn: Conn): () => void {
     v3Skin.set(next);
     applyRoot(next);
     if (!on) return void v3AtlasRef()?.unskin();
-    if (!portraitsInstalled && !v3AtlasRef()) setPortraitAlt(PENDING);
+    if (!portraitsInstalled && !v3AtlasRef()) setPortraitAlt(PENDING_PORTRAITS);
     portraitsInstalled = true;
     void loadV3Atlas().then((a) => {
       if (!a || !live || !v3Skin.get().on) return;

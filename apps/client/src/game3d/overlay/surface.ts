@@ -6,7 +6,15 @@
 //     UI scale `px` at whole-CSS-px positions: texel-crisp art, but anchored within 0.5 CSS px of the projected
 //     point and on the same grid as the DOM text (a texel-resolution canvas snapped both to its own texel
 //     grid, up to px/2 off). Animation frames cost a drawImage instead of a DOM mutation;
-//   * text elements (names, bubble text, house names, tooltips): positioned with transform only (place.ts).
+//   * text elements (names, house names, tooltips): positioned with transform only (place.ts);
+//   * chat bubbles (lead decision D2): ONE DOM element per bubble (the 9-slice box as a CSS border-image of
+//     the indicators atlas' `bubble_nine`, the text as its text node, the `bubble_tail` as a decorative
+//     child), so a bubble covers the name labels under it instead of being painted below them.
+//
+// Paint order inside the root (an isolated stacking context): FX canvas < labels / house names (z 1) <
+// badges over world art (door-board "+N", the nick face; z 2) < bubbles (z 3) < hover / press tooltips (z 4). Every DOM kind has a fixed z-index set once at creation, so the order
+// never depends on which element happened to be created first (a label created after a bubble still
+// paints under it).
 //
 // The root is `position:absolute; inset:0` inside the town parent (under the HUD siblings) with
 // `pointer-events:none`: every tap reaches the canvas, and the social view / board tooltips hit-test their
@@ -50,14 +58,55 @@ export interface OverlaySurface {
   /** Root-local -> page CSS px. */
   toPage(x: number, y: number): { x: number; y: number };
   /** A text element under the root (styled via CSSOM; text set with textContent only). */
-  text(kind: 'label' | 'bubble' | 'callout' | 'tip'): HTMLElement;
+  text(kind: TextKind): HTMLElement;
+  /** A chat bubble element (D2): see BubbleEl. */
+  bubble(): BubbleEl;
+  /**
+   * Bumped whenever the document's web fonts finish loading (`document.fonts` 'loadingdone'): text measured
+   * before that (fallback font metrics) must be measured again. Views compare it once per frame.
+   */
+  fontEpoch(): number;
   destroy(): void;
+}
+
+/**
+ * DOM text kinds. 'measure' = an invisible sizing probe (bubble text is measured there, not in the box);
+ * 'badge' = text that belongs to world art under the bubbles (door-board overflow "+N", the nick face);
+ * 'tip' = a hover / press tooltip, the only text above the bubbles.
+ */
+export type TextKind = 'label' | 'callout' | 'badge' | 'tip' | 'measure';
+
+/** Fixed paint order of the DOM kinds inside the overlay root (the FX canvas stays at the bottom, z 0). */
+export const Z_ORDER = { canvas: 0, measure: 0, label: 1, callout: 1, badge: 2, bubble: 3, tip: 4 } as const;
+
+/**
+ * An element's rendered size in whole CSS px, rounded UP (offsetWidth rounds to the nearest px, so text
+ * could overflow its box by up to 0.5 px; a 0.01 px tolerance absorbs float noise). One layout read;
+ * callers batch these after their writes.
+ */
+export function measureEl(el: { getBoundingClientRect(): { width: number; height: number } }): { w: number; h: number } {
+  const r = el.getBoundingClientRect();
+  return { w: Math.ceil(r.width - 0.01), h: Math.ceil(r.height - 0.01) };
+}
+
+/**
+ * One chat bubble = one positioned element (`box`: the 9-slice border-image box, moved by transform,
+ * z-index above every label) whose content is the message as a Text node (`text`, set through
+ * textContent: never parsed as markup) and the decorative tail (`tail`, aria-hidden, a child so it
+ * paints over the box's bottom edge and moves with the box).
+ */
+export interface BubbleEl {
+  box: HTMLElement;
+  text: Text;
+  tail: HTMLElement;
 }
 
 const FONT = '"Alegreya Sans", "Segoe UI", system-ui, sans-serif';
 
 /** Label font size (CSS px) at a UI scale: v2's 10.5-12.6 px band, a touch larger on big screens. */
 export const labelFontPx = (px: number): number => Math.min(14, Math.max(11, 3 + 4 * px));
+/** Bubble line height (the measure probe and the box share it). */
+const BUBBLE_LINE = '1.15';
 /** Bubble font size (CSS px): v2 FONT_CSS 12. */
 export const bubbleFontPx = (px: number): number => Math.min(14, Math.max(12, 6 + 2 * px));
 
@@ -75,6 +124,7 @@ export function createSurface(parent: HTMLElement, stats: OverlayStats): Overlay
   rs.overflow = 'hidden';
   rs.userSelect = 'none';
   rs.contain = 'strict';
+  rs.isolation = 'isolate'; // the root is the stacking context the Z_ORDER z-indices compare in
   const canvas = doc.createElement('canvas');
   const cs = canvas.style;
   cs.position = 'absolute';
@@ -82,6 +132,7 @@ export function createSurface(parent: HTMLElement, stats: OverlayStats): Overlay
   cs.top = '0';
   cs.imageRendering = 'pixelated';
   cs.pointerEvents = 'none';
+  cs.zIndex = String(Z_ORDER.canvas);
   root.appendChild(canvas);
   parent.appendChild(root);
   stats.content += 2;
@@ -101,6 +152,11 @@ export function createSurface(parent: HTMLElement, stats: OverlayStats): Overlay
   const win = doc.defaultView;
   win?.addEventListener('resize', measure);
   win?.addEventListener('scroll', measure, true);
+  // ---- web fonts: re-measure text once they arrive (not polled per frame)
+  let fontEpoch = 0;
+  const fonts = (doc as Document & { fonts?: FontFaceSet }).fonts;
+  const onFonts = () => void fontEpoch++;
+  if (fonts && typeof fonts.addEventListener === 'function') fonts.addEventListener('loadingdone', onFonts);
 
   // ---- FX canvas (CSS px resolution; every sprite scaled by the integer texel size px)
   const ctx = canvas.getContext('2d');
@@ -245,23 +301,61 @@ export function createSurface(parent: HTMLElement, stats: OverlayStats): Overlay
     },
   };
 
-  const text = (kind: 'label' | 'bubble' | 'callout' | 'tip'): HTMLElement => {
-    const el = doc.createElement(kind === 'bubble' ? 'div' : 'span');
+  const text = (kind: TextKind): HTMLElement => {
+    const el = doc.createElement('span');
     el.className = `ct-v3-${kind}`;
     const s = el.style;
     s.position = 'absolute';
     s.left = '0';
     s.top = '0';
     s.visibility = 'hidden';
-    s.whiteSpace = kind === 'bubble' ? 'pre' : 'nowrap';
+    s.whiteSpace = kind === 'measure' ? 'pre' : 'nowrap';
     s.fontFamily = FONT;
     s.pointerEvents = 'none';
-    s.willChange = 'transform';
-    s.lineHeight = kind === 'bubble' ? '1.15' : '1';
+    if (kind !== 'measure') s.willChange = 'transform';
+    s.lineHeight = kind === 'measure' ? BUBBLE_LINE : '1';
     s.textAlign = 'center';
+    s.zIndex = String(Z_ORDER[kind]);
     root.appendChild(el);
     stats.content++;
     return el;
+  };
+
+  const bubble = (): BubbleEl => {
+    const box = doc.createElement('div');
+    box.className = 'ct-v3-bubble';
+    const s = box.style;
+    s.position = 'absolute';
+    s.left = '0';
+    s.top = '0';
+    s.visibility = 'hidden';
+    s.boxSizing = 'border-box';
+    s.borderStyle = 'solid';
+    s.whiteSpace = 'pre'; // the lines are wrapLines()'d already
+    s.fontFamily = FONT;
+    s.lineHeight = BUBBLE_LINE;
+    s.textAlign = 'center';
+    s.pointerEvents = 'none';
+    s.willChange = 'transform';
+    s.imageRendering = 'pixelated'; // the border-image (and the tail) stay texel-crisp when scaled
+    s.zIndex = String(Z_ORDER.bubble);
+    const text = doc.createTextNode('');
+    box.appendChild(text);
+    const tail = doc.createElement('span');
+    tail.className = 'ct-v3-bubble-tail';
+    tail.setAttribute('aria-hidden', 'true');
+    const t = tail.style;
+    t.position = 'absolute';
+    t.left = '0';
+    t.top = '0';
+    t.pointerEvents = 'none';
+    t.imageRendering = 'pixelated';
+    t.backgroundRepeat = 'no-repeat';
+    t.backgroundSize = '100% 100%';
+    box.appendChild(tail);
+    root.appendChild(box);
+    stats.content += 3;
+    return { box, text, tail };
   };
 
   return {
@@ -275,8 +369,11 @@ export function createSurface(parent: HTMLElement, stats: OverlayStats): Overlay
     },
     toPage: (x, y) => ({ x: x + origin.x, y: y + origin.y }),
     text,
+    bubble,
+    fontEpoch: () => fontEpoch,
     destroy() {
       ro?.disconnect();
+      if (fonts && typeof fonts.removeEventListener === 'function') fonts.removeEventListener('loadingdone', onFonts);
       win?.removeEventListener('resize', measure);
       win?.removeEventListener('scroll', measure, true);
       fx.destroy();

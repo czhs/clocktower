@@ -1,0 +1,64 @@
+{
+ "name": "south-bay",
+ "world": "v3",
+ "viewport": [
+  960,
+  540
+ ],
+ "tier": "low",
+ "members": [
+  {
+   "pid": "me",
+   "name": "You",
+   "cast": "frog",
+   "seat": 0
+  },
+  {
+   "pid": "p1",
+   "name": "Agnes",
+   "cast": "mushroom",
+   "seat": 1
+  },
+  {
+   "pid": "p2",
+   "name": "Bart",
+   "cast": "fox",
+   "seat": 2
+  },
+  {
+   "pid": "st",
+   "name": "The Storyteller",
+   "cast": "storyteller",
+   "role": "storyteller",
+   "seat": null
+  }
+ ],
+ "spawn": {
+  "x": 360,
+  "y": 648
+ },
+ "steps": [
+  {
+   "at": 0,
+   "game": null
+  }
+ ],
+ "shots": [
+  {
+   "at": 2000,
+   "name": "south-bay"
+  },
+  {
+   "at": 3000,
+   "name": "south-bay-wide",
+   "camera": {
+    "focus": [
+     360,
+     630
+    ],
+    "viewHeight": 18
+   }
+  }
+ ],
+ "duration": 3500
+}

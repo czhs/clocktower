@@ -95,6 +95,8 @@ export interface OverlayFrame {
    * speaker whose head is momentarily off the canvas survive; only their drawing is skipped).
    */
   drawn: ReadonlySet<string>;
+  /** Publicly dead pids (game view) this frame. */
+  dead: ReadonlySet<string>;
   /** World px (+ height) -> root-local CSS px in the shown location, or null when off the canvas. Writes into `out` when given. */
   project(p: Px, heightM?: number, out?: { x: number; y: number }): { x: number; y: number } | null;
   /** project() without the on-canvas clip (null when no unclipped projection is available). */

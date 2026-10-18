@@ -225,7 +225,7 @@ export function createSocialView(env: OverlayEnv): SocialView {
   function showNickFace(pid: string) {
     let f = nickFaces.get(pid);
     if (!f) {
-      const e = surface.text('tip');
+      const e = surface.text('badge'); // over the head, but under every chat bubble (Z_ORDER)
       setText(e, '😝', stats);
       f = { t0: 0, el: e, st: newPlaceState(), size: 0 };
       nickFaces.set(pid, f);

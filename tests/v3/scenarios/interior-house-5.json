@@ -1,0 +1,107 @@
+{
+ "name": "interior-house-5",
+ "world": "v3",
+ "viewport": [
+  960,
+  540
+ ],
+ "tier": "low",
+ "members": [
+  {
+   "pid": "me",
+   "name": "You",
+   "cast": "frog",
+   "seat": 0
+  },
+  {
+   "pid": "p1",
+   "name": "Agnes",
+   "cast": "mushroom",
+   "seat": 1
+  },
+  {
+   "pid": "p2",
+   "name": "Bart",
+   "cast": "fox",
+   "seat": 2
+  },
+  {
+   "pid": "p3",
+   "name": "Cordelia",
+   "cast": "owl",
+   "seat": 3
+  },
+  {
+   "pid": "p4",
+   "name": "Desmond",
+   "cast": "crow",
+   "seat": 4
+  },
+  {
+   "pid": "st",
+   "name": "The Storyteller",
+   "cast": "storyteller",
+   "role": "storyteller",
+   "seat": null
+  }
+ ],
+ "spawn": {
+  "x": 576,
+  "y": 348
+ },
+ "steps": [
+  {
+   "at": 0,
+   "game": {
+    "phase": "day",
+    "dayNumber": 1
+   }
+  },
+  {
+   "at": 0,
+   "snapshot": {
+    "entities": [
+     {
+      "id": "p1",
+      "x": 888,
+      "y": 368,
+      "location": "bld:house-5"
+     }
+    ]
+   }
+  },
+  {
+   "at": 2000,
+   "teleport": {
+    "x": 856,
+    "y": 408,
+    "location": "bld:house-5",
+    "reason": "door"
+   }
+  },
+  {
+   "at": 5000,
+   "teleport": {
+    "x": 600,
+    "y": 328,
+    "location": "outdoors",
+    "reason": "door"
+   }
+  }
+ ],
+ "shots": [
+  {
+   "at": 1500,
+   "name": "interior-house-5-before"
+  },
+  {
+   "at": 3500,
+   "name": "interior-house-5-in"
+  },
+  {
+   "at": 6500,
+   "name": "interior-house-5-out"
+  }
+ ],
+ "duration": 7500
+}

@@ -14,14 +14,17 @@ import {
   type PlayerGameView,
   type StorytellerGameView,
   type TownLayout,
+  type WorldId,
   type WorldSnapshot,
   type WorldTeleport,
 } from '../../packages/protocol/src/index.js';
 import { townLayout } from '../../packages/assets/src/index.js';
+import { layoutOf } from '../v3/worlds.js';
 import { ApiClient } from './http.js';
 import { Recorder } from './recorder.js';
 import { fakeClientIp } from './ip.js';
 
+/** The v2 layout (kept for callers that predate per-lobby worlds; a bot plans on `bot.layout`, its lobby's world). */
 export const layout: TownLayout = townLayout;
 
 export interface BotOptions {
@@ -68,6 +71,12 @@ export class Bot {
   private answered = new Set<string>();
   private readonly snap2: boolean;
   private snaps = new SnapshotDecoder();
+  /** (v3 WP7) The lobby's world: set by createLobby({world}) and by every lobby:view (absent = 'v2'). */
+  world: WorldId = 'v2';
+  /** The layout this bot walks on (its lobby's world, docs/v3/INTEGRATION.md §2.4). */
+  get layout(): TownLayout {
+    return layoutOf(this.world);
+  }
 
   constructor(
     readonly name: string,
@@ -90,10 +99,15 @@ export class Bot {
     return this;
   }
 
-  async createLobby(name: string, maxPlayers = 15, takeStoryteller = false): Promise<string> {
-    const r = await this.api.createLobby({ name, maxPlayers, takeStoryteller });
+  /** Create a lobby. (v3) `opts.world` picks the town ('v2' default, fixed at creation); the bot then walks on it. */
+  async createLobby(name: string, maxPlayers = 15, takeStoryteller = false, opts: { world?: WorldId } = {}): Promise<string> {
+    const req = { name, maxPlayers, takeStoryteller, ...(opts.world ? { world: opts.world } : {}) };
+    const r = await this.api.createLobby(req);
     if (r.status !== 200 && r.status !== 201) throw new Error(`createLobby ${r.status}: ${r.text.slice(0, 200)}`);
-    return r.body.lobby.id;
+    const lobby = r.body.lobby as { id: string; world?: WorldId };
+    if (opts.world && (lobby.world ?? 'v2') !== opts.world) throw new Error(`createLobby: asked for world ${opts.world}, the server made ${lobby.world ?? 'v2'}`);
+    this.world = lobby.world ?? 'v2';
+    return lobby.id;
   }
 
   async getTicket(lobbyId: string, intent: 'player' | 'storyteller' | 'reconnect' = 'player'): Promise<JoinTicketResponse> {
@@ -152,6 +166,7 @@ export class Bot {
 
   private onS2C(type: string, payload: unknown) {
     this.latest[type] = payload;
+    if (type === 'lobby:view') this.world = (payload as LobbyRoomView).world ?? (payload as LobbyRoomView).lobby?.world ?? 'v2';
     this.recorder.record(type, payload);
     if (type === 'world:snap2') {
       // Recorded raw (byte accounting); handled below as the snapshot it decodes to.
@@ -281,6 +296,7 @@ export class Bot {
    * it first walks to the interior door and uses it (e.g. leaving home after the first night).
    */
   startWandering(hz = 10, speedMult = 0.9) {
+    const layout = this.layout; // (v3) the lobby's world, fixed at creation
     if (!this.pos) this.pos = tileCenterPx(layout, layout.playerSpawn);
     let pause = 0;
     let doorWait = 0;
@@ -305,11 +321,11 @@ export class Bot {
               this.room.send('world:useDoor', { buildingId: inside.id });
               doorWait = 1;
             }
-          } else this.path = planPath(this.pos, inside.interiorDoor) ?? [];
+          } else this.path = planPath(this.pos, inside.interiorDoor, 6000, layout) ?? [];
         } else {
           for (let i = 0; i < 10 && !this.path.length; i++) {
-            const goal = randomNearbyTile(this.pos);
-            if (goal) this.path = planPath(this.pos, goal) ?? [];
+            const goal = randomNearbyTile(this.pos, layout);
+            if (goal) this.path = planPath(this.pos, goal, 6000, layout) ?? [];
           }
           if (this.path.length && Math.random() < 0.3) pause = 0.5 + Math.random() * 2; // people stop to talk
         }
@@ -403,37 +419,39 @@ export async function makeBots(n: number, prefix: string, baseUrl: string, wsUrl
   return bots;
 }
 
-// ---- path planning ---------------------------------------------------------------------------
-const walkableCache = new Map<number, boolean>();
-function walkableTile(tx: number, ty: number): boolean {
+// ---- path planning (per layout: v2 or the lobby's v3 world) ------------------------------------
+const walkableCaches = new WeakMap<TownLayout, Map<number, boolean>>();
+function walkableTile(tx: number, ty: number, layout: TownLayout = townLayout): boolean {
   if (tx < 0 || ty < 0 || tx >= layout.widthTiles || ty >= layout.heightTiles) return false;
+  let cache = walkableCaches.get(layout);
+  if (!cache) walkableCaches.set(layout, (cache = new Map()));
   const k = ty * layout.widthTiles + tx;
-  let v = walkableCache.get(k);
+  let v = cache.get(k);
   if (v === undefined) {
     const c = tileCenterPx(layout, { x: tx, y: ty });
     v = !isBlockedPx(layout, c.x, c.y);
-    walkableCache.set(k, v);
+    cache.set(k, v);
   }
   return v;
 }
 
-function randomNearbyTile(pos: { x: number; y: number }): { x: number; y: number } | null {
+function randomNearbyTile(pos: { x: number; y: number }, layout: TownLayout = townLayout): { x: number; y: number } | null {
   const ts = layout.tileSize;
   for (let i = 0; i < 40; i++) {
     const tx = Math.floor(pos.x / ts) + rand(21) - 10;
     const ty = Math.floor(pos.y / ts) + rand(21) - 10;
-    if (walkableTile(tx, ty)) return { x: tx, y: ty };
+    if (walkableTile(tx, ty, layout)) return { x: tx, y: ty };
   }
   return null;
 }
 
-/** BFS over 4-connected walkable tiles; returns tile-centre waypoints (excluding the start). */
-export function planPath(from: { x: number; y: number }, goal: { x: number; y: number }, maxNodes = 6000): { x: number; y: number }[] | null {
+/** BFS over 4-connected walkable tiles of `layout` (default v2); returns tile-centre waypoints (excluding the start). */
+export function planPath(from: { x: number; y: number }, goal: { x: number; y: number }, maxNodes = 6000, layout: TownLayout = townLayout): { x: number; y: number }[] | null {
   const ts = layout.tileSize;
   const W = layout.widthTiles;
   const sx = Math.floor(from.x / ts);
   const sy = Math.floor(from.y / ts);
-  if (!walkableTile(goal.x, goal.y)) return null;
+  if (!walkableTile(goal.x, goal.y, layout)) return null;
   const start = sy * W + sx;
   const target = goal.y * W + goal.x;
   const prev = new Map<number, number>([[start, -1]]);
@@ -445,7 +463,7 @@ export function planPath(from: { x: number; y: number }, goal: { x: number; y: n
     const cy = Math.floor(cur / W);
     for (const [nx, ny] of [[cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]] as const) {
       const k = ny * W + nx;
-      if (prev.has(k) || !walkableTile(nx, ny)) continue;
+      if (prev.has(k) || !walkableTile(nx, ny, layout)) continue;
       prev.set(k, cur);
       queue.push(k);
     }

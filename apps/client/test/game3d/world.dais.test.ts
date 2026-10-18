@@ -70,6 +70,20 @@ describe('daisPlan + driver', () => {
     expect(calls.length).toBe(before);
   });
 
+  it('a dead nominee keeps its nomination halo (pending and voting): nominated and dead together', () => {
+    for (const status of ['pending', 'voting'] as const) {
+      const ps = players(7);
+      ps[3] = player(3, { alive: false, ghostVoteAvailable: true });
+      const plan = daisPlan(game(ps, [nomination({ nomineeSeat: 3, status, currentVoterSeat: status === 'voting' ? 4 : null })]), 'day');
+      const stone = stoneMap(ps).get(3)!;
+      const s = plan.seats[stone] as Exclude<DaisSeat, 'empty'>;
+      expect(s.nominated, status).toBe(true);
+      expect(s.dead, status).toBe(true);
+      expect(plan.seats.filter((x) => x !== 'empty' && x.nominated)).toHaveLength(1);
+      expect(plan.phase).toBe(status === 'voting' ? 'vote' : 'nomination');
+    }
+  });
+
   it('n = 9, a vote: setPhase vote from the nominee stone with t0 in the past, hand on the current voter, voteHand only for resolved yes votes', () => {
     const ps = players(9);
     ps[4] = player(4, { alive: false, ghostVoteAvailable: true });

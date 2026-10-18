@@ -1,7 +1,7 @@
 // v3 WP2 (v3-avatars). Cosmetic townsfolk in the 3D town (docs/v3/INTEGRATION.md §3 "NPCs"): the v2 roamer
 // (game/npcRoaming.ts createNpcRoamer / stepNpcRoamer, INCLUDING its Brianbi avoidance) on the world's NPC homes
 // (v3: @ct/assets/hollowmere npcHomesV3, re-checked against the Hollowmere collision by the exporter). Pure: no
-// three (avatars.npcs.test.ts); the layer draws each one with its `npc-*` spec.
+// three (tested in avatars.parts.test.ts); the layer draws each one with its `npc-*` spec.
 //
 // Rules (v2 TownScene stepAmbience, plus the user request of 2026-10-17 "no NPCs in the voting circle"):
 //   - daytime only (waiting / setup / day / finished), outdoors only, never collide, no names;

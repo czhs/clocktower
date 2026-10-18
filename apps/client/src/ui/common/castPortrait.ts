@@ -15,7 +15,8 @@
 // character's own colour is drawn instead, so layouts never jump and nothing is ever blank.
 // The manifest is looked up with import.meta.glob; the image URLs (WebP or PNG) come from @ct/assets/runtime.
 // (v3 WP6) An alternative portrait source can be installed (`setPortraitAlt`): in a v3 lobby ./v3portrait.ts
-// (lobby chunk, so none of it ships before sign-in) draws from the pixel3d strip v3/assets/ui/cast-portraits.*.
+// (the lazy v3atlas chunk, fetched only in v3 lobbies) draws from the pixel3d strip v3/assets/ui/cast-portraits.*;
+// until it lands, ./v3skinLobby.ts installs a placeholder source that draws the silhouette (never a v2 flash).
 import { h } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { atlasFormat, castGhostsUrl, castHdPortraitsUrl, castHdUrl, castUrl, portraitsUrl } from '@ct/assets/runtime';

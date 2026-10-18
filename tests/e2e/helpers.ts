@@ -1,9 +1,9 @@
 // Shared Playwright helpers (qa-deploy): UI account creation and a WebSocket frame tap that decodes
 // every Colyseus ROOM_DATA frame a page sends/receives, so specs can assert on exactly what each
 // browser was sent (secrecy) without reaching into app internals.
-import { expect, type Browser, type BrowserContext, type Page } from '@playwright/test';
+import { expect, test, type Browser, type BrowserContext, type Page } from '@playwright/test';
 import { unpack } from '@colyseus/msgpackr';
-import { SnapshotDecoder, type Snap2Frame } from '../../packages/protocol/src/index.js';
+import { SnapshotDecoder, type Snap2Frame, type WorldId } from '../../packages/protocol/src/index.js';
 
 const ROOM_DATA = 13; // colyseus Protocol.ROOM_DATA
 
@@ -148,13 +148,26 @@ export async function lobbyCount(page: Page, id: string): Promise<number> {
 // real-keyboard walking along collision-free tile paths (outdoors and inside buildings).
 import { pack } from '@colyseus/msgpackr';
 
+/**
+ * (v3 WP7) The lobby world the walking / tapping helpers plan on. A spec that plays a v3 lobby calls
+ * `setE2eWorld('v3')` first (one world per spec file: every page of a spec is in the same lobby world);
+ * `geo().L` is then townLayoutV3 and `geo().PLAZA` the v3 plaza (tests/v3/worlds.ts).
+ */
+let e2eWorldNow: WorldId = 'v2';
+export function setE2eWorld(w: WorldId): void {
+  e2eWorldNow = w;
+}
+export function e2eWorld(): WorldId {
+  return e2eWorldNow;
+}
+
 /** Town layout + collision helpers, loaded lazily (only the walking specs depend on the art package). */
 type Geo = {
-  L: typeof import('../../packages/assets/src/index.js').townLayout;
+  L: import('../../packages/protocol/src/index.js').TownLayout;
   /** v2 roster (packages/assets/src/cast.ts). */
   cast: typeof import('../../packages/assets/src/index.js').CAST;
   playable: typeof import('../../packages/assets/src/index.js').PLAYABLE;
-  PLAZA: typeof import('../../packages/assets/src/index.js').PLAZA;
+  PLAZA: { cx: number; cy: number; rx: number; ry: number };
   /** Legacy v1 presets (capture-tutorial.spec.ts still reads them). */
   presets: typeof import('../../packages/assets/src/index.js').CHARACTER_PRESETS;
   speed: number;
@@ -163,17 +176,19 @@ type Geo = {
   tileCenterPx: typeof import('../../packages/protocol/src/index.js').tileCenterPx;
   findPath: typeof import('../../apps/server/src/world/path.js').findPath;
 };
-let geoCache: Geo | null = null;
-export async function geo(): Promise<Geo> {
-  if (!geoCache) {
+const geoCache = new Map<WorldId, Geo>();
+export async function geo(world: WorldId = e2eWorldNow): Promise<Geo> {
+  let g = geoCache.get(world);
+  if (!g) {
     const a = await import('../../packages/assets/src/index.js');
     const pr = await import('../../packages/protocol/src/index.js');
     const path = await import('../../apps/server/src/world/path.js');
-    geoCache = {
-      L: a.townLayout,
+    const w = await import('../v3/worlds.js');
+    g = {
+      L: w.layoutOf(world),
       cast: a.CAST,
       playable: a.PLAYABLE,
-      PLAZA: a.PLAZA,
+      PLAZA: w.plazaOf(world),
       presets: a.CHARACTER_PRESETS,
       speed: pr.PLAYER_SPEED,
       isBlockedPx: pr.isBlockedPx,
@@ -181,8 +196,9 @@ export async function geo(): Promise<Geo> {
       tileCenterPx: pr.tileCenterPx,
       findPath: path.findPath,
     };
+    geoCache.set(world, g);
   }
-  return geoCache;
+  return g;
 }
 
 /** Colyseus ROOM_DATA frame [13][fixstr type][msgpack payload] (exactly what room.send() produces). */
@@ -620,6 +636,8 @@ export async function canvasBox(page: Page): Promise<{ x: number; y: number; w: 
  * resting on SQUARE_VIEW's centre in the square, leaning 0.85 toward the player near the edge.
  */
 export async function outdoorCamera(size: { w: number; h: number }, me: { x: number; y: number }): Promise<{ zoom: number; cx: number; cy: number }> {
+  // (v3, §6.1) the 3D camera has no v2 mirror: there the __ctCamera hook is mandatory
+  if (e2eWorldNow === 'v3') throw new Error('outdoorCamera: no fallback maths in a v3 world; the page needs the __ctCamera hook (ct.debug.camera = 1)');
   const { L, PLAZA } = await geo();
   const TS = L.tileSize;
   const TOWN = { x: L.townBounds.x * TS, y: L.townBounds.y * TS, w: L.townBounds.w * TS, h: L.townBounds.h * TS };
@@ -662,12 +680,13 @@ async function hittable(page: Page, me: Loc, world: { x: number; y: number }[]):
   if (!world.length) return [];
   const box = await canvasBox(page);
   const viaHook = await page.evaluate((ws) => {
-    const cam = (window as unknown as { __ctCamera?: { worldToScreen(x: number, y: number): { x: number; y: number } } }).__ctCamera;
+    const cam = (window as unknown as { __ctCamera?: { worldToScreen(x: number, y: number): { x: number; y: number } | null } }).__ctCamera;
     return cam ? ws.map((w) => cam.worldToScreen(w.x, w.y)) : null;
   }, world);
   let screen: { x: number; y: number }[];
-  if (viaHook) screen = viaHook;
+  if (viaHook) screen = viaHook.map((p) => p ?? { x: -1e6, y: -1e6 }); // (v3) null = not on the canvas
   else {
+    if (e2eWorldNow === 'v3') throw new Error('hittable: a v3 world needs the __ctCamera hook (ct.debug.camera = 1); no fallback maths');
     const cam = await outdoorCamera(box, me);
     screen = world.map((w) => ({ x: box.x + (w.x - cam.cx) * cam.zoom + box.w / 2, y: box.y + (w.y - cam.cy) * cam.zoom + box.h / 2 }));
   }
@@ -928,19 +947,24 @@ export async function walkIntoDoor(p: Player, pid: string, buildingId: string, b
   const want0 = `bld:${buildingId}`;
   if (selfEntity(p, pid)?.location === want0) return; // the final step onto the doorstep already went in
   const f = b.footprint;
-  // TownScene.setupDoors: inward = up for a door below the footprint, left/right for side doors
-  const key = b.door.y >= f.y + f.h ? 'ArrowUp' : b.door.x >= f.x + f.w ? 'ArrowLeft' : b.door.x < f.x ? 'ArrowRight' : 'ArrowUp';
+  // TownScene.setupDoors: inward = up for a door below the footprint, left/right for side doors;
+  // (v3) inward = -doorNormal (game/rules/doors.ts): the dominant axis, plus the other one for a diagonal door
+  const n = (b as { doorNormal?: [number, number] }).doorNormal;
+  const inward = n ? { x: -n[0], y: -n[1] } : null;
+  const v3Keys = inward ? [...(Math.abs(inward.x) > 0.38 ? [inward.x > 0 ? 'ArrowRight' : 'ArrowLeft'] : []), ...(Math.abs(inward.y) > 0.38 ? [inward.y > 0 ? 'ArrowDown' : 'ArrowUp'] : [])] : null;
+  const key = v3Keys?.[0] ?? (b.door.y >= f.y + f.h ? 'ArrowUp' : b.door.x >= f.x + f.w ? 'ArrowLeft' : b.door.x < f.x ? 'ArrowRight' : 'ArrowUp');
+  const extra = v3Keys?.slice(1) ?? [];
   const want = `bld:${buildingId}`;
   const t0 = Date.now();
   const door = g.tileCenterPx(g.L, b.door);
   for (let k = 0; k < 8; k++) {
     // walkToTile may stop up to ~18 px off (overshoot damping); the door only opens within 11 px of
     // the doorstep and pushing past the footprint edge is blocked: line up across the push first
-    await alignOn(p, pid, door, key === 'ArrowUp' ? 'x' : 'y');
+    if (!extra.length) await alignOn(p, pid, door, key === 'ArrowUp' || key === 'ArrowDown' ? 'x' : 'y');
     if (selfEntity(p, pid)?.location === want) return;
-    await p.page.keyboard.down(key);
+    for (const k2 of [key, ...extra]) await p.page.keyboard.down(k2);
     await p.page.waitForTimeout(500);
-    await p.page.keyboard.up(key);
+    for (const k2 of [key, ...extra]) await p.page.keyboard.up(k2);
     const ok = await expect
       .poll(() => selfEntity(p, pid)?.location, { timeout: 4000 })
       .toBe(want)
@@ -1030,4 +1054,193 @@ export async function stPanelMode(page: Page, mode: 'script' | 'tools'): Promise
   if (await btn.count()) await btn.first().click();
   if (mode === 'script') await expect(page.locator('.cts-script')).toBeVisible({ timeout: 15_000 });
   else await expect(page.locator('.cts-tabs')).toBeVisible({ timeout: 15_000 });
+}
+
+// ---------------------------------------------------------------------------- (v3 WP7) the 3D town
+//
+// docs/v3/INTEGRATION.md §6.1 / §6.2. The `v3` Playwright project (playwright.config.ts) runs Chromium on
+// SwiftShader at 960x540; `v3InitScript` gives every v3 context the flags of §6.2 (v3force skips the renderer
+// rows 3-9 and keeps the perf sampler off, 15 fps, the low tier, the camera / social debug hooks). Selectors are
+// world-aware through the debug hooks: `__ctCamera.v3()` exists only while the 3D town is mounted,
+// `__ctCamera.town()` only under Classic (WP5b), so `townRenderer()` tells which renderer drew the page.
+
+export interface V3Info {
+  ready: boolean;
+  tier: string;
+  pixelScale: number;
+  calls: number;
+  tris: number;
+  programs: number | null;
+  frameMs?: { p50: number; p95: number };
+  gpu: string | null;
+  building?: string[];
+  life?: { walkers: number; doors: number; folk: boolean | number };
+}
+
+/** Quiet first-run UI + the §6.2 v3 flags (opts.force = false leaves the renderer choice to the page). */
+export async function v3InitScript(ctx: BrowserContext, opts: { force?: boolean; fps?: number; extra?: Record<string, string> } = {}): Promise<void> {
+  await ctx.addInitScript(
+    ({ force, fps, extra }) => {
+      try {
+        localStorage.setItem('ct.intro.seen', '1');
+        localStorage.setItem('ct.intro.seen.v1', '1');
+        localStorage.setItem('ct.hint.move.v1', '1');
+        localStorage.setItem('ct.hint.social.v1', '1');
+        localStorage.setItem('ct.help.seen.v1', '1');
+        localStorage.setItem('ct.debug.camera', '1');
+        localStorage.setItem('ct.debug.social', '1');
+        localStorage.setItem('ct.debug.fps', String(fps));
+        localStorage.setItem('ct.fxQuality', 'low');
+        if (force) localStorage.setItem('ct.debug.v3force', '1');
+        for (const [k, v] of Object.entries(extra)) localStorage.setItem(k, v);
+      } catch {}
+    },
+    { force: opts.force ?? true, fps: opts.fps ?? 15, extra: opts.extra ?? {} },
+  );
+}
+
+/** CSP violations + the `[town] piece … failed` vendor warnings (v3-boot fails on either). */
+export function watchV3Console(page: Page, label: string, sink: string[]): void {
+  page.on('console', (m) => {
+    const t = m.text();
+    if (m.type() === 'warning' && /\[town\] piece .* failed/.test(t)) sink.push(`${label}: piece warn ${t.slice(0, 300)}`);
+    if (/Content Security Policy|Refused to (load|execute|apply|create|evaluate)|TrustedHTML|TrustedScript/i.test(t)) sink.push(`${label}: csp ${t.slice(0, 300)}`);
+  });
+}
+
+/** Which renderer drew the town on this page right now (null = no town mounted / no hook). */
+export async function townRenderer(page: Page): Promise<'v3' | 'classic' | null> {
+  return page.evaluate(() => {
+    const cam = (window as unknown as { __ctCamera?: { v3?: unknown; town?: unknown } }).__ctCamera;
+    if (!cam) return null;
+    if (typeof cam.v3 === 'function') return 'v3';
+    if (typeof cam.town === 'function') return 'classic';
+    return null;
+  });
+}
+
+/** __ctCamera.v3() (null when the 3D town is not mounted). */
+export async function v3Info(page: Page): Promise<V3Info | null> {
+  return page.evaluate(() => {
+    const cam = (window as unknown as { __ctCamera?: { v3?: () => unknown } }).__ctCamera;
+    return (cam?.v3?.() ?? null) as never;
+  });
+}
+
+/** The Classic renderer's map info (WP5b `__ctCamera.town()`), null under v3. */
+export async function classicTown(page: Page): Promise<{ world: string; widthTiles: number; heightTiles: number; mapWidth: number } | null> {
+  return page.evaluate(() => {
+    const cam = (window as unknown as { __ctCamera?: { town?: () => unknown } }).__ctCamera;
+    return (cam?.town?.() ?? null) as never;
+  });
+}
+
+/**
+ * Wait until the 3D town reports ready (`__ctCamera.v3().ready`). Fails fast and clearly when Classic mounted instead
+ * (no WebGL2 / a crash fallback), and asserts the GPU string is SwiftShader (never the host GPU, §6.2).
+ */
+export async function waitV3Ready(page: Page, timeoutMs = 240_000, label = 'page'): Promise<V3Info> {
+  const t0 = Date.now();
+  let last: { r: string | null; info: V3Info | null; pixel: unknown } = { r: null, info: null, pixel: null };
+  while (Date.now() - t0 < timeoutMs) {
+    const r = await townRenderer(page);
+    const info = r === 'v3' ? await v3Info(page) : null;
+    last = { r, info, pixel: await page.evaluate(() => (window as unknown as { __pixel?: { ready?: boolean; errors?: string[]; gpu?: string | null } }).__pixel ?? null) };
+    if (r === 'classic' && Date.now() - t0 > 20_000) throw new Error(`${label}: the Classic renderer is drawing this lobby, not the 3D town (fallback? ${JSON.stringify(last.pixel)})`);
+    if (info?.ready) {
+      const gpu = info.gpu ?? ((last.pixel as { gpu?: string } | null)?.gpu ?? null);
+      expect(gpu, `${label}: WebGL renderer must be SwiftShader on the game host (never its GPU)`).toMatch(/SwiftShader/i);
+      return info;
+    }
+    await page.waitForTimeout(1000);
+  }
+  throw new Error(`${label}: the 3D town did not become ready within ${timeoutMs} ms (renderer ${last.r}; v3() ${JSON.stringify(last.info)}; __pixel ${JSON.stringify(last.pixel)})`);
+}
+
+/** Sign in with a fresh account via the API (no UI; the auth flow has its own specs). */
+export async function apiSignIn(page: Page, name: string): Promise<void> {
+  // no page load first: a signed-out app logs a 401 for /api/me, which the specs' console watchers would report
+  const r = await page.request.post('/api/auth/create', { data: { displayName: name } });
+  expect(r.status(), await r.text()).toBeLessThan(300);
+}
+
+/** A new browser context with its own client IP, the socket tap (+ camera hook) and the v3 flags. */
+export async function v3Context(browser: Browser, opts: { viewport?: { width: number; height: number }; force?: boolean; extra?: Record<string, string>; phone?: boolean } = {}): Promise<BrowserContext> {
+  const ctx = await browser.newContext({
+    viewport: opts.viewport ?? { width: 960, height: 540 },
+    deviceScaleFactor: 1,
+    extraHTTPHeaders: { 'X-Forwarded-For': fakeIp() },
+    ...(opts.phone ? { isMobile: true, hasTouch: true } : {}),
+  });
+  await installSocketTap(ctx);
+  await v3InitScript(ctx, { force: opts.force, extra: opts.extra });
+  return ctx;
+}
+
+/**
+ * Create a lobby FROM THE UI (finder → "Create lobby" dialog → Town choice → Create) and return its id once the
+ * waiting room is up. `world` picks the radio: 'v2' = "Classic", 'v3' = "Hollowmere".
+ */
+export async function createLobbyViaUI(page: Page, name: string, world: WorldId): Promise<string> {
+  await expect(page.getByRole('heading', { name: 'Lobby finder' })).toBeVisible({ timeout: 30_000 });
+  await page.getByRole('button', { name: 'Create lobby' }).first().click();
+  const form = page.getByRole('dialog', { name: 'Create lobby' });
+  await expect(form).toBeVisible();
+  await form.getByLabel('Lobby name').fill(name);
+  const town = form.getByRole('radiogroup', { name: 'Town' });
+  await expect(town, 'the create form has a "Town" choice (WP6)').toBeVisible();
+  const label = world === 'v3' ? 'Hollowmere' : 'Classic';
+  await town.getByText(label, { exact: true }).click();
+  await expect(town.getByRole('radio', { name: new RegExp(`^${label}`) })).toBeChecked();
+  const created = page.waitForResponse((r) => r.url().endsWith('/api/lobbies') && r.request().method() === 'POST', { timeout: 30_000 });
+  await form.getByRole('button', { name: 'Create', exact: true }).click();
+  const res = await created;
+  expect(res.status(), await res.text()).toBeLessThan(300);
+  const body = (await res.json()) as { lobby: { id: string; world?: WorldId } };
+  expect(body.lobby.world ?? 'v2', 'the server made the lobby in the chosen world').toBe(world);
+  await expect(page.getByRole('dialog', { name: 'Waiting room' })).toBeVisible({ timeout: 60_000 });
+  return body.lobby.id;
+}
+
+/** The waiting room's world badge text ('Classic town' | 'Hollowmere') and data-world. */
+export async function waitingRoomWorld(page: Page, timeout = 30_000): Promise<{ text: string; world: string | null }> {
+  const badge = page.getByRole('dialog', { name: 'Waiting room' }).locator('.ct-world-badge');
+  try {
+    await expect(badge).toBeVisible({ timeout });
+  } catch (e) {
+    const body = await page.locator('body').innerText({ timeout: 10_000 }).catch(() => '?');
+    throw new Error(`waiting-room world badge not visible after ${timeout} ms at ${page.url()} (page text: ${JSON.stringify(body.slice(0, 400))}): ${String((e as Error).message).split('\n')[0]}`);
+  }
+  return { text: ((await badge.textContent()) ?? '').trim(), world: await badge.getAttribute('data-world') };
+}
+
+/**
+ * Fail FAST (and clearly) when the mounted 3D town lacks a debug member a spec needs, instead of polling into a long
+ * timeout: before C1 the composition root (game3d/TownGame3d.ts) does not register every package's layer yet.
+ * `members` are `__ctCamera` members, `social` ones `__ctSocial` members (ct.debug.social = 1).
+ */
+export async function requireV3Hooks(page: Page, what: string, members: string[], social: string[] = []): Promise<void> {
+  const missing = await page.evaluate(
+    ({ members, social }) => {
+      const w = window as unknown as { __ctCamera?: Record<string, unknown>; __ctSocial?: Record<string, unknown> };
+      return [
+        ...members.filter((m) => typeof w.__ctCamera?.[m] !== 'function').map((m) => `__ctCamera.${m}`),
+        ...social.filter((m) => typeof w.__ctSocial?.[m] !== 'function').map((m) => `__ctSocial.${m}`),
+      ];
+    },
+    { members, social },
+  );
+  if (missing.length) throw new Error(`PENDING C1: ${missing.join(', ')} not installed by the 3D town (${what} not wired into game3d/TownGame3d.ts yet)`);
+}
+
+/**
+ * A still for review from a 3D page. SwiftShader on the shared host can take longer than Playwright's 30 s default to
+ * hand over a frame for a screenshot, so wait up to 120 s and never fail the spec on a missing still (annotated).
+ */
+export async function v3Shot(page: Page, file: string): Promise<void> {
+  try {
+    await page.screenshot({ path: test.info().outputPath(file), timeout: 120_000 });
+  } catch (e) {
+    test.info().annotations.push({ type: 'v3-shot-missing', description: `${file}: ${String((e as Error)?.message ?? e).split('\n')[0]}` });
+  }
 }

@@ -81,7 +81,8 @@ export function daisPlan(game: DaisGameInput | null, phase: StagePhase): DaisPla
       occupied: true,
       dead,
       ghostVote: dead && !!p.ghostVoteAvailable,
-      nominated: !!active && active.nomineeSeat === p.seat && !dead,
+      // a dead player can be nominated (rules/day.ts rejects only a dead nominator): the halo shows on a dead stone too
+      nominated: !!active && active.nomineeSeat === p.seat,
       onBlock: block === p.seat,
       voteHand: !!shownVotes && shownVotes[p.seat] === true,
     };

@@ -1,5 +1,6 @@
 // v3 WP2 (v3-avatars). Frame selection for the flat v2-sprite billboards (brianbi, nicksong; docs/v3/INTEGRATION.md
-// §4 "Billboards"). Pure (avatars.billboard.test.ts): which sheet, which cell, which frame name.
+// §4 "Billboards"). Pure (tested in avatars.parts.test.ts): which sheet, which cell, which frame name, and the
+// cylindrical orientation (yaw only, height stretched by 1/cos(pitch)).
 //
 // Sheets (packages/assets/generated):
 //   cast.json     every cast key, 8 directions (rows) x 5 frames (idle, walk1..4), 32 x 40 cells, anchor (16, 38)
@@ -148,4 +149,29 @@ export function cellUv(c: Pick<FrameCell, 'x' | 'y' | 'w' | 'h'>, sheetW: number
     v0: 1 - (c.y + c.h - inset) / sheetH,
     v1: 1 - (c.y + inset) / sheetH,
   };
+}
+
+// ------------------------------------------------------------------------------------ orientation
+
+/** The gameplay camera pitch (input/camera.ts PITCH), used until the first frame reads the real camera. */
+export const DEFAULT_PITCH = Math.PI / 6;
+/** Never stretch a billboard by more than 1 / this (a near top-down camera). */
+const MIN_COS = 0.25;
+
+/**
+ * Cylindrical billboard pose from the camera's world quaternion: `yaw` turns the quad (about world Y only, so it
+ * stays vertical and never leans into a wall behind it) to face the camera; `cosPitch` = cos of the camera's
+ * downward pitch, the factor a vertical quad loses on screen (scale its height by 1 / cosPitch to keep v2's size).
+ */
+export function cylinderFacing(q: { x: number; y: number; z: number; w: number }): { yaw: number; cosPitch: number } {
+  // camera forward = q · (0, 0, -1) = -(third column of the rotation matrix)
+  const fx = -2 * (q.x * q.z + q.w * q.y);
+  const fz = -(1 - 2 * (q.x * q.x + q.y * q.y));
+  const h = Math.hypot(fx, fz);
+  return { yaw: h > 1e-6 ? Math.atan2(-fx, -fz) : 0, cosPitch: Math.max(MIN_COS, Math.min(1, h)) };
+}
+
+/** Vertical height (m) of the drawn head top above the feet for a quad stretched by 1 / cosPitch. */
+export function billboardHeadM(art: Pick<BillboardArt, 'anchor' | 'cellH'>, cosPitch: number): number {
+  return (BILLBOARD_HEIGHT_M * (art.anchor.y / art.cellH)) / Math.max(MIN_COS, cosPitch);
 }

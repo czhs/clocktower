@@ -21,6 +21,7 @@ import { fitName, houseOwners, labelShift, labelStyle } from '../../game/gamepla
 import { houseInUse } from '../../game/rules/doors';
 import { inRect, type Rect } from './anchors';
 import { newPlaceState, place, setShown, setStyle, setText, type PlaceState } from './place';
+import { measureEl } from './surface';
 import type { OverlayEnv, OverlayFrame, OverlayView } from './types';
 
 const DAYLIKE: ReadonlySet<string> = new Set(['waiting', 'setup', 'day', 'finished']);
@@ -113,7 +114,7 @@ export function createBoardsView(env: OverlayEnv): BoardsView {
       const badgeText = view.overflow > 0 ? overflowText(view.overflow) : null;
       if (badgeText) {
         if (!st.badge) {
-          st.badge = { el: surface.text('tip'), st: newPlaceState(), text: '', size: 0, color: '' };
+          st.badge = { el: surface.text('badge'), st: newPlaceState(), text: '', size: 0, color: '' };
           setStyle(st.badge.el, 'fontWeight', '700', stats);
         }
         if (st.badge.text !== badgeText) {
@@ -330,6 +331,22 @@ export function createHouseNamesView(env: OverlayEnv, boards: Pick<BoardsView, '
   const at = { x: 0, y: 0 };
   const box = { x: 0, y: 0, w: 0, h: 0 };
 
+  /** Font epoch the callout sizes were measured at (surface.fontEpoch: web fonts arriving re-measure once). */
+  let fontSeen = surface.fontEpoch();
+  /** Some callout measured 0 × 0 (e.g. the town was hidden): measure it again on the next frame. */
+  let unmeasured = false;
+  function measureCallouts(cs: readonly Callout[]) {
+    unmeasured = false;
+    for (const c of cs) {
+      const m = measureEl(c.el);
+      c.w = m.w;
+      c.h = m.h;
+      c.dirty = c.w === 0 && !!c.el.textContent;
+      if (c.dirty) unmeasured = true;
+    }
+  }
+  const remeasure: Callout[] = [];
+
   function rebuild(f: OverlayFrame, players: unknown, members: unknown) {
     const lobby = env.deps.conn.lobbyView.get();
     const owners = houseOwners(f.state.layout, f.state.game?.players ?? null, lobby?.members ?? null);
@@ -365,11 +382,7 @@ export function createHouseNamesView(env: OverlayEnv, boards: Pick<BoardsView, '
       const fp = b.footprint;
       list.push({ c, ax: (fp.x + fp.w / 2) * ts, ay: (fp.y + fp.h / 2) * ts, id: b.id });
     }
-    for (const c of toMeasure) {
-      c.w = c.el.offsetWidth;
-      c.h = c.el.offsetHeight;
-      c.dirty = false;
-    }
+    measureCallouts(toMeasure);
     for (const [id, c] of callouts) {
       let used = false;
       for (let i = 0; i < list.length; i++) if (list[i]!.c === c) used = true;
@@ -395,6 +408,14 @@ export function createHouseNamesView(env: OverlayEnv, boards: Pick<BoardsView, '
     const players = f.state.game?.players ?? null;
     const members = env.deps.conn.lobbyView.get()?.members ?? null;
     if (key.layout !== f.state.layout || key.players !== players || key.members !== members || key.px !== f.px || key.tod !== f.tod || key.me !== f.state.myPid) rebuild(f, players, members);
+    const fe = surface.fontEpoch();
+    if (fe !== fontSeen || unmeasured) {
+      const all = fe !== fontSeen;
+      fontSeen = fe;
+      remeasure.length = 0;
+      for (let i = 0; i < list.length; i++) if (all || list[i]!.c.dirty) remeasure.push(list[i]!.c);
+      measureCallouts(remeasure);
+    }
     for (let i = 0; i < list.length; i++) {
       const { c, ax, ay, id } = list[i]!;
       at.x = ax;

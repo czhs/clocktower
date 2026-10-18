@@ -70,9 +70,14 @@ import { integrateStep, interpolate, INTERP_DELAY_MS, LOCAL_PUBLISH_MS, MOVE_HZ,
 type Plaza = { cx: number; cy: number; rx: number; ry: number };
 /** The square's preset view (world px): the whole circle plus the clock tower's face above it. */
 const squareViewOf = (p: Plaza) => ({ x: p.cx - 200, y: 56, w: 400, h: p.cy + p.ry + 18 - 56 });
-/** The v2 square view (TownGame sizes its canvas before a scene exists; the v3 plaza is the same size). */
+/**
+ * The v2 square view (TownGame sizes its canvas before a scene exists). The v3 plaza equals the v2 PLAZA, so the same view
+ * holds in a v3 lobby; packages/assets/test/classicV3.test.ts fails if a re-publish moves it (then pass the lobby's view in).
+ */
 const SQUARE_VIEW_V2 = squareViewOf(PLAZA_V2);
 /** Townsfolk home tiles of the v2 town (a v3 map carries its own: town-v3.json `npcHomes`). */
+/** (v3) Townsfolk keep out of the plaza ellipse scaled by this (the voting circle and its rim). */
+export const NPC_PLAZA_CLEAR = 1.1;
 const NPC_HOMES_V2: Record<string, TilePoint> = { 'npc-sweeper': { x: 16, y: 12 }, 'npc-vendor': { x: 10, y: 17 }, 'npc-elder': { x: 10, y: 21 }, 'npc-porter': { x: 22, y: 34 } };
 const NIGHT: ReadonlySet<string> = new Set(['first_night', 'night']);
 /** Phases with daytime life on the square (townsfolk, boards). */
@@ -399,7 +404,13 @@ export class TownScene extends Phaser.Scene {
   /** Per-frame scratch for the townsfolk step (no allocations in stepAmbience). */
   private npcBrianbis: NpcPoint[] = [];
   private npcDelta: NpcPoint = { x: 0, y: 0 };
-  private npcClear = (from: NpcPoint, to: NpcPoint) => locationAt(this.L, to.x, to.y) === 'outdoors' && segmentClear(this.L, from.x, from.y, to.x, to.y);
+  /**
+   * Where a townsfolk may stand: outdoors, and in a v3 world never on the voting circle (user request "no NPCs in the
+   * voting circle", INTEGRATION.md §9.1: the plaza ellipse x 1.1 stays clear). v2 unchanged.
+   */
+  private npcSpot = (x: number, y: number) =>
+    locationAt(this.L, x, y) === 'outdoors' && (this.world !== 'v3' || Math.hypot((x - this.PLAZA.cx) / this.PLAZA.rx, (y - this.PLAZA.cy) / this.PLAZA.ry) > NPC_PLAZA_CLEAR);
+  private npcClear = (from: NpcPoint, to: NpcPoint) => this.npcSpot(to.x, to.y) && segmentClear(this.L, from.x, from.y, to.x, to.y);
   private pigeons: { s: Phaser.GameObjects.Sprite; home: { x: number; y: number }; away: number; ph: number }[] = [];
   private doorGlows: { img: Phaser.GameObjects.Image; d: DoorObj }[] = [];
   private lastPromptKey = '';
@@ -715,7 +726,7 @@ export class TownScene extends Phaser.Scene {
         },
         view: () => ({ ...this.cameras.main.worldView, zoom: this.cssZoom() }),
         /** (v3 WP5b) Which town this Classic scene draws: the lobby world and its map size (tiles). */
-        town: () => ({ world: this.world, widthTiles: this.L.widthTiles, heightTiles: this.L.heightTiles, mapWidth: this.TOWN.w }),
+        town: () => ({ world: this.world, widthTiles: this.L.widthTiles, heightTiles: this.L.heightTiles, mapWidth: this.TOWN.w, plaza: { ...this.PLAZA } }),
         me: () => ({ ...this.me }),
         /** One drawn avatar (texture / frame / size), or null while hidden. */
         avatar: (pid: string) => {
@@ -1486,7 +1497,7 @@ export class TownScene extends Phaser.Scene {
     }
     for (const [id, home] of Object.entries(homes)) {
       if (!CAST.sheets[id]) continue;
-      const p = nearestFree(this.L, home, 40, (x, y) => locationAt(this.L, x, y) === 'outdoors');
+      const p = nearestFree(this.L, home, 40, this.npcSpot);
       if (!p) continue;
       const sprite = this.add.sprite(p.x, p.y, 'cast').setOrigin(CAST.anchor.x / CAST.frameWidth, CAST.anchor.y / CAST.frameHeight).setAlpha(0.96);
       this.npcs.push({ id, sprite, ...createNpcRoamer(p, this.npcs.length), dir: 'down' });

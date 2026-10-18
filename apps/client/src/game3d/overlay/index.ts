@@ -108,6 +108,7 @@ export function createOverlayLayer(deps: OverlayDeps): OverlayLayer {
     avatars,
     byPid,
     drawn,
+    dead: deadPids,
     project,
     projectFree,
   };

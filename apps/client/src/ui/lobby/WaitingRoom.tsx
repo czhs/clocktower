@@ -15,7 +15,7 @@ import type { RoomConnection } from '../../net/room';
 import { helpSeen, openHelp } from '../common/HowToPlay';
 import { CastPortrait } from '../common/castPortrait';
 import { CharacterPicker, characterOf, takenBy } from './CharacterPicker';
-import { copyText, SCRIPT_LABEL, shareUrl } from './finder';
+import { copyText, SCRIPT_LABEL, shareUrl, worldOfLobby } from './finder';
 import { MODE_COPY, modeOf, timingsOf, timingsSummary } from '../clock/logic';
 import { AutoTimingsEditor, useTimingsDraft, WorldBadge } from './ModeSettings';
 import { useV3Skin } from '../common/v3skinLobby'; // (v3 WP6) a v3 lobby wears the v3 DOM skin
@@ -93,10 +93,10 @@ export function WaitingRoom({ conn, onLeave }: { conn: RoomConnection; account: 
           <span class="ct-sr-only">{collapsed ? 'Show lobby details' : 'Hide lobby details'}</span>
         </button>
         <div class="ct-waiting-title">
-          <h2>
-            {view.lobby.name} <WorldBadge world={view.world ?? view.lobby.world} />
-          </h2>
-          <div class="muted ct-small">
+          <h2 class="ct-waiting-name">{view.lobby.name}</h2>
+          {/* (v3 WP6) the town badge leads the meta line, so the name keeps the whole title width */}
+          <div class="muted ct-small ct-waiting-meta">
+            <WorldBadge world={worldOfLobby(view)} />{' '}
             {players.length}/{view.lobby.maxPlayers} players · {readyCount} ready
             {!collapsed && <> · {SCRIPT_LABEL[view.lobby.script]}</>}
             {auto && <> · Automatic</>}

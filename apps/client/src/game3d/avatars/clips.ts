@@ -81,14 +81,18 @@ export interface ClipInputs {
   emotes: ClipSet['emotes'];
 }
 
-export function wantClips(i: ClipInputs): ClipWant {
+/** `out` (optional) receives the result instead of a new object (the layer reuses one per avatar). */
+export function wantClips(i: ClipInputs, out?: ClipWant): ClipWant {
   let action: string | null = null;
   if (i.dying && i.emotes.die) action = i.emotes.die;
   else if (i.handUp && i.emotes.vote) action = i.emotes.vote;
   let loop: string | null = null;
   if (i.dead && !i.dying && i.ghostMode === 'clips') loop = ghostLoop(i.clips, i.ghostVoteAvailable);
   else if (i.talking && !i.dead && i.emotes.talk) loop = i.emotes.talk;
-  return { action, loop };
+  if (!out) return { action, loop };
+  out.action = action;
+  out.loop = loop;
+  return out;
 }
 
 /**

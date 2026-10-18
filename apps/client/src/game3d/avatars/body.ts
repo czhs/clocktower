@@ -19,7 +19,7 @@ export interface AvatarBody {
   readonly texture: string;
   /** Built spec id (rigs), null for billboards. */
   readonly specId: string | null;
-  /** Figure height (m, living, without hover) and an approximate width (m). */
+  /** Figure height (m, vertical, living, without hover) and an approximate width (m). */
   readonly heightM: number;
   readonly widthM: number;
   /** Added to the scene by the layer; moved only by the body. */
@@ -30,8 +30,10 @@ export interface AvatarBody {
   readonly clipNames: readonly string[];
   readonly emotes: Readonly<Record<string, string | null | undefined>>;
   readonly emoteClips: readonly string[];
-  /** Current ghost hover (m), for anchors. */
+  /** Current ghost hover (m): the body is drawn this far above its feet (anchors, pick box). */
   readonly hoverM: number;
+  /** Extra drawn height above the head (m), e.g. the shared ghost's halo at level 1 (anchors, pick box top). */
+  readonly crownM: number;
   /** Feet (m) at engine time t; `face` = a yaw to hold while standing (null: follow the motion); `jump` = no slide. */
   place(t: number, X: number, Z: number, face: number | null, moving: boolean, jump: boolean): void;
   /** Living (dead = false) or the ghost look (level 1 = ghost vote left, 2 = spent). */
@@ -40,6 +42,8 @@ export interface AvatarBody {
   setClips(want: ClipWant): void;
   /** A one-shot emote clip (already resolved by clips.resolveEmote); false when it cannot play now. */
   playOnce(clip: string, t: number): boolean;
+  /** Talking rim (CSS hex) or off (null): an additive emissive band on the silhouette (a uniform; ghostTint.ts). */
+  setRim(hex: string | null): void;
   /** Teleport cross-fade: 0 invisible .. 1 opaque (a uniform; dithered). */
   setFade(a: number): void;
   /** Low-tier LOD: far characters skip the normal pass and cast no shadow. */
@@ -51,6 +55,11 @@ export interface AvatarBody {
   /** World position of the lantern (m) into `out`; false when this body carries none. */
   lanternAnchor(out: THREE.Vector3): boolean;
   dispose(): void;
+  /**
+   * The objects to pre-compile before the first show (the holder plus anything the vendor put straight into the
+   * scene for this body: FX motes, smear groups). Absent = the holder only.
+   */
+  compileRoots?(): readonly THREE.Object3D[];
   /** Debug: the current look (tint / dither / hover / slide / vendor ghost level). */
   lookInfo?(): Record<string, unknown>;
 }

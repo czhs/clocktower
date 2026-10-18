@@ -6,14 +6,17 @@
 //            commits; Esc / releasing in the dead zone cancels (a still hold that never left the dead
 //            zone leaves the pie open for a click instead).
 //   touch    the long-press (index.ts) opens the same pie at the finger; slide + lift commits, lift
-//            in the middle leaves it open for a tap; a tap elsewhere closes it.
+//            in the middle leaves it open for a tap; a tap elsewhere closes it. The dead zone is around
+//            the PRESS point, not the drawn centre (D3, `touchGate`): near the viewport edge the pie is
+//            clamped on screen, away from the finger, and a lift in place must not land on a wedge;
+//            once out of it, the drawn wedge under the finger is picked (`pieWedgeAt`).
 //
 // Cost: nothing while closed (no per-frame work); window listeners only while a right press is live.
 // Every choice goes through the layer's own point / pin / unpin (the existing C2S messages, client
 // rate limits and optimistic pins); the server stays authoritative.
 import type { PinColor } from '@ct/protocol';
 import { createStore } from '../../net/store';
-import { clampCenter, DEAD_ZONE_PX, gestureMove, gestureRelease, gestureTick, PIE_STICKY_MS, pieItems, RIGHT_HOLD_MS, startGesture, wedgeAt, type PieGesture, type PieInput, type PieItem, type PieTargetInfo } from './radialLogic';
+import { clampCenter, DEAD_ZONE_PX, gestureMove, gestureRelease, gestureTick, PIE_STICKY_MS, pieItems, pieWedgeAt, RIGHT_HOLD_MS, startGesture, touchGate, type PieGesture, type PieInput, type PieItem, type PieTargetInfo } from './radialLogic';
 import type { SocialTarget } from './state';
 
 /** Outer radius of the pie (CSS px) per input; the overlay uses the same numbers. */
@@ -100,7 +103,7 @@ export function createPie(deps: PieDeps): PieController {
   function setHot(cx: number, cy: number) {
     const m = pieMenu.get();
     if (!m || m.sticky) return;
-    const hot = wedgeAt(cx - center.x, cy - center.y, m.items.length, DEAD_ZONE_PX[m.input]);
+    const hot = pieWedgeAt(cx, cy, m.items.length, m.input, center, touchGate(m.input, { x: m.px, y: m.py }));
     if (hot !== m.hot) pieMenu.set({ ...m, hot });
   }
 
@@ -172,7 +175,7 @@ export function createPie(deps: PieDeps): PieController {
     if (!g || !cur) return close('lost');
     const wasPending = g.phase === 'pending';
     const n = pieMenu.get()?.items.length ?? pieItems(cur.info).length;
-    const res = gestureRelease(g, cx, cy, now(), n, wasPending ? { x: g.x0, y: g.y0 } : center);
+    const res = gestureRelease(g, cx, cy, now(), n, wasPending ? { x: g.x0, y: g.y0 } : center, touchGate(g.input, { x: g.x0, y: g.y0 }));
     if (wasPending && res.kind !== 'click') {
       // released far away / late without a move event in between: the pie opens at the press
       show(cur, g.input);
@@ -235,7 +238,7 @@ export function createPie(deps: PieDeps): PieController {
     },
     move(cx, cy) {
       if (!g || g.phase !== 'open') return;
-      g = gestureMove(g, cx, cy, center);
+      g = gestureMove(g, cx, cy, touchGate(g.input, { x: g.x0, y: g.y0 }) ?? center);
       setHot(cx, cy);
     },
     release(cx, cy) {

@@ -57,6 +57,8 @@ export function createInteriorManager(o: InteriorManagerOptions): InteriorManage
   const order: number[] = [];
   let want: number | null = null;
   let current: BuiltInterior | null = null;
+  /** `bld:house-i` of `current` (kept, so drawn() never builds a string per frame) */
+  let drawnLoc: LocationId = 'outdoors';
   let disposed = false;
   let lastSwitchMs: number | null = null;
   let askedAt = 0;
@@ -105,12 +107,14 @@ export function createInteriorManager(o: InteriorManagerOptions): InteriorManage
   const detach = () => {
     if (current) current.group.removeFromParent();
     current = null;
+    drawnLoc = 'outdoors';
     o.park.unpark();
   };
   const attach = (it: BuiltInterior) => {
     if (current === it) return;
     if (current) current.group.removeFromParent();
     current = it;
+    drawnLoc = `bld:house-${it.index}` as LocationId;
     it.setTimeOfDay(o.tod());
     o.scene.add(it.group);
     it.group.updateMatrixWorld(true);
@@ -156,8 +160,8 @@ export function createInteriorManager(o: InteriorManagerOptions): InteriorManage
       for (const it of built.values()) it.setTimeOfDay(tod);
     },
     shown: () => current,
-    drawn: () => (current ? (`bld:house-${current.index}` as LocationId) : 'outdoors'),
-    camera: () => (current ? { target: current.camera.target, viewHeight: current.camera.viewHeight } : null),
+    drawn: () => drawnLoc,
+    camera: () => (current ? current.camera : null),
     cached: () => [...order],
     dispose() {
       disposed = true;

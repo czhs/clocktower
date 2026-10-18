@@ -2,25 +2,54 @@
 // every avatar material at BUILD time, so death / revival / a stand-in colour only change uniforms and never
 // recompile a program (programs stay constant; §7).
 //
-//   uCtGhost = (k, alpha, fade, -) k 0..1 pale ghost ramp; alpha < 1 = an ordered (4x4 Bayer) dither on the
-//                                 low-res texel grid, i.e. pixel-art translucency without sorting or a
+//   uCtGhost = (k, alpha, fade, flat) k 0..1 pale ghost ramp; alpha < 1 = an ordered (4x4 Bayer) dither on
+//                                 the low-res texel grid, i.e. pixel-art translucency without sorting or a
 //                                 `transparent` flag (which would change the program: three's OPAQUE define);
-//                                 fade 0..1 = the same dither for the 120 ms teleport cross-fade (1 = opaque)
+//                                 fade 0..1 = the same dither for the 120 ms teleport cross-fade (1 = opaque);
+//                                 flat 1 = a flat sprite (billboard): the talking rim lifts the whole sprite
 //   uCtTint  = (r, g, b, k)       stand-in colour (the member's pin colour), k 0..1
+//   uCtRim   = (r, g, b, k)       talking rim (§3 "Talking outline" interim, WP4's request): an additive
+//                                 emissive band on the silhouette (view-space normal facing sideways, |n.z| < 0.65;
+//                                 the pixel camera is orthographic, so view dir = +Z) plus a flat 0.15 lift of
+//                                 the whole figure (a thin edge alone sat under the outline pass and could not be
+//                                 seen), k 0..1; 0 = off. Billboards: a flat 0.3 lift.
 //
 // Hook: the toon shader's `#include <opaque_fragment>` (after lighting, in the COLOUR pass only; the normal pass
 // returned earlier, so outlines keep the whole silhouette, like the vendor's own shared-ghost dither). The
-// wrapper chains the material's own onBeforeCompile (toon / look.js) and appends '|ct-tint1' to its program
+// wrapper chains the material's own onBeforeCompile (toon / look.js) and appends '|ct-tint2' to its program
 // cache key, so every avatar of one vendor program key still shares one program.
 import * as THREE from 'three';
 
 export interface TintUniforms {
   uCtGhost: { value: THREE.Vector4 };
   uCtTint: { value: THREE.Vector4 };
+  uCtRim: { value: THREE.Vector4 };
 }
 
-export function createTintUniforms(): TintUniforms {
-  return { uCtGhost: { value: new THREE.Vector4(0, 1, 1, 0) }, uCtTint: { value: new THREE.Vector4(1, 1, 1, 0) } };
+/** `flat` = a billboard (no silhouette normals: the rim lifts the whole sprite instead). */
+export function createTintUniforms(flat = false): TintUniforms {
+  return {
+    uCtGhost: { value: new THREE.Vector4(0, 1, 1, flat ? 1 : 0) },
+    uCtTint: { value: new THREE.Vector4(1, 1, 1, 0) },
+    uCtRim: { value: new THREE.Vector4(1, 1, 1, 0) },
+  };
+}
+
+/** Default talking rim colour (warm candle white, reads on day and night ramps). */
+export const RIM_DEFAULT = '#ffe2a0';
+/** Rim strength while talking. */
+export const RIM_K = 1;
+/** Flat lift of the whole rig while talking (× RIM_K), on top of the silhouette band. */
+export const RIM_FLAT = 0.15;
+
+/** Talking rim on (CSS hex, default RIM_DEFAULT) or off (null). Uniforms only. */
+export function setRim(u: TintUniforms, hex: string | null, k = RIM_K): void {
+  if (!hex) {
+    u.uCtRim.value.w = 0;
+    return;
+  }
+  const c = new THREE.Color(hex);
+  u.uCtRim.value.set(c.r, c.g, c.b, k);
 }
 
 /** Ghost look strength: 0 living, 1 = 'tint' ghosts (alpha 0.6), 0.5 = the 'clips' overlay (alpha 0.8). */
@@ -48,6 +77,7 @@ export function setColourTint(u: TintUniforms, hex: string | null, k = 0.55): vo
 export const TINT_GLSL_HEAD = /* glsl */ `
 uniform vec4 uCtGhost;
 uniform vec4 uCtTint;
+uniform vec4 uCtRim;
 float ctBayer4(vec2 p) {
   ivec2 q = ivec2(mod(floor(p), 4.0));
   int i = q.x + q.y * 4;
@@ -66,11 +96,15 @@ export const TINT_GLSL_BODY = /* glsl */ `
     outgoingLight = mix(outgoingLight, ctPale, uCtGhost.x);
     if (ctBayer4(gl_FragCoord.xy) >= uCtGhost.y) discard;
   }
+  if (uCtRim.w > 0.0) {
+    float ctE = uCtGhost.w > 0.5 ? 0.3 : ${RIM_FLAT.toFixed(2)} + ${(1 - RIM_FLAT).toFixed(2)} * step(0.35, 1.0 - abs(normalize(normal).z));
+    outgoingLight += uCtRim.rgb * (ctE * uCtRim.w);
+  }
   if (uCtGhost.z < 0.999 && ctBayer4(gl_FragCoord.xy) >= uCtGhost.z) discard;
 `;
 
 const ANCHOR = '#include <opaque_fragment>';
-const KEY = '|ct-tint1';
+const KEY = '|ct-tint2';
 
 type Compile = (shader: THREE.WebGLProgramParametersWithUniforms, renderer: THREE.WebGLRenderer) => void;
 interface Tinted {
@@ -98,6 +132,7 @@ export function patchTint(mat: THREE.Material, u: TintUniforms): boolean {
     const uu = (this as THREE.Material & Tinted).__ctTint ?? u;
     shader.uniforms.uCtGhost = uu.uCtGhost;
     shader.uniforms.uCtTint = uu.uCtTint;
+    shader.uniforms.uCtRim = uu.uCtRim;
     shader.fragmentShader = shader.fragmentShader.replace('#include <common>', `#include <common>\n${TINT_GLSL_HEAD}`).replace(ANCHOR, `${TINT_GLSL_BODY}\n  ${ANCHOR}`);
   } as Compile;
   mat.customProgramCacheKey = () => `${key0 ? key0() : ''}${KEY}`;

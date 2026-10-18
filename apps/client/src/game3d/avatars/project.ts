@@ -12,10 +12,31 @@ import type { Px, View3d } from '../contract';
 /** The 3D floor height inside interiors (pixel3d interiors stand on y = 0). */
 export const INTERIOR_FLOOR_Y = 0;
 
-export function pxToMetres(layout: TownLayout, p: Px, loc: LocationId): { X: number; Z: number } | null {
-  if (loc === 'outdoors') return { X: p.x / PX_PER_M, Z: p.y / PX_PER_M };
-  const b = layout.buildings.find((x) => `bld:${x.id}` === loc);
-  return locToM(p, loc, b?.interior);
+/** location id -> that building's interior rect, per layout (no per-call string building / search). */
+const roomsOf = new WeakMap<TownLayout, Map<string, TownLayout['buildings'][number]['interior'] | undefined>>();
+function roomOf(layout: TownLayout, loc: LocationId) {
+  let m = roomsOf.get(layout);
+  if (!m) {
+    m = new Map();
+    for (const b of layout.buildings) m.set(`bld:${b.id}`, b.interior);
+    roomsOf.set(layout, m);
+  }
+  return m.get(loc);
+}
+
+/** `out` (optional) receives the result instead of a new object. */
+export function pxToMetres(layout: TownLayout, p: Px, loc: LocationId, out?: { X: number; Z: number }): { X: number; Z: number } | null {
+  if (loc === 'outdoors') {
+    const r = out ?? { X: 0, Z: 0 };
+    r.X = p.x / PX_PER_M;
+    r.Z = p.y / PX_PER_M;
+    return r;
+  }
+  const m = locToM(p, loc, roomOf(layout, loc));
+  if (!m || !out) return m;
+  out.X = m.X;
+  out.Z = m.Z;
+  return out;
 }
 
 /** Ground height of a location: the town terrain outdoors, the flat floor indoors. */

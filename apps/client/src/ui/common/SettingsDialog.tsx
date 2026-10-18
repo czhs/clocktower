@@ -6,7 +6,7 @@ import type { FxQualityPref } from '../../game/fx/quality';
 import type { TalkOutlineMode } from '../../game/fx/talkingPref';
 // (v3 WP6) the Graphics (renderer) setting: three-free decision table + in-place swap signal
 import { chooseRendererHere, clearAutoFallback, notifyGraphicsChange, type GraphicsPref } from '../../game3d/select';
-import { graphicsStatus } from './graphicsStatus';
+import { currentRender, graphicsStatus } from './graphicsStatus';
 import { resetBootGuard } from '../../game3d/bootGuard';
 import { PIN_HEX } from '../../game/social/logic';
 import { socialMode } from '../../game/social/state';
@@ -17,7 +17,7 @@ import { isPttMouseButton, mouseCode, pttLabel } from '../../voice/ptt';
 import type { VoiceClient, VoiceClientState } from '../../voice/VoiceClient';
 import { DeviceSettings } from '../voice/DeviceSettings';
 import { ReportDialog } from '../lobby/moderation';
-import { goTo } from '../lobby/finder';
+import { goTo, worldOfLobby } from '../lobby/finder';
 import { openHelp } from './HowToPlay';
 import {
   migratePrefs,
@@ -445,15 +445,17 @@ const GRAPHICS_OPTIONS = [
 
 function RendererRow({ ctx }: { ctx: Ctx }) {
   const lobby = useStore(ctx.conn?.lobbyView ?? storedLobby);
-  const world: WorldId | null = lobby ? (lobby.world ?? lobby.lobby.world ?? 'v2') : null;
+  const world: WorldId | null = lobby ? worldOfLobby(lobby) : null;
+  const now = useStore(currentRender); // what the mounted town really draws (a runtime fallback shows here)
   const [, bump] = useState(0);
   // re-read on every render: the pref, the memo and the boot guard can change from here or from the town
   const choice = world ? chooseRendererHere(world) : null;
-  const st = graphicsStatus(world, choice);
+  const st = graphicsStatus(world, choice, now);
   const act = () => {
     if (st.action === 'auto-fallback') clearAutoFallback();
     else if (st.action === 'boot-guard') resetBootGuard();
-    notifyGraphicsChange(); // swaps in place (GameScreen re-evaluates chooseRenderer)
+    // ('retry': nothing to clear) GameScreen re-evaluates chooseRenderer and swaps / remounts in place
+    notifyGraphicsChange();
     bump((n) => n + 1);
   };
   return (
@@ -466,7 +468,7 @@ function RendererRow({ ctx }: { ctx: Ctx }) {
           </span>{' '}
           {st.action && (
             <button type="button" class="ct-link" onClick={act}>
-              {st.action === 'auto-fallback' ? 'Try v3 again' : 'Try v3'}
+              {st.action === 'boot-guard' ? 'Try v3' : 'Try v3 again'}
             </button>
           )}
           {world === 'v3' && !st.action && <span class="ct-small"> Auto picks 3D where it runs well.</span>}

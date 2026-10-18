@@ -8,9 +8,25 @@ import { fileURLToPath } from 'node:url';
 import { PNG } from 'pngjs';
 import { describe, expect, it } from 'vitest';
 import type { TileRect } from '@ct/protocol';
-import { G, PROP_DEFS, townLayout as townLayoutV2 } from '../src/layout.js';
+import { G, PLAZA, PROP_DEFS, townLayout as townLayoutV2 } from '../src/layout.js';
 import { npcHomesV3, townLayoutV3 as L, townMapV3 as M } from '../src/hollowmere/layoutV3.js';
-import { drawnBuildings, GENERIC_SOUTH, interiorFurniture, outdoorProps, spriteDoor } from '../scripts/v3/placement.js';
+import {
+  classicSourceHash,
+  DAIS_KIND,
+  daisObject,
+  daisTiles,
+  drawnBuildings,
+  GENERIC_SOUTH,
+  interiorFurniture,
+  invisibleWalls,
+  outdoorFiller,
+  outdoorProps,
+  spriteCover,
+  spriteDoor,
+  visiblyBlocked,
+  type SpriteBox,
+} from '../scripts/v3/placement.js';
+import { DECAL_NAMES } from '../scripts/decals.js';
 import { decodeWebP } from '../scripts/lib/encode.js';
 
 const GEN = join(dirname(fileURLToPath(import.meta.url)), '..', 'generated');
@@ -35,6 +51,21 @@ const layer = (name: string) => town.layers.find((l) => l.name === name)!;
 const objects = layer('objects').objects!;
 const drawn = drawnBuildings();
 const frameExists = (frame: string, atlas: unknown) => (atlas === 'objects-v3' ? !!extraAtlas.frames[frame] : !!objectsAtlas[frame]);
+const W = L.widthTiles;
+const OUTDOOR_PX = L.townBounds.w * TS;
+const pngs = { objects: PNG.sync.read(readFileSync(join(GEN, 'objects.png'))), 'objects-v3': PNG.sync.read(readFileSync(join(GEN, 'objects-v3.png'))) };
+/** A drawn object of town-v3.json as a SpriteBox (its pixels from its atlas PNG). */
+const spriteOf = (o: TObj): SpriteBox => {
+  const which = prop(o, 'atlas') === 'objects-v3' ? 'objects-v3' : 'objects';
+  const r = (which === 'objects-v3' ? extraAtlas.frames : objectsAtlas)[String(prop(o, 'frame'))]!;
+  const p = pngs[which];
+  return { x: o.x, y: o.y, w: r.w, h: r.h, alpha: (sx, sy) => p.data[((r.y + sy) * p.width + r.x + sx) * 4 + 3]! };
+};
+/** What the generator counts as covering: the building sprites + the dais, as drawn in town-v3.json. */
+const coverObjects = objects.filter((o) => o.type === 'building' || o.name === DAIS_KIND);
+const cover = spriteCover(coverObjects.map(spriteOf));
+const outdoorDrawn = objects.filter((o) => (o.type === 'prop' || o.type === 'flat') && o.x < OUTDOOR_PX);
+const anchorOf = (o: TObj) => `${o.name}@${o.x / TS},${(o.y + o.height) / TS - 1}`;
 
 describe('town-v3.json: the v3 layout, tile for tile', () => {
   it('is a 112 x 43 map of 16 px tiles marked world v3 (the v2 town.json is untouched)', () => {
@@ -48,6 +79,15 @@ describe('town-v3.json: the v3 layout, tile for tile', () => {
     expect([townV2.width, townV2.height]).toEqual([townLayoutV2.widthTiles, townLayoutV2.heightTiles]);
   });
 
+  it('is fresh: sourceHash = sha256(v3 layout + map + npc homes + generator sources), plaza = the v2 PLAZA', () => {
+    // a vendor re-publish that moves paths, trees or decals (no collision change) or a generator edit fails here until
+    // `pnpm assets:generate` ran (the ground layer / terrain-v3.* are only checked through this hash)
+    expect(prop(town, 'sourceHash'), 'stale town-v3.json: run pnpm assets:generate').toBe(classicSourceHash());
+    // TownGame sizes the canvas (outdoorZoom with the v2 SQUARE_VIEW) before a scene exists: valid only while the v3
+    // plaza is the v2 one. If this fails, pass the lobby's square view into TownGame instead of the default.
+    expect(M.plaza).toEqual(PLAZA);
+  });
+
   it('the collision layer is exactly the server collision; ground indexes the v3 tileset; decor = the v3 decals', () => {
     const [terrain, decor, col] = town.tilesets;
     expect(terrain!.image).toBe('terrain-v3.png');
@@ -58,8 +98,10 @@ describe('town-v3.json: the v3 layout, tile for tile', () => {
     expect(c.map((v) => (v ? 1 : 0))).toEqual(L.collision);
     expect(c.filter(Boolean).every((v) => v === col!.firstgid)).toBe(true);
     const d = layer('decor').data!;
-    expect(d.filter(Boolean).length).toBe(M.decals.length);
-    for (const dec of M.decals) expect(d[dec.y * L.widthTiles + dec.x]).toBeGreaterThanOrEqual(decor!.firstgid);
+    const want = new Array<number>(W * L.heightTiles).fill(0);
+    for (const dec of M.decals) want[dec.y * W + dec.x] = decor!.firstgid + DECAL_NAMES.indexOf(dec.name as (typeof DECAL_NAMES)[number]);
+    expect(M.decals.every((dec) => DECAL_NAMES.includes(dec.name as (typeof DECAL_NAMES)[number]))).toBe(true);
+    expect(d).toEqual(want);
   });
 
   it('terrain-v3 / objects-v3: WebP lossless == PNG, sized as the map declares', async () => {
@@ -127,7 +169,7 @@ describe('cottages: v2 sprites on the v3 doors', () => {
   it('only GENERIC_SOUTH houses use their own sprites (house-12: the v2 sprite would be off the map)', () => {
     expect([...GENERIC_SOUTH]).toEqual(['house-12']);
     for (const d of drawn) expect(d.generic).toBe(GENERIC_SOUTH.has(d.id));
-    expect(Object.keys(extraAtlas.frames).sort()).toEqual(['bld_house-12@v3', 'boarded_house-12@v3', 'door_house-12@v3', 'doorway_house-12@v3', 'unlit_house-12@v3']);
+    expect(Object.keys(extraAtlas.frames).sort()).toEqual(['bld_house-12@v3', 'boarded_house-12@v3', 'dais@v3', 'door_house-12@v3', 'doorway_house-12@v3', 'unlit_house-12@v3']);
   });
 
   it('every drawn sprite has at least half of its footprint inside the town', () => {
@@ -215,22 +257,65 @@ describe('interiors and props', () => {
     for (const k of covered) expect(L.collision[k], `furniture on free tile ${k % L.widthTiles},${Math.floor(k / L.widthTiles)}`).toBe(1);
   });
 
-  it('each room with a blocked spot next to its bed draws a bed there', () => {
+  it('each room with a blocked spot next to its bed draws a bed there (and only there)', () => {
     const furn = interiorFurniture();
+    const blockedFloor = (x: number, y: number) => M.ground[y]?.[x] === G.floorWood && L.collision[y * W + x] === 1;
+    const N4 = [
+      [1, 0],
+      [-1, 0],
+      [0, -1],
+      [0, 1],
+    ] as const;
+    const noBed: string[] = [];
     for (const b of L.buildings) {
       const beds = furn.filter((o) => (o.kind === 'bed' || o.kind === 'bedwide') && inRect(b.interior, o.x, o.y));
-      expect(beds.length, b.id).toBeLessThanOrEqual(1);
+      // interiorFurniture's rule: a blocked floor tile next to the bed spot that is part of a vertical blocked pair
+      const spots = b.bed ? N4.map(([dx, dy]) => ({ x: b.bed!.x + dx, y: b.bed!.y + dy })).filter((n) => blockedFloor(n.x, n.y) && (blockedFloor(n.x, n.y - 1) || blockedFloor(n.x, n.y + 1))) : [];
+      if (!spots.length) {
+        expect(beds, `${b.id}: no blocked bed spot, no bed`).toEqual([]);
+        noBed.push(b.id);
+        continue;
+      }
+      expect(beds.length, `${b.id}: one bed`).toBe(1);
+      const bed = beds[0]!;
+      const c = PROP_DEFS[bed.kind]!.col!;
+      const tiles: string[] = [];
+      for (let j = 0; j < c.h; j++) for (let i = 0; i < c.w; i++) tiles.push(`${bed.x + c.x + i},${bed.y + c.y + j}`);
+      expect(spots.some((sp) => tiles.includes(`${sp.x},${sp.y}`)), `${b.id}: the bed is next to the bed spot ${b.bed!.x},${b.bed!.y}`).toBe(true);
     }
-    expect(furn.filter((o) => o.kind === 'bed' || o.kind === 'bedwide').length).toBeGreaterThanOrEqual(10);
+    // §2.5 "Known look gaps": the rooms whose 3D bed sits in the wall band draw no bed
+    expect(noBed.sort()).toEqual(['house-11', 'house-4', 'house-6']);
     // town-v3.json is fresh: exactly these pieces, at these anchors
     const inRooms = objects.filter((o) => (o.type === 'prop' || o.type === 'flat') && o.x >= L.townBounds.w * TS);
     expect(inRooms.map((o) => `${o.name}@${o.x / TS},${(o.y + o.height) / TS - 1}`).sort()).toEqual(furn.map((o) => `${o.kind}@${o.x},${o.y}`).sort());
   });
 
-  it('outdoor props: every v3 prop is drawn with a v2 sprite (flowerbarrel -> barrel)', () => {
+  it('outdoor props: every v3 prop is drawn with a v2 sprite (flowerbarrel -> barrel) at its anchor, + dais + filler', () => {
     const outdoor = M.objects.filter((o) => o.kind !== 'building');
     expect(outdoorProps().length).toBe(outdoor.length);
-    const drawnProps = objects.filter((o) => (o.type === 'prop' || o.type === 'flat') && o.x < L.townBounds.w * TS);
-    expect(drawnProps.length).toBe(outdoor.length);
+    const dais = daisObject()!;
+    const filler = outdoorFiller(cover, [...outdoorProps(), dais]);
+    const want = [...outdoorProps(), dais, ...filler].map((o) => `${o.kind}@${o.x},${o.y}`).sort();
+    expect(outdoorDrawn.map(anchorOf).sort()).toEqual(want);
+  });
+});
+
+describe('outdoors: no invisible walls (blocked town tiles look blocked)', () => {
+  it('every blocked town tile next to walkable ground is under a building / dais sprite, a prop or blocking ground', () => {
+    const props = outdoorDrawn.map((o) => ({ kind: o.name, x: o.x / TS, y: (o.y + o.height) / TS - 1 }));
+    const walls = invisibleWalls(visiblyBlocked(cover, props));
+    expect(walls.map((p) => `${p.x},${p.y}`)).toEqual([]);
+  });
+
+  it('the dais (blocked centre of the voting circle) is a raised plinth sprite covering exactly its tiles', () => {
+    const tiles = daisTiles();
+    expect(tiles.length).toBeGreaterThan(0);
+    const o = objects.filter((x) => x.name === DAIS_KIND);
+    expect(o.length).toBe(1);
+    expect(prop(o[0]!, 'atlas')).toBe('objects-v3');
+    const own = spriteCover([spriteOf(o[0]!)]);
+    for (const t of tiles) expect(own.has(t.y * W + t.x), `dais tile ${t.x},${t.y}`).toBe(true);
+    // and it never looks like it covers a walkable tile
+    for (const k of own) expect(L.collision[k], `dais sprite over walkable ${k % W},${Math.floor(k / W)}`).toBe(1);
   });
 });

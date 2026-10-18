@@ -53,8 +53,10 @@ function SheetIcon({ art, frame, scale = 1, class: cls }: { art: Art; frame: str
 }
 
 export function SocialPalette(props: { conn: RoomConnection; touch: boolean }) {
-  // (v3 WP6) the lobby's v3 DOM skin while the town is up (ref-counted with the waiting room's)
-  // CONTRACT-REQUEST(lead): also call useV3Skin(conn) in LobbyRoute InLobbyTown, so the skin is on while the town loads.
+  // (v3 WP6) the lobby's v3 DOM skin while the town is up (ref-counted with the waiting room's). This mount alone
+  // drops the skin whenever GameScreen leaves 'ready' after game start (in-place renderer swap, perf / error
+  // fallback, mid-game reload before the town is ready): CONTRACT-REQUEST(lead): call useV3Skin(conn) once in
+  // LobbyRoute `InLobby` (lives exactly as long as the connection); this mount then becomes a harmless extra ref.
   useV3Skin(props.conn);
   return (
     <>
