@@ -1742,6 +1742,14 @@ additive clocktower hook, vendor `docs/TOWN.md` §13). Game-side wiring per item
 - (WP3) `demo/api.js createCutController`: optional extra protected points (remote avatars), or more than 3 boxes;
   today only the own player gets the hard cut-away box and every other avatar relies on the game's canopy dither
   (`world/canopy.ts`, D1), which covers crowns / soft dressing only.
+- (v3.1 fixes, remount leak) `town/life/index.js build()`: define the `stats.at` accessor with a MODULE-LEVEL getter
+  (per-build data in a WeakMap keyed by `stats`, or a plain method) instead of `get: () => walkers.map(…)`. V8 shares
+  one DescriptorArray along a map transition chain and the AllocationSite boilerplate of the `stats` literal keeps
+  that chain alive with the module, so the getter closure held build()'s whole scope (engine, registry, door anchors,
+  render pipeline): one full town (≈ 80-95 MB JS heap) survived every later destroy. The game patches it at build
+  time (`apps/client/build/pixel3dImports.ts`, `town/life/index.js`). Same pattern to avoid anywhere a build
+  function adds an accessor whose closure captures the build scope: `town/life/cycle.js` `Object.defineProperty(pl,
+  'intensity', { get, set })` on pool lights (not in the game's path today: the game never calls `setTimeOfDay`).
 
 ### 9.3 Risks
 
