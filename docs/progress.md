@@ -226,8 +226,9 @@ v2; v3.0 is on the dev service, see "v3 handoff" below.)
   public `/`, `/v2/`, `/lobby/x`, `/v2/lobby/x` serve the app; `/v3-art-demo/` still serves "Hollowmere demo" (prod.env
   `DEMOS_DIR`); `scripts/verify-public-endpoint.sh` all pass except its two loopback checks, which fail only because it
   ssh-es the `ct-u1` alias from the host itself (`ss -tln`: 3000 and 3001 listen on 127.0.0.1 only). Rollback:
-  `scripts/deploy-hshi-u1.sh prod 4ca13aa` (v2.4, release kept). Dev also runs 4be9bb4. Future v3.x prod deploys still
-  need the user's word each time.
+  `scripts/deploy-hshi-u1.sh prod 4ca13aa` (v2.4, release kept). Dev also runs 4be9bb4. **User 2026-10-18 ~15:00: prod deploys
+  no longer need approval ("the whole game is in beta")**: ship each v3.x to prod after a green gate + a dev smoke,
+  avoid restarting prod during a running game (check the journal / active games first), then tell the user.
 - **Next = v3.1:** (1) the remaining work on the perf branches `v3-perf-cpu`, `v3-perf-client` and `v3-perf-server`
   (their agents were still running at the release; review each as text and re-gate); (2) C2 QA on the host GPU plus a
   small `CT_GL=swiftshader` set, the art checks, and one combined fix round; (3) the plan in
