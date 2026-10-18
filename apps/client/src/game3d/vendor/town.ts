@@ -19,6 +19,7 @@ import { buildTown } from '@pixel3d/town/town.js';
 import * as towerTimerNS from '@pixel3d/demo/towertimer.js';
 import type { HostedEngine } from './engineHost';
 import { prefetchInteriors } from './interiors';
+import { mergeStatic, type MergeCandidate, type MergedTown, type ShadowView } from '../world/merge';
 
 /** The parts of src/town/layout.js / town.js this wrapper reads beyond pixel3d.d.ts (lead-owned typings). */
 interface VendorHouseRec {
@@ -68,15 +69,50 @@ export function prefetchTownChunks(): void {
   prefetchInteriors();
 }
 
+/**
+ * (v3.1 stage merge) Each mesh's DESIGN castShadow flag, snapshotted when the composer registers its piece: buildTown's
+ * shadow-caster cull (town.js installShadowCull) rewrites castShadow from the build camera before it returns, so a
+ * caster outside the build view would otherwise read as a non-caster. The composer's low-tier rule (small soft dressing
+ * only receives) is applied on top, as buildTown does (mergeTownKit checks the count against stats.lowTier).
+ */
+const DESIGN_CAST = new WeakMap<object, { cast: WeakMap<THREE.Object3D, boolean>; lowFlips: number }>();
+/** buildTown's low-tier "receive only" names (town.js, quality low: pieces other than foliage / ground / life). */
+const LOW_NO_CAST = /-(soft|turf-grass|moss-clump-core|clump-leaves|wares-solid|fx)$/;
+type RegistryProto = { add(id: string, piece: unknown): void };
+
 export async function buildHollowmere(engine: HostedEngine, o: TownBuildOptions): Promise<BuiltTown> {
   prefetchTownChunks();
   applyCamera(engine, 'gameplay', { focus: new THREE.Vector3(PLAZA.cx, 0, PLAZA.cz) });
   const q = new URLSearchParams({ tod: o.tod ?? 'noon', quality: o.quality === 'high' ? 'high' : 'low', life: '1', demo: 'day', lifeOff: LIFE_OFF });
   if (o.lights) q.set('lights', String(o.lights));
   engine.__ctGrassArea = { ...GRASS_AREA };
+  const cast = new WeakMap<THREE.Object3D, boolean>();
+  let lowFlips = 0;
+  const low = q.get('quality') === 'low';
+  const proto = (townApiNS as unknown as { Registry?: { prototype: RegistryProto } }).Registry?.prototype;
+  const add = proto?.add;
+  if (proto && typeof add === 'function')
+    proto.add = function (this: unknown, id: string, piece: unknown) {
+      try {
+        const g = (piece as { group?: THREE.Object3D } | null)?.group;
+        const lowRule = low && id !== 'foliage' && id !== 'ground' && id !== 'life';
+        g?.traverse((m) => {
+          if (!(m as THREE.Mesh).isMesh) return;
+          const off = lowRule && m.castShadow && LOW_NO_CAST.test(m.name);
+          if (off) lowFlips++;
+          cast.set(m, m.castShadow && !off);
+        });
+      } catch {
+        /* the snapshot is best effort: an unknown mesh is never merged */
+      }
+      return add.call(this, id, piece);
+    };
   try {
-    return await buildTown(engine, q, { strict: 'all' });
+    const town = await buildTown(engine, q, { strict: 'all' });
+    DESIGN_CAST.set(town as object, { cast, lowFlips: low ? lowFlips : 0 });
+    return town;
   } finally {
+    if (proto && add) proto.add = add;
     delete engine.__ctGrassArea;
   }
 }
@@ -396,6 +432,94 @@ export function canopyMaterials(town: BuiltTown): Set<THREE.Material> {
     });
   }
   return out;
+}
+
+// ------------------------------------------------------------------------------------------------ static kit merge (v3.1)
+
+/** The pieces whose static KIT meshes are merged (never the dais or life; ground / foliage: only their kit meshes). */
+const MERGE_PIECES = /^(props|house-\d+|clocktower|ground|foliage)$/;
+const KIT_MATERIALS = new Set(['town-kit-solid', 'town-kit-soft', 'town-kit-glass']);
+
+export interface TownKitMerge {
+  merged: MergedTown;
+  /** Kit meshes of the merged pieces left out before the merge, by reason (debug). */
+  left: Record<string, number>;
+  /** Per frame (after the time facade's setLit writes): mirror writes, eject changed sources, cull merged casters. */
+  update(): void;
+}
+
+/**
+ * (v3.1 stage) Merge the static town-kit meshes of the cottages, the tower and the props across pieces (world/merge.ts),
+ * by material + design castShadow + spatial cell (plus the few kit meshes of the ground / foliage pieces). Left out (they change at runtime or are read per piece): every door
+ * pivot subtree, the tower's hands and countdown face, the canopy fade targets and crown / clump meshes, the boards and
+ * anything else the game added ('ct-*'), the dais, foliage, ground, life and interiors. Glass is merged: the vendor's
+ * setLit / street-lamp writes land on the (hidden) source meshes and are mirrored each frame. Null when the design
+ * castShadow snapshot is missing or disagrees with the composer's low-tier count (a vendor re-publish changed the rule).
+ */
+export function mergeTownKit(engine: HostedEngine, town: BuiltTown, o: { cell?: number; mode?: 'batch' | 'merge' } = {}): TownKitMerge | null {
+  const design = DESIGN_CAST.get(town as object);
+  const root = town.root as THREE.Object3D | undefined;
+  if (!design || !root) return null;
+  const lowStat = (engine.stats as { lowTier?: { softNoCast?: number } } | undefined)?.lowTier?.softNoCast;
+  if (lowStat !== undefined && lowStat !== design.lowFlips) {
+    console.warn(`[town3d] kit merge off: low-tier caster rule changed (vendor ${lowStat}, snapshot ${design.lowFlips})`);
+    return null;
+  }
+  const skip = new Set<THREE.Object3D>();
+  const reg = town.registry as unknown as { anchors(k: string): { pivot?: THREE.Object3D }[] };
+  for (const a of reg.anchors('doors')) if (a.pivot) skip.add(a.pivot);
+  const cands: MergeCandidate[] = [];
+  const left: Record<string, number> = {};
+  const isKit = (n: THREE.Object3D) => {
+    const mat = (n as THREE.Mesh).material as THREE.Material | undefined;
+    return !!(n as THREE.Mesh).isMesh && !!mat && !Array.isArray(mat) && KIT_MATERIALS.has(mat.name);
+  };
+  const leave = (n: THREE.Object3D, why: string) => n.traverse((c) => {
+    if (isKit(c)) left[why] = (left[why] ?? 0) + 1;
+  });
+  for (const id of town.registry.map.keys()) {
+    if (!MERGE_PIECES.test(String(id))) continue;
+    const p = town.registry.get(String(id));
+    const g = p?.group as THREE.Object3D | undefined;
+    if (!g) continue;
+    const api = p?.api as Record<string, unknown> | undefined;
+    const hands = (api?.hands as THREE.Object3D | undefined) ?? g.getObjectByName('clocktower-hands');
+    if (hands) skip.add(hands);
+    const fade = api?.fadeTargets;
+    if (typeof fade === 'function') for (const t of ((fade as () => THREE.Object3D[])() ?? [])) skip.add(t);
+    const walk = (n: THREE.Object3D) => {
+      const nm = n.name ?? '';
+      if (skip.has(n) || /-pivot$/.test(nm)) return leave(n, 'door/hands/fade');
+      if (nm.startsWith('ct-')) return leave(n, 'game');
+      if (CROWN_MESH.test(nm)) return leave(n, 'crown');
+      if (isKit(n)) {
+        const c = design.cast.get(n);
+        if (c === undefined) left.noDesign = (left.noDesign ?? 0) + 1;
+        else cands.push({ mesh: n as THREE.Mesh, cast: c });
+      }
+      for (const ch of n.children) walk(ch);
+    };
+    walk(g);
+  }
+  const merged = mergeStatic(root, cands, { cell: o.cell, mode: o.mode, name: 'ct-town-merged' });
+  const cam = engine.camera as unknown as { target: THREE.Vector3; yaw: number; pitch: number; viewHeight: number };
+  const sunDir = (engine.uniforms as { uSunDir?: { value: THREE.Vector3 } } | undefined)?.uSunDir?.value;
+  const view: ShadowView = { target: cam.target, yaw: 0, pitch: 0, viewHeight: 1, aspect: 16 / 9, sunDir: sunDir ?? new THREE.Vector3(0, 1, 0) };
+  return {
+    merged,
+    left,
+    update() {
+      merged.sync();
+      if (!sunDir) return;
+      const size = (engine.pipeline as unknown as { size?: { x: number; y: number } }).size;
+      view.target = cam.target;
+      view.yaw = cam.yaw;
+      view.pitch = cam.pitch;
+      view.viewHeight = cam.viewHeight;
+      view.aspect = size && size.y > 0 ? size.x / size.y : 16 / 9;
+      merged.cullShadows(view);
+    },
+  };
 }
 
 // ------------------------------------------------------------------------------------------------ live cut-away
