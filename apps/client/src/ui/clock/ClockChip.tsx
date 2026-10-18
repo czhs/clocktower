@@ -6,7 +6,7 @@
 //   * the open proposal as a compact inline vote card for everyone (one tap Yes / No, live tally,
 //     seconds left), which turns into a brief result line ("+2 min added" / "Not extended").
 // Mount (lead, GameScreen children): <ClockChip conn={conn} />. Renders nothing without a clock.
-// (v2.2 perf) Only the small leaves tick: ChipFace (countdown text + mini dial, 4 Hz) and VoteCard
+// (v2.2 perf) Only the small leaves tick: ChipFace (countdown text + mini dial, 1 Hz on the whole seconds since v3.1) and VoteCard
 // (while a proposal is open). The chip itself re-renders on a new view, and at 1 Hz only while the
 // "+ time" state can change with the clock (automatic games, players).
 import type { ComponentChildren } from 'preact';
@@ -205,7 +205,9 @@ export function ClockChip({ conn }: { conn: RoomConnection }) {
 
 /** The chip face: the only part that changes every tick (countdown text + mini dial). */
 function ChipFace({ clock, onTheBlock, children }: { clock: DayClockView; onTheBlock: boolean; children?: ComponentChildren }) {
-  const now = useTick(!clock.paused || !!clock.proposal);
+  // (v3.1) one tick per shown second, aligned to the clock's endsAt (was 4 Hz: the dial wedge / hand attributes were
+  // rewritten 4x/s at bedtime); the text changes once a second anyway, the dial moves ≤ 0.7 px per second
+  const now = useTick(!clock.paused || !!clock.proposal, 1000, clock.paused ? null : clock.endsAt);
   const line = clockLine(clock, now, { onTheBlock });
   if (!line) return null;
   return (

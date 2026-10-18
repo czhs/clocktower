@@ -64,3 +64,23 @@ export function toastMs(kind: string, text: string): number {
   if (kind === 'error') return 9000;
   return Math.max(6000, Math.min(14_000, 3500 + 60 * text.length));
 }
+
+// ------------------------------------------------------------------------- countdown (v3.1 fixes)
+
+/** Whole seconds left on a countdown (rounded up; 0 at and after the end). */
+export function countdownSeconds(endsAt: number, now: number): number {
+  return Math.max(0, Math.ceil((endsAt - now) / 1000));
+}
+
+/** "m:ss" for a countdown: ONE string, so a re-render that shows the same text writes no DOM. */
+export function countdownText(endsAt: number, now: number): string {
+  const s = countdownSeconds(endsAt, now);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+/** ms until the shown second changes (just after the next whole second before `endsAt`); null once it shows 0. */
+export function msToNextSecond(endsAt: number, now: number): number | null {
+  const left = endsAt - now;
+  if (left <= 0) return null;
+  return (left % 1000 || 1000) + 5;
+}

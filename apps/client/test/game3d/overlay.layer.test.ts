@@ -838,7 +838,8 @@ describe('overlay: chat bubbles are DOM elements above the name labels (D2)', ()
     const root = rootOf(t);
     const labelEls = root.all().filter((e) => e.className === 'ct-v3-label');
     expect(labelEls).toHaveLength(15); // the off-canvas walker's label exists already (hidden)
-    const visibleLabels = () => labelEls.filter((e) => e.style.visibility === 'visible').map((e) => e.textContent).sort();
+    // on screen = visible and not parked off the canvas (v3.1: culling parks with a transform, no visibility flip)
+    const visibleLabels = () => labelEls.filter((e) => e.style.visibility === 'visible' && !String(e.style.transform).includes('-100000px')).map((e) => e.textContent).sort();
     expect(visibleLabels()).not.toContain('Walker w13');
     expect(visibleLabels()).toContain('Walker w11');
     expect(root.all().filter((e) => e.className === 'ct-v3-bubble' && e.style.visibility === 'visible')).toHaveLength(5);
@@ -869,9 +870,10 @@ describe('overlay: chat bubbles are DOM elements above the name labels (D2)', ()
     expect(visibleLabels()).toContain('Walker w13');
     expect(visibleLabels()).not.toContain('Walker w11');
     expect(visibleLabels()).not.toContain('Walker w12');
-    // one visibility write per crossing; no element made, removed, re-texted or re-styled
+    // the two leavers are parked (a transform each), only the never-shown newcomer flips visibility once; no
+    // element made, removed, re-texted or re-styled
     expect(s2.content - s1.content).toBe(0);
-    expect(s2.visibility - s1.visibility).toBe(3);
+    expect(s2.visibility - s1.visibility).toBe(1);
     expect(created.length).toBe(created0);
     expect(s2.visibility - s1.visibility + (s2.content - s1.content)).toBeLessThanOrEqual(5);
     // ≤ 1 transform per element per frame (counted per element from the style write log)
