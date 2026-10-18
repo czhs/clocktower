@@ -28,6 +28,7 @@ import type { EngineHost } from '../vendor/engineHost';
 import { buildDoorBoards, buildHollowmere, canopyMaterials, createCutDriver, createTowerFace, daisApi, releaseTown, removeDaisCandles, doorAngles, gateHouseLights, groundHeight, houseApis, houseLightAnchors, houseProxies, lifePiece, lifeStats, poolLights, seatStones, towerDials, towerDoorApi, voteCameraPreset, warmViews, warmWholeTown, type BuiltTown, type HouseApi, type HouseBox, type VendorCameraShot } from '../vendor/town';
 import { buildTowerInterior, type TowerRoomFacade } from '../vendor/interiors';
 import { createTownTime, presetForHour, type TownTime } from '../vendor/time';
+import { installTiles, type TileLayer } from '../vendor/tiles';
 import { createDaisDriver, daisDebug, daisPlan, showcasePlan, type DaisApi, type DaisPlan } from './dais';
 import { boardedHouses, createBoardDriver, createDoorDriver, doorTiles } from './doors';
 import { createHourClock, darkness, HOURS, stageHour, type HourInput, type StagePhase } from './hour';
@@ -197,9 +198,12 @@ export async function createStage(host: EngineHost, o: StageOptions): Promise<St
   // (`ct.debug.v3canopy=0` = off, an A/B switch for perf runs; read once per build)
   let canopyOff = false;
   let shadowOverride: string | null = null;
+  // v3.3 tiles: the cached static layer (vendor/tiles.ts; `ct.debug.v3tiles` = 1 on, ab = patched but off)
+  let tilesFlag: string | null = null;
   try {
     canopyOff = localStorage.getItem('ct.debug.v3canopy') === '0';
     shadowOverride = localStorage.getItem('ct.debug.v3shadowEvery');
+    tilesFlag = localStorage.getItem('ct.debug.v3tiles');
   } catch {
     canopyOff = false;
   }
@@ -211,6 +215,8 @@ export async function createStage(host: EngineHost, o: StageOptions): Promise<St
   let canopyPatched = 0;
   if (!canopyOff) for (const m of canopyMaterials(town)) if (patchCanopyMaterial(m, canopyU)) canopyPatched++;
   const canopy = createCanopyFade(canopyU);
+  // after the canopy patch and the time facade (lights exist), before the warm-up compiles anything
+  const tiles: TileLayer | null = tilesFlag === '1' || tilesFlag === 'ab' ? installTiles(engine, town, { canopy: canopyMaterials(town), noClouds: tier === 'cpu', enabled: tilesFlag === '1' }) : null;
   // a reused point pool (one object per avatar slot, never per frame)
   const canopyPts: CanopyPoint[] = [];
   let canopyN = 0;
@@ -484,6 +490,9 @@ export async function createStage(host: EngineHost, o: StageOptions): Promise<St
     },
     debug: () => ({
       dais: () => daisDebug(dais.shown),
+      tiles: () => tiles?.info() ?? null,
+      tilesOn: () => tiles?.setEnabled(true),
+      tilesOff: () => tiles?.setEnabled(false),
       stage: () => ({
         hour: +clock.hour.toFixed(3),
         targetHour: +targetHour.toFixed(3),
@@ -511,6 +520,7 @@ export async function createStage(host: EngineHost, o: StageOptions): Promise<St
       destroyed = true;
       for (const off of offs.splice(0)) off();
       rooms.dispose();
+      tiles?.dispose();
       shadowMap.autoUpdate = true;
       towerFace?.dispose();
       // the piece registry: a closure the vendor keeps (V8 allocation-site feedback of a piece api literal) must not
