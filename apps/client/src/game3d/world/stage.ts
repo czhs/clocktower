@@ -25,7 +25,7 @@ import { serverNow } from '../../net/serverTime';
 import { PX_PER_M } from '../coords';
 import type { Layer3d, Scene3dState, Tier } from '../contract';
 import type { EngineHost } from '../vendor/engineHost';
-import { buildDoorBoards, buildHollowmere, canopyMaterials, createCutDriver, createTowerFace, daisApi, releaseTown, removeDaisCandles, doorAngles, gateHouseLights, groundHeight, houseApis, houseLightAnchors, houseProxies, lifePiece, lifeStats, poolLights, seatStones, towerDials, towerDoorApi, voteCameraPreset, warmViews, warmWholeTown, type BuiltTown, type HouseApi, type HouseBox, type VendorCameraShot } from '../vendor/town';
+import { buildDoorBoards, buildHollowmere, canopyMaterials, createCutDriver, createTowerFace, daisApi, releaseTown, removeDaisCandles, doorAngles, gateHouseLights, groundHeight, houseApis, houseLightAnchors, houseProxies, lifePiece, lifeStats, poolLights, seatStones, towerDials, towerDoorApi, townBakeInfo, voteCameraPreset, warmViews, warmWholeTown, type BuiltTown, type HouseApi, type HouseBox, type VendorCameraShot } from '../vendor/town';
 import { buildTowerInterior, type TowerRoomFacade } from '../vendor/interiors';
 import { createTownTime, presetForHour, type TownTime } from '../vendor/time';
 import { createDaisDriver, daisDebug, daisPlan, showcasePlan, type DaisApi, type DaisPlan } from './dais';
@@ -504,6 +504,9 @@ export async function createStage(host: EngineHost, o: StageOptions): Promise<St
         vote: voteLast ? { yaw: Math.round((voteLast.yaw * 180) / Math.PI), pitch: Math.round((voteLast.pitch * 180) / Math.PI), viewHeight: +voteLast.viewHeight.toFixed(3), target: [+voteLast.target.x.toFixed(3), +voteLast.target.z.toFixed(3)], key: voteKey } : { preset: voteCameraPreset() },
         warm,
         time: time.info(),
+        // (v3.3 bake) tree-cache numbers of this build (null unless ct.debug.v3bake=1) + the vendor town build ms
+        bake: townBakeInfo(),
+        townBuildMs: Number((engine.stats as Record<string, unknown> | undefined)?.townBuildMs) || null,
       }),
     }),
     destroy() {
