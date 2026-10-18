@@ -4,6 +4,12 @@ Agent `v3-perf-net`, 2026-10-18. Scope: v3 only (user: "I only care about perf o
 URL-path decision every lobby created at `/` is a v3 (Hollowmere) lobby, so the server-side changes below are what
 v3 games pay; v2 lobbies (`/v2/`) get them too, unchanged in behaviour. Recon and tooling: `docs/perf-v3/recon-net.md`.
 
+> **Superseded in part by `server.md` (v3-perf-server, 2026-10-18):** permessage-deflate is now OPT-IN
+> (`WS_DEFLATE=on`; default off — +45-50 % server CPU and a 3x ping tail for -70 % of ~2.8 KB/s per client), the
+> voice-audit back-off (item 2) was reverted — every occupied audited room is listed at every 15 s run again, only the
+> shared `listRooms` gate stays (cached ≤ 1 s) — and the parallel reconciler (item 3) now stops and settles on the first
+> listing failure. The wire-byte numbers below are with deflate on.
+
 ## TL;DR (measured before / after, one exclusive `v3-heavy.lock` window)
 
 | What (1 ST + 15 players, v3 lobby unless noted) | Before | After | Change |

@@ -199,8 +199,10 @@ function benchWorld(world: 'v2' | 'v3') {
     if (clock.now === nextSnap) {
       nextSnap += 1000 / 12;
       const t0 = nowUs();
+      // (v3-perf-server) as GameRoom.sendSnapshots: one shared fan-out when the world module has it
+      const snapFor = (w as { snapshotFanout?: () => (pid: string) => ReturnType<typeof w.snapshotFor> }).snapshotFanout?.() ?? ((pid: string) => w.snapshotFor(pid));
       for (const m of members) {
-        const frame = encoders.get(m.pid)!.encode(w.snapshotFor(m.pid));
+        const frame = encoders.get(m.pid)!.encode(snapFor(m.pid));
         if (frame) {
           snapBytes += pack(frame).length;
           snapFrames++;
