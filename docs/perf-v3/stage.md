@@ -116,6 +116,8 @@ Results: same tree, same run, same lock window. Only the switch differs.
   - `apps/client/test/game3d/world.shadowCadence.test.ts`: 5 tests.
   - All 9 world test files: 81 / 81.
   - `pnpm -r run typecheck`: green.
+  - v3 e2e on the host GPU (low tier, so the cadence is active): `v3-boot`, `v3-doors` and `v3-life` pass (3 / 3,
+    E2E_PORT 3466).
 
 Also in this commit: `stage.ts` no longer runs a regex over all 16 buildings per frame to find the near door and the
 prefetch door. The door centres are computed once.
@@ -153,7 +155,8 @@ prefetch door. The door centres are computed once.
    - `Engine._updateSun` / `PixelCamera.set` per-frame allocations.
 5. **`high` shadow cadence.** Every 2nd frame at high would save ≈ 41 calls per frame and half of a 4096² depth pass.
    - It is a look change on discrete GPUs, which are already at 60 fps with a 6 ms RAF here. Not applied.
-   - The data run is queued (`test-results/ab-shadowhigh`).
+   - The data run (`v3-stage-ab.sh shadowhigh high ...`) waited 30 min for the exclusive heavy lock behind shared holders
+     and was cancelled. Re-run it when the host is quiet.
 
 ## 5. Proposed `scripts/perf/budgets.mjs` keys (do not edit budgets.mjs here; WP7 / lead)
 
