@@ -212,7 +212,8 @@
       const orig = EP.renderAt;
       const w = function (t) {
         P.renderAts++;
-        if (!P.engine) P.engine = this;
+        // the live engine (a tier rebuild / remount destroys the first one: its scene is null afterwards)
+        if (!P.engine || (P.engine !== this && this.scene)) P.engine = this;
         const f = P.cur;
         if (!P.on || !f) return orig.call(this, t);
         try {
@@ -354,6 +355,7 @@
     if (!e) return { error: 'engine not captured' };
     const r = e.renderer;
     const scene = e.scene;
+    if (!scene) return { error: 'engine destroyed', renderAts: P.renderAts, fallbacks: [...(P.m?.fallbacks ?? [])], v3: window.__ctCamera?.v3?.() ?? null, errors: [...P.errors] };
     const c = { nodes: 0, matrixAutoUpdate: 0, meshes: 0, instanced: 0, instances: 0, skinned: 0, casters: 0, receivers: 0, noFrustumCull: 0, colorOnly: 0, points: 0, lines: 0, sprites: 0, staticTris: 0 };
     const vis = { meshes: 0, instanced: 0, casters: 0, tris: 0 };
     const mats = new Set();
