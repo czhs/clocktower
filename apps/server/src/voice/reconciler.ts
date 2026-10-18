@@ -114,14 +114,23 @@ export function createVoiceReconciler(d: ReconcilerDeps): VoiceReconciler {
     try {
       const rooms = (await d.roomService.listRooms()).filter((r) => r.name.startsWith(`${d.prefix}-`) && r.numParticipants !== 0);
       // (v3 perf, net) up to LIST_CONCURRENCY rooms are listed at once (was one after the other:
-      // 40 rooms x 40 ms API round trip = 1.7 s per run); any listing failure still fails the run.
+      // 40 rooms x 40 ms API round trip = 1.7 s per run); any listing failure still fails the run. A failure stops
+      // every worker from taking another room, and the run settles only after the in-flight ones finish, so `res`
+      // never changes after it has been returned (review C1 fix round).
       let next = 0;
+      let failure: { e: unknown } | null = null;
       const worker = async () => {
-        while (next < rooms.length) {
+        while (!failure && next < rooms.length) {
           const r = rooms[next++]!;
           res.rooms++;
           const parsed = parseRoomName(d.prefix, r.name);
-          const list = await d.roomService.listParticipants(r.name);
+          let list: Awaited<ReturnType<typeof d.roomService.listParticipants>>;
+          try {
+            list = await d.roomService.listParticipants(r.name);
+          } catch (e) {
+            failure ??= { e };
+            return;
+          }
           for (const p of list) {
             res.participants++;
             const verdict: Authorization = parsed ? d.authorize(parsed.lobbyId, p.identity, r.name) : 'orphan';
@@ -132,6 +141,7 @@ export function createVoiceReconciler(d: ReconcilerDeps): VoiceReconciler {
         }
       };
       await Promise.all(Array.from({ length: Math.min(LIST_CONCURRENCY, rooms.length) }, worker));
+      if (failure) throw (failure as { e: unknown }).e;
       res.creditedMs = res.participants * credit;
       if (res.creditedMs > 0) d.usage.add(d.env, monthKeyUtc(now), res.creditedMs);
       d.heartbeats?.discard();

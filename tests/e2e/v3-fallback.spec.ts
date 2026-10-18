@@ -1,7 +1,7 @@
 // v3 WP7 (v3-qa) — v3-fallback (docs/v3/INTEGRATION.md §1.2 "Crash" / boot guard / perf sampler, §6.2). Every case
 // ends with Classic drawing the SAME v3 lobby IN PLACE (no page reload: a window marker survives) and the 3D town's
 // debug members gone (__ctCamera.v3 undefined):
-//   - the 3D chunk fails to load (deploy skew): one retry after 1 s, then Classic;
+//   - the 3D chunk fails to load (deploy skew): Classic at once (no in-page retry, INTEGRATION.md §9.3 / §11 C1);
 //   - WEBGL_lose_context.loseContext(): the first loss rebuilds the 3D town (a NEW Engine / canvas), the second within
 //     10 min swaps to Classic;
 //   - a leftover boot mark (ct.graphics.booting, an OOM-killed previous boot) picks Classic with the boot-guard reason;
@@ -54,7 +54,7 @@ async function expectClassicInPlace(page: Page, what: string, timeout = 120_000)
   await expect(page.locator('.ct-game-canvas > canvas')).toHaveCount(1);
 }
 
-test('3D chunk fails to load → one retry, then Classic in place', async ({ browser, baseURL }) => {
+test('3D chunk fails to load → Classic in place (no in-page retry)', async ({ browser, baseURL }) => {
   test.setTimeout(240_000);
   const id = await v3Lobby(baseURL!, 'v3 chunk fail');
   ctx = await v3Context(browser);
@@ -68,10 +68,10 @@ test('3D chunk fails to load → one retry, then Classic in place', async ({ bro
   await page.goto(`${baseURL}/lobby/${id}`);
   await mark(page);
   await expectClassicInPlace(page, 'chunk failure');
-  // §1.2 "Crash": a failed v3 import is retried ONCE after 1 s (deploy skew). Observed 2026-10-18 (WP7a): one request
-  // for both attempts. Chromium appears to keep the failed fetch in its module map, so re-calling import() of the same
-  // URL rejects again without reaching the network; the retry in GameScreen.importTown3d needs a fresh URL.
-  expect(hits.length, `the town3d chunk was requested, then re-requested by the retry (requests: ${hits.join(', ')})`).toBeGreaterThanOrEqual(2);
+  // §1.2 "Crash" (changed in C1, INTEGRATION.md §9.3): no in-page retry. Chromium keeps the failed fetch in its module
+  // map (a same-URL import() rejects again without a request) and a fresh-URL copy cannot link: the 3D sub-chunks import
+  // town3d-*.js by its plain URL. So: the chunk was requested (and failed), and Classic took over in place.
+  expect(hits.length, `the town3d chunk was requested (requests: ${hits.join(', ')})`).toBeGreaterThanOrEqual(1);
 });
 
 test('WebGL context loss → full rebuild; a second loss → Classic in place', async ({ browser, baseURL }) => {

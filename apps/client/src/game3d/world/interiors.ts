@@ -39,6 +39,8 @@ export interface InteriorManager {
   shown(): BuiltInterior | null;
   /** The location being drawn ('outdoors' until the wanted room is built). */
   drawn(): LocationId;
+  /** The wanted room is still being built (false once it is drawn, or when its build failed / cannot run). */
+  pending(): boolean;
   /** Interior camera framing (vendor dollhouse view) while a room is shown. */
   camera(): { target: THREE.Vector3; viewHeight: number } | null;
   /** Indices of built rooms, most recent last (debug). */
@@ -173,6 +175,7 @@ export function createInteriorManager(o: InteriorManagerOptions): InteriorManage
     },
     shown: () => current,
     drawn: () => drawnLoc,
+    pending: () => want !== null && current?.index !== want && building.has(want),
     camera: () => (current ? current.camera : null),
     cached: () => [...order],
     dispose() {

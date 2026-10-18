@@ -421,30 +421,14 @@ function pickRenderer(world: WorldId | undefined): Render {
 
 type Town3dModule = typeof import('../game3d/TownGame3d');
 /**
- * The 3D town chunk; a chunk-load error (usually deploy skew) is retried once after 1 s. Chromium keeps a failed
- * module fetch in its module map (the same URL rejects again at once, without a request: INTEGRATION.md §9.3), so
- * the retry asks for the failed chunk under a fresh same-origin URL (its own imports resolve to the normal URLs).
+ * The 3D town chunk. A chunk-load error goes straight to Classic in place (no in-page retry, INTEGRATION.md §9.3 /
+ * §11 C1): Chromium keeps a failed module fetch in its module map (the same URL rejects again at once, without a
+ * request), and a fresh-URL copy (`?retry=`) is a second module instance whose own sub-chunks (houses, characters,
+ * foliage, …) still import `town3d-*.js` by its plain, failed URL. A page reload (or "[Try v3 again]" after one)
+ * picks the chunk up again.
  */
 function importTown3d(): Promise<Town3dModule> {
-  return import('../game3d/TownGame3d').catch((e: unknown) =>
-    new Promise<void>((r) => setTimeout(r, 1000)).then(() => {
-      const url = retryUrl(e);
-      return url ? (import(/* @vite-ignore */ url) as Promise<Town3dModule>) : import('../game3d/TownGame3d');
-    }),
-  );
-}
-/** The failed chunk's URL from a dynamic-import error, with a cache-busting query; null unless same-origin. */
-export function retryUrl(e: unknown, origin = typeof location !== 'undefined' ? location.origin : ''): string | null {
-  const m = /(https?:\/\/[^\s'"]+?\.(?:js|ts|tsx|mjs))(?:\?[^\s'"]*)?/.exec(String((e as Error | null)?.message ?? e ?? ''));
-  if (!m) return null;
-  try {
-    const u = new URL(m[1]!);
-    if (u.origin !== origin) return null;
-    u.searchParams.set('retry', String(Date.now()));
-    return u.href;
-  } catch {
-    return null;
-  }
+  return import('../game3d/TownGame3d');
 }
 
 type GraphicsNoticeKind = 'boot-guard' | 'perf' | 'error';

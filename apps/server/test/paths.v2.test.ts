@@ -2,17 +2,34 @@
 // app: ONE client build and ONE server. The /v2 navigations get the same SPA shell (same index.html, CSP, security
 // headers, caching) as `/`; static files stay at their absolute /assets, /landing … URLs (a /v2/assets/* request is a
 // real 404, never HTML); every API / SSE / health route and the /v3-art-demo/ static demo are unchanged; lobbies of
-// both worlds come from the same API. Runs the real app.ts stack against a fixture dist on 127.0.0.1:3452 (v3-lead
-// range, docs/v3 §8).
+// both worlds come from the same API. Runs the real app.ts stack against a fixture dist on an OS-assigned free
+// 127.0.0.1 port (never a fixed one: 3450-3453 is the v3 e2e / ad-hoc range, docs/v3 §8; review C1 fix round).
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { startAppServer, type RunningServer } from '../src/app.js';
 import { captureLogger, fakeModules, testConfig } from '../src/rooms/testkit.js';
 
-const PORT = 3452;
-const BASE = `http://127.0.0.1:${PORT}`;
+/** A free loopback port from the OS (listen(0)), released at once for the app to bind; never 3000/3001. */
+async function freePort(): Promise<number> {
+  for (;;) {
+    const p = await new Promise<number>((resolve, reject) => {
+      const s = createServer();
+      s.once('error', reject);
+      s.listen(0, '127.0.0.1', () => {
+        const a = s.address();
+        const port = typeof a === 'object' && a ? a.port : 0;
+        s.close(() => resolve(port));
+      });
+    });
+    if (p > 0 && p !== 3000 && p !== 3001) return p;
+  }
+}
+
+let PORT = 0;
+let BASE = '';
 const INDEX = '<!doctype html><title>Clocktower Town</title><meta property="og:image" content="%PUBLIC_ORIGIN%/og-image.jpg" /><div id="app"></div>';
 const BROWSER_NAV = 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8';
 
@@ -34,6 +51,8 @@ function writeTree(): { dist: string; demos: string } {
 const get = (url: string, headers: Record<string, string> = {}, method = 'GET') => fetch(BASE + url, { method, headers, redirect: 'manual' });
 
 beforeAll(async () => {
+  PORT = await freePort();
+  BASE = `http://127.0.0.1:${PORT}`;
   const { dist, demos } = writeTree();
   srv = await startAppServer(testConfig(PORT, { DEMOS_DIR: demos }), captureLogger(), {
     clientDist: dist,

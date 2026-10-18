@@ -176,6 +176,8 @@ export interface RigScene {
   proxies?: readonly HouseProxy[];
   /** The built interior's camera (WP3), when that room is built. */
   interiorCamera?(location: LocationId): CameraShot | null;
+  /** That room is still being built (WP3 stage.interiorPending); absent = assume it is while interiorCamera is null. */
+  interiorPending?(location: LocationId): boolean;
   /** The voting-circle frame for a canvas of lowW x lowH texels at pixelScale (WP3 stage.voteCamera). */
   voteCamera?(lowW: number, lowH: number, pixelScale: number): CameraShot | null;
 }
@@ -311,7 +313,9 @@ export class CameraRig implements View3d {
     const interior = mode === 'room' ? (s.interiorCamera?.(loc) ?? null) : null;
     // a room that is still being built (the stage keeps the old place drawn): hold the camera where it is, so the
     // view never flies to an empty void for those frames; the shown location switches when the room is drawn
-    if (mode === 'room' && s.interiorCamera && !interior && this.init && !this.override && loc !== this.shown) return;
+    // ... but only while it IS being built: a failed build (e.g. the tower room's coords guard) falls through to
+    // cameraGoal's own interior framing instead of freezing on the outdoor pose for the whole visit
+    if (mode === 'room' && s.interiorCamera && !interior && this.init && !this.override && loc !== this.shown && (s.interiorPending?.(loc) ?? true)) return;
     let vote: CameraShot | null = null;
     if (mode === 'vote' && s.voteCamera) {
       const ps = e.pixelScale > 0 ? e.pixelScale : 1;

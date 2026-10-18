@@ -455,3 +455,43 @@ and the v2.2 release notes; each feature agent ran typecheck + its unit tests + 
 | `pnpm exec tsc -p tests/tsconfig.json --noEmit` | ✅ |
 
 Feature/security agents' own runs are listed in their reports (private audit notes) and summarised in docs/security-v2.3.md.
+
+## 2026-10-18 — v3 C1 gate (`v3-integrate`, acting as lead + qa-deploy; hshi-u1, `flock -s v3-heavy.lock`)
+
+Gate runs (`CT_AGENT=v3-integrate scripts/remote.sh …`):
+
+| Command | Result |
+|---|---|
+| `pnpm -r run typecheck` | ✅ 7/7 |
+| `pnpm build` | ✅ exit 0 (`town3d` 1176 kB / 380 kB gzip, `TownGame` 1283 kB / 359 kB gzip) |
+| `--no-sync pnpm test` (after the build) | ✅ 167 files / 1944 tests pass, 1 file / 5 tests skipped (132.7 s) |
+| `--no-sync node scripts/perf/bundle-report.mjs --json …` + `node scripts/perf/budgets.mjs --bundle …` | ✅ all measured ok: entry JS 43.8/45, entry CSS 12.3/15, LobbyRoute 68.4/72, TownGame 281.2/300 KiB br, atlases 578.5/700 KiB (runtime keys SKIP: no perf inputs) |
+
+C1 continuation (integrator, same day; host GPU, `E2E_V3=1 E2E_PORT=3450 CT_GL=gpu`, both locks, one spec file at a time):
+
+| Command | Result |
+|---|---|
+| `pnpm -r run typecheck` | ✅ 7 projects |
+| e2e `--project=v3` `v3-doors` (webServer build) | ✅ 1/1 (40.6 s) |
+| e2e `v3-social`, `v3-boot`, `v3-vote`, `v3-mixed`, `v3-life` (`CT_E2E_NO_BUILD=1`) | ✅ each 1/1 |
+| e2e `v3-lobby-choice` | ❌ 3/3 — by design: the WP8 WIP removed the Town radiogroup and the `/` join preview; superseded by `v3-paths` (delete with WP8) |
+| e2e `v3-fallback` (1st) | ❌ 3/4 — "chunk fails" (1 request, expected ≥ 2): the fresh-URL retry can never work (sub-chunks import `town3d-*.js` by plain URL) → retry dropped in `GameScreen.tsx`, spec now asserts one request + Classic in place |
+| client typecheck + `tsc -p tests/tsconfig.json --noEmit` | ✅ |
+| e2e `v3-fallback` (rebuilt dist) | ❌ 3/4 — "WebGL context loss": first loss went to Classic (three `getProgramInfoLog()` null → `.trim()` between `loseContext()` and the event; read from trace.zip) → `TownGame3d.ts` counts a throw on a lost context as that Engine's one loss |
+| client typecheck (after the fix) | ✅ |
+| e2e `v3-fallback` (rebuilt dist) | ✅ 4/4 (35.9 s) |
+| e2e `v3-fallback -g 'context loss' --repeat-each=3` | ✅ 3/3 |
+| final dist, one file at a time: `v3-doors`, `v3-social`, `v3-boot`, `v3-vote`, `v3-mixed`, `v3-life` | ✅ 21.6 s / 8.5 s / 10.5 s / 23.6 s / 11.3 s / 1.1 m |
+| Classic e2e `--project=chromium doors.spec.ts chat-bubbles.spec.ts` (`E2E_PORT=3451`) | ✅ 2/2 |
+| `pnpm vitest run apps/client/test/game3d` | ✅ 28 files / 389 tests |
+
+C1 review fix round (same day):
+
+| Command | Result |
+|---|---|
+| `pnpm vitest run …voteCam.test.ts …paths.v2.test.ts …voice.test.ts …voice.audit.test.ts …world.stage.test.ts` | ✅ 5 files / 55 tests (voteCam 12 incl. the new failed-build test) |
+| `--no-sync pnpm -r run typecheck` | ✅ 7/7 |
+| `--no-sync pnpm vitest run tests/security/voice-cost.test.ts` | ✅ 35/35 |
+
+Not run in C1: `v3-paths` (WP8), `hd-cast` v3 branch, harness stills, an e2e for the room-build camera fix (unit test
+only), runtime perf budgets.

@@ -201,8 +201,25 @@ export function createTownGame3d(parent: HTMLElement, bridge: TownBridge3d, opts
       disposeScene(sc);
       return true;
     };
+    // ONE context loss per Engine, from whichever comes first: the webglcontextlost event, or a throw while the context
+    // is already lost (loseContext() / a driver reset takes effect at once, the event is a later task: a frame in
+    // between that compiles a program throws in three's shader check, getProgramInfoLog() = null). Such a throw is the
+    // loss, not a crash, and the event that follows must not count as a second loss.
+    let lostOnce = false;
+    const lost = () => {
+      if (lostOnce || destroyed || !ctl.isCurrent()) return;
+      lostOnce = true;
+      lifecycle.contextLost();
+    };
+    const isLost = () => {
+      try {
+        return host.engine.renderer.getContext().isContextLost();
+      } catch {
+        return false;
+      }
+    };
     try {
-      sc.offs.push(watchContextLoss(host.engine.renderer.domElement, () => lifecycle.contextLost()));
+      sc.offs.push(watchContextLoss(host.engine.renderer.domElement, lost));
       // WP3 stage: town (strict) -> runtime opts -> boards / light gates / carried-light reserve -> time facade
       const g0 = bridge.conn.gameView.get();
       const phase0 = g0?.phase ?? (bridge.conn.lobbyView.get()?.lobby.phase === 'finished' ? 'finished' : 'waiting');
@@ -243,6 +260,7 @@ export function createTownGame3d(parent: HTMLElement, bridge: TownBridge3d, opts
         floorAt: st.floorAt,
         proxies,
         interiorCamera: (loc) => st.interiorCamera(loc),
+        interiorPending: (loc) => st.interiorPending(loc),
         voteCamera: (w, h, ps) => st.voteCamera(w, h, ps),
         stats: { building: () => [], life: () => lifeStats(host.engine) },
       });
@@ -289,11 +307,15 @@ export function createTownGame3d(parent: HTMLElement, bridge: TownBridge3d, opts
           core.afterRender(lastDtMs);
           lifecycle.frame(lastDtMs);
         },
-        (e) => lifecycle.crash(e),
+        (e) => (isLost() ? lost() : lifecycle.crash(e)),
       );
     } catch (e) {
-      // a build error: the lifecycle crashes to Classic when this build is still current; the half-built scene goes
+      // a build error: the lifecycle crashes to Classic when this build is still current; the half-built scene goes.
+      // On a lost context it is that loss instead: lost() supersedes this build (a rebuild starts), so the rethrown
+      // error is ignored by the lifecycle.
+      const wasLost = isLost(); // (read before the dispose, which may force a loss itself)
       if (scene !== sc) disposeScene(sc);
+      if (wasLost) lost();
       throw e;
     }
   };

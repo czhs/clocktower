@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { townLayoutV3 } from '@ct/assets/hollowmere';
 import type { NominationView, PlayerGameView } from '@ct/protocol';
 import { worldToCss, type ProjectionState } from '../../src/game3d/coords';
-import { CameraRig, cameraMode, steppedPose, TRANS_S, TRANS_STEPS, turnKeys, type CameraPose, type CameraShot, type RigHost } from '../../src/game3d/input/camera';
+import { CameraRig, cameraMode, interiorShot, steppedPose, TRANS_S, TRANS_STEPS, turnKeys, type CameraPose, type CameraShot, type RigHost } from '../../src/game3d/input/camera';
 import { voteCameraWanted } from '../../src/game3d/net/core';
 import { chooseVoteFrame, contentPoints, facingDial, keepOuts, voteFrame, VOTE_PITCH, VOTE_PITCH_PORTRAIT, VOTE_YAWS, PREFER, type Dial, type V3 } from '../../src/game3d/world/voteFrame';
 
@@ -225,5 +225,33 @@ describe('camera rig: stepped transitions into / out of the vote frame', () => {
     turnKeys({ vx: 0, vy: -1 }, Math.PI / 4, o);
     expect(o.vx).toBeCloseTo(-Math.SQRT1_2, 9);
     expect(o.vy).toBeCloseTo(-Math.SQRT1_2, 9);
+  });
+});
+
+describe('camera rig: a room that is still building vs one whose build failed (review C1 fix round)', () => {
+  const rigWith = (pending: { v: boolean }) => {
+    const { host } = fakeHost({ w: 960, h: 540, scale: 2 });
+    const rig = new CameraRig(townLayoutV3);
+    rig.attach({ host, heightAt: () => 0, interiorCamera: () => null, interiorPending: () => pending.v });
+    return rig;
+  };
+  const out = { x: 360, y: 330, location: 'outdoors' as const };
+  const tower = { x: 360, y: 330, location: 'bld:clocktower' as const };
+
+  it('holds the outdoor pose while the room builds, then falls back to the interior shot once the build settles without a room', () => {
+    const pending = { v: true };
+    const rig = rigWith(pending);
+    rig.step(0, { me: out, voting: false, snap: true });
+    const before = rig.shot();
+    for (let i = 0; i < 5; i++) rig.step(1 / 60, { me: tower, voting: false, snap: false });
+    expect(rig.shot()).toEqual(before);
+    expect(rig.location()).toBe('outdoors');
+    pending.v = false; // the build failed (stage.interiorPending false, interiorCamera still null)
+    rig.step(1 / 60, { me: tower, voting: false, snap: false });
+    expect(rig.location()).toBe('bld:clocktower');
+    const want = interiorShot('bld:clocktower', 960 / 540);
+    expect(want).not.toBeNull();
+    expect(rig.shot().X).toBeCloseTo(want!.X, 6);
+    expect(rig.shot().Z).toBeCloseTo(want!.Z, 6);
   });
 });

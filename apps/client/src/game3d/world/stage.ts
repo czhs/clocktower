@@ -70,6 +70,11 @@ export interface Stage {
    * not the one drawn (input/camera's `RigScene.interiorCamera`).
    */
   interiorCamera(loc: LocationId): { X: number; Y: number; Z: number; viewHeight: number } | null;
+  /**
+   * The room for `loc` is still being built (input/camera holds its pose meanwhile). False once it is drawn, and
+   * false when its build failed: the camera then falls back to its own interior framing instead of freezing.
+   */
+  interiorPending(loc: LocationId): boolean;
   /** Pick proxies of the drawn cottages (input/pick's `HouseProxy` shape; vendor houseBox). */
   houseProxies(): HouseBox[];
   /**
@@ -429,6 +434,7 @@ export async function createStage(host: EngineHost, o: StageOptions): Promise<St
       const c = rooms.drawn() === loc ? rooms.camera() : null;
       return c ? { X: c.target.x, Y: c.target.y, Z: c.target.z, viewHeight: c.viewHeight } : null;
     },
+    interiorPending: (loc) => rooms.drawn() !== loc && rooms.pending(),
     houseProxies: () => proxies,
     voteCamera(lowW, lowH, pixelScale) {
       if (!(lowW > 0 && lowH > 0)) return null;
