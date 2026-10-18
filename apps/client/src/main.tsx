@@ -21,7 +21,7 @@ import { lazyComponent, whenIdle } from './ui/common/lazy';
 import { LoadingScreen, StatusScreen } from './ui/common/StatusScreen';
 import { navigate, parseRoute, type Route } from './ui/common/route';
 import { appWorld } from './ui/common/appWorld';
-import { prefetchAllowed, prefetchTown3dForHome } from './ui/common/townPrefetch';
+import { prefetchAllowed } from './ui/common/prefetchAllowed';
 import { V3Loading } from './ui/common/v3loading';
 import { installUiSounds } from './game/audio';
 
@@ -117,7 +117,8 @@ function App() {
     return whenIdle(() => {
       if (!prefetchAllowed()) return;
       void LobbyRoute.preload();
-      prefetchTown3dForHome();
+      // (dynamic: townPrefetch pulls select.ts, which stays out of the entry chunk)
+      void import('./ui/common/townPrefetch').then((m) => m.prefetchTown3dForHome()).catch(() => undefined);
     }, 4000);
   }, [landing]);
 

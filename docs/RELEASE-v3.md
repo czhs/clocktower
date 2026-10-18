@@ -1,7 +1,50 @@
+# Clocktower Town v3.2
+
+Status: **tagged `v3.2` on `v3-game`** (deploy status: docs/progress.md "v3 handoff" and docs/test-results.md "v3.2
+release gate"). Contract and decision log: docs/v3/INTEGRATION.md §11. Numbers: docs/perf-v3/fullstack.md §10.
+
+v3.2 is a perf release on top of v3.1 (branch `v32-early` merged): the town draws at half rate while nothing on screen
+changes, a v3 join no longer downloads Phaser, the 3D town is prefetched on the home page, and the origin ships
+build-time brotli.
+
+## Faster
+- **Idle rendering: 30 fps while nothing on screen changes.** The frame loop drops to 30 fps when for 3 s nobody moved
+  or talked, the camera stood still, the hour did not ease, no vote / nomination was open and there was no input or
+  state change (`game3d/idle.ts`, `perf.ts ActivityWatch`); any change draws at the full rate on the very next vsync.
+  Ambient motion (wind, water, fireflies, breathing) steps at 30 Hz meanwhile. Measured at CPU ×4, 1440×900 DPR 2,
+  15 players: main-thread work **−42 %** in a still waiting room (561 → 328 ms/s), **−44 %** on a still day square
+  (569 → 317), **−41 %** at night alone in a house (102 → 61); walking and the vote unchanged at 60 fps; GPU work
+  halves with the frame count. It composes with the other caps: the cpu tier's 30 fps and `V3_MAX_FPS` 60 are never
+  raised, and `ct.debug.fps` turns idle rendering off; `ct.debug.v3idle=0` is the A/B switch. A vote is never idle.
+- **A v3 join never downloads Phaser** (−360 KB br and −55 ms of evaluation per join, −200 ms at CPU ×4). Only the
+  renderer select.ts will pick is fetched (`ui/common/townPrefetch.ts`); Classic (Graphics = Classic, phones, the boot
+  guard, the auto-fallback memo, no WebGL2, a v2 lobby) still loads it, and an in-place fallback imports it on demand.
+  `town3d` now starts with the join ticket instead of after `lobby:view`.
+- **The 3D town is prefetched on the home page.** The v3 landing and home screens fetch LobbyRoute + `town3d` when the
+  browser is idle (not with Save-Data or a 2g / 3g connection, not where Classic would be used); a join from the home
+  page then takes `town3d` from the cache.
+- **Build-time brotli.** `pnpm build` writes `.br` (q11) and `.gz` siblings for every text asset
+  (`apps/client/build/precompress.mjs`); the server sends them to clients that accept them, with the same immutable
+  Cache-Control, `Vary: Accept-Encoding` and per-variant ETags (`apps/server/src/precompressed.ts`). `town3d` on the
+  wire: **336.6 KB (Cloudflare's q4) → ~290 KB** (283.6 KiB br; the chunk grew by the v3.1 merge since the 279.6 KB
+  measured on `v32-early`).
+- Bundles: entry JS 44.2/45 KiB br (the home prefetch module is imported lazily so select.ts stays out of the entry),
+  LobbyRoute 66.9/72, TownGame 281.4/300, `town3d` 283.6/300. New budget keys: `v3JoinPhaserChunk` = 0 (no Phaser chunk
+  in the static import closure of LobbyRoute + `town3d`) and `town3dShippedBrKiB` ≤ 300 (the shipped `.br` sibling;
+  a build without it fails the key).
+
+## Known issues (v3.2)
+- Everything in "Known issues (v3.1)" below still applies.
+- The 30 fps idle window shows ambient motion at half rate; a change that no idle rule catches is drawn at most 33 ms
+  late (never stale).
+- An old v2 share link opened at a v3 path (`/lobby/x`) starts `town3d` before `lobby:view` moves the page to `/v2/`
+  (rare; that page then loads Phaser too).
+- Cloudflare: the `/assets/*` cache rule and Smart Tiered Cache are owner dashboard steps (fullstack.md §10.3); the
+  edge result of this release is in docs/test-results.md "v3.2 release gate".
+
 # Clocktower Town v3.1
 
-Status: **tagged `v3.1` on `v3-game`, deployed to the dev service** (the host, port 3001, reached through
-`scripts/dev.sh`). Prod still runs v3.0 (`4be9bb4`) until it is shipped there (docs/progress.md "v3 handoff").
+Status: **tagged `v3.1` on `v3-game` (`b7803fa`), on prod from 2026-10-18 16:04 PDT until v3.2 replaced it.**
 Gate and commands: docs/test-results.md "v3.1 release gate". Contract and decision log: docs/v3/INTEGRATION.md §11.
 
 v3.1 is a fix and perf release on top of v3.0: three v3.0 known issues fixed, a draw-call cut for the town, the C2 QA

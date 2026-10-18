@@ -1,0 +1,133 @@
+{
+  "at": "2026-10-18T23:08:56.616Z",
+  "rows": [
+    {
+      "name": "entryJsBrKiB",
+      "value": 44.2,
+      "max": 45,
+      "unit": "KiB br",
+      "status": "ok",
+      "why": "JS before sign-in (v2.2: 36.5)"
+    },
+    {
+      "name": "entryCssBrKiB",
+      "value": 12.3,
+      "max": 15,
+      "unit": "KiB br",
+      "status": "ok",
+      "why": "entry CSS, base + theme (v2.4: 11.4; v2.3: 24.9)"
+    },
+    {
+      "name": "lobbyChunkBrKiB",
+      "value": 66.9,
+      "max": 72,
+      "unit": "KiB br",
+      "status": "ok",
+      "why": "LobbyRoute chunk (v2.4: 63.8; v2.3: 83.4)"
+    },
+    {
+      "name": "townChunkBrKiB",
+      "value": 281.4,
+      "max": 300,
+      "unit": "KiB br",
+      "status": "ok",
+      "why": "TownGame chunk, Phaser (v2.2: 284.5)"
+    },
+    {
+      "name": "town3dChunkBrKiB",
+      "value": 283.6,
+      "max": 300,
+      "unit": "KiB br",
+      "status": "ok",
+      "why": "v3 town3d chunk, three + pixel3d (v3.0: 270.4; v3.1: 282.7)"
+    },
+    {
+      "name": "v3JoinPhaserChunk",
+      "value": 0,
+      "max": 0,
+      "unit": "chunks",
+      "status": "ok",
+      "why": "v3.2: TownGame (Phaser) chunks in the static import closure of LobbyRoute + town3d (v3.1: 0 static, but always fetched)"
+    },
+    {
+      "name": "town3dShippedBrKiB",
+      "value": 283.6,
+      "max": 300,
+      "unit": "KiB br",
+      "status": "ok",
+      "why": "v3.2: town3d .br sibling written by apps/client/build/precompress.mjs (v3.2: ~280)"
+    },
+    {
+      "name": "townAtlasKiB",
+      "value": 578.5,
+      "max": 700,
+      "unit": "KiB",
+      "status": "ok",
+      "why": "WebP atlases loaded on town entry (v2.4: 578; HD/ghosts on demand)"
+    },
+    {
+      "name": "snapshotBytesPerSecPerClient",
+      "value": null,
+      "max": 2000,
+      "unit": "B/s",
+      "status": "SKIP",
+      "why": "S2C per client, day walk (v2.2: 1487)"
+    },
+    {
+      "name": "serverCpuPct16",
+      "value": null,
+      "max": 4,
+      "unit": "% core",
+      "status": "SKIP",
+      "why": "server CPU, 16 clients walking, profiler off (v2.4: 2.0-2.5)"
+    },
+    {
+      "name": "desktopWalkFrameP95Ms",
+      "value": null,
+      "max": 20,
+      "unit": "ms",
+      "status": "SKIP",
+      "why": "desktop-walk frame p95 (v2.2: 16.7)"
+    },
+    {
+      "name": "desktopWalkMainPct",
+      "value": null,
+      "max": 9,
+      "unit": "%",
+      "status": "SKIP",
+      "why": "desktop-walk, outdoors (v2.4: 6.0; v2.3 real walk: 15)"
+    },
+    {
+      "name": "mobileWalkMainPct",
+      "value": null,
+      "max": 24,
+      "unit": "%",
+      "status": "SKIP",
+      "why": "phone profile walk, outdoors (v2.4: 15-20, noisy; v2.3 real walk: 44)"
+    },
+    {
+      "name": "mobileWalkDomMutPerSec",
+      "value": null,
+      "max": 6,
+      "unit": "/s",
+      "status": "SKIP",
+      "why": "HUD churn while walking (v2.4: 3.3; compass gated to 2/s)"
+    },
+    {
+      "name": "authScreenMs",
+      "value": null,
+      "max": 3500,
+      "unit": "ms",
+      "status": "SKIP",
+      "why": "Slow-4G phone profile, local uncompressed (v2.2: 2.5 s)"
+    },
+    {
+      "name": "townNetworkIdleMs",
+      "value": null,
+      "max": 19000,
+      "unit": "ms",
+      "status": "SKIP",
+      "why": "Slow-4G phone profile, local uncompressed (v2.4: 16.5 s)"
+    }
+  ]
+}

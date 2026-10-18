@@ -5,20 +5,14 @@
 //   - the home / landing page of the v3 app (`/`) prefetches the 3D town chunk (town3d + its static deps) and the
 //     lobby chunk when the browser is idle, so the join does not wait for them. Not under /v2/, not where select.ts
 //     would pick Classic (phones), never with Save-Data or a slow effective connection (2g / slow-2g / 3g).
-// Entry chunk (main.tsx imports it): static imports are select.ts (static, three-free) and appWorld only.
+// Not in the entry chunk (v3.2 release: main.tsx imports it dynamically when idle; select.ts in the entry pushed the
+// entry JS over its 45 KiB br budget). Static imports: select.ts (three-free), appWorld and prefetchAllowed only.
 import type { WorldId } from '@ct/protocol';
 import { chooseRendererHere } from '../../game3d/select';
 import { appWorld } from './appWorld';
 
-type NetInfo = { saveData?: boolean; effectiveType?: string };
-
-/** May this page prefetch chunks it does not need yet? (Save-Data off, connection not slow.) Pure over `nav`. */
-export function prefetchAllowed(nav: { connection?: NetInfo } | undefined = typeof navigator === 'undefined' ? undefined : (navigator as { connection?: NetInfo })): boolean {
-  const c = nav?.connection;
-  if (!c) return true;
-  if (c.saveData) return false;
-  return !['slow-2g', '2g', '3g'].includes(c.effectiveType ?? '');
-}
+export { prefetchAllowed } from './prefetchAllowed';
+import { prefetchAllowed } from './prefetchAllowed';
 
 /** Will a lobby of `world` on this page draw with Classic (Phaser)? select.ts decides (probes webgl2 once). */
 export function classicHere(world: WorldId): boolean {

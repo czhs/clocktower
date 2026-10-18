@@ -2,6 +2,24 @@
 
 All commands run on **the host** via `scripts/remote.sh` unless stated otherwise.
 
+## 2026-10-18 — v3.2 release gate (`v32-release`, branch `v3-game`, the host, sandbox `v32-release`)
+
+Tree = v3.1 (`40ec348`) + merge of `v32-early` (`3e46778`; no textual conflicts) + release fix (entry chunk:
+`ui/common/prefetchAllowed.ts`, lazy townPrefetch import in `main.tsx`) + two budget keys in `scripts/perf/budgets.mjs`.
+
+| Command (`CT_AGENT=v32-release scripts/remote.sh …`, builds / tests under `flock -s ~/clocktower/v3-heavy.lock`) | Result |
+|---|---|
+| `pnpm -r run typecheck && pnpm exec tsc -p tests/tsconfig.json --noEmit` (right after the merge) | exit 0 (7/7), exit 0 |
+| `pnpm build` + `bundle-report.mjs --json` + `budgets.mjs --bundle … --dist apps/client/dist` (right after the merge) | build exit 0, precompress 130 .br / 130 .gz of 139 text files (2.8 s); **1 OVER: `entryJsBrKiB` 45.7/45** (townPrefetch → select.ts in the entry chunk, 4.6 KB raw) |
+| fix, then `pnpm --filter @ct/client run typecheck` + `pnpm build` + bundle-report + **gate** `budgets.mjs --bundle /tmp/v32-bundle.json --dist apps/client/dist --out tests/perf/results/2026-10-18-v3.2.json` | exit 0; precompress 131 .br / 131 .gz of 140; **all measured ok**: entry JS 44.2/45, entry CSS 12.3/15, LobbyRoute 66.9/72, TownGame 281.4/300, town3d 283.6/300, **`v3JoinPhaserChunk` 0/0 (new)**, **`town3dShippedBrKiB` 283.6/300 (new)**, atlases 578.5/700 KiB; runtime keys SKIP (no perf inputs) |
+| **gate** `pnpm -r run typecheck`; `tsc -p tests/tsconfig.json --noEmit`; `pnpm vitest run apps/client/test/ui.townPrefetch.test.ts apps/client/test/game3d/idle.test.ts` (after the fix and the e2e) | exit 0 (7/7); exit 0; 2 files / 19 tests pass |
+| **gate** `pnpm test` (full, after the build) | **exit 0: 178 files pass, 1 skipped; 2063 tests pass, 5 skipped** (133.9 s) |
+| **gate** v3 e2e, one spec at a time: `E2E_V3=1 E2E_PORT=3450 CT_GL=gpu CT_E2E_NO_BUILD=1 flock -s v3-heavy.lock flock browser.lock nice -n 19 timeout 1500 pnpm test:e2e --project=v3 <spec>` (host GPU) | **all pass on the first run**: `v3-paths` 4/4 (29.7 s), `v3-boot` 1/1 (12.4 s), `v3-vote` 1/1 (28.4 s), `v3-doors` 1/1 (25.5 s), `v3-social` 1/1 (10.3 s), `v3-mixed` 1/1 (12.9 s), `v3-life` 1/1 (1.1 m), `v3-fallback` 4/4 (36.4 s), `v3-pageerrors` 1/1 (2.0 m; KHR_parallel_shader_compile false → "no compile window seen"; pre-warm 39 builds / 39 compiled / 0 timed out). **Page errors: none** |
+| **gate** Classic: `E2E_PORT=3450 CT_E2E_NO_BUILD=1 … pnpm test:e2e --project=chromium tests/e2e/doors.spec.ts tests/e2e/chat-bubbles.spec.ts` | **2/2 pass** (55.0 s) |
+
+The front branch's own runs: docs/perf-v3/fullstack.md §10.4 (idle / join / compression measurements, unit tests,
+e2e on `v32-early`).
+
 ## 2026-10-18 — v3.1 release gate (`v31-release`, branch `v3-game`, the host, sandbox `v31-release`)
 
 Tree = v3.0 + `78caa62` (cherry-picked `docs/perf-v3/client.md`) + merges of `v31-fixes` (`8b7e642`), `v31-stage`

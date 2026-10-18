@@ -11,9 +11,10 @@
 //     [--client /tmp/ct-client/client-perf.json] # tests/perf/client-perf.ts --gpu yes --win 20 --only desktop-idle,desktop-walk,mobile-walk,night-home
 //     [--load   /tmp/ct-load/client-perf.json]   # tests/perf/client-perf.ts --gpu yes --only load
 //     [--atlases packages/assets/generated]      # shipped *.webp atlas bytes (default)
+//     [--dist apps/client/dist]                  # (v3.2) a `pnpm build` output: the precompressed .br the origin ships
 //     [--out tests/perf/results/<date>.json]
 // Commands and the measured v2.2 baseline: docs/perf-v2.2-results.md (WP7).
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 const argv = process.argv.slice(2);
@@ -30,6 +31,8 @@ export const BUDGETS = {
   lobbyChunkBrKiB: { max: 72, unit: 'KiB br', why: 'LobbyRoute chunk (v2.4: 63.8; v2.3: 83.4)' },
   townChunkBrKiB: { max: 300, unit: 'KiB br', why: 'TownGame chunk, Phaser (v2.2: 284.5)' },
   town3dChunkBrKiB: { max: 300, unit: 'KiB br', why: 'v3 town3d chunk, three + pixel3d (v3.0: 270.4; v3.1: 282.7)' },
+  v3JoinPhaserChunk: { max: 0, unit: 'chunks', why: 'v3.2: TownGame (Phaser) chunks in the static import closure of LobbyRoute + town3d (v3.1: 0 static, but always fetched)' },
+  town3dShippedBrKiB: { max: 300, unit: 'KiB br', why: 'v3.2: town3d .br sibling written by apps/client/build/precompress.mjs (v3.2: ~280)' },
   townAtlasKiB: { max: 700, unit: 'KiB', why: 'WebP atlases loaded on town entry (v2.4: 578; HD/ghosts on demand)' },
   snapshotBytesPerSecPerClient: { max: 2000, unit: 'B/s', why: 'S2C per client, day walk (v2.2: 1487)' },
   serverCpuPct16: { max: 4, unit: '% core', why: 'server CPU, 16 clients walking, profiler off (v2.4: 2.0-2.5)' },
@@ -58,6 +61,27 @@ if (bundle) {
   measured.lobbyChunkBrKiB = br((f) => /^assets\/LobbyRoute-[^/]+\.js$/.test(f));
   measured.townChunkBrKiB = br((f) => /^assets\/TownGame-[^/]+\.js$/.test(f));
   measured.town3dChunkBrKiB = br((f) => /^assets\/town3d-[^/]+\.js$/.test(f));
+  // (v3.2) a v3 join must not need Phaser: walk the static imports of the join-path chunks
+  const roots = Object.keys(bundle.chunks ?? {}).filter((f) => /^assets\/(LobbyRoute|town3d)-[^/]+\.js$/.test(f));
+  if (roots.length) {
+    const seen = new Set();
+    const stack = [...roots];
+    while (stack.length) {
+      const f = stack.pop();
+      if (seen.has(f)) continue;
+      seen.add(f);
+      stack.push(...(bundle.chunks[f]?.imports ?? []));
+    }
+    measured.v3JoinPhaserChunk = [...seen].filter((f) => /^assets\/TownGame-[^/]+\.js$/.test(f)).length;
+  }
+}
+
+const dist = arg('dist');
+if (dist && existsSync(path.join(dist, 'assets'))) {
+  const t = readdirSync(path.join(dist, 'assets')).find((f) => /^town3d-[^/]+\.js$/.test(f));
+  const brPath = t && path.join(dist, 'assets', `${t}.br`);
+  if (brPath && existsSync(brPath)) measured.town3dShippedBrKiB = statSync(brPath).size / KiB;
+  else if (t) measured.town3dShippedBrKiB = Infinity; // built without precompress.mjs: the origin would ship it uncompressed
 }
 
 const atlasDir = arg('atlases', 'packages/assets/generated');
