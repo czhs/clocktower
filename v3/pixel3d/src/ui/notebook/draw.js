@@ -21,7 +21,11 @@ import * as THREE from 'three';
 import { GRID_HZ } from '../kit.js';
 import { DIRS, ANCHOR, buildBookFrames } from './art.js';
 import { createPinPass } from '../markers/pinPass.js';
-import { drawBigBook, PLACE_BIG } from './bigbook.js';
+import { book3dContext, HELD3D } from './book3d.js';
+import { drawPortBook } from './port3d.js';
+
+/** Tier-A draw order of the port-sprite big book (L.world): over the scene, under labels / bubbles (20), finger (30). */
+export const PLACE_BIG = { z: 18 };
 
 export const BOOK_FPS = { open: 15, hold: 10, close: 15, write: 10 };
 export const TIMING = {
@@ -118,29 +122,42 @@ export function notebookContext(hud) {
   if (pass?.pass?.material?.uniforms?.uEps) pass.pass.material.uniforms.uEps.value = PLACE.depthEps;
   if (pass?.pass) pass.pass.name = 'ui-notebook-books';
   const yaw = () => Math.atan2(-engine.camera.right.z, engine.camera.right.x);   // R = (cos yaw, 0, -sin yaw)
+  const B3 = pass ? book3dContext(hud, { yaw, visualH: PLACE.visualH }) : null;
   const N = {
     pass,
     yaw,
+    book3d: B3,
     /** Register a draw callback: depth-tested (pass) when available, else on L.world at z (2D fallback). */
-    // variants (additive): the same callback also runs on L.world at PLACE_BIG.z through a 'bigOnly' view, where
-    // drawReader draws the readers whose style is 'big' (bigbook.js; tier A like the finger); the pass view draws the
-    // 'held' readers. Without the pass (2D fallback) one L callback draws both styles.
+    // 3D big book (book3d.js): the same callback also runs before every scene render with the 3D view (P.book3d), where
+    // drawReader poses the 'big' readers' 3D books; and on L.world at PLACE_BIG.z through a 'bigOnly' view, where it
+    // draws the 'bigsprite' readers (the baked port sprites, port3d.js). The pass view draws the 'held' readers.
+    // Without the pass (2D fallback) one L callback draws held + bigsprite.
     add(fn, z = 25) {
       if (!pass) return hud.ui.add(fn, z);
       pass.add(fn);
+      B3?.add(fn);
       hud.ui.add((L) => fn(Object.assign(Object.create(L), { bigOnly: true })), PLACE_BIG.z);
       return fn;
     },
     /** The style a reader is drawn in: opts.bookStyle, else the live option hud.uiOptions.bookStyle, else 'held'. */
-    styleOf(opts = {}) { return (opts.bookStyle ?? hud.uiOptions?.bookStyle) === 'big' ? 'big' : 'held'; },
+    styleOf(opts = {}) { const v = opts.bookStyle ?? hud.uiOptions?.bookStyle; return v === 'big' || v === 'bigsprite' || (v === 'held3d' && B3) ? v : 'held'; },
     /**
      * Draw one reader. P = the pass view (has blitD/depthOf) or L (2D: L.world). opts: { openAt, closeAt, typing, seed,
      * still, face (override), ghost (default m.ghost) }. Returns the drawn state (or null).
      */
     drawReader(P, m, opts = {}) {
-      // opts.bookStyle 'held' (default: this function) | 'big' (bigbook.js drawBigBook, on the bigOnly / 2D view)
-      if (N.styleOf(opts) === 'big') return P.blitD && !P.bigOnly ? null : drawBigBook(P, m, opts);
-      if (P.bigOnly) return null;
+      // opts.bookStyle 'held' (default: this function) | 'big' (the live 3D book, book3d.js, on the 3D view; without a
+      // pipeline it falls back to the port sprites) | 'bigsprite' (the baked port sprites, port3d.js, on the bigOnly / 2D view)
+      const style = N.styleOf(opts);
+      if (style === 'big' && B3) return P.book3d ? B3.drawReader3d(P, m, opts) : null;
+      // 'held3d' (r2, optional): the 3D model at held size at the held grip point (no pipeline: styleOf gives 'held')
+      if (style === 'held3d') {
+        if (!P.book3d || !m) return null;
+        const face = opts.face ?? faceOf(m);
+        return B3.drawReader3d(P, m, { ...opts, at: gripPoint(m, face, dirOf(face, yaw())), scale: HELD3D.scale });
+      }
+      if (style !== 'held') return P.book3d || (P.blitD && !P.bigOnly) ? null : drawPortBook(P, m, opts, yaw(), hud.tod);
+      if (P.bigOnly || P.book3d) return null;
       const s = bookState(P.t, opts);
       if (!s || !m) return null;
       const face = opts.face ?? faceOf(m), dir = dirOf(face, yaw()), F = bookFrames(P.tok);

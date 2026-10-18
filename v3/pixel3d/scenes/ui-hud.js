@@ -8,7 +8,7 @@
 // Parameters: tod (sky.js preset, default noon) · slots=1 draws each group's slot rect + tag (owners: find your area)
 //   groups=<a,b> only those groups (default all) · placeholders=0 hides kit placeholders (only real group modules)
 //   ui=0 no UI at all (the bare 3D scene, for A/B) · grass=0 · vh (default 12 = the game's camera, docs/DEMO.md)
-//   book=big (notebook: the big book in front of the reader; default held) · pointer=v2 (markers: the v2-size finger;
+//   book=big (notebook: the 3D big book in front of the reader; bigsprite = its baked port sprites; default held) · pointer=v2 (markers: the v2-size finger;
 //   default new) — live: hud.setUiOptions({bookStyle, pointerScale}) (docs/UI.md §6 variants)
 //   cast=0 no characters (fast layout iteration) · t=<sec> freeze the stage clock (characters AND UI animation)
 //   screen=0 hide the screen layer (tier S) · pan=<dx>,<dy> whole-texel camera pan per 60 Hz step (crawl check)
@@ -169,7 +169,8 @@ export async function buildHudStage(engine, params, { cast = MOCK_CAST, storytel
   installStack(hud);
   // variant options (notebook / markers variants task, additive; docs/UI.md §6): ?book=held|big ?pointer=new|v2. Groups
   // read hud.uiOptions every frame, so a demo toggle flips them live: hud.setUiOptions({ bookStyle: 'big' }).
-  hud.uiOptions = { bookStyle: P('book', 'held') === 'big' ? 'big' : 'held', pointerScale: P('pointer', 'new') === 'v2' ? 'v2' : 'new' };
+  // book=big: the live 3D book (src/ui/notebook/book3d.js) · book=bigsprite: its baked port sprites (port3d.js) · book=held3d: the 3D model at held size
+  hud.uiOptions = { bookStyle: ['big', 'bigsprite', 'held3d'].includes(P('book', 'held')) ? P('book') : 'held', pointerScale: P('pointer', 'new') === 'v2' ? 'v2' : 'new' };
   hud.setUiOptions = (o = {}) => Object.assign(hud.uiOptions, o);
   if (P('heads', '0') === '1') ui.add((L) => { for (const m of members) { const h = L.at(m.head()), f = L.at(m.feet()); L.world.hline(h.x - 3, h.y, 7, '#FF00FF'); L.world.hline(f.x - 3, f.y, 7, '#00FFFF'); } }, 999);
   // projected anchors (screen px of the 640x360 frame) for tools / measurements

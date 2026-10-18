@@ -430,6 +430,16 @@ export async function createPlayer(demo) {
     setCharacter, teleport, walkTo, goTo, spots, speeds, emote,
     /** Test hook: click / tap at a screen point (the same code path as a real click). */
     clickAt: (x, y, run) => clickTo(x, y, run),
+    /** What a screen point shows: { piece (house / tower / dais id under it) | null, ground: {x, z} on the y 0 plane | null }
+     *  (the click-to-move pick; the game UI's point / pin targets, src/demo/gameui.js). */
+    pickAt: (x, y) => pick(x, y),
+    /** Turn toward a world point (the point emote faces its target); ignored while walking. Returns the new facing. */
+    faceTo(x, z) {
+      if (moving || transition) return facing;
+      const dx = x - position.x, dz = z - position.z;
+      if (Math.hypot(dx, dz) > 0.05) { facing = Math.atan2(dx, dz); path = null; }
+      return facing;
+    },
     update(t, dt) {
       lastT = t;
       if (demo.camera && !demo.camera.__follow) installFollowCamera(demo, demo.camera);

@@ -1,0 +1,11 @@
+{
+  "note": "Baked UI-library files the demo loads at runtime (gameui.js / notebook.js, docs/DEMO.md §4.7). tools/demo-bundle.sh ships EXACTLY these from out/ui/ (everything else under out/ stays out) and refuses any other .png.",
+  "files": [
+    "out/ui/portraits.json",
+    "out/ui/portraits.png",
+    "out/ui/cast-portraits.json",
+    "out/ui/cast-portraits.png",
+    "out/ui/panels.css",
+    "out/ui/notebook.css"
+  ]
+}

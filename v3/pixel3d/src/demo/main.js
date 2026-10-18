@@ -336,7 +336,7 @@ try {
   // the town's own URL params (scenes/town.js names): time-of-day preset + quality from the state; life is always built
   // (state.life only hides / shows it); the cut-away is re-aimed every frame by api.js createCutController
   const q = new URLSearchParams(params);
-  for (const k of ['cut', 'cam', 'yaw', 'focus', 'pieces', 'pan']) q.delete(k);
+  for (const k of ['cut', 'cam', 'yaw', 'focus', 'pieces', 'pan', 'book', 'pointer', 'gameui']) q.delete(k);
   q.set('tod', presetForHour(store.state.timeOfDay));
   q.set('quality', store.state.quality);
   q.set('life', '1');
@@ -355,7 +355,7 @@ try {
     input: createInput(window),
     // npcs: a placeholder until createNPCs below (listCharacters starts them itself when demo.npcs is unset, BEFORE
     // the player exists; main creates them explicitly after the player instead)
-    characters: [], player: null, camera: null, cut: null, intro: null, npcs: { list: [], placeholder: true }, time: null, ui: null, deploy: null,
+    characters: [], player: null, camera: null, cut: null, intro: null, npcs: { list: [], placeholder: true }, time: null, gameui: null, ui: null, deploy: null,
     /** Reload the page with the current state (+ patch) in the URL: quality changes rebuild the town this way. */
     reload(patch = {}) {
       store.set(patch, 'reload');
@@ -387,6 +387,8 @@ try {
   const ld = await import('./loading.js').catch(() => null);
   if (ld?.introEnabled?.(params) && !engine.capture) demo.intro = await load('intro', './intro.js', 'createIntro', demo, { loading: ld.loading });
   demo.time = await load('time', './time.js', 'createTime', demo);
+  // the game UI from the pixel3d UI library (gameui.js: labels, point / pie / pins, HUD, notebook; ?gameui=0 off)
+  demo.gameui = await load('gameui', './gameui.js', 'createGameUI', demo);
   demo.ui = await load('ui', './ui.js', 'mountUI', demo);
   demo.deploy = await load('deploy', './deploy.js', 'installDeploy', demo);
   try { installViewInset(demo); } catch (e) { console.error('[demo] view inset failed:', e); fail(`inset: ${e?.stack || e}`); }
@@ -404,6 +406,7 @@ try {
     step('intro', demo.intro, t, dt);
     step('cut', demo.cut, t, dt);
     step('time', demo.time, t, dt);
+    step('gameui', demo.gameui, t, dt);
     step('ui', demo.ui, t, dt);
     step('deploy', demo.deploy, t, dt);
   });

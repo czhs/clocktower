@@ -19,12 +19,19 @@
 //   5b ceremony       the scripted voting ceremony (time.playCeremony, its key when bound): day -> nomination -> vote ->
 //                     execution -> night, seats filled, the nominee dies
 //   6 controls        Q / E, C (camera modes), L (life), H (panel), cut-away auto / on / off
+//   6b gameui         the game UI (gameui.js): point (right-click a townsperson / a spot), the pie (right-hold + hover
+//                     + release = a pin; right-drag + dead zone = sticky + click), pins (F, dock swatch, click = remove,
+//                     Clear my pins), the notebook (J, Notes typing = the quill, localStorage, Esc), both toggles
+//                     (Notebook held / big, Pointer new / v2 size) from the panel, live; programs constant
+//   6c touch          a phone (390 x 844 @2x, touch): the HUD below the folded panel, a tap on the toolbar notebook opens it, the
+//                     notebook above the reader, the panel's notebook button folds the panel, long press = the touch pie
+//                     (sticky, tap a wedge = a pin, no walking), a short tap still walks, the dock's touch hints
 //   7 quality reload  store quality=low -> the page reloads; character / phase / clock / position must survive
 // Exit 1 on any console / page / shader error, __demo.errors, a door not reached, a swap that fails, a key that did nothing.
 //
 //   tools/remote.sh node tools/demo-play.mjs [--out shots/demo-deploy/play] [--doors auto|house-9,house-14,...]
 //        [--every 400] [--gif-fps 8] [--gif-scale 0.4] [--size 1280x720] [--q "..."] [--base http://<tailnet-ip>:8090]
-//        [--skip loading,crates,houses,doors,roster,time,phases,ceremony,controls,reload] [--day-speed 120] [--chars 5]
+//        [--skip loading,crates,houses,doors,roster,time,phases,ceremony,controls,gameui,touch,reload] [--day-speed 120] [--chars 5]
 //        [--houses auto|house-3,house-9,house-12]
 //   rsync -az render-host:pixel3d/shots/demo-deploy/play/ shots/demo-deploy/play/ --exclude frames/      # then LOOK at them
 // Writes <out>/NN-<step>.png, <out>/play.gif (tools/sheet.py gif), <out>/sheet.png (contact sheet), <out>/play.json.
@@ -792,6 +799,319 @@ try {
       if (c === 'off') await shot('cut-off');
     }
     report.steps.controls = checks;
+  }
+
+  // ---------------------------------------------------------------------------------------------- 6b game UI
+  // the pixel3d UI library in the demo (src/demo/gameui.js, notebook.js): REAL mouse / keyboard input
+  //   point (right-click a townsperson + a spot), the pie (right-hold, hover a wedge, release = a pin; right-drag +
+  //   release in the dead zone = sticky, click a wedge), pins (drop animation, F at the cursor, the dock's swatch,
+  //   click your own pin = remove, Clear my pins), the notebook (J: Seats; the Notes tab; typing = the quill; saved to
+  //   localStorage; Esc closes; the reading book visible to the town), both toggles from the panel (Notebook held / big,
+  //   Pointer new / v2 size: live, no reload), programs constant
+  if (!SKIP.has('gameui')) {
+    console.log('6b game UI');
+    const gi = () => page.evaluate(() => window.__demo.demo.gameui?.info?.() ?? null);
+    const G0 = await gi();
+    if (!G0) fail('gameui: no game UI (demo.gameui missing)');
+    else {
+      await setState({ camera: 'follow', timeOfDay: 12.5, timeSpeed: 0, phase: 'day', nominee: null, zoom: 12, yaw: 0, ui: true, bookStyle: 'held', pointerScale: 'new' });
+      await page.evaluate(() => { window.__playNoReload = 1; });
+      await steerTo({ x: 22.5, z: 25.5 }, { timeout: 5000 }).catch(() => {});
+      await sleep(600);
+      const prog0 = (await info()).programs;
+      const S = await page.evaluate(() => window.__demo.demo.engine.pixelScale);
+      const px = (s, dy = 0) => ({ x: s.x * S + S / 2, y: (s.y + dy) * S + S / 2 });
+      const visibleNpc = (g) => g.members.find((m) => !m.you && m.screen.x > 24 && m.screen.x < g.screen[0] - g.cover.right - 24 && m.screen.y > 40 && m.screen.y < g.screen[1] - 50);
+      const r = report.steps.gameui = {};
+      // -- point at a townsperson, then at a spot
+      let g = await gi();
+      const npc = visibleNpc(g);
+      if (!npc) fail(`gameui: no townsperson on screen to point at (${JSON.stringify(g.members.map((m) => [m.id, m.screen]))})`);
+      else {
+        const face0 = (await info()).player[2];
+        const a = px(npc.screen, -12);
+        await page.mouse.click(a.x, a.y, { button: 'right' });
+        await sleep(450);
+        g = await gi();
+        const face1 = (await info()).player[2];
+        r.pointPerson = { at: npc.id, point: g.point, face: [face0, face1], clip: g.members.find((m) => m.you)?.clip };
+        console.log(`   point at ${npc.id}: ${JSON.stringify(g.point)}, facing ${face0} -> ${face1}, clip ${r.pointPerson.clip}`);
+        if (g.point?.kind !== 'person') fail(`gameui: right-click on ${npc.id} did not point at them (${JSON.stringify(g.point)})`);
+        await shot('ui-point');
+        await sleep(3400);
+        if ((await gi()).point) fail('gameui: the point did not end after EMOTE_POINT_MS');
+      }
+      const you = () => g.members.find((m) => m.you);
+      g = await gi();
+      const spot = px({ x: you().screen.x + 60, y: you().screen.y + 36 });
+      await page.mouse.click(spot.x, spot.y, { button: 'right' });
+      await sleep(400);
+      g = await gi();
+      r.pointPlace = g.point;
+      if (g.point?.kind !== 'place') fail(`gameui: right-click on the ground did not point at a spot (${JSON.stringify(g.point)})`);
+      await sleep(3300);
+      // -- the pie: right-hold, hover teal, release = a teal pin with the drop animation
+      g = await gi();
+      const pinsBefore = g.pins.length;
+      const pc = px({ x: you().screen.x - 70, y: you().screen.y + 30 });
+      await page.mouse.move(pc.x, pc.y);
+      await page.mouse.down({ button: 'right' });
+      await sleep(400);
+      g = await gi();
+      r.pie = g.pie;
+      if (!g.pie?.open) fail('gameui: holding the right button did not open the pie');
+      else {
+        const k = g.pie.items.indexOf('pin:teal'), n = g.pie.items.length, ang = -Math.PI / 2 + k * 2 * Math.PI / n;
+        await page.mouse.move((g.pie.at[0] + Math.cos(ang) * 26) * S, (g.pie.at[1] + Math.sin(ang) * 26) * S, { steps: 4 });
+        await sleep(200);
+        g = await gi();
+        if (g.pie?.hot !== k) fail(`gameui: hovering the teal wedge made wedge ${g.pie?.hot} hot (want ${k})`);
+        await shot('ui-pie');
+      }
+      await page.mouse.up({ button: 'right' });
+      await sleep(120);
+      await shot('ui-pin-drop');
+      await sleep(700);
+      g = await gi();
+      const teal = g.pins.find((p) => p.color === 'teal' && p.kind === 'place' && !p.removing);
+      r.pin = { pins: g.pins, pops: g.pops };
+      console.log(`   pie -> pins ${pinsBefore} -> ${g.pins.length}: ${JSON.stringify(g.pins.map((p) => [p.color, p.kind]))}, pops ${JSON.stringify(g.pops.map((p) => [p.who, p.kind, p.color]))}`);
+      if (!teal) fail('gameui: releasing on the teal wedge dropped no teal pin');
+      if (!g.pops.some((p) => p.who === 'you' && p.kind === 'pin' && p.color === 'teal')) fail('gameui: no pin pop over the player');
+      await shot('ui-pin');
+      // right-drag (moves past RIGHT_DRAG_PX at once) + release in the dead zone = sticky; then click the crimson wedge
+      const pd = px({ x: you().screen.x + 80, y: you().screen.y - 10 });
+      await page.mouse.move(pd.x, pd.y);
+      await page.mouse.down({ button: 'right' });
+      await page.mouse.move(pd.x + 14, pd.y, { steps: 3 });
+      await sleep(80);
+      await page.mouse.move(pd.x, pd.y, { steps: 2 });
+      await page.mouse.up({ button: 'right' });
+      await sleep(250);
+      g = await gi();
+      if (!g.pie?.sticky) fail(`gameui: right-drag + release in the dead zone did not leave a sticky pie (${JSON.stringify(g.pie)})`);
+      else {
+        const k = g.pie.items.indexOf('pin:crimson'), n = g.pie.items.length, ang = -Math.PI / 2 + k * 2 * Math.PI / n;
+        await page.mouse.click((g.pie.at[0] + Math.cos(ang) * 26) * S, (g.pie.at[1] + Math.sin(ang) * 26) * S);
+        await sleep(500);
+        g = await gi();
+        if (!g.pins.some((p) => p.color === 'crimson' && !p.removing)) fail('gameui: clicking the crimson wedge of the sticky pie dropped no pin');
+      }
+      // the dock: G, the violet swatch, F at the cursor
+      await press('KeyG');
+      await sleep(200);
+      g = await gi();
+      if (!g.dock?.open || !g.dock.rects) fail('gameui: G did not open the social dock');
+      else {
+        const sw = g.dock.rects['swatch:violet'];
+        await page.mouse.click((sw.x + sw.w / 2) * S, (sw.y + sw.h / 2) * S);
+        await sleep(150);
+        const pf = px({ x: you().screen.x + 30, y: you().screen.y - 46 });
+        await page.mouse.move(pf.x, pf.y);
+        await press('KeyF');
+        await sleep(600);
+        g = await gi();
+        r.dock = { color: g.dock.color, pins: g.pins.map((p) => p.color) };
+        if (g.dock.color !== 'violet') fail(`gameui: the violet swatch set the colour to ${g.dock.color}`);
+        if (!g.pins.some((p) => p.color === 'violet' && !p.removing)) fail('gameui: F at the cursor dropped no violet pin');
+        await shot('ui-dock');
+      }
+      // left-click your own pin = remove it; Clear my pins
+      g = await gi();
+      const own = g.pins.find((p) => p.kind === 'place' && p.color === 'teal' && !p.removing);
+      if (own?.screen) {
+        await page.mouse.click(own.screen.x * S + S / 2, (own.screen.y - 14) * S);
+        await sleep(200);
+        g = await gi();
+        if (!g.pins.some((p) => p.color === 'teal' && p.removing) && g.pins.some((p) => p.color === 'teal')) fail('gameui: clicking your own teal pin did not remove it');
+      }
+      if (g.dock?.rects?.clear) {
+        await page.mouse.click((g.dock.rects.clear.x + 20) * S, (g.dock.rects.clear.y + 5) * S);
+        await sleep(700);
+        g = await gi();
+        if (g.pins.some((p) => !p.removing)) fail(`gameui: Clear my pins left ${JSON.stringify(g.pins)}`);
+      }
+      await press('KeyG');
+      // -- the notebook: J, Seats, the Notes tab, typing (quill), saved, Esc
+      await press('KeyJ');
+      await sleep(700);
+      g = await gi();
+      r.notebook = { open: g.notebook, readers: g.readers };
+      console.log(`   notebook: ${JSON.stringify(g.notebook)} readers ${JSON.stringify(g.readers)}`);
+      if (!g.notebook.open) fail('gameui: J did not open the notebook');
+      if (!g.notebook.rows) fail('gameui: the Seats page lists nobody');
+      if (g.toasts.some((x) => /notebook/i.test(x))) fail(`gameui: a notebook toast is shown (it covered name labels): ${JSON.stringify(g.toasts)}`);
+      if (g.youIcon === 'initial') fail(`gameui: ${g.members.find((m) => m.you)?.id}'s pins show an initial, not a portrait`);
+      if (!g.readers.some((x) => x.who === 'you' && x.style === 'held' && (x.phase === 'hold' || x.phase === 'open'))) fail(`gameui: the player shows no held book while the notebook is open (${JSON.stringify(g.readers)})`);
+      await shot('ui-notebook-seats');
+      await page.click('.dnb .ctn-tab-notes');
+      await sleep(150);
+      const typed = 'Hound sniffed at the mill twice.';
+      await page.keyboard.type(typed, { delay: 25 });
+      await sleep(150);
+      g = await gi();
+      r.notebook.typing = { notebook: g.notebook, readers: g.readers };
+      if (!g.notebook.typing) fail('gameui: typing in the Notes page is not "typing"');
+      if (!g.readers.some((x) => x.who === 'you' && x.phase === 'write')) fail(`gameui: no quill (write) while typing (${JSON.stringify(g.readers)})`);
+      const st = (await info()).state;
+      if (Math.abs(st.timeOfDay - 12.5) > 0.02 || st.camera !== 'follow' || st.yaw !== 0 || !st.life) fail(`gameui: keys typed into the notebook reached the game (clock ${st.timeOfDay}, camera ${st.camera})`);
+      await shot('ui-notebook-write');
+      await sleep(1400);
+      const saved = await page.evaluate(() => { try { return JSON.parse(localStorage.getItem('hollowmere-notebook:notes')); } catch { return null; } });
+      r.notebook.saved = saved;
+      if (saved !== typed) fail(`gameui: the notes were not saved to localStorage (${JSON.stringify(saved)})`);
+      await page.keyboard.press('Escape');
+      await sleep(250);
+      g = await gi();
+      if (g.notebook.open) fail('gameui: Esc in the notebook did not close it');
+      await sleep(600);
+      g = await gi();
+      if (g.readers.some((x) => x.who === 'you')) fail(`gameui: the player still shows a book after closing (${JSON.stringify(g.readers)})`);
+      // -- toggles (the panel's Game UI section, real clicks): Notebook big, Pointer v2 size; live (no reload)
+      await page.click('[data-sec="gameui"] .dui-seg button:has-text("big")');
+      await sleep(200);
+      await press('KeyJ');
+      await sleep(900);
+      g = await gi();
+      r.big = { options: g.options, readers: g.readers, books3d: g.books3d, merged: g.mergedBooks };
+      console.log(`   big: ${JSON.stringify(r.big)}`);
+      if (g.options.bookStyle !== 'big') fail(`gameui: the "big" toggle set bookStyle ${g.options.bookStyle}`);
+      if (!g.readers.some((x) => x.who === 'you' && x.style === 'big') || g.books3d < 1) fail(`gameui: no 3D big book in front of the player (${JSON.stringify(r.big)})`);
+      if (!g.mergedBooks) fail('gameui: the 3D books are not the merged runtime books (src/ui/runtime/book3d.js)');
+      await shot('ui-book-big');
+      await press('KeyJ');
+      await sleep(400);
+      await page.click('[data-sec="gameui"] .dui-seg button:has-text("v2 size")');
+      await sleep(150);
+      g = await gi();
+      const npc2 = visibleNpc(g);
+      if (npc2) {
+        const a = px(npc2.screen, -12);
+        await page.mouse.click(a.x, a.y, { button: 'right' });
+        await sleep(450);
+        g = await gi();
+        r.pointV2 = g.point;
+        if (g.point?.scale !== 'v2' || g.point?.frameSize !== 24) fail(`gameui: the v2-size toggle did not give the v2 finger (${JSON.stringify(g.point)})`);
+        await shot('ui-point-v2');
+      }
+      await page.click('[data-sec="gameui"] .dui-seg button:has-text("held")');
+      await page.click('[data-sec="gameui"] .dui-seg button:has-text("new")');
+      await sleep(300);
+      g = await gi();
+      if (g.options.bookStyle !== 'held' || g.options.pointerScale !== 'new') fail(`gameui: the toggles did not switch back (${JSON.stringify(g.options)})`);
+      if (!(await page.evaluate(() => window.__playNoReload === 1))) fail('gameui: a toggle reloaded the page');
+      const prog1 = (await info()).programs;
+      r.programs = [prog0, prog1];
+      console.log(`   programs ${prog0} -> ${prog1}`);
+      if (prog1 > prog0) fail(`gameui: the game UI compiled ${prog1 - prog0} programs mid-game (${prog0} -> ${prog1})`);
+    }
+  }
+
+  // ---------------------------------------------------------------------------------------------- 6c touch (a phone)
+  // a second page in the same browser, 390 x 844 @2x, isMobile + hasTouch (coarse pointer), REAL touch input (taps +
+  // a CDP long press): the auto-folded panel is a top band the HUD drops below (cover.top), the toolbar's notebook is
+  // on the canvas and a tap opens it (not the keys overlay), the notebook stays above the reader, the panel's notebook
+  // button folds the unfolded panel, a long press opens the touch pie (not before LONG_PRESS_MS), the lift in the dead
+  // zone leaves it sticky, a tap on a wedge drops a pin without walking, a short tap still walks, the dock opens from
+  // the portrait; no errors, no CSP violations
+  if (!SKIP.has('touch')) {
+    console.log('6c touch (phone)');
+    const r = report.steps.touch = {};
+    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+    const ph = await ctx.newPage();
+    const pbad = [];
+    ph.on('console', (m) => { if (m.type() === 'error' || SHADER_RX.test(m.text())) pbad.push(`[touch console.${m.type()}] ${m.text()}`); });
+    ph.on('pageerror', (e) => pbad.push(`[touch pageerror] ${e.stack || e.message}`));
+    await ph.addInitScript(() => { window.__csp = []; document.addEventListener('securitypolicyviolation', (e) => window.__csp.push(`${e.violatedDirective} ${e.blockedURI}`)); });
+    try {
+      await ph.goto(`${BASE}/demo.html?intro=0&tod=noon`);
+      await ph.waitForFunction(() => window.__demo?.ready, null, { timeout: 120000 });
+      await ph.waitForTimeout(2500);
+      const gi = () => ph.evaluate(() => window.__demo.demo.gameui?.info?.() ?? null);
+      const cl = (x, y) => ph.evaluate(([x, y]) => {   // screen texel -> client px (gameui toScreen inverted)
+        const d = window.__demo.demo, e = d.engine, c = e.renderer.domElement, b = c.getBoundingClientRect(), s = e.pixelScale || 1, H = d.gameui.info().screen[1];
+        return { x: b.left + (x + 0.5) * s * b.width / e.width, y: b.top + (e.height - (H - 1 - y + 0.5) * s) * b.height / e.height };
+      }, [x, y]);
+      const tapEl = async (sel) => { const b = await ph.evaluate((s) => { const q = document.querySelector(s)?.getBoundingClientRect(); return q ? [q.x + q.width / 2, q.y + q.height / 2] : null; }, sel); if (!b) throw new Error(`no ${sel}`); await ph.touchscreen.tap(b[0], b[1]); };
+      const pshot = (name) => ph.screenshot({ path: path.join(OUT, `${String(++shotN).padStart(2, '0')}-${name}.png`) });
+      let g = await gi();
+      r.cover = g?.cover; r.touchUI = g?.touch;
+      if (!g?.touch) fail('touch: the game UI did not detect the touch screen (coarse pointer)');
+      if (!(g?.cover?.top > 0)) fail(`touch: the folded panel is no top band for the HUD (cover ${JSON.stringify(g?.cover)})`);
+      if (g?.toolbar?.notebook?.y < g?.cover?.top) fail('touch: the toolbar is drawn under the folded panel');
+      const tb = await cl(g.toolbar.notebook.x + 7, g.toolbar.notebook.y + 7);
+      r.underToolbar = await ph.evaluate(([x, y]) => document.elementFromPoint(x, y)?.tagName ?? null, [tb.x, tb.y]);
+      if (r.underToolbar !== 'CANVAS') fail(`touch: the toolbar's notebook lies under ${r.underToolbar}, not the canvas`);
+      await ph.touchscreen.tap(tb.x, tb.y); await ph.waitForTimeout(900);
+      g = await gi();
+      r.toolbarTap = { notebook: g.notebook.open, keys: await ph.evaluate(() => !document.querySelector('.dui-help')?.hidden) };
+      if (!g.notebook.open) fail('touch: tapping the toolbar notebook did not open the notebook');
+      if (r.toolbarTap.keys) fail('touch: tapping the toolbar notebook opened the keys overlay');
+      const nbBottom = await ph.evaluate(() => document.querySelector('#demo-ui > .dnb').getBoundingClientRect().bottom);
+      const feet = (await cl(0, g.members.find((m) => m.you).screen.y)).y;
+      r.notebookBottom = Math.round(nbBottom); r.readerFeet = Math.round(feet);
+      if (nbBottom > feet - 40) fail(`touch: the notebook (bottom ${nbBottom.toFixed(0)} px) covers the reader (feet ${feet.toFixed(0)} px)`);
+      if (!g.readers.some((x) => x.who === 'you')) fail('touch: no reading book on the player while the notebook is open');
+      await pshot('touch-notebook');
+      await tapEl('.dnb .dnb-close'); await ph.waitForTimeout(600);
+      // unfold the panel, then its notebook button: the panel folds away
+      await tapEl('.dui-panel .dui-head .dui-btn[title="fold the panel"]'); await ph.waitForTimeout(500);
+      const unfolded = await ph.evaluate(() => !document.querySelector('.dui-panel').classList.contains('collapsed'));
+      await ph.evaluate(() => document.querySelector('[data-sec="gameui"]')?.setAttribute('open', ''));
+      const btn = ph.locator('[data-sec="gameui"] button:has-text("notebook")');
+      await btn.scrollIntoViewIfNeeded();
+      const bb = await btn.boundingBox();
+      await ph.touchscreen.tap(bb.x + bb.width / 2, bb.y + bb.height / 2); await ph.waitForTimeout(900);
+      r.panelButton = { unfolded, open: (await gi()).notebook.open, folded: await ph.evaluate(() => document.querySelector('.dui-panel').classList.contains('collapsed')) };
+      if (!unfolded || !r.panelButton.open || !r.panelButton.folded) fail(`touch: the panel's notebook button on a phone: ${JSON.stringify(r.panelButton)} (want unfolded first, then open + folded)`);
+      await tapEl('.dnb .dnb-close'); await ph.waitForTimeout(600);
+      // a long press (CDP touch events) beside the player: the touch pie
+      g = await gi();
+      const me = g.members.find((m) => m.you), sp = await cl(me.screen.x - 30, me.screen.y + 20);
+      const cdp = await ctx.newCDPSession(ph);
+      const touch = (type, x, y) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y, id: 1 }] });
+      const pos0 = await ph.evaluate(() => window.__demo.info().player);
+      await touch('touchStart', sp.x, sp.y); await ph.waitForTimeout(250);
+      r.pieEarly = (await gi()).pie;
+      await ph.waitForTimeout(450);
+      g = await gi(); r.pie = g.pie;
+      if (r.pieEarly) fail('touch: the pie opened before the long press time');
+      if (!g.pie?.open || g.pie.input !== 'touch') fail(`touch: a long press did not open the touch pie (${JSON.stringify(g.pie)})`);
+      await touch('touchEnd'); await ph.waitForTimeout(300);
+      g = await gi();
+      if (!g.pie?.sticky) fail('touch: lifting the finger in the dead zone did not leave a sticky pie');
+      else {
+        const k = Math.max(0, g.pie.items.indexOf('pin:teal')), n = g.pie.items.length, a = -Math.PI / 2 + k * 2 * Math.PI / n;
+        const wp = await cl(g.pie.at[0] + Math.cos(a) * 32, g.pie.at[1] + Math.sin(a) * 32);
+        await ph.touchscreen.tap(wp.x, wp.y); await ph.waitForTimeout(1200);
+        g = await gi(); r.pins = g.pins.map((p) => p.color);
+        if (!g.pins.some((p) => p.color === 'teal' && !p.removing)) fail(`touch: tapping the teal wedge dropped no teal pin (${JSON.stringify(r.pins)})`);
+      }
+      const pos1 = await ph.evaluate(() => window.__demo.info().player);
+      r.walkedByPie = +Math.hypot(pos1[0] - pos0[0], pos1[1] - pos0[1]).toFixed(2);
+      if (r.walkedByPie > 0.3) fail(`touch: the long press / wedge tap also walked the player ${r.walkedByPie} m`);
+      await pshot('touch-pin');
+      // a short tap still walks
+      const tp = await cl(me.screen.x + 25, me.screen.y + 30);
+      await ph.touchscreen.tap(tp.x, tp.y); await ph.waitForTimeout(1500);
+      const pos2 = await ph.evaluate(() => window.__demo.info().player);
+      r.tapWalk = +Math.hypot(pos2[0] - pos1[0], pos2[1] - pos1[1]).toFixed(2);
+      if (r.tapWalk < 0.3) fail(`touch: a short tap no longer walks (${r.tapWalk} m)`);
+      // the dock: tap the portrait
+      g = await gi();
+      const db = await cl(g.dock.button.x + 13, g.dock.button.y + 13);
+      await ph.touchscreen.tap(db.x, db.y); await ph.waitForTimeout(600);
+      if (!(await gi()).dock.open) fail('touch: tapping your portrait did not open the dock');
+      await pshot('touch-dock');
+      r.csp = await ph.evaluate(() => window.__csp);
+      if (r.csp.length) fail(`touch: CSP violations ${JSON.stringify(r.csp)}`);
+      const errs = await ph.evaluate(() => window.__demo?.errors ?? []);
+      if (errs.length) pbad.push(...errs.map((e) => `[touch __demo] ${e}`));
+    } catch (e) { fail('touch: ' + (e.stack || e.message).split('\n').slice(0, 2).join(' | ')); }
+    for (const b of pbad) fail(b);
+    console.log(`   cover ${JSON.stringify(r.cover)} · toolbar under ${r.underToolbar} · notebook ${JSON.stringify(r.toolbarTap)} bottom ${r.notebookBottom} < feet ${r.readerFeet} · panel button ${JSON.stringify(r.panelButton)}`);
+    console.log(`   long press pie ${r.pie?.input} sticky -> pins ${JSON.stringify(r.pins)} · walked by pie ${r.walkedByPie} m · tap walk ${r.tapWalk} m`);
+    await ctx.close();
   }
 
   // ---------------------------------------------------------------------------------------------- 7 quality reload

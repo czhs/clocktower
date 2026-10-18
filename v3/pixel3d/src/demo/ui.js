@@ -11,7 +11,7 @@
 // Town (phase, ceremony, bell, 15-seat editor + nominee), Render (quality, life, cut-away, camera, zoom, yaw, perf),
 // Travel (the 15 cottages by name, the dais, the clock tower, spawn). Keys: H help overlay, ` (backquote) panel.
 // User text is never put through innerHTML: every label is a text node.
-import { PHASES, CAMERA_MODES, CUT_MODES, QUALITIES, SEAT_COUNT, SPAWN, formatClock, keyLabel, doorOf, emptySeat } from './api.js';
+import { PHASES, CAMERA_MODES, CUT_MODES, QUALITIES, SEAT_COUNT, SPAWN, BOOK_STYLES, POINTER_SCALES, formatClock, keyLabel, doorOf, emptySeat } from './api.js';
 import { ZOOM_LADDER } from '../core/PixelCamera.js';
 
 // ------------------------------------------------------------------------------------------------ small DOM kit
@@ -84,6 +84,7 @@ export function mountUI(demo) {
   const set = (patch) => store.set(patch, 'ui');
   const prefs = loadPrefs();
   prefs.open ??= { character: true, time: true, town: false, render: true, travel: false };
+  prefs.open.gameui ??= true;
 
   // --- generic controls ---------------------------------------------------------------------------
   const btn = (label, onclick, props = {}) => h('button', { type: 'button', class: 'dui-btn', onclick, ...props }, label);
@@ -114,15 +115,20 @@ export function mountUI(demo) {
 
   // toasts are used by every section below
   const toasts = h('div', { class: 'dui-toasts', 'aria-live': 'polite' });
-  /** Show a toast for `ms` (null: the caller removes it with fadeToast). Returns its element. */
+  /** Show a toast for `ms` (null: the caller removes it with fadeToast). Returns its element (or the game UI's handle:
+   *  with the game UI the toasts are the pixel HUD's toast column, gameui.js). */
   function toast(text, ms = 2600) {
+    if (demo.gameui?.toast) {
+      const tk = demo.gameui.toast(String(text), { ms: ms === null ? 60000 : ms });
+      return tk;
+    }
     const el = h('div', { class: 'dui-toast' }, String(text));
     toasts.prepend(el);
     while (toasts.children.length > 4) toasts.lastChild.remove();
     if (ms !== null) setTimeout(() => fadeToast(el), ms);
     return el;
   }
-  function fadeToast(el) { if (!el || el.classList.contains('out')) return; el.classList.add('out'); setTimeout(() => el.remove(), 400); }
+  function fadeToast(el) { if (el?.dismiss) { el.dismiss(); return; } if (!el || el.classList.contains('out')) return; el.classList.add('out'); setTimeout(() => el.remove(), 400); }
 
   // --- Character ----------------------------------------------------------------------------------
   const roster = (demo.characters ?? []).filter((c) => c && c.complete && c.id);
@@ -159,6 +165,11 @@ export function mountUI(demo) {
     paintChars();
   };
   const charSec = section('character', 'Character', h('div', { class: 'dui-chars' }, charList));
+  // the new portrait atlas (out/ui/portraits.*: 24 x 24 avatars) where it has the character; the roster thumb otherwise
+  demo.gameui?.portraits?.then(() => charBtns.forEach((b) => {
+    const url = demo.gameui.avatarURL(b.dataset.id), img = b.querySelector('.dui-mono-tile img');
+    if (url && img && url !== img.getAttribute('src')) { img.src = url; img.classList.add('atlas'); }
+  })).catch(() => {});
   onKey('character', (s) => { charSec.aside.textContent = nameOf(s.character); paintChars(); });
   offs.push(events.on('player:character', ({ id }) => {
     const was = loadingChar; loadingChar = null; paintChars();
@@ -464,6 +475,24 @@ export function mountUI(demo) {
 
   onKey('location', paintWhere);
 
+  // --- Game UI (the pixel3d UI library, gameui.js): the two variant toggles + the notebook ------------------------
+  // "Notebook: held / big" = store.bookStyle ('held': the small book at the reader's hands | 'big': a real 3D book
+  // unfolding in front of the reader); "Pointer: new / v2 size" = store.pointerScale ('new' | 'v2': the finger at the
+  // v2 size relative to the character). Both switch live (no reload); ?book= / ?pointer= seed them (docs/DEMO.md §5).
+  const gameSec = section('gameui', 'Game UI',
+    stack('notebook', seg('bookStyle', BOOK_STYLES, (o) => (o === 'held' ? 'held' : 'big'), (o) => (o === 'held' ? 'Notebook: the book at the reader\'s hands' : 'Notebook: a big 3D book in front of the reader'))),
+    stack('pointer', seg('pointerScale', POINTER_SCALES, (o) => (o === 'new' ? 'new' : 'v2 size'), (o) => (o === 'new' ? 'Pointer: the new finger' : 'Pointer: the v2 size relative to the character'))),
+    h('div', { class: 'dui-btns' },
+      btn('notebook', () => demo.gameui?.notebook?.toggle(), { class: 'dui-btn wide', title: 'open / close the notebook (J)' }),
+      btn('pin palette', () => { if (demo.gameui) demo.gameui.dockOpen = !demo.gameui.dockOpen; }, { class: 'dui-btn wide', title: 'the social dock: point, pins, colours (G)' })),
+    h('div', { class: 'dui-note' }, !demo.gameui ? 'Game UI off (?gameui=0)' : demo.gameui.touch ? 'Hold a finger on the town: point / pins · your portrait: the palette · the book: notebook'
+      : 'Right-click: point · right-drag: pins · F: pin · J: notebook · G: palette'),
+  );
+  const paintGameAside = (s) => { gameSec.aside.textContent = `${s.bookStyle} · ${s.pointerScale === 'v2' ? 'v2 size' : 'new'}`; };
+  onKey('bookStyle', paintGameAside); onKey('pointerScale', paintGameAside);
+  // (no notebook open / close toasts: the panel itself is the feedback, and the toast column covered name labels.
+  // On a narrow screen the notebook folds the panel away when it opens, see below.)
+
   // --- panel shell --------------------------------------------------------------------------------
   // Folding: prefs.collapsed is the viewer's saved choice on a wide screen. The panel also folds by itself (never
   // saved) on a narrow screen (innerWidth < NARROW_W: a phone, where it would cover ~80% of the view) and inside a
@@ -481,13 +510,18 @@ export function mountUI(demo) {
   const refold = () => { const a = !!autoFold(); if (a !== autoWas) { autoWas = a; override = null; paintCollapsed(); } };
   const helpBtn = btn('?', () => help(), { class: 'dui-btn icon', title: 'keys (H)' });
   const hideBtn = btn('×', () => { set({ ui: false }); toast('Panel hidden: the backquote key ( ` ) brings it back'); }, { class: 'dui-btn icon', title: 'hide the panel (`)' });
-  const body = h('div', { class: 'dui-body' }, charSec, timeSec, townSec, renderSec, travelSec);
-  const panel = h('div', { class: 'dui-panel', role: 'region', 'aria-label': 'demo controls' },
+  const body = h('div', { class: 'dui-body' }, charSec, gameSec, timeSec, townSec, renderSec, travelSec);
+  // the UI library's panel skin (out/ui/panels.css, loaded by gameui.js): the ctp-panel 9-slice + ctp-skin buttons
+  const skin = demo.gameui ? ' ctp-panel ctp-skin dui-skinned' : '';
+  const panel = h('div', { class: `dui-panel${skin}`, role: 'region', 'aria-label': 'demo controls' },
     h('div', { class: 'dui-head' }, h('span', { class: 'dui-title' }, 'Hollowmere', h('small', {}, 'controls')), helpBtn, collapseBtn, hideBtn),
     body);
   const paintCollapsed = () => { const f = folded(); panel.classList.toggle('collapsed', f); collapseBtn.textContent = f ? '▾' : '▴'; };
   paintCollapsed();
   addEventListener('resize', refold);
+  // the notebook on a narrow screen (a phone): the unfolded panel folds away when the notebook opens (the notebook sat over
+  // it and the two filled the screen; never saved, the fold button unfolds it again)
+  offs.push(events.on('notebook', ({ open }) => { if (open && innerWidth < NARROW_W && !folded()) { override = true; paintCollapsed(); } }));
   offs.push(() => removeEventListener('resize', refold), store.on('location', refold));
   // buttons / selects must not keep keyboard focus: Space / arrows / letters belong to the game (walking, emotes)
   panel.addEventListener('click', (e) => { const b = e.target.closest?.('button'); if (b) b.blur(); });
@@ -496,7 +530,7 @@ export function mountUI(demo) {
   const status = h('div', { class: 'dui-status', 'aria-live': 'off' });
 
   // --- help overlay -------------------------------------------------------------------------------
-  const helpCard = h('div', { class: 'dui-help-card', role: 'dialog', 'aria-label': 'keyboard shortcuts' });
+  const helpCard = h('div', { class: `dui-help-card${skin}`, role: 'dialog', 'aria-label': 'keyboard shortcuts' });
   const helpEl = h('div', { class: 'dui-help', hidden: true, onclick: (e) => { if (e.target === helpEl) help(false); } }, helpCard);
   const GROUP_ORDER = ['move', 'player', 'character', 'emote', 'camera', 'time', 'town', 'ui', 'misc'];
   const GROUP_NAME = { move: 'Walking', player: 'Player', character: 'Character', emote: 'Emotes', camera: 'Camera', time: 'Clock', town: 'Town', ui: 'Panel', misc: 'Other' };
@@ -510,6 +544,11 @@ export function mountUI(demo) {
     add('move', ['↑', '←', '↓', '→'], 'walk');
     if (demo.player?.speeds) add('move', ['Shift'], 'run (hold while walking)');
     if (demo.player?.clickAt) add('move', ['click'], 'walk there (a cottage: to its door)');
+    if (demo.gameui) {
+      add('emote', ['right-click'], 'point at a townsperson / a spot');
+      add('emote', ['right-drag'], 'the pie: point, 8 pin colours, remove my pin');
+      add('emote', ['click pin'], 'remove your own pin');
+    }
     for (const b of input.bindings()) add(b.group || 'misc', [keyLabel(b.code)], b.desc || b.code);
     add('camera', ['wheel'], 'zoom (ladder stops)');
     add('camera', ['drag'], 'pan (free camera)');
@@ -551,7 +590,13 @@ export function mountUI(demo) {
   // 9 s of RENDERED time (frame dt, not a wall-clock timer: the earlier setTimeout version could run its whole 9 s in a
   // hidden / zero-size tab or behind a loading screen that was still up, so the player never saw it). The loading
   // screen keeps its own tip line (loading.js TIPS).
-  const TIP_TEXT = 'Tip: press SPACE to emote (1-6 for more)', TIP_DELAY = 1.2, TIP_SECS = 9;
+  const TIP_DELAY = 1.2, TIP_SECS = 9;
+  // a touch screen (gameui.touch: coarse pointer) has no keys: finger wording
+  const touchTip = !!demo.gameui?.touch;
+  const TIP_TEXT = touchTip ? 'Tip: tap to walk, hold a finger on the town to point or pin' : 'Tip: press SPACE to emote (1-6 for more)';
+  const TIP_TOKENS = touchTip ? [{ s: 'Tip:', b: true }, { s: ' tap to walk · hold a finger on the town to point or pin' }]
+    : [{ s: 'Tip:', b: true }, { s: ' ' }, { k: 'Space' }, { s: ' emote (' }, { k: '1' }, { s: '-' }, { k: '6' }, { s: ' more) · ' },
+    { k: 'Right' }, { s: ' point, drag: pins · ' }, { k: 'J' }, { s: ' notebook' }];
   const emoteTip = { state: 'wait', wait: 0, left: TIP_SECS, el: null, shownAt: null };
   let readySeen = !!window.__demo?.ready;
   offs.push(events.on('ready', () => { readySeen = true; }));
@@ -570,7 +615,8 @@ export function mountUI(demo) {
       if (!hasControl()) { emoteTip.wait = 0; return; }
       emoteTip.wait += step;
       if (emoteTip.wait < TIP_DELAY) return;
-      emoteTip.el = toast(TIP_TEXT, null);
+      // with the game UI: the pixel key-hint plate at the bottom (hud art drawKeyHint), the same 9 s
+      emoteTip.el = demo.gameui?.tip ? demo.gameui.tip(TIP_TOKENS, TIP_SECS) : toast(TIP_TEXT, null);
       emoteTip.el.classList.add('dui-tip');
       emoteTip.state = 'shown'; emoteTip.shownAt = Math.round(performance.now());
       return;

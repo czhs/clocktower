@@ -456,6 +456,9 @@ export async function createNPCs(demo, { count = 3 } = {}) {
 
   const api = {
     get list() { return npcs.filter(Boolean).map((n) => ({ id: n.id, pos: [n.spot.x, n.spot.z], clip: n.handle.ch.state.clip })); },
+    /** The live NPC records for the game UI (src/demo/gameui.js: labels, talk, pops, readers): no copies per frame.
+     *  [{ slot, id, name, spot (Vector3), face (rad), height, handle }] */
+    get members() { return npcs; },
     update(t) {
       const p = demo.player?.position;
       for (const n of npcs) {
