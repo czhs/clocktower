@@ -551,6 +551,11 @@ export function mountUI(demo) {
   panel.addEventListener('mousedown', (e) => { if (e.target.closest?.('button')) e.preventDefault(); });
 
   const status = h('div', { class: 'dui-status', 'aria-live': 'off' });
+  // (vote-fix5, critic-4 P2-3) the status line hides with the panel in the vote camera: the game has neither, and the
+  // compact action bar takes its bottom-left corner so the ring's near tip can sit at the bottom centre
+  const paintStatusAway = () => status.classList.toggle('dui-away', store.state.camera === 'vote');
+  paintStatusAway();
+  offs.push(store.on('camera', paintStatusAway));
 
   // (critic P2-6) one UI scale at every pixel scale: at 1080p 'round' (pixelScale 3) the canvas HUD is drawn 1.5x the
   // 720p size but the DOM panel / status line / keys card stayed at the 720p size (dim 10-px subtitles, truncated

@@ -100,15 +100,24 @@ export async function runPassB({ page, sleep, info, shot, fail, note, press, hol
   await ev(() => { const d = window.__demo.demo; for (const i of [7, 9, 10, 12, 0, 1, 3]) d.time.setVote(i, true); d.store.set({ phase: 'vote' }, 'test'); });
   const tv0 = Date.now();
   let shotCounted = false;
-  const acts = [[900, 'x'], [1700, 'x'], [2300, 'wd1'], [2500, 'late14'], [2900, 'x']];
+  // (vote-fix5, critic-4 P2-2 / P2-5) the hand: 1.1 s per seat, 3 s after the opening (seat 5 locks ~17.8 s in); the
+  // first slap is a DOUBLE press (X X 120 ms apart: the debounce keeps ONE slap), then take back, then slap again
+  const acts = [[900, 'xx'], [1700, 'x'], [2300, 'wd1'], [2500, 'late14'], [2900, 'x']];
   const pressed = [];
-  while (Date.now() - tv0 < 12500) {
+  let ringMin = Infinity, ringIn = new Set(), beamSeen = false, burstSeen = false;
+  while (Date.now() - tv0 < 24000) {
     for (const a of acts) if (!a.done && Date.now() - tv0 >= a[0]) {
       a.done = true;
-      if (a[1] === 'x') { if (onStones) { await press('KeyX'); pressed.push(await ev(() => !!window.__demo.demo.time.seals.downAt(5))); } }
+      if (a[1] === 'x' || a[1] === 'xx') { if (onStones) { await press('KeyX'); if (a[1] === 'xx') { await sleep(120); await page.keyboard.press('KeyX'); } pressed.push(await ev(() => !!window.__demo.demo.time.seals.downAt(5))); } }
       else await ev((w) => { const d = window.__demo.demo; if (w === 'wd1') d.time.setVote(1, false); else d.time.setVote(14, true); }, a[1]);
     }
+    // (vote-fix5, critic-4 P1-2) no town-life walker / idle NPC shown inside r 8 m of the ring while the vote runs
+    const rc = await ev(() => window.__demo.demo.passB.ringclear?.check?.() ?? null);
+    if (rc?.nearest) ringMin = Math.min(ringMin, rc.nearest.r);
+    for (const x of rc?.inside ?? []) if (+x.split('@')[1] < 8) ringIn.add(x);
     marksInfo = await ev(() => window.__demo.demo.passB.marks?.info?.() ?? null);
+    if (marksInfo?.nominee?.beam && marksInfo.spot?.extra?.includes(0)) beamSeen = true;
+    if (marksInfo?.nominee?.burst) burstSeen = true;
     if (!marksInfo) break;
     for (const [i, x] of Object.entries(marksInfo.seats)) { (stateSeen[x.kind] ??= new Set()).add(+i); if (x.drawn) (drawnSeen[x.drawn] ??= new Set()).add(+i); }
     for (const i of marksInfo.spot?.lit ?? []) lit.add(i);
@@ -120,6 +129,10 @@ export async function runPassB({ page, sleep, info, shot, fail, note, press, hol
     await sleep(100);
   }
   r.cast.voting = voting;
+  r.ring = { nearest: Number.isFinite(ringMin) ? +ringMin.toFixed(2) : null, inside: [...ringIn] };
+  if (ringIn.size || (Number.isFinite(ringMin) && ringMin < 8)) fail(`passb: a townsperson inside r 8 m of the ring during the vote (${JSON.stringify(r.ring)})`);
+  r.threshold = { beam: beamSeen, burst: burstSeen };
+  if (!beamSeen || !burstSeen) fail(`passb: the threshold moment (the burst + the nominee's crimson beam) not seen (${JSON.stringify(r.threshold)})`);
   if (voting.length < 4) fail(`passb: only ${voting.length} seated voters played the 'vote' clip with their seal down`);
   r.marks = { seen: Object.fromEntries(Object.entries(stateSeen).map(([k, v]) => [k, [...v].sort((a, b) => a - b)])), drawn: Object.fromEntries(Object.entries(drawnSeen).map(([k, v]) => [k, [...v].sort((a, b) => a - b)])),
     tally: marksInfo?.tally, needed: marksInfo?.needed, passed: marksInfo?.passed, bell: marksInfo?.bell, bells: await ev(() => window.__voteBells), plaque: marksInfo?.plaque?.text ?? null, gold: marksInfo?.plaque?.gold ?? null, hand: marksInfo?.hand, plaques: [...plaques], lit: [...lit].sort((a, b) => a - b), yourX: pressed };

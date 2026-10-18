@@ -56,6 +56,10 @@ const KEEP = {
   // the action bar, centred on the visible area (7 buttons: your seal leads it in a vote); (vote-fix4) its real rect
   // (gameui: 7 x 18 + gaps = 138 wide, y = H - 22) + 2 px round it
   bar: { w: 142, h: 24 },
+  // (vote-fix5, critic-4 P2-3) on the stones the bar is COMPACT and parked BOTTOM LEFT (gameui.js compactBar: your seal,
+  // emotes, reactions, more = 4 x 18 + 3 x 2 = 78 from x 4) with your seal's tag over its first button (<= 47 x 11 at
+  // y H - 38); on a narrow screen the open reactions dock is a one-row strip right-aligned over the bar row (111 x 23)
+  cbar: { w: 86, h: 24 }, ctag: { w: 52, h: 40 }, strip: { w: 114, h: 27 }, stripMaxW: 300,
   br: { w: 30, h: 30 },       // the dock button (your portrait)
   tc: { x: 196, w: 150, h: 23 },   // the tower timer's chip (timer-ui.js): the top row, right of the game UI's chips
   cap: { y: 24, w: 232, h: 20 },   // the phase caption ribbon (gameui: centred on the visible area, y0 + 26; up for the whole vote)
@@ -139,7 +143,11 @@ export function screenAreas(lowW, lowH, { right = 0, hud = true, staged = false,
     const narrow = lowW / ui < 400;
     keep.push({ x0: 0, y0: 0, x1: narrow ? Math.min(K.tl.w, (vis.x1 - K.tr.w) - 2) : K.tl.w, y1: narrow ? K.tl.row2 : K.tl.h });
     keep.push({ x0: vis.x1 - K.tr.w, y0: 0, x1: vis.x1 + EDGE, y1: K.tr.h });
-    keep.push({ x0: cx - K.bar.w / 2, y0: lowH - K.bar.h, x1: cx + K.bar.w / 2, y1: lowH });
+    // the bar row: staged = the full bar, bottom centre; on the stones the compact bar + your seal's tag bottom left
+    // (barTop: where the plaque / the reaction strip stack from on a narrow screen, gameui.barTop)
+    const barTop = staged ? K.bar.h : K.ctag.h;
+    if (staged) keep.push({ x0: cx - K.bar.w / 2, y0: lowH - K.bar.h, x1: cx + K.bar.w / 2, y1: lowH });
+    else keep.push({ x0: 0, y0: lowH - K.cbar.h, x1: K.cbar.w, y1: lowH }, { x0: 0, y0: lowH - K.ctag.h, x1: K.ctag.w, y1: lowH });
     keep.push({ x0: vis.x1 - K.br.w, y0: lowH - K.br.h, x1: vis.x1 + EDGE, y1: lowH });
     keep.push({ x0: K.tc.x - 2, y0: 0, x1: K.tc.x + K.tc.w, y1: K.tc.h });
     // the phase caption ribbon (top centre: staged, up for the whole vote; on the stones the captions are short-lived
@@ -151,8 +159,14 @@ export function screenAreas(lowW, lowH, { right = 0, hud = true, staged = false,
       // (critic-3 P1-2) the tally plaque's REAL box (votemarks.js PLAQUE / plaqueW) + its gap. (vote-fix4) a wide screen:
       // top left under the chips (the ring never goes there: no frame height spent); narrow: above the action bar
       const pw = (plaqueW((vis.x1 - vis.x0) / ui) + 4) * ui, ph = (PLAQUE.h + PLAQUE.gap + 2) * ui;
-      if (plaqueSpot((vis.x1 - vis.x0) / ui) === 'top') keep.push({ x0: 0, y0: 0, x1: vis.x0 + pw, y1: K.tl.h + ph });
-      else keep.push({ x0: cx - pw / 2, y0: lowH - K.bar.h - ph, x1: cx + pw / 2, y1: lowH - K.bar.h });
+      const bottom = plaqueSpot((vis.x1 - vis.x0) / ui) !== 'top';
+      if (!bottom) keep.push({ x0: 0, y0: 0, x1: vis.x0 + pw, y1: K.tl.h + ph });
+      else keep.push({ x0: cx - pw / 2, y0: lowH - barTop - ph, x1: cx + pw / 2, y1: lowH - barTop });
+      // (vote-fix5, critic-4 P2-7) a narrow screen on the stones: the one-row reaction strip (gameui.js) over the plaque
+      if (!staged && (vis.x1 - vis.x0) / ui < KEEP.stripMaxW) {
+        const y1 = lowH - barTop - (bottom ? ph : 0);
+        keep.push({ x0: vis.x1 - K.strip.w, y0: y1 - K.strip.h, x1: vis.x1 + EDGE, y1 });
+      }
     }
   }
   return { vis, keep };

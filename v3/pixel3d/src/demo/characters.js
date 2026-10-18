@@ -497,7 +497,10 @@ export async function createNPCs(demo, { count = 3 } = {}) {
       const p = demo.player?.position;
       // (B) out of the vote frame while the VOTE camera is up (any stage: on the stones, stage A, they stood just outside
       // the ring and read as part of it; in the court they stood at the frame's bottom edge)
-      const out = !!demo.passB && store.state.camera === 'vote' && !demo.player?.interior;
+      // (vote-fix5, critic-4 P1-2) and from the NOMINATION on (any camera): they are well away before the vote opens.
+      // The walk is radial (away = the same bearing at r 11-16), so it never enters the ring (they stand at r 7.6)
+      const ph = store.state.phase;
+      const out = !!demo.passB && !demo.player?.interior && (store.state.camera === 'vote' || ph === 'nomination' || ph === 'vote');
       const dt = Math.min(0.1, Math.max(0, t - (lastT ?? t))); lastT = t;
       for (const n of npcs) {
         if (!n) continue;

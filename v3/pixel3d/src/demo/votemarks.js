@@ -22,8 +22,11 @@
 //   ghost vote     a dead player's one ghost vote: a small pale GHOST TOKEN hovers at their feet; used = it becomes a
 //                  pale seal (slap / withdraw / lock as above, a pale beam); spent / no ghost vote = nothing
 // THE NOMINEE: a crimson ring round their feet for the whole nomination + vote; the THRESHOLD (the tally reaches the
-//   votes needed): a crimson + gold burst at the nominee, the ring becomes the block ring (crimson + a gold inner ring +
-//   4 gold studs), the tower bell rings, the tally turns gold, the caption says "<name> is on the block".
+//   votes needed): a crimson + gold burst at the nominee HELD ~0.9 s (4 drawings), the ring becomes the BLOCK RING (vote-fix5:
+//   a solid gold double ring + the STOCKS icon in front of it), a CRIMSON BEAM drops onto the nominee (spotlight slot
+//   15), the tower bell rings, the tally turns gold, the caption says "<name> is on the block". The nominee faces the
+//   camera full on (seatcast.js).
+// NO VOTE (vote-fix5): the hand passed a living voter with no seal: a tiny grey ring where the seal would lie.
 // THE CURRENT VOTER: the clock hand's outer end drawn on the ground in LIT brass (gold + a pale-gold light line: it
 //   reads at night) from the dais (stage A: the dais' own hand turns under it) or the staging's hub to that voter.
 // THE TALLY: one small plaque bottom centre above the action bar: "3 votes · 7 needed"; at the threshold it turns gold
@@ -52,6 +55,11 @@ export const KINDS = ['waiting', 'sealed', 'withdrawn', 'counted', 'passed', 'gh
 export const SEAL_M = 0.27;     // the seal's radius (m, x the cast scale)
 export const SEAL_AHEAD = 0.62;       // m in front of the feet (facing the dais; against the seat stone's rim: it reads as theirs)
 const T_SLAM = 4, T_REST = 14, T_WD = 10, T_STAMP = 12;        // grid frames: the slam, the slap done, withdraw done, stamp done
+// (vote-fix5, critic-4 P2-4) the threshold moment HOLDS: the burst in 4 drawings of BURST_D grid frames (0.93 s), the
+// sparks as long; the nominee's crimson beam is spotlight slot NOM_SPOT (after the 15 seats')
+const BURST_D = 7, BURST_F = 4 * BURST_D, NOM_SPOT = N;
+// (vote-fix5, critic-4 P3) the hand passed a seat with no seal: a tiny grey "no vote" ring pops in (2 drawings) and stays
+const T_NOVOTE = 4;
 const END_S = 0.5;              // the marks dissolve this long after the vote phase ends
 
 // ------------------------------------------------------------------------------------------------ helpers
@@ -251,6 +259,19 @@ function nomRingArt(rx, ry, q, T, block) {
   return memo(`nom|${rx}|${ry}|${q}|${block}|${T.gold}`, () => {
     const R = Math.ceil(rx) + 3 * q, Rv = Math.ceil(ry) + 3 * q;
     const img = new PixelImage(2 * R + 1, 2 * Rv + 1), cx = R + 0.5, cy = Rv + 0.5;
+    // (vote-fix5, critic-4 P2-4) ON THE BLOCK = a SOLID GOLD DOUBLE RING (a wide gold band + a thin bright inner ring),
+    // nothing crimson left: it reads as a different state at a glance (the old block ring was the crimson one + a thin
+    // gold line); the stocks icon stands in front of it (stocksArt)
+    if (block === 'gold') {
+      const G = { hi: '#FFF6C8', mid: T.goldHi, sh: T.gold, line: T.goldLine };
+      A.annulus(img, cx, cy, rx, ry, G, { tx: 3 * q, ty: 2 * q });
+      const g = new PixelImage(img.w, img.h);
+      for (let i = 0; i < Math.max(1, q); i++) g.ring(cx, cy, rx - 5 * q - i, ry - 3.5 * q - i * 0.5, T.goldHi);
+      g.outline(T.goldLine);
+      img.blit(g, 0, 0);
+      img.ox = R; img.oy = Rv;
+      return img;
+    }
     A.annulus(img, cx, cy, rx, ry, CRIMSON, { tx: 3 * q, ty: 2 * q });
     if (block) {
       const g = new PixelImage(img.w, img.h);
@@ -263,6 +284,42 @@ function nomRingArt(rx, ry, q, T, block) {
     }
     img.ox = R; img.oy = Rv;
     return img;
+  });
+}
+/** (vote-fix5) THE STOCKS (the "on the block" icon): a hinged oak board with the neck hole and two wrist holes, iron
+ *  bands, on two short posts; u px per art unit (13 x 9 units). Anchor: the posts' feet, centre (ox, oy). */
+function stocksArt(u, T) {
+  return memo(`stocks|${u}|${T.gold}`, () => {
+    const W = 13 * u + 2, H = 9 * u + 2, img = new PixelImage(W, H), o = 1;
+    const WOOD = { hi: '#D49A62', mid: '#9A6238', sh: '#62391F' }, IRON = '#3A3440';
+    // posts
+    for (const px of [2, 9]) { img.rect(o + px * u, o + 5 * u, 2 * u, 4 * u, WOOD.sh); img.rect(o + px * u, o + 5 * u, Math.max(1, u >> 1) || 1, 4 * u, WOOD.mid); }
+    // the board (two halves: the seam through the holes)
+    img.rect(o, o + u, 13 * u, 4 * u, WOOD.mid);
+    img.rect(o, o + u, 13 * u, u, WOOD.hi);
+    img.rect(o, o + 4 * u, 13 * u, Math.max(1, u >> 1) || 1, WOOD.sh);
+    img.rect(o, o + 3 * u, 13 * u, Math.max(1, u >> 1) || 1, WOOD.sh);          // the seam
+    // holes: wrist, neck, wrist
+    for (const [hx, hw] of [[1.5, 2], [5.5, 2], [9.5, 2]]) img.rect(o + Math.round(hx * u), o + 2 * u, Math.round(hw * u), 2 * u, '#1A1012');
+    img.rect(o + 5 * u, o + 2 * u, 3 * u, 2 * u, '#1A1012');
+    // iron bands + the gold hasp
+    for (const bx of [0, 12]) img.rect(o + bx * u, o + u, u, 4 * u, IRON);
+    img.rect(o + 6 * u, o, u, 2 * u, T.goldHi); img.set(o + 6 * u, o, '#FFFFFF');
+    img.outline(T.goldLine);
+    img.ox = Math.round(W / 2); img.oy = H - 1;
+    return img;
+  });
+}
+/** (vote-fix5) the hand passed a seat with no seal: a tiny grey ring where a seal would lie ("registered: no vote");
+ *  k 0 = popping (1 px wider), 1 = at rest. Subtle on purpose: a dim stone grey, dithered. */
+function noVoteArt(rx, ry, q, k) {
+  return memo(`novote|${rx}|${ry}|${q}|${k}`, () => {
+    const r = Math.max(3, Math.round(rx * 0.42)) + (k ? 0 : q), rv = Math.max(2, Math.round(ry * 0.42)) + (k ? 0 : q);
+    const o = new PixelImage(2 * r + 5, 2 * rv + 5), cx = r + 2.5, cy = rv + 2.5;
+    for (let i = 0; i < Math.max(1, q); i++) o.ring(cx, cy, r - i, rv - i * 0.5, '#8C8A92');
+    o.outline('#3C3A44');
+    o.ox = r + 2; o.oy = rv + 2;
+    return k ? o : dissolve(o, 0.25);
   });
 }
 /** The threshold burst at the nominee (k 0..3): crimson + gold rings racing out */
@@ -356,7 +413,8 @@ export function createVoteMarks(demo) {
   const P = new THREE.Vector3();
   const C = demo.layout?.CIRCLE ?? { cx: 22.5, cz: 19.75 };
   let spots = null;
-  if (params.get('spotlights') !== '0') { try { spots = createSpotlights(engine); } catch (e) { console.warn('[passB] spotlights unavailable:', e); spots = null; } }
+  // (vote-fix5) + 1 slot: the nominee's crimson beam from the threshold on (NOM_SPOT)
+  if (params.get('spotlights') !== '0') { try { spots = createSpotlights(engine, { count: N, extra: 1 }); } catch (e) { console.warn('[passB] spotlights unavailable:', e); spots = null; } }
 
   // the last vote: its final state is held (dissolving) END_S after the vote phase ends
   let last = null;          // { v, V, S, endedAt, lastTally, liftAt, bell }
@@ -410,10 +468,14 @@ export function createVoteMarks(demo) {
     const st = stage(), staged = !!st && !st.onStones && st.active;
     const fx = staged ? at.pos.x + Math.sin(at.face ?? 0) : C.cx, fz = staged ? at.pos.z + Math.cos(at.face ?? 0) : C.cz;
     sealDir.set(fx - at.pos.x, 0, fz - at.pos.z).normalize();
-    const dot = sealDir.dot(toCam), w = Math.min(1, Math.max(0, (-dot - 0.25) / 0.5));
+    // (vote-fix5, critic-4 P2-1) on the stones the side arcs' seals turn TOWARD THE CAMERA (straight down on screen,
+    // under their own feet): inward they slid sideways toward the next seat (Bones' seal read as Morel's). The far arc
+    // (the dais toward the camera) keeps "inward"; from side-on (dot 0) the camera wins (w 0.85), the near arc fully.
+    const dot = sealDir.dot(toCam), w = staged ? Math.min(1, Math.max(0, (-dot - 0.25) / 0.5)) : Math.min(1, Math.max(0, (0.6 - dot) / 0.7));
     return sealDir.lerp(toCam, w).normalize();
   }
   const sealBoxes = new Map();   // seat -> the seal's box (L.world texels) last frame (gameui keeps names off it)
+  let nomBox = null;             // (vote-fix5) the nominee's ring (+ the stocks) box (L.world texels) last frame, or null
   const groundApi = demo.town?.registry?.get?.('ground')?.api;
   const terrain = (x, z) => (typeof groundApi?.heightAt === 'function' ? groundApi.heightAt(x, z) : 0);
   // the staging's hub (the court) or the dais' centre (on the stones) for the clock hand drawn on the ground
@@ -460,7 +522,7 @@ export function createVoteMarks(demo) {
     const live = voteState(t);
     const active = ph === 'vote' || ph === 'nomination' || !!live;
     if (!active || !sc) {
-      info.phase = ph; info.seats = {}; markTop.clear(); info.nominee = null;
+      info.phase = ph; info.seats = {}; markTop.clear(); info.nominee = null; nomBox = null; sealBoxes.clear();
       if (spots) { spots.allOff(); info.spot = null; }
       if (!live) { info.plaque = null; Object.assign(info, { tally: 0, needed: 0, passed: false, passedAt: null, current: null }); }
       return;
@@ -503,23 +565,42 @@ export function createVoteMarks(demo) {
     }
     // ---- the nominee: the crimson ring (the block ring from the threshold) + the threshold burst
     const nomIdx = live?.v ? live.v.nominee - 1 : (store.state.nominee ?? store.state.seats.findIndex((x) => x.nominated));
-    info.nominee = null;
+    info.nominee = null; nomBox = null;
     if (nomIdx != null && nomIdx >= 0 && (ph === 'nomination' || ph === 'vote' || live)) {
       const at = sc.spotOf(nomIdx);
       if (at?.shown) {
         const f = atW(at.pos), rx = pxOf(0.66 * at.scale), ry = Math.max(2, Math.round(rx * sp * 1.02));
         const passed = S?.passedAt != null && t >= S.passedAt;
-        const im = nomRingArt(rx, ry, q, T, passed);
-        ground(im, Math.round(f.x) - im.ox, Math.round(f.y) - im.oy, at.pos, im.oy);
+        const im = nomRingArt(rx, ry, q, T, passed ? 'gold' : false);
+        const fx0 = Math.round(f.x), fy0 = Math.round(f.y);
+        ground(im, fx0 - im.ox, fy0 - im.oy, at.pos, im.oy);
+        let box = { x0: fx0 - im.ox, x1: fx0 + im.ox, y0: fy0 - im.oy, y1: fy0 + im.oy };
+        const k = passed ? gk(t - S.passedAt) : -1;
+        if (passed) {
+          // (vote-fix5, critic-4 P2-4) THE STOCKS stand in front of the gold ring (pop up: 2 drawings), on the world tier
+          const u = Math.max(1, Math.round(rx / 9)), st = stocksArt(u, T), sx = fx0 - st.ox, sy = fy0 + ry + 2 * q - (reduced || k >= 4 ? 0 : k >= 2 ? q : 3 * q);
+          blitF(Wimg, k >= 0 && k < 2 && !reduced ? dissolve(st.clone(), 0.5) : st, sx, sy);
+          box = { x0: Math.min(box.x0, sx), x1: Math.max(box.x1, sx + st.w), y0: box.y0, y1: Math.max(box.y1, sy + st.h) };
+        }
         if (passed && !reduced) {
-          const k = gk(t - S.passedAt);
-          if (k >= 0 && k < 12) { const b = burstArt(Math.min(3, k >> 2), rx, ry, q, T); ground(b, Math.round(f.x) - b.ox, Math.round(f.y) - b.oy, at.pos, b.oy); }
-          if (k >= 0 && k < 14) {
-            const G = { core: '#FFFFFF', arm: T.goldHi, tip: T.gold }, hp = atW(at.pos.clone().setY(at.pos.y + at.height * 0.55));
-            for (let j = 0; j < 6; j++) { const a = (j / 6) * Math.PI * 2 + k * 0.08, rr = (8 + k * 2.2) * q; sparkQ(Wimg, hp.x + Math.cos(a) * rr * 1.2, hp.y + Math.sin(a) * rr * 0.8, k < 7 ? 1 : 0, q, G); }
+          // the burst HOLDS (BURST_F frames, 4 drawings of BURST_D) with its sparks, slower and wider
+          if (k >= 0 && k < BURST_F) { const b = burstArt(Math.min(3, Math.floor(k / BURST_D)), rx, ry, q, T); ground(b, fx0 - b.ox, fy0 - b.oy, at.pos, b.oy); }
+          if (k >= 0 && k < BURST_F) {
+            const G = { core: '#FFFFFF', arm: T.goldHi, tip: T.gold }, hp = atW(at.pos.clone().setY(at.pos.y + at.height * 0.55)), kd = Math.floor(k / 2);
+            for (let j = 0; j < 8; j++) { const a = (j / 8) * Math.PI * 2 + kd * 0.12, rr = (8 + kd * 2.0) * q; sparkQ(Wimg, hp.x + Math.cos(a) * rr * 1.2, hp.y + Math.sin(a) * rr * 0.8, k < BURST_F - 8 ? 1 : 0, q, G); }
           }
         }
-        info.nominee = { seat: nomIdx, block: passed };
+        // (vote-fix5, critic-4 P2-4) the nominee's CRIMSON BEAM from the threshold on (the spotlight's 4-step drop + pool)
+        if (spots) {
+          if (passed) {
+            const drop = reduced ? 1 : Math.min(1, (Math.floor(k / 2) + 1) / 4), pool = reduced || k >= 10 ? 1 : k >= 8 ? 0.5 : 0;
+            const fadeN = live?.endedAt != null ? Math.min(0.75, Math.floor((t - live.endedAt) / 0.125) * 0.25) : 0;
+            // (on 1.6: the crimson reads weaker than the warm beams at the same gain)
+            spots.set(NOM_SPOT, { x: at.pos.x, y: at.pos.y, z: at.pos.z, ground: at.staged ? at.pos.y : 0.06, scale: (at.scale ?? 1) * 1.1, drop, pool, on: 1.6 * (1 - fadeN), tint: 2 });
+          } else spots.off(NOM_SPOT);
+        }
+        { const s1 = 1 / kk; nomBox = { x0: Math.floor(box.x0 * s1), x1: Math.ceil(box.x1 * s1), y0: Math.floor(box.y0 * s1), y1: Math.ceil(box.y1 * s1) }; }
+        info.nominee = { seat: nomIdx, block: passed, beam: !!spots && passed, burst: passed && k >= 0 && k < BURST_F };
       }
     }
     // ---- per seat (far first: nearer pieces print over farther ones)
@@ -579,8 +660,13 @@ export function createVoteMarks(demo) {
         if (k < 2) {
           const im = sealArt(red, rx, ry, T, th); blitF(Wimg, im, fx - im.ox, fy - im.oy - 2 * q);   // un-stamped: a hop
           drawn = 'unstamp';
-        } else if (k < 6) { airSeal(red, k < 4 ? 0.6 : 0.25); drawn = 'rise'; }
-        else if (k < T_WD) { const du = dustArt(k < 8 ? 1 : 2, Math.round(rx * 0.5), Math.round(rx * 0.5), q); blitF(Wimg, du, Math.round(handP.x) - du.ox, Math.round(handP.y) - du.oy); drawn = 'gone'; }
+        } else if (k < 6) { airSeal(red, k < 4 ? 0.7 : 0.55); drawn = 'rise'; }
+        else if (k < T_WD) {
+          // (vote-fix5, critic-4 P3) the take-back puff at the voter's middle (was at the head: it rose over the name)
+          const du = dustArt(k < 8 ? 1 : 2, Math.round(rx * 0.45), Math.round(rx * 0.45), q);
+          const px = Math.round(handP.x + (fx - handP.x) * 0.55), py = Math.round(handP.y + (fy - handP.y) * 0.55);
+          blitF(Wimg, du, px - du.ox, py - du.oy); drawn = 'gone';
+        }
         spots?.off(i);
       } else if (kind === 'counted' || kind === 'ghost-counted') {
         const k = reduced ? 99 : gk(t - m.lockAt);
@@ -616,10 +702,17 @@ export function createVoteMarks(demo) {
         ground(sh, fx - sh.ox, fy - sh.oy, sp0, sh.oy);
         drawn = 'token';
         spots?.off(i);
+      } else if (kind === 'passed' && S && !m.nominee) {
+        // (vote-fix5, critic-4 P3) "registered: no" - the hand passed a living voter with no seal: a tiny grey ring
+        const d = S.seats?.[i + 1], k = reduced || !d ? 9 : gk(t - d.lockAt);
+        const nv = noVoteArt(rx, ry, q, k < T_NOVOTE ? 0 : 1);
+        ground(nv, fx - nv.ox, fy - nv.oy, sp0, nv.oy);
+        drawn = 'novote';
+        spots?.off(i);
       } else spots?.off(i);
       const top = Math.round(handP.y - 2 * q);
-      if (drawn && drawn !== 'rest' && drawn !== 'gold') markTop.set(i, HD ? Math.floor(top / kk) : top);
-      marks[i] = { kind, drawn, current: m.current, nominee: m.nominee, at: [fx, fy], spot: lit.has(i) };
+      if (drawn && drawn !== 'rest' && drawn !== 'gold' && drawn !== 'novote') markTop.set(i, HD ? Math.floor(top / kk) : top);
+      marks[i] = { kind, drawn, current: m.current, nominee: m.nominee, at: [fx, fy], w: [+sx.toFixed(2), +sz.toFixed(2)], spot: lit.has(i) };
     }
     info.seats = marks;
     if (spots) {
@@ -670,9 +763,12 @@ export function createVoteMarks(demo) {
     let x, y;
     if (top) { x = top.x0; y = top.y1 + PLAQUE.gap; }
     else {
-      const cx = bar ? Math.floor(bar.x + bar.w / 2) : Math.floor(visW / 2);
-      y = (bar ? bar.y : img.h - 26) - PLAQUE.gap - h;
-      x = cx - (w >> 1);
+      // (vote-fix5) over the bar row + your seal's tag (gameui.barTop); centred on the visible area under the compact
+      // bar (it sits bottom left), over the bar's centre otherwise
+      const compact = !!gameui.compactBar;
+      const cx = bar && !compact ? Math.floor(bar.x + bar.w / 2) : Math.floor(visW / 2);
+      y = (bar ? gameui.barTop ?? bar.y : img.h - 26) - PLAQUE.gap - h;
+      x = Math.max(2, cx - (w >> 1));
     }
     const goldK = passed ? gk(t - live.S.passedAt) : -1;
     const gold = passed && (goldK >= 2 || reduced);
@@ -711,6 +807,8 @@ export function createVoteMarks(demo) {
     get plaque() { return info.plaque; },
     /** seat i's seal box (L.world texels) as placed last frame (drawn or not: where it lies / would lie), or null */
     sealBoxOf: (i) => sealBoxes.get(i) ?? null,
+    /** (vote-fix5) the nominee's ring (+ the stocks from the threshold) box (L.world texels) last frame, or null */
+    nomineeBox: () => nomBox,
     spotlights: spots,
     update() { /* drawn by the UI layer pass (gameui.layers) */ },
     dispose() { L.remove?.(draw); spots?.dispose(); },
@@ -728,7 +826,8 @@ export function voteStateArt(T, { hd = false } = {}) {
   for (let k = 0; k < 3; k++) out[`chime_${k}`] = chimeArt(k, rx, ry, q, T);
   out.flash = flashArt(rx, ry, q, T);
   out.ghost_0 = ghostArt(18 * q, 0, T); out.ghost_1 = ghostArt(18 * q, 1, T);
-  out.nominee = nomRingArt(18 * q, 9 * q, q, T, false); out.block = nomRingArt(18 * q, 9 * q, q, T, true);
+  out.nominee = nomRingArt(18 * q, 9 * q, q, T, false); out.block = nomRingArt(18 * q, 9 * q, q, T, 'gold');
+  out.stocks = stocksArt(2 * q, T); out.novote = noVoteArt(rx, ry, q, 1);
   for (let k = 0; k < 4; k++) out[`burst_${k}`] = burstArt(k, 18 * q, 9 * q, q, T);
   return out;
 }

@@ -535,7 +535,8 @@ Loaded by main.js after the view inset and BEFORE the shader warm-up (one `load`
 screen. `demo.passB = { votecam, timer, seats, interior, ui, update, info() }`; each part can be switched off with
 `?passB.<part>=0` (`?passB=0` = none: the A/B baseline), a failing part is reported in `__demo.errors` and skipped.
 Parts in load order: `stage` (votestage.js), `votecam`, `timer`, `seats`, `interior`, `ui`, `marks` (votemarks.js),
-`daisdress` (daisdress.js: the dais' candle stakes out while the vote camera is up).
+`daisdress` (daisdress.js: the dais' candle stakes out while the vote camera is up), `ringclear` (ringclear.js,
+vote-fix5: no town-life walker inside r 8.5 m of the ring during the vote).
 (Merged 2026-10-17 from the vote-staging copy `pixel3d-vote-final`, which forked from pass B before the D=2 switch: its
 new files votestage.js / votemarks.js and its passb.js / votecam.js taken whole (main's versions had no other edits),
 seatcast.js / gameui.js / tools/demo-play-passb.mjs hand-merged onto main's D=2 + seat-swap + program-name work.)
@@ -592,6 +593,51 @@ seatcast.js / gameui.js / tools/demo-play-passb.mjs hand-merged onto main's D=2 
   spent there); all 15 seats + the dial in frame and clear of the HUD. The frame is HEIGHT-bound at yaw 45 (content
   16 x 13.7 m), so the panel's width mattered little; the board no longer existing changes nothing (it was never in the
   fit's content). Evidence `shots/demo-vote-emoji/stageA-*.png`. The staged court below is `?voteStage=N`.
+- **vote-fix5 (2026-10-18, critic round 4 = 11/16; evidence + scripts `shots/vote-fix5/`, checkpoint `PROGRESS.md`)**:
+  - **Butler timing** (P2-2): the clock hand takes `VOTE_PER` **1.1 s** per seat (was 0.55: ~8 s for the ring; the events
+    vote's own pace is 1.2 s) and starts `OPEN_LEAD` **3.0 s** after the vote opens (sealvote.js; time.js `sweep.per`,
+    gameui's default). No seat - yours neither - locks within 3 s of the opening (yours, first after the nominee: 3.44 s).
+    The ceremony's execution / night move by `LAG = OPEN_LEAD - 0.4 + 14 x (VOTE_PER - CEREMONY.perSeat)` (still ~1.9 s
+    after the hand's last seat); the whole ceremony runs ~36 s (the playtest waits 60 s).
+  - **Your seal is obvious and hard to undo** (P2-5): the toggle is DEBOUNCED 0.35 s (`seatcast.toggleSeal`: a press
+    inside the window is ignored and extends it - a double-click, a bouncing X or X held = ONE slap). The seal slot
+    PULSES (a gold halo, 2 drawings of 3 at 3.75 fps) while the vote waits for your seal, steady while it lies down, and
+    a TAG over it says **VOTE / VOTED / COUNTED / NO VOTE** (gameui `mySealTag`, `info().sealTag`) - "registered: yes /
+    no" for the Butler at a glance.
+  - **The compact vote bar** (P2-3): while the vote camera is up on the stones the action bar is your seal + emotes +
+    reactions + more, parked BOTTOM LEFT (`compactBar()`); the DOM status line hides with the panel (`.dui-status
+    .dui-away`). votecam's keep-outs follow (`KEEP.cbar` 86 x 24 + `KEEP.ctag` 52 x 40 bottom left; the narrow-screen
+    plaque stacks over `gameui.barTop`), so the near tip sits at the bottom centre and the content is centred: 1280 x 720
+    figures 232 px from the left / ring + dial ~centred (was ~0 / 400), **66.4 px** (1.3 m figure; median seat 66, far arc
+    51), 1920 x 1080 **100 px** median (76-127), phone 31 px (width-bound). 60 fps, programs constant (69 / 66).
+  - **Tooltips in the vote camera** (P1-1): after a click on a bar button its tooltip stays hidden until the pointer
+    leaves it (`barQuiet`); a tooltip is placed only where it touches no seat's seal box and not the nominee's ring
+    (`voteKeepOuts()`: `marks.sealBoxOf(i)` + `marks.nomineeBox()`, logical px; tried: over the button / the tag, the
+    bar's row, higher) - else none - with SHORT vote tips ("Vote (X)", "Emotes (Space)", "React (G)", "More").
+  - **No townsfolk in the ring** (P1-2): the figure was a TOWN LIFE walker (src/town/life day routes: the baker walks
+    (31.5, 18.6) -> (14.2, 18.4) across the circle, the hound passes r 5.5) whose timed route crosses the square 8-20 s
+    after a page load. `ringclear.js` (pass-B part) wraps each life walker's update: within r **8.5 m** of the circle's
+    centre it is hidden the way life hides a walker indoors (scale 1e-4: no program change) while the vote camera is up
+    or the phase is the nomination / the vote. The demo's idle NPCs walk out from the NOMINATION on (radially: never
+    inside r 7.6). `passB.ringclear.check()` -> the nearest shown figure (runs: >= 8.5 m all vote long).
+  - **Seals attributable** (P2-1): on the stones a seal turns toward the CAMERA unless the dais already lies that way
+    (`sealDirOf`: w = (0.6 - dot) / 0.7): the side arcs' seals lie straight down on screen under their own feet. Every
+    drawn seal is nearer its own feet than any other seat's (screen px, all frames: 0 exceptions at 720p / 1080p / phone).
+  - **The threshold** (P2-4): the burst HOLDS 0.93 s (4 drawings x 7 grid frames, 8 sparks); the BLOCK ring is a solid
+    GOLD DOUBLE ring (no crimson left) with the STOCKS icon (an oak board, neck + wrist holes, iron bands, a gold hasp)
+    popping up in front of it; the nominee gets a CRIMSON BEAM (spotlight slot 15 - `createSpotlights({count: 15, extra:
+    1})`, `tint` 2; same one program) from the threshold on; the nominee faces the camera full on (seatcast).
+  - **Your figure's "shadow tint"** (P2-6), ROOT CAUSE: the drifting CLOUD SHADOWS (high tier; a character takes the
+    cloud at its anchor as a whole). A cloud lay over your seat for 5-15 s after sitting (`?clouds=0`: lit from the first
+    frame); inside a room the town's cloud field still shaded the figures under the roof. time.js now HOLDS the clouds
+    off inside a room and while the vote camera is up (`cloudHold()`, applied the frame it changes).
+  - **Phone dock** (P2-7): in the vote camera on a narrow screen (visible width < 300 logical px) G / the dock button
+    opens a ONE-ROW reaction strip (7 reactions, 111 x 23, right-aligned over the plaque; point / pin stay on the pie).
+  - P3: your own name takes the ring's close label slots (it stepped 2 rows up at 1080p); the take-back puff sits at
+    the voter's middle; the pie's hint plate goes BELOW the pie when the target's name is above it; the P toast reads
+    "The voting ceremony begins"; the notebook wraps a long name to 2 lines; a tiny grey **NO VOTE ring** where the seal
+    would lie once the hand passed a living voter without one; at night six RING anchors (r 5.2, 2.4 m up) join the
+    constant light pool while the vote camera is up on the stones (no new light; `time.info.ringLit`).
 - **The vote staging, the court** (`?voteStage=N`; `votestage.js createVoteStage`; the user: "voting arrangement is still not focussing on the
   players + clock of the clocktower as central, we want to be as closely cropped as possible to maximize the detail on
   the characters" / "the voting circle can exaggerate things compared to the day - can take artistic licenses"). While
@@ -702,7 +748,7 @@ seatcast.js / gameui.js / tools/demo-play-passb.mjs hand-merged onto main's D=2 
     vote. A dead player's one ghost vote works the same (`ghostVote`). `sealVoteAt(V, t, log)` -> per seat {down, yes,
     no, changeAt, lockAt}, tally, needed, passedAt (the lock that reached `needed` = ceil(alive / 2)), current, done:
     pure, so gameui (captions, results, reactions), votemarks and seatcast agree frame by frame. The sweep now starts
-    `OPEN_LEAD` 1.6 s after the vote opens (the opening slaps land first; the ceremony's execution / night 1.2 s later).
+    `OPEN_LEAD` 3.0 s after the vote opens and takes `VOTE_PER` 1.1 s per seat (vote-fix5; was 1.6 / 0.55).
     **The ceremony's script** (written AHEAD into the log, so single-frame captures agree with live play): the eight
     voters slap in a cascade round the ring as the vote opens, seat 14 slaps LATE (1.1 s before the hand), seat 1 TAKES
     ITS SEAL BACK (1.6 s before the hand), the ghost (seat 3) spends its ghost vote; your seat is left to you.
@@ -723,10 +769,11 @@ seatcast.js / gameui.js / tools/demo-play-passb.mjs hand-merged onto main's D=2 
     it hops off the ground (un-stamped, drops gone), rises to the hand (2 drawings) and is gone in a small puff.
     **LOCK** (the hand reaches a seat with a seal): a brass seal-press comes down (3 drawings), presses (the flash, the
     seal turns GOLD, a brass chime ring, 4 sparks), lifts away; the **spotlight** drops onto the voter. **No seal when
-    the hand passes**: nothing. **Ghost vote available**: a small pale sheet-ghost token hovers at the seal's spot; used =
+    the hand passes**: a tiny grey ring where the seal would lie (vote-fix5). **Ghost vote available**: a small pale sheet-ghost token hovers at the seal's spot; used =
     a pale seal (the same slap / take back / lock, a pale-gold seal and a pale beam); spent: nothing.
     **The nominee**: a crimson ring round their feet through the nomination and the vote; at the THRESHOLD a crimson +
-    gold burst races out, sparks, and it becomes the BLOCK ring (crimson + a gold inner ring + 4 gold studs); the tower
+    gold burst races out (held 0.93 s), sparks, and it becomes the BLOCK ring (vote-fix5: a solid gold double ring + the
+    stocks icon; a crimson beam on the nominee); the tower
     bell strikes (`time.ringBell`, `events 'vote:threshold'`). **The current voter**: the clock hand's outer end drawn
     on the ground in LIT brass (gold, a pale-gold light line, the chevron tip; from the dais past its treads to the
     voter's seal on the stones, from the hub in a court). Ground pieces (resting seals, drops, rings, the hand) are

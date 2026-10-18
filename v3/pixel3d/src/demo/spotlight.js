@@ -12,7 +12,7 @@
 //             3 hard bands across the cone (from its silhouette to its middle) x a fade toward the top, the band edges
 //             ordered-dithered (Bayer 4 x 4 in screen texels: the town's pool look);
 //             a POOL = an inner disc on the stone's top (r 0.43) + an outer ring on the ground (to r 0.95), 3 bands.
-//   createSpotlights(engine, {count}) -> { mesh, set(i, {x, y, z, ground, scale, drop, pool, on, ghost}), off(i),
+//   createSpotlights(engine, {count, extra}) -> { mesh, set(i, {x, y, z, ground, scale, drop, pool, on, ghost, tint}), off(i),
 //                                         gain(day01, night01), info(), dispose() }
 // The caller (votemarks.js) sets every seat every frame from the vote's state (pure: a function of the demo clock).
 import * as THREE from 'three';
@@ -21,7 +21,9 @@ import { LAYERS } from '../core/PixelPipeline.js';
 const SIDES = 16, RINGS = 24;
 const TOP = 3.4, R_TOP = 0.14, R_BOT = 0.62, R_IN = 0.43, R_OUT = 0.95;
 
-export function createSpotlights(engine, { count = 15 } = {}) {
+export function createSpotlights(engine, { count: seats = 15, extra = 0 } = {}) {
+  // (vote-fix5) `extra` slots after the seats' (votemarks.js: slot 15 = the nominee's crimson beam from the threshold)
+  const count = seats + extra;
   const pos = [], seat = [], kind = [], uv = [];
   const push = (p, s, k, u, v) => { pos.push(...p); seat.push(s); kind.push(k); uv.push(u, v); };
   for (let s = 0; s < count; s++) {
@@ -98,7 +100,8 @@ export function createSpotlights(engine, { count = 15 } = {}) {
       void main() {
         if (uPassMode == 1 || vOn <= 0.001) discard;
         float b = bayer4(gl_FragCoord.xy);
-        vec3 warm = mix(vec3(1.0, 0.80, 0.46), vec3(0.78, 0.9, 1.0), vGhost);
+        // tint: 0 warm (a counted vote), 1 pale (a ghost's vote), 2 CRIMSON (vote-fix5: the nominee on the block)
+        vec3 warm = vGhost < 0.5 ? vec3(1.0, 0.80, 0.46) : vGhost < 1.5 ? vec3(0.78, 0.9, 1.0) : vec3(1.0, 0.22, 0.26);
         float lv;
         if (vKind < 0.5) {
           // 3 bands across the beam: its EDGES bright (the cone's silhouette), its middle - where the figure stands -
@@ -133,15 +136,15 @@ export function createSpotlights(engine, { count = 15 } = {}) {
   return {
     mesh,
     /** seat i: feet (x, y, z), ground y (the outer pool ring), scale, drop 0..1 (the beam's lower end), pool 0..1, on 0..1 */
-    set(i, { x, y, z, ground = 0.03, scale = 1, drop = 1, pool = 1, on = 1, ghost = false }) {
-      uAt.value[i].set(x, y, z, scale); uSt.value[i].set(on, drop, ground, ghost ? 1 : 0); uPool.value[i] = pool;
+    set(i, { x, y, z, ground = 0.03, scale = 1, drop = 1, pool = 1, on = 1, ghost = false, tint = null }) {
+      uAt.value[i].set(x, y, z, scale); uSt.value[i].set(on, drop, ground, tint ?? (ghost ? 1 : 0)); uPool.value[i] = pool;
       if (on > 0) lit.add(i); else lit.delete(i);
     },
     off(i) { uSt.value[i].x = 0; uPool.value[i] = 0; lit.delete(i); },
     allOff() { for (let i = 0; i < count; i++) { uSt.value[i].x = 0; uPool.value[i] = 0; } lit.clear(); },
     /** brightness of the beams / pools (day ~0.3 / 0.42, night brighter: the dark town takes more light) */
     gain(beam, pool) { uGain.value.set(beam, pool); },
-    info: () => ({ lit: [...lit].sort((a, b) => a - b), gain: [+uGain.value.x.toFixed(2), +uGain.value.y.toFixed(2)] }),
+    info: () => ({ lit: [...lit].filter((i) => i < seats).sort((a, b) => a - b), extra: [...lit].filter((i) => i >= seats).map((i) => i - seats), gain: [+uGain.value.x.toFixed(2), +uGain.value.y.toFixed(2)] }),
     dispose() { mesh.removeFromParent(); g.dispose(); mat.dispose(); },
   };
 }

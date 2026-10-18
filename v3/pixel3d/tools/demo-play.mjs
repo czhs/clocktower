@@ -737,7 +737,8 @@ try {
     note(cKey ? `ceremony key: ${cKey}` : 'no ceremony key: time.playCeremony()');
     const seen = [], t0 = Date.now();
     let last = null, maxSeats = 0, deadNominee = false, shots = 0;
-    while (Date.now() - t0 < 40000) {
+    // (vote-fix5) the ceremony runs ~36 s now (the hand 1.1 s per seat, 3 s after the vote opens)
+    while (Date.now() - t0 < 60000) {
       const i = await info();
       const c = await page.evaluate(() => window.__demo.demo.time?.ceremony ?? null);
       const ph = i.state.phase;

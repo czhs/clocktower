@@ -78,7 +78,11 @@ export function sealVoteAt(V, t, log) {
 // the hand reaches them; `ghost` spends a ghost vote (slaps a pale seal) at t0 + `s`. Result: 9 votes, 7 needed - the
 // threshold falls on seat 2 with three seats still to come (one withdrew, one slapped late, the ghost voted).
 export const CEREMONY_SEALS = { open: [7, 9, 10, 12, 0, 1, 2, 4], late: { 14: 1.1 }, withdraw: { 1: 1.6 }, ghost: { 3: 0.5 } };
-export const OPEN_LEAD = 1.6;          // s between the vote opening and the hand starting (the slaps land first)
+// (vote-fix5, critic-4 P2-2) a Butler must be able to follow their master: the hand takes VOTE_PER s per seat (was 0.55:
+// a whole sweep in ~8 s; 1.1 ~ the events vote's 1.2 s per voter) and starts OPEN_LEAD s after the vote opens (was 1.6),
+// so no seat - yours neither - locks within 3 s of the opening
+export const VOTE_PER = 1.1;           // s per seat of the clock hand (time.js sweep.per)
+export const OPEN_LEAD = 3.0;          // s between the vote opening and the hand starting (the slaps land first)
 export const OPEN_STAGGER = 0.12;      // s between two opening slaps (clockwise from the nominee)
 /**
  * Write the ceremony's seals into `log` for a vote opening at `open` (engine s) whose hand reaches seat offset k (1 =

@@ -64,7 +64,7 @@ import { installMergedBooks } from '../ui/runtime/book3d.js';   // the 3D big bo
 import { loadPortraits, goldFrame, goldFrameHD } from '../ui/portraits/atlas.js';
 import * as EV from '../ui/events/draw.js';
 import { formatClock } from './api.js';
-import { sealVoteAt } from './sealvote.js';
+import { sealVoteAt, VOTE_PER } from './sealvote.js';
 import * as AB from './actionbar.js';
 import { createNotebook } from './notebook.js';
 
@@ -260,6 +260,17 @@ export async function createGameUI(demo) {
   /** (seal vote) the vote camera is up with the cast on the seat stones (stage A, the default) */
   const vcRing = () => store.state.camera === 'vote' && !!demo.passB?.votecam && !staged() && !demo.player?.interior;
   const RING_C = new THREE.Vector3(demo.layout?.CIRCLE?.cx ?? 22.5, 0.2, demo.layout?.CIRCLE?.cz ?? 19.75);
+  /** (vote-fix5, critic-4 P1-1) logical-px keep-outs of the vote for the HUD's tooltips / popovers: every seat's seal
+   *  box (votemarks.js sealBoxOf: drawn or not) and the nominee's ring (+ its icon), padded */
+  const voteKeepOuts = () => {
+    const mk = demo.passB?.marks, out = [];
+    if (!mk) return out;
+    const f = t2l(), M = L.MARGIN ?? 0;
+    const add = (b, p) => { if (b) out.push({ x0: (b.x0 - M) * f - p, x1: (b.x1 - M) * f + p, y0: (b.y0 - M) * f - p, y1: (b.y1 - M) * f + p }); };
+    for (let i = 0; i < 15; i++) add(mk.sealBoxOf?.(i), 2);
+    add(mk.nomineeBox?.(), 3);
+    return out;
+  };
   /** (B) the vote staging is up: the seated cast stand in the tower court (votestage.js) */
   const staged = () => { const st = demo.passB?.stage; return !!st && !st.onStones && !!st.active; };
   /** (B) art px reserved between a seated voter's head and name for its vote mark while the court is staged (else 0) */
@@ -332,7 +343,7 @@ export async function createGameUI(demo) {
     // the DOM status line (bottom left, ui.js): the action bar keeps clear of it (beside it, or above it on a phone)
     let status = null;
     const st = document.querySelector('#demo-ui > .dui-status');
-    if (st && store.state.ui && st.style.display !== 'none') {
+    if (st && store.state.ui && st.style.display !== 'none' && !st.classList.contains('dui-away')) {
       const p = st.getBoundingClientRect();
       if (p.width > 0 && p.height > 0 && p.top < c.bottom) status = { x1: Math.ceil((p.right - c.left) * k) + 1, y0: Math.max(0, Math.floor((p.top - c.top) * k) - 1) };
     }
@@ -615,7 +626,7 @@ export async function createGameUI(demo) {
   function startVote() {
     const s = store.state, nom = s.nominee ?? s.seats.findIndex((x) => x.nominated);
     if (nom == null || nom < 0 || !daisSeats().length) { vote = null; return; }
-    const sw = demo.time?.sweep ?? { from: nom, t0: engine.time, per: 0.55 };
+    const sw = demo.time?.sweep ?? { from: nom, t0: engine.time, per: VOTE_PER };
     const N = s.seats.length, per = EV.TIMING.vote.perVoterF / GRID_HZ;
     const order = [], reach = [], ghosts = [], dead = [];
     for (let k = 1; k <= N; k++) {
@@ -918,6 +929,8 @@ export async function createGameUI(demo) {
       const sb = demo.passB?.marks?.sealBoxOf?.(slot - 1000);
       if (sb) figs.push({ slot: -1, ...sb });
     }
+    // (vote-fix5) the nominee's ring + the stocks: no name over them either
+    { const nb = ring ? demo.passB?.marks?.nomineeBox?.() : null; if (nb) figs.push({ slot: -1, ...nb }); }
     for (const m of byHead) {
       m._shown = false;
       // whole character above the view: no label (the indicators' rule); labels near the top edge clamp inward
@@ -964,13 +977,16 @@ export async function createGameUI(demo) {
       // the head for the far / near arcs; at most a half-row nudge, never over another seat (else it is left out: the
       // seal, the spotlight and the figure still show the seat)
       let side = 0;
-      const ringLab = ring && !m.you && m.slot >= 1000;
+      // (vote-fix5, critic-4 P3) YOUR name too: on your stone it takes the same close slots (it stepped up two rows over
+      // the ring's names at 1080p, ~100 px above your figure)
+      const ringLab = ring && (m.slot >= 1000 || (m.you && mine >= 0));
+      const selfSlot = m.you ? -3 : m.slot, seatOf = m.you ? mine : m.slot - 1000;
       let lx0 = cxT - (lwT >> 1);
       let steps = 0;
       const maxSteps = ringLab ? 1 : staged() ? 3 : 2, stepT = ringLab ? Math.round(rowT / 2) : rowT;
       // (a 2-texel gap counts as touching: long back-row names in the court ran into each other)
       const hits = () => placedLabels.some((r) => lx0 < r.x1 + 2 && lx0 + lwT > r.x0 - 2 && Math.abs(top - r.top) < rowT)
-        || (ringLab && figs.some((b) => b.slot !== m.slot && lx0 < b.x1 && lx0 + lwT > b.x0 && top < b.y1 && top + rowT - 2 > b.y0));
+        || (ringLab && figs.some((b) => b.slot !== selfSlot && lx0 < b.x1 && lx0 + lwT > b.x0 && top < b.y1 && top + rowT - 2 > b.y0));
       const clampCx = (x) => Math.max(LL.MARGIN + 2 + (lwT >> 1) + (ghostly ? 7 : 0), Math.min(WW - LL.MARGIN - 2 - (lwT >> 1), x));
       if (ringLab) {
         // (vote-fix4) the slots tried in order, the first one clear of every other name, figure and seal wins: beside the
@@ -982,7 +998,7 @@ export async function createGameUI(demo) {
         const sideOf = Math.abs(cs) > 0.6 ? Math.sign(cs) : 0;
         const sideCx = (sg) => (sg > 0 ? f.x + bw + 2 + (lwT >> 1) : f.x - bw - 2 - (lwT >> 1));
         const sideTop = Math.round(p.y + (f.y - p.y) * 0.28), headTop = Math.round(p.y + IA.LABEL_DY + 2);
-        const sb = demo.passB?.marks?.sealBoxOf?.(m.slot - 1000);
+        const sb = demo.passB?.marks?.sealBoxOf?.(seatOf);
         const footTop = Math.round(Math.max(f.y + 2, sb && Math.abs((sb.x0 + sb.x1) / 2 - f.x) < lwT ? sb.y1 + 1 : f.y + 2));
         const cands = [];
         if (sideOf) cands.push([sideOf, sideCx(sideOf), sideTop, 0], [sideOf, sideCx(sideOf), sideTop - stepT, 1]);
@@ -1000,7 +1016,7 @@ export async function createGameUI(demo) {
           if (!hits()) { pick = [sg, x, y, st]; break; }
           if (dbg) dbg.push(`${sg}@${lx0},${top}:${placedLabels.filter((r) => lx0 < r.x1 + 2 && lx0 + lwT > r.x0 - 2 && Math.abs(top - r.top) < rowT).map((r) => 'L' + (r.who.slot - 1000)).join('')}${figs.filter((b) => b.slot !== m.slot && lx0 < b.x1 && lx0 + lwT > b.x0 && top < b.y1 && top + rowT - 2 > b.y0).map((b) => (b.slot === -1 ? 'S' : 'F' + (b.slot - 1000))).join('')}`);
         }
-        if (dbg) (window.__labDbg ??= {})[m.slot - 1000] = { f: [f.x, f.y], w: lwT, pick: pick ? pick.slice(0, 3) : null, miss: dbg };
+        if (dbg) (window.__labDbg ??= {})[seatOf] ={ f: [f.x, f.y], w: lwT, pick: pick ? pick.slice(0, 3) : null, miss: dbg };
         pick ??= cands[0];
         side = pick[0]; cxT = clampCx(pick[1]); lx0 = cxT - (lwT >> 1); top = pick[2]; steps = pick[3];
       } else while (steps < maxSteps && hits()) { top -= stepT; steps++; }
@@ -1305,7 +1321,42 @@ export async function createGameUI(demo) {
   const roomSeen = { room: null, t: 0 }, ROOM_LINE_S = 3.5;
   const SEAL_BTN = { k: 'seal', tip: 'Vote: slap your seal down / take it back', hint: 'X', glyph: 'seal' };
   const sealBtnOn = () => (demo.passB?.seats?.yours ?? -1) >= 0 && (store.state.phase === 'vote' || store.state.phase === 'nomination');
-  const barList = () => (sealBtnOn() ? [SEAL_BTN, ...AB.BAR] : AB.BAR);
+  // (vote-fix5, critic-4 P2-3) the COMPACT bar while the vote camera is up on the stones: your seal, the emotes, the
+  // reactions dock, more - parked BOTTOM LEFT (votecam.js KEEP.bar), so the ring's near tip can sit at the bottom centre
+  const COMPACT = new Set(['emote', 'dock', 'more']);
+  // (vote-fix5, critic-4 P2-7) the one-row reaction strip of a narrow vote camera: cells (logical px) + the widest
+  // visible area that uses it (votecam.js KEEP.strip mirrors its box: 7 x 15 + 6 = 111 x 23)
+  const STRIP = { cw: 15, ch: 17 }, STRIP_MAX_W = 300;
+  const compactBar = () => vcRing();
+  const barList = () => { const b = compactBar() ? AB.BAR.filter((x) => COMPACT.has(x.k)) : AB.BAR; return sealBtnOn() ? [SEAL_BTN, ...b] : b; };
+  // (vote-fix5, critic-4 P1-1) after a click on a bar button in the vote camera its tooltip stays hidden until the
+  // pointer leaves that button (it covered the nominee and the near seats for the whole vote)
+  let barQuiet = null;
+  const VOTE_TIPS = { seal: 'Vote', emote: 'Emotes', dock: 'React', more: 'More' };
+  // (vote-fix5, critic-4 P2-5) your seal's state for the bar's tag: 'vote' (open, no seal down: pulsing), 'voted' (down,
+  // the hand not there yet), 'counted' / 'novote' (the hand passed you), null (no tag)
+  const mySealTag = (t) => {
+    if (!sealBtnOn() || store.state.phase !== 'vote') return null;
+    const y = demo.passB.seats.yours, d = sealState(t)?.seats?.[y + 1];
+    if (!d) return null;
+    if (d.yes) return 'counted';
+    if (d.no) return 'novote';
+    return demo.time?.seals?.downAt?.(y, t) ? 'voted' : 'vote';
+  };
+  const TAG_TEXT = { vote: 'VOTE', voted: 'VOTED', counted: 'COUNTED', novote: 'NO VOTE' };
+  const tagImg = (kind, T) => cached(`sealtag|${kind}|${T.ink}`, () => {
+    const s = TAG_TEXT[kind], w = 6 + textWidth(s, HUD_LABEL) + 6, h = 11;
+    return mkImg(w + 1, h + 1, (v) => {
+      const gold = kind === 'counted' || kind === 'vote';
+      drawBox(v, 0, 0, w, h, gold ? 'gold' : { line: 'outline', edge: kind === 'voted' ? 'gold' : 'iron', fill: 'ink', hi: 'inkRaised', sh: null, corner: 2, shadow: false }, T);
+      drawText(v, 6, 3, s, { color: gold ? T.textInk : kind === 'voted' ? T.goldHi : T.textDim, font: HUD_LABEL });
+    });
+  });
+  const sealHalo = (T, on) => cached(`sealhalo|${on}|${T.ink}`, () => mkImg(AB.BTN + 8, AB.BTN + 8, (h) => {
+    for (let yy = 4; yy < AB.BTN + 4; yy++) for (let xx = 4; xx < AB.BTN + 4; xx++) h.set(xx, yy, T.goldHi);
+    h.outline(T.goldHi, {}); if (on) h.outline(withAlpha(T.goldHi, 120), {}); h.outline(withAlpha(T.gold, on ? 90 : 60), {});
+    for (let yy = 4; yy < AB.BTN + 4; yy++) for (let xx = 4; xx < AB.BTN + 4; xx++) h.erase(xx, yy);
+  }));
   const barW = (n) => n * (AB.BTN + AB.GAP) - AB.GAP;
   const btnImg = (key, o) => cached(`btn|${key}|${o.state}|${o.hint}|${touchUI}|${L.tok.ink}`, () => mkImg(AB.BTN + 2, AB.BTN + 2, (v) => AB.buttonInto(v, L.tok, { ...o, showHint: !touchUI })));
   /** A 1x sprite as a screen piece (through the view: blocks, or its .hd). */
@@ -1483,10 +1534,24 @@ export async function createGameUI(demo) {
     let barX, barY = img.h - 4 - BT;
     const bcx = Math.floor((bx0 + x1) / 2);
     const BAR = barList(), BARW = barW(BAR.length);
-    if (rightLim - leftLim >= BARW) barX = Math.max(leftLim, Math.min(rightLim - BARW, bcx - (BARW >> 1)));
+    if (compactBar() && rightLim - leftLim >= BARW) barX = leftLim;          // (vote-fix5) bottom left in the vote camera
+    else if (rightLim - leftLim >= BARW) barX = Math.max(leftLim, Math.min(rightLim - BARW, bcx - (BARW >> 1)));
     else { barX = bx0; barY = (cover.status ? cover.status.y0 : img.h - 4) - 3 - BT; }
     R.bar = [];
     const mySeal = sealBtnOn() && !!demo.time?.seals?.downAt?.(demo.passB.seats.yours, t);
+    // (vote-fix5, critic-4 P2-5) your seal slot: a pulsing gold halo while the vote waits for your seal (2 drawings of 3
+    // at 3.75 fps), steady while it lies down; a tag over it says VOTE / VOTED / COUNTED / NO VOTE
+    const sTag = mySealTag(t);
+    R.sealTag = null;
+    if (sTag && BAR[0]?.k === 'seal') {
+      if (sTag === 'vote' || sTag === 'voted') {
+        const pulse = sTag === 'voted' || reduced || frameAt(t, 3.75, 3) !== 2;
+        if (pulse) putS(sealHalo(T, sTag === 'vote' && frameAt(t, 3.75, 3) === 0), barX - 4, barY - 4);
+      }
+      const ti = tagImg(sTag, T), tw2 = lw(ti), tx2 = Math.max(x0 - 2, barX + (BT >> 1) - (tw2 >> 1)), ty2 = barY - 4 - 12;
+      putS(ti, tx2, ty2);
+      R.sealTag = { kind: sTag, text: TAG_TEXT[sTag], x: tx2, y: ty2, w: tw2, h: 11 };
+    }
     for (let i = 0; i < BAR.length; i++) {
       const b = BAR[i], x = barX + i * (BT + BG);
       const on = (b.k === 'emote' && emotePal) || (b.k === 'point' && armed === 'point') || (b.k === 'pin' && armed === 'pin') || (b.k === 'dock' && dockOpen) || (b.k === 'notebook' && nb.isOpen) || (b.k === 'more' && trayOpen);
@@ -1522,7 +1587,26 @@ export async function createGameUI(demo) {
     // screen), above the bar instead
     const overBar = (x, y, w, h) => x < barRect.x + barRect.w && x + w > barRect.x && y + h > barRect.y - 2 && y < barRect.y + barRect.h;
     R.dock = null; R.armedCancel = null; R.picker = null;
-    if (dockOpen) {
+    if (dockOpen && vcRing() && x1 - x0 < STRIP_MAX_W) {
+      // (vote-fix5, critic-4 P2-7) a narrow screen (a phone) in the vote camera: the open dock covered the ring's near
+      // arc - a COMPACT one-row reaction strip instead (the 7 reactions; point / pin stay on the pie), right-aligned
+      // over the bar row (votecam.js keeps that band clear on narrow screens)
+      const pq = demo.passB?.marks?.plaque, yTop = pq?.spot === 'bottom' ? Math.min(pq.y, barY - 16) : barY - 16;
+      const n = EJ.EMOJI.length, SW = n * STRIP.cw + 6, SH = STRIP.ch + 6, sx = x1 - SW, sy = yTop - 3 - SH;
+      const hk = hover?.kind === 'dock' ? hover.k : null, act = lastReactKey && t - lastReact < 0.3 ? lastReactKey : null;
+      const im = cached(`estrip${hk}${act}${T.ink}`, () => mkImg(SW + 1, SH + 1, (v) => {
+        drawBox(v, 0, 0, SW, SH, 'panel', T);
+        EJ.EMOJI.forEach((e, i) => {
+          const ex = 3 + i * STRIP.cw, k = `emoji:${e.key}`;
+          if (act === e.key || hk === k) drawBox(v, ex, 3, STRIP.cw, STRIP.ch, { line: 'outline', edge: act === e.key ? 'goldHi' : 'ironHi', fill: 'inkRaised', hi: null, sh: null, corner: 1, shadow: false }, T);
+          v.blit(EJ.emojiIcon(e.key, T), ex + 1, 5);
+        });
+      }));
+      putS(im, sx, sy);
+      const parts = {};
+      EJ.EMOJI.forEach((e, i) => { parts[`emoji:${e.key}`] = { x: sx + 3 + i * STRIP.cw, y: sy + 3, w: STRIP.cw, h: STRIP.ch }; });
+      R.dock = { x: sx, y: sy, w: SW, h: SH, parts, strip: true };
+    } else if (dockOpen) {
       // (emoji, docs/UI-EMOJI.md "Dock layout") the REACTIONS dock: Point / Pin (+ the small colour button), the 7
       // reactions over their number keys, Clear my pins, the key hints; no swatch row. The colour button opens the
       // AUTO + 8-dot picker above it (the only place, with the panel's row, that changes the pin colour)
@@ -1629,17 +1713,38 @@ export async function createGameUI(demo) {
     // a tooltip over the hovered bar / palette / tray button (mouse; none for a bar button whose popover is open: it
     // would cover the popover). (critic P2-6) a finger has no hover: the last-tapped palette / tray button shows its
     // name 1.6 s instead. (critic P3-9) a greyed emote says why.
-    const tipOf = touchUI ? (tapTip && t < tapTip.until ? tapTip : null) : keyQuiet ? null : hover;
+    const tipOf0 = touchUI ? (tapTip && t < tapTip.until ? tapTip : null) : keyQuiet ? null : hover;
+    // (vote-fix5, critic-4 P1-1) quiet after a click in the vote camera until the pointer leaves the button
+    const tipOf = tipOf0 && barQuiet && tipOf0.kind === 'bar' && tipOf0.k === barQuiet ? null : tipOf0;
+    R.tooltip = null;
     if (tipOf && (tipOf.kind === 'pal' || tipOf.kind === 'tray' || (tipOf.kind === 'bar' && !(tipOf.k === 'emote' && emotePal) && !(tipOf.k === 'more' && trayOpen)))) {
       const list = tipOf.kind === 'bar' ? R.bar.map((r) => ({ ...r, ...[SEAL_BTN, ...AB.BAR].find((b) => b.k === r.k) })) : (tipOf.kind === 'pal' ? R.pal : R.tray)?.items ?? [];
       const it = list.find((r) => r.k === tipOf.k);
       if (it) {
-        const label = it.off ? emoteWhy(it.k) : it.hint ? `${it.tip} (${AB.keyWord(it.hint)})` : it.tip;
+        // (vote-fix5, critic-4 P1-1) SHORT tips on the compact vote bar (a long one could not avoid the ring's seals)
+        const tip0 = tipOf.kind === 'bar' && vcRing() ? VOTE_TIPS[it.k] ?? it.tip : it.tip;
+        const label = it.off ? emoteWhy(it.k) : it.hint ? `${tip0} (${AB.keyWord(it.hint)})` : tip0;
         const sz = AB.tooltipSize(label);
         const tt = cached(`tt|${label}|${T.ink}`, () => mkImg(sz.w, sz.h, (v) => AB.tooltipInto(v, label, T)));
         // (above the whole popover for a palette / tray button: over the row above it hid those buttons)
         const box = tipOf.kind === 'pal' ? R.pal : tipOf.kind === 'tray' ? R.tray : null;
-        putS(tt, Math.max(x0, Math.min(x1 - sz.w, it.x + (it.w >> 1) - (sz.w >> 1))), (box ? box.y : it.y) - 3 - sz.h);
+        const above = (box ? box.y : it.y) - 3 - sz.h;
+        const clampX = (x) => Math.max(x0, Math.min(x1 - sz.w, x));
+        // (vote-fix5, critic-4 P1-1) in the vote camera never over a seal or the nominee's ring: above the button, then
+        // beside the bar on its own row, then above the tag; none clear = no tooltip
+        const cands = [[clampX(it.x + (it.w >> 1) - (sz.w >> 1)), above]];
+        let pos = cands[0];
+        if (vcRing()) {
+          const avoid = voteKeepOuts();
+          const overTag = (R.sealTag ? Math.min(above, R.sealTag.y - 3 - sz.h) : above);
+          cands.push([clampX(it.x), overTag], [clampX(x0), overTag], [clampX(barRect.x + barRect.w + 4), barRect.y + ((BT - sz.h) >> 1)],
+            [clampX(it.x), overTag - 16], [clampX(x0), overTag - 16], [clampX(x0), overTag - 32]);
+          const hitsAny = ([x, y]) => avoid.some((b) => x < b.x1 && x + sz.w > b.x0 && y < b.y1 && y + sz.h > b.y0) || (R.sealTag && x < R.sealTag.x + R.sealTag.w && x + sz.w > R.sealTag.x && y < R.sealTag.y + R.sealTag.h && y + sz.h > R.sealTag.y);
+          pos = cands.find((c) => !hitsAny(c)) ?? null;
+          R.tooltipTried = cands.length;
+        }
+        if (pos) { putS(tt, pos[0], pos[1]); R.tooltip = { k: it.k, x: pos[0], y: pos[1], w: sz.w, h: sz.h, text: label }; }
+        else R.tooltip = { k: it.k, blocked: true, text: label };
       }
     }
     // the pie (above the HUD)
@@ -1648,14 +1753,36 @@ export async function createGameUI(demo) {
         tOpen: t - pie.tOpen0, press: pie.press, reduced };
       if (pie.commit) st.commit = { i: pie.commit.i, t: t - pie.commit.t0 };
       if (pie.cancel != null) st.cancel = t - pie.cancel;
-      const drawn = E.drawPie(img, pie.cx, pie.cy, T, st);
+      // (vote-fix5, critic-4 P3) the pie's hint plate sat ABOVE the pie = over the target's name label: drawn here
+      // (the art's own caption off) - below the pie when the target's label is above it, else above (art.js rules)
+      const drawn = E.drawPie(img, pie.cx, pie.cy, T, { ...st, noCaption: true });
+      if (drawn) pieCaption(img, T, st);
       if (!drawn || (pie.cancel != null && t - pie.cancel > 0.3) || (pie.commit && t - pie.commit.t0 > 0.4)) pie = null;
       else if (pie.sticky && !pie.commit && pie.cancel == null && t - pie.stickyAt > E.TIMING.PIE_STICKY_MS / 1000) cancelPie();
     }
   }, 60);
 
+  /** (vote-fix5, critic-4 P3) the pie's hint plate (art.js drawCaption's text + plate), BELOW the pie when the target's
+   *  name label stands above it (the plate covered the name), else above as before */
+  function pieCaption(img, T, st) {
+    const kOpen = st.reduced ? 99 : E.gridK(st.tOpen ?? 99);
+    if ((st.commit && E.gridK(st.commit.t, 2) >= 2) || st.cancel != null || kOpen < 1) return;
+    const G = E.PIE[st.size === 'touch' ? 'touch' : 'mouse'], touch = st.input === 'touch';
+    const items = st.items ?? [], hot = st.hot != null ? items[st.hot] : st.commit ? items[st.commit.i] : null;
+    const title = st.title || 'Point or pin';
+    const cap = hot ? hot.label : st.sticky ? `${title} — ${touch ? 'tap' : 'click'} one` : `${title} — ${touch ? 'slide' : 'drag'} to choose`;
+    const m = pie.target?.member ?? (pie.target?.onYou ? you : null), CH = 13;
+    let below = false;
+    if (m && m._labelTop != null && !m._noLabel) {
+      const ly = (m._labelTop - (L.MARGIN ?? 0)) * t2l();
+      below = ly < pie.cy + 4 && ly > pie.cy - G.R - 6 - CH - 14 && pie.cy + G.R + 6 + CH < img.h - 2;
+    }
+    E.drawCaption(img, pie.cx, below ? pie.cy + 2 * G.R + 12 + CH : pie.cy, G.R, cap, T);
+    R.pieCap = { below, text: cap };
+  }
+
   // ------------------------------------------------------------------------------------------------ input
-  const hasControl = () => !!window.__demo?.ready && (!demo.intro || demo.intro.phase === 'done') && !document.body.classList.contains('ct-intro');
+  const hasControl =() => !!window.__demo?.ready && (!demo.intro || demo.intro.phase === 'done') && !document.body.classList.contains('ct-intro');
   const screenHit = (s) => {
     // the tip's close / never-show row, the popovers, the bar first (they are drawn over the town and the dock)
     for (const [kind, box] of [['pal', R.pal], ['tray', R.tray]]) {
@@ -1737,7 +1864,7 @@ export async function createGameUI(demo) {
     if (hit.kind === 'tip') {
       if (hit.k === 'close') closeTip('close');
       else if (hit.k === 'never') { setTipNever(!tipNever); if (tipNever) closeTip('never'); }
-    } else if (hit.kind === 'bar') barAction(hit.k);
+    } else if (hit.kind === 'bar') { if (vcRing()) barQuiet = hit.k; barAction(hit.k); }
     else if (hit.kind === 'pal') {
       if (hit.code && !hit.off) { input.press(hit.code); emotePal = false; }
       else if (hit.off && hit.k) toast(emoteWhy(hit.k), { ms: 2400 });   // (critic P3-9) a greyed emote says why
@@ -1769,7 +1896,7 @@ export async function createGameUI(demo) {
   function onMove(e) {
     keyQuiet = false;
     if (e.target === canvas) cursor = { x: e.clientX, y: e.clientY };
-    else if (!rpress && !pie) { cursor = null; hover = null; setCursor(false); return; }
+    else if (!rpress && !pie) { cursor = null; hover = null; barQuiet = null; setCursor(false); return; }
     const s = toScreen(e.clientX, e.clientY);
     if (rpress && !pie && Math.hypot(e.clientX - rpress.cx, e.clientY - rpress.cy) > (rpress.touch != null ? TOUCH_SLOP_PX : E.TIMING.RIGHT_DRAG_PX)) {
       if (rpress.touch != null) { if (e.pointerId === rpress.touch) rpress = null; }   // the finger moved first: a pan, not a press
@@ -1781,6 +1908,7 @@ export async function createGameUI(demo) {
     }
     if (!hasControl()) { hover = null; setCursor(false); return; }
     const hit = screenHit(s);
+    if (barQuiet && !(hit?.kind === 'bar' && hit.k === barQuiet)) barQuiet = null;   // (vote-fix5) left the button
     if (hit) { hover = hit; setCursor(!hit.off && !hit.inert); return; }
     const own = pinAt(s);
     hover = own ? { kind: 'pin', pin: own } : null;
@@ -1881,6 +2009,10 @@ export async function createGameUI(demo) {
     get texPerLogical() { return 1 / t2l(); },
     /** the action bar's rect as drawn last frame (logical px), or null (votemarks.js puts its tally plaque above it) */
     get barRect() { return R.barRect ? { ...R.barRect } : null; },
+    /** (vote-fix5) the bar row's top incl. the room kept for your seal's tag (the compact vote bar), and whether the
+     *  bar is the compact one (bottom left): votemarks.js stacks its bottom plaque on it */
+    get barTop() { return R.barRect ? R.barRect.y - (compactBar() ? 16 : 0) : null; },
+    get compactBar() { return compactBar(); },
     /** (vote-fix4) the top row as drawn last frame (logical px): { x0 (the clock chip's left), y1 (its bottom), chipsEnd,
      *  row2 } or null (votemarks.js puts its tally plaque under the chips on a wide screen) */
     get topRow() { return R.topRow ? { x0: R.topRow.spans[0][0] + 2, y1: R.topRow.y1, chipsEnd: R.topRow.spans[0][1], row2: !!R.chips?.row2 } : null; },
@@ -1930,6 +2062,9 @@ export async function createGameUI(demo) {
         books3d: N.book3d ? [...N.book3d.books.values()].filter((e) => e.book.root.visible).length : 0, mergedBooks: !!N.book3d?.merged,
         youIcon: you.id ? { p: 'atlas', t: 'thumb', i: 'initial', h: 'hd' }[iconOf(you.id, you.name).iconKey[0]] : null,
         bar: R.bar ? R.bar.map((r) => ({ k: r.k, x: r.x, y: r.y, w: r.w, h: r.h })) : null,
+        // (vote-fix5) your seal's tag, the drawn tooltip, the pie's plate side, the vote keep-outs (logical px)
+        sealTag: R.sealTag ? { ...R.sealTag } : null, tooltip: R.tooltip ? { ...R.tooltip } : null, pieCap: R.pieCap ?? null, barQuiet,
+        dockStrip: !!R.dock?.strip, voteKeep: vcRing() ? voteKeepOuts().map((b) => [b.x0, b.y0, b.x1, b.y1].map(Math.round)) : null,
         palette: R.pal ? { open: true, items: R.pal.items.map((r) => ({ k: r.k, code: r.code, off: r.off, x: r.x, y: r.y, w: r.w, h: r.h })) } : { open: emotePal },
         tray: R.tray ? { open: true, items: R.tray.items.map((r) => ({ k: r.k, code: r.code, x: r.x, y: r.y, w: r.w, h: r.h })) } : { open: trayOpen },
         tipState: { shown: !!tipState, auto: tipState?.auto ?? null, rect: R.tip ? { x: R.tip.x, y: R.tip.y, w: R.tip.w, h: R.tip.h, close: R.tip.close, never: R.tip.never } : null,

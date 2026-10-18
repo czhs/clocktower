@@ -191,6 +191,7 @@
   background: rgba(14, 16, 24, 0.78); border: 1px solid var(--dui-edge); box-shadow: inset 0 0 0 1px #2f3547;
   font: 11px/1.35 var(--dui-mono); color: var(--dui-text); white-space: pre; overflow: hidden; text-overflow: ellipsis;
 }
+#demo-ui > .dui-status.dui-away { visibility: hidden; }   /* (vote-fix5) hidden in the vote camera */
 .dui-status .dim { color: var(--dui-dim); }
 .dui-status .amb { color: var(--dui-amber); }
 #demo-ui > .dui-toasts {
@@ -306,7 +307,8 @@
 #demo-ui .dnb .dnb-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-rows: auto auto; column-gap: 4px; align-items: center; min-height: 0; }
 .dnb-row .dnb-pic { grid-row: 1 / 3; width: calc(24px * var(--px) / 2 + 6px); height: calc(24px * var(--px) / 2 + 6px); box-sizing: content-box; display: grid; place-items: center; font: 700 13px/1 var(--dui-serif); color: #EEE3C8; overflow: hidden; }
 .dnb-row .dnb-pic img { width: 24px; height: 24px; image-rendering: pixelated; }
-.dnb-name { font-variant: small-caps; letter-spacing: 0.03em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* (vote-fix5, critic-4 P3) a long name wraps to a second line at a word ("Sir Croaksworth you" was cut to "Sir Croaksw…") */
+.dnb-name { font-variant: small-caps; letter-spacing: 0.03em; white-space: normal; overflow: hidden; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
 .dnb-name small { color: #E3BD62; }
 .dnb-row.you .dnb-name { color: #F7E0A0; }
 .dnb-marks { display: flex; gap: 1px; }

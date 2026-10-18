@@ -22,6 +22,7 @@ const parts = [
   ['ui', './timer-ui.js', 'createTimerUI'],
   ['marks', './votemarks.js', 'createVoteMarks'],
   ['daisdress', './daisdress.js', 'createDaisDress'],   // (vote-fix4) the dais' candle stakes out while the vote camera is up
+  ['ringclear', './ringclear.js', 'createRingClear'],   // (vote-fix5) no town-life walker inside r 8 m during the vote
 ];
 
 export async function createPassB(demo) {

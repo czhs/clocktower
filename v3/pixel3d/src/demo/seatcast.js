@@ -210,10 +210,18 @@ export async function createSeatCast(demo) {
     else if (value !== 'vote' && prev === 'vote') stand();
   }));
   /** slap / take back YOUR seal (X, the action bar's seal button) -> { ok, why } */
+  // (vote-fix5, critic-4 P2-5) DEBOUNCED: a second toggle within SEAL_DEBOUNCE s of the last one is ignored (a
+  // double-click on the seal button, or X bouncing, slapped the seal and took it straight back: no vote)
+  const SEAL_DEBOUNCE = 0.35;
+  let lastToggle = -1e9;
   function toggleSeal() {
     const s = store.state, tm = demo.time;
     if (yours < 0) return { ok: false, why: 'You have no seat in this vote' };
     if (s.phase !== 'vote') return { ok: false, why: s.phase === 'nomination' ? 'Wait for the vote to open' : 'There is no vote right now' };
+    // (a press within SEAL_DEBOUNCE of the previous PRESS is ignored and extends the quiet: X held / spammed = one slap)
+    const since = engine.time - lastToggle;
+    lastToggle = engine.time;
+    if (since < SEAL_DEBOUNCE) return { ok: false, why: null, debounced: true };
     const V = demo.gameui?.voteOf?.();
     const S = V ? sealVoteAt(V, engine.time, tm?.seals?.log) : null, d = S?.seats?.[yours + 1];
     if (d && (d.yes || d.no)) return { ok: false, why: d.yes ? 'The clock hand has locked your vote' : 'The clock hand has passed you' };
@@ -225,7 +233,7 @@ export async function createSeatCast(demo) {
   }
   offs.push(demo.input?.bind?.('KeyX', () => {
     const r = toggleSeal();
-    if (!r.ok) events.emit('toast', { text: r.why });
+    if (!r.ok && r.why) events.emit('toast', { text: r.why });
   }, { desc: 'vote: slap your seal / take it back', group: 'town' }));
 
   // ---- state -> clips
@@ -307,7 +315,9 @@ export async function createSeatCast(demo) {
         placeFor(r, t);
         // the persistent clip
         let want = 'idle';
-        r.face = r.staged ? stage().spots[r.i].face : vy !== null ? turned(r.spot.x, r.spot.z, vy, TURN) : r.home;
+        // (vote-fix5, critic-4 P2-4) the NOMINEE faces the camera full on in the vote camera (nomination + vote)
+        const nomFace = vy !== null && r.i === nom && (ph === 'nomination' || ph === 'vote');
+        r.face = r.staged ? stage().spots[r.i].face : vy !== null ? turned(r.spot.x, r.spot.z, vy, nomFace ? 0 : TURN) : r.home;
         if (st.dead) {
           if (r.dieAt < 0) r.dieAt = t;
           const fresh = t - r.dieAt < DIE_S && has(r, 'die') && r.wasAlive;
