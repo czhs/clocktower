@@ -38,6 +38,8 @@ let smearMod = null, fxMod = null;
  *  the handle (`handle.lights`, with the socket node resolved) and the time module pins one light of its constant pool
  *  to the socket (time.js `carried`). Same spec object everywhere else (handle.spec is the original). */
 export const lightless = (spec) => (spec?.lights?.length ? { ...spec, lights: [] } : spec);
+/** The default spawn character (= api.js DEFAULT_CHARACTER; critic P1-2: one with all six game emotes). */
+export const DEFAULT_ID = 'frog';
 const optional = async (p) => { try { return await import(p); } catch (e) { console.warn(`[demo] ${p} unavailable:`, e?.message || e); return null; } };
 
 // game emotes (CHARACTERS.md clocktower rule) -> clip name in the spec (or null). 'signature' = spec.emote.
@@ -54,7 +56,7 @@ export function prefetchCharacters() {
   return loadRoster().then((roster) => {
     const wip = wipMode();
     const ids = roster.characters.filter((c) => pick === 'all' || (wip ? wipOffer(c) : publicOffer(c))).map((c) => c.id);
-    for (const id of new Set([q.get('char') ?? 'wanderer', ...ids])) loadSpec(id).catch(() => {});
+    for (const id of new Set([q.get('char') ?? DEFAULT_ID, ...ids])) loadSpec(id).catch(() => {});
   }).catch(() => {});
 }
 /** Rows of the switcher: `complete` = offered: publicly only FINISHED characters that load + animate (roster.js
@@ -140,7 +142,7 @@ export function listCharacters() {
     const offeredIds = rows.filter((r) => r.complete).map((r) => r.id);
     const cur = demo?.store?.state?.character;
     if (cur && offeredIds.length && !offeredIds.includes(cur)) {
-      const to = offeredIds.includes('wanderer') ? 'wanderer' : offeredIds[0];
+      const to = offeredIds.includes(DEFAULT_ID) ? DEFAULT_ID : offeredIds.includes('wanderer') ? 'wanderer' : offeredIds[0];
       console.info(`[demo] character '${cur}' is not offered${wip ? '' : ' publicly (work in progress: add ?wip=1)'}; starting as '${to}'`);
       demo.store.set({ character: to }, 'roster');
     }

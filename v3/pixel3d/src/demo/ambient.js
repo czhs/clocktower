@@ -66,6 +66,9 @@ export async function createAmbientLayer(demo) {
       swarms: AMB_SPOTS.swarms.map(([x, z, r, n]) => ({ c: V(x, z), r, n })),
       gardens: AMB_SPOTS.gardens.map(([x, z, r, n]) => ({ c: V(x, z), r, n })),
       glow: [], water: [], lamps, mothsPerLamp: 3, butterflies: 5, bees: 5, avoid: (x, z) => !grassy(x, z),
+      // (critic P2-7: night fireflies / moths barely visible) a bright 2x2 core + a dim 4x4 halo per firefly, moths keep a
+      // lit wing tip away from their lamp (src/ambient/fireflies.js opts.night, additive; ?ffboost=0 = before)
+      ...(params.get('ffboost') === '0' ? {} : { night: { core: 2, halo: 4, gain: 1.5, haloGain: 0.32, mothGlint: true } }),
     } },
     ...(fires.length ? [{ name: 'fire', opts: { fires, fixtures: false, lights: [] } }] : []),
     { name: 'props', opts: { props: AMB_SPOTS.props.map((p) => ({ id: p.id, kind: p.kind, pos: V(p.at[0], p.at[1]), yaw: p.yaw })), lights: [], lamps: 'auto' } },

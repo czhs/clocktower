@@ -72,7 +72,7 @@ try {
       };
       P.restore.push(() => { obj[key] = fn; });
     };
-    for (const m of ['player', 'camera', 'intro', 'cut', 'time', 'ui', 'deploy']) wrap(d[m], 'update', 'demo:' + m);
+    for (const m of ['player', 'camera', 'intro', 'cut', 'time', 'ui', 'deploy', 'passB']) wrap(d[m], 'update', 'demo:' + m);   // (B) + passB
     for (const [id, p] of d.town.registry.map) wrap(p, 'update', 'piece:' + id);
     // every engine updater (town pieces, the demo's, life's Characters, shadow cull, sprite placement ...): 'upd:all'
     e.updaters.forEach((fn, i) => wrap(e.updaters, i, 'upd:all'));

@@ -594,9 +594,11 @@ export function mountUI(demo) {
   const TIP_DELAY = 1.2, TIP_SECS = 9;
   // a touch screen (gameui.touch: coarse pointer) has no keys: finger wording
   const touchTip = !!demo.gameui?.touch;
-  const TIP_TEXT = touchTip ? 'Tip: tap to walk, hold a finger on the town to point or pin' : 'Tip: press SPACE to emote (1-6 for more)';
+  // (critic P1-2: Space opens the game UI's emote palette; 1-6 play the emotes, 6 = the signature. Without the game UI
+  // (?gameui=0) Space is unbound: the fallback tip names 1-6 only)
+  const TIP_TEXT = touchTip ? 'Tip: tap to walk, hold a finger on the town to point or pin' : 'Tip: press 1-6 to emote (6 = your signature move)';
   const TIP_TOKENS = touchTip ? [{ s: 'Tip:', b: true }, { s: ' tap to walk · hold a finger on the town to point or pin' }]
-    : [{ s: 'Tip:', b: true }, { s: ' ' }, { k: 'Space' }, { s: ' emote (' }, { k: '1' }, { s: '-' }, { k: '6' }, { s: ' more) · ' },
+    : [{ s: 'Tip:', b: true }, { s: ' ' }, { k: '1' }, { s: '-' }, { k: '6' }, { s: ' emote (6: your signature) · ' },
     { k: 'Right' }, { s: ' point, drag: pins · ' }, { k: 'J' }, { s: ' notebook' }];
   const emoteTip = { state: 'wait', wait: 0, left: TIP_SECS, el: null, shownAt: null };
   let readySeen = !!window.__demo?.ready;

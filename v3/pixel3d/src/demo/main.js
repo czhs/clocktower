@@ -398,6 +398,9 @@ try {
   demo.ui = await load('ui', './ui.js', 'mountUI', demo);
   demo.deploy = await load('deploy', './deploy.js', 'installDeploy', demo);
   try { installViewInset(demo); } catch (e) { console.error('[demo] view inset failed:', e); fail(`inset: ${e?.stack || e}`); }
+  // (B) pass B (passb.js: the vote camera wraps the rig AFTER the inset, the tower timer / readout, the seated cast,
+  // the tower interior, the timer HUD): loaded before the warm-up so its programs compile behind the loading screen
+  if (params.get('passB') !== '0') demo.passB = await load('passB', './passb.js', 'createPassB', demo);
 
   const step = (name, mod, t, dt) => {
     if (!mod?.update) return;
@@ -412,6 +415,7 @@ try {
     step('intro', demo.intro, t, dt);
     step('cut', demo.cut, t, dt);
     step('time', demo.time, t, dt);
+    step('passB', demo.passB, t, dt);   // (B)
     step('ambient', demo.ambient, t, dt);
     step('gameui', demo.gameui, t, dt);
     step('ui', demo.ui, t, dt);

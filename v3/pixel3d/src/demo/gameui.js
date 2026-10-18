@@ -33,8 +33,21 @@
 // ?gameui=0 turns the whole module off (A/B). Deterministic: every animation is a function of the demo clock.
 import * as THREE from 'three';
 import { createUILayers } from '../ui/runtime/layer.js';   // the library's layers with dirty-box clears / uploads
-import { PixelImage, drawBox, drawText, textWidth, toCanvas, loadImage, frameAt, dissolve, withAlpha, GRID_HZ, tokens as kitTokens } from '../ui/kit.js';
+import { PixelImage, drawBox, drawText, textWidth, toCanvas, loadImage, frameAt, dissolve, withAlpha, GRID_HZ, tokens as kitTokens, hdPiece } from '../ui/kit.js';
 import { registerGroupFonts } from '../ui/fonts.js';
+import { LABEL as HUD_LABEL } from '../ui/hud/font.js';
+// UI density D=2 (docs/UI.md §2.10, docs/DEMO.md §4.7 "Density"): the whole screen tier on L.hd.screen in one logical
+// coordinate system, labels / person pins on L.hd.world, place pins on the HD depth tier; ?uidensity=1 = the 1x A/B
+import { toolButtonHD, ANCHORS_HD, pinWithIconHD, swatchHD, gloveHD } from '../ui/hd/art.js';
+// (wave 2, docs/UI-HD-WAVE2.md) hud / events / emotes / panels at D=2
+import { prepareWave2HD, worldLayerHD, drawExecutionFxHD } from '../ui/hd/wave2.js';
+import { POP_HD } from '../ui/hd/emotes.js';
+import { installPanelsHD } from '../ui/hd/panels.js';
+// (wave 1, UI.md §2.10.3) the markers / indicators / portraits HD art
+import * as IH from '../ui/indicators/hd.js';
+import { markerFramesHD, drawPointHD, putGroundHD } from '../ui/markers/hd.js';
+import { drawPlacePinHD, drawPersonPinsHD, labelHD, up2 } from '../ui/hd/draw.js';
+import { installHDCss } from '../ui/hd/css.js';
 import * as IA from '../ui/indicators/art.js';
 import { createTalkOutline } from '../ui/indicators/talkOutline.js';
 import * as HA from '../ui/hud/art.js';
@@ -45,7 +58,7 @@ import { drawPoint, drawPlacePin, drawPersonPins, initialIcon, TIMING as MT } fr
 import { createPinPass } from '../ui/markers/pinPass.js';
 import { notebookContext, PLACE as BOOK_PLACE } from '../ui/notebook/draw.js';
 import { installMergedBooks } from '../ui/runtime/book3d.js';   // the 3D big book in <= 8 draws per reader
-import { loadPortraits, goldFrame } from '../ui/portraits/atlas.js';
+import { loadPortraits, goldFrame, goldFrameHD } from '../ui/portraits/atlas.js';
 import * as EV from '../ui/events/draw.js';
 import { formatClock } from './api.js';
 import * as AB from './actionbar.js';
@@ -110,11 +123,25 @@ export async function createGameUI(demo) {
   const setPx = () => document.documentElement.style.setProperty('--px', String(Math.max(1, Math.round(engine.pixelScale || 2))));
   setPx();
   addEventListener('resize', setPx);
+  const offsHD = [];
   await registerGroupFonts();
   const canvas = engine.renderer.domElement;
   const todOf = (p) => (p === 'night' ? 'night' : p === 'golden' || p === 'dusk' || p === 'dawn' ? 'golden' : 'noon');
   const presetName = () => { const p = demo.time?.preset; return (p && (p.name ?? p)) || demo.town?.tod || 'noon'; };
-  const L = createUILayers(engine, { tod: todOf(presetName()), timeFn: (t) => t });
+  // (density) D=2 by default; ?uidensity=1 = today's 1x UI (the A/B); ?uipolicy= floor | ceil | <n> (1080p: 'round')
+  const L = createUILayers(engine, { tod: todOf(presetName()), timeFn: (t) => t, density: Math.max(1, Number(params.get('uidensity') ?? 2) || 2) });
+  if (L.hd) L.hd.useDepth();
+  /** The HD tiers are in use (L.hd with art density 2: pixelScale >= 2; a pixelScale-1 window / phone keeps the 1x path). */
+  const hdOn = () => !!(L.hd && L.hd.d > 1);
+  const setHdPx = () => document.documentElement.style.setProperty('--hdpx', String(L.hd?.scale ?? 1));
+  if (L.hd) { installHDCss(document); setHdPx(); addEventListener('resize', setHdPx); offsHD.push(() => removeEventListener('resize', setHdPx)); }
+  // (wave 2, docs/UI-HD-WAVE2.md step 16) the DOM skin's 9-slices at --hdpx (panels, buttons, tabs, inputs ...) for the
+  // control panel, the keys overlay and the notebook: scoped by .ctp-hd on #demo-ui; re-installed on day / night
+  // Only at an EXACT density (L.hd.k === 2: 720p, 4K): at 1080p 'round' (k 1.5) the HD 9-slices are 4/3 of the 1x skin's
+  // insets and the control panel's buttons truncated ("6…", "GO…"): there the DOM keeps the 1x skin (the page and the
+  // notebook's text stay in the HD face)
+  const skinHD = () => { if (!hdOn() || Math.abs(L.hd.k - 2) > 1e-6) return; try { installPanelsHD(document, L.tok); (document.getElementById('demo-ui') ?? document.documentElement).classList.add('ctp-hd'); } catch (e) { console.warn('[demo] gameui: no HD panel skin', e?.message || e); } };
+  skinHD();
   // the context the library's runtime modules read (the subset of scenes/ui-hud.js buildHudStage they use)
   const hud = {
     engine, ui: L, P: (k, d) => params.get(k) ?? d, clock: (t) => t,
@@ -123,7 +150,7 @@ export async function createGameUI(demo) {
     setUiOptions(o = {}) { Object.assign(hud.uiOptions, o); },
   };
   const offs = [];
-  offs.push(events.on('tod', (e) => L.setTod(todOf(e?.preset?.name ?? e?.preset ?? presetName()))));
+  offs.push(events.on('tod', (e) => { L.setTod(todOf(e?.preset?.name ?? e?.preset ?? presetName())); skinHD(); }));
   offs.push(store.on('bookStyle', ({ value }) => hud.setUiOptions({ bookStyle: value })));
   offs.push(store.on('pointerScale', ({ value }) => hud.setUiOptions({ pointerScale: value })));
   // a touch screen (coarse pointer; ?touch=1 / 0 forces it): touch wording in the dock, the armed pill and the tip
@@ -132,10 +159,20 @@ export async function createGameUI(demo) {
 
   // ---- portraits (out/ui/portraits.*: 12x12 icons for pins, 24x24 avatars for the dock button and the notebook)
   let PORT = null;
-  const portraitsReady = loadPortraits('out/ui/').then((p) => { PORT = p; return p; }).catch((e) => { console.warn('[demo] gameui: no portraits atlas', e?.message || e); return null; });
+  // (critic P1-1) module-relative: the live demo serves the modules under v/<hash>/ next to a root index.html, so a
+  // document-relative 'out/ui/' 404'd there (tools/demo-bundle.sh verify serves that staged layout now)
+  // (a FILE url: tools/demo-bundle.sh resolves every new URL(..., import.meta.url) to a shipped file)
+  // (density, UI.md §2.10.3 wave 1) { hd }: the HD atlas out/ui/portraits-hd.* from the SAME base: every icon / avatar
+  // crop carries .hd (24-px icon / 48-px avatar re-rendered at 2x the texel density) + iconHD / avatarHD for the four
+  // ids without a 1x portrait (wanderer, keeper, hound, duelist)
+  const UI_BASE = new URL('../../out/ui/portraits.json', import.meta.url).href.replace(/portraits\.json$/, '');
+  const portraitsReady = loadPortraits(UI_BASE, 'noon', { hd: !!L.hd }).then((p) => { PORT = p; return p; }).catch((e) => { console.warn('[demo] gameui: no portraits atlas', e?.message || e); return null; });
   const thumbs = new Map();                 // id -> PixelImage 24x24 from the roster thumbs (characters without atlas art)
   const avatarImg = (id) => PORT?.avatar(id) ?? thumbs.get(id) ?? null;
+  const avatarHD = (id) => PORT?.avatarHD?.(id) ?? null, iconHD = (id) => PORT?.iconHD?.(id) ?? null;
   const urlCache = new Map();
+  // (the notebook rows / panel tiles keep the 24-px 1x avatar: their CSS box is 24 px at 720p, a 48-px image there
+  // would be halved, not sharper)
   const avatarURL = (id) => {
     if (urlCache.has(id)) return urlCache.get(id);
     const a = PORT?.avatar(id);
@@ -147,6 +184,8 @@ export async function createGameUI(demo) {
   const iconOf = (id, name) => {
     const ic = PORT?.icon(id);
     if (ic) return { icon: ic, iconKey: `p:${id}` };
+    // (density) the four without a 1x icon: their HD icon (24 px, used 1:1 by the HD pins)
+    if (hdOn() && iconHD(id)) return { icon: iconHD(id), iconKey: `h:${id}` };
     // no icon_<id> in the atlas (the shipped four): the roster thumb (the same portrait the dock button shows), fitted
     // into 12x12; the initial only while the thumb has not loaded / for a character without one
     const th = thumbs.get(id);
@@ -154,6 +193,15 @@ export async function createGameUI(demo) {
     const k = `${String(name || id)[0].toUpperCase()}|${L.tok.textInk}`;
     if (!iconCache.has(k)) iconCache.set(k, initialIcon(k[0], L.tok));
     return { icon: iconCache.get(k), iconKey: `i:${k}` };
+  };
+  /** (density) the icon of YOUR pins at D=2 (wave 1): the atlas icon with its 24-px HD twin (.hd: the head fitted to the
+   *  socket, the clear "who pinned" mark), the HD icon of the four, else the 24-px roster thumb 1:1, else the initial. */
+  const pinIcon = () => {
+    const i = iconOf(you.id, you.name);
+    if (i.icon?.hd || i.iconKey.startsWith('h:')) return { icon: i.icon, key: `${i.iconKey}${i.icon.hd ? '+hd' : ''}` };
+    const th = you.id ? thumbs.get(you.id) : null;
+    if (th) return { icon: th, key: `ta:${you.id}` };
+    return { icon: i.icon, key: i.iconKey };
   };
   (async () => {   // roster thumbs as 24x24 PixelImages (the shipped four have no atlas portrait yet)
     for (const c of demo.characters ?? []) {
@@ -197,9 +245,23 @@ export async function createGameUI(demo) {
   const npcOf = (slot) => members.find((m) => !m.you && m.slot === slot) ?? null;
 
   // ---- screen helpers
-  const W = () => L.screen?.w ?? engine.lowW, H = () => L.screen?.h ?? engine.lowH;
-  /** client px -> screen-tier texel (the overlay maps the canvas bottom-up in whole pixelScale squares). */
+  // ONE logical coordinate system for the screen tier (docs/UI.md §2.10.1 step 3): with D=2 the logical px = an HD px x
+  // d (= 1 texel at even pixel scales; 4 device px at 1080p 'round': the logical screen is 480 x 270 there); every hit
+  // rect R.*, the cover bands, the pie and info() are in logical px. Without D=2: logical px = the 1x screen texel.
+  /** HD px per logical px (1 on the 1x path). */
+  const dd = () => (hdOn() ? L.hd.d : 1);
+  /** The logical screen image (the density view of L.hd.screen, or L.screen) and the image behind it (pieces blit there). */
+  const SV = () => (hdOn() ? L.hd.screenView : L.screen), SB = () => (hdOn() ? L.hd.screen : L.screen);
+  /** Device px per logical px. */
+  const unitDev = () => (hdOn() ? L.hd.scale * L.hd.d : engine.pixelScale || 1);
+  /** Texels -> logical px factor (1 on the 1x path and at even pixel scales; 0.75 at 1080p 'round'). */
+  const t2l = () => (hdOn() ? L.hd.k / L.hd.d : 1);
+  /** Logical screen px of a world point (L.atScreen on the 1x path). */
+  const atS = (p) => { if (!hdOn()) return L.atScreen(p); const q = L.hd.atScreen(p), d = L.hd.d; return { x: Math.floor(q.x / d), y: Math.floor(q.y / d) }; };
+  const W = () => SV()?.w ?? engine.lowW, H = () => SV()?.h ?? engine.lowH;
+  /** client px -> logical screen px (the overlay maps the canvas bottom-up in whole squares). */
   const toScreen = (cx, cy) => {
+    if (hdOn()) return L.hd.logical(cx, cy);
     const r = canvas.getBoundingClientRect(), s = engine.pixelScale || 1;
     const dx = (cx - r.left) * (engine.width / Math.max(1, r.width)), dy = (cy - r.top) * (engine.height / Math.max(1, r.height));
     return { x: Math.floor(dx / s), y: H() - 1 - Math.floor((engine.height - dy - 0.5) / s) };
@@ -211,7 +273,7 @@ export async function createGameUI(demo) {
   // and a tap on them reaches the canvas, not the panel; the open notebook on the left half = a left band
   let cover = { left: 0, right: 0, top: 0 }, nextCover = 0;
   const measureCover = () => {
-    const c = canvas.getBoundingClientRect(), k = (engine.width / Math.max(1, c.width)) / (engine.pixelScale || 1);
+    const c = canvas.getBoundingClientRect(), k = (engine.width / Math.max(1, c.width)) / unitDev();
     let right = 0, left = 0, top = 0, leftBottom = 0;
     const panel = document.querySelector('#demo-ui > .dui-panel');
     if (panel && store.state.ui && panel.style.display !== 'none') {
@@ -324,8 +386,15 @@ export async function createGameUI(demo) {
     }
     if (livePins().length >= MAX_PINS) { toast(`You have ${MAX_PINS} pins: remove one first`, { kind: 'error', ms: 2600 }); return false; }
     if (target.member && !target.member.you) pins.push({ kind: 'person', slot: target.member.slot, id: target.member.id, name: target.member.name, color: c, t0: L.t, removeAt: null });
-    else if (target.ground) pins.push({ kind: 'place', p: target.ground.clone(), color: c, t0: L.t, removeAt: null });
-    else return false;
+    else if (target.ground) {
+      pins.push({ kind: 'place', p: target.ground.clone(), color: c, t0: L.t, removeAt: null, behind: target.piece ?? null });
+      // (critic P3-12) behind a roof: say so (the HD tier also draws its x-ray outline over whatever hides it)
+      if (target.piece) {
+        const nm = target.piece === 'clocktower' ? 'the clock tower' : demo.layout?.houses?.find((q) => q.id === target.piece)?.name ?? 'a cottage';
+        toast(`Pin dropped behind ${nm}${hdOn() ? ' (shown as an outline)' : ''}`, { ms: 2800 });
+      }
+    } else return false;
+    closePopovers();
     pop('you', 'pin', c);
     events.emit('gameui:pin', { color: c, kind: pins[pins.length - 1].kind });
     return true;
@@ -342,7 +411,8 @@ export async function createGameUI(demo) {
     for (let i = pins.length - 1; i >= 0; i--) {
       const p = pins[i];
       if (p.kind !== 'place' || p.removeAt != null) continue;
-      const q = L.atScreen(p.p);
+      // (the pin body in logical px: 18 x 26 art px at either density: the HD pin is 36 x 52 HD px = 18 x 26 logical)
+      const q = atS(p.p);
       if (s.x >= q.x - 9 && s.x <= q.x + 9 && s.y >= q.y - 26 && s.y <= q.y + 1) return p;
     }
     return null;
@@ -350,9 +420,10 @@ export async function createGameUI(demo) {
   // a townsperson under a screen point (their projected body box)
   const memberAt = (s) => {
     let best = null, bd = Infinity;
+    const k = t2l();
     for (const m of members) {
-      const f = L.atScreen(m.pos), hd = L.atScreen(m.head());
-      if (s.x < f.x - 9 || s.x > f.x + 9 || s.y < hd.y - 3 || s.y > f.y + 2) continue;
+      const f = atS(m.pos), hd = atS(m.head());
+      if (s.x < f.x - 9 * k || s.x > f.x + 9 * k || s.y < hd.y - 3 * k || s.y > f.y + 2 * k) continue;
       const d = Math.abs(s.x - f.x) + (m.you ? 4 : 0);
       if (d < bd) { bd = d; best = m; }
     }
@@ -365,14 +436,16 @@ export async function createGameUI(demo) {
     // a press on your person pin = on its townsperson (the pie names them; F / a swatch toggles / recolours the pin)
     let member = memberAt(s);
     if (!member && ownPin?.kind === 'person') { const m = npcOf(ownPin.slot); if (m && m.id === ownPin.id) member = m; }
-    let ground = null;
+    let ground = null, piece = null;
     try {
-      const g = demo.player?.pickAt?.(clientX, clientY)?.ground;
+      const pk = demo.player?.pickAt?.(clientX, clientY), g = pk?.ground;
       if (g) ground = new THREE.Vector3(g.x, demo.player?.interior ? demo.player.interior.floorY ?? 0 : groundY(g.x, g.z), g.z);
+      // (critic P3-12) the ray met a cottage / the tower first: a place pin lands on the ground BEHIND it (depth-hidden)
+      piece = pk?.piece && pk.piece !== 'dais' ? pk.piece : null;
     } catch { ground = null; }
     // (the pie's "Remove my pin" also when the press is on a townsperson who carries your pin)
     const own = ownPin ?? (member && !member.you ? personPinOf(member) : null);
-    return { s, member: member && !member.you ? member : null, onYou: member?.you ?? false, ownPin: own, ground };
+    return { s, member: member && !member.you ? member : null, onYou: member?.you ?? false, ownPin: own, ground, piece };
   }
 
   // ---- the radial pie (emotes art; screen tier, at the press point)
@@ -508,18 +581,21 @@ export async function createGameUI(demo) {
   }, 2);
   L.add((LL) => {
     const t = LL.t, F = EV.framesFor(LL.tok);
-    if (exec) EV.drawExecution(evHud, LL, F, seatMember(exec.seat), exec.t0, { t, still: reduced, layer: 'fx', Tn });
+    // (wave 2, docs/UI-HD-WAVE2.md steps 7-9) HD: the bell / wisp / reveal / poof on the HD world tier (worldLayerHD:
+    // HD logical px), the tolls on the 1x ground; the execution dim stays on the 1x layer (z 2)
+    const LW = hdOn() ? worldLayerHD(LL) : LL;
+    if (exec) { if (hdOn()) drawExecutionFxHD(evHud, LL, F, seatMember(exec.seat), exec.t0, { t, still: reduced }); else EV.drawExecution(evHud, LL, F, seatMember(exec.seat), exec.t0, { t, still: reduced, layer: 'fx', Tn }); }
     if (ghostFx && you.id) {
       const k = EV.gridK(t - ghostFx.t0);
       if (k > 30) ghostFx = null;
       else {
-        const feet = LL.at(you.feet()), lt = LL.at(you.head()).y + IA.LABEL_DY;
-        EV.drawWisp(LL, F, Math.floor(k / 3), feet.x, feet.y - EV.WISP_LIFT, lt);
+        const feet = LW.at(you.feet()), lt0 = LL.at(you.head()).y + IA.LABEL_DY, lt = hdOn() ? Math.round(lt0 * L.hd.k / L.hd.d) : lt0;
+        EV.drawWisp(LW, F, Math.floor(k / 3), feet.x, feet.y - EV.WISP_LIFT, lt);
         const rd = Math.floor((k - 12) / 2);
-        if (k >= 12 && rd < 4 && !reduced) EV.put(LL.world, F, `reveal_${rd}`, feet.x, feet.y - 6, 'reveal');
+        if (k >= 12 && rd < 4 && !reduced) EV.put(LW.world, F, `reveal_${rd}`, feet.x, feet.y - 6, 'reveal');
       }
     }
-    if (poof) { const k = EV.gridK(t - poof.t0); if (k >= EV.TIMING.poof.frames * EV.TIMING.poof.hold) poof = null; else EV.drawPoof(LL, F, LL.at(poof.pos), k, { appear: true }); }
+    if (poof) { const k = EV.gridK(t - poof.t0); if (k >= EV.TIMING.poof.frames * EV.TIMING.poof.hold) poof = null; else EV.drawPoof(LW, F, LW.at(poof.pos), k, { appear: true }); }
   }, 26);
   // screen tier: the night veil (under the HUD: the chips, the toolbar, the captions stay readable over it)
   L.add((LL) => {
@@ -539,6 +615,8 @@ export async function createGameUI(demo) {
   // ---- the notebook (DOM) + the readers
   const nb = createNotebook(demo, {
     avatarURL,
+    // (density) the D=2 pixel face on the page + the notebook's own text (src/ui/hd/css.js; --hdpx = L.hd.scale)
+    hd: hdOn(), hdpx: () => L.hd?.scale ?? 1,
     people: () => members.map((m) => ({ key: m.you ? 'you' : `npc${m.slot}`, id: m.id, name: m.name, you: m.you })),
   });
   // the 3D books as one mesh per material (src/ui/runtime/book3d.js; book3d.js draws ~25 meshes x 3 passes per open book)
@@ -591,7 +669,8 @@ export async function createGameUI(demo) {
 
   // ------------------------------------------------------------------------------------------------ drawing
   const cache = new Map();
-  const cached = (k, fn) => { let v = cache.get(k); if (!v) { v = fn(); cache.set(k, v); if (cache.size > 400) cache.delete(cache.keys().next().value); } return v; };
+  // (density) every cache key carries the art density: a window that changes pixel scale redraws its pieces
+  const cached = (k, fn) => { k = `${dd()}|${k}`; let v = cache.get(k); if (!v) { v = fn(); cache.set(k, v); if (cache.size > 500) cache.delete(cache.keys().next().value); } return v; };
   /** (perf) blit a cached sprite straight into the layer's bytes (PixelImage.blit allocates per pixel); opaque texels
    *  replace, partial alpha (glows) composites through set(); grows the runtime layer's dirty box. */
   const fastBlit = (dst, src, x, y) => {
@@ -615,6 +694,25 @@ export async function createGameUI(demo) {
     const im = new PixelImage(w, h), r = fn(im) ?? null, bb = im.bbox();
     return bb ? { im: im.crop(bb.x, bb.y, bb.w, bb.h), dx: bb.x, dy: bb.y, r } : { im: new PixelImage(1, 1), dx: 0, dy: 0, r };
   });
+  // ---- (density) the screen tier's pieces: drawn ONCE through a density view (kit hdPiece: every kit / group drawer
+  // works unchanged: D=2 text and frames, HD sprites where they exist, 2x2 blocks elsewhere) and blitted into
+  // L.hd.screen at logical x d; on the 1x path a plain PixelImage into L.screen. Sizes / rects stay in logical px.
+  /** A screen piece: fn(img) draws into a w x h logical image (a view when HD); returns the backing image (.r = fn's result, .view). */
+  const mkImg = (w, h, fn) => {
+    if (hdOn()) return hdPiece(w, h, fn, L.hd.d);
+    const im = new PixelImage(w, h); im.view = im; im.r = fn(im) ?? null; return im;
+  };
+  /** Logical width of a piece. */
+  const lw = (im) => Math.ceil(im.w / dd());
+  /** Blit a piece at logical (x, y) into the screen tier. */
+  const putS = (im, x, y) => fastBlit(SB(), im, Math.round(x * dd()), Math.round(y * dd()));
+  /** A centred / cropped screen piece (the prompt): cropped to what it drew, the crop start aligned to logical px. */
+  const pieceS = (key, w, h, fn) => cached(`S${key}`, () => {
+    const D = dd(), im = mkImg(w, h, fn), bb = im.bbox();
+    if (!bb) return { im: new PixelImage(1, 1), dx: 0, dy: 0, r: im.r };
+    const x0 = Math.floor(bb.x / D) * D, y0 = Math.floor(bb.y / D) * D;
+    return { im: im.crop(x0, y0, bb.x + bb.w - x0, bb.y + bb.h - y0), dx: x0 / D, dy: y0 / D, r: im.r };
+  });
   const bubbleEnv = (t, born, until) => {
     if (t < born || t >= until) return null;
     const a = gfr(t - born), out = until - IA.SPEECH.fadeOutMs / 1000;
@@ -633,22 +731,43 @@ export async function createGameUI(demo) {
       const p = LL.at(m.head()), top = Math.max(LL.MARGIN + 2 + (m.you ? 8 : 0), p.y + IA.LABEL_DY);
       // (P3.9) a label the DOM covers (the control panel's band, the folded panel's top band, the open notebook) is
       // not drawn at all (it peeked out above the panel's top edge), nor its stack (bubble, pins, pops)
-      const sx = p.x - LL.MARGIN, sy = top - LL.MARGIN, hw = 40;
+      // (in logical screen px: the cover bands and the HUD rects are)
+      const f2 = t2l(), sx = (p.x - LL.MARGIN) * f2, sy = (top - LL.MARGIN) * f2, hw = 40;
       if ((cover.right && sx + hw > W() - cover.right) || (cover.left && sx - hw < cover.left) || (cover.top && sy < cover.top + 2)) continue;
       // nor under the HUD's own top row (the clock / phase chips, the toolbar: a label clamped at the top edge sat
       // under the clock chip): last frame's rects
       if (sy < (R.topRow?.y1 ?? 0) && R.topRow.spans.some(([a, b]) => sx + 30 > a && sx - 30 < b)) continue;
       m._shown = true;
       // the "you are here" ring, except while your big 3D book stands in front of you (it would print over the pages:
-      // L.ground keeps only CHARACTER texels, the book is a prop)
+      // L.ground keeps only CHARACTER texels, the book is a prop). (wave 1) HD: a ground decal on the HD depth tier
+      // (putGroundHD: per-row ground depth, hidden under characters like L.ground)
       if (m.you && !(hud.uiOptions.bookStyle === 'big' && readers.some((r) => r.who === 'you'))) {
         const f = LL.at(m.pos), k = reduced ? 0 : frameAt(t, 2.5, 4);
-        fastBlit(LL.ground, cached(`ring${k}${T.gold}`, () => IA.youRing(k, T)), f.x - 16, f.y - 8);
+        if (hdOn()) { const F2 = L.hd.at(m.pos); putGroundHD(L.hd, IH.youRingHD(k, T), F2.x - 32, F2.y - 16, m.pos, { anchorRow: 16 }); }
+        else fastBlit(LL.ground, cached(`ring${k}${T.gold}`, () => IA.youRing(k, T)), f.x - 16, f.y - 8);
       }
       // the name label (indicators art), drawn once per name + token set: drawText at (cx, top) = this crop at (cx + dx, top - 1 + dy)
       // a ghost (your ghost STATE: player.ghost, walking too; or a ghost clip): the indicators' ghost label variant
       // (ghost ink + the little sheet ghost)
       const ghostly = m.clip === 'ghost' || (m.you && m.ghost);
+      if (hdOn()) {
+        // (density) the label on L.hd.world (body@2 in a 2-HD-px ring; ghost: the ghost ink + the wisp, x2 blocks),
+        // the talk glyph and your chevron in their wave-1 HD art; the stack above it is kept in texels (bubbles / pins
+        // convert with k)
+        const k = L.hd.k, d = L.hd.d, q = L.hd.at(m.head());
+        const lb = labelHD(LL, m.head(), m.name, ghostly ? 'ghost' : 'player', T, { top: Math.max(Math.round((LL.MARGIN + 2 + (m.you ? 8 : 0)) * k), q.y + IA.LABEL_DY * d) });
+        if (ghostly) fastBlit(L.hd.world, cached(`wisp${T.ghost}`, () => up2(IA.ghostWisp(T))), lb.x - 7 * d, lb.y + 2 * d);
+        const tk = talk.get(keyOf(m));
+        if (tk?.on) {
+          const step = reduced ? 0 : IA.talkStep(t), kind = m.you ? 'self' : 'talk';
+          fastBlit(L.hd.world, IH.talkGlyphHD(step, kind, T), lb.x + lb.w + d, lb.y);
+        }
+        const chevY = lb.top - (8 + (reduced ? 0 : frameAt(t, 2, 2))) * d;
+        if (m.you) fastBlit(L.hd.world, IH.youChevronHD(T), q.x - 4 * d, chevY);
+        m._labelTop = Math.floor((m.you ? lb.top - 8 * d : lb.top) / k);
+        m._stack = m._labelTop - 1;
+        continue;
+      }
       const lab = ghostly
         ? piece(`labg${m.name}${T.ghost}`, 160, 12, (im) => { const g = IA.labelImage(m.name, 'ghost', T); im.blit(g, 80 - (g.w >> 1), 0); })
         : piece(`lab${m.name}${T.labelText}${T.labelLine}`, 160, 12, (im) => IA.label(im, 80, 1, m.name, 'player', T));
@@ -674,8 +793,19 @@ export async function createGameUI(demo) {
       let left = x - Math.floor(sz.w / 2);
       left = Math.max(LL.MARGIN + 2, Math.min(LL.world.w - LL.MARGIN - 2 - sz.w, left));
       const tailX = Math.max(5, Math.min(sz.w - 5, x - left));
-      let im = env.pop ? IA.bubblePop(lines, tailX, T) : cached(`bub${tk.line}${tailX}${T.bubble}`, () => IA.bubble(lines, tailX, T));
       const topY = Math.max(LL.MARGIN + 1, bottom - sz.h - IA.BUBBLE_TAIL_H);   // near the top edge: kept in view
+      if (hdOn()) {
+        // (wave 1) the HD bubble (D=2 frame + body@2 text + a stepped HD tail), anchored at its TAIL TIP so it stays on
+        // the speaker at any k (at 1080p 'round' it is 4/3 taller: the stack converts back with / k)
+        const d = L.hd.d, k = L.hd.k, hk = (v) => Math.floor(v * k);
+        let bi = cached(`bubhd${tk.line}${tailX}${env.pop}${T.bubble}`, () => IH.bubbleHD(lines, tailX, T, { pop: env.pop }));
+        const ax = hk(left + tailX), ay = hk(topY + sz.h + IA.BUBBLE_TAIL_H), bx = ax - tailX * d, by = ay - (sz.h + IA.BUBBLE_TAIL_H) * d;
+        if (env.dissolve > 0) bi = dissolve(bi.clone(), env.dissolve, bx & 3, by & 3);
+        fastBlit(L.hd.world, bi, bx, by);
+        m._stack = Math.floor(by / k) - 1;
+        continue;
+      }
+      let im = env.pop ? IA.bubblePop(lines, tailX, T) : cached(`bub${tk.line}${tailX}${T.bubble}`, () => IA.bubble(lines, tailX, T));
       if (env.dissolve > 0) im = dissolve(im.clone(), env.dissolve, left & 3, topY & 3);
       fastBlit(LL.world, im, left, topY);
       m._stack = topY - 1;
@@ -687,7 +817,16 @@ export async function createGameUI(demo) {
     if (point) {
       const age = t - point.t0;
       if (age >= MT.EMOTE_POINT_MS / 1000) point = null;
-      else if (you.id && visible(you)) {
+      else if (you.id && visible(you) && hdOn()) {
+        // (wave 1) the HD finger + bead trail (L.hd.world) and the HD ping (a ground decal on the depth tier); the
+        // phases as drawPoint (LL.phase: trail z 15 under the labels, main z 30)
+        const FH = markerFramesHD(LL.tok, hud.uiOptions.pointerScale === 'v2' ? 'v2' : 'new'), H = L.hd;
+        const head = H.at(you.pos.clone().setY(you.pos.y + you.height * 0.72));
+        if (point.target.kind === 'person') {
+          const m = npcOf(point.target.slot);
+          if (m && m.id === point.target.id) drawPointHD(LL, FH, { head, aim: H.at(m.pos.clone().setY(m.pos.y + m.height * 0.4)), spot: H.at(m.pos), spotP: m.pos, person: true, age, still: reduced });
+        } else { const s = H.at(point.target.p); drawPointHD(LL, FH, { head, aim: s, spot: s, spotP: point.target.p, person: false, age, still: reduced }); }
+      } else if (you.id && visible(you)) {
         const head = LL.at(you.pos.clone().setY(you.pos.y + you.height * 0.72));
         if (point.target.kind === 'person') {
           const m = npcOf(point.target.slot);
@@ -704,6 +843,23 @@ export async function createGameUI(demo) {
       if (!list.length) continue;
       const icon = iconOf(you.id, you.name), cx = LL.at(m.head()).x, labelTop = m._stack + 1;
       const hv = hover?.kind === 'pin' ? list.indexOf(hover.pin) : -1;
+      if (hdOn()) {
+        // (density) HD pins on L.hd.world with YOUR 24-px portrait 1:1 in the socket (the clear "who pinned" icon)
+        const H = L.hd, k = H.k, d = H.d, head = m.head(), q = H.at(head), labelTopHD = Math.round(labelTop * k);
+        const pi = pinIcon();
+        drawPersonPinsHD(LL, { cx: q.x, labelTopHD, t, still: reduced, hover: hv,
+          pins: list.map((p) => ({ color: p.color, icon: pi.icon, iconKey: pi.key, age: t - p.t0, removeAt: p.removeAt })) });
+        // hit rects (logical screen px, generous): the HD world box -> HD screen (this frame's offset) -> logical
+        const s0 = H.atScreen(head), ox = s0.x - q.x, oy = s0.y - q.y;
+        const n = list.length, mid = (n - 1) / 2, spread = Math.min(0.62, 2.4 / Math.max(1, n));
+        list.forEach((p, i) => {
+          const kk = i - mid, dx = n > 1 ? Math.round(kk * 18 * spread) : 0, dy = n > 1 ? Math.round(Math.abs(kk) * 1.5) : 0;
+          const hx = q.x + dx * d - ANCHORS_HD.pin.x, hy = labelTopHD - d + dy * d - ANCHORS_HD.pin.y;
+          personPinRects.push({ pin: p, x: Math.floor((hx + ox) / d) - 3, y: Math.floor((hy + oy) / d) - 3, w: Math.ceil(36 / d) + 6, h: Math.ceil(52 / d) + 6, hw: { x: hx, y: hy } });
+        });
+        m._stack -= Math.ceil(52 / k) + 2;
+        continue;
+      }
       drawPersonPins(LL, F, { cx, labelTop, t, still: reduced, hover: hv,
         pins: list.map((p) => ({ color: p.color, ...icon, age: t - p.t0, removeAt: p.removeAt })) });
       // (drawPersonPins' fan: dx / dy per index, the pin's anchor 8, 25: body x - 8 .. x + 10, y - 25 .. y + 1)
@@ -722,7 +878,10 @@ export async function createGameUI(demo) {
       const m = q.who === 'you' ? (you.id ? you : null) : npcOf(q.who);
       if (!m || !m._shown) continue;
       const x = LL.at(m.pos).x, top = m._stack ?? (LL.at(m.head()).y - 12);
-      fastBlit(LL.world, E.popFrame(q.kind, ps.f, LL.tok, q.color || 'gold'), x - E.POP.anchor.x, top - 1 - E.POP.anchor.y - ps.bob);
+      const pf = E.popFrame(q.kind, ps.f, LL.tok, q.color || 'gold');
+      // (wave 2) the HD pop (.hd after the prepare) on L.hd.world, anchored at the same scene point
+      if (hdOn() && pf.hd) fastBlit(L.hd.world, pf.hd, L.hd.at(m.pos).x - POP_HD.anchor.x, Math.round((top - 1 - ps.bob) * L.hd.k) - POP_HD.anchor.y);
+      else fastBlit(LL.world, pf, x - E.POP.anchor.x, top - 1 - E.POP.anchor.y - ps.bob);
     }
   };
   L.add((LL) => pointDraw(Object.assign(Object.create(LL), { phase: 'trail' })), 15);
@@ -730,6 +889,7 @@ export async function createGameUI(demo) {
   // place pins: depth-tested (markers pinPass, order 301): whoever stands in front hides them
   const pinPass = createPinPass(engine, L, { timeFn: (t) => t });
   pinPass.add((P) => {
+    if (hdOn()) return;                    // (density) the HD depth tier draws them (below)
     const F = framesNow(), t = P.t;
     const icon = iconOf(you.id, you.name);
     for (const p of pins) {
@@ -739,9 +899,41 @@ export async function createGameUI(demo) {
         hover: hover?.kind === 'pin' && hover.pin === p, still: reduced });
     }
   });
+  // (density) place pins on the HD depth tier (L.hd.putDepth: whoever stands in front hides them, labels stay on top),
+  // 36 x 52 HD px with your portrait 1:1; a pin dropped behind a roof (critic P3-12) gets its x-ray: a dotted outline
+  // of its silhouette on L.hd.world (not depth tested), so it reads through whatever hides it
+  const xrayOf = (color, T) => cached(`xray${color}${T.parchmentHi}`, () => {
+    const src = pinWithIconHD(color, null, T, ''), o = new PixelImage(src.w + 2, src.h + 2);
+    for (let y = 0; y < o.h; y++) for (let x = 0; x < o.w; x++) {
+      if (src.alpha(x - 1, y - 1) || (x + y) & 1) continue;
+      if (src.alpha(x - 2, y - 1) || src.alpha(x, y - 1) || src.alpha(x - 1, y - 2) || src.alpha(x - 1, y)) o.set(x, y, T.parchmentHi);
+    }
+    return o;
+  });
+  L.add((LL) => {
+    if (!hdOn()) return;
+    const t = LL.t, pi = pinIcon();
+    for (const p of pins) {
+      if (p.kind !== 'place') continue;
+      const age = t - p.t0;
+      const on = drawPlacePinHD(LL, { p: p.p, color: p.color, icon: pi.icon, iconKey: pi.key, age, removeAt: p.removeAt, hover: hover?.kind === 'pin' && hover.pin === p, still: reduced });
+      if (on && p.behind && p.removeAt == null && age > MT.DROP_MS / 1000) { const q = L.hd.at(p.p); fastBlit(L.hd.world, xrayOf(p.color, LL.tok), q.x - ANCHORS_HD.pin.x - 1, q.y - ANCHORS_HD.pin.y - 1); }
+    }
+  }, 31);
   // the hovered own pin's tooltip (emotes art) above everything anchored
   L.add((LL) => {
     if (hover?.kind !== 'pin' || hover.pin.removeAt != null) return;
+    if (hdOn()) {   // (density) through the HD world view (D=2 text + frame), at logical = HD / d
+      const V = L.hd.worldView, d = L.hd.d;
+      if (hover.pin.kind === 'person') {
+        const r = personPinRects.find((x) => x.pin === hover.pin);
+        if (r) E.drawPinTip(V, Math.round((r.hw.x + 18) / d), Math.floor(r.hw.y / d), `Your pin on ${hover.pin.name ?? 'them'} · click to remove`, LL.tok, { removable: true });
+        return;
+      }
+      const q = L.hd.at(hover.pin.p);
+      E.drawPinTip(V, Math.round(q.x / d), Math.floor(q.y / d) - 28, 'Your pin · click to remove', LL.tok, { removable: true });
+      return;
+    }
     if (hover.pin.kind === 'person') {
       const r = personPinRects.find((x) => x.pin === hover.pin);
       if (r) E.drawPinTip(LL.world, r.x + 11 + LL.MARGIN, r.y + LL.MARGIN, `Your pin on ${hover.pin.name ?? 'them'} · click to remove`, LL.tok, { removable: true });
@@ -758,49 +950,77 @@ export async function createGameUI(demo) {
   const offscreen = [];
   const pinDiscIcon = (c, T) => cached(`pdi${c}${T.ink}`, () => { const im = new PixelImage(12, 12), g = E.pinIcon(c, T); im.blit(g, (12 - g.w) >> 1, (12 - g.h) >> 1); return im; });
   const pointDiscIcon = (T) => cached(`ptdi${T.ink}`, () => { const im = new PixelImage(12, 12), g = E.emotePointSmall(T); im.blit(g, (12 - g.w) >> 1, (12 - g.h) >> 1); return im; });
+  // (wave 1) the HD disc icons: 24x24 with the HD swatch (the clear centre dot) / the HD glove centred (-> 36x36 discs)
+  const pinDiscIconHD = (c, T) => cached(`pdih${c}${T.ink}`, () => { const im = new PixelImage(24, 24), g = swatchHD(c, T, { icon: 'dot' }); im.blit(g, (24 - g.w) >> 1, (24 - g.h) >> 1); return im; });
+  const pointDiscIconHD = (T) => cached(`ptdih${T.ink}`, () => { const im = new PixelImage(24, 24), g = gloveHD(T); im.blit(g, (24 - g.w) >> 1, (24 - g.h) >> 1); return im; });
   L.add((LL) => {
     offscreen.length = 0;
-    const img = LL.screen, T = LL.tok;
-    if (!img) return;
+    const img = SV(), T = LL.tok, HD = hdOn(), d = dd();
+    if (!img || !LL.screen) return;
     const ax0 = 4 + cover.left, ax1 = img.w - 4 - cover.right, ay0 = cover.top + 26, ay1 = img.h - 30;
     if (ax1 - ax0 < 60 || ay1 - ay0 < 40) return;
     const list = [];
     const seen = new Set();
-    const want = (key, pos, icon, name, label) => { if (seen.has(key) || list.length >= 6) return; seen.add(key); list.push({ key, pos, icon, name, label }); };
+    const want = (key, pos, icon, name, label, hi = null) => { if (seen.has(key) || list.length >= 6) return; seen.add(key); list.push({ key, pos, icon, name, label, hi }); };
+    // (HD: a person's 48-px HD avatar: the atlas crop's .hd, or avatarHD for the four)
+    const avHD = (id) => avatarImg(id)?.hd ?? avatarHD(id) ?? null;
     if (point && LL.t - point.t0 < MT.EMOTE_POINT_MS / 1000) {
-      if (point.target.kind === 'person') { const m = npcOf(point.target.slot); if (m) want(`m${m.slot}`, m.pos, avatarImg(m.id), m.name, 'point'); }
-      else want('pt', point.target.p, pointDiscIcon(T), 'here', 'point');
+      if (point.target.kind === 'person') { const m = npcOf(point.target.slot); if (m) want(`m${m.slot}`, m.pos, avatarImg(m.id), m.name, 'point', HD ? avHD(m.id) : null); }
+      else want('pt', point.target.p, pointDiscIcon(T), 'here', 'point', HD ? pointDiscIconHD(T) : null);
     }
     for (const p of pins) {
       if (p.removeAt != null) continue;
-      if (p.kind === 'person') { const m = npcOf(p.slot); if (m && m.id === p.id) want(`m${m.slot}`, m.pos, avatarImg(m.id), m.name, 'pin'); }
-      else want(`p${pins.indexOf(p)}`, p.p, pinDiscIcon(p.color, T), 'your pin', 'pin');
+      if (p.kind === 'person') { const m = npcOf(p.slot); if (m && m.id === p.id) want(`m${m.slot}`, m.pos, avatarImg(m.id), m.name, 'pin', HD ? avHD(m.id) : null); }
+      else want(`p${pins.indexOf(p)}`, p.p, pinDiscIcon(p.color, T), 'your pin', 'pin', HD ? pinDiscIconHD(p.color, T) : null);
     }
     const cxs = (ax0 + ax1) / 2, cys = (ay0 + ay1) / 2;
     for (const o of list) {
-      const f = LL.atScreen(o.pos);
+      const f = atS(o.pos);
       if (f.x >= ax0 && f.x < ax1 && f.y >= ay0 && f.y < ay1) continue;
       const dx = f.x - cxs, dy = f.y - cys, d8 = IA.dir8Of(dx, dy);
-      const dp = cached(`edisc${o.key}${o.icon ? o.icon.w : 0}${o.name}${d8}${T.ink}`, () => IA.edgeDiscPointer(IA.edgeDisc(o.icon, T, o.name), d8, T));
-      const r = (dp.img.w >> 1) - dp.pad, m = r + IA.EDGE_TAIL + 3;
+      // HD: the wave-1 disc (indicators/hd.js) straight onto L.hd.screen; 1x: the indicators' disc on L.screen
+      const ic = HD ? (o.hi ?? o.icon) : o.icon;
+      const dp = cached(`edisc${HD}${o.key}${ic ? ic.w : 0}${o.name}${d8}${T.ink}`, () => (HD ? IH.edgeDiscPointerHD(IH.edgeDiscHD(ic, T, o.name), d8, T) : IA.edgeDiscPointer(IA.edgeDisc(ic, T, o.name), d8, T)));
+      const r = (dp.img.w / 2 - dp.pad) / d, m = r + IA.EDGE_TAIL + 3;
       const k = Math.min(((ax1 - ax0) / 2 - m) / Math.max(1e-6, Math.abs(dx)), ((ay1 - ay0) / 2 - m) / Math.max(1e-6, Math.abs(dy)));
       const x = Math.round(cxs + dx * k), y = Math.round(cys + dy * k);
-      fastBlit(img, dp.img, x - (dp.img.w >> 1), y - (dp.img.h >> 1));
+      fastBlit(SB(), dp.img, x * d - (dp.img.w >> 1), y * d - (dp.img.h >> 1));
       offscreen.push({ key: o.key, kind: o.label, d8, at: [x, y] });
     }
   }, 57);
 
-  // tier S: the HUD
+  // tier S: the HUD. (density) Everything here is in LOGICAL px and lands on L.hd.screen through its density view
+  // (img = SV()): cached pieces (mkImg / putS) for what is drawn once per state, direct view calls for the per-frame
+  // parts (pie, armed pill, vote clock). The night veil stays on the 1x L.screen (under this tier).
   const shot = { chip: null, chipKey: '', phase: null, phaseKey: '' };
   const STAGE = { day: 'discussion', nomination: 'nominations', vote: 'nominations', execution: 'nominations', night: 'bedtime' };
   const LABEL = { nomination: 'Nominations', vote: 'The vote', execution: 'Execution', night: 'Night' };
-  const PHASE = { day: ['day', false], nomination: ['day', true], vote: ['day', true], execution: ['bedtime', false], night: ['night', false] };
-  const probe = (w, h, fn) => { const im = new PixelImage(w, h); const r = fn(im); return { im, r }; };
+  // (critic P3-11) the chips follow the HOUR and say it in plain words: the day phase after 20:00 / before 06:00 is
+  // "NIGHT 1" with the moon (it read "DAY 1 ☼" at 23:00) and its clock chip switches to the night stage + "NIGHT" at the
+  // veil (it read GOLDEN at 20:00); the execution is "EXECUTION" with the bell (it read the v2 jargon "BEDTIME 1")
+  const nightHours = (h) => h >= 20 || h < 6;
+  const phaseChipOf = (phase, h) => (phase === 'nomination' ? ['Nominations', 'ring'] : phase === 'vote' ? ['The vote', 'ring'] : phase === 'execution' ? ['Execution', 'bell']
+    : phase === 'night' || nightHours(h) ? ['Night 1', 'moon'] : ['Day 1', 'sun']);
+  const dayWord = (h) => (nightHours(h) ? 'Night' : h < 11 ? 'Morning' : h < 14 ? 'Midday' : h < 17 ? 'Afternoon' : 'Evening');
+  const SHORT_WORD = { Morning: 'Morn', Midday: 'Noon', Afternoon: 'Day', Evening: 'Eve' };
+  /** The phase chip (hud art drawPhaseChip's look: an iron pill, LABEL caps, the icon) with our own wording. */
+  const phaseChip = (img, rx, y, T, label, icon) => {
+    const s = label.toUpperCase(), w = 6 + textWidth(s, HUD_LABEL) + 4 + icon.w + 6, h = 11, x = rx - w;
+    drawBox(img, x, y, w, h, { line: 'outline', edge: 'iron', fill: 'ink', hi: 'inkRaised', sh: null, corner: 2, shadow: false }, T);
+    drawText(img, x + 6, y + 3, s, { color: T.text, font: HUD_LABEL });
+    img.blit(icon, x + 6 + textWidth(s, HUD_LABEL) + 4, y + 2);
+    return { x, w, h };
+  };
   const toolbar = [{ k: 'tip', g: (T, lit) => AB.bulb(T, lit), title: 'the controls tip' }, { k: 'notebook', g: (T) => HA.GLYPH.notebook(T), title: 'Notebook (J)' }, { k: 'panel', g: (T) => HA.GLYPH.gear(T), title: 'controls (`)' }, { k: 'help', g: (T) => HA.GLYPH.help(T), title: 'keys (H)' }];
-  // the action bar's popovers: the emote palette, the tray with every other key
-  let emotePal = false, trayOpen = false;
+  const TOOL_HD = { tip: 'tip', notebook: 'notebook', panel: 'gear', help: 'help' };
+  // the action bar's popovers: the emote palette, the tray with every other key (critic P2-5: one popover at a time:
+  // the palette, the tray and the social dock close each other)
+  let emotePal = false, trayOpen = false, tapTip = null;
+  function closePopovers() { emotePal = trayOpen = false; }
   const BARW = AB.BAR.length * (AB.BTN + AB.GAP) - AB.GAP;
-  const btnImg = (key, o) => cached(`btn|${key}|${o.state}|${o.hint}|${touchUI}|${L.tok.ink}`, () => AB.button(L.tok, { ...o, showHint: !touchUI }));
+  const btnImg = (key, o) => cached(`btn|${key}|${o.state}|${o.hint}|${touchUI}|${L.tok.ink}`, () => mkImg(AB.BTN + 2, AB.BTN + 2, (v) => AB.buttonInto(v, L.tok, { ...o, showHint: !touchUI })));
+  /** A 1x sprite as a screen piece (through the view: blocks, or its .hd). */
+  const wrap1x = (g) => (hdOn() ? mkImg(g.w, g.h, (v) => v.blit(g, 0, 0)) : g);
   const hoverIs = (kind, k) => hover?.kind === kind && hover.k === k;
   /** Nearest-neighbour down-scale (the tip flying into the bulb). */
   const shrink = (im, f) => {
@@ -808,46 +1028,81 @@ export async function createGameUI(demo) {
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const c = im.get(Math.min(im.w - 1, Math.floor(x / f)), Math.min(im.h - 1, Math.floor(y / f))); if (c[3]) o.set(x, y, c); }
     return o;
   };
-  const hasEmote = (k) => { const h = demo.player?.handle; if (!h) return false; if (k === 'point') return true; const c = h.emotes?.[k]; return !!(c && h.spec?.clips?.[c]); };
+  const hasEmote = (k) => { const h = demo.player?.handle; if (!h) return false; if (k === 'point') return true; if (k === 'ghost' && h.id === 'storyteller') return false; const c = h.emotes?.[k]; return !!(c && h.spec?.clips?.[c]); };
+  /** (critic P3-9) why a palette emote is greyed: the tooltip and the toast on a click. */
+  const emoteWhy = (k) => {
+    const h = demo.player?.handle, nm = h?.name ?? h?.id ?? 'This character';
+    if (k === 'ghost' && h?.id === 'storyteller') return 'The Storyteller never becomes a ghost';
+    return `${nm} has no ${k === 'signature' ? 'signature' : k} emote`;
+  };
   /** The tip plate + its "never show again" row, drawn once per state ({im, close, never} rects relative to im). */
   const tipImage = (mw, T) => cached(`tipimg|${mw}|${tipNever}|${hoverIs('tip', 'never')}|${hoverIs('tip', 'close')}|${T.ink}|${JSON.stringify(tipTokensNow)}`, () => {
-    const tmp = new PixelImage(mw + 40, 80), r = HA.drawKeyHint(tmp, (mw + 40) >> 1, 0, T, { tokens: tipTokensNow, maxW: mw });
-    const w = r.w, h = r.h, im = new PixelImage(w + 1, h + 14);
-    im.blit(tmp, -r.x, 0);
-    if (hoverIs('tip', 'close')) drawBox(im, w - 12, 2, 9, 9, 'hover', T), im.blit(HA.GLYPH.close(T, T.text), w - 10, 4);
-    drawBox(im, 0, h - 1, w, 14, { line: 'outline', edge: 'goldSh', fill: 'ink', hi: null, sh: null, corner: 1, shadow: true }, T);
-    drawBox(im, 6, h + 2, 8, 8, hoverIs('tip', 'never') ? 'hover' : 'sunk', T);
-    if (tipNever) for (const [x, y] of [[8, h + 5], [9, h + 6], [10, h + 5], [11, h + 4]]) im.set(x, y, T.goldHi), im.set(x, y + 1, T.gold);
-    im.blit(textImg('Never show again', hoverIs('tip', 'never') ? T.text : T.textDim), 18, h + 3);
-    return { im, close: { x: w - 13, y: 1, w: 11, h: 11 }, never: { x: 2, y: h, w: w - 4, h: 12 } };
+    const tmp = mkImg(mw + 40, 80, (v) => HA.drawKeyHint(v, (mw + 40) >> 1, 0, T, { tokens: tipTokensNow, maxW: mw })), r = tmp.r;
+    const w = r.w, h = r.h;
+    const im = mkImg(w + 1, h + 14, (v) => {
+      v.blit(tmp.view, -r.x, 0);
+      // (critic P3-10) the x always in cream (the plate's own x is textDim: low contrast), a hover box behind it
+      if (hoverIs('tip', 'close')) drawBox(v, w - 12, 2, 9, 9, 'hover', T);
+      v.blit(HA.GLYPH.close(T, T.text), w - 10, 4);
+      drawBox(v, 0, h - 1, w, 14, { line: 'outline', edge: 'goldSh', fill: 'ink', hi: null, sh: null, corner: 1, shadow: true }, T);
+      drawBox(v, 6, h + 2, 8, 8, hoverIs('tip', 'never') ? 'hover' : 'sunk', T);
+      if (tipNever) for (const [x, y] of [[8, h + 5], [9, h + 6], [10, h + 5], [11, h + 4]]) v.set(x, y, T.goldHi), v.set(x, y + 1, T.gold);
+      v.blit(textImg('Never show again', hoverIs('tip', 'never') ? T.text : T.textDim).view, 18, h + 3);
+    });
+    // (P3-10: the close target is 16 x 15 logical px in the plate's top-right corner)
+    return { im, w: w + 1, h: h + 14, close: { x: w - 16, y: 0, w: 17, h: 15 }, never: { x: 2, y: h, w: w - 4, h: 12 } };
   });
-  const textImg = (str, color) => cached(`txt|${str}|${color}`, () => { const im = new PixelImage(Math.max(1, textWidth(str) + 2), 10); drawText(im, 0, 0, str, { color }); return im; });
+  const textImg = (str, color) => cached(`txt|${str}|${color}`, () => mkImg(Math.max(1, textWidth(str) + 2), 10, (v) => drawText(v, 0, 0, str, { color })));
+  // the events group draws through a layer whose .screen is the logical view (the vote clock straight into it = HD;
+  // the caption ribbon builds its own image = 2x2 blocks until the events group's HD wave)
+  const LS = Object.create(L, { screen: { get: () => SV() } });
+  // (pass B and other HUD clients: their pieces on this tier, their rects in our hit tests; see api.hudHost)
+  const hudClients = [];
+  /** client px of a logical screen px (its top-left). */
+  const toClient = (lx, ly) => {
+    const c = canvas.getBoundingClientRect(), u = unitDev(), sx = c.width / Math.max(1, engine.width), sy = c.height / Math.max(1, engine.height);
+    return { x: c.left + lx * u * sx, y: c.top + (engine.height - (H() - ly) * u) * sy };
+  };
+  // (wave 2, docs/UI-HD-WAVE2.md step 1) every HD path of the library on for this token set, BEFORE any callback draws
+  // or caches a sprite (z -1): the density round's swatches / glove / toolbar glyphs + hud / events / emotes HD hooks
+  L.add((LL) => { if (hdOn()) prepareWave2HD(LL.tok, { swatchIcon: 'dot' }); }, -1);
   L.add((LL) => {
-    const img = LL.screen, T = LL.tok, t = LL.t, s = store.state;
-    if (!img) return;
+    const img = SV(), T = LL.tok, t = LL.t, s = store.state;
+    if (!img || !LL.screen) return;
+    // (the library's HD sprites are attached by the z -1 prepare: prepareWave2HD)
     const x0 = 4 + cover.left, x1 = img.w - 4 - cover.right, cx = Math.floor((x0 + x1) / 2), y0 = cover.top;
     // clock chip: the town clock (time + stage of the day / the ceremony) and the phase chip beside it
     const hours = Number.isFinite(demo.time?.hours) ? demo.time.hours : s.timeOfDay;
     const day = hours >= 6 && hours < 20, len = day ? 14 : 10, into = day ? hours - 6 : (hours - 20 + 24) % 24;
-    const o = { stage: STAGE[s.phase] ?? 'discussion', label: LABEL[s.phase] ?? presetName(), time: formatClock(hours), frac: Math.max(0, Math.min(1, 1 - into / len)),
+    const stage = s.phase === 'day' ? (nightHours(hours) ? 'bedtime' : 'discussion') : STAGE[s.phase] ?? 'discussion';
+    const o = { stage, label: LABEL[s.phase] ?? dayWord(hours), time: formatClock(hours), frac: Math.max(0, Math.min(1, 1 - into / len)),
       paused: s.paused || !s.timeSpeed, plus: null, reduced };
-    const ck = `${o.stage}|${o.label}|${o.time}|${o.frac.toFixed(2)}|${o.paused}|${T.ink}`;
+    // a narrow screen (a phone): the chips must end left of the toolbar; first the short hour word, then the phase chip
+    // on a second row under the clock chip
+    const [plab, pic] = phaseChipOf(s.phase, hours);
+    const tbx = x1 - toolbar.length * 17, phW = 6 + textWidth(plab.toUpperCase(), HUD_LABEL) + 4 + 7 + 6 + 1;
+    const fits = (oo) => x0 + HA.clockChipWidth(oo) + 2 + phW <= tbx - 2;
+    if (!fits(o) && !LABEL[s.phase]) o.label = SHORT_WORD[o.label] ?? o.label;
+    const row2 = !fits(o);
+    const ck = `${o.stage}|${o.label}|${o.time}|${o.frac.toFixed(2)}|${o.paused}|${T.ink}|${dd()}`;
     if (ck !== shot.chipKey) {
       const w = HA.clockChipWidth(o);
-      shot.chip = probe(w + 4, 19, (im) => HA.drawClockChip(im, 2, 2, T, { ...o, t })).im; shot.chipKey = ck;
+      shot.chip = mkImg(w + 4, 19, (v) => HA.drawClockChip(v, 2, 2, T, { ...o, t })); shot.chipKey = ck;   // (wave 2: through the view = the HD chip: HD dial, dashes, glow)
     }
-    fastBlit(img, shot.chip, x0 - 2, y0 + 2);
-    const [ph, gathered] = PHASE[s.phase] ?? ['day', false];
-    const pk = `${ph}|${gathered}|${T.ink}`;
+    putS(shot.chip, x0 - 2, y0 + 2);
+    const pk = `${plab}|${pic}|${T.ink}|${dd()}`;
     if (pk !== shot.phaseKey) {
-      const tmp = new PixelImage(120, 13), r = HA.drawPhaseChip(tmp, 118, 1, T, { phase: ph, day: 1, gathered, t });
-      shot.phase = tmp.crop(r.x, 0, r.w + 1, 13); shot.phaseKey = pk;
+      const D = dd(), tmp = mkImg(120, 13, (v) => phaseChip(v, 118, 1, T, plab, HA.GLYPH[pic](T))), r = tmp.r;
+      shot.phase = tmp.crop(r.x * D, 0, (r.w + 1) * D, 13 * D); shot.phaseKey = pk;
     }
-    fastBlit(img, shot.phase, x0 + shot.chip.w - 2, y0 + 4 + 1);
-    R.topRow = { y1: y0 + 22, spans: [[x0 - 2, x0 + shot.chip.w - 2 + shot.phase.w], [x1 - toolbar.length * 17, x1]] };
+    const phX = row2 ? x0 + 16 : x0 + lw(shot.chip) - 2, phY = row2 ? y0 + 20 : y0 + 4 + 1;
+    putS(shot.phase, phX, phY);
+    R.topRow = { y1: row2 ? y0 + 34 : y0 + 22, spans: [[x0 - 2, Math.max(x0 + lw(shot.chip) - 2, phX + lw(shot.phase))], [tbx, x1]] };
+    R.chips = { clock: o.label, time: o.time, stage: o.stage, phase: plab, icon: pic, row2 };
     // toolbar (right of the visible area): the tip's lightbulb / notebook / control panel / keys; each button drawn
-    // once per state. The bulb is ALWAYS there; after a dismissed tip has flown into it, it glows GLOW_S s (a gold
-    // frame + the lit glass with rays throughout, the 2-ring halo pulsing: on 2 drawings of 3 at 7.5 fps)
+    // once per state (D=2: the library's toolButtonHD, 16-px glyphs). The bulb is ALWAYS there; after a dismissed tip
+    // has flown into it, it glows GLOW_S s (a gold frame + the lit glass with rays throughout, the 2-ring halo pulsing:
+    // on 2 drawings of 3 at 7.5 fps)
     let bx = x1;
     R.toolbar = {};
     const glowing = t >= bulbGlow && t < bulbGlow + GLOW_S;
@@ -859,22 +1114,22 @@ export async function createGameUI(demo) {
       const lit = b.k === 'tip' && (!!tipState || glowing);
       const st = on ? 'pressed' : hover?.kind === 'tool' && hover.k === b.k ? 'hover' : 'raised';
       const btn = cached(`tool${b.k}${st}${lit}${T.ink}`, () => {
+        if (hdOn()) return toolButtonHD(TOOL_HD[b.k], st, T, { lit });
         const im = new PixelImage(w, 15);
         drawBox(im, 0, 0, w, 15, lit && !on ? 'gold' : st, T);
         const g = b.g(T, lit), q = st === 'pressed' ? 1 : 0;
         im.blit(g, Math.floor((w - g.w) / 2) + q, Math.floor((15 - g.h) / 2) + q);
         return im;
       });
-      fastBlit(img, btn, bx, y0 + 4);
-      // the glow: a 1-px gold halo ring round the bulb button, pulsing with it (light FX: <= 2 alpha steps)
+      putS(btn, bx, y0 + 4);
+      // the glow: a 1-px gold halo ring round the bulb button, pulsing with it (light FX: <= 2 alpha steps; through the
+      // view = 2x2 blocks, the HD halo is a follow-up)
       if (b.k === 'tip' && glowing && (reduced || frameAt(t - bulbGlow, 7.5, 3) !== 2)) {
-        fastBlit(img, cached(`bulbhalo${T.ink}`, () => {
-          const h = new PixelImage(w + 6, 21);
+        putS(cached(`bulbhalo${T.ink}`, () => mkImg(w + 6, 21, (h) => {
           for (let yy = 3; yy < 18; yy++) for (let xx = 3; xx < w + 3; xx++) h.set(xx, yy, T.goldHi);
           h.outline(T.goldHi, {}); h.outline(withAlpha(T.goldHi, 110), {});
           for (let yy = 3; yy < 18; yy++) for (let xx = 3; xx < w + 3; xx++) h.erase(xx, yy);
-          return h;
-        }), bx - 3, y0 + 1);
+        })), bx - 3, y0 + 1);
       }
       R.toolbar[b.k] = { x: bx, y: y0 + 4, w, h: 15 };
       bx -= 2;
@@ -886,11 +1141,11 @@ export async function createGameUI(demo) {
       const age = HA.sgf(t - it.at), endF = Math.round(it.ms / 1000 * GRID_HZ), left = age - endF;
       if (it.gone || left >= 6) continue;
       const hh = HA.toastHeight(it.text, tw, it.kind), bw = HA.toastWidth(it.text, tw, it.kind), tx = x1 - bw;
-      const full = cached(`toast${it.kind}${bw}${T.ink}${it.text}`, () => { const im = new PixelImage(bw + 8, hh + 9); HA.drawToast(im, 4, 4, bw, T, { text: it.text, kind: it.kind, close: false }); return im; });
-      if (age >= 1 && left < 0) fastBlit(img, full, tx - 4, ty - 4);             // steady: the cached drawing
+      const full = cached(`toast${it.kind}${bw}${T.ink}${it.text}`, () => mkImg(bw + 8, hh + 9, (v) => HA.drawToast(v, 4, 4, bw, T, { text: it.text, kind: it.kind, close: false })));
+      if (age >= 1 && left < 0) putS(full, tx - 4, ty - 4);                   // steady: the cached drawing
       else {                                                                   // pop / dissolve frames (docs/UI.md §2.8)
-        const r = HA.envelopeFx(full.clone(), age, left >= 0 ? left : null, { reduced, ox: tx - 4, oy: ty - 4 });
-        if (r) fastBlit(img, r.img, tx - 4, ty - 4 + r.dy);
+        const D = dd(), r = HA.envelopeFx(full.clone(), age, left >= 0 ? left : null, { reduced, ox: (tx - 4) * D, oy: (ty - 4) * D });
+        if (r) putS(r.img, tx - 4, ty - 4 + r.dy);
       }
       ty += hh + 3;
     }
@@ -900,13 +1155,13 @@ export async function createGameUI(demo) {
     if (caption) {
       const k = EV.gridK(t - caption.t0);
       if (k > caption.durF + 8) caption = null;
-      else EV.drawCaption(LL, EF, { text: caption.text, glyph: caption.glyph, k, durF: caption.durF, cx, y: y0 + 26, still: reduced });
+      else EV.drawCaption(LS, EF, { text: caption.text, glyph: caption.glyph, k, durF: caption.durF, cx, y: R.topRow.y1 + 4, still: reduced });
     }
     R.vote = null;
     if (vote) {
-      const tv = voteClock(t), rect = { x: x0, y: y0 + 44, w: 69, h: 90 };
+      const tv = voteClock(t), rect = { x: x0, y: R.topRow.y1 + 22, w: 69, h: 90 };
       if (rect.y + rect.h < img.h - 30) {
-        const S = EV.drawVoteHud(evHud, LL, EF, vote.v, rect, { t: tv, still: reduced });
+        const S = EV.drawVoteHud(evHud, LS, EF, vote.v, rect, { t: tv, still: reduced });
         R.vote = { ...rect, tally: S.tally, done: S.done, passed: S.passed, current: S.current };
         if (S.done && !vote.result) { vote.result = true; setCaption(S.passed ? `Seat ${vote.v.nominee} is on the block (${S.tally} votes).` : 'Not enough votes.', 'bell', 3.2); }
       }
@@ -914,14 +1169,18 @@ export async function createGameUI(demo) {
     // bottom: dock button (your portrait in the gold ring) + the dock / armed pill above it
     const by = img.h - 4 - 24, bxr = x1 - 24;
     const av = you.id ? avatarImg(you.id) : null;
-    if (av) fastBlit(img, cached(`gold${you.id}${T.goldLine}`, () => goldFrame(av, T)), bxr, by);
+    // (wave 1) the gold frame round your 48-px HD avatar (goldFrame carries its HD twin; the four: goldFrameHD)
+    const avH = hdOn() && !av?.hd ? avatarHD(you.id) : null;
+    if (avH) putS(cached(`goldh${you.id}${T.goldLine}`, () => goldFrameHD(avH, T)), bxr, by);
+    else if (av) putS(cached(`gold${you.id}${PORT?.avatar(you.id) ? 'p' : 't'}${av.hd ? 'h' : ''}${T.goldLine}`, () => wrap1x(goldFrame(av, T))), bxr, by);
     else drawBox(img, bxr, by, 24, 24, 'sunk', T);
     const dbs = dockOpen ? 'open' : hover?.kind === 'dockbtn' ? 'hover' : 'normal';
-    fastBlit(img, cached(`dockbtn${dbs}${color}${T.ink}`, () => E.dockButton(T, { state: dbs, color })), bxr - 1, by - 1);
+    putS(cached(`dockbtn${dbs}${color}${T.ink}`, () => wrap1x(E.dockButton(T, { state: dbs, color }))), bxr - 1, by - 1);
     R.dockBtn = { x: bxr - 1, y: by - 1, w: 26, h: 26 };
     // ---- the ACTION BAR (the user's request: every key action as a clickable / tappable button, its key as a hint):
     // on the bottom row between the status line (bottom left, DOM) and the dock button, centred on the visible area
-    // when it fits; on a narrow screen (a phone: the status line spans the bottom) it stands on top of the status line
+    // when it fits; on a narrow screen (a phone: the status line spans the bottom) it stands on top of the status line.
+    // (D=2: AB.buttonInto through the view: the D=2 frame, the HD glyph (actionbar-hd.js), the tiny@2 key plate)
     const BT = AB.BTN, BG = AB.GAP, rightLim = bxr - 1 - 4;
     // (the open notebook is a left band only down to its own bottom: the bar on the bottom row does not move for it)
     const bx0 = cover.left && cover.leftBottom > img.h - 4 - BT - 3 ? x0 : 4;
@@ -938,16 +1197,17 @@ export async function createGameUI(demo) {
       // (the emote button is lit while you are a ghost: the state shows without opening the palette)
       const state = on ? 'pressed' : b.k === 'emote' && demo.player?.ghost ? 'lit' : hoverIs('bar', b.k) ? 'hover' : 'raised';
       const g = AB.glyph(b.glyph, T, { color });
-      fastBlit(img, btnImg(`bar${b.k}${b.k === 'pin' ? color : ''}`, { state, glyph: g, hint: b.hint }), x, barY);
+      putS(btnImg(`bar${b.k}${b.k === 'pin' ? color : ''}`, { state, glyph: g, hint: b.hint }), x, barY);
       R.bar.push({ k: b.k, x, y: barY, w: BT, h: BT });
     }
+    const barRect = { x: barX, y: barY, w: BARW, h: BT };
     // the popovers above the bar: the emote palette (the 6 game emotes; greyed when your character has no such clip,
-    // except point: P2.8's pop fallback) and the tray (every other key, two rows)
+    // except point: P2.8's pop fallback) and the tray (every other key, two rows + pass B's timer row)
     R.pal = null; R.tray = null;
     const popover = (rows, anchorX, kind) => {
       const n = Math.max(...rows.map((r) => r.length)), pw = n * (BT + BG) - BG + 6, ph = rows.length * (BT + BG) - BG + 6;
       const px = Math.max(x0, Math.min(x1 - pw, anchorX - (pw >> 1))), py = barY - 3 - ph;
-      drawBox(img, px, py, pw, ph, 'panel', T);
+      putS(cached(`pop${pw}x${ph}${T.ink}`, () => mkImg(pw, ph + 2, (v) => drawBox(v, 0, 0, pw, ph, 'panel', T))), px, py);
       const out = [];
       rows.forEach((row, j) => row.forEach((it, i) => {
         const x = px + 3 + i * (BT + BG), y = py + 3 + j * (BT + BG), dis = kind === 'pal' && !hasEmote(it.k);
@@ -956,23 +1216,30 @@ export async function createGameUI(demo) {
         // the ghost button is lit while you are a ghost (a toggle: player.ghost)
         const lit = kind === 'pal' && it.k === 'ghost' && !!demo.player?.ghost;
         const state = dis ? 'disabled' : lit ? 'lit' : hoverIs(kind, id) ? 'hover' : 'raised';
-        fastBlit(img, btnImg(`${kind}${id}${paused}`, { state, glyph: AB.glyph(it.glyph, T, { paused }), hint: it.hint }), x, y);
+        putS(btnImg(`${kind}${id}${paused}`, { state, glyph: AB.glyph(it.glyph, T, { paused }), hint: it.hint }), x, y);
         out.push({ k: id, code: it.code, x, y, w: BT, h: BT, off: dis, tip: it.tip, hint: it.hint });
       }));
       return { x: px, y: py, w: pw, h: ph, items: out };
     };
+    // (critic P2-5) the dock / armed pill stand above the dock button; where that would cover the bar (a narrow
+    // screen), above the bar instead
+    const overBar = (x, y, w, h) => x < barRect.x + barRect.w && x + w > barRect.x && y + h > barRect.y - 2 && y < barRect.y + barRect.h;
     R.dock = null; R.armedCancel = null;
     if (dockOpen) {
-      const dx = x1 - E.DOCK.w, dy = by - 3 - E.DOCK.h;
+      const dx = x1 - E.DOCK.w;
+      let dy = by - 3 - E.DOCK.h;
+      if (overBar(dx, dy, E.DOCK.w, E.DOCK.h)) dy = barY - 3 - E.DOCK.h;
       const hk = hover?.kind === 'dock' ? hover.k : null, mine = livePins().length;
-      const dk = cached(`dock${armed}${color}${mine}${hk}${touchUI}${T.ink}`, () => { const im = new PixelImage(E.DOCK.w + 2, E.DOCK.h + 2); const r = E.drawDock(im, 0, 0, T, { mode: armed ?? 'idle', color, mine, hover: hk, touch: touchUI }); return { im, r }; });
-      fastBlit(img, dk.im, dx, dy);
+      const dk = cached(`dock${armed}${color}${mine}${hk}${touchUI}${T.ink}`, () => { const im = mkImg(E.DOCK.w + 2, E.DOCK.h + 2, (v) => E.drawDock(v, 0, 0, T, { mode: armed ?? 'idle', color, mine, hover: hk, touch: touchUI })); return { im, r: im.r }; });
+      putS(dk.im, dx, dy);
       const parts = {};
       for (const [k, r] of Object.entries(dk.r)) parts[k] = { x: r.x + dx, y: r.y + dy, w: r.w, h: r.h };
       R.dock = { x: dx, y: dy, w: E.DOCK.w, h: E.DOCK.h, parts };
     } else if (armed) {
       const z = E.armedSize(T, { mode: armed, touch: touchUI });
-      const r = E.drawArmed(img, x1 - z.w, by - 3 - z.h, T, { mode: armed, touch: touchUI, hover: hover?.kind === 'armedCancel' });
+      let ay = by - 3 - z.h;
+      if (overBar(x1 - z.w, ay, z.w, z.h)) ay = barY - 3 - z.h;
+      const r = E.drawArmed(img, x1 - z.w, ay, T, { mode: armed, touch: touchUI, hover: hover?.kind === 'armedCancel' });
       R.armedCancel = r.cancel;
     }
     // bottom centre: the door prompt, else the tip (both kept above the action bar and the dock button row)
@@ -980,52 +1247,75 @@ export async function createGameUI(demo) {
     const promptY = Math.min(img.h - 4 - 15 - 26, barY - 4 - 15);
     // (centred pieces: drawn once per text at x 320 of a 640-wide image, then placed by their offset from that centre)
     const prompt = (text, locked = false) => {
-      const pc = piece(`prompt${text}${locked}${T.ink}`, 640, 17, (im) => HA.drawPrompt(im, 320, 0, T, { text, locked }));
-      fastBlit(img, pc.im, cx - 320 + pc.dx, promptY + pc.dy);
+      const pc = pieceS(`prompt${text}${locked}${T.ink}`, 640, 17, (v) => HA.drawPrompt(v, 320, 0, T, { text, locked }));
+      putS(pc.im, cx - 320 + pc.dx, promptY + pc.dy);
     };
     R.tip = null;
     if (tipState && t >= tipState.until) closeTip('timeout');
     if (room) prompt(`${room.name ?? 'Inside'} · walk out the door to leave`);
     else if (d) {
       const house = demo.layout?.houses?.find((q) => q.id === d.id);
-      if (d.id === 'clocktower') prompt('The clock tower is locked', true);
-      else prompt(`Walk in: ${house?.name ?? d.id}`);
+      if (d.id === 'clocktower' && !demo.passB?.interior) prompt('The clock tower is locked', true);   // (B) enterable with pass B's interior
+      else prompt(`Walk in: ${house?.name ?? (d.id === 'clocktower' ? 'The Clocktower' : d.id)}`);
     }
     if (tipState && !(d || room)) {
-      const mw = Math.min(300, x1 - x0 - 4), ti = tipImage(mw, T);
-      const tx = Math.max(x0, Math.min(x1 - ti.im.w, cx - (ti.im.w >> 1)));
-      const tyy = Math.max(y0 + 24, Math.min(promptY + 8 - ti.im.h, by - 3 - ti.im.h, barY - 4 - ti.im.h));
-      fastBlit(img, ti.im, tx, tyy);
-      tipRect = { x: tx, y: tyy, w: ti.im.w, h: ti.im.h, im: ti.im };
-      R.tip = { x: tx, y: tyy, w: ti.im.w, h: ti.im.h, close: { x: tx + ti.close.x, y: tyy + ti.close.y, w: ti.close.w, h: ti.close.h }, never: { x: tx + ti.never.x, y: tyy + ti.never.y, w: ti.never.w, h: ti.never.h } };
+      // (it keeps left of an open dock / armed pill: it was drawn over the palette)
+      // (a narrow screen with the dock open: the full width, ABOVE the dock)
+      const beside = R.dock && R.dock.x - 4 - x0 - 4 >= 160, above = R.dock && !beside;
+      const tx1 = beside ? Math.min(x1, R.dock.x - 4) : x1;
+      const mw = Math.min(300, tx1 - x0 - 4), ti = tipImage(mw, T);
+      const tx = Math.max(x0, Math.min(tx1 - ti.w, cx - (ti.w >> 1)));
+      const tyy = Math.max(y0 + 24, Math.min(promptY + 8 - ti.h, by - 3 - ti.h, barY - 4 - ti.h, above ? R.dock.y - 4 - ti.h : 1e9));
+      putS(ti.im, tx, tyy);
+      tipRect = { x: tx, y: tyy, w: ti.w, h: ti.h, im: ti.im };
+      R.tip = { x: tx, y: tyy, w: ti.w, h: ti.h, close: { x: tx + ti.close.x, y: tyy + ti.close.y, w: ti.close.w, h: ti.close.h }, never: { x: tx + ti.never.x, y: tyy + ti.never.y, w: ti.never.w, h: ti.never.h } };
     }
     // the dismissed tip flies into the bulb: 8 drawings (15 fps), shrinking 1 -> 0.15 toward the bulb's centre (eased
-    // out: it leaves fast and settles in), the last two half / three-quarter dissolved; then the bulb glows (above)
+    // out: it leaves fast and settles in), the last two half / three-quarter dissolved; then the bulb glows (above).
+    // (D=2: the HD plate shrinks at HD px and moves in HD px: a finer flight)
     if (tipFly) {
       const k = EV.gridK(t - tipFly.t0), dr = Math.floor(k / 2);
       const tb = R.toolbar.tip;
       if (dr >= FLY_F / 2 || !tb) tipFly = null;
       else {
-        const u = (dr + 1) / (FLY_F / 2), e = 1 - (1 - u) * (1 - u), f = 1 - 0.85 * u;
+        const D = dd(), u = (dr + 1) / (FLY_F / 2), e = 1 - (1 - u) * (1 - u), f = 1 - 0.85 * u;
         const nD = FLY_F / 2, im0 = cached(`fly${dr}${tipFly.im.w}x${tipFly.im.h}${tipNever}${tipFly.t0}`, () => { const m = shrink(tipFly.im, f); return dr >= nD - 2 ? dissolve(m, dr === nD - 2 ? 0.5 : 0.75) : m; });
-        const sx = tipFly.x + tipFly.im.w / 2, sy = tipFly.y + tipFly.im.h / 2, ex = tb.x + tb.w / 2, ey = tb.y + tb.h / 2;
-        fastBlit(img, im0, Math.round(sx + (ex - sx) * e - im0.w / 2), Math.round(sy + (ey - sy) * e - im0.h / 2));
+        const sx = tipFly.x + tipFly.w / 2, sy = tipFly.y + tipFly.h / 2, ex = tb.x + tb.w / 2, ey = tb.y + tb.h / 2;
+        fastBlit(SB(), im0, Math.round((sx + (ex - sx) * e) * D - im0.w / 2), Math.round((sy + (ey - sy) * e) * D - im0.h / 2));
+      }
+    }
+    // HUD clients (pass B's tower-timer chip + the Storyteller's town clock): drawn here, on this tier, in these
+    // coordinates; their rects join the hit tests and the top row
+    R.clients = [];
+    if (hudClients.length) {
+      const G = { T, t, d: dd(), hd: hdOn(), x0, x1, y0, W: img.w, H: img.h, mk: mkImg, put: putS, cached, lw, toClient,
+        chipsEnd: R.topRow.spans[0][1], toolbarX: R.topRow.spans[1][0], topY: R.topRow.y1, bar: barRect, status: cover.status ?? null, coverTop: cover.top,
+        hover: hover?.kind === 'client' ? hover.k : null };
+      for (const c of hudClients) {
+        let out = null;
+        try { out = c.draw(G) ?? null; } catch (e) { console.warn('[demo] gameui: HUD client failed', e); }
+        if (!out) continue;
+        R.clients.push({ c, rects: out.rects ?? [] });
+        if (out.top) R.topRow.spans.push([out.top.x, out.top.x + out.top.w]);
       }
     }
     // the popovers last (over the tip / prompt)
     if (emotePal) R.pal = popover([AB.EMOTES], R.bar[0].x + (BT >> 1), 'pal');
     if (trayOpen) R.tray = popover(AB.TRAY, R.bar[R.bar.length - 1].x + (BT >> 1), 'tray');
-    // a tooltip over the hovered bar / palette / tray button (mouse only: a finger has no hover; none for a bar button
-    // whose popover is open: it would cover the popover)
-    if (!touchUI && hover && (hover.kind === 'pal' || hover.kind === 'tray' || (hover.kind === 'bar' && !(hover.k === 'emote' && emotePal) && !(hover.k === 'more' && trayOpen)))) {
-      const list = hover.kind === 'bar' ? R.bar.map((r) => ({ ...r, ...AB.BAR.find((b) => b.k === r.k) })) : (hover.kind === 'pal' ? R.pal : R.tray)?.items ?? [];
-      const it = list.find((r) => r.k === hover.k);
+    // a tooltip over the hovered bar / palette / tray button (mouse; none for a bar button whose popover is open: it
+    // would cover the popover). (critic P2-6) a finger has no hover: the last-tapped palette / tray button shows its
+    // name 1.6 s instead. (critic P3-9) a greyed emote says why.
+    const tipOf = touchUI ? (tapTip && t < tapTip.until ? tapTip : null) : hover;
+    if (tipOf && (tipOf.kind === 'pal' || tipOf.kind === 'tray' || (tipOf.kind === 'bar' && !(tipOf.k === 'emote' && emotePal) && !(tipOf.k === 'more' && trayOpen)))) {
+      const list = tipOf.kind === 'bar' ? R.bar.map((r) => ({ ...r, ...AB.BAR.find((b) => b.k === r.k) })) : (tipOf.kind === 'pal' ? R.pal : R.tray)?.items ?? [];
+      const it = list.find((r) => r.k === tipOf.k);
       if (it) {
-        const label = it.hint ? `${it.tip} (${it.hint === 'SPC' ? 'Space' : it.hint === 'RMB' ? 'right-click' : it.hint})` : it.tip;
-        const tt = cached(`tt|${label}|${T.ink}`, () => AB.tooltipImage(label, T));
+        const label = it.off ? emoteWhy(it.k) : it.hint ? `${it.tip} (${AB.keyWord(it.hint)})` : it.tip;
+        const sz = AB.tooltipSize(label);
+        const tt = cached(`tt|${label}|${T.ink}`, () => mkImg(sz.w, sz.h, (v) => AB.tooltipInto(v, label, T)));
         // (above the whole popover for a palette / tray button: over the row above it hid those buttons)
-        const box = hover.kind === 'pal' ? R.pal : hover.kind === 'tray' ? R.tray : null;
-        fastBlit(img, tt, Math.max(x0, Math.min(x1 - tt.w, it.x + (it.w >> 1) - (tt.w >> 1))), (box ? box.y : it.y) - 3 - tt.h);
+        const box = tipOf.kind === 'pal' ? R.pal : tipOf.kind === 'tray' ? R.tray : null;
+        putS(tt, Math.max(x0, Math.min(x1 - sz.w, it.x + (it.w >> 1) - (sz.w >> 1))), (box ? box.y : it.y) - 3 - sz.h);
       }
     }
     // the pie (above the HUD)
@@ -1058,6 +1348,7 @@ export async function createGameUI(demo) {
     }
     if (R.armedCancel && inRect(s, R.armedCancel)) return { kind: 'armedCancel' };
     for (const [k, r] of Object.entries(R.toolbar ?? {})) if (inRect(s, r)) return { kind: 'tool', k };
+    for (const cl of R.clients ?? []) for (const r of cl.rects) if (inRect(s, r)) return { kind: 'client', k: r.k, c: cl.c, inert: !!r.inert };
     return null;
   };
   const eat = (e) => { e.preventDefault(); e.stopImmediatePropagation(); };
@@ -1068,6 +1359,7 @@ export async function createGameUI(demo) {
     if (e.button === 2) {
       eat(e); consumeUp.add(2);
       if (screenHit(s)) return;                // a right-click on a button / the tip: nothing (no pie over the HUD)
+      closePopovers();                         // (critic P3-8) a right-press on the town closes the palette / tray
       if (pie && pie.sticky && !pie.commit) { const i = wedgeAt(s); if (i !== null) commitPie(i); else cancelPie(); return; }
       rpress = { cx: e.clientX, cy: e.clientY, t0: performance.now(), target: targetAt(e.clientX, e.clientY) };
       return;
@@ -1081,8 +1373,14 @@ export async function createGameUI(demo) {
     }
     const hit = screenHit(s);
     if (hit) { eat(e); consumeUp.add(0); uiClick(hit); return; }
-    // a click / tap elsewhere closes an open popover (and does nothing else)
-    if (emotePal || trayOpen) { eat(e); consumeUp.add(0); emotePal = trayOpen = false; return; }
+    // a click / tap elsewhere closes an open popover (and does nothing else) - (critic P3-8) except on your own pin: the
+    // click goes through (it removes the pin) and closes the popover too
+    if (emotePal || trayOpen) {
+      eat(e); consumeUp.add(0); closePopovers();
+      const own0 = pinAt(s);
+      if (own0) removePin(own0);
+      return;
+    }
     if (armed) {
       eat(e); consumeUp.add(0);
       const tgt = targetAt(e.clientX, e.clientY);
@@ -1097,8 +1395,9 @@ export async function createGameUI(demo) {
     if (e.pointerType === 'touch' && !rpress) rpress = { cx: e.clientX, cy: e.clientY, t0: performance.now(), target: targetAt(e.clientX, e.clientY), touch: e.pointerId };
   }
   function barAction(k) {
-    if (k === 'emote') { emotePal = !emotePal; trayOpen = false; }
-    else if (k === 'more') { trayOpen = !trayOpen; emotePal = false; }
+    // (critic P2-5) one popover at a time: the palette / the tray close the social dock and each other
+    if (k === 'emote') { emotePal = !emotePal; trayOpen = false; if (emotePal) { dockOpen = false; armed = null; } }
+    else if (k === 'more') { trayOpen = !trayOpen; emotePal = false; if (trayOpen) { dockOpen = false; armed = null; } }
     else if (k === 'point' || k === 'pin') { emotePal = trayOpen = false; armed = armed === k ? null : k; if (k === 'pin' && livePins().length >= MAX_PINS) { armed = null; toast(`You have ${MAX_PINS} pins: remove one first`, { kind: 'error', ms: 2600 }); } }
     else if (k === 'dock') { emotePal = trayOpen = false; input.has?.('KeyG') ? input.press('KeyG') : (dockOpen = !dockOpen); }
     else if (k === 'notebook') { emotePal = trayOpen = false; input.has?.('KeyJ') ? input.press('KeyJ') : nb.toggle(); }
@@ -1108,9 +1407,12 @@ export async function createGameUI(demo) {
       if (hit.k === 'close') closeTip('close');
       else if (hit.k === 'never') { setTipNever(!tipNever); if (tipNever) closeTip('never'); }
     } else if (hit.kind === 'bar') barAction(hit.k);
-    else if (hit.kind === 'pal') { if (hit.code && !hit.off) { input.press(hit.code); emotePal = false; } }
-    else if (hit.kind === 'tray') { if (hit.code) input.press(hit.code); }
-    else if (hit.kind === 'dockbtn') { dockOpen = !dockOpen; if (!dockOpen) armed = null; }
+    else if (hit.kind === 'pal') {
+      if (hit.code && !hit.off) { input.press(hit.code); emotePal = false; }
+      else if (hit.off && hit.k) toast(emoteWhy(hit.k), { ms: 2400 });   // (critic P3-9) a greyed emote says why
+    } else if (hit.kind === 'tray') { if (hit.code) input.press(hit.code); }
+    else if (hit.kind === 'dockbtn') toggleDock();
+    else if (hit.kind === 'client') { if (!hit.inert) hit.c.click?.(hit.k); }
     else if (hit.kind === 'armedCancel') armed = null;
     else if (hit.kind === 'tool') {
       if (hit.k === 'notebook') nb.toggle();
@@ -1122,8 +1424,12 @@ export async function createGameUI(demo) {
       else if (hit.k.startsWith('swatch:')) color = hit.k.slice(7);
       else if (hit.k === 'clear') { const n = clearPins(); if (n) toast(`Removed ${n} pin${n === 1 ? '' : 's'}`); }
     }
-    events.emit('gameui:click', hit);
+    // (critic P2-6) a finger has no hover: the tapped palette / tray button's name shows 1.6 s
+    if (touchUI && (hit.kind === 'pal' || hit.kind === 'tray') && hit.k) tapTip = { kind: hit.kind, k: hit.k, until: L.t + 1.6 };
+    events.emit('gameui:click', { kind: hit.kind, k: hit.k ?? null, code: hit.code ?? null, off: hit.off ?? false });
   }
+  /** G / the dock button: the social dock (critic P2-5: it closes the palette / tray). */
+  function toggleDock() { dockOpen = !dockOpen; if (!dockOpen) armed = null; else closePopovers(); }
   function onMove(e) {
     if (e.target === canvas) cursor = { x: e.clientX, y: e.clientY };
     else if (!rpress && !pie) { cursor = null; hover = null; setCursor(false); return; }
@@ -1138,7 +1444,7 @@ export async function createGameUI(demo) {
     }
     if (!hasControl()) { hover = null; setCursor(false); return; }
     const hit = screenHit(s);
-    if (hit) { hover = hit; setCursor(!hit.off); return; }
+    if (hit) { hover = hit; setCursor(!hit.off && !hit.inert); return; }
     const own = pinAt(s);
     hover = own ? { kind: 'pin', pin: own } : null;
     setCursor(!!own);
@@ -1168,6 +1474,16 @@ export async function createGameUI(demo) {
     rpress = null;
     if (pie && !pie.commit && pie.cancel == null && !pie.sticky) { pie.sticky = true; pie.stickyAt = L.t; }
   }
+  // (critic P3-8) a key action closes the palette / tray (they stayed open through Q, F, walking ...); Space toggles the
+  // palette itself, Esc closes it (its binding), keys typed into a form field never reach the game
+  const onKey = (e) => {
+    if (!(emotePal || trayOpen) || e.code === 'Space' || e.code === 'Escape' || /^(Shift|Control|Alt|Meta|OS)/.test(e.code)) return;
+    const tg = e.target;
+    if (tg && (tg.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(tg.tagName ?? ''))) return;
+    closePopovers();
+  };
+  addEventListener('keydown', onKey, true);
+  offs.push(() => removeEventListener('keydown', onKey, true));
   const noMenu = (e) => { if (e.target === canvas) e.preventDefault(); };
   addEventListener('pointerdown', onDown, true);
   addEventListener('pointermove', onMove, true);
@@ -1179,7 +1495,10 @@ export async function createGameUI(demo) {
   offs.push(() => { removeEventListener('pointercancel', onCancel, true); removeEventListener('pointerdown', onDown, true); removeEventListener('pointermove', onMove, true); removeEventListener('pointerup', onUp, true); removeEventListener('contextmenu', noMenu, true); });
   offs.push(
     input.bind('KeyJ', () => nb.toggle(), { desc: 'notebook (Seats / Notes)', group: 'ui' }),
-    input.bind('KeyG', () => { dockOpen = !dockOpen; if (!dockOpen) armed = null; }, { desc: 'social dock: point / pins', group: 'emote' }),
+    input.bind('KeyG', () => toggleDock(), { desc: 'social dock: point / pins', group: 'emote' }),
+    // (critic P1-2) Space opens / closes the emote palette (it was the signature emote: most characters had none);
+    // the signature is 6 and the palette's star
+    input.bind('Space', () => barAction('emote'), { desc: 'emote palette (1-6 play the emotes, 6 = signature)', group: 'emote' }),
     input.bind('KeyF', () => {
       if (!cursor) { toast('Point the mouse at a spot, then F drops a pin'); return; }
       dropPin(targetAt(cursor.x, cursor.y));
@@ -1206,22 +1525,35 @@ export async function createGameUI(demo) {
     // automation + the playtest (tools/demo-play.mjs): the same code paths as the pointer / keys
     doPoint, dropPin, removePin, clearPins, targetAt, openPieAt(clientX, clientY) { rpress = { cx: clientX, cy: clientY, t0: performance.now() - 1e4, target: targetAt(clientX, clientY) }; openPie(); rpress = null; return !!pie; },
     get dockOpen() { return dockOpen; }, set dockOpen(v) { dockOpen = !!v; },
+    /**
+     * HUD clients (pass B's timer-ui.js): add({ id, draw(G) -> { rects: [{k, x, y, w, h, inert?}], top: {x, w}? } | null,
+     * click(k) }) -> remove(). draw runs inside the HUD pass, on THIS tier (D=2 when on) in its LOGICAL px: G = { T, t,
+     * d, hd, x0, x1, y0, W, H, mk(w, h, fn) (a piece drawn through a view; cache it), put(piece, x, y), cached(key, fn),
+     * lw(piece), toClient(x, y), chipsEnd, toolbarX, bar {x, y, w, h}, status, coverTop, hover (k | null) }. Its rects
+     * join the hit tests (mouse + touch: click(k)), the hover (G.hover) and the hand cursor; 'top' joins the top row.
+     */
+    hudHost: { add(c) { hudClients.push(c); return () => { const i = hudClients.indexOf(c); if (i >= 0) hudClients.splice(i, 1); }; }, toClient, get unit() { return unitDev(); }, get density() { return dd(); } },
+    closePopovers,
     get color() { return color; }, set color(c) { if (E.PIN_LABEL[c]) color = c; },
     info() {
       const t = L.t;
       return {
         enabled: L.enabled, screen: [W(), H()], cover, touch: touchUI, pressing: rpress ? (rpress.touch != null ? 'touch' : 'right') : null, options: { ...hud.uiOptions },
-        members: members.map((m) => { const k = talk.get(keyOf(m)); return { id: m.id, name: m.name, you: m.you, slot: m.slot, clip: m.clip, talking: !!k?.on, bubble: k?.line && t < k.bubbleUntil ? k.line : null, screen: L.atScreen(m.pos), shown: !!m._shown, ghostLabel: m.clip === 'ghost' || (m.you && m.ghost) }; }),
+        // (density) every screen rect / point here is in LOGICAL px: unit = CSS px per logical px (client = rect x unit
+        // from the canvas's top-left), unitDev = device px per logical px, density = the art density (2 | 1)
+        unit: unitDev() * (canvas.getBoundingClientRect().width / Math.max(1, engine.width)), unitDev: unitDev(), density: dd(),
+        hd: L.hd ? { d: L.hd.d, scale: L.hd.scale, k: +L.hd.k.toFixed(3), policy: L.hd.policy, stats: { ...L.hd.stats } } : null,
+        members: members.map((m) => { const k = talk.get(keyOf(m)); return { id: m.id, name: m.name, you: m.you, slot: m.slot, clip: m.clip, talking: !!k?.on, bubble: k?.line && t < k.bubbleUntil ? k.line : null, screen: atS(m.pos), shown: !!m._shown, ghostLabel: m.clip === 'ghost' || (m.you && m.ghost) }; }),
         hover: hover ? { kind: hover.kind, k: hover.k ?? null } : null,
         point: point ? { kind: point.target.kind, age: +(t - point.t0).toFixed(2), scale: hud.uiOptions.pointerScale, frameSize: framesNow().point?.size ?? 20 } : null,
         pie: pie ? { open: !pie.commit && pie.cancel == null, input: pie.input, sticky: pie.sticky, hot: pie.hot, items: pie.items.map((x) => x.key), off: [...pie.off], at: [pie.cx, pie.cy] } : null,
-        pins: pins.map((p) => ({ kind: p.kind, color: p.color, removing: p.removeAt != null, at: p.kind === 'place' ? [+p.p.x.toFixed(2), +p.p.z.toFixed(2)] : null, slot: p.slot ?? null, screen: p.kind === 'place' ? L.atScreen(p.p) : null })),
+        pins: pins.map((p) => ({ kind: p.kind, color: p.color, removing: p.removeAt != null, at: p.kind === 'place' ? [+p.p.x.toFixed(2), +p.p.z.toFixed(2)] : null, slot: p.slot ?? null, screen: p.kind === 'place' ? atS(p.p) : null, behind: p.behind ?? null })),
         pops: pops.map((p) => ({ who: p.who, kind: p.kind, color: p.color, age: +(t - p.t0).toFixed(2) })),
         dock: { open: dockOpen, armed, color, rects: R.dock?.parts ?? null, button: R.dockBtn ?? null }, toolbar: R.toolbar ?? null,
         toasts: toasts.map((x) => x.text), tip: tipState && t < tipState.until,
         notebook: nb.info(), readers: readers.map((r) => ({ ...r })),
         books3d: N.book3d ? [...N.book3d.books.values()].filter((e) => e.book.root.visible).length : 0, mergedBooks: !!N.book3d?.merged,
-        youIcon: you.id ? { p: 'atlas', t: 'thumb', i: 'initial' }[iconOf(you.id, you.name).iconKey[0]] : null,
+        youIcon: you.id ? { p: 'atlas', t: 'thumb', i: 'initial', h: 'hd' }[iconOf(you.id, you.name).iconKey[0]] : null,
         bar: R.bar ? R.bar.map((r) => ({ k: r.k, x: r.x, y: r.y, w: r.w, h: r.h })) : null,
         palette: R.pal ? { open: true, items: R.pal.items.map((r) => ({ k: r.k, code: r.code, off: r.off, x: r.x, y: r.y, w: r.w, h: r.h })) } : { open: emotePal },
         tray: R.tray ? { open: true, items: R.tray.items.map((r) => ({ k: r.k, code: r.code, x: r.x, y: r.y, w: r.w, h: r.h })) } : { open: trayOpen },
@@ -1229,9 +1561,11 @@ export async function createGameUI(demo) {
           flying: !!tipFly, glowing: t >= bulbGlow && t < bulbGlow + GLOW_S, never: tipNever, neverSaved: tipNeverSaved, shownCount: tipShown, dismissed: [...tipDismissed] },
         events: { ...evInfo, captions: [...evInfo.captions], caption: caption?.text ?? null, veil: !!veil, dawn: !!dawn, vote: R.vote ? { ...R.vote } : null, exec: !!exec, ghost: !!ghostFx, poof: !!poof },
         offscreen: offscreen.map((o) => ({ ...o })),
-        /** your person pins' hit rects (screen texels, generous) as drawn last frame */
+        /** your person pins' hit rects (logical screen px, generous) as drawn last frame */
         personPins: personPinRects.map((r) => ({ x: r.x, y: r.y, w: r.w, h: r.h, color: r.pin.color, slot: r.pin.slot, removing: r.pin.removeAt != null })),
-        cursor: canvas.style.cursor || 'default',
+        chips: R.chips ?? null,
+        cursor: canvas.style.cursor || 'default', tapTip: tapTip && L.t < tapTip.until ? { kind: tapTip.kind, k: tapTip.k } : null,
+        clients: (R.clients ?? []).map((x) => ({ id: x.c.id ?? null, rects: x.rects.map((r) => ({ k: r.k, x: r.x, y: r.y, w: r.w, h: r.h })) })),
       };
     },
     update(t, dt) {
@@ -1262,7 +1596,7 @@ export async function createGameUI(demo) {
       const style = hud.uiOptions.bookStyle;
       const reading = nb.openAt !== null && (nb.isOpen || t < nb.closeAt + 0.5);
       const npcReading = members.some((m) => !m.you && (() => { const r = npcRead(m.slot, t); return r && t < r.closeAt + 0.5; })());
-      if (pinPass.pass) pinPass.pass.enabled = warm > 0 || pins.some((p) => p.kind === 'place');
+      if (pinPass.pass) pinPass.pass.enabled = warm > 0 || (!hdOn() && pins.some((p) => p.kind === 'place'));   // (density: the HD depth tier draws them)
       if (N.pass?.pass) N.pass.pass.enabled = warm > 0 || (style === 'held' && (reading || npcReading));
       if (talkPass) talkPass.enabled = warm > 0 || talkers.length > 0;
       // right press held without moving: the pie
@@ -1289,7 +1623,7 @@ export async function createGameUI(demo) {
     },
     dispose() {
       removeEventListener('resize', setPx);
-      for (const o of offs) { try { o?.(); } catch { /* gone */ } }
+      for (const o of [...offs, ...offsHD]) { try { o?.(); } catch { /* gone */ } }
       nb.dispose();
       L.enabled = false;
     },

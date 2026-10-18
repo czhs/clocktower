@@ -201,7 +201,7 @@ function drawHandStrip(size, len, col, thick = false) {
 }
 
 const TIPS = [
-  'Press SPACE to emote - every character has its own signature move',
+  'SPACE opens the emotes · 6 plays every character\'s own signature move',
   'WASD or the arrows walk - the camera follows',
   'Q / E turn the camera in 45° steps',
   'The wheel or - / = steps the zoom ladder',

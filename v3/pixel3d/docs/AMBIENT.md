@@ -729,3 +729,8 @@ tools/remote.sh python3 shots/ambient-gallery/gholds.py <out> <dur> '<q>' <syste
   the dark band), 0.55 none. 0.5 gave a mix on this terrain; check one wide frame before tuning anything else.
 - (integration) `gameSpeed(H)` with the Storyteller's staff-inclusive height (1.85 m) made him run 7.4 m/s. Rule:
   cap H at the wanderer's 1.45 m for travel speed (the game moves every sprite at the same px/s).
+- (demo ui pass, 2026-10-17, critic P2-7 "night fireflies / moths barely visible") a 1-px emissive core reads as noise
+  at 720p and a dim moth has no lit pixel at all. Additive option `fireflies` `opts.night = { core: 2, halo: 4, gain: 1.5,
+  haloGain: 0.32, mothGlint: true }` (default off: unchanged): each night firefly = a bright 2x2 core + a dim 4x4
+  additive halo (a second sprite in the SAME batch: still one draw call), the flash a 2x2 core in a 6x6 halo; moths
+  away from their lamp use the appended `mGlint` frames (lit wing tip, dim body). The demo turns it on (`?ffboost=0` = off).

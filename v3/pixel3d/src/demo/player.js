@@ -25,7 +25,7 @@
 // Controls (bound through demo.input): W A S D / arrows walk in 8 directions relative to the camera (W = screen up),
 // Shift runs; click / tap the ground to walk there along an A* path (click a cottage = walk to its door, the dais =
 // to its foot; Shift+click runs); [ / ] previous / next complete character; 1-6 emotes (talk, vote, point, die,
-// ghost, the signature), Space = the signature emote. ?collide=1 draws the collision shapes and door normals (red);
+// ghost, the signature; critic P1-2: Space is the game UI's, it opens the emote palette). ?collide=1 draws the collision shapes and door normals (red);
 // ?at=x,z spawn.
 //
 // Speed: the game's ONE speed, 4 body heights per second (CHARACTERS.md / locomotion.js gameSpeed, the cast's
@@ -75,7 +75,9 @@ export async function createPlayer(demo) {
   // the feet's ground: the town terrain (ground piece heightAt), or the room's flat floor (the terrain far out at the
   // rooms' origins is not flat: the character floated 5.9 m up at x 200)
   const groundApi = demo.town?.registry?.get?.('ground')?.api;
-  const ground = { heightAt: (x, z) => (room ? room.floorY : typeof groundApi?.heightAt === 'function' ? groundApi.heightAt(x, z) : 0) };
+  const ground = { heightAt: (x, z) => (room ? (room.raw?.heightAt?.(x, z) ?? room.floorY) : typeof groundApi?.heightAt === 'function' ? groundApi.heightAt(x, z) : 0) };   // (B) raw.heightAt: the tower room's stairs / landing
+  // (B) the clock tower is enterable once pass B registered its interior (tower-interior.js); otherwise a landmark
+  const enterable = (id) => id !== 'clocktower' || (!!demo.passB?.interior && !!interiors.has?.('clocktower'));
   const at = demo.params.get('at')?.split(',').map(Number);
   const position = new THREE.Vector3(SPAWN.x, 0, SPAWN.z);
   if (at && at.length === 2 && at.every(Number.isFinite)) position.set(at[0], 0, at[1]);
@@ -232,7 +234,7 @@ export async function createPlayer(demo) {
     flip ^= 1;
     if ((best?.id ?? null) !== (nearDoor?.id ?? null)) {
       nearDoor = best ? { id: best.id, pos: best.pos, normal: best.normal, anchor: best.anchor, mismatch: best.mismatch } : null;
-      if (best && best.id !== 'clocktower') interiors.prefetch(best.id);    // build the room while the door swings
+      if (best && enterable(best.id)) interiors.prefetch(best.id);    // build the room while the door swings ((B) the tower too)
     }
   }
 
@@ -316,7 +318,7 @@ export async function createPlayer(demo) {
   }
   /** Go into house `id` (fade, or `instant`). Resolves true once inside (false: refused). */
   async function enter(id, { instant = false } = {}) {
-    if (id === 'clocktower') return false;
+    if (!enterable(id)) return false;   // (B) was: the clocktower is never entered
     if (transition) { if (doors.some((q) => q.id === id)) pending = { kind: 'location', value: id }; return false; }
     if (location === id) return false;
     const d = doors.find((q) => q.id === id);
@@ -325,7 +327,7 @@ export async function createPlayer(demo) {
     const rp = interiors.get(id);
     path = null;
     if (instant) { placeInside(await rp); return true; }
-    const name = layout.houses.find((h) => h.id === id)?.name ?? id;
+    const name = layout.houses.find((h) => h.id === id)?.name ?? (id === 'clocktower' ? 'The Clocktower' : id);   // (B)
     return new Promise((resolve) => {
       transition = { kind: 'enter', id, d, t0: lastT };
       fade.run(lastT, { label: name, onBlack: async () => { try { placeInside(await rp); resolve(true); } catch (e) { console.error('[demo] enter', id, e); endTransition(); resolve(false); } } });
@@ -346,7 +348,7 @@ export async function createPlayer(demo) {
   function checkEnter(t, dt) {
     let hit = null;
     if (viaKeys && moving && t >= cooldownUntil) for (const d of doors) {
-      if (!d.near || d.id === 'clocktower') continue;
+      if (!d.near || !enterable(d.id)) continue;   // (B)
       const dx = position.x - d.pos.x, dz = position.z - d.pos.z;
       const s = dx * d.normal[0] + dz * d.normal[1], lat = Math.abs(dx * d.normal[1] - dz * d.normal[0]);
       const inward = -(lastMv[0] * d.normal[0] + lastMv[1] * d.normal[1]);
@@ -423,7 +425,7 @@ export async function createPlayer(demo) {
     if (location !== 'town') return ground ? walkTo(ground.x, ground.z, { run }) : false;
     if (piece && piece !== 'dais') {
       const d = doors.find((q) => q.id === piece);
-      if (d) { const f = doorFront(d); return walkTo(f.x, f.z, { run, face: f.face, enter: d.id === 'clocktower' ? null : d.id }); }
+      if (d) { const f = doorFront(d); return walkTo(f.x, f.z, { run, face: f.face, enter: enterable(d.id) ? d.id : null }); }   // (B)
     }
     if (piece === 'dais' && ground) {
       const c = layout.CIRCLE, a = Math.atan2(ground.x - c.cx, ground.z - c.cz);
@@ -438,7 +440,8 @@ export async function createPlayer(demo) {
     input.bind('BracketLeft', () => cycle(-1), { desc: 'previous character', group: 'player' }),
     input.bind('BracketRight', () => cycle(1), { desc: 'next character', group: 'player' }),
     ...EMOTE_KEYS.map((c, i) => input.bind(`Digit${i + 1}`, () => emote(c), { desc: `emote: ${c ?? 'signature'}`, group: 'player' })),
-    input.bind('Space', () => emote(null), { desc: 'signature emote', group: 'player' }),
+    // (critic P1-2) Space no longer plays the signature (most characters' first press was "<name> has no signature
+    // emote"): gameui.js binds it to the emote palette; the signature is 6 and the palette's star
   ];
 
   // ------------------------------------------------------------------------------------------------ overlay

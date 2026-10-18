@@ -33,13 +33,16 @@
 //                     under the panel; programs constant
 //   6e storyteller    a ?wip=1 night page: the swap to the Storyteller compiles <= 3 programs (no lantern PointLight),
 //                     the carried lantern light is lit, the poof plays, no long frame
+//   8 passb           (B) pass B (tools/demo-play-passb.mjs): the vote camera's stepped transition + framing (every
+//                     seat + the clock face, panel open / hidden), the seated cast, the tower timer by keys + the ST
+//                     control (dial / hour-board / chip agree), walking into / out of the tower, no program compiled
 //   7 quality reload  store quality=low -> the page reloads; character / phase / clock / position must survive; the
 //                     tip stays away after "never show again" (the bulb stays)
 // Exit 1 on any console / page / shader error, __demo.errors, a door not reached, a swap that fails, a key that did nothing.
 //
 //   tools/remote.sh node tools/demo-play.mjs [--out shots/demo-deploy/play] [--doors auto|house-9,house-14,...]
 //        [--every 400] [--gif-fps 8] [--gif-scale 0.4] [--size 1280x720] [--q "..."] [--base http://<tailnet-ip>:8090]
-//        [--skip loading,crates,houses,doors,roster,time,phases,ceremony,controls,gameui,gameui2,storyteller,touch,reload] [--day-speed 120] [--chars 5]
+//        [--skip loading,crates,houses,doors,roster,time,phases,ceremony,controls,gameui,gameui2,storyteller,touch,passb,reload] [--day-speed 120] [--chars 5]
 //        [--houses auto|house-3,house-9,house-12]
 //   rsync -az render-host:pixel3d/shots/demo-deploy/play/ shots/demo-deploy/play/ --exclude frames/      # then LOOK at them
 // Writes <out>/NN-<step>.png, <out>/play.gif (tools/sheet.py gif), <out>/sheet.png (contact sheet), <out>/play.json.
@@ -166,7 +169,7 @@ async function waitReady() {
 async function townGrid() {
   return page.evaluate(async () => {
     const L = window.__demo.demo.layout;
-    const api = await import(new URL('src/demo/api.js', location.href).href);
+    const api = await import(new URL('src/demo/api.js', (document.querySelector('script[src*="src/demo/main.js"]')?.src ?? location.href).replace(/src\/demo\/main\.js.*$/, '')).href);
     const W = L.TOWN_W, H = L.TOWN_H, g = [];
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) g.push(L.blocked(x, y) ? 1 : 0);
     const doors = {};
@@ -331,7 +334,7 @@ try {
   if (!SKIP.has('loading')) {
     for (let k = 0; k < 400; k++) {
       const smp = await page.evaluate(async () => {
-        const m = await import(new URL('src/demo/loading.js', location.href).href).catch(() => null);
+        const m = await import(new URL('src/demo/loading.js', (document.querySelector('script[src*="src/demo/main.js"]')?.src ?? location.href).replace(/src\/demo\/main\.js.*$/, '')).href).catch(() => null);
         const el = document.getElementById('demo-loading');
         return { t: Math.round(performance.now()), value: m?.loading?.value ?? null, label: m?.loading?.label ?? null, done: m?.loading?.done ?? null,
           shown: !!el && getComputedStyle(el).display !== 'none', ready: !!window.__demo?.ready, err: window.__demo?.errors?.length ?? 0 };
@@ -386,7 +389,7 @@ try {
     // a walk-through prop with free ground 1.3 m either side (an axis-aligned line through its centre)
     const plan = await page.evaluate(async () => {
       const d = window.__demo.demo, L = d.layout, col = d.player.collision;
-      const cm = await import(new URL('src/demo/collision.js', location.href).href);
+      const cm = await import(new URL('src/demo/collision.js', (document.querySelector('script[src*="src/demo/main.js"]')?.src ?? location.href).replace(/src\/demo\/main\.js.*$/, '')).href);
       const out = [];
       for (const o of L.objects) {
         if (!cm.walkable(o)) continue;
@@ -744,10 +747,17 @@ try {
       if (!c && seen.length > 1) break;
       await sleep(250);
     }
-    report.steps.ceremony = { phases: seen, maxSeats, deadSeen: deadNominee, ms: Date.now() - t0 };
-    console.log(`   phases ${seen.join(' -> ')}, seats up to ${maxSeats}, ${Date.now() - t0} ms`);
+    // (critic P2-4) the ceremony's night is real night: under the veil the clock is scrubbed into the night hours (it
+    // started at 17:00) and the chips read night (clock chip NIGHT, phase chip "NIGHT 1" + the moon)
+    await sleep(1500);
+    const ni = await info(), chips = await page.evaluate(() => window.__demo.demo.gameui?.info?.().chips ?? null);
+    const nh = ni.state.timeOfDay;
+    report.steps.ceremony = { phases: seen, maxSeats, deadSeen: deadNominee, ms: Date.now() - t0, night: { hours: nh, chips } };
+    console.log(`   phases ${seen.join(' -> ')}, seats up to ${maxSeats}, ${Date.now() - t0} ms · after: ${nh.toFixed(2)} h, chips ${JSON.stringify(chips)}`);
     for (const want of ['nomination', 'vote', 'execution', 'night']) if (!seen.includes(want)) fail(`ceremony: never reached ${want} (${seen.join(' -> ')})`);
     if (maxSeats < 5) fail(`ceremony: only ${maxSeats} seats filled`);
+    if (!(nh >= 20 || nh < 6)) fail(`ceremony: the night phase left the clock at ${nh.toFixed(2)} h (daylight under NIGHT, critic P2-4)`);
+    if (chips && (chips.phase !== 'Night 1' || chips.icon !== 'moon' || chips.clock !== 'Night')) fail(`ceremony: the chips after the night fall read ${JSON.stringify(chips)}`);
     await setState({ camera: 'follow', phase: 'day', nominee: null });
     await sleep(500);
   }
@@ -824,10 +834,15 @@ try {
     else {
       await setState({ camera: 'follow', timeOfDay: 12.5, timeSpeed: 0, phase: 'day', nominee: null, zoom: 12, yaw: 0, ui: true, bookStyle: 'held', pointerScale: 'new' });
       await page.evaluate(() => { window.__playNoReload = 1; });
+      // (B) the seats empty first: pass B puts CAST characters (game-UI townsfolk) on the occupied seats, so a click
+      // beside the player at the south seats would pin a person, not a place
+      await page.evaluate(() => window.__demo.demo.store.set({ seats: Array.from({ length: 15 }, () => ({ occupied: false, dead: false, ghostVote: true, nominated: false, onBlock: false })) }, 'test'));
       await steerTo({ x: 22.5, z: 25.5 }, { timeout: 5000 }).catch(() => {});
       await sleep(600);
       const prog0 = (await info()).programs;
-      const S = await page.evaluate(() => window.__demo.demo.engine.pixelScale);
+      // (density) gameui rects / points are in its LOGICAL screen px: CSS px = unit x logical (unit = 2 at 1280x720 for
+      // both D=2 and 1x; 4 at 1080p 'round' D=2)
+      const S = await page.evaluate(() => window.__demo.demo.gameui?.info?.().unit ?? window.__demo.demo.engine.pixelScale);
       const px = (s, dy = 0) => ({ x: s.x * S + S / 2, y: (s.y + dy) * S + S / 2 });
       const visibleNpc = (g) => g.members.find((m) => !m.you && m.screen.x > 24 && m.screen.x < g.screen[0] - g.cover.right - 24 && m.screen.y > 40 && m.screen.y < g.screen[1] - 50);
       const r = report.steps.gameui = {};
@@ -1090,10 +1105,13 @@ try {
     try {
       await setState({ camera: 'follow', timeOfDay: 12.5, timeSpeed: 0, phase: 'day', nominee: null, zoom: 12, yaw: 0, ui: true, life: true, paused: false });
       await page.evaluate(() => { window.__demo.demo.gameui.clearPins(); });
+      // (B) the seats empty first: pass B puts CAST characters (game-UI townsfolk) on the occupied seats, so a click
+      // beside the player at the south seats would pin a person, not a place
+      await page.evaluate(() => window.__demo.demo.store.set({ seats: Array.from({ length: 15 }, () => ({ occupied: false, dead: false, ghostVote: true, nominated: false, onBlock: false })) }, 'test'));
       await steerTo({ x: 22.5, z: 25.5 }, { timeout: 5000 }).catch(() => {});
       await sleep(700);
       const prog0 = (await info()).programs;
-      const S = await page.evaluate(() => window.__demo.demo.engine.pixelScale);
+      const S = await page.evaluate(() => window.__demo.demo.gameui?.info?.().unit ?? window.__demo.demo.engine.pixelScale);   // (density: logical px)
       const px = (rc) => ({ x: (rc.x + rc.w / 2) * S, y: (rc.y + rc.h / 2) * S });
       const clickR = async (rc, o = {}) => { const a = px(rc); await page.mouse.click(a.x, a.y, o); await sleep(260); };
       let g = await gi();
@@ -1101,7 +1119,7 @@ try {
       r.bar = g.bar?.map((b) => b.k);
       if (!g.bar || g.bar.length !== 6) fail(`gameui2: the action bar has ${g.bar?.length ?? 0} buttons (want 6)`);
       const binds = await bindings();
-      const covered = new Set(['KeyF', 'KeyG', 'KeyJ', 'Digit6']);   // bar pin / dock / notebook; Digit6 = the signature (= Space)
+      const covered = new Set(['KeyF', 'KeyG', 'KeyJ', 'Space']);   // bar pin / dock / notebook; Space = the bar's emote button (the palette)
       // the palette / tray codes come from the module's own tables
       const tables = await page.evaluate(() => { const a = window.__demo.demo.gameui?.actions; return a ? { e: a.emotes.map((x) => x.code), t: a.tray.flat().map((x) => x.code) } : null; });
       for (const c of [...(tables?.e ?? []), ...(tables?.t ?? [])]) covered.add(c);
@@ -1164,6 +1182,31 @@ try {
       if (tr.L[0] !== false || tr.L[1] !== false || tr.L2 !== true) fail(`gameui2: tray L did not switch life (and the ambient layer) off and on (${JSON.stringify(tr.L)}, ${tr.L2})`);
       if (tr.next === ch0 || tr.back !== ch0) fail(`gameui2: tray ] / [ did not swap the character and back (${ch0} -> ${tr.next} -> ${tr.back})`);
       if (!tr.escClosed) fail('gameui2: the tray Esc button did not close the tray');
+      // -- (critic P1-2) Space opens the emote palette; the default spawn character has all six game emotes (none greyed);
+      //    6 plays the signature. (critic P2-5) one popover at a time: G (the dock) closes the palette, the tray closes the dock
+      {
+        await page.mouse.move(640, 300);
+        const p12 = r.space = {};
+        await press('Space'); await sleep(250); g = await gi();
+        p12.open = g.palette?.open ?? false; p12.off = (g.palette?.items ?? []).filter((x) => x.off).map((x) => x.k);
+        p12.char = (await info()).character;
+        await press('Space'); await sleep(200); p12.closed = !(await gi()).palette?.open;
+        const sigP = page.evaluate(() => new Promise((res) => { const d = window.__demo.demo; let got = null; const off = d.events.on('player:emote', (e) => { got = e; }); setTimeout(() => { off?.(); res(got); }, 700); }));
+        await press('Digit6');
+        p12.signature = await sigP;
+        await press('Space'); await sleep(200);
+        await press('KeyG'); await sleep(200); g = await gi();
+        p12.gClosesPalette = { palette: g.palette?.open ?? false, dock: g.dock.open };
+        await clickR(g.bar.find((b) => b.k === 'more')); g = await gi();
+        p12.trayClosesDock = { tray: g.tray?.open ?? false, dock: g.dock.open };
+        await clickR(g.bar.find((b) => b.k === 'more')); await sleep(150);
+        console.log(`   space / emotes ${JSON.stringify(p12)}`);
+        if (!p12.open || !p12.closed) fail(`gameui2: Space did not open / close the emote palette (${JSON.stringify(p12)})`);
+        if (p12.off.length) fail(`gameui2: the default character ${p12.char} greys emotes ${p12.off.join(', ')} (critic P1-2: a full emote set)`);
+        if (p12.signature?.clip !== 'signature' || !p12.signature?.name) fail(`gameui2: 6 played no signature emote (${JSON.stringify(p12.signature)})`);
+        if (p12.gClosesPalette.palette || !p12.gClosesPalette.dock) fail(`gameui2: G did not close the palette / open the dock (${JSON.stringify(p12.gClosesPalette)})`);
+        if (!p12.trayClosesDock.tray || p12.trayClosesDock.dock) fail(`gameui2: the tray did not close the dock (${JSON.stringify(p12.trayClosesDock)})`);
+      }
       // -- pin + point armed from the bar, the dock, the notebook
       g = await gi();
       const B2 = Object.fromEntries(g.bar.map((b) => [b.k, b]));
@@ -1272,7 +1315,7 @@ try {
       //    the ghost label), WALKING stays ghost (rig level 1, ch.ghost = 1), another emote keeps it, 5 = off (level 0);
       //    on again + a swap to a character that cannot ghost clears it
       // (a character with spec.ghost: the walking-ghost override needs it; owl / fox carry the older baked ghost clip only)
-      const ghostChar = await page.evaluate(() => { const ok = (window.__demo.demo.characters ?? []).filter((c) => c.complete).map((c) => c.id); return ['clarabelle', 'cilantro', 'opal', 'requin'].find((id) => ok.includes(id)) ?? null; });
+      const ghostChar = await page.evaluate(() => { const ok = (window.__demo.demo.characters ?? []).filter((c) => c.complete).map((c) => c.id); return ['requin', 'clarabelle', 'cilantro', 'opal'].find((id) => ok.includes(id)) ?? null; });   // (requin first: not one of pass B's seated cast, so the swap reshuffles no seat)
       if (ghostChar) {
         const back = (await info()).character;
         await setState({ character: ghostChar }); for (let k = 0; k < 60; k++) { if ((await info()).character === ghostChar) break; await sleep(100); }
@@ -1293,15 +1336,21 @@ try {
         await press('Digit1'); await sleep(500); r.ghost.talk = await gs();
         await press('Digit5'); await sleep(500); r.ghost.off = await gs(); r.ghost.offLabel = (await gi()).members.find((m) => m.you)?.ghostLabel;
         await press('Digit5'); await sleep(300);
-        await setState({ character: back }); for (let k = 0; k < 60; k++) { if ((await info()).character === back) break; await sleep(100); }
+        // (a swap to a character WITHOUT a ghost clip drops the ghost state: the Duelist (not one of the idle NPCs, so no NPC
+        // / seat-cast reshuffle compiles a new character mid-step); the default spawn character
+        // is no longer the Wanderer since critic P1-2 and keeps the ghost across a swap, by design)
+        const noGhost = 'duelist';
+        await setState({ character: noGhost }); for (let k = 0; k < 60; k++) { if ((await info()).character === noGhost) break; await sleep(100); }
         await sleep(400); r.ghost.swapped = await gs();
+        await setState({ character: back }); for (let k = 0; k < 60; k++) { if ((await info()).character === back) break; await sleep(100); }
+        await sleep(300);
         const G = r.ghost;
         if (hasGhost) {
           if (!(G.ghosts[1] > G.ghosts[0]) || !G.label || !G.on.on || G.on.level !== 1) fail(`gameui2: ghost on (5): ${JSON.stringify(G)}`);
           if (!G.walking.moving || !G.walking.on || G.walking.level !== 1 || G.walking.chGhost !== 1 || !G.walkLabel) fail(`gameui2: walking turned the ghost back (${JSON.stringify(G.walking)} label ${G.walkLabel})`);
           if (G.stopped.level !== 1 || G.talk.level !== 1) fail(`gameui2: the ghost did not stay a ghost after walking / another emote (${JSON.stringify([G.stopped, G.talk])})`);
           if (G.off.on || G.off.level !== 0 || G.off.chGhost !== null || G.offLabel) fail(`gameui2: ghost off (5 again): ${JSON.stringify(G.off)} label ${G.offLabel}`);
-          if (G.swapped.on) fail(`gameui2: swapping to '${back}' (no ghost clip) kept the ghost state`);
+          if (G.swapped.on) fail(`gameui2: swapping to 'duelist' (no ghost clip) kept the ghost state`);
         }
       } else note('gameui2: no ghost-clip character offered (ghost reveal not checked)');
       await sleep(500);
@@ -1388,7 +1437,7 @@ try {
       await ph.waitForTimeout(2500);
       const gi = () => ph.evaluate(() => window.__demo.demo.gameui?.info?.() ?? null);
       const cl = (x, y) => ph.evaluate(([x, y]) => {   // screen texel -> client px (gameui toScreen inverted)
-        const d = window.__demo.demo, e = d.engine, c = e.renderer.domElement, b = c.getBoundingClientRect(), s = e.pixelScale || 1, H = d.gameui.info().screen[1];
+        const d = window.__demo.demo, e = d.engine, c = e.renderer.domElement, b = c.getBoundingClientRect(), s = d.gameui.info().unitDev ?? (e.pixelScale || 1), H = d.gameui.info().screen[1];   // (density: logical px)
         return { x: b.left + (x + 0.5) * s * b.width / e.width, y: b.top + (e.height - (H - 1 - y + 0.5) * s) * b.height / e.height };
       }, [x, y]);
       const tapEl = async (sel) => { const b = await ph.evaluate((s) => { const q = document.querySelector(s)?.getBoundingClientRect(); return q ? [q.x + q.width / 2, q.y + q.height / 2] : null; }, sel); if (!b) throw new Error(`no ${sel}`); await ph.touchscreen.tap(b[0], b[1]); };
@@ -1461,6 +1510,12 @@ try {
       const db = await cl(g.dock.button.x + 13, g.dock.button.y + 13);
       await ph.touchscreen.tap(db.x, db.y); await ph.waitForTimeout(600);
       if (!(await gi()).dock.open) fail('touch: tapping your portrait did not open the dock');
+      // (critic P2-5) on a narrow screen the open dock stands above the bar: none of its parts covers a bar button
+      {
+        const gd = await gi(), parts = Object.values(gd.dock.rects ?? {}), ov = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+        r.dockOverBar = (gd.bar ?? []).filter((b) => parts.some((p) => ov(p, b))).map((b) => b.k);
+        if (r.dockOverBar.length) fail(`touch: the open dock covers the bar's ${r.dockOverBar.join(', ')} (critic P2-5)`);
+      }
       await pshot('touch-dock');
       // the action bar on a phone: 6 buttons on the canvas (above the status line), the tray by a tap, its L by a tap
       g = await gi();
@@ -1480,6 +1535,10 @@ try {
           await pshot('touch-tray');
           const lc = await cl(lb.x + 9, lb.y + 9); await ph.touchscreen.tap(lc.x, lc.y); await ph.waitForTimeout(400);
           const L1 = await ph.evaluate(() => window.__demo.demo.store.state.life);
+          // (critic P2-6) a finger has no hover: the tapped tray button shows its name
+          r.tapTip = (await gi()).tapTip;
+          if (r.tapTip?.kind !== 'tray' || r.tapTip?.k !== 'KeyL') fail(`touch: the tapped tray button shows no name caption (${JSON.stringify(r.tapTip)})`);
+          await pshot('touch-tray-name');
           await ph.touchscreen.tap(lc.x, lc.y); await ph.waitForTimeout(400);
           const L2 = await ph.evaluate(() => window.__demo.demo.store.state.life);
           r.trayLife = [L0, L1, L2];
@@ -1497,6 +1556,17 @@ try {
     console.log(`   cover ${JSON.stringify(r.cover)} · toolbar under ${r.underToolbar} · notebook ${JSON.stringify(r.toolbarTap)} bottom ${r.notebookBottom} < feet ${r.readerFeet} · panel button ${JSON.stringify(r.panelButton)}`);
     console.log(`   long press pie ${r.pie?.input} sticky -> pins ${JSON.stringify(r.pins)} · walked by pie ${r.walkedByPie} m · tap walk ${r.tapWalk} m`);
     await ctx.close();
+  }
+
+  // ---------------------------------------------------------------------------------------------- 8 passb (B)
+  // (B) pass B: the vote camera, the seated cast, the tower timer + readout + HUD + ST control, the tower interior
+  // (tools/demo-play-passb.mjs)
+  if (!SKIP.has('passb')) {
+    console.log('8 passb (vote camera, seated cast, tower timer, tower interior)');
+    try {
+      const { runPassB } = await import('./demo-play-passb.mjs');
+      report.steps.passb = await runPassB({ page, sleep, info, shot, fail, note, press, hold });
+    } catch (e) { fail('passb: ' + (e.stack || e.message).split('\n').slice(0, 3).join(' | ')); }
   }
 
   // ---------------------------------------------------------------------------------------------- 7 quality reload

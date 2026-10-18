@@ -139,6 +139,55 @@ manifests, world UI (labels, bubbles, finger, hands) above avatars, ground UI (p
 
 ---------------------------------------------------------------------------------------------------------------------
 
+## 3.5 Density D=2 comparisons (UI lead, 2026-10-17; contract `docs/UI.md` §2.10)
+`scenes/ui-density.js` = the mock square with today's 1x UI on the LEFT half and the same elements at D=2 on the RIGHT
+half, over the same frame (clock + phase chips, toolbar, controls tip + "never show again", a name label + person pin,
+a place pin, the social palette + dock button, the notebook page text in the DOM). Everything left is drawn exactly as
+`src/demo/gameui.js` draws it today; everything right goes through `L.hd`. `?uipolicy=floor`, `?tod=night`,
+`?swatch=dot|portrait|bust`, `?outlineW=1|2`, `?occ=1` (an HD pin behind a character: depth test). All rendered on
+render-host and looked at:
+| file (`shots/ui-hd/`) | what |
+|---|---|
+| `cmp-1280x720.png`, `cmp-1280x720-night.png` | the full comparison at 720p (pixelScale 2: 1 HD px = 1 device px), day / night |
+| `cmp-1920x1080.png` / `cmp-1920x1080-floor.png` | 1080p (pixelScale 3): policy round (HD px = 2 device px, art 4/3 the size) / floor (1 device px, 2/3 the size) |
+| `zoom-1280-{palette,tip,toolbar,chips,label-personpin,placepin,notebook-page}.png` | ×3 crops, 1x on top, D=2 below |
+| `native-1280-{palette,tip,toolbar-chips,notebook-page}.png` | the same crops at 1:1 (what the player sees) |
+| `zoom-1920-{palette,tip,chips-toolbar,label-pins,notebook-page}.png` | 1080p round crops (×2 / ×1), 1x on top |
+| `zoom-1280-swatch-icon-variants.png` | swatch socket icons: bust / dot (default) / your portrait; label outline 2 vs 1 HD px |
+| `zoom-1280-depth-occlusion.png` | an HD place pin behind the frog: hidden by the body (depth tier) |
+| `hud-whole-1x-1280.png` / `hud-whole-screen-d2-1280.png` + `zoom-hud-whole-{top,dock,notebook}.png` | the whole mock game screen with `?uiscreen=hd` (no group change): text / frames drawn into `L.screen` upgrade, self-built sprites stay 1x blocks (compat path) |
+| `sheet/fonts*.png`, `sheet/sprites*.png`, `sheet/dial.png` | node sheets: faces 1x vs D=2 (crops ×3), swatch variants, world pins, glyphs |
+Read: the D=2 text is the same size and layout (advances exactly 2×) with finer strokes — "Never" no longer reads
+"Hever", "Click your pin: remove" stays clean at 1:1; the palette swatches are round pins with a crisp socket instead of
+a cream square; world pins carry the 24-px portrait 1:1 (the face is recognisable); toolbar glyphs (bulb, notebook, cog,
+?) have real shapes; the DOM notebook page uses the D=2 face. Perf: `docs/UI.md` §2.10 (+0.4 ms / frame for a full HD HUD).
+
+## 3.6 Density wave 1: markers, indicators, portraits at D=2 (2026-10-17; contract `docs/UI.md` §2.10.3)
+`scenes/ui-density-wave1.js` = the mock square with the same moment drawn twice, today's 1x art on the LEFT half and the
+wave-1 D=2 art on the RIGHT half (L.hd tiers): Ada (you: ring, chevron, label, talk glyph) points at Cleo (finger, trail,
+ping at her feet); Cleo's bubble and two person pins (first hovered: remove badge); a hovered place pin and one landing
+(sparkle); on the screen tier the off-screen discs (avatar / icon / initial), a row of roster avatars + icons (ghost / dead
+icons, `wanderer` = an HD-only roster portrait), the dock button. `?tod=night`, `?pointer=v2`, `?age=<s>`, `?uipolicy=`.
+All rendered on render-host and looked at:
+| file (`shots/ui-hd-wave1/`) | what |
+|---|---|
+| `cmp-1280x720.png`, `-night.png`, `-v2pointer.png` | the full comparison at 720p (1 HD px = 1 device px): day / night / the v2-size finger |
+| `cmp-1920x1080.png`, `-night.png` | 1080p, policy round (HD art 4/3 the 1x size, the lead's scale rule) |
+| `zoom-1280-{point,stack,placepins,screen-top,screen-bottom}.png` (×3), `zoom-1280-{personpins,ping,ring}.png` (×4) | crops, 1x on top, D=2 below |
+| `zoom-1280-night-{point,stack,placepins}.png`, `zoom-1280-v2pointer-point.png`, `zoom-1920-{point,stack,placepins}.png` | night, the v2-size finger, 1080p |
+| `native-1280-world.png` | the world half at 1:1 (what the player sees) |
+| `sheet/markers{,-night}{,-x3}.png` | node sheet: every finger direction + the 3 jab frames of both variants, pings, sparkles, badge, trail, chevron, shadow (1x block ×2 above the D=2 frame, on ink and on a cobble tile) |
+| `sheet/indicators{,-night}{,-x3}.png`, `sheet/ic1.png` | bubbles (+ pop, + drawn into a view), talk glyphs (4 steps × talk / self, selfIdle, muted), chevron, rings, discs |
+| `sheet/portraits-{alive,ghost,ghost-spent,dead,night-alive}.png` (+ `pc1/pc2/pg/pd.png` zooms) | every roster id: 1x icon ×2, HD icon, 1x avatar ×2, HD avatar |
+Read: the finger has a thumb, knuckle creases and a cuff seam (the diagonal hand no longer reads as a magnifier); trail
+dots are round beads; the ping rings are clean ellipses (and stay hidden under the fox's body: depth tier, per-row ground
+depth); bubbles carry body@2 text in the finer frame with a seamless tail; the pin socket shows the dropper's face
+(the 24-px HD re-render) — recognisable at 1:1 where the 1x icon was a few coloured blocks; avatars and icons gain
+eyes, beaks, goggles and shield detail. Checks: `regress.py` (1x atlases identical), `check.mjs` (748 contract checks).
+
+
+---------------------------------------------------------------------------------------------------------------------
+
 ## 4. Learnings from the integration round
 - 2026-10-17 lead: a teleported character needs its position in the Character's **drive** (stage time), not in an
   `onUpdate` that moves `st.base`: the update ran after the Character that frame, and re-simulation fired the `appear`

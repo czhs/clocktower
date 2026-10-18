@@ -22,7 +22,9 @@ export const TOD_HOURS = { night: 0, morning: 8, noon: 12.5, afternoon: 16, gold
  *  between the dial ring and the kerb, clear of house-9's roof at the gameplay camera. */
 export const SPAWN = { x: layout.PLAYER_SPAWN.x + 0.5, z: layout.PLAYER_SPAWN.z + 0.1 };
 /** Default character id (characters.js may override with its own first completed character). */
-export const DEFAULT_CHARACTER = 'wanderer';
+// (critic P1-2) a character with the FULL game emote set (talk, vote, point, die, ghost + a signature; tools/demo-emotes.mjs):
+// the shipped Wanderer has none of them (5 of 6 palette emotes greyed). Keep in sync with characters.js DEFAULT_ID.
+export const DEFAULT_CHARACTER = 'frog';
 
 export const emptySeat = () => ({ occupied: false, dead: false, ghostVote: true, nominated: false, onBlock: false });
 
@@ -54,7 +56,7 @@ export const DEFAULT_STATE = Object.freeze({
 export const BOOK_STYLES = ['held', 'big'];
 export const POINTER_SCALES = ['new', 'v2'];
 /** Valid values of state.location. */
-export const LOCATION_RX = /^(town|house-(?:[0-9]|1[0-4]))$/;
+export const LOCATION_RX = /^(town|clocktower|house-(?:[0-9]|1[0-4]))$/;   // (B) + clocktower (pass B: the tower interior)
 
 // ------------------------------------------------------------------------------------------------ store + events
 /** Tiny event emitter: on(name, fn) -> unsubscribe, off, emit(name, payload). '*' listeners get (name, payload). */

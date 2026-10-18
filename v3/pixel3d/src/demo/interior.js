@@ -178,6 +178,7 @@ export function createInteriors(demo, { radius = PLAYER_RADIUS } = {}) {
   engine.scene.add(holder);
   const rooms = new Map(), pending = new Map();
   const failures = [];
+  const custom = new Map();   // (B) id -> builder(engine, ctx) -> raw room (the clock tower's interior: tower-interior.js)
   let kitName = 'pending';
   const ctxFor = (id) => {
     const rec = layout.houses.find((h) => h.id === id);
@@ -185,10 +186,13 @@ export function createInteriors(demo, { radius = PLAYER_RADIUS } = {}) {
       tod: demo.town?.preset, params, hours: demo.time?.hours ?? demo.store?.state?.timeOfDay, origin: originFor(rec?.index ?? 0) };
   };
   async function build(id) {
-    const kit = await loadKit(params);
-    kitName = kit ? 'kit' : 'stub';
+    const kit = custom.has(id) ? null : await loadKit(params);   // (B) a registered builder wins
+    if (!custom.has(id)) kitName = kit ? 'kit' : 'stub';
     let raw = null;
-    if (kit) {
+    if (custom.has(id)) {   // (B)
+      try { raw = await custom.get(id)(engine, ctxFor(id)); }
+      catch (e) { console.warn(`[demo] interior ${id}: custom builder failed, fallback room:`, e); failures.push({ id, error: String(e?.message ?? e) }); raw = null; }
+    } else if (kit) {
       try { raw = await kit.buildInterior(engine, id, ctxFor(id)); }
       catch (e) { console.warn(`[demo] interior ${id}: buildInterior failed, fallback room:`, e); failures.push({ id, error: String(e?.message ?? e) }); raw = null; }
     }
@@ -209,6 +213,9 @@ export function createInteriors(demo, { radius = PLAYER_RADIUS } = {}) {
   };
   return {
     rooms, failures, get, peek: (id) => rooms.get(id) ?? null,
+    /** (B) register a room builder for an id the kit does not know (the clock tower): builder(engine, ctx) -> raw room */
+    register(id, builder) { custom.set(id, builder); },
+    has: (id) => custom.has(id) || layout.houses.some((h) => h.id === id),   // (B)
     prefetch(id) { if (id && !rooms.has(id) && !pending.has(id)) get(id).catch(() => {}); },
     get kitName() { return kitName; },
     dispose() { for (const r of rooms.values()) r.group.removeFromParent(); holder.removeFromParent(); },

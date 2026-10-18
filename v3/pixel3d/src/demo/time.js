@@ -636,7 +636,13 @@ export function createTime(demo) {
     at(K.vote - 2, () => { for (const v of K.voters) votes.add(v); store.set({ phase: 'vote' }, 'time'); });
     at(K.execute - 2, () => { store.set({ phase: 'execution' }, 'time'); ringBell(); });
     at(K.die - 2, () => store.setSeat(K.nominee, { dead: true, ghostVote: true, nominated: false }, 'time'));
-    at(K.night - 2, () => { votes.clear(); cer = null; store.set({ phase: 'night', nominee: null }, 'time'); });
+    // ---- (critic P2-4, ui pass) the ceremony's night is REAL night: the night phase drops the game UI's veil, and
+    // while it covers the screen (its 650-ms fall, events TIMING.night.outF) the clock is scrubbed to 21:30 when it
+    // shows a daytime hour (the veil lifted onto full sun with NIGHT on the chip). Pass B's vote camera goes back to
+    // follow 3 s after the night phase: both happen under / after the veil.
+    at(K.night - 2, () => { votes.clear(); store.set({ phase: 'night', nominee: null }, 'time'); });
+    at(K.night - 2 + 0.75, () => { cer = null; if (hours >= 6 && hours < 20) { store.set({ timeOfDay: 21.5 }, 'ceremony'); info.ceremonyNight = 21.5; } });
+    // ---- (end P2-4)
     cer = { t0: engine.time, k: 0, steps };
     events.emit('ceremony', { start: true, t0: engine.time });
     if (store.state.camera === 'follow') store.set({ camera: 'vote' }, 'time');

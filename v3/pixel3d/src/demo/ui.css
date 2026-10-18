@@ -314,6 +314,17 @@
 #demo-ui .dnb .dnb-note::placeholder { color: #857A90; }
 .dnb-foot { margin: 2px 0 0; font-size: 10px; font-style: italic; color: #857A90; }
 #demo-ui .dnb .ctn-text { width: 100%; }
+/* (density, docs/DEMO.md §4.7 "Density") the notebook's own text in the D=2 pixel face (src/ui/hd/css.js 'CT Pixel Body
+   HD', built at runtime from body@2): 16 px = one glyph px per CSS px at every scale (crisp; cap 12 px), no synthetic
+   small caps / italics / letter-spacing (they smear a pixel face). The page itself: .ctn-pixelfont-hd (hd/css.js). */
+#demo-ui .dnb.dnb-hd .dnb-status, #demo-ui .dnb.dnb-hd .dnb-name, #demo-ui .dnb.dnb-hd .dnb-mark, #demo-ui .dnb.dnb-hd .dnb-note,
+#demo-ui .dnb.dnb-hd .dnb-foot, #demo-ui .dnb.dnb-hd .dnb-pic {
+  font-family: 'CT Pixel Body HD', var(--dui-serif), system-ui, sans-serif; font-size: 16px; line-height: 18px; font-weight: 400;
+  font-style: normal; font-variant: normal; letter-spacing: 0; -webkit-font-smoothing: none; font-kerning: none; font-variant-ligatures: none;
+}
+#demo-ui .dnb.dnb-hd .dnb-status { padding: 0 3px; }
+#demo-ui .dnb.dnb-hd .dnb-foot { color: #9C91A8; }
+#demo-ui .dnb.dnb-hd .dnb-note { line-height: 16px; }
 
 /* a phone (narrow, the panel auto-folds below 700 px): the notebook spans the top and stays under 40 % of the height
    (notebook.js fit() sizes the Notes page to it), so the reader and the book in their hands stay in view below it */

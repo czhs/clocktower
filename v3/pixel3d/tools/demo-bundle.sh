@@ -214,11 +214,24 @@ verify() {   # serve <tmp>/v3-art-demo -> dist/v3-art-demo on 127.0.0.1:$PORT an
   [[ -f "$OUTREL/index.html" ]] || { echo "no $OUTREL/index.html: build first" >&2; exit 1; }
   if [[ -n "$(ss -Htln "sport = :$PORT" 2>/dev/null)" ]]; then echo "port $PORT busy; set BUNDLE_PORT" >&2; exit 5; fi
   SITE=$(mktemp -d)
-  # the served prefix holds symlinks to the bundle's entries, plus (only here, never in the bundle) demo.html -> index.html
-  # so tools/demo-play.mjs (which opens <base>/demo.html) can run against the bundle too: VERIFY_PLAY=1
+  # the served prefix holds the bundle in the LIVE (published) layout of tools/demo-publish.sh (critic P1-1: a
+  # document-relative asset URL 404'd only there): every entry under v/<hash>/, only index.html at the root, its
+  # href / src rewritten to ./v/<hash>/ exactly as demo-publish.sh does. Plus (only here, never in the bundle)
+  # demo.html = that same rewritten page, so tools/demo-play.mjs (which opens <base>/demo.html) runs on it: VERIFY_PLAY=1.
+  # VERIFY_FLAT=1 serves the old flat layout instead.
   mkdir "$SITE/v3-art-demo"
-  for e in "$ROOT/$OUTREL"/*; do ln -s "$e" "$SITE/v3-art-demo/$(basename "$e")"; done
-  ln -s "$ROOT/$OUTREL/index.html" "$SITE/v3-art-demo/demo.html"
+  if [[ "${VERIFY_FLAT:-0}" == 1 ]]; then
+    for e in "$ROOT/$OUTREL"/*; do ln -s "$e" "$SITE/v3-art-demo/$(basename "$e")"; done
+    ln -s "$ROOT/$OUTREL/index.html" "$SITE/v3-art-demo/demo.html"
+  else
+    local VH; VH=$(cd "$ROOT/$OUTREL" && find . -type f ! -name index.html -print0 | LC_ALL=C sort -z | xargs -0 sha1sum | sha1sum | cut -c1-10)
+    mkdir -p "$SITE/v3-art-demo/v/$VH"
+    for e in "$ROOT/$OUTREL"/*; do [[ "$(basename "$e")" == index.html ]] || ln -s "$e" "$SITE/v3-art-demo/v/$VH/$(basename "$e")"; done
+    sed -E "s#(href|src)=\"\./#\1=\"./v/$VH/#g" "$ROOT/$OUTREL/index.html" > "$SITE/v3-art-demo/index.html"
+    grep -q "./v/$VH/src/demo/main.js" "$SITE/v3-art-demo/index.html" || { echo "verify: the staged index.html rewrite failed" >&2; return 1; }
+    cp "$SITE/v3-art-demo/index.html" "$SITE/v3-art-demo/demo.html"
+    echo "staged layout: index.html + v/$VH/ (as tools/demo-publish.sh)"
+  fi
   # the production host's CSP, sent EXACTLY (keep in sync with the clocktower server's demo route)
   local CSP="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'"
   cat > "$SITE/csp-serve.py" <<'PY'
@@ -255,6 +268,10 @@ PY
   fi
   echo "server requests: $(grep -c '"GET ' "$SITE/serve.log" || true), non-200: $(grep '"GET ' "$SITE/serve.log" | grep -vc '" 200 ' || true)"
   grep '"GET ' "$SITE/serve.log" | grep -v '" 200 ' | head -5 || true
+  # (critic P1-1) any 404 in the staged layout fails the verify (the smoke / play checks count them too)
+  local n404; n404=$(grep '"GET ' "$SITE/serve.log" | grep -c '" 404 ' || true)
+  echo "404s in the staged layout: $n404"
+  [[ "$n404" == 0 ]] || rc=1
   return $rc
 }
 

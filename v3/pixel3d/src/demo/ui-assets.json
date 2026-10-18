@@ -3,6 +3,8 @@
   "files": [
     "out/ui/portraits.json",
     "out/ui/portraits.png",
+    "out/ui/portraits-hd.json",
+    "out/ui/portraits-hd.png",
     "out/ui/cast-portraits.json",
     "out/ui/cast-portraits.png",
     "out/ui/panels.css",
