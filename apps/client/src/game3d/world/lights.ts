@@ -42,9 +42,11 @@ export interface LightReserve {
 }
 
 /** Reserve size per tier: the lantern-carrying cast member + the Storyteller at night (§3). */
-export const RESERVE = { high: 2, low: 2 } as const;
+export const RESERVE = { high: 2, low: 2, cpu: 2 } as const;
 /** The tier's total point-light budget (vendor time.js / town.js installLights). */
-export const LIGHT_BUDGET = { high: 12, low: 8 } as const;
+// 'cpu' keeps the low pool (same game logic: borrow / aim / dim); vendor/cpuTier.ts keeps every PointLight out of the
+// render (light layer), so its programs compile with 0 point lights.
+export const LIGHT_BUDGET = { high: 12, low: 8, cpu: 8 } as const;
 
 const PARK_Y = -50;
 

@@ -5,7 +5,9 @@
 import type { Facing, GamePhase, LocationId, PlayerGameView, StorytellerGameView, TownLayout, WorldId } from '@ct/protocol';
 import type { TownBridge } from '../game/TownScene';
 
-export type Tier = 'low' | 'high';
+/** 'cpu' (v3 perf cpu): software GL / too slow at 'low' — low internal resolution, no shadows / normal pass / post /
+ * point lights, capped frame rate (vendor/cpuTier.ts). Ordered high > low > cpu. */
+export type Tier = 'low' | 'high' | 'cpu';
 export type RendererKind = 'v3' | 'classic';
 export type FallbackReason = 'perf' | 'error';
 

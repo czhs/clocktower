@@ -212,8 +212,11 @@
       const orig = EP.renderAt;
       const w = function (t) {
         P.renderAts++;
-        // the live engine (a tier rebuild / remount destroys the first one: its scene is null afterwards)
-        if (!P.engine || (P.engine !== this && this.scene)) P.engine = this;
+        // a rebuild (tier change, context loss) makes a NEW Engine: follow it
+        if (P.engine !== this && !this.__ctDisposed) {
+          if (P.engine) P.engineSwaps = (P.engineSwaps ?? 0) + 1;
+          P.engine = this;
+        }
         const f = P.cur;
         if (!P.on || !f) return orig.call(this, t);
         try {
@@ -281,14 +284,23 @@
       layout = L.currentLayout();
     }
     const { createTownGame3d } = await import('/src/game3d/TownGame3d.ts');
-    const handlers = new Map();
+    const subs = new Map();
+    const handlers = { get: (k) => (subs.has(k) ? (x) => [...subs.get(k)].forEach((fn) => fn(x)) : undefined) };
     const pids = ['me', ...Array.from({ length: players }, (_, i) => `r${i + 1}`)];
     const members = pids.map((pid, i) => ({ pid, role: 'player', seat: i, displayName: pid === 'me' ? 'You' : `Player ${i}` }));
     const conn = {
       lobbyView: mk({ youPid: 'me', world: worldUsed, members, lobby: { phase: 'waiting', world: worldUsed } }),
       gameView: mk(gameView ?? null),
       status: mk('open'),
-      events: { on: (k, fn) => (handlers.set(k, fn), () => handlers.delete(k)) },
+      // several modules subscribe to the same event (net/core + overlay/gameplayView both take world:teleport): keep all
+      events: {
+        on: (k, fn) => {
+          let set = subs.get(k);
+          if (!set) subs.set(k, (set = new Set()));
+          set.add(fn);
+          return () => set.delete(fn);
+        },
+      },
       send: () => undefined,
     };
     const fallbacks = [];
@@ -355,7 +367,6 @@
     if (!e) return { error: 'engine not captured' };
     const r = e.renderer;
     const scene = e.scene;
-    if (!scene) return { error: 'engine destroyed', renderAts: P.renderAts, fallbacks: [...(P.m?.fallbacks ?? [])], v3: window.__ctCamera?.v3?.() ?? null, errors: [...P.errors] };
     const c = { nodes: 0, matrixAutoUpdate: 0, meshes: 0, instanced: 0, instances: 0, skinned: 0, casters: 0, receivers: 0, noFrustumCull: 0, colorOnly: 0, points: 0, lines: 0, sprites: 0, staticTris: 0 };
     const vis = { meshes: 0, instanced: 0, casters: 0, tris: 0 };
     const mats = new Set();
@@ -428,43 +439,6 @@
     // the heaviest visible meshes (tris per pass; drawn in colour + normal (+ shadow when casting))
     heavy.sort((a, b) => b[0] - a[0]);
     const topMeshes = heavy.slice(0, 15).map(([tr, o]) => ({ name: pieceOf(o), tris: Math.round(tr), cast: !!o.castShadow, colorOnly: o.layers.mask === 2, culled: o.frustumCulled !== false, mat: (Array.isArray(o.material) ? o.material[0] : o.material)?.type ?? null }));
-    // (v3-perf-stage) visible meshes INSIDE the view frustum, grouped by piece (first path segment) and by material:
-    // what the colour / normal passes draw, i.e. the merge / cull candidates
-    const drawGroups = { byPiece: {}, byMaterial: {} };
-    try {
-      const cam = e.camera.cam;
-      cam.updateMatrixWorld();
-      // a bounding-sphere test against the (orthographic) view: clip = P * V * centre, radius scaled per axis
-      const M = cam.projectionMatrix.clone().multiply(cam.matrixWorldInverse);
-      const me = M.elements;
-      const sx = Math.hypot(me[0], me[4], me[8]);
-      const sy = Math.hypot(me[1], me[5], me[9]);
-      const inView = (o) => {
-        if (o.isInstancedMesh || o.frustumCulled === false) return true;
-        const g = o.geometry;
-        if (!g) return false;
-        if (!g.boundingSphere) g.computeBoundingSphere();
-        const c = g.boundingSphere.center.clone().applyMatrix4(o.matrixWorld);
-        const r = g.boundingSphere.radius * o.matrixWorld.getMaxScaleOnAxis();
-        c.applyMatrix4(M);
-        return Math.abs(c.x) <= 1 + r * sx && Math.abs(c.y) <= 1 + r * sy;
-      };
-      const frustum = true;
-      for (const [tr, o] of heavy) {
-        if (!inView(o)) continue;
-        const piece = pieceOf(o).split('/')[0] || '(root)';
-        const mat = (Array.isArray(o.material) ? o.material[0] : o.material)?.name || '(unnamed)';
-        for (const [k, key] of [['byPiece', piece], ['byMaterial', mat]]) {
-          const g = (drawGroups[k][key] ??= { n: 0, casters: 0, tris: 0 });
-          g.n++;
-          if (o.castShadow) g.casters++;
-          g.tris += Math.round(tr);
-        }
-      }
-      drawGroups.frustum = !!frustum;
-    } catch (err) {
-      drawGroups.error = String(err?.message ?? err);
-    }
     for (const m of mats) matTypes[m.type] = (matTypes[m.type] ?? 0) + 1;
     const pipe = e.pipeline;
     const rtDesc = (rt) => (rt ? { w: rt.width, h: rt.height, type: rt.texture.type, depthTex: rt.depthTexture ? rt.depthTexture.type : null } : null);
@@ -490,7 +464,6 @@
       counts: c,
       visible: vis,
       topMeshes,
-      drawGroups,
       materials: mats.size,
       materialTypes: matTypes,
       geometries: geos.size,

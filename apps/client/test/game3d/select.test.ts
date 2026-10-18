@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import { bootGuardState } from '../../src/game3d/bootGuard';
 import { markBooting } from '../../src/game3d/bootMark';
-import { AUTO_FALLBACK_KEY, browserEnv, chooseRenderer, GRAPHICS_KEY, mayUseV3, parseGraphicsPref, startingTier, type SelectEnv } from '../../src/game3d/select';
+import { AUTO_FALLBACK_KEY, browserEnv, chooseRenderer, GRAPHICS_KEY, isSoftwareGl, mayUseV3, parseGraphicsPref, startingTier, type SelectEnv } from '../../src/game3d/select';
 
 const NOW = Date.parse('2026-10-17T12:00:00Z');
 const GOOD_GPU = 'ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11)';
@@ -58,14 +58,48 @@ describe('chooseRenderer', () => {
     for (const pref of ['auto', 'v3'] as const) expect(chooseRenderer(env({ pref, bootGuard: { leftover: true, unclean: 1, blocked: true } }))).toMatchObject({ renderer: 'classic', row: 4, reason: 'boot-guard' });
   });
 
-  it('row 5: no webgl2 with failIfMajorPerformanceCaveat', () => {
-    const e = env({}, GOOD_GPU, null);
+  it('row 5: no webgl2 at all (neither with nor without failIfMajorPerformanceCaveat)', () => {
+    const e = env({}, null, null);
     expect(chooseRenderer(e)).toMatchObject({ renderer: 'classic', row: 5, reason: 'no-webgl2' });
-    expect(e.probes).toEqual([true]);
+    expect(e.probes).toEqual([true, false]);
   });
 
-  it.each(['Google SwiftShader', 'llvmpipe (LLVM 15.0.7, 256 bits)', 'Microsoft Basic Render Driver (Software)'])('row 6: software GL %s -> Classic', (gpu) => {
-    expect(chooseRenderer(env({ pref: 'v3' }, gpu))).toMatchObject({ renderer: 'classic', row: 6, reason: 'software-gl' });
+  it('row 6: the caveat probe fails but a plain context exists (software / blocklisted GPU) -> v3 at the cpu tier', () => {
+    const e = env({}, 'ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)', null);
+    expect(chooseRenderer(e)).toMatchObject({ renderer: 'v3', tier: 'cpu', row: 6, reason: 'software-gl' });
+    expect(e.probes).toEqual([true, false]);
+    // even an unknown renderer string: no context with the caveat flag means "major performance caveat"
+    expect(chooseRenderer(env({}, GOOD_GPU, null))).toMatchObject({ renderer: 'v3', tier: 'cpu', row: 6 });
+  });
+
+  it.each(['Google SwiftShader', 'llvmpipe (LLVM 15.0.7, 256 bits)', 'Microsoft Basic Render Driver (Software)', 'ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)'])(
+    'row 6: software GL %s -> v3 at the cpu tier (auto and explicit v3; fx quality does not matter)',
+    (gpu) => {
+      for (const pref of ['auto', 'v3'] as const) expect(chooseRenderer(env({ pref }, gpu))).toMatchObject({ renderer: 'v3', tier: 'cpu', row: 6, reason: 'software-gl', gpu });
+      expect(chooseRenderer(env({ fxLow: true }, gpu)).tier).toBe('cpu');
+    },
+  );
+
+  it('row 6 still yields to pref classic, the boot guard, the auto-fallback memo and the phone rule', () => {
+    const sw = 'Google SwiftShader';
+    expect(chooseRenderer(env({ pref: 'classic' }, sw))).toMatchObject({ renderer: 'classic', row: 3 });
+    expect(chooseRenderer(env({ bootGuard: { leftover: true, unclean: 1, blocked: true } }, sw))).toMatchObject({ renderer: 'classic', row: 4 });
+    expect(chooseRenderer(env({ autoFallbackAt: new Date(NOW - 1000).toISOString() }, sw))).toMatchObject({ renderer: 'classic', row: 7 });
+    expect(chooseRenderer(env({ coarsePointer: true, shortSide: 390 }, sw))).toMatchObject({ renderer: 'classic', row: 8 });
+    // an explicit v3 on a software phone: cpu, not low
+    expect(chooseRenderer(env({ pref: 'v3', coarsePointer: true, shortSide: 390 }, sw))).toMatchObject({ renderer: 'v3', tier: 'cpu', row: 6 });
+    // v3force (the e2e on the host's SwiftShader) keeps the row-9 tier: the e2e behaviour does not change
+    expect(chooseRenderer(env({ force: true }, sw, null))).toMatchObject({ renderer: 'v3', tier: 'high', row: 2 });
+  });
+
+  it('isSoftwareGl', () => {
+    expect(isSoftwareGl('Google SwiftShader')).toBe(true);
+    expect(isSoftwareGl('llvmpipe (LLVM 15.0.7, 256 bits)')).toBe(true);
+    expect(isSoftwareGl('Microsoft Basic Render Driver (Software)')).toBe(true);
+    expect(isSoftwareGl(GOOD_GPU)).toBe(false);
+    expect(isSoftwareGl('ANGLE (Intel, Intel(R) UHD Graphics 620 Direct3D11)')).toBe(false);
+    expect(isSoftwareGl(null)).toBe(false);
+    expect(isSoftwareGl('')).toBe(false);
   });
 
   it('row 7: an auto-fallback within 7 days keeps Auto on Classic; older memos or an explicit v3 do not', () => {

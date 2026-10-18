@@ -19,7 +19,8 @@
 //   context loss the first loss within LOSS_WINDOW_MS (per page) rebuilds at once behind "Rebuilding town…" (never
 //                three's partial restore), also during a (re)build (the running build is cancelled); the second
 //                within the window -> Classic ('error')
-//   perf         PerfSampler over rAF deltas after each first show: 'rebuild-low' -> rebuild at 'low', 'fallback' ->
+//   perf         PerfSampler over rAF deltas after each first show: 'rebuild-low' -> rebuild at 'low', 'rebuild-cpu' ->
+//                rebuild at 'cpu' (v3 perf cpu), 'fallback' ->
 //                requestFallback('perf'); an 'ok' sample at 'low' may promote to 'high' once (auto only, never
 //                after a demotion); all three wait for a safe moment (SafeMoment: not during a vote / open
 //                nomination; the next phase change or 60 s quiet)
@@ -234,9 +235,9 @@ export class Lifecycle {
 
   private judge(s: PerfSampler): void {
     const v = s.verdict;
-    if (v === 'rebuild-low') {
+    if (v === 'rebuild-low' || v === 'rebuild-cpu') {
       this.demoted = true;
-      this.schedule({ kind: 'rebuild', tier: 'low', why: 'perf' });
+      this.schedule({ kind: 'rebuild', tier: v === 'rebuild-low' ? 'low' : 'cpu', why: 'perf' });
     } else if (v === 'fallback') this.schedule({ kind: 'fallback' });
     else if (v === 'ok' && this.cur === 'low' && this.d.allowPromote && !this.demoted && !this.promoted) {
       this.promoted = true;

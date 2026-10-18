@@ -12,6 +12,7 @@ import { Engine } from '@pixel3d/core/Engine.js';
 import { pixelScaleFor, type ProjectionState } from '../coords';
 import type { Tier } from '../contract';
 import { runFrameLoop, V3_MAX_FPS, type FrameLoop } from '../perf';
+import { cpuPixelScale, installCpuTier, tierFpsLimit, type CpuEngine, type CpuTier } from './cpuTier';
 
 interface PixelGlobal {
   ready: boolean;
@@ -96,8 +97,8 @@ export interface EngineHost {
   projection(): ProjectionState;
   /** GPU renderer string. */
   gpu(): string | null;
-  /** Frame stats for __ctCamera.v3(). */
-  info(): { calls: number; tris: number; programs: number | null; pixelScale: number; lowW: number; lowH: number };
+  /** Frame stats for __ctCamera.v3(). `cpu`: the cpu tier's lever stats (vendor/cpuTier.ts), only at that tier. */
+  info(): { calls: number; tris: number; programs: number | null; pixelScale: number; lowW: number; lowH: number; cpu?: ReturnType<CpuTier['info']> };
   dispose(): void;
 }
 
@@ -124,7 +125,7 @@ function hostResize(engine: HostedEngine, parent: HTMLElement, tier: Tier): void
   // a zero-size parent (hidden pane) would make lowH 0 -> texelWorld Infinity -> NaN geometry: use a nominal frame
   const ww = parent.clientWidth >= 1 ? Math.floor(parent.clientWidth) : 640;
   const hh = parent.clientHeight >= 1 ? Math.floor(parent.clientHeight) : 360;
-  engine.pixelScale = pixelScaleFor(hh, tier);
+  engine.pixelScale = tier === 'cpu' ? cpuPixelScale(hh) : pixelScaleFor(hh, tier);
   engine.renderer.setSize(ww, hh, false);
   engine.width = ww;
   engine.height = hh;
@@ -140,7 +141,7 @@ export function createEngineHost(parent: HTMLElement, opts: EngineHostOptions): 
   // Engine.constructor writes window.__pixel.gpu and throws without the object
   const ownPixel = !w.__pixel;
   w.__pixel ??= { ready: false, errors: [], renderAt: null, info: null, gpu: null };
-  const params = new URLSearchParams({ quality: opts.tier === 'low' ? 'low' : 'high' });
+  const params = new URLSearchParams({ quality: opts.tier === 'high' ? 'high' : 'low' });
   let engine: HostedEngine;
   // The constructor adds an anonymous window 'resize' listener it never removes; that listener would keep the whole
   // engine (and, through the vendor's engine-keyed material caches, the renderer and the town) alive for the page's
@@ -187,6 +188,16 @@ export function createEngineHost(parent: HTMLElement, opts: EngineHostOptions): 
   canvas.style.imageRendering = 'pixelated';
   canvas.style.display = 'block';
   parent.appendChild(canvas);
+  // v3 perf (cpu): the cpu tier's levers, before anything compiles a program (the town build, the warm-up)
+  const cpu: CpuTier | null = opts.tier === 'cpu' ? installCpuTier(engine as unknown as CpuEngine) : null;
+  if (cpu) {
+    const pipe = engine.pipeline;
+    const render = pipe.render;
+    pipe.render = function (this: unknown) {
+      cpu.beforeRender();
+      return render.call(this);
+    };
+  }
   // the constructor's window 'resize' listener calls this.resize(): the shadow wins (dispose removes that listener)
   engine.resize = () => hostResize(engine, parent, opts.tier);
   engine.resize();
@@ -251,7 +262,8 @@ export function createEngineHost(parent: HTMLElement, opts: EngineHostOptions): 
       if (disposed || loop) return;
       loop = runFrameLoop(
         {
-          fpsLimit: opts.fpsLimit,
+          // cpu tier: CPU_FPS_CAP; ct.debug.fps > 0 wins
+          fpsLimit: tierFpsLimit(opts.tier, opts.fpsLimit),
           // v3 perf(learn): no more than 60 rendered frames a second on a 120-165 Hz panel (perf.ts V3_MAX_FPS)
           // (ct.debug.fps < 0: uncapped, for perf runs that measure per-frame cost on an unthrottled browser)
           maxFps: opts.fpsLimit !== undefined && opts.fpsLimit < 0 ? 0 : V3_MAX_FPS,
@@ -292,7 +304,7 @@ export function createEngineHost(parent: HTMLElement, opts: EngineHostOptions): 
     gpu: () => w.__pixel?.gpu ?? null,
     info() {
       const i = engine.renderer.info;
-      return { calls: i.render.calls, tris: i.render.triangles, programs: i.programs?.length ?? null, pixelScale: engine.pixelScale, lowW: engine.lowW, lowH: engine.lowH };
+      return { calls: i.render.calls, tris: i.render.triangles, programs: i.programs?.length ?? null, pixelScale: engine.pixelScale, lowW: engine.lowW, lowH: engine.lowH, ...(cpu ? { cpu: cpu.info() } : {}) };
     },
     dispose() {
       if (disposed) return;
@@ -303,6 +315,7 @@ export function createEngineHost(parent: HTMLElement, opts: EngineHostOptions): 
       window.removeEventListener('resize', dirtyRect);
       window.removeEventListener('scroll', dirtyRect, { capture: true });
       removeWinListeners();
+      cpu?.dispose();
       disposeEngine(engine);
       releaseDisposeListeners(disposeRec);
       if (ownPixel) delete w.__pixel;

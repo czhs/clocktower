@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import { BOOT_WINDOW_MS, BOOTING_KEY, BOOTS_KEY, bootGuardState, resetBootGuard, STABLE_MS } from '../../src/game3d/bootGuard';
 import { BootTracker, markBooting, markStable } from '../../src/game3d/bootMark';
-import { median, PERF_WINDOW, PerfSampler, readPerfFlags, runFrameLoop, SAFE_IDLE_MS, SafeMoment, samplerEnabled } from '../../src/game3d/perf';
+import { median, PERF_WINDOW, PerfSampler, readPerfFlags, runFrameLoop, SAFE_IDLE_MS, SafeMoment, samplerEnabled, slowMedianMs } from '../../src/game3d/perf';
 
 const mem = (init: Record<string, string> = {}) => {
   const m = new Map(Object.entries(init));
@@ -156,8 +156,8 @@ describe('perf sampler', () => {
     expect(p.verdict).toBe('pending');
   });
 
-  it('a 30 fps cap (33.3 ms) never trips; a 50 ms median rebuilds at low, then falls back', () => {
-    const run = (tier: 'high' | 'low', ms: number) => {
+  it('a 30 fps cap (33.3 ms) never trips; a 50 ms median rebuilds at low, then at cpu; cpu falls back under 15 fps', () => {
+    const run = (tier: 'high' | 'low' | 'cpu', ms: number) => {
       const p = new PerfSampler(tier, true);
       p.arm();
       for (let i = 0; i < PERF_WINDOW; i++) p.sample(ms, true);
@@ -166,7 +166,12 @@ describe('perf sampler', () => {
     expect(run('high', 33.3)).toBe('ok');
     expect(run('high', 45)).toBe('ok');
     expect(run('high', 50)).toBe('rebuild-low');
-    expect(run('low', 50)).toBe('fallback');
+    expect(run('low', 50)).toBe('rebuild-cpu');
+    expect(run('cpu', 50)).toBe('ok');
+    expect(run('cpu', 66)).toBe('ok');
+    expect(run('cpu', 70)).toBe('fallback');
+    expect(slowMedianMs('cpu')).toBe(66);
+    expect(slowMedianMs('low')).toBe(45);
     expect(new PerfSampler('low', false).verdict).toBe('ok');
     expect(median([5, 1, 3])).toBe(3);
     expect(median([4, 1, 3, 2])).toBe(2.5);

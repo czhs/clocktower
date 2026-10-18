@@ -167,7 +167,7 @@ export function createOverlayLayer(deps: OverlayDeps): OverlayLayer {
     const state = p.state;
     lastState = state;
     location = state.me?.location ?? 'outdoors';
-    lowTier = state.tier === 'low';
+    lowTier = state.tier !== 'high'; // 'low' and 'cpu'
     const size = surface.size();
     const px = Math.max(1, Math.round(deps.pixelScale?.() ?? pixelScaleFor(size.h || (typeof window !== 'undefined' ? window.innerHeight : 720), lowTier ? 'low' : 'high')));
     frame.state = state;

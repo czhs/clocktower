@@ -6,7 +6,7 @@
 
 export interface V3Stats {
   ready: boolean;
-  tier: 'low' | 'high';
+  tier: 'low' | 'high' | 'cpu';
   pixelScale: number;
   calls: number;
   tris: number;

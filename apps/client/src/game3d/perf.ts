@@ -7,7 +7,8 @@
 //   - samples rAF deltas (not engine.lastFrameMs, which is CPU only), only while the tab is visible,
 //     dropping deltas > 250 ms; window = 120 accepted frames after the shader warm-up and first show;
 //   - verdict: median > 45 ms is too slow (a 30 fps Energy Saver cap = 33.3 ms never trips it);
-//     at 'high' -> rebuild at 'low', at 'low' -> fall back to Classic;
+//     at 'high' -> rebuild at 'low', at 'low' -> rebuild at 'cpu' (v3 perf cpu), at 'cpu' -> fall back to Classic
+//     when the median is > 66 ms (under 15 fps; the cpu tier's own frame cap is 30 fps = 33.3 ms);
 //   - a scheduled rebuild / promotion / swap waits for a safe moment (not while voting or a nomination is
 //     open; at the next phase change, or after 60 s with no nomination). Crash swaps never wait.
 import type { GamePhase } from '@ct/protocol';
@@ -16,9 +17,16 @@ import type { Tier } from './contract';
 export const PERF_WINDOW = 120;
 export const PERF_DROP_MS = 250;
 export const PERF_SLOW_MEDIAN_MS = 45;
+/** The 'cpu' tier (software GL) aims at ≥ 20 fps; only under 15 fps is Classic the better deal. */
+export const PERF_SLOW_MEDIAN_CPU_MS = 66;
 export const SAFE_IDLE_MS = 60_000;
 
-export type PerfVerdict = 'pending' | 'ok' | 'rebuild-low' | 'fallback';
+export type PerfVerdict = 'pending' | 'ok' | 'rebuild-low' | 'rebuild-cpu' | 'fallback';
+
+/** The median rAF delta (ms) above which a tier is too slow. */
+export function slowMedianMs(tier: Tier): number {
+  return tier === 'cpu' ? PERF_SLOW_MEDIAN_CPU_MS : PERF_SLOW_MEDIAN_MS;
+}
 
 export interface PerfFlags {
   fpsLimit: number;
@@ -83,8 +91,8 @@ export class PerfSampler {
   get verdict(): PerfVerdict {
     if (!this.enabled) return 'ok';
     if (!this.done) return 'pending';
-    if (this.median <= PERF_SLOW_MEDIAN_MS) return 'ok';
-    return this.tier === 'high' ? 'rebuild-low' : 'fallback';
+    if (this.median <= slowMedianMs(this.tier)) return 'ok';
+    return this.tier === 'high' ? 'rebuild-low' : this.tier === 'low' ? 'rebuild-cpu' : 'fallback';
   }
 }
 

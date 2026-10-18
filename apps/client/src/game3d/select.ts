@@ -7,10 +7,11 @@
 //                                              missing webgl2 fails it). e2e on the host (SwiftShader).
 //   3 pref ct.graphics = 'classic'          -> Classic
 //   4 boot guard (unclean previous boot)    -> Classic + toast (also for an explicit 'v3')
-//   5 webgl2 probe (failIfMajorPerformanceCaveat) null -> Classic
-//   6 software GL (SwiftShader / llvmpipe)  -> Classic
+//   5 webgl2 probe (failIfMajorPerformanceCaveat) null, and no webgl2 without the flag either -> Classic
+//   6 software GL: the caveat probe failed but a plain context exists, or the renderer string is SwiftShader /
+//     llvmpipe / "Software" -> v3 at the 'cpu' tier (v3 perf cpu, 2026-10-18; was Classic). Rows 7-8 still apply.
 //   7 'auto' + auto-fallback memo < 7 days  -> Classic ("too slow on this device")
-//   8 'auto' + phone (coarse, short side ≤ 500) -> Classic; an explicit 'v3' runs at 'low'
+//   8 'auto' + phone (coarse, short side ≤ 500) -> Classic; an explicit 'v3' runs at 'low' ('cpu' on software GL)
 //   9 starting tier: 'low' for fx low, tablets, integrated / mobile GPUs; else 'high'
 import type { WorldId } from '@ct/protocol';
 import { FX_QUALITY_KEY } from '../game/fx/quality';
@@ -79,6 +80,11 @@ export interface RendererChoice {
   gpu: string | null;
 }
 
+/** Row 6: a renderer string that rasterises on the CPU. */
+export function isSoftwareGl(gpu: string | null | undefined): boolean {
+  return !!gpu && SOFTWARE_GL.test(gpu);
+}
+
 /** Row 9: the starting tier. */
 export function startingTier(e: Pick<SelectEnv, 'fxLow' | 'coarsePointer'>, gpu: string | null): Tier {
   if (e.fxLow || e.coarsePointer || (gpu !== null && INTEGRATED_GL.test(gpu))) return 'low';
@@ -105,16 +111,18 @@ export function chooseRenderer(e: SelectEnv): RendererChoice {
   if (e.pref === 'classic') return classic(3, 'pref-classic');
   // 4
   if (e.bootGuard.blocked) return classic(4, 'boot-guard');
-  // 5
-  const p = e.probe(true);
+  // 5 (+ 6: a context that only exists without failIfMajorPerformanceCaveat is a software / blocklisted renderer)
+  const hw = e.probe(true);
+  const p = hw ?? e.probe(false);
   if (!p) return classic(5, 'no-webgl2');
   // 6
-  if (SOFTWARE_GL.test(p.renderer)) return classic(6, 'software-gl', p.renderer);
+  const software = !hw || isSoftwareGl(p.renderer);
   // 7
   if (e.pref === 'auto' && memoFresh(e.autoFallbackAt, e.now)) return classic(7, 'auto-fallback', p.renderer);
   // 8
   const phone = e.coarsePointer && e.shortSide <= PHONE_SHORT_SIDE;
   if (phone && e.pref === 'auto') return classic(8, 'phone', p.renderer);
+  if (software) return { renderer: 'v3', tier: 'cpu', row: 6, reason: 'software-gl', gpu: p.renderer };
   // 9
   const tier = phone ? 'low' : startingTier(e, p.renderer);
   return { renderer: 'v3', tier, row: 9, reason: 'ok', gpu: p.renderer };
@@ -137,11 +145,12 @@ function read(s: Storage0 | null, k: string): string | null {
   }
 }
 
-let probeCache: { caveat: boolean; result: ProbeResult | null } | null = null;
+/** One probe per flag per page (the cpu-tier path probes both: with the caveat flag, then without). */
+const probeCache = new Map<boolean, ProbeResult | null>();
 
 /** Create a throw-away webgl2 context, read its renderer string, release it. */
 export function probeWebgl2(caveat: boolean): ProbeResult | null {
-  if (probeCache && probeCache.caveat === caveat) return probeCache.result;
+  if (probeCache.has(caveat)) return probeCache.get(caveat) ?? null;
   let result: ProbeResult | null = null;
   try {
     if (typeof document !== 'undefined') {
@@ -158,7 +167,7 @@ export function probeWebgl2(caveat: boolean): ProbeResult | null {
   } catch {
     result = null;
   }
-  probeCache = { caveat, result };
+  probeCache.set(caveat, result);
   return result;
 }
 
@@ -193,14 +202,13 @@ export function chooseRendererHere(world: WorldId | undefined): RendererChoice {
 
 /**
  * Prefetch hint for LobbyRoute (before the lobby's world is known): may this page use v3 at all?
- * Prefs + probe only (rows 2-6); no world, phone or memo rows.
+ * Prefs + probe only (rows 2-6); no world, phone or memo rows. Software GL runs v3 at the 'cpu' tier (row 6).
  */
 export function mayUseV3(s: Storage0 | null = store()): boolean {
   if (read(s, V3_FORCE_KEY) === '1') return true;
   if (readGraphicsPref(s) === 'classic') return false;
   if (bootGuardState(Date.now(), s).blocked) return false;
-  const p = probeWebgl2(true);
-  return !!p && !SOFTWARE_GL.test(p.renderer);
+  return !!(probeWebgl2(true) ?? probeWebgl2(false));
 }
 
 /** Remember a perf auto-fallback (row 7). */

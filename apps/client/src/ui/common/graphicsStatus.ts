@@ -53,7 +53,7 @@ export function graphicsStatus(world: WorldId | null, c: RendererChoice | null, 
     case 'no-webgl2':
       return { text: 'Classic 2D: this browser cannot run the 3D town (no WebGL 2).' };
     case 'software-gl':
-      return { text: 'Classic 2D: this device has no graphics acceleration for the 3D town.' };
+      return { text: 'The 3D town is on (basic detail: this device has no graphics acceleration).' };
     case 'auto-fallback':
       return { text: 'Auto (Classic: too slow on this device)', action: 'auto-fallback' };
     case 'phone':
@@ -61,7 +61,7 @@ export function graphicsStatus(world: WorldId | null, c: RendererChoice | null, 
     case 'ok': {
       // the mounted 3D town reports its own tier (it may differ from the starting tier)
       const tier = now?.kind === 'v3' ? now.tier : c.tier;
-      return { text: `The 3D town is on (${tier === 'low' ? 'light' : 'full'} detail).` };
+      return { text: `The 3D town is on (${tier === 'cpu' ? 'basic' : tier === 'low' ? 'light' : 'full'} detail).` };
     }
   }
 }

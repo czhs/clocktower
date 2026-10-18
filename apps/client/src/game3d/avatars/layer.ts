@@ -183,7 +183,7 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
   const floorAt = svc.floorAt;
   const groundAt = (X: number, Z: number) => (X >= 100 ? (floorAt ? floorAt(X, Z) : 0) : heightAt(X, Z));
   const drawSelf = svc.self !== false;
-  const lite = svc.tier === 'low';
+  const lite = svc.tier !== 'high'; // 'low' and 'cpu' (v3 perf cpu)
   const entries = new Map<string, Entry>();
   /** pid -> rim colour ('' = talking without a rim) */
   const talking = new Map<string, string>();
