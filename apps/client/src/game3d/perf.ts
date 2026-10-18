@@ -134,14 +134,54 @@ export class SafeMoment {
 // ------------------------------------------------------------------ frame loop
 
 export interface FrameLoopDeps {
-  raf(cb: () => void): number;
+  /** requestAnimationFrame: the callback gets the frame timestamp (ms; the frame gate uses it, else now()). */
+  raf(cb: (ts?: number) => void): number;
   caf(id: number): void;
   now(): number;
 }
 
+/**
+ * v3 perf(learn): the 3D town's default frame cap (docs/perf-v3/learnings.md §3.1). rAF follows the display, so a
+ * 120-165 Hz laptop panel would render 2-2.75x the frames of a 60 Hz one, for no visible gain in a texel-snapped
+ * pixel-art town, at 2-2.75x the CPU, GPU and battery. Displays up to ~78 Hz are never gated (a 59.9 / 60.5 Hz panel
+ * renders every vsync exactly as before); 120 / 240 Hz render every 2nd / 4th vsync; 144 / 165 Hz pick the vsync
+ * nearest to each 1/60 s. ct.debug.fps overrides it.
+ */
+export const V3_MAX_FPS = 60;
+
+/** A display at most this much faster than the cap renders every frame (rather than judder at 75 Hz). */
+const GATE_UNGATED_RATIO = 1.3;
+
+/**
+ * Phase-locked frame gate. `gate(ts)` (ts = the rAF timestamp, ms) is true when the frame at `ts` should be drawn to
+ * hold `fps` on average: the next due time advances by exactly one interval per drawn frame and a frame is drawn when it
+ * is the vsync nearest to that due time (half the measured vsync interval of slack); a stall of more than one interval
+ * re-locks to now instead of bursting. fps <= 0: every frame.
+ */
+export function createFrameGate(fps: number): (ts: number) => boolean {
+  if (!(fps > 0)) return () => true;
+  const interval = 1000 / fps;
+  let due = -Infinity;
+  let prev: number | null = null;
+  let vsync = 1000 / 60; // measured display interval (EMA of rAF deltas)
+  return (ts) => {
+    if (prev !== null) {
+      const d = ts - prev;
+      if (d > 0 && d < 100) vsync += (Math.min(d, 50) - vsync) * 0.1;
+    }
+    prev = ts;
+    if (vsync * GATE_UNGATED_RATIO >= interval) return true;
+    if (ts < due - vsync / 2) return false;
+    due = ts - due > interval ? ts + interval : due + interval;
+    return true;
+  };
+}
+
 export interface FrameLoopOptions {
-  /** ct.debug.fps: cap the loop (tests); 0 = every animation frame. */
+  /** ct.debug.fps: cap the loop (tests); 0 = every animation frame (up to maxFps). Wins over maxFps. */
   fpsLimit?: number;
+  /** The default cap when no fpsLimit is set (engineHost: V3_MAX_FPS); 0 / unset = every animation frame. */
+  maxFps?: number;
   /** One frame: `t` = seconds since start (+2 warm-up frames), monotonic; `dtMs` = time since the last frame. */
   step(t: number, dtMs: number): void;
   /** The first throw from `step` stops the loop for good and lands here (TownGame3d: crash -> Classic). */
@@ -160,22 +200,20 @@ export interface FrameLoop {
 export function runFrameLoop(o: FrameLoopOptions, deps: FrameLoopDeps): FrameLoop {
   let t = 2 / 60;
   let prev = deps.now();
-  let lastDraw = -Infinity;
   let id = 0;
   let running = true;
-  const minGap = o.fpsLimit && o.fpsLimit > 0 ? 1000 / o.fpsLimit - 1 : 0;
+  const gate = createFrameGate(o.fpsLimit && o.fpsLimit > 0 ? o.fpsLimit : (o.maxFps ?? 0));
   const stop = () => {
     if (!running) return;
     running = false;
     if (id) deps.caf(id);
     id = 0;
   };
-  const loop = () => {
+  const loop = (ts?: number) => {
     if (!running) return;
     id = deps.raf(loop);
     const now = deps.now();
-    if (minGap > 0 && now - lastDraw < minGap) return;
-    lastDraw = now;
+    if (!gate(typeof ts === 'number' && ts > 0 ? ts : now)) return;
     const dtMs = now - prev;
     prev = now;
     // a hidden tab resumes where it stopped (never a jump of more than 0.25 s)

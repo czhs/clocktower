@@ -11,7 +11,7 @@ import * as THREE from 'three';
 import { Engine } from '@pixel3d/core/Engine.js';
 import { pixelScaleFor, type ProjectionState } from '../coords';
 import type { Tier } from '../contract';
-import { runFrameLoop, type FrameLoop } from '../perf';
+import { runFrameLoop, V3_MAX_FPS, type FrameLoop } from '../perf';
 
 interface PixelGlobal {
   ready: boolean;
@@ -103,7 +103,7 @@ export interface EngineHost {
 
 export interface EngineHostOptions {
   tier: Tier;
-  /** ct.debug.fps: cap the loop (tests); 0 = every animation frame. */
+  /** ct.debug.fps: cap the loop (tests); 0 = every animation frame up to V3_MAX_FPS; < 0 = uncapped (perf runs). */
   fpsLimit?: number;
 }
 
@@ -252,6 +252,9 @@ export function createEngineHost(parent: HTMLElement, opts: EngineHostOptions): 
       loop = runFrameLoop(
         {
           fpsLimit: opts.fpsLimit,
+          // v3 perf(learn): no more than 60 rendered frames a second on a 120-165 Hz panel (perf.ts V3_MAX_FPS)
+          // (ct.debug.fps < 0: uncapped, for perf runs that measure per-frame cost on an unthrottled browser)
+          maxFps: opts.fpsLimit !== undefined && opts.fpsLimit < 0 ? 0 : V3_MAX_FPS,
           step(t, dtMs) {
             frame(t, dtMs);
             if (disposed) return;
