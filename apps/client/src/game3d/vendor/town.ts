@@ -25,7 +25,7 @@ interface VendorHouseRec {
   doorPoint: { x: number; z: number };
   doorNormal: [number, number];
 }
-const vlayout = layoutNS as unknown as { houses: VendorHouseRec[]; TOWN_W: number; TOWN_H: number; seatPos(i: number, n: number): { x: number; z: number } };
+const vlayout = layoutNS as unknown as { houses: VendorHouseRec[]; TOWN_W: number; TOWN_H: number; seatPos(i: number, n: number): { x: number; z: number }; CIRCLE?: { cx: number; cz: number; r: number } };
 interface KitBuilder {
   box(w: number, h: number, d: number, o?: Record<string, unknown>): KitBuilder;
   push(m: THREE.Matrix4): KitBuilder;
@@ -156,6 +156,70 @@ export function daisApi(town: BuiltTown): VendorDaisApi {
   const api = town.registry.get('dais')?.api as AnyApi;
   if (!api || typeof api.setSeat !== 'function' || typeof api.setPhase !== 'function' || typeof api.setHand !== 'function') throw new Error('pixel3d dais api changed (setSeat / setPhase / setHand missing)');
   return api as unknown as VendorDaisApi;
+}
+
+/**
+ * (v3 WP8, user 2026-10-18: "remove the per-player candles in the voting circle") Takes the dais' per-seat CANDLE
+ * STAKES out of the town for good: the iron post + cup + candle beside each seat stone, its flame, the dead seat's
+ * ghost-light wisp and its pool, the night candle halo on the ring, and the block pennant hung from the stake. The
+ * picking rules are the vendor's own (src/demo/daisdress.js, which hides the same parts only while its vote camera is
+ * up); the seat stones, their warm night tops, the dead seats' crack + moss, the nominee / vote marks, the hands, the
+ * sweep and the braziers stay. HOW: the piece is one merged kit mesh per layer, so each of the three meshes gets an
+ * index that lists only the kept triangles (built once, before the warm-up): the removed ones are never drawn, never
+ * shaded and cast no shadow; no lights / programs change (the candles were emissive decals, no PointLights), and the
+ * piece's own per-frame state writes (fx levels, pennant positions) still land on the shared vertex buffers.
+ * Returns the removed triangle count per mesh (0s when a vendor re-publish renamed the meshes).
+ */
+export const DAIS_CANDLE_FX_SLOTS: readonly (readonly [number, number])[] = [[30, 45], [45, 60], [85, 100], [160, 175]]; // wisp, candle, wisp pool, candle halo (dais.js)
+export function removeDaisCandles(town: BuiltTown): Record<string, number> {
+  const group = town.registry.get('dais')?.group as THREE.Object3D | undefined;
+  const out: Record<string, number> = { 'dais-solid': 0, 'dais-fx': 0, 'dais-states-solid': 0 };
+  if (!group) return out;
+  const C = vlayout.CIRCLE ?? { cx: 22.5, cz: 19.75, r: 6.25 };
+  const seats = Array.from({ length: 15 }, (_, i) => vlayout.seatPos(i, 15));
+  const nearSeat = (x: number, z: number) => {
+    let d = Infinity;
+    for (const s of seats) d = Math.min(d, Math.hypot(x - s.x, z - s.z));
+    return d;
+  };
+  const SEAT_R = C.r || 6.25, RING_W = 0.2, STONE_CLEAR = 0.5, STAKE_Y = 0.12, PENNANT_CLEAR = 0.6;
+  const meshes = new Map<string, THREE.Mesh>();
+  group.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (m.isMesh && m.geometry?.attributes?.position && o.name in out && !meshes.has(o.name)) meshes.set(o.name, m);
+  });
+  const V = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()] as const;
+  /** Re-index `mesh` without the triangles `drop` picks (corners in world metres; `first` = the triangle's first vertex). */
+  const strip = (mesh: THREE.Mesh, drop: (p: readonly THREE.Vector3[], first: number) => boolean): number => {
+    const g = mesh.geometry;
+    const P = g.attributes.position as THREE.BufferAttribute;
+    const idx = g.index;
+    const n = idx ? idx.count : P.count;
+    mesh.updateMatrixWorld(true);
+    const keep: number[] = [];
+    let removed = 0;
+    for (let t = 0; t + 2 < n; t += 3) {
+      const vi = [0, 1, 2].map((k) => (idx ? idx.getX(t + k) : t + k));
+      vi.forEach((v, k) => V[k]!.fromBufferAttribute(P, v).applyMatrix4(mesh.matrixWorld));
+      if (drop(V, vi[0]!)) removed++;
+      else keep.push(vi[0]!, vi[1]!, vi[2]!);
+    }
+    if (removed) g.setIndex(new THREE.BufferAttribute(P.count > 65535 ? Uint32Array.from(keep) : Uint16Array.from(keep), 1));
+    return removed;
+  };
+  const solid = meshes.get('dais-solid');
+  if (solid)
+    out['dais-solid'] = strip(solid, (p) => p.every((v) => Math.abs(Math.hypot(v.x - C.cx, v.z - C.cz) - SEAT_R) < RING_W && nearSeat(v.x, v.z) > STONE_CLEAR) && p.some((v) => v.y > STAKE_Y));
+  const fx = meshes.get('dais-fx');
+  const aFx = fx?.geometry.attributes.aFx as THREE.BufferAttribute | undefined;
+  if (fx && aFx)
+    out['dais-fx'] = strip(fx, (_, first) => {
+      const s = Math.round(aFx.getX(first));
+      return DAIS_CANDLE_FX_SLOTS.some(([a, b]) => s >= a && s < b);
+    });
+  const states = meshes.get('dais-states-solid');
+  if (states) out['dais-states-solid'] = strip(states, (p) => p.every((v) => nearSeat(v.x, v.z) > PENNANT_CLEAR));
+  return out;
 }
 
 /** The life piece (its `update` is swapped out while the town is parked). */

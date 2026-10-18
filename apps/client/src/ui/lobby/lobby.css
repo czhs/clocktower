@@ -364,6 +364,9 @@ button.ct-ready-on { border-color: #3d6b3a; color: #bfe0b9; }
 }
 .ct-v3load-title { font-family: var(--font-display); font-size: 1.5rem; line-height: 1.1; color: #d9b766; letter-spacing: 0.02em; }
 .ct-v3load-label { font-style: italic; color: #e2ddd3; text-align: center; overflow-wrap: anywhere; }
+/* (WP8) laptop-first note on phones: small, non-blocking (finder + loading scene) */
+.ct-phone-note { margin: 0 0 8px; padding: 6px 10px; font-size: 0.85rem; color: var(--muted, #a3a3ba); border-left: 3px solid #d9b766; background: rgba(34, 31, 51, 0.6); }
+.ct-v3load .ct-v3load-note { max-width: 90vw; margin: 0; text-align: center; color: #a3a3ba; }
 .ct-v3load-detail { font-size: 0.85rem; color: #a3a3ba; text-align: center; overflow-wrap: anywhere; }
 .ct-v3load-bar {
   display: block; width: 100%; height: calc(var(--s) * 4px); margin-top: calc(var(--s) * 2px);

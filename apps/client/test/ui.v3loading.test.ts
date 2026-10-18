@@ -161,5 +161,45 @@ describe('the scene', () => {
     const join = src('ui/lobby/JoinPreview.tsx');
     expect(join).toMatch(/if \(appWorld\(\) === 'v3'\) return <V3LoadingStep step="join"/);
     expect(join).toMatch(/return <JoinPreviewView lobby=\{lobby\} \/>;/);
+    // the town build: GameScreen shows the scene in a v3 lobby only, v2 lobbies keep "Lighting the lamps…"
+    const game = src('game/GameScreen.tsx');
+    expect(game).toMatch(/world === 'v3' \? \([\s\S]{0,200}<TownLoading renderer=\{render\.kind\} \/>/);
+    expect(game).toMatch(/Lighting the lamps…/);
+  });
+});
+
+describe('laptop-first note (WP8, user 2026-10-18: phones not supported in v3.0)', () => {
+  const g = globalThis as unknown as Record<string, unknown>;
+  const withScreen = (coarse: boolean, w: number, h: number, fn: () => void) => {
+    const saved = { matchMedia: g.matchMedia, innerWidth: g.innerWidth, innerHeight: g.innerHeight };
+    g.matchMedia = (q: string) => ({ matches: q.includes('coarse') ? coarse : false });
+    g.innerWidth = w;
+    g.innerHeight = h;
+    try {
+      fn();
+    } finally {
+      Object.assign(g, saved);
+    }
+  };
+  it('only a coarse pointer AND a small viewport counts as a phone; no matchMedia = not a phone', async () => {
+    const { isPhoneLike } = await import('../src/ui/common/v3loading');
+    withScreen(true, 390, 844, () => expect(isPhoneLike()).toBe(true));
+    withScreen(true, 844, 390, () => expect(isPhoneLike()).toBe(true));
+    withScreen(true, 1366, 768, () => expect(isPhoneLike()).toBe(false)); // touch laptop / tablet in a big window
+    withScreen(false, 390, 844, () => expect(isPhoneLike()).toBe(false)); // a narrow desktop window
+    expect(isPhoneLike()).toBe(false);
+  });
+  it('the note is a non-blocking text line (role note), shown in the scene and the v3 finder', async () => {
+    const { PhoneNote, PHONE_NOTE } = await import('../src/ui/common/v3loading');
+    withScreen(true, 390, 844, () => {
+      const n = PhoneNote({}) as unknown as Node;
+      expect(n.type).toBe('p');
+      expect((n.props as { role?: string }).role).toBe('note');
+      expect(text(n)).toBe(PHONE_NOTE);
+    });
+    withScreen(false, 1920, 1080, () => expect(PhoneNote({})).toBeNull());
+    expect(PHONE_NOTE).toMatch(/laptops and desktops/);
+    expect(src('ui/lobby/LobbyFinder.tsx')).toMatch(/world === 'v3' && <PhoneNote \/>/);
+    expect(src('ui/common/v3loading.tsx')).toMatch(/<PhoneNote class="ct-v3load-note" \/>/);
   });
 });

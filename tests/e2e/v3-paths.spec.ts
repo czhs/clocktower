@@ -1,14 +1,14 @@
 // (v3 WP8, "v3 loading screen + URL paths"; docs/v3/INTEGRATION.md §8, §11 user decision 2026-10-18) The world comes
 // from the URL path: `/` (the default link) = the v3 app, every lobby made there is Hollowmere; `/v2/` = the v2 app
-// exactly as before (Classic town). One build, one server, the same accounts. Replaces v3-lobby-choice.spec.ts (the
-// per-lobby Town choice is gone; that spec should be deleted after C1).
+// exactly as before (Classic town). One build, one server, the same accounts. Replaced v3-lobby-choice.spec.ts (the
+// per-lobby Town choice is gone; that spec was deleted with WP8).
 //
 //   1. A lobby created at `/` is v3 and draws the 3D town; one created at `/v2/` is v2 and draws the Classic v2 town
 //      (even with the v3 force flag). Each app's lobby list shows only its world; the address bar keeps its prefix.
 //   2. Share links: a v2 lobby link opened at `/lobby/x` (every link shared before this change) lands in
 //      `/v2/lobby/x`, and a v3 link opened under /v2/ lands in `/lobby/x`; the join goes on without a reload.
 //   3. The v3 loading scene at `/` (boot, joining, the town build: tests/v3/shots/loading-*.png); the v2 app keeps
-//      the plain lines. The town-build scene needs the lead's one-line GameScreen wiring (CONTRACT-REQUEST, §8 WP8).
+//      the plain lines. The town-build scene is GameScreen's loading state in a v3 lobby (wired in WP8).
 //
 // Project `v3` (E2E_V3=1; host GPU by default, CT_GL=swiftshader for CPU-only), E2E_PORT from the runner's range.
 import { mkdirSync } from 'node:fs';

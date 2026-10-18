@@ -25,7 +25,7 @@ import { serverNow } from '../../net/serverTime';
 import { PX_PER_M } from '../coords';
 import type { Layer3d, Scene3dState, Tier } from '../contract';
 import type { EngineHost } from '../vendor/engineHost';
-import { buildDoorBoards, buildHollowmere, canopyMaterials, createCutDriver, createTowerFace, daisApi, releaseTown, doorAngles, gateHouseLights, groundHeight, houseApis, houseLightAnchors, houseProxies, lifePiece, lifeStats, poolLights, seatStones, towerDials, towerDoorApi, voteCameraPreset, warmViews, warmWholeTown, type BuiltTown, type HouseApi, type HouseBox, type VendorCameraShot } from '../vendor/town';
+import { buildDoorBoards, buildHollowmere, canopyMaterials, createCutDriver, createTowerFace, daisApi, releaseTown, removeDaisCandles, doorAngles, gateHouseLights, groundHeight, houseApis, houseLightAnchors, houseProxies, lifePiece, lifeStats, poolLights, seatStones, towerDials, towerDoorApi, voteCameraPreset, warmViews, warmWholeTown, type BuiltTown, type HouseApi, type HouseBox, type VendorCameraShot } from '../vendor/town';
 import { buildTowerInterior, type TowerRoomFacade } from '../vendor/interiors';
 import { createTownTime, presetForHour, type TownTime } from '../vendor/time';
 import { createDaisDriver, daisDebug, daisPlan, showcasePlan, type DaisApi, type DaisPlan } from './dais';
@@ -115,6 +115,8 @@ export async function createStage(host: EngineHost, o: StageOptions): Promise<St
   const towerDoor = towerDoorApi(town);
   if (towerDoor && layout.buildings.some((b) => b.id === 'clocktower')) doorApis.set('clocktower', towerDoor);
   const vdais = daisApi(town);
+  // (WP8, user 2026-10-18) no per-player candle stakes in the voting circle (the seals / marks / hands stay)
+  const candlesRemoved = removeDaisCandles(town);
   const proxies = houseProxies(town);
 
   // ---- boards, gates, the carried-light reserve: all BEFORE the warm-up (programs + light count fixed)
@@ -473,6 +475,7 @@ export async function createStage(host: EngineHost, o: StageOptions): Promise<St
         lights: { pool: poolN, poolFound: pool.length, reserve: reserve.size, lent: reserve.lent, boardedAnchors: boardedAnchors.length },
         cut: cut ? cut.info() : null,
         canopy: { patched: canopyPatched, ...canopy.debug() },
+        candlesRemoved,
         timer: { available: !!towerFace, readout: towerReadout, face: towerFaceKey, ...(towerFace ? { info: towerFace.info() } : {}) },
         vote: voteLast ? { yaw: Math.round((voteLast.yaw * 180) / Math.PI), pitch: Math.round((voteLast.pitch * 180) / Math.PI), viewHeight: +voteLast.viewHeight.toFixed(3), target: [+voteLast.target.x.toFixed(3), +voteLast.target.z.toFixed(3)], key: voteKey } : { preset: voteCameraPreset() },
         warm,

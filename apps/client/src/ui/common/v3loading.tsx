@@ -45,6 +45,30 @@ export const SEATS: readonly (readonly [number, number])[] = Array.from({ length
 /** Lit seats for a progress fraction (0..15; the next one is drawn as "current"). Pure. */
 export const litSeats = (frac: number): number => Math.max(0, Math.min(15, Math.floor((Number.isFinite(frac) ? frac : 0) * 15 + 1e-9)));
 
+/**
+ * (WP8, user 2026-10-18: laptops first, phones not supported in v3.0) A phone / touch-first device: a coarse primary
+ * pointer AND a small viewport (shorter side < 600 CSS px, so a touch laptop or a tablet in a big window is not
+ * one). Only used to show PHONE_NOTE; nothing is blocked (phones may still play, or use /v2/).
+ */
+export function isPhoneLike(): boolean {
+  try {
+    return matchMedia('(pointer: coarse)').matches && Math.min(innerWidth, innerHeight) < 600;
+  } catch {
+    return false;
+  }
+}
+export const PHONE_NOTE = 'Hollowmere is built for laptops and desktops — phone support is coming in a later update.';
+
+/** The small, non-blocking laptop-first note (null on a laptop / desktop). */
+export function PhoneNote({ class: cls = '' }: { class?: string }) {
+  if (!isPhoneLike()) return null;
+  return (
+    <p class={`ct-phone-note ${cls}`.trim()} role="note">
+      {PHONE_NOTE}
+    </p>
+  );
+}
+
 type Css = Record<string, string | number>;
 const frame = (r: Rect, x?: number, y?: number): Css => ({ '--fx': r[0], '--fy': r[1], '--fw': r[2], '--fh': r[3], ...(x === undefined ? {} : { '--x': x, '--y': y ?? 0 }) });
 
@@ -97,6 +121,7 @@ export function V3Loading({ frac, label, detail = null, parade = true }: V3Loadi
           <i style={{ width: `${pct}%` }} />
         </span>
       </div>
+      <PhoneNote class="ct-v3load-note" />
     </div>
   );
 }

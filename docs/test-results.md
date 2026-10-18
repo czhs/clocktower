@@ -2,6 +2,35 @@
 
 All commands run on **the host** via `scripts/remote.sh` unless stated otherwise.
 
+## 2026-10-18 — v3 WP8 gate (`v3-wp8`, branch `v3-game`, the host, sandbox `v3-wp8`, capped remote.sh)
+
+Tree = "v3 C1" (`0cfd0b8`) + WP8: URL paths finished (`LobbyRoute` path move), the v3 loading scene wired into
+`GameScreen`, the voting-circle candle stakes removed (`vendor/town.ts removeDaisCandles`), the laptop-first phone
+note, `v3-lobby-choice.spec.ts` + `createLobbyViaUI` deleted, `.claude/worktrees/` added to `scripts/rsync-excludes.txt`.
+
+| Command (`CT_AGENT=v3-wp8 scripts/remote.sh …`, builds / tests under `flock -s ~/clocktower/v3-heavy.lock`) | Result |
+|---|---|
+| `pnpm -r run typecheck` + `pnpm vitest run apps/client/test/game3d/world.stage.test.ts apps/client/test/ui.v3loading.test.ts apps/client/test/game3d/world.dais.test.ts` (first pass; one TS2532 in `removeDaisCandles` fixed first) | typecheck 7/7 clean; 3 files / 30 tests pass |
+| `pnpm -r run typecheck` (gate) | exit 0 (7/7) |
+| `pnpm build` | exit 0 (`town3d` 1177.8 kB / 381.0 kB gzip; entry `index` 143.3 kB / 51.8 kB gzip) |
+| `pnpm test` (full, after the build) | 166 files pass, **1 file / 2 tests fail = `tests/security/repo-hygiene.test.ts` REPO-03** (CGNAT + home-path scans) — environmental: the orchestrator checkout's `.claude/worktrees/` (perf agents' worktrees, gitignored) had been rsynced into the sandbox; 1946 tests pass, 5 skipped (168 files, 136 s) |
+| `rm -rf ~/clocktower/work/v3-wp8/.claude/worktrees` (sandbox only; `.claude/worktrees/` now in `scripts/rsync-excludes.txt`), then `pnpm vitest run tests/security/repo-hygiene.test.ts tests/security/web-client.test.ts` | 2 files / 48 tests pass |
+| `node scripts/perf/bundle-report.mjs --json /tmp/wp8-bundle.json` + `node scripts/perf/budgets.mjs --bundle /tmp/wp8-bundle.json` | all measured budgets ok: entry JS 44.0/45, entry CSS 12.3/15, LobbyRoute 68.3/72, TownGame 281.3/300 KiB br, town atlases 578.5/700 KiB (runtime keys SKIP) |
+| e2e `E2E_V3=1 E2E_PORT=3451 CT_GL=gpu CT_E2E_NO_BUILD=1 flock -s v3-heavy.lock flock browser.lock nice -n 19 pnpm test:e2e --project=v3 v3-paths` (host GPU) | **4/4 pass** (53.8 s): `/` vs `/v2/` lobbies + lists, share-link moves without reload, the v3 loading scene incl. the GameScreen town build, the no-WebGL scene |
+| same, `v3-vote` (1920×1080; asserts `stage().candlesRemoved` > 0 for all three dais meshes) | **1/1 pass** twice (31.3 s before the teleport/still change, 34.4 s after) |
+| same, `v3-boot` | 1/1 pass (19.2 s) |
+| same, `v3-social` | 1/1 pass (16.3 s) |
+| same, `v3-doors` | **1/1 FAIL** (5.6 min): the keyboard walker stuck at (548.5, 267.9) px on the way to house-5 (client prediction stopped advancing; no server rejection, no teleport) |
+| rerun (after `v3-lobby-choice` / `createLobbyViaUI` deletion; same dist): `v3-doors` | **1/1 pass** (33.1 s): the first failure did not reproduce = flaky walker (not a WP8 change: WP8 touches no movement / collision code) |
+| rerun: `v3-paths` | **4/4 pass** (45.8 s) |
+| `pnpm exec tsc -p tests/tsconfig.json` | exit 0 |
+| `E2E_PORT=3451 CT_E2E_NO_BUILD=1 … pnpm test:e2e --project=chromium doors.spec chat-bubbles.spec` (Classic regression; bot lobbies are v2 and move to `/v2/lobby/x`) | **2/2 pass** (1.6 min) |
+
+Release stills (this machine, gitignored): `tests/v3/shots/v3.0/vote-circle-no-candles.png`,
+`vote-circle-seals.png` (1920×1080, host GPU, from `v3-vote`), `tests/v3/shots/v3.0/loading-join.png`,
+`loading-town-build.png` (1280×800, from `v3-paths`). Not run: `v3-life`, `v3-mixed`, `v3-fallback`, the rest of the
+Classic suite (C2).
+
 ## 2026-10-18 — v3 checkpoint C1a gate (`v3-gate`, branch `v3-game`, the host, sandbox `v3-gate`, capped remote.sh)
 
 Tree = "v3 C1 WIP" (`4998ca5`) + the finished phase-1 packages (WP1-WP6, reviewed and fixed; WP1 / WP2 / WP4 not

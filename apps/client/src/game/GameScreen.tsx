@@ -18,6 +18,7 @@ import { LobbySafety } from '../ui/lobby/moderation'; // (v2.3 OPS-6) in-game re
 import { chooseRendererHere, onGraphicsChange, rememberAutoFallback } from '../game3d/select';
 import { resetBootGuard } from '../game3d/bootGuard';
 import type { FallbackReason, RendererKind, Tier, TownBridge3d, TownHandle } from '../game3d/contract';
+import { TownLoading } from '../ui/common/townLoading'; // (v3 WP8) the v3 loading scene (lobby chunk)
 import { publishRender } from '../ui/common/graphicsStatus'; // (v3 WP6) what actually draws, for the Settings status line
 import './game.css';
 
@@ -139,12 +140,17 @@ export function GameScreen(props: { conn: RoomConnection; account: AccountView; 
   return (
     <div class={`ct-game${touch ? ' ct-touch' : ''}`}>
       <div class="ct-game-canvas" ref={host} onContextMenu={(e) => e.preventDefault()} />
-      {status === 'loading' && (
-        <div class="ct-game-loading" role="status">
-          <span class="ct-spinner" aria-hidden="true" />
-          Lighting the lamps…
-        </div>
-      )}
+      {status === 'loading' &&
+        (world === 'v3' ? (
+          // (v3 WP8) the Hollowmere loading scene with real progress (town chunk → pieces → warm-up / first frame);
+          // v2 lobbies keep the plain line
+          <TownLoading renderer={render.kind} />
+        ) : (
+          <div class="ct-game-loading" role="status">
+            <span class="ct-spinner" aria-hidden="true" />
+            Lighting the lamps…
+          </div>
+        ))}
       {status === 'error' && (
         <div class="ct-game-loading ct-game-failed" role="alert">
           <p>The town failed to load.</p>

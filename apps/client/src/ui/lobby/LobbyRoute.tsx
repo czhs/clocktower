@@ -22,6 +22,7 @@ import { useV3Skin } from '../common/v3skinLobby'; // (v3 WP6) the v3 skin lives
 import { ensureLayout, selectLayoutIfLoaded } from '../../net/layout';
 import { mayUseV3 } from '../../game3d/select';
 import type { WorldId } from '@ct/protocol';
+import { syncWorldPath } from '../common/appWorld';
 
 // A tab older than the last deploys may find this chunk gone: say so (the seat is kept) instead of
 // silently showing a Storyteller no controls. Reloading restores the seat via the reconnect token.
@@ -121,6 +122,10 @@ function useLobbyLayout(conn: RoomConnection): 'pending' | 'ready' | 'error' {
   const [state, setState] = useState<'pending' | 'ready' | 'error'>(() => (world && selectLayoutIfLoaded(world) ? 'ready' : 'pending'));
   useEffect(() => {
     if (!world) return;
+    // (v3 WP8 URL paths) a join link for the other world (an old v2 share link at /lobby/x, a v3 link under /v2/):
+    // the address bar moves to the lobby's own app in place (history.replaceState, no reload; the join goes on).
+    // JoiningLobby does it earlier from the public summary when that answers first; this is the authoritative check.
+    syncWorldPath(world);
     if (selectLayoutIfLoaded(world)) return setState('ready');
     let alive = true;
     setState('pending');

@@ -5,7 +5,7 @@
 #
 #   scripts/v3/e2e.sh                         every v3 spec (from the editing machine: syncs via scripts/remote.sh)
 #   scripts/v3/e2e.sh v3-boot v3-fallback     only these spec files (Playwright filters)
-#   E2E_PORT=3487 CT_E2E_NO_BUILD=1 scripts/v3/e2e.sh v3-lobby-choice
+#   E2E_PORT=3487 CT_E2E_NO_BUILD=1 scripts/v3/e2e.sh v3-paths
 # Env: E2E_PORT (default 3485), CT_AGENT (default v3-qa), V3_E2E_TIMEOUT (s, default 3600), CT_E2E_NO_BUILD (skip build).
 # The host load average is printed before and after (other agents share the machine). It sets E2E_V3=1, which is what
 # makes the `v3` project exist in tests/e2e/playwright.config.ts (a plain `pnpm test:e2e` runs only the Classic suite).

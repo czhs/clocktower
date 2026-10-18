@@ -5,6 +5,7 @@ import { lazyComponent, whenIdle } from '../common/lazy';
 import { modeOf } from '../clock/logic';
 import { ModeBadge } from './ModeSettings';
 import { appWorld, pathInWorld } from '../common/appWorld';
+import { PhoneNote } from '../common/v3loading'; // (WP8) laptop-first note on phones (entry chunk already)
 import { applyDirectoryEvent, DEFAULT_FILTERS, errorText, filterLobbies, lobbiesOfWorld, PHASE_LABEL, SCRIPT_LABEL, sortLobbies, type FinderFilters } from './finder';
 
 // (v3 WP6, perf) The create dialog is its own lazy chunk (fetched on idle, so the click stays instant): the
@@ -125,6 +126,7 @@ export function LobbyFinder({ onJoin }: { onJoin: (lobbyId: string, intent: 'pla
         </button>
       </header>
 
+      {world === 'v3' && <PhoneNote />}
       <div class="ct-finder-filters">
         <input
           type="search"

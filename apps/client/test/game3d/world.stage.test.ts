@@ -123,3 +123,48 @@ describe('live cut-away facade (vendor demo/api.js createCutController)', () => 
     expect(cut.enabled).toBe(false);
   });
 });
+
+describe('voting-circle candles removed (WP8, user 2026-10-18)', () => {
+  const vl = layoutNS as unknown as { CIRCLE: { cx: number; cz: number; r: number }; seatPos(i: number, n: number): { x: number; z: number; angle: number } };
+  /** A non-indexed triangle mesh from world-space corner triples (+ an optional per-vertex aFx slot). */
+  const triMesh = (name: string, tris: [number, number, number][][], slots?: number[]) => {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(tris.flat(2), 3));
+    if (slots) g.setAttribute('aFx', new THREE.Float32BufferAttribute(slots.flatMap((s) => [s, 0, 0, s, 0, 0, s, 0, 0]), 3));
+    const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial());
+    m.name = name;
+    return m;
+  };
+  const tri = (x: number, z: number, y0 = 0.05, y1 = 0.4): [number, number, number][] => [
+    [x, y0, z],
+    [x + 0.02, y0, z],
+    [x, y1, z],
+  ];
+  it('drops the stakes, candle / wisp / halo fx and pennants; keeps stones, vote marks, cracks; index only (buffers untouched)', async () => {
+    const { removeDaisCandles } = await import('../../src/game3d/vendor/town');
+    const C = vl.CIRCLE;
+    const s0 = vl.seatPos(0, 15);
+    // a point on the seat ring 0.75 m (along the ring) from seat 0: where its stake stands
+    const a = s0.angle + 0.75 / C.r;
+    const stake = { x: C.cx + Math.sin(a) * C.r, z: C.cz - Math.cos(a) * C.r };
+    const solid = triMesh('dais-solid', [tri(stake.x, stake.z), tri(s0.x, s0.z), tri(stake.x, stake.z, 0.0, 0.05)]);
+    const fx = triMesh('dais-fx', [tri(stake.x, stake.z), tri(stake.x, stake.z), tri(s0.x, s0.z), tri(stake.x, stake.z), tri(stake.x, stake.z), tri(C.cx, C.cz)], [45, 30, 15, 85, 160, 60]);
+    const states = triMesh('dais-states-solid', [tri(stake.x + 0.2, stake.z), tri(s0.x + 0.1, s0.z)]);
+    const before = Float32Array.from(solid.geometry.attributes.position!.array);
+    const group = new THREE.Group();
+    group.add(solid, fx, states);
+    const got = removeDaisCandles(fakeTown({ dais: { group } }));
+    expect(got).toEqual({ 'dais-solid': 1, 'dais-fx': 4, 'dais-states-solid': 1 });
+    expect([...solid.geometry.index!.array]).toEqual([3, 4, 5, 6, 7, 8]); // the seat stone + the low ring block stay
+    expect([...fx.geometry.index!.array]).toEqual([6, 7, 8, 15, 16, 17]); // vote mark (slot 15) + brazier (60)
+    expect([...states.geometry.index!.array]).toEqual([3, 4, 5]); // the dead seat's crack stays
+    expect(Float32Array.from(solid.geometry.attributes.position!.array)).toEqual(before);
+  });
+  it('a town without a dais (or renamed meshes) removes nothing, no throw', async () => {
+    const { removeDaisCandles } = await import('../../src/game3d/vendor/town');
+    expect(removeDaisCandles(fakeTown({}))).toEqual({ 'dais-solid': 0, 'dais-fx': 0, 'dais-states-solid': 0 });
+    const g = new THREE.Group();
+    g.add(triMesh('other', [tri(0, 0)]));
+    expect(removeDaisCandles(fakeTown({ dais: { group: g } }))).toEqual({ 'dais-solid': 0, 'dais-fx': 0, 'dais-states-solid': 0 });
+  });
+});

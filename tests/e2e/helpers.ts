@@ -1179,31 +1179,6 @@ export async function v3Context(browser: Browser, opts: { viewport?: { width: nu
   return ctx;
 }
 
-/**
- * Create a lobby FROM THE UI (finder → "Create lobby" dialog → Town choice → Create) and return its id once the
- * waiting room is up. `world` picks the radio: 'v2' = "Classic", 'v3' = "Hollowmere".
- */
-export async function createLobbyViaUI(page: Page, name: string, world: WorldId): Promise<string> {
-  await expect(page.getByRole('heading', { name: 'Lobby finder' })).toBeVisible({ timeout: 30_000 });
-  await page.getByRole('button', { name: 'Create lobby' }).first().click();
-  const form = page.getByRole('dialog', { name: 'Create lobby' });
-  await expect(form).toBeVisible();
-  await form.getByLabel('Lobby name').fill(name);
-  const town = form.getByRole('radiogroup', { name: 'Town' });
-  await expect(town, 'the create form has a "Town" choice (WP6)').toBeVisible();
-  const label = world === 'v3' ? 'Hollowmere' : 'Classic';
-  await town.getByText(label, { exact: true }).click();
-  await expect(town.getByRole('radio', { name: new RegExp(`^${label}`) })).toBeChecked();
-  const created = page.waitForResponse((r) => r.url().endsWith('/api/lobbies') && r.request().method() === 'POST', { timeout: 30_000 });
-  await form.getByRole('button', { name: 'Create', exact: true }).click();
-  const res = await created;
-  expect(res.status(), await res.text()).toBeLessThan(300);
-  const body = (await res.json()) as { lobby: { id: string; world?: WorldId } };
-  expect(body.lobby.world ?? 'v2', 'the server made the lobby in the chosen world').toBe(world);
-  await expect(page.getByRole('dialog', { name: 'Waiting room' })).toBeVisible({ timeout: 60_000 });
-  return body.lobby.id;
-}
-
 /** The waiting room's world badge text ('Classic town' | 'Hollowmere') and data-world. */
 export async function waitingRoomWorld(page: Page, timeout = 30_000): Promise<{ text: string; world: string | null }> {
   const badge = page.getByRole('dialog', { name: 'Waiting room' }).locator('.ct-world-badge');
