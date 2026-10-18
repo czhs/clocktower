@@ -23,6 +23,7 @@ const parts = [
   ['marks', './votemarks.js', 'createVoteMarks'],
   ['daisdress', './daisdress.js', 'createDaisDress'],   // (vote-fix4) the dais' candle stakes out while the vote camera is up
   ['ringclear', './ringclear.js', 'createRingClear'],   // (vote-fix5) no town-life walker inside r 8 m during the vote
+  ['halos', './halos.js', 'createHalos'],               // (integrate7) the ghost halo sprite over every shown 3D halo + its snuff on a spend
 ];
 
 export async function createPassB(demo) {

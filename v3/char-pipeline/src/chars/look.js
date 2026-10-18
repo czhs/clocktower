@@ -179,7 +179,7 @@ export function characterMaterial(engine, opts = {}) {
     // (module fix, wave 5) hueKeep k | { <slot>: k }: read from rig.spec.material in applyFlags (named here so it stays out of `rest`)
     hueKeep = 0,
     // (module fix, wave 3) shared ghost look: rig.buildCharacter passes spec.ghost (rig.ghostOpts) + the halo bone index
-    ghost = null, ghostHaloBone = -1, ghostHeight = 1,
+    ghost = null, ghostHaloBone = -1, ghostHeight = 1, ghostHaloC = null,
     uniforms = {}, vertexHead = '', vertex = '', fragmentHead = '', tones = '', ...rest
   } = { ...opts, ...urlOpts(engine) };
   const lin = (hex) => new THREE.Color(hex);
@@ -210,6 +210,8 @@ export function characterMaterial(engine, opts = {}) {
     uCharGhost: { value: new THREE.Vector4(0, ghostHaloBone, ghostHeight, 0) },
     uCharGhostRamp: { value: Array.from({ length: 5 }, (_, i) => (GR[i] ? new THREE.Vector3(GR[i].r, GR[i].g, GR[i].b) : new THREE.Vector3())) },
     uCharGhostHalo: { value: (() => { const c = lin(ghost?.halo?.color || '#FFE08A'); return new THREE.Vector3(c.r, c.g, c.b); })() },
+    // (halo boost, rig.js HALO) x, z the ring's bind-space centre; z the glint bar 0..7 (-1 = none), w the glow step 0..2
+    uCharGhostHaloK: { value: new THREE.Vector4(ghostHaloC?.[0] ?? 0, ghostHaloC?.[1] ?? 0, -1, 0) },
     uCharGhostK: { value: new THREE.Vector4(ghost?.lo ?? 0.12, ghost?.slope ?? 1.35, ghost?.keepHue ?? 0, 0) },
     uCharGhostFade: { value: new THREE.Vector4(...(ghost?.fade || [0, 0, 0, 0])) },
     uCharGhostGlow: { value: new THREE.Vector4(ghost?.glow?.[0] ?? 0, ghost?.glow?.[1] ?? 0, ghost?.mistK?.[0] ?? 0, ghost?.mistK?.[1] ?? 0) },
@@ -231,7 +233,22 @@ export function characterMaterial(engine, opts = {}) {
       if (uCharGhost.x > 0.5) {
         bool gSp = uCharGhost.x > 1.5;
         if (vCharGHalo > 0.5) {
-          totalEmissiveRadiance = uCharGhostHalo; toonHi = vec3(0.0); toonMid = vec3(0.0); toonSh = vec3(0.0);
+          // (halo boost, rig.js HALO) flat emissive in 3 tones by the face's world up (top pale gold, sides gold,
+          // underside deep gold) + the stepped glow (w 0..2: whiter) + the white glint bar running round the ring (z)
+          #ifndef FLAT_SHADED
+            float hUp = dot(normalize(vNormal), viewMatrix[1].xyz);
+          #else
+            float hUp = 1.0;
+          #endif
+          float hW = uCharGhostHaloK.w;
+          vec3 hTop = mix(uCharGhostHalo, vec3(1.0), 0.42 + 0.18 * hW);
+          vec3 hE = hUp > 0.5 ? hTop : (hUp < -0.5 ? uCharGhostHalo * vec3(0.5, 0.33, 0.14) : mix(uCharGhostHalo, vec3(1.0), 0.07 * hW));
+          if (uCharGhostHaloK.z > -0.5) {
+            vec2 hD = vCharBind.xz - uCharGhostHaloK.xy;
+            float hA = atan(hD.x, hD.y) - (uCharGhostHaloK.z + 0.5) * 0.78539816;
+            if (abs(mod(hA + 3.14159265, 6.28318531) - 3.14159265) < 0.39269908) hE = hUp < -0.5 ? hTop : vec3(1.0);
+          }
+          totalEmissiveRadiance = hE; toonHi = vec3(0.0); toonMid = vec3(0.0); toonSh = vec3(0.0);
         } else if (uCharGhostKeep[int(vCharGSlot + 0.5)] < 0.5) {
           float gy = vCharBind.y / max(uCharGhost.z, 1e-3);
           ivec2 gPx = ivec2(gl_FragCoord.xy);
@@ -306,7 +323,7 @@ export function characterMaterial(engine, opts = {}) {
       uniform float uCharHintK; uniform vec3 uCharSnap;
       uniform float uCharTime;   // (module fix, look row) the Character's clock (frozen with the stage's t=): use it, not uTime, for glow/flicker
       uniform float uCharWhiteKeep, uCharWhiteKeepLift; uniform vec2 uCharCreamKeep;
-      uniform vec4 uCharGhost, uCharGhostK, uCharGhostFade, uCharGhostGlow; uniform vec3 uCharGhostRamp[5], uCharGhostHalo;
+      uniform vec4 uCharGhost, uCharGhostK, uCharGhostFade, uCharGhostGlow, uCharGhostHaloK; uniform vec3 uCharGhostRamp[5], uCharGhostHalo;
       uniform float uCharGhostKeep[${PAL_MAX}]; uniform float uCharHueKeep[${PAL_MAX}];
       flat varying float vCharGSlot; flat varying float vCharGHalo;
       // shared ghost tone: perceptual lightness (sqrt of linear luma) onto the pale ramp d → l, so value order and slot

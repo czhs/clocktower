@@ -56,6 +56,15 @@
 >   night self-glow and a gold halo (level 1 only), and floats the legs (no IK hip dip). Tune with `ramp`, `spent`,
 >   `slope`, `keepHue` (dark characters 0.25), `keep: ['<glow slot>']`, `halo { lift, radius, bone }`. A walking ghost:
 >   `ch.ghost = 1`. Any loop clip can float its legs with `legs: 'float'`.
+> - **Halo boost (2026-10-18, the halo = "still has the ghost vote"): one global knob, `HALO` in src/chars/rig.js**
+>   (`{ radius: 1.4, bar: 1.75, lift: 0.03, own: 1.25, twinkle: true }`, read at rig build + per displayed frame). The
+>   shared halo is x1.4 wider, x1.75 thicker, 3-toned (pale-gold top, gold sides, deep-gold underside) and steps on the
+>   30 Hz grid: glow 0-1-2-1 (12 frames a step) + a white glint round the 8 bars (4 frames a bar, 40-frame rest), phase
+>   per character (`rig.haloPhase`). `rig.setGhost(level, gridFrame)` (Character passes its grid frame; no frame = the
+>   still look). Own clip-keyed `halo` bones (chonk, rabbit, ...) are scaled x`own` while shown (> x10). Do NOT bump
+>   `spec.ghost.halo.radius / bar` per character for visibility; tune `HALO`. Living renders byte-identical (halo
+>   geometry after `charGhostFrom`, shader gated by `uCharGhost.x`), same program count. Small figures (vote camera)
+>   still need the demo's D=2 halo sprite (src/demo/halos.js). Evidence: shots/halo/.
 > - **Reach: `'upperArmR.l': [0.6]`** lengthens a segment without thickening it and without scaling the hand/prop under
 >   it — use it for votes/points past a big head instead of `.s` 1.5–1.95× + a counter-scaled prop.
 > - **Walk starts no longer flicker the legs** (M18, LegGait `plant: 'hold'`): game/walk/run `flicker` 50–105 px WARN →

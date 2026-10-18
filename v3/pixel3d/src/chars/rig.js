@@ -1011,6 +1011,27 @@ function counterUpdate() {
   this.matrixWorldNeedsUpdate = true;
 }
 
+/** (halo boost, 2026-10-18; the user: "I want halos to be more obvious since its a very important game marker") the
+ *  ghost HALO = "this dead player still has their ghost vote": one global knob set for every character's halo, so a
+ *  tweak never needs a spec edit or a new shader program. Read when a rig is BUILT (radius / bar / lift: geometry of
+ *  the shared spec.ghost halo, after the living geometry, so living renders stay byte-identical) and per displayed
+ *  frame (twinkle / glow: uniforms of the existing character program; rig.setGhost(level, gridFrame)).
+ *    radius, bar   x spec.ghost.halo.radius / .bar (bigger ring, thicker bars: >= 2.5 texels at the game camera)
+ *    lift          m added to spec.ghost.halo.lift (+ half the extra bar height, so a thicker ring never sinks in)
+ *    own           x the clip-keyed scale of a character's OWN 'halo' bone while it is shown (chonk, rabbit, ... :
+ *                  scale > 10 = the buried ring grown; their own shader keeps its colour)
+ *    twinkle       false = no stepped glint / glow (reduced motion; the demo's ?rm=1 may set it)
+ *  Look (look.js ghostTones): top faces a pale-gold highlight, sides the gold, undersides deep gold (reads on sky AND
+ *  stone; the char outline adds the dark line); stepped on the 30 Hz grid: a glow 0-1-2-1 (12 frames a step) and a
+ *  white glint running round the 8 bars (4 frames a bar, then a 40-frame rest; 72-frame cycle, phase per character). */
+export const HALO = { radius: 1.4, bar: 1.75, lift: 0.03, own: 1.25, twinkle: true };
+/** the halo's stepped glint bar (0..7, -1 = rest) and glow step (0..2) at grid frame g (30 Hz), phase ph (frames) */
+export function haloSteps(g, ph = 0) {
+  if (!HALO.twinkle || !Number.isFinite(g)) return [-1, 0];
+  const f = Math.floor(g + ph), c = ((f % 72) + 72) % 72, w = ((f % 48) + 48) % 48;
+  return [c < 32 ? c >> 2 : -1, [0, 1, 2, 1][w / 12 | 0]];
+}
+
 /** spec.ghost (shared ghost look) with defaults; see docs/CHARACTERS.md §5 "Ghost". */
 export function ghostOpts(g = {}) {
   const o = g === true ? {} : g;
@@ -1167,7 +1188,9 @@ export function buildCharacter(engine, spec) {
   for (let i = 1; i < pos.length; i += 3) liveTop = Math.max(liveTop, pos[i]);
   if (bones.ghostHalo) {
     // open octagon of boxes (the v1 ghost halo; polly/crow/snail recipe: 8 bars ≥ 1.5 texels), `at` above the joint
-    const H = G.halo, slot = Object.keys(palette)[0];
+    // (halo boost) HALO.radius / .bar / .lift: a bigger ring of thicker bars, lifted by half the extra bar height
+    const H0 = G.halo, slot = Object.keys(palette)[0];
+    const H = { ...H0, radius: H0.radius * HALO.radius, bar: H0.bar * HALO.bar, lift: H0.lift + HALO.lift + H0.bar * (HALO.bar - 1) / 2 };
     const ring = [];
     for (let i = 0; i < 8; i++) {
       const a = (i + 0.5) * Math.PI / 4;
@@ -1198,7 +1221,14 @@ export function buildCharacter(engine, spec) {
   geo.computeBoundingBox(); geo.computeBoundingSphere();
 
   if (G) geo.userData.charGhostFrom = ghostFrom;
-  const material = characterMaterial(engine, G ? { ...(spec.material || {}), ghost: G, ghostHaloBone: bones.ghostHalo ? boneList.indexOf(bones.ghostHalo) : -1, ghostHeight: liveTop } : (spec.material || {}));
+  // (halo boost) the halo ring's bind-space centre (x, z): the glint's angle round the ring (look.js uCharGhostHaloK)
+  let ghostHaloC = null;
+  if (G && pos.length / 3 > ghostFrom) {
+    let sx = 0, sz = 0, n = 0;
+    for (let i = ghostFrom * 3; i < pos.length; i += 3) { sx += pos[i]; sz += pos[i + 2]; n++; }
+    ghostHaloC = [sx / n, sz / n];
+  }
+  const material = characterMaterial(engine, G ? { ...(spec.material || {}), ghost: G, ghostHaloBone: bones.ghostHalo ? boneList.indexOf(bones.ghostHalo) : -1, ghostHeight: liveTop, ghostHaloC } : (spec.material || {}));
   const mesh = new THREE.SkinnedMesh(geo, material);
   mesh.name = `${root.name}:mesh`;
   mesh.castShadow = true; mesh.receiveShadow = true;
@@ -1229,11 +1259,20 @@ export function buildCharacter(engine, spec) {
     root, mesh, bones, boneList, boneNames, rootName, skeleton, sockets, spec, info, warnings,
     height: bones.ghostHalo ? liveTop : geo.boundingBox.max.y,
     ghostLevel: 0, ghostHalo: bones.ghostHalo || null,
+    // (halo boost) grid-frame phase of the halo twinkle: a ring of ghosts does not blink in unison
+    haloPhase: [...String(spec.name ?? root.name ?? '')].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 72, 7),
     /** (module fix, shared ghost) 0 living, 1 ghost (pale ramp + halo), 2 ghost-spent (dimmer, no halo). spec.ghost only. */
-    setGhost(level = 0) {
+    /** (halo boost) gridFrame (30 Hz grid frame, e.g. Character's displayed frame): the halo's stepped glint + glow
+     *  (HALO.twinkle; haloSteps); omitted = the still look (glint off, glow 0: bakes, charpack stills) */
+    setGhost(level = 0, gridFrame) {
       const lv = G ? (level === 2 || level === 0.5 || level === 'spent' ? 2 : level ? 1 : 0) : 0;
       rig.ghostLevel = lv;
-      for (const m of [].concat(mesh.material)) { const u = m?.userData?.look?.uniforms?.uCharGhost; if (u) u.value.x = lv; }
+      const [gl, gw] = lv === 1 ? haloSteps(gridFrame, rig.haloPhase) : [-1, 0];
+      for (const m of [].concat(mesh.material)) {
+        const U = m?.userData?.look?.uniforms, u = U?.uCharGhost;
+        if (u) u.value.x = lv;
+        if (U?.uCharGhostHaloK) { U.uCharGhostHaloK.value.z = gl; U.uCharGhostHaloK.value.w = gw; }
+      }
       if (rig.ghostHalo) { rig.ghostHalo.scale.setScalar(lv === 1 ? 1 : 0); rig.ghostHalo.updateMatrixWorld(true); }
       return rig;
     },
@@ -1280,6 +1319,10 @@ export function buildCharacter(engine, spec) {
       if (rig.ghostHalo) {                    // shared ghost: the halo draws only in ghost level 1 (scale 0 = no triangles)
         if (rig.ghostLevel !== 1) rig.ghostHalo.scale.set(0, 0, 0);
       }
+      // (halo boost) a character's OWN clip-keyed 'halo' bone (chonk, rabbit, ...: the buried ring grown > x10 while
+      // the ghost vote is unspent) x HALO.own; alive / spent (<= x10) untouched, so living renders are unchanged
+      // (only when this pose keys 'halo.s', so a reset: false pose never compounds it)
+      if (bones.halo && !rig.ghostHalo && HALO.own !== 1 && Array.isArray(pose['halo.s']) && bones.halo.scale.x > 10) bones.halo.scale.multiplyScalar(HALO.own);
       rig.pose = pose;
       if (update) root.updateMatrixWorld(true);
       return rig;

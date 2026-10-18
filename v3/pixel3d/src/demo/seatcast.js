@@ -310,6 +310,8 @@ export async function createSeatCast(demo) {
     get list() { return seats.map((r) => ({ seat: r.i, id: r.id, shown: r.shown, clip: r.h?.ch?.state?.clip ?? r.clip, face: +r.face.toFixed(3), staged: r.staged, at: [+r.pos.x.toFixed(2), +r.pos.z.toFixed(2)] })); },
     get version() { return version; },
     heightOf: (i) => (seats[i]?.h ? seats[i].h.height ?? null : null),
+    /** (integrate7) the character handle standing on seat i (yours: the player's), or null (halos.js: 'ghost:spent' {seat}) */
+    handleOf: (i) => (i === yours && demo.player?.handle ? demo.player.handle : seats[i]?.h ?? null),
     /** (B) where seat i stands now: { pos (feet, world), height (as shown, x the cast scale), staged } */
     spotOf(i) {
       // (seal vote) YOUR seat: you stand there (the player's figure on the stone)

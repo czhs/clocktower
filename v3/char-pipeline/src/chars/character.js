@@ -485,7 +485,7 @@ export class Character {
     if (this.spec.ghost) {
       this._ghostO ||= ghostOpts(this.spec.ghost);
       if (gLv > 0 && this._ghostO.hover && !moving) { const b = pose.pos ?? [0, 0, 0]; pose.pos = [b[0], b[1] + this._ghostO.hover, b[2]]; }
-      rig.setGhost(gLv);
+      rig.setGhost(gLv, s.g);   // (halo boost) + the displayed grid frame: the halo's stepped glint / glow (rig.js HALO)
     }
     // personality: chest lags the facing steps, head leads/lags with its own filter. (motion r5) the displayed offsets
     // are QUANTISED to quant.yaw, so a post-turn settle is a few whole steps (≤ 30/quant drawings), not a 1° crawl

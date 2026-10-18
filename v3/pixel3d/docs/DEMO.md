@@ -26,7 +26,7 @@ Console errors / page errors / shader errors = failure. No git commits.
 | **characters** | `src/demo/characters.js` | which characters are complete, loading a spec, creating a runtime Character handle |
 | **time** (town states) | `src/demo/time.js` | continuous clock → sky / sun / lights / tower hands / hour strikes; phase / nominee / seats → dais + ceremony; bell; life on/off; quality (reload) |
 | **ui** | `src/demo/ui.js` | the control panel, status line, help overlay, toasts |
-| **ui** (game UI) | `src/demo/gameui.js`, `src/demo/actionbar.js`, `src/demo/notebook.js`, `src/demo/ui-assets.json`, `src/ui/runtime/layer.js` + `src/ui/runtime/book3d.js` (new, additive to the UI library) | the pixel3d UI library in the demo (§4.7): labels, talk + bubbles, emote pops, point / pie / pins, the pixel HUD (clock + phase chips, toolbar + the tip's lightbulb, toasts, prompts, the controls tip, the reactions dock + pin-colour picker, the emoji reactions), the ACTION BAR (every key as a button), the events group (captions, night veil / dawn, vote clock, execution, ghost reveal, poof), off-screen arrows, the notebook + the reading book, the panel skin |
+| **ui** (game UI) | `src/demo/gameui.js`, `src/demo/overhead.js` (the overhead stacks, §4.7 "Overhead stack"), `src/demo/actionbar.js`, `src/demo/notebook.js`, `src/demo/ui-assets.json`, `src/ui/runtime/layer.js` + `src/ui/runtime/book3d.js` (new, additive to the UI library) | the pixel3d UI library in the demo (§4.7): labels, talk + bubbles, emote pops, point / pie / pins, the pixel HUD (clock + phase chips, toolbar + the tip's lightbulb, toasts, prompts, the controls tip, the reactions dock + pin-colour picker, the emoji reactions), the ACTION BAR (every key as a button), the events group (captions, night veil / dawn, vote clock, execution, ghost reveal, poof), off-screen arrows, the notebook + the reading book, the panel skin |
 | **ui** (ambient) | `src/demo/ambient.js` | the ambient library (`src/ambient/**`, read only) in the demo (§4.8): pigeons, fireflies / moths / butterflies, the cauldron fire, props, reacting to the player |
 | **deploy** | `src/demo/deploy.js`, `tools/demo-serve.mjs`, `tools/demo-check*.mjs` (+ `shots/demo-deploy/`) | `window.__demo` automation hooks, error overlay, perf watchdog, serving, the playtest automation |
 | **player** (houses) | `src/demo/interior.js`, `src/demo/camera.js`, `src/demo/collision.js` | entering / leaving cottages (fade, room collision, the dollhouse camera), the texel-locked follow, collision + walk-through props |
@@ -484,6 +484,59 @@ moments; the demo never imports `scenes/`). `?gameui=0` turns it off (the A/B ba
   over its head (right-click point, the bar, the 3 key: `gameui.emoteFallback`, no "has no 'point' emote" toast).
 - **Labels (P3.9)**: a name label the DOM covers (the panel's band, the folded panel's top band, the open notebook) or
   under the HUD's top row (the chips, the toolbar) is not drawn, nor its stack.
+- **Overhead stack (OH, 2026-10-18; the user: "there are some overlapping of emojis and tags and other indicators ... all
+  the possible stuff that can float on the head of a character")** — `src/demo/overhead.js` owns WHERE everything over a
+  head goes; gameui.js still draws each piece (its art, tier and z order) at the slot it is given (its edits are fenced
+  `// (OH)`). Evidence: `shots/overhead/before-*.png` / `after-*.png` (+ `-crop`, `.json`), `tools/demo-overhead.mjs`.
+  - **Inventory: everything that can float over a character** (and where it lives):
+
+    | what | drawn by | tier / z | anchor | in the stack? |
+    |---|---|---|---|---|
+    | name label (+ a ghost's wisp; the vote ring's beside / under-the-feet slots; the staged court's short names) | gameui (indicators `label` / hd `labelHD`) | world 20 | head point (+ halo lift) + `LABEL_DY` | row 1 (core) |
+    | talk glyph (talking: pale gold; yours rose) | gameui (indicators `talkGlyph(HD)`) | world 20 | right of the name | row 1 (core) |
+    | "you" chevron (gold, bobs 1 px) | gameui (indicators `youChevron(HD)`) | world 20 | 9 art px over the name's cap | row 2 (core) |
+    | your person pins (the fan; one per townsperson) | gameui (markers `drawPersonPins(HD)`) | world 30 | over the name | row 2 (core); crowded: compact glyphs left of the name |
+    | emote pop ('!' raise / bark / wave / vote, '?' sniff / a signature, point, pin) | gameui (emotes `popFrame`) | world 30 | over the stack | row 3 (transient) |
+    | emoji reaction pop (yours, the townsfolk's) | gameui (emoji `emojiPopFrame`) | world 30 | over the stack | row 3 (transient; one pop per head: the newest replaces) |
+    | speech bubble (NPC chatter; not in the vote camera / the staged court) | gameui (indicators `bubble` / hd `bubbleHD`) | world 20 | over the stack, tail to the head | row 4 (transient) |
+    | 3D ghost halo + its D=2 halo sprite | character spec / `halos.js` (z 19) | scene / world 19 | over the head (`topY`) | row 0: the head point the name hangs from is lifted over it (`haloLift`); its box is the character's 'halo' (others keep off) |
+    | the pointing finger + bead trail, the ping | gameui (markers `drawPoint(HD)`) | world 15 / 30, ground | your hand (0.72 H) -> the target's middle (0.4 H) / feet | no: a 3.5-s gesture at body height (exception) |
+    | hovered pin tooltip | gameui (emotes `drawPinTip`) | world 36 | the hovered pin | no: hover only (exception) |
+    | vote marks (raised hand / seal press / snuffer, the nominee ring + stocks, ghost tokens) | `votemarks.js` | world | hand over the head (`topOf`) / the feet | the hand's top is a floor for the transients (`mark`); seals / nominee box = keep-outs |
+    | the held reading book / the big 3D book | notebook `draw.js` (pass 302) / `book3d.js` | depth-tested / scene | the hands (0.36-0.42 H) / mid-body | no: below the head |
+    | the Storyteller's lantern + clock-staff (finial 1.91 m over a 1.55 m hood) | the character | scene | the hands; the staff over the hood | no: 3D; the name hangs from the hood (`VISUAL_TOP`), the staff may stand behind it |
+    | "you are here" ring | gameui (indicators `youRing(HD)`) | ground decal | the feet | no |
+    | off-screen discs (your point target / pinned folk / place pins out of view) | gameui (indicators `edgeDisc(HD)`) | screen 57 | the visible area's edge | no: a keep-out for the transients |
+    | place pins (+ x-ray outline) | gameui (markers `drawPlacePin(HD)`) | depth tier 31 / pass 301 | the ground | no |
+  - **The stack, from the head up** (GAP 1 art px between rows): 0 the halo zone · 1 the label row (name + wisp + talk
+    glyph) · 2 the status row (your chevron, or your pins' fan) · 3 the pop · 4 the bubble. Rows 1 + 2 are the CORE: they
+    move together. All offsets are whole art px (d HD px at D=2); every bobbing piece reserves its bob.
+  - **Across neighbours, in screen space, front to back** (the lowest head first keeps its natural place): a TOWN name
+    slides a little (it still spans its head, 2-px steps) or steps up whole label rows (at most 5; 2 with the full pin fan)
+    until its core clears every core already placed and every other ghost's halo. In a CROWD (two natural cores overlap,
+    from the last frame) your pins go COMPACT: small pin glyphs (emotes `pinIconSmall` / hd `pinGlyphHD`, 7x9) at the
+    name's left end, so a huddle stacks ~11 px a name instead of ~38. The vote camera's ring slots and the staged court's
+    step-up are gameui's own rules (unchanged); their names are registered as they land. Then the transients, pops first
+    (yours first) and bubbles after: natural slot, else slide sideways (a pop by halves of its width up to twice it; a
+    bubble only as far as its tail still reaches the head) or stack higher (just over what they met), a pop last beside
+    its own name; never over another core, another transient, a halo / seal / nominee box, the HUD (top row, toolbar,
+    action bar, dock, tip, HUD clients, off-screen discs) nor outside the visible area. No free slot: the transient is
+    dropped that frame (`info().overhead.dropped`): an overprinted name is worse than a missing pop (the vote ring's old
+    rule, now everywhere).
+  - **Stable**: a moved element keeps last frame's slot while it stays free and goes home only when home is free by
+    HYST (2 art px) more; the crowd has the same hysteresis. No flip-flop on the bobs or a walking neighbour.
+  - **Automation**: `gameui.info().overhead` = { units, d, rects [{who ('you' | 'npc<slot>' | null: HUD / keep-outs),
+    kind (label, wisp, glyph, chev, pins, halo, pop, bubble, hud, mark), x, y, w, h (logical px)}], clashes, dropped }.
+    The playtest (`tools/demo-play.mjs` 6f, `tools/demo-play-overhead.mjs`) builds the stress (3 townsfolk recast as Honk /
+    Mortimer / Clover through the swap rule, 0.85 m round the player, 2 ghosts, all pinned, talking, popping; your
+    chevron + talk glyph + reaction) and fails on any overlapping pair and on a name flipping between samples. Allowed
+    exceptions: a name on its OWN halo (they may touch on the walk's bob); a keep-out (HUD / seal / unowned halo) only
+    binds the transients (a name under the HUD is the HUD's business, P3.9); the finger / trail / ping, the hovered pin's
+    tooltip and the pin's drop animation are not stack members. Stress shots: `tools/demo-overhead.mjs --tag after
+    [--npcs 3|4] [--cfg 720,1080,phone,d1]`.
+  - **Known limits**: a huddle at 1080p 'round' (logical 480 x 270, the HD art 4/3) has little sky: most bubbles (and a
+    pop or two) are dropped while it lasts; a name may float 3-5 rows over its head in a 4-5 name huddle; a slid pop's
+    tail points at its neighbour's column; the person-pin hit rects of compact pins are 13 x 15 logical px.
 - **The held book's quill** (`src/ui/notebook/art.js bookMats` `w`, a small art fix): the feather was the page's own
   cream with the page's line, so on the open spread it read as a crack / a torn V at 1x; now a cool white goose feather
   (the ghost ramp) with a violet-ink line.
@@ -676,6 +729,18 @@ seatcast.js / gameui.js / tools/demo-play-passb.mjs hand-merged onto main's D=2 
     gone from the lock (`ghost-spent`), seat 11 never; `ghost:spent` for seat 3 only; seat 3 recorded spent after the
     vote; 11 P cases (house, tower, door fade, Storyteller, held W, overview / iso / free, vote camera first next to the
     nominee's seat, P after a night, P twice) + P-to-stop.
+- **integrate7 (2026-10-18; the user: "I want halos to be more obvious since its a very important game marker"; evidence
+  + scripts `shots/integrate7/`)**: the bold 3D halo (src/chars `HALO`) + the crisp D=2 halo SPRITE (`halos.js`, Pass B
+  part `halos`, world tier z 19) are both live; the overhead stack (§4.7 "Overhead stack", `overhead.js`) takes the
+  sprite's boxes as its row 0. gameui: the name's head point stands over the sprite (`haloLift` reads
+  `passB.halos.topY(h)`), the vote ring's name keep-outs include `passB.halos.boxes()`. **The snuff only on a real
+  spend**: halos.js listens for `ghost:spent` (`{seat}` via `seats.handleOf(i)`, `{you}` = the player's handle) and
+  snuffs a sprite whose 3D halo went off within 1 s of that figure's spend (either order); un-ghosting (key 5), a revive
+  or a hidden figure just loses it. `?rm=1` also sets `HALO.twinkle = false` (no 3D glint / glow steps, no sprite glint).
+  Note: ghosting DURING a vote whose clock hand already counted your seal spends the ghost vote at once (seatcast.js),
+  so that halo shows one frame and snuffs. Playtest (demo-play-passb): seat 3's halo + sprite sampled in the
+  nomination (the vote loop could miss the 'ghost' kind: the earlier flaky "showed no halo before its vote"), the sprite
+  gone + snuffed after its lock, none over 11; your ghost's sprite on un-ghosting goes with NO snuff.
 - **The vote staging, the court** (`?voteStage=N`; `votestage.js createVoteStage`; the user: "voting arrangement is still not focussing on the
   players + clock of the clocktower as central, we want to be as closely cropped as possible to maximize the detail on
   the characters" / "the voting circle can exaggerate things compared to the day - can take artistic licenses"). While

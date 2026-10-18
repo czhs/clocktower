@@ -96,6 +96,25 @@ export async function runPassB({ page, sleep, info, shot, fail, note, press, hol
   r.nomination = { ghost3: nomMark?.seats?.[3]?.kind ?? null, nominee: nomMark?.nominee ?? null };
   if (onStones && r.nomination.ghost3 !== 'ghost') fail(`passb: no ghost token at the ghost seat 3 in the nomination (${JSON.stringify(nomMark?.seats?.[3])})`);
   if (onStones && r.nomination.nominee?.seat !== 6) fail(`passb: no nominee marker at seat 6 (${JSON.stringify(r.nomination.nominee)})`);
+  // (integrate7) the ghost seat 3's halo BEFORE its vote, sampled here in the nomination (its seal goes down with the
+  // vote's opening, so the vote loop may never see the 'ghost' kind: the earlier flaky "showed no halo before its vote");
+  // + the halo SPRITE (halos.js) drawn over it, and the snuff count before the vote
+  const pre3 = await ev(() => { const d = window.__demo.demo, h = d.passB.halos, g = d.passB.seats.info().ghosts?.[3]; const id = d.passB.seats.handleOf?.(3)?.id ?? null; const hi = h?.info?.() ?? null; return { haloShown: g?.haloShown ?? null, spent: g?.spent ?? null, id, sprite: !!hi?.list?.some((x) => x.id === id && x.snuff == null), snuffs: hi?.snuffs ?? null, halos: !!h }; });
+  r.nomination.halo3 = pre3;
+  {
+    // (integrate7) NO snuff on un-ghosting (key 5's toggle / a revive): your ghost's halo sprite just goes. Done here in
+    // the nomination: in the vote, ghosting with your seal already counted spends the ghost vote at once (seatcast.js)
+    const g0 = await ev(() => { const d = window.__demo.demo, P = d.player; if (!d.passB.halos || P.ghost) return null; const on = P.setGhost(true); return { on, spent: P.ghostSpent, snuffs: d.passB.halos.info().snuffs }; });
+    if (g0?.on) {
+      await sleep(900);
+      const mid = await ev(() => { const d = window.__demo.demo, id = d.player.handle?.id; return d.passB.halos.info().list.some((x) => x.id === id && x.snuff == null); });
+      await ev(() => window.__demo.demo.player.setGhost(false));
+      await sleep(700);
+      const g1 = await ev(() => { const d = window.__demo.demo, id = d.player.handle?.id, hi = d.passB.halos.info(); return { snuffs: hi.snuffs, on: hi.list.some((x) => x.id === id) }; });
+      r.nomination.unghost = { before: g0.snuffs, spent: g0.spent, haloWhileGhost: mid, ...g1 };
+      if (!mid || g1.on || g1.snuffs !== g0.snuffs) fail(`passb: your ghost's halo sprite on un-ghosting ${JSON.stringify(r.nomination.unghost)} (want shown, then gone with NO snuff)`);
+    } else r.nomination.unghost = { skipped: g0 };
+  }
   await ev(() => { window.__voteBells = 0; window.__demo.demo.events.on('bell', () => { window.__voteBells++; }); window.__ghostSpent = []; window.__demo.demo.events.on('ghost:spent', (e) => { window.__ghostSpent.push(e); }); });
   await ev(() => { const d = window.__demo.demo; for (const i of [7, 9, 10, 12, 0, 1, 3]) d.time.setVote(i, true); d.store.set({ phase: 'vote' }, 'test'); });
   const tv0 = Date.now();
@@ -142,7 +161,16 @@ export async function runPassB({ page, sleep, info, shot, fail, note, press, hol
   r.cast.voting = voting;
   r.under = { offFeet: [...new Set(offFeet)].slice(0, 10), halo3: halo3.filter((x, j) => !j || JSON.stringify(x) !== JSON.stringify(halo3[j - 1])), halo11: [...halo11] };
   if (offFeet.length) fail(`passb: vote marks not centred on their own voter's feet (${r.under.offFeet.join(', ')})`);
-  if (!halo3.some(([k, h]) => k === 'ghost' && h === true)) fail(`passb: the ghost seat 3 showed no halo before its vote (${JSON.stringify(r.under.halo3)})`);
+  // (integrate7) before its vote = the nomination sample, or any loop sample before the lock ('ghost' / 'ghost-sealed')
+  if (pre3.haloShown !== true && !halo3.some(([k, h]) => (k === 'ghost' || k === 'ghost-sealed') && h === true)) fail(`passb: the ghost seat 3 showed no halo before its vote (${JSON.stringify({ pre3, loop: r.under.halo3 })})`);
+  if (pre3.halos && !pre3.sprite) fail(`passb: no halo SPRITE over the ghost seat 3 before its vote (${JSON.stringify(pre3)})`);
+  {
+    // the sprite: gone after the spend, and SNUFFED (halos.js: only on a 'ghost:spent'); never one over the spent seat 11
+    await sleep(600);
+    const post = await ev((id3) => { const d = window.__demo.demo, hi = d.passB.halos?.info?.() ?? null; const id11 = d.passB.seats.handleOf?.(11)?.id ?? null; return { snuffs: hi?.snuffs ?? null, on3: !!hi?.list?.some((x) => x.id === id3 && x.snuff == null), on11: !!hi?.list?.some((x) => x.id === id11 && x.snuff == null) }; }, pre3.id);
+    r.under.sprite = { before: pre3.snuffs, ...post };
+    if (pre3.halos && (post.on3 || post.on11 || !(post.snuffs > pre3.snuffs))) fail(`passb: the halo sprite after the ghost vote ${JSON.stringify(r.under.sprite)} (want seat 3 gone + snuffed, none on 11)`);
+  }
   // (one sample at the lock itself may still hold the old clip's pose: at most 2 samples with the halo after the lock)
   if (!halo3.some(([k, h, sp]) => k === 'ghost-counted' && h === false && sp === true) || halo3.filter(([k, h]) => k === 'ghost-counted' && h === true).length > 2) fail(`passb: the ghost seat 3 kept its halo after its ghost vote was counted (${JSON.stringify(r.under.halo3)})`);
   r.under.spentEvents = await ev(() => window.__ghostSpent);

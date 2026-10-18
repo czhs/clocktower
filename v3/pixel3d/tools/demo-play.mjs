@@ -36,13 +36,16 @@
 //   8 passb           (B) pass B (tools/demo-play-passb.mjs): the vote camera's stepped transition + framing (every
 //                     seat + the clock face, panel open / hidden), the seated cast, the tower timer by keys + the ST
 //                     control (dial / hour-board / chip agree), walking into / out of the tower, no program compiled
+//   6f overhead       (OH) the overhead stacks: 3 townsfolk huddled round the player (names, ghost halos, your pins, talk
+//                     bubbles, emoji / emote pops, your chevron); no overlapping rects in gameui.info().overhead
+//                     (tools/demo-play-overhead.mjs; runs after passb)
 //   7 quality reload  store quality=low -> the page reloads; character / phase / clock / position must survive; the
 //                     tip stays away after "never show again" (the bulb stays)
 // Exit 1 on any console / page / shader error, __demo.errors, a door not reached, a swap that fails, a key that did nothing.
 //
 //   tools/remote.sh node tools/demo-play.mjs [--out shots/demo-deploy/play] [--doors auto|house-9,house-14,...]
 //        [--every 400] [--gif-fps 8] [--gif-scale 0.4] [--size 1280x720] [--q "..."] [--base http://<tailnet-ip>:8090]
-//        [--skip loading,crates,houses,doors,roster,time,phases,ceremony,controls,gameui,gameui2,storyteller,touch,passb,reload] [--day-speed 120] [--chars 5]
+//        [--skip loading,crates,houses,doors,roster,time,phases,ceremony,controls,gameui,gameui2,storyteller,touch,passb,overhead,reload] [--day-speed 120] [--chars 5]
 //        [--houses auto|house-3,house-9,house-12]
 //   rsync -az render-host:pixel3d/shots/demo-deploy/play/ shots/demo-deploy/play/ --exclude frames/      # then LOOK at them
 // Writes <out>/NN-<step>.png, <out>/play.gif (tools/sheet.py gif), <out>/sheet.png (contact sheet), <out>/play.json.
@@ -1644,6 +1647,20 @@ try {
       const { runPassB } = await import('./demo-play-passb.mjs');
       report.steps.passb = await runPassB({ page, sleep, info, shot, fail, note, press, hold });
     } catch (e) { fail('passb: ' + (e.stack || e.message).split('\n').slice(0, 3).join(' | ')); }
+  }
+
+  // ---------------------------------------------------------------------------------------------- 6f overhead (OH)
+  // (OH) the overhead stacks (src/demo/overhead.js, docs/DEMO.md §4.7 "Overhead stack"): the stress scene
+  // (tools/demo-play-overhead.mjs: 3 townsfolk close round the player, each named + haloed + pinned + talking + popping,
+  // the player's chevron + talk glyph + reaction); no two rects of gameui.info().overhead overlap (documented exceptions)
+  if (!SKIP.has('overhead')) {
+    console.log('6f overhead stacks (stress: names, halos, pins, bubbles, pops, chevron)');
+    try {
+      await setState({ camera: 'follow', phase: 'day', nominee: null, location: 'town', timeSpeed: 0 });
+      await sleep(1500);
+      const { runOverhead } = await import('./demo-play-overhead.mjs');
+      report.steps.overhead = await runOverhead({ page, sleep, shot, fail, note });
+    } catch (e) { fail('overhead: ' + (e.stack || e.message).split('\n').slice(0, 3).join(' | ')); }
   }
 
   // ---------------------------------------------------------------------------------------------- 7 quality reload

@@ -9,13 +9,15 @@
 // character's size: a thick gold ring (dark line, light top, deep-gold underside: it reads on the sky, on stone and at
 // night), a stepped glow breathing on the 30 Hz grid (3 drawings) and a glint running round it (8 steps). No light, no
 // shader program: UI tiers only.
-// SPENT (the ghost vote counted: the 3D halo goes, seatcast.js / player.js): the sprite SNUFFS where it was - it dims
+// SPENT (the ghost vote counted: the 3D halo goes + 'ghost:spent', seatcast.js / player.js; integrate7: ONLY then - an
+// un-ghost / revive / hidden figure just loses it): the sprite SNUFFS where it was - it dims
 // (3 frames), breaks into 4 pieces (3), and wisps away as 3 pale curls rising and thinning (8): ~0.47 s, noticed.
 // The name label stands over the sprite (gameui.js: the label lift uses topY(); in the vote ring the sprite's box is a
 // keep-out for every name, boxes()).
 import * as THREE from 'three';
 import * as A from '../ui/events/art.js';
 import { PixelImage, frameAt, dissolve, GRID_HZ } from '../ui/kit.js';
+import { HALO } from '../chars/rig.js';
 
 const MIN_RX = 9;                 // art px (x q at D=2): the smallest halo half-width drawn
 const GROW = 1.3;                 // x the 3D ring's radius: the sprite covers the thin 3D ring
@@ -66,17 +68,28 @@ function wispArt(h, q, k) {
 }
 
 export function createHalos(demo) {
-  const { engine, store } = demo;
+  const { engine, events } = demo;
+  const params = demo.params ?? new URLSearchParams();
+  const reduced = params.get('rm') === '1';
+  // (integrate7) reduced motion: the 3D halo's stepped glow + glint stop too (rig.js reads HALO per displayed frame)
+  if (reduced) HALO.twinkle = false;
   const gameui = demo.gameui, L = gameui?.layers;
   if (!L?.add) return null;
-  const params = demo.params ?? new URLSearchParams();
   if (params.get('halos') === '0') return null;
-  const reduced = params.get('rm') === '1';
   const cam = engine.camera;
   const rigInfo = new WeakMap();      // rig -> { bone, shared, verts [4 vertex indices] } | null
   const state = new Map();            // handle -> { on, c (world centre), r, x, y, rx, ry, q, offAt, top }
   const info = { drawn: 0, snuffs: 0, list: [] };
   const v = new THREE.Vector3();
+  // (integrate7) the snuff only on a REAL spend: 'ghost:spent' {seat | you, t} (seatcast.js / player.js) marks that
+  // figure; the draw stamps it on the UI clock (spentAt) and snuffs a halo that went off within SPEND_WIN s of it. A halo
+  // that goes because the figure is un-ghosted (key 5, a revive) or hidden just vanishes.
+  const SPEND_WIN = 1.0, pendingSpent = new Set();
+  const onSpent = (e) => {
+    const h = e?.you ? demo.player?.handle : demo.passB?.seats?.handleOf?.(e?.seat);
+    if (h) pendingSpent.add(h);
+  };
+  const offSpent = events?.on?.('ghost:spent', onSpent);
 
   function haloOf(rig) {
     if (rigInfo.has(rig)) return rigInfo.get(rig);
@@ -133,12 +146,14 @@ export function createHalos(demo) {
       if (!hi) { if (s) state.delete(h); continue; }
       const vis = visibleH(h);
       const on = vis && shown(rig, hi);
-      if (!s) { s = { on: false, offAt: null }; state.set(h, s); }
+      if (!s) { s = { on: false, offAt: null, spentAt: null, wentOff: null }; state.set(h, s); }
+      if (pendingSpent.has(h)) { pendingSpent.delete(h); s.spentAt = t; }
+      if (s.spentAt != null && t - s.spentAt > SPEND_WIN && (on || s.wentOff == null)) s.spentAt = null;
       if (on) {
         const { c, r } = ringNow(rig, hi);
         const rx = Math.max(MIN_RX * q, Math.round((r * GROW / tw) * kk)), ry = Math.max(3 * q, Math.round(rx * Math.max(0.36, sp * 1.05)));
         const p = atW(c);
-        Object.assign(s, { on: true, offAt: null, c, r, x: Math.round(p.x), y: Math.round(p.y), rx, ry, q, kk,
+        Object.assign(s, { on: true, offAt: null, wentOff: null, c, r, x: Math.round(p.x), y: Math.round(p.y), rx, ry, q, kk,
           top: c.y + ((ry + 3 * q + 2) / kk) * tw / cp });
         const g = reduced ? 1 : [0, 1, 2, 1][frameAt(t, 3, 4)];
         const im = haloArt(rx, ry, q, g);
@@ -152,8 +167,13 @@ export function createHalos(demo) {
         info.drawn++;
         info.list.push({ id: h.id, x: s.x, y: s.y, rx, ry, hd: !!HD });
       } else {
-        // the SNUFF: it was on, the figure is still there -> dims, breaks, wisps away where it was
-        if (s.on && vis) { s.offAt = t; info.snuffs++; }
+        // the SNUFF: it was on, the figure is still there AND its ghost vote was just spent ('ghost:spent' within
+        // SPEND_WIN s, before or after the 3D halo went) -> dims, breaks, wisps away where it was. Otherwise it just goes.
+        if (s.on) s.wentOff = vis ? t : null;
+        if (s.wentOff != null && s.offAt == null) {
+          if (s.spentAt != null && Math.abs(s.spentAt - s.wentOff) <= SPEND_WIN) { s.offAt = s.wentOff; s.wentOff = null; s.spentAt = null; info.snuffs++; }
+          else if (t - s.wentOff > SPEND_WIN) s.wentOff = null;
+        }
         s.on = false;
         if (s.offAt != null && vis && s.rx) {
           const k = reduced ? 99 : gk(t - s.offAt);
@@ -174,6 +194,7 @@ export function createHalos(demo) {
       }
     }
     for (const h of [...state.keys()]) if (!seen.has(h)) state.delete(h);
+    pendingSpent.clear();   // (a spend on a figure not drawn this frame: nothing to snuff)
   };
   L.add(draw, 19);
 
@@ -186,7 +207,7 @@ export function createHalos(demo) {
     /** the shown sprites' boxes (L.world texels, last frame): keep-outs for the names in the vote ring */
     boxes: () => [...state.values()].filter((s) => s.on).map((s) => ({ x0: Math.floor((s.x - s.rx - 3 * s.q) / s.kk), x1: Math.ceil((s.x + s.rx + 3 * s.q) / s.kk), y0: Math.floor((s.y - s.ry - 3 * s.q) / s.kk), y1: Math.ceil((s.y + s.ry + 3 * s.q) / s.kk) })),
     update() { /* drawn by the UI layer pass */ },
-    dispose() { L.remove?.(draw); },
+    dispose() { L.remove?.(draw); offSpent?.(); },
   };
 }
 

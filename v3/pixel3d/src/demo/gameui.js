@@ -38,7 +38,7 @@ import { registerGroupFonts } from '../ui/fonts.js';
 import { LABEL as HUD_LABEL } from '../ui/hud/font.js';
 // UI density D=2 (docs/UI.md §2.10, docs/DEMO.md §4.7 "Density"): the whole screen tier on L.hd.screen in one logical
 // coordinate system, labels / person pins on L.hd.world, place pins on the HD depth tier; ?uidensity=1 = the 1x A/B
-import { toolButtonHD, ANCHORS_HD, pinWithIconHD, swatchHD, gloveHD } from '../ui/hd/art.js';
+import { toolButtonHD, ANCHORS_HD, pinWithIconHD, swatchHD, gloveHD, pinGlyphHD } from '../ui/hd/art.js';   // (OH) + pinGlyphHD
 // (wave 2, docs/UI-HD-WAVE2.md) hud / events / emotes / panels at D=2
 import { prepareWave2HD, worldLayerHD, drawExecutionFxHD } from '../ui/hd/wave2.js';
 import { POP_HD, epx, shadeGrid } from '../ui/hd/emotes.js';
@@ -67,6 +67,7 @@ import { formatClock } from './api.js';
 import { sealVoteAt, VOTE_PER } from './sealvote.js';
 import * as AB from './actionbar.js';
 import { createNotebook } from './notebook.js';
+import { createOverhead } from './overhead.js';   // (OH) one overhead stack per character (docs/DEMO.md §4.7 "Overhead stack")
 
 // the library's DOM skins (docs/UI.md §5; literal URLs: tools/demo-bundle.sh checks they ship)
 const UI_CSS = () => [new URL('../../out/ui/panels.css', import.meta.url).href, new URL('../../out/ui/notebook.css', import.meta.url).href];
@@ -221,10 +222,14 @@ export async function createGameUI(demo) {
   const mkMember = () => ({ id: '', name: '', pos: new THREE.Vector3(), height: 1.3, top: 1.3, face: 0, you: false, ghost: false, slot: -1, clip: 'idle', handle: null, lift: 0,
     head() { return this.pos.clone().setY(this.pos.y + this.top + 0.1 + this.lift); }, feet() { return this.pos.clone(); } });
   /** metres a ghost's label rises over the halo: spec.ghost.halo.lift (+ its hover) or ~0.3, + 0.1 (0 when not a ghost) */
-  const haloLift = (h, ghost) => {
-    if (!ghost) return 0;
+  // (vote-fix6) + the bigger halo SPRITE (halos.js): the label's head point stands over the sprite's top + its glow
+  // (last frame's), whatever the character (Chonk's own halo has no spec.ghost.halo.lift)
+  const haloLift = (h, ghost, pos = null, top = 0) => {
+    const ty = pos ? demo.passB?.halos?.topY?.(h) : null;
+    const spriteLift = ty != null ? ty + 0.04 - (pos.y + top + 0.1) : 0;
+    if (!ghost) return Math.max(0, spriteLift);
     const g = h?.spec?.ghost, hl = g?.halo?.lift;
-    return (hl != null ? hl + (g.hover ?? 0) : 0.3) + 0.18;   // (+0.1 still touched the halo on the walk's bob)
+    return Math.max(spriteLift, (hl != null ? hl + (g.hover ?? 0) : 0.3) + 0.18);   // (+0.1 still touched the halo on the walk's bob)
   };
   const you = Object.assign(mkMember(), { you: true });
   const npcMembers = [];
@@ -238,7 +243,7 @@ export async function createGameUI(demo) {
       you.top = Math.min(VISUAL_TOP[h.id] ?? you.height, you.height);
       you.pos.set(P.position.x, room ? room.floorY ?? 0 : groundY(P.position.x, P.position.z), P.position.z);
       you.face = P.facing; you.clip = h.ch?.state?.clip ?? 'idle'; you.ghost = !!P.ghost;
-      you.lift = haloLift(h, you.ghost || you.clip === 'ghost');
+      you.lift = haloLift(h, you.ghost || you.clip === 'ghost', you.pos, you.top);
       members.push(you);
     }
     const list = demo.npcs?.members;
@@ -252,7 +257,7 @@ export async function createGameUI(demo) {
       m.top = Math.min(VISUAL_TOP[n.id] ?? m.height, m.height);
       if (n.scale && n.scale !== 1) { m.height *= n.scale; m.top *= n.scale; }     // (B) the vote staging's cast scale
       m.pos.set(n.spot.x, groundY(n.spot.x, n.spot.z), n.spot.z); m.face = n.face; m.clip = n.handle.ch?.state?.clip ?? 'idle';
-      m.lift = haloLift(n.handle, !!m.clip?.startsWith?.('ghost')) * (n.scale || 1);
+      m.lift = Math.max(haloLift(n.handle, !!m.clip?.startsWith?.('ghost')) * (n.scale || 1), haloLift(n.handle, false, m.pos, m.top));
       members.push(m);
     }
   };
@@ -910,6 +915,31 @@ export async function createGameUI(demo) {
   // test is in texels for both densities (HD: the same step x L.hd.k)
   const placedLabels = [];
   const byHead = [];
+  // (OH) ---- the overhead stacks (overhead.js): from the head up halo zone | name + talk glyph | chevron or your pins
+  // | pop | bubble, resolved across neighbours in screen space. Here: this frame's units (HD world px at D=2, texels on
+  // the 1x path), the visible area and the HUD keep-outs (logical px), the halo / seal / nominee boxes (units).
+  const OH = createOverhead(), ohPop = new Map();
+  const ohK = () => (hdOn() ? L.hd.k : 1);
+  const ohPins = (m) => { if (m.you) return 0; let n = 0; for (const p of pins) if (p.kind === 'person' && p.slot === m.slot && p.id === m.id) n++; return n; };
+  const ohMark = (m) => { const mt = m.slot >= 1000 ? demo.passB?.marks?.topOf?.(m.slot - 1000) : null; return mt == null ? null : mt * ohK(); };
+  const ohFrame = (LL, figs) => {
+    const HD = hdOn(), u = ohK(), d = dd();
+    let lo = { x: LL.MARGIN, y: LL.MARGIN };
+    if (HD) { const P = members[0]?.pos ?? RING_C, a = L.hd.at(P), s = L.hd.atScreen(P); lo = { x: a.x - s.x * 1, y: a.y - s.y }; }
+    const keep = [];
+    if (R.topRow) for (const [a, b] of R.topRow.spans) keep.push({ x: a, y: 0, w: b - a, h: R.topRow.y1 });
+    for (const r of [...Object.values(R.toolbar ?? {}), ...(R.bar ?? []), R.dock, R.dockBtn, R.tip, R.vote]) if (r) keep.push({ x: r.x, y: r.y, w: r.w, h: r.h });
+    for (const c of R.clients ?? []) for (const r of c.rects) keep.push(r);
+    for (const o of offscreen) keep.push({ x: o.at[0] - 22, y: o.at[1] - 22, w: 44, h: 44 });
+    const obstacles = [];
+    for (const b of demo.passB?.halos?.boxes?.() ?? []) {
+      const own = members.find((m) => { const p = LL.at(m.head()); return p.x >= b.x0 && p.x <= b.x1 && b.y1 >= p.y - 2 && b.y0 <= LL.at(m.pos).y; });
+      obstacles.push({ x0: b.x0 * u, y0: b.y0 * u, x1: b.x1 * u, y1: b.y1 * u, who: own ? keyOf(own) : null, kind: own ? 'halo' : 'mark' });
+    }
+    for (const b of figs) if (b.slot === -1) obstacles.push({ x0: b.x0 * u, y0: b.y0 * u, x1: b.x1 * u, y1: b.y1 * u, who: null, kind: 'mark' });
+    return { hd: HD, u, d, lu: d, lo, t: LL.t, keep, obstacles,
+      vis: { x0: (cover.left || 0) + 2, y0: (cover.top || 0) + 2, x1: W() - (cover.right || 0) - 2, y1: H() - 2 } };
+  };
   L.add((LL) => {
     const T = LL.tok, t = LL.t;
     placedLabels.length = 0;
@@ -931,6 +961,9 @@ export async function createGameUI(demo) {
     }
     // (vote-fix5) the nominee's ring + the stocks: no name over them either
     { const nb = ring ? demo.passB?.marks?.nomineeBox?.() : null; if (nb) figs.push({ slot: -1, ...nb }); }
+    // (vote-fix6) the ghost halo sprites (halos.js): no name over a halo either
+    if (ring) for (const b of demo.passB?.halos?.boxes?.() ?? []) figs.push({ slot: -1, ...b });
+    OH.begin(ohFrame(LL, figs)); ohPop.clear();   // (OH)
     for (const m of byHead) {
       m._shown = false;
       // whole character above the view: no label (the indicators' rule); labels near the top edge clamp inward
@@ -1019,11 +1052,21 @@ export async function createGameUI(demo) {
         if (dbg) (window.__labDbg ??= {})[seatOf] ={ f: [f.x, f.y], w: lwT, pick: pick ? pick.slice(0, 3) : null, miss: dbg };
         pick ??= cands[0];
         side = pick[0]; cxT = clampCx(pick[1]); lx0 = cxT - (lwT >> 1); top = pick[2]; steps = pick[3];
+      } else if (!ring && !staged()) {
+        // (OH) a TOWN name slides a little (it still spans its head) or steps up whole rows until its whole core (name +
+        // talk glyph + chevron / pins fan) clears the cores already placed (overhead.js labelSteps: hysteresis; the
+        // predicted row in the tier's units)
+        const HDp = hdOn(), kU = ohK(), dU = dd(), q0 = HDp ? L.hd.at(m.head()) : p;
+        const y0 = HDp ? Math.max(Math.round((LL.MARGIN + 2 + (m.you ? 8 : 0)) * kU), q0.y + (IA.LABEL_DY - slotA) * dU) - dU : top - 1;
+        const ls = OH.labelSteps(keyOf(m), { x0: HDp ? q0.x + Math.round((cxT - p.x) * kU) - Math.round((lwT * kU) / 2) : lx0, y0, w: Math.round(lwT * kU), h: 11 * dU, step: HDp ? 11 * dU : stepT },
+          { hx: q0.x, glyph: !!talk.get(keyOf(m))?.on, wisp: ghostly, chev: m.you, pins: ohPins(m) });
+        steps = ls.steps; top -= steps * stepT; cxT += ls.dx / kU; lx0 = cxT - (lwT >> 1);
       } else while (steps < maxSteps && hits()) { top -= stepT; steps++; }
       // in the staged court a name that still collides after the steps is left out (a narrow phone frame): unreadable
       // overprinted names were worse than a missing one (its vote mark, pops and talk glyph still show)
       if ((staged() || ringLab) && !m.you && hits()) {
         m._labelTop = Math.round(p.y + IA.LABEL_DY - slotT); m._stack = m._labelTop - 1; m._noLabel = true;
+        OH.core(keyOf(m), { hx: hdOn() ? L.hd.at(m.head()).x : p.x, top: Math.round(m._labelTop * ohK()), pins: ohPins(m), mark: ohMark(m) });   // (OH) no name: the stack starts there
         continue;
       }
       m._noLabel = false;
@@ -1045,6 +1088,11 @@ export async function createGameUI(demo) {
         if (m.you) fastBlit(L.hd.world, IH.youChevronHD(T), q.x - 4 * d, chevY);
         m._labelTop = Math.floor((m.you ? lb.top - 8 * d : lb.top) / k);
         m._stack = side ? Math.floor(p.y) - 2 : m._labelTop - 1;
+        { // (OH) the core as drawn: name (+ wisp, talk glyph), chevron (its bob reserved); the pins stand on it
+          const wi = ghostly ? ghostWispHD(T) : null, gi = tk?.on ? IH.talkGlyphHD(0, m.you ? 'self' : 'talk', T) : null, ci = m.you ? IH.youChevronHD(T) : null;
+          OH.core(keyOf(m), { label: lb, wisp: wi && { x: lb.x - 7 * d, y: lb.y + 2 * d, w: wi.w, h: wi.h }, glyph: gi && { x: lb.x + lb.w + d, y: lb.y, w: gi.w, h: gi.h },
+            chev: ci && { x: q.x - 4 * d, y: lb.top - 9 * d, w: ci.w, h: ci.h + d }, hx: q.x, top: side ? Math.round((Math.floor(p.y) - 1) * k) : lb.y, pins: ohPins(m), mark: ohMark(m) });
+        }
         continue;
       }
       const lab = ghostly
@@ -1060,36 +1108,52 @@ export async function createGameUI(demo) {
       if (m.you) fastBlit(LL.world, cached(`chev${T.gold}`, () => IA.youChevron(T)), p.x - 4, top - 8 - (reduced ? 0 : frameAt(t, 2, 2)));
       m._labelTop = top - (m.you ? 8 : 0);
       m._stack = side ? Math.floor(p.y) - 2 : m._labelTop - 1;
+      OH.core(keyOf(m), { label: { x: lx, y: ly, w: lab.im.w, h: lab.im.h }, glyph: tk?.on ? { x: lx + lab.im.w + 1, y: top - 1, w: 9, h: 9 } : null,   // (OH) the core as drawn
+        chev: m.you ? { x: p.x - 4, y: top - 9, w: 9, h: 7 } : null, hx: p.x, top: side ? Math.floor(p.y) - 1 : ly, pins: ohPins(m), mark: ohMark(m) });
     }
-    // speech bubbles (NPC talk lines), tail tip 1 px above the label. (B) Not while the vote court is staged: a chatter
-    // bubble from the nomination covered the back row's names (the talk glyph still shows who speaks)
-    const noBubbles = staged() || store.state.camera === 'vote';   // (and in the vote camera on the stones: stage A)
-    for (const m of members) {
-      const tk = talk.get(keyOf(m));
-      if (!tk?.line || !m._shown || noBubbles) continue;
+    // (OH) the transients, front to back (overhead.js place): each member's pop (emoji / emote / system: one per head,
+    // the newest) over its core, then its speech bubble on top; slid sideways or stacked higher off every other stack,
+    // the HUD and the view's edges. The bubble is drawn here, the pop in the pins / pops pass (z 30) at its slot.
+    // Speech bubbles (NPC talk lines): (B) not while the vote court is staged (a chatter bubble from the nomination
+    // covered the back row's names; the talk glyph still shows who speaks), nor in the vote camera on the stones
+    const noBubbles = staged() || store.state.camera === 'vote';
+    // every pop first (yours first, then front to back), then the bubbles: the chatter yields to the reactions
+    const ohOrder = [...byHead].sort((a, b) => Number(b.you) - Number(a.you));
+    for (const pass of [0, 1]) for (const m of ohOrder) {
+      if (!m._shown) continue;
+      const key = keyOf(m), D = dd(), HDp = hdOn();
+      if (pass === 0) for (let i = pops.length - 1; i >= 0; i--) {
+        const q = pops[i];
+        if (!(q.who === 'you' ? m.you : !m.you && q.who === m.slot)) continue;
+        const isE = q.kind === 'emoji', ps = isE ? EJ.emojiPopState(t, q.t0, { reduced }) : E.popState(t, q.t0, { reduced });
+        if (ps.f < 0) break;
+        const fr = (f) => { const im = isE ? EJ.emojiPopFrame(q.color, f, T) : E.popFrame(q.kind, f, T, q.color || 'gold'); return HDp ? im.hd : im; };
+        const A = HDp ? (isE ? EMOJI_POP_HD.anchor : POP_HD.anchor) : (isE ? EJ.EMOJI_POP.anchor : E.POP.anchor);
+        const rel = OH.popRel(`${D}|${HDp}|${isE}|${q.kind}|${q.color}`, (isE ? [0, 1, 2, 3] : [0, 1]).map(fr), A, D);
+        if (rel) { const s = OH.place(key, 'pop', rel); if (s) ohPop.set(q, s); }
+        break;
+      }
+      if (pass === 0) continue;
+      const tk = talk.get(key);
+      if (!tk?.line || noBubbles) continue;
       const env = bubbleEnv(t, tk.bubbleAt, tk.bubbleUntil);
       if (!env) continue;
-      const lines = cached(`lines${tk.line}`, () => IA.bubbleLines(tk.line)), sz = IA.bubbleSize(lines);
-      const x = LL.at(m.head()).x, bottom = m._stack - 1;
-      let left = x - Math.floor(sz.w / 2);
-      left = Math.max(LL.MARGIN + 2, Math.min(LL.world.w - LL.MARGIN - 2 - sz.w, left));
-      const tailX = Math.max(5, Math.min(sz.w - 5, x - left));
-      const topY = Math.max(LL.MARGIN + 1, bottom - sz.h - IA.BUBBLE_TAIL_H);   // near the top edge: kept in view
-      if (hdOn()) {
-        // (wave 1) the HD bubble (D=2 frame + body@2 text + a stepped HD tail), anchored at its TAIL TIP so it stays on
-        // the speaker at any k (at 1080p 'round' it is 4/3 taller: the stack converts back with / k)
-        const d = L.hd.d, k = L.hd.k, hk = (v) => Math.floor(v * k);
+      const lines = cached(`lines${tk.line}`, () => IA.bubbleLines(tk.line)), sz = IA.bubbleSize(lines), hw = Math.floor(sz.w / 2);
+      // the box ((w + 1) x (h + 3) art px with its tail + shadow), centred on the head; it slides only as far as its
+      // tail still reaches over the head
+      const S = OH.place(key, 'bubble', { x0: -hw * D, y0: -(sz.h + IA.BUBBLE_TAIL_H + 1) * D, x1: (sz.w + 1 - hw) * D, y1: 0 }, { slide: [Math.max(0, hw - 6) * D, Math.max(0, (hw - 6) >> 1) * D] });
+      if (!S) continue;
+      const tailX = Math.max(5, Math.min(sz.w - 5, Math.round((S.hx - S.x0) / D)));
+      if (HDp) {
+        // (wave 1) the HD bubble (D=2 frame + body@2 text + a stepped HD tail)
         let bi = cached(`bubhd${tk.line}${tailX}${env.pop}${T.bubble}`, () => IH.bubbleHD(lines, tailX, T, { pop: env.pop }));
-        const ax = hk(left + tailX), ay = hk(topY + sz.h + IA.BUBBLE_TAIL_H), bx = ax - tailX * d, by = ay - (sz.h + IA.BUBBLE_TAIL_H) * d;
-        if (env.dissolve > 0) bi = dissolve(bi.clone(), env.dissolve, bx & 3, by & 3);
-        fastBlit(L.hd.world, bi, bx, by);
-        m._stack = Math.floor(by / k) - 1;
+        if (env.dissolve > 0) bi = dissolve(bi.clone(), env.dissolve, S.x0 & 3, S.y0 & 3);
+        fastBlit(L.hd.world, bi, S.x0, S.y0);
         continue;
       }
       let im = env.pop ? IA.bubblePop(lines, tailX, T) : cached(`bub${tk.line}${tailX}${T.bubble}`, () => IA.bubble(lines, tailX, T));
-      if (env.dissolve > 0) im = dissolve(im.clone(), env.dissolve, left & 3, topY & 3);
-      fastBlit(LL.world, im, left, topY);
-      m._stack = topY - 1;
+      if (env.dissolve > 0) im = dissolve(im.clone(), env.dissolve, S.x0 & 3, S.y0 & 3);
+      fastBlit(LL.world, im, S.x0, S.y0);
     }
   }, 20);
   // the point emote (finger + trail + ping) and person pins: markers draw.js in its phases (trail z 15, main z 30)
@@ -1122,11 +1186,23 @@ export async function createGameUI(demo) {
       if (m.you || !m._shown) continue;
       const list = pins.filter((p) => p.kind === 'person' && p.slot === m.slot && p.id === m.id);
       if (!list.length) continue;
-      const icon = iconOf(you.id, you.name), cx = LL.at(m.head()).x, labelTop = m._stack + 1;
+      const st = OH.status(keyOf(m));   // (OH) the status row over the name (overhead.js core: units, the fan's bottom)
+      const icon = iconOf(you.id, you.name), cx = LL.at(m.head()).x, labelTop = st ? st.bottom : m._stack + 1;
       const hv = hover?.kind === 'pin' ? list.indexOf(hover.pin) : -1;
+      if (st?.compact) {
+        // (OH) a crowded name (overhead.js labelSteps): your pins as small pin glyphs at its left end; hit rects as below
+        const HDp = hdOn(), d = dd(), head = m.head(), q = HDp ? L.hd.at(head) : null, s0 = HDp ? L.hd.atScreen(head) : null;
+        list.filter((p) => p.removeAt == null).forEach((p, i) => {
+          const x = st.x - (i + 1) * st.step + d, y = st.y;
+          fastBlit(HDp ? L.hd.world : LL.world, HDp ? pinGlyphHD(p.color, LL.tok) : E.pinIconSmall(p.color, LL.tok), x, y);
+          const lx = HDp ? (x + s0.x - q.x) / d : x - LL.MARGIN, ly = HDp ? (y + s0.y - q.y) / d : y - LL.MARGIN;
+          personPinRects.push({ pin: p, x: Math.floor(lx) - 3, y: Math.floor(ly) - 3, w: 13, h: 15, hw: { x, y } });
+        });
+        continue;
+      }
       if (hdOn()) {
         // (density) HD pins on L.hd.world with YOUR 24-px portrait 1:1 in the socket (the clear "who pinned" icon)
-        const H = L.hd, k = H.k, d = H.d, head = m.head(), q = H.at(head), labelTopHD = Math.round(labelTop * k);
+        const H = L.hd, k = H.k, d = H.d, head = m.head(), q = H.at(head), labelTopHD = st ? st.bottom : Math.round(labelTop * k);   // (OH)
         const pi = pinIcon();
         drawPersonPinsHD(LL, { cx: q.x, labelTopHD, t, still: reduced, hover: hv,
           pins: list.map((p) => ({ color: p.color, icon: pi.icon, iconKey: pi.key, age: t - p.t0, removeAt: p.removeAt })) });
@@ -1152,35 +1228,19 @@ export async function createGameUI(demo) {
       });
       m._stack -= 28;
     }
-    // emote pops (stacked over the name / bubble / pins)
+    // (OH) emote / emoji pops at their overhead slots (overhead.js place, in the label pass: over the name, the pins,
+    // a seated voter's vote mark; in the vote ring off every other seat's name as before). (emoji) a reaction pop: the
+    // emoji emotes' bubble + glyph (burst, hold 2.7 s, dissolve); (wave 2) the HD pop (.hd) on L.hd.world
     for (let i = pops.length - 1; i >= 0; i--) {
-      // (emoji) a reaction pop: the emoji emotes' bubble + glyph (burst, hold 2.7 s, dissolve), same anchor rule
       const q = pops[i], isE = q.kind === 'emoji';
       const ps = isE ? EJ.emojiPopState(t, q.t0, { reduced }) : E.popState(t, q.t0, { reduced });
       if (ps.f < 0) { if (t > q.t0 + 1) pops.splice(i, 1); continue; }
-      const m = q.who === 'you' ? (you.id ? you : null) : npcOf(q.who);
-      if (!m || !m._shown) continue;
-      let top = m._stack ?? (LL.at(m.head()).y - 12);
-      // (B) a seated voter's vote mark (the hand / seal / snuffer over the name, votemarks.js) stays readable: the pop
-      // stands above it
-      if (m.slot >= 1000 && demo.passB?.marks?.topOf) { const mt = demo.passB.marks.topOf(m.slot - 1000); if (mt != null) top = Math.min(top, mt - 1); }
-      let x = LL.at(m.pos).x;
+      const s = ohPop.get(q);
+      if (!s) continue;
       const pf = isE ? EJ.emojiPopFrame(q.color, ps.f, LL.tok) : E.popFrame(q.kind, ps.f, LL.tok, q.color || 'gold');
       const A1 = isE ? EJ.EMOJI_POP.anchor : E.POP.anchor, AH = isE ? EMOJI_POP_HD.anchor : POP_HD.anchor;
-      // (critic-3 P3) in the vote camera's ring a pop never covers ANOTHER seat's name: it slides aside (its own
-      // width, either way), else it is skipped
-      let dxT = 0;
-      if (vcRing()) {
-        const pw = pf.w, ph = pf.h, py0 = top - 1 - A1.y;
-        const over = (dx) => placedLabels.some((r) => r.who !== m && x - A1.x + dx < r.x1 && x - A1.x + dx + pw > r.x0 && py0 < r.top + r.h && py0 + ph > r.top);
-        const ok = [0, pw, -pw].find((dx) => !over(dx));
-        if (ok === undefined) continue;
-        dxT = ok;
-      }
-      x += dxT;
-      // (wave 2) the HD pop (.hd after the prepare) on L.hd.world, anchored at the same scene point
-      if (hdOn() && pf.hd) fastBlit(L.hd.world, pf.hd, L.hd.at(m.pos).x + Math.round(dxT * L.hd.k) - AH.x, Math.round((top - 1 - ps.bob) * L.hd.k) - AH.y);
-      else fastBlit(LL.world, pf, x - A1.x, top - 1 - A1.y - ps.bob);
+      if (hdOn()) { if (pf.hd) fastBlit(L.hd.world, pf.hd, s.ax - AH.x, s.ay - AH.y - ps.bob * L.hd.d); }
+      else fastBlit(LL.world, pf, s.ax - A1.x, s.ay - A1.y - ps.bob);
     }
   };
   L.add((LL) => pointDraw(Object.assign(Object.create(LL), { phase: 'trail' })), 15);
@@ -2071,6 +2131,8 @@ export async function createGameUI(demo) {
           flying: !!tipFly, fly: lastFly, glowing: t >= bulbGlow && t < bulbGlow + GLOW_S, never: tipNever, neverSaved: tipNeverSaved, shownCount: tipShown, dismissed: [...tipDismissed] },
         events: { ...evInfo, captions: [...evInfo.captions], caption: caption?.text ?? null, veil: !!veil, dawn: !!dawn, vote: R.vote ? { ...R.vote } : null, exec: !!exec, ghost: !!ghostFx, poof: !!poof },
         offscreen: offscreen.map((o) => ({ ...o })),
+        /** (OH) the overhead stacks as laid out last frame (overhead.js info: rects in logical px, clashes, dropped) */
+        overhead: OH.info(),
         /** your person pins' hit rects (logical screen px, generous) as drawn last frame */
         personPins: personPinRects.map((r) => ({ x: r.x, y: r.y, w: r.w, h: r.h, color: r.pin.color, slot: r.pin.slot, removing: r.pin.removeAt != null })),
         chips: R.chips ?? null,
