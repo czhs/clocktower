@@ -116,6 +116,24 @@ change; every UI-owned number is flat or a little lower. Typecheck (`pnpm -r run
 the touched areas (8 files / 149 tests: `ui.v3atlas`, `ui.v3skin`, `social.{logic,radial,controller}`,
 `hud.{logic,rate}`, `chat.logic`) pass.
 
+### Bedtime window (runner validation run `new1-bed`, 20:11 UTC, new1 build)
+
+| | walk | bedtime (walking home) |
+|---|---|---|
+| fps / frame p95 ms | 60 / 16.8 | 59.9 / 16.8 |
+| DOM mutations/s non-transform / DOM UI only | 11.8 / 1.7 | **36.2 / 26.3** |
+| layouts/s / ms per s | 1.7 / 0.5 | 7.5 / 2.5 |
+| style ms per s | 10.4 | 13.2 |
+
+Bedtime is the one state where the DOM UI churns: `10.1/s text span.ct-countdown` (two `Countdown`s: the phase
+pill and the walk-home hint, `ui/hud/shared.tsx`), the clock chip (`ui/clock/**`: `4.1/s d path.ctc-wedge`,
+`4/s x2 + 4.1/s y2 line.ctc-hand`, `1/s` time text + title), `1.9/s` urgent compass text. Still no long tasks,
+still 60 fps, layout 2.5 ms/s, so it costs little; but 10/s from two countdowns that change once a second means
+each re-render (4/s from `useNow(…, 250)`) writes text. **Not fixed for v3.0** (found at 13:11, after the
+measurement queue had cost 40 min): the candidate fix is to render the countdown as ONE string and re-render on
+the next whole second instead of every 250 ms (`useNow` aligned to `endsAt`), and to step the clock chip's
+wedge / hand only when they move ≥ 0.5 px. Behaviour identical; measure with `--only bedtime`.
+
 ## What was checked and left alone (already right)
 
 - HUD (`ui/hud/index.tsx`) re-renders on `gameView` changes only; `MoveHint` derives `where` from the per-frame
@@ -138,11 +156,17 @@ the touched areas (8 files / 149 tests: `ui.v3atlas`, `ui.v3skin`, `social.{logi
 | `v3WalkStyleRecalcsPerFrame` | 1.2 | 1.0 | `walk.styleRecalcsPerFrame` |
 | `v3WalkLayoutsPerSec` | 5 /s | 1.9 | `walk.layoutsPerSec` |
 | `v3UiScriptMsPerSec` | 10 ms/s | ≈ 2.7 | `walk.profileByFile`, sum of the UI-chunk functions (`--profile yes`) |
+| `v3UiBedtimeDomMutPerSec` | 30 /s now, 10 after the countdown fix | 26.3 | `bedtime.domMutationsUiPerSec` |
 
 The page-wide `v3WalkDomMutPerSec ≤ 5` (D2, non-transform) is `walk.domMutationsNoTransformPerSec` here: 12-13/s
 at 0cfd0b8, of which ≈ 10 are the overlay's (see v3-perf-client).
 
-## Follow-ups (other owners)
+## Follow-ups
+
+- **Countdown + clock chip churn at bedtime** (`ui/hud/shared.tsx` this front, `ui/clock/**`): 26/s DOM UI writes,
+  see "Bedtime window" (v3.1).
+- **Preload the panel skin** (`ui/common/v3atlas.ts`): `panels.css` (27 KiB br) is only requested after the
+  5 atlas JSONs resolve; a `rel=preload` when the chunk loads would apply the v3 panels one round trip sooner.
 
 - **Overlay non-transform writes** (`game3d/overlay/**`, v3-perf-client): 9-11/s label `style` writes that are
   not transforms (visibility / opacity) + callout writes keep the page at 12/s against the D2 budget of 5/s.
