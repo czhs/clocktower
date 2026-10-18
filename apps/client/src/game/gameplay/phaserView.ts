@@ -21,6 +21,7 @@
 //                 if (o !== null && o !== undefined && !this.amStoryteller()) return o;
 import type * as Phaser from 'phaser';
 import { reducedMotion } from '../fx/motion';
+import { fillCircleFan, fillEllipseFan } from '../render/fan';
 import type { RoomConnection } from '../../net/room';
 import { createGameplayCore, type DrivenPose, type GameplayCoreCtx, type GameplayFrame } from './core';
 
@@ -200,19 +201,19 @@ export function createGameplayLayer(scene: Phaser.Scene, ctx: GameplayCtx): Game
       if (mine) {
         const k = (Math.sin(t * 4) + 1) / 2;
         ground.fillStyle(GOLD, 0.18 + 0.2 * k);
-        ground.fillEllipse(x, y, 22 + r(4 * k), 12 + r(2 * k));
+        fillEllipseFan(ground, x, y, 22 + r(4 * k), 12 + r(2 * k));
       }
       ground.fillStyle(SOOT, 0.55);
-      ground.fillEllipse(x, y + 1, 16, 9); // contact shadow
+      fillEllipseFan(ground, x, y + 1, 16, 9); // contact shadow
       ground.fillStyle(dead ? MIST : STONE, dead ? 0.75 : 1);
-      ground.fillEllipse(x, y, 14, 8);
+      fillEllipseFan(ground, x, y, 14, 8);
       ground.lineStyle(1, mine ? GOLD : dead ? SPIRIT : CHALK, 1);
       ground.strokeEllipse(x, y, 14, 8);
       if (dead) {
         // pale wisp rising from the stone
         const sway = Math.round(Math.sin(t * 2 + s.seat) * 1);
         ground.fillStyle(SPIRIT, 0.65);
-        ground.fillEllipse(x + sway, y - 7, 6, 7);
+        fillEllipseFan(ground, x + sway, y - 7, 6, 7);
         ground.fillTriangle(x - 2 + sway, y - 9, x + 2 + sway, y - 9, x + 2 * sway, y - 15);
       }
       seatLabel(s.seat, x, y, dead ? '#211f2c' : mine ? '#d5b56a' : '#e4d8ba');
@@ -250,7 +251,7 @@ export function createGameplayLayer(scene: Phaser.Scene, ctx: GameplayCtx): Game
         ground.fillStyle(GOLD, 1);
         ground.fillTriangle(r(ex + ux * 6), r(ey + uy * 6), r(ex - uy * 4), r(ey + ux * 4), r(ex + uy * 4), r(ey - ux * 4));
         ground.fillStyle(INK, 1);
-        ground.fillCircle(r(centre.x), r(centre.y), 3);
+        fillCircleFan(ground, r(centre.x), r(centre.y), 3);
         const pulse = (Math.sin(t * 6) + 1) / 2;
         ground.lineStyle(2, GOLD, 0.6 + 0.4 * pulse);
         ground.strokeEllipse(r(voter.x), r(voter.y), 22 + r(2 * pulse), 12 + r(pulse));

@@ -56,6 +56,7 @@ import { createSpeechLayer, type SpeechLayer } from './social/bubbles';
 import { noteServerTime, serverNow } from '../net/serverTime';
 import { LOW_TIER_AMBIENCE, TierState } from './fx/tier';
 import { reducedMotion } from './fx/motion';
+import { fillSliceFan } from './render/fan';
 import { createTalkingLayer, type TalkingLayer } from './fx/talking';
 import { createBoardTokenLayer, type BoardTokenLayer } from './gameplay/boardTokens';
 import { createHouseNameLayer, houseOwners, type HouseLabelInput, type HouseNameLayer } from './gameplay/houseNames';
@@ -1760,8 +1761,8 @@ export class TownScene extends Phaser.Scene {
       const col = c.stage === 'nominations' ? 0xc0413b : c.stage === 'bedtime' ? 0x6f7fd0 : 0xd5b56a;
       if (frac > 0.002) {
         g.fillStyle(col, c.paused ? 0.28 : 0.5);
-        g.slice(f.x, f.y, f.r * 0.86, top, end, false);
-        g.fillPath();
+        // = g.slice(…) + g.fillPath() pixel for pixel, without the per-render arc tessellation + earcut
+        fillSliceFan(g, f.x, f.y, f.r * 0.86, top, end);
       }
       hand(end, f.r * 0.86, 1, 0x120e16);
       if (c.paused) {

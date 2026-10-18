@@ -9,7 +9,8 @@
 //           so phones (zoom ~1) keep full resolution.
 //
 // Automatic ('auto', the default): low on coarse-pointer (touch) devices and on <= 4 logical cores
-// from the start, and on any device once the frame-time p95 stays above 33 ms over a 5 s window
+// from the start, at boot when the GL renderer is a software rasteriser (TownGame.ts, before the
+// first scene frame: no 10 s of slow frames + a resize stall later), and on any device once the frame-time p95 stays above 33 ms over a 5 s window
 // (never steps back up within a session — no oscillating). Override: the Settings "Graphics
 // quality" radio writes localStorage 'ct.fxQuality' ('low' = low, 'medium' / 'high' = normal, never
 // auto-drops; 'auto' = automatic), re-read about once a second.
@@ -97,6 +98,9 @@ export class SlowFrameWatch {
   }
 }
 
+/** GL renderer strings of CPU rasterisers (same family as game3d/select.ts SOFTWARE_GL, plus Windows' WARP). */
+export const SOFTWARE_RENDERER = /SwiftShader|llvmpipe|softpipe|Software|Basic Render/i;
+
 export function p95(v: readonly number[]): number {
   if (!v.length) return 0;
   const s = [...v].sort((a, b) => a - b);
@@ -167,6 +171,17 @@ export class TierState {
       this.auto = false;
       this.set('low');
     }
+  }
+  /**
+   * The renderer is known to be slow before any frame was measured (software GL): drop to the low
+   * tier now instead of after the 4 s warm-up + 5 s slow-frame window. Only on 'auto' (an explicit
+   * preference wins) and only downwards; returns whether it dropped.
+   */
+  forceLowIfAuto(): boolean {
+    if (!this.auto || this.tier !== 'normal') return false;
+    this.auto = false;
+    this.set('low');
+    return true;
   }
   subscribe(fn: (t: RenderTier) => void): () => void {
     this.subs.add(fn);

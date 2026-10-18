@@ -18,7 +18,8 @@
 // player teleported to an open outdoor walk spot of the lobby's layout. `--clock yes` (default) runs a stage
 // timer on the clock tower (TownScene.drawTownClock wedge = the v2.4 per-frame earcut leftover).
 // Windows (each --win s): desktop-idle, desktop-walk, mobile-walk (390x844, 4x CPU), gather (seated in the nomination
-// circle, 1440x900), night-home; `load` =
+// circle, 1440x900), night-home, phone3-portrait / phone3-landscape (390x844 / 844x390 at deviceScaleFactor 3, 4x
+// CPU, touch emulation), desktop-720 (1280x720 walk); `load` =
 // Slow-4G phone cold load of / and of a lobby of the same world (bytes by type, auth screen / town idle ms).
 // JSON keys desktopWalk / mobileWalk / loadAuth / loadTown match scripts/perf/budgets.mjs --client / --load.
 //
@@ -194,7 +195,12 @@ function probes() {
   else document.addEventListener('DOMContentLoaded', start);
   try {
     new PerformanceObserver((l) => {
-      if (P.on) for (const e of l.getEntries()) P.longTasks.push(e.duration);
+      for (const e of l.getEntries()) {
+        if (P.on) P.longTasks.push(e.duration);
+        // every long task since navigation, with its start (ms): the join / tier-drop stall lands before any window
+        (window as unknown as { __cpAllLong?: [number, number][] }).__cpAllLong ??= [];
+        (window as unknown as { __cpAllLong: [number, number][] }).__cpAllLong.push([Math.round(e.startTime), Math.round(e.duration)]);
+      }
     }).observe({ type: 'longtask', buffered: false });
   } catch {
     /* no longtask API */
@@ -668,6 +674,12 @@ async function main() {
     log('canvas', JSON.stringify(cv));
     if (!cv || !/SwiftShader|llvmpipe|Software/i.test(cv.renderer)) throw new Error(`refusing to measure: GL renderer is not software (${cv?.renderer})`);
     await sleep(3000);
+    // the longest main-thread task between the lobby page load and the first window (join + tier settle)
+    results.joinLongTasks = await page.evaluate(() => {
+      const a = (window as unknown as { __cpAllLong?: [number, number][] }).__cpAllLong ?? [];
+      return { n: a.length, maxMs: Math.max(0, ...a.map((x) => x[1])), totalMs: a.reduce((s, x) => s + x[1], 0), top: [...a].sort((x, y) => y[1] - x[1]).slice(0, 5) };
+    });
+    log('joinLongTasks', JSON.stringify(results.joinLongTasks));
     if (want('desktop-idle')) results.desktopIdle = await measure('desktop-idle', page, cdp);
     if (want('desktop-walk')) results.desktopWalk = await walkWindow('desktop-walk', page, cdp, PROFILE);
     results.gpuTextures = await gpuTextures(page);
@@ -678,6 +690,31 @@ async function main() {
       await sleep(1500);
       results.mobileWalk = await walkWindow('mobile-walk', page, cdp, PROFILE);
       await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+      await page.setViewportSize({ width: 1440, height: 900 });
+    }
+    // ---- v3 perf (classic): phone stand-ins at deviceScaleFactor 3 (portrait + landscape, 4x CPU, touch
+    // emulation; the tier was chosen at mount, so this is the desktop boot's tier unless --quality says so) and a
+    // 1280x720 laptop window, all walking among the 14 bots.
+    const phone = async (name: string, width: number, height: number) => {
+      await cdp.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 3, mobile: true });
+      await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+      await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
+      await sleep(2000);
+      try {
+        return await walkWindow(name, page, cdp, PROFILE);
+      } finally {
+        await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+        await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: false });
+        await cdp.send('Emulation.clearDeviceMetricsOverride');
+        await page.setViewportSize({ width: 1440, height: 900 });
+      }
+    };
+    if (want('phone3-portrait')) results.phone3Portrait = await phone('phone3-portrait', 390, 844);
+    if (want('phone3-landscape')) results.phone3Landscape = await phone('phone3-landscape', 844, 390);
+    if (want('desktop-720')) {
+      await page.setViewportSize({ width: 1280, height: 720 });
+      await sleep(1500);
+      results.desktop720 = await walkWindow('desktop-720', page, cdp, PROFILE);
       await page.setViewportSize({ width: 1440, height: 900 });
     }
     // ---- gathered nomination circle: 15 seat markers drawn by gameplay/phaserView.ts every frame (fillEllipse /
@@ -698,6 +735,7 @@ async function main() {
       await sleep(4000);
       results.nightHome = await measure('night-home', page, cdp);
     }
+    results.allLongTasks = await page.evaluate(() => (window as unknown as { __cpAllLong?: [number, number][] }).__cpAllLong ?? []);
     results.pageErrors = errors.slice(0, 10);
     if (want('load')) results.loadTown = await loadTiming(browser, base, true, 'town');
     await ctx.close();

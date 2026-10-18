@@ -1,7 +1,7 @@
 // world-art: town render tier (apps/client/src/game/fx/tier.ts) — tier choice, slow-frame watch,
 // frame gate.
 import { describe, expect, it } from 'vitest';
-import { FrameGate, initialTier, LOW_RENDER_SCALE, p95, renderScaleFor, SlowFrameWatch, TierState } from '../src/game/fx/tier';
+import { FrameGate, initialTier, LOW_RENDER_SCALE, p95, renderScaleFor, SlowFrameWatch, SOFTWARE_RENDERER, TierState } from '../src/game/fx/tier';
 
 describe('initialTier', () => {
   const desk = { touch: false, cores: 12 };
@@ -104,6 +104,36 @@ describe('TierState', () => {
     const s = new TierState(0, { touch: false, cores: 12 }, false);
     for (let t = 0; t < 12000; t += 160) s.sample(160, t);
     expect(s.tier).toBe('normal');
+  });
+  it('forceLowIfAuto: software GL drops an auto desktop to low at boot, once, and never auto-steps back', () => {
+    const s = new TierState(0, { touch: false, cores: 12 });
+    const seen: string[] = [];
+    s.subscribe((t) => seen.push(t));
+    expect(s.forceLowIfAuto()).toBe(true);
+    expect(s.tier).toBe('low');
+    expect(s.auto).toBe(false);
+    expect(s.forceLowIfAuto()).toBe(false);
+    for (let t = 0; t < 12000; t += 16) s.sample(16, t);
+    expect(seen).toEqual(['low']);
+  });
+  it('forceLowIfAuto: no effect when measuring is off (explicit / test cap)', () => {
+    const s = new TierState(0, { touch: false, cores: 12 }, false);
+    expect(s.forceLowIfAuto()).toBe(false);
+    expect(s.tier).toBe('normal');
+  });
+});
+
+describe('SOFTWARE_RENDERER', () => {
+  it('matches CPU rasterisers, not real GPUs', () => {
+    for (const r of [
+      'ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)',
+      'llvmpipe (LLVM 15.0.7, 256 bits)',
+      'ANGLE (Microsoft, Microsoft Basic Render Driver Direct3D11 vs_5_0 ps_5_0, D3D11)',
+      'Google SwiftShader',
+    ])
+      expect(SOFTWARE_RENDERER.test(r)).toBe(true);
+    for (const r of ['ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 (0x00002504) Direct3D11 vs_5_0 ps_5_0, D3D11)', 'Apple GPU', 'Adreno (TM) 640', 'Mali-G78'])
+      expect(SOFTWARE_RENDERER.test(r)).toBe(false);
   });
 });
 

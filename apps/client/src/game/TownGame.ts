@@ -1,6 +1,6 @@
 // Phaser bootstrap (lazy-loaded by GameScreen so the lobby UI does not wait for Phaser).
 import * as Phaser from 'phaser';
-import { FrameGate, renderScaleFor, TierState } from './fx/tier';
+import { FrameGate, renderScaleFor, SOFTWARE_RENDERER, TierState } from './fx/tier';
 import { outdoorZoom, TownScene, type TownBridge } from './TownScene';
 
 export function createTownGame(parent: HTMLElement, bridge: TownBridge): { destroy(): void } {
@@ -33,6 +33,11 @@ export function createTownGame(parent: HTMLElement, bridge: TownBridge): { destr
     // We size the canvas ourselves (ResizeObserver) — fills the container at any size.
     scale: { mode: Phaser.Scale.NONE },
     render: { antialias: false, powerPreference: 'high-performance' },
+    // Nothing in the town uses Phaser's built-in pre/post FX. Left enabled, the PipelineManager
+    // allocates 3 square render targets per 32 px up to the canvas's shorter side + 4 full-screen
+    // ones at boot (~90 MiB at a 900 px tall canvas, never shrunk) and re-allocates on resize.
+    disablePreFX: true,
+    disablePostFX: true,
     // dev sandbox only: keep ticking in a hidden pane (RAF is paused there)
     ...(forceTimeout ? { fps: { forceSetTimeOut: true, target: 30 } } : fpsLimit > 0 ? { fps: { limit: fpsLimit } } : {}),
     scene: [new TownScene(bridge, tier)],
@@ -57,7 +62,13 @@ export function createTownGame(parent: HTMLElement, bridge: TownBridge): { destr
       game.scale.refresh(); // pointer mapping (display scale) from the styled size
     }
   };
-  game.events.once(Phaser.Core.Events.READY, fit);
+  game.events.once(Phaser.Core.Events.READY, () => {
+    // Software GL (SwiftShader / llvmpipe / WARP): go low before the scene's first frame. The
+    // slow-frame watch would get there ~10 s later, and the late canvas resize then stalls the main
+    // thread for ~1 s re-creating every render target. Reads Phaser's own context (no extra one).
+    if (isSoftwareGl(game)) tier.forceLowIfAuto(); // the subscription runs fit()
+    fit();
+  });
   const ro = new ResizeObserver(fit);
   ro.observe(parent);
   const offTier = tier.subscribe(fit);
@@ -68,6 +79,18 @@ export function createTownGame(parent: HTMLElement, bridge: TownBridge): { destr
       game.destroy(true);
     },
   };
+}
+
+function isSoftwareGl(game: Phaser.Game): boolean {
+  try {
+    const gl = (game.renderer as { gl?: WebGLRenderingContext } | null)?.gl;
+    if (!gl) return false;
+    const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+    const r = dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
+    return SOFTWARE_RENDERER.test(String(r ?? ''));
+  } catch {
+    return false;
+  }
 }
 
 /**
