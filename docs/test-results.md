@@ -2,6 +2,37 @@
 
 All commands run on **the host** via `scripts/remote.sh` unless stated otherwise.
 
+## 2026-10-18 — v3.1 release gate (`v31-release`, branch `v3-game`, the host, sandbox `v31-release`)
+
+Tree = v3.0 + `78caa62` (cherry-picked `docs/perf-v3/client.md`) + merges of `v31-fixes` (`8b7e642`), `v31-stage`
+(`f90a701`) and `v31-cpu` (`3cd20d5`, both commits) + "v3.1: QA fixes" (vote frame vs the real HUD, house names hidden
+in the vote view, softer talking rim). Merge conflicts: `docs/v3/INTEGRATION.md` §9.2 only (both sides kept).
+
+| Command (`CT_AGENT=v31-release scripts/remote.sh …`, builds / tests under `flock -s ~/clocktower/v3-heavy.lock`) | Result |
+|---|---|
+| `pnpm -r run typecheck`; `pnpm exec tsc -p tests/tsconfig.json --noEmit` (right after the merges) | exit 0 (7/7), exit 0 |
+| `pnpm build` + `bundle-report.mjs` + `budgets.mjs --bundle` (right after the merges) | exit 0; all measured ok; `town3d` 281.8 KiB br |
+| QA-fix iteration: `pnpm --filter @ct/client run typecheck` + `pnpm vitest run …voteCam …world.hudKeep …avatars.parts …overlay` | exit 0; 8 files / 93 tests, then voteCam + hudKeep + world.stage 3 files / 27 tests |
+| vote-frame probe: a scratch copy of `v3-vote.spec.ts` (host sandbox only, not in git) at 1920×1080 / 1280×800 / 1440×900, `CT_GL=gpu`, port 3450, both locks, 4 iterations | reproduced the QA finding (frame fit only fixed corner sizes); first hudKeep version pushed the circle off the left edge (toast class names missed, hint pill counted) → toasts ignored (`cth-toast*`), hint pill dropped, ring edge kept in frame; final stills: every seat clear of the HUD at all three sizes |
+| **gate** `pnpm -r run typecheck` | exit 0 (7/7) |
+| **gate** `pnpm exec tsc -p tests/tsconfig.json --noEmit` | exit 0 |
+| **gate** `pnpm build` | exit 0 |
+| **gate** `node scripts/perf/bundle-report.mjs --json /tmp/v31-bundle.json` + `node scripts/perf/budgets.mjs --bundle /tmp/v31-bundle.json --out tests/perf/results/2026-10-18-v3.1.json` | **all measured ok**: entry JS 44.1/45, entry CSS 12.3/15, LobbyRoute 68.5/72, TownGame 281.4/300, **town3d 282.7/300 (new key)**, atlases 578.5/700 KiB |
+| **gate** `pnpm test` (full, after the build) | **exit 0: 175 files pass, 1 skipped; 2016 tests pass, 5 skipped** (133.1 s) |
+| **gate** v3 e2e, one spec at a time: `E2E_V3=1 E2E_PORT=3450 CT_GL=gpu CT_E2E_NO_BUILD=1 flock -s v3-heavy.lock flock browser.lock nice -n 19 timeout 1500 pnpm test:e2e --project=v3 <spec>` (host GPU) | **all pass on the first run**: `v3-paths` 4/4 (29.5 s), `v3-boot` 1/1 (12.3 s), `v3-vote` 1/1 (28.3 s), `v3-doors` 1/1 (22.2 s), `v3-social` 1/1 (10.2 s), `v3-mixed` 1/1 (13.1 s), `v3-life` 1/1 (1.1 m), `v3-fallback` 4/4 (35.7 s), `v3-pageerrors` 1/1 (2.0 m; KHR_parallel_shader_compile false → "no compile window seen"; pre-warm 39 builds / 39 compiled / 0 timed out). **Page errors: none** in any run (no `pageerror` line, no `isReady`) |
+| **gate** Classic: `E2E_PORT=3450 CT_E2E_NO_BUILD=1 … pnpm test:e2e --project=chromium doors.spec chat-bubbles.spec` | **2/2 pass** (53.5 s) |
+| extra: `CT_GL=swiftshader … --project=v3 v3-boot` | 1/1 pass (1.0 m) |
+
+Front branches' own runs (from their reports, not re-run here except through the gate above): `v31-fixes` —
+`v3-pageerrors` failed on d9cc841 with 2× the `isReady` TypeError and passed 3× with the fix; harness `?mode=cycles`
+(`render-check.sh`, SwiftShader) FAIL heapGrowthUnder10MB 15.37 → 97.08 MB before, PASS 15.36 → 20.34 MB after;
+`tests/perf/v3-cycles-heap.sh --gl gpu` growth 95 → 6.55 MB, 0 engines retained; `tests/perf/v3-ui.ts` walk non-transform
+writes 11.7 → 2.4 /s, bedtime UI writes 25.9 → 9.1 /s; client unit tests 69 files / 897. `v31-stage` — world.merge 12/12,
+game3d 428/428, e2e `v3-doors` / `v3-life` / `v3-vote` 3/3 twice (port 3466); harness A/B and `v3-frame` numbers in
+docs/perf-v3/stage.md §6. `v31-cpu` — 433 game3d tests, typecheck; SwiftShader cpu-tier runs in docs/perf-v3/cpu.md §7
+(goal not reached: ~190 ms synced, 7.6-7.8 fps). C2 QA (read-only, on d9cc841): harness stills 6/6, a 10-bot playtest
+18/18 steps with 0 page / console errors.
+
 ## 2026-10-18 — v3.0 release gate (`v3-release`, branch `v3-game`, the host, sandbox `v3-release`)
 
 Tree = `116024f`: WP8 (`d66c622`) + the lead's merges of `v3-perf-stage`, `v3-perf-ui`, `v3-perf-learn`, `v3-perf-server`,

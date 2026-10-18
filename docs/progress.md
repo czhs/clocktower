@@ -212,7 +212,49 @@ v2; v3.0 is on the dev service, see "v3 handoff" below.)
   WP3 soft-layer fade behind thatched cottages, WP4 bubble details); pixel3d-side requests are collected in
   INTEGRATION.md §9.2.
 
-### v3 handoff (2026-10-18 evening, after the v3.0 release — RESTART FROM HERE)
+### v3 handoff (2026-10-18 night, after the v3.1 release — RESTART FROM HERE)
+
+- **v3.1 = the commit "v3.1: release gate + docs" on `v3-game`, tag `v3.1`, deployed to DEV** (`clocktower-dev`,
+  127.0.0.1:3001; verification in docs/test-results.md "v3.1 dev deploy"). **Prod still runs v3.0** (`4be9bb4`); per the
+  user's standing rule (below) ship v3.1 to prod after this dev smoke, checking the journal for a running game first.
+  Release note: docs/RELEASE-v3.md "v3.1". Gate: docs/test-results.md "v3.1 release gate" (typecheck, build, budgets
+  incl. the new `town3dChunkBrKiB`, full `pnpm test` 175 files / 2016 tests, all 9 v3 e2e specs on the host GPU with 0
+  page errors, Classic doors + chat-bubbles).
+- Contents: `v31-fixes` (the `isReady` page error, the remount leak of one destroyed town, bedtime / walk DOM churn),
+  `v31-stage` (the static town kit batched into 7 `BatchedMesh`es: −17 to −19 % draw calls, +0.3-0.7 ms render JS),
+  `v31-cpu` (cpu tier profiled: the cost is the vendor cut-away; opt-in toon twins; no speed change), docs/perf-v3/client.md,
+  and the C2 QA fix round (the vote camera clears the real HUD and keeps the circle in frame; no house-name pills in
+  the vote view; a softer talking rim).
+- **Deferred C2 QA findings** (from the read-only QA on d9cc841; stills in `tests/v3/shots/v3.1-qa/`, gitignored):
+  - MEDIUM: a black disc with a grey rim over the market stall west of the square, at bedtime only (harness
+    `dusk-transition` still "bedtime", playtest `30-pl-bedtime.png`); suspect a sun / moon / lamp sprite at the bedtime
+    hour (`world/stage.ts`, `world/hour.ts`, `vendor/time.ts`).
+  - MEDIUM: the own avatar spawns behind the staircase banister in Stargazer's Tower (house-0) at night / after a
+    reload, and that side of the room is under the Storyteller panel on a laptop (interior spawn point; vendor
+    interiors or the layout's spawn).
+  - MEDIUM: after leaving house 5 the porch gable stays half-faded over the avatar (soft-layer fade, D1; harness
+    `interior-house-5` still "out").
+  - MEDIUM (re-check): the vote frame vs the Storyteller panel was fixed by measuring the HUD (unit test with the
+    panel; the e2e probe ran on a player page) — look at a real Storyteller vote on a laptop once; also look at the
+    softer talking rim in the harness `square-day-8` a/b stills.
+  - LOW: the block marker is weak without the pennant (`world/dais.ts`); a navy slab outside the clock tower room's
+    right wall; the finder has no "rejoin your game" for a seated player mid-game (default filter "Waiting"); the clock
+    chip / tower dial still count "Nominations close in" after an execution closed nominations; harness `south-bay`
+    spawns inside the clockmaker house (stale spawn, or occluded avatars need a silhouette); braziers lit by day and
+    dark at night; bedtime light flattens avatars to one pink; the gold pin outlives the day; labels hide under the
+    "Your home" chip / toasts; a bot's red pin not shown on the player page (maybe by design); high tier p50 33 ms at
+    1440×900 DPR 2 in the harness (night-15, ~943k triangles).
+- **Next = v3.2:** (1) laptop iGPU A/B of the town batch at 1440×900 DPR 2 (`ct.debug.v3merge=0` vs default); default it
+  off if the main thread loses; then remove the batched / plain program switches (stage.md §6 follow-ups). (2) cpu tier:
+  a cheap cut-away (compile out `townCutRim`, size the loops; §9.2 CONTRACT-REQUEST), re-measure the twins, character
+  LOD. (3) the deferred QA findings above. (4) run `v3-pageerrors` on a browser with KHR_parallel_shader_compile
+  (Windows / macOS laptop). (5) `scripts/v3/render-check.sh` does not forward `CT_GL` to the host (CT_GL=gpu from the
+  editing machine silently runs SwiftShader; owner v3-qa). (6) runtime budget keys proposed by the fronts, once
+  measured twice: `v3WalkDomMutPerSec` ≤ 5, `v3UiBedtimeDomMutPerSec` ≤ 10, `v3UiWalkDomMutPerSec` ≤ 4,
+  `v3MountHeapGrowthMiB` ≤ 10, `v3GpuCallsMeanLow/High` 215/310, `v3GpuShadowCallsMeanHigh` 75, `v3ProgramsHigh/Low`
+  62/56, `v3CpuSyncedP50Ms` ≤ 250, `v3CpuShaderErrors` = 0 (need input plumbing in `scripts/perf/budgets.mjs`).
+
+### v3 handoff (2026-10-18 evening, after the v3.0 release — superseded by the v3.1 entry above)
 
 - **v3.0 = the commit "v3.0: release gate + docs" on `v3-game`, tag `v3.0`, deployed to dev, then to PROD (below)**
   (`clocktower-dev`, 127.0.0.1:3001, reached through `scripts/dev.sh`; the tunnel serves only prod). Contents: C1 + WP8

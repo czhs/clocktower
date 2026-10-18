@@ -29,6 +29,7 @@ export const BUDGETS = {
   entryCssBrKiB: { max: 15, unit: 'KiB br', why: 'entry CSS, base + theme (v2.4: 11.4; v2.3: 24.9)' },
   lobbyChunkBrKiB: { max: 72, unit: 'KiB br', why: 'LobbyRoute chunk (v2.4: 63.8; v2.3: 83.4)' },
   townChunkBrKiB: { max: 300, unit: 'KiB br', why: 'TownGame chunk, Phaser (v2.2: 284.5)' },
+  town3dChunkBrKiB: { max: 300, unit: 'KiB br', why: 'v3 town3d chunk, three + pixel3d (v3.0: 270.4; v3.1: 282.7)' },
   townAtlasKiB: { max: 700, unit: 'KiB', why: 'WebP atlases loaded on town entry (v2.4: 578; HD/ghosts on demand)' },
   snapshotBytesPerSecPerClient: { max: 2000, unit: 'B/s', why: 'S2C per client, day walk (v2.2: 1487)' },
   serverCpuPct16: { max: 4, unit: '% core', why: 'server CPU, 16 clients walking, profiler off (v2.4: 2.0-2.5)' },
@@ -56,6 +57,7 @@ if (bundle) {
   measured.entryCssBrKiB = br((f) => /^assets\/index-[^/]+\.css$/.test(f));
   measured.lobbyChunkBrKiB = br((f) => /^assets\/LobbyRoute-[^/]+\.js$/.test(f));
   measured.townChunkBrKiB = br((f) => /^assets\/TownGame-[^/]+\.js$/.test(f));
+  measured.town3dChunkBrKiB = br((f) => /^assets\/town3d-[^/]+\.js$/.test(f));
 }
 
 const atlasDir = arg('atlases', 'packages/assets/generated');
