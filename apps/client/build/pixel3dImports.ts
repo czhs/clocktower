@@ -8,12 +8,15 @@
 //   demo/characters.js optional() `import(p)` (variable) -> a static map of the two optional modules
 //   demo/characters.js sourcePrint `new URL('../../characters/${id}.js', import.meta.url)` would emit every
 //                                 character source as a raw asset -> `return null` (the game has no roster cache)
-//   demo/roster.js loadRoster     `fetch(new URL('./roster.json', import.meta.url))` -> a static JSON import
+//   demo/roster.js loadRoster     `fetch(new URL('./roster.json', import.meta.url))` -> a static JSON import of a
+//                                 TRIMMED roster (`roster.json?ct-trim`: id, name and the offer flags of each row; the
+//                                 game reads only `name`, demo/characters.js createCharacter): −9 KiB br off town3d
 //   town/pieces/ground.js         `viewArea(engine, 3)` -> `engine.__ctGrassArea ?? viewArea(engine, 3)` (the grass
 //                                 area; replaces the demo's stack-sniffing buildWide, which breaks once minified)
 // Bundle checks (generateBundle): exactly one three/build/ directory in the bundle; no emitted asset matches
 // characters/*.js; every patch target that is bundled was patched.
 // CONTRACT-REQUEST(pixel3d): static imports / options for all of these (§9.2), so these rewrites can go.
+import { readFileSync } from 'node:fs';
 import type { Plugin } from 'vite';
 
 export interface Patch {
@@ -78,7 +81,7 @@ export const PATCHES: readonly Patch[] = [
         '({ ok: true, status: 200, json: async () => structuredClone(__ctRoster) })',
       );
       if (!out) return null;
-      return `import __ctRoster from './roster.json'; // (clocktower town: build/pixel3dImports.ts)\n${out}`;
+      return `import __ctRoster from './roster.json${ROSTER_TRIM}'; // (clocktower town: build/pixel3dImports.ts)\n${out}`;
     },
   },
   {
@@ -91,6 +94,22 @@ export const PATCHES: readonly Patch[] = [
 ];
 
 const VENDOR_SRC = /[\\/]v3[\\/]pixel3d[\\/]src[\\/](.+)$/;
+
+/** Query of the trimmed roster import (served by the plugin's load hook as JSON; Vite's JSON plugin makes the module). */
+export const ROSTER_TRIM = '?ct-trim';
+/** Roster row fields kept: what demo/roster.js (offer rules) and demo/characters.js createCharacter (name) read. */
+const ROSTER_ROW_KEYS = ['id', 'name', 'status', 'shipped', 'finished', 'playable', 'offered', 'complete', 'wipOffered'] as const;
+
+/** The roster manifest without the per-character build / critic notes (JSON text). */
+export function trimRoster(json: string): string {
+  const m = JSON.parse(json) as { version?: unknown; generated?: unknown; generator?: unknown; characters?: Record<string, unknown>[] };
+  const characters = (Array.isArray(m.characters) ? m.characters : []).map((c) => {
+    const row: Record<string, unknown> = {};
+    for (const k of ROSTER_ROW_KEYS) if (c[k] !== undefined) row[k] = c[k];
+    return row;
+  });
+  return JSON.stringify({ version: m.version, generated: m.generated, generator: m.generator, characters });
+}
 
 /** The vendor path (relative to v3/pixel3d/src) of a module id, or null. */
 export function vendorPath(id: string): string | null {
@@ -132,6 +151,13 @@ export function pixel3dImports(): Plugin {
   return {
     name: 'ct-pixel3d-imports',
     enforce: 'pre',
+    load(id) {
+      // demo/roster.js imports './roster.json?ct-trim' (the patch above): hand Vite the trimmed JSON text
+      if (!id.endsWith(`roster.json${ROSTER_TRIM}`) || vendorPath(id.slice(0, -ROSTER_TRIM.length)) !== 'demo/roster.json') return null;
+      const file = id.slice(0, -ROSTER_TRIM.length);
+      this.addWatchFile(file);
+      return trimRoster(readFileSync(file, 'utf8'));
+    },
     transform(code, id) {
       let out: string | null;
       try {

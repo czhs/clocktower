@@ -57,7 +57,9 @@ const pageCfg = {
 const TAG = arg('tag', '');
 const OUTFILE = path.join(OUT, `v3-memory-${TIER}${pageCfg.leakfix !== 'none' ? `-leakfix-${pageCfg.leakfix}` : ''}${TAG ? `-${TAG}` : ''}.json`);
 const PROFILE_FILE = path.join(OUT, `v3-walk15-${TIER}${pageCfg.leakfix !== 'none' ? `-leakfix-${pageCfg.leakfix}` : ''}${TAG ? `-${TAG}` : ''}.cpuprofile`);
-if (PORT < 3490 || PORT > 3491) throw new Error('--port must be in the v3-perf-chars range 3490-3491');
+if (PORT < 3490 || PORT > 3494) throw new Error('--port must be in the v3-perf-chars / v3-perf-client range 3490-3494');
+// --gl swiftshader (default, the recon method) | gpu (the host GPU via ANGLE/Vulkan, allowed since 2026-10-18)
+const GL_ARGS = arg('gl', 'swiftshader') === 'gpu' ? ['--use-angle=vulkan', '--enable-features=Vulkan', '--enable-gpu', '--ignore-gpu-blocklist'] : ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'];
 const BASE = `http://127.0.0.1:${PORT}`;
 const log = (...a: unknown[]) => console.error(`[v3-memory ${new Date().toISOString().slice(11, 19)}]`, ...a);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -158,7 +160,7 @@ async function main(): Promise<boolean> {
   vite.stderr?.on('data', (d) => process.stderr.write(`[vite] ${d}`));
   await waitForVite();
   log('vite up', BASE);
-  browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--js-flags=--expose-gc', '--enable-precise-memory-info'] });
+  browser = await chromium.launch({ args: [...GL_ARGS, '--js-flags=--expose-gc', '--enable-precise-memory-info'] });
   const page = await browser.newPage({ viewport: { width: 960, height: 540 } });
   const errors: string[] = [];
   const warns: string[] = [];

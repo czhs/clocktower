@@ -7,10 +7,35 @@
 // PointLights: the time facade re-aims the constant pool at `lights` when `player.interior` is this room.
 // A house module that fails to build falls back to the vendor's standard room (console.warn), so a cottage
 // can always be entered; the collision is the server's (WP5a export), not this room's.
+//
+// (v3 perf, client front) The vendor room modules (interiors/index.js + interiors/kit.js, demo/tower-interior.js: ≈ 16 KiB
+// br) are NOT part of the town3d chunk: they load lazily (one shared chunk), and `prefetchInteriors()` (vendor/town.ts
+// buildHollowmere calls it) starts that chunk and the warm-up room's module (house-0, world/stage.ts warmUp) in parallel
+// with the town's pieces, so no extra round trip lands on the path to the first frame.
 import * as THREE from 'three';
-import * as interiorsNS from '@pixel3d/town/interiors/index.js';
-import * as towerRoomNS from '@pixel3d/demo/tower-interior.js';
 import { interiorOrigin, TOWER_ROOM } from '../coords';
+
+type InteriorsModule = typeof import('@pixel3d/town/interiors/index.js');
+type TowerRoomModule = typeof import('@pixel3d/demo/tower-interior.js');
+/** Memoised dynamic import that forgets a failure (the next call re-tries the chunk). */
+function lazy<T>(load: () => Promise<T>): () => Promise<T> {
+  let p: Promise<T> | null = null;
+  return () =>
+    (p ??= load().catch((e: unknown) => {
+      p = null;
+      throw e;
+    }));
+}
+const interiorsModule = lazy<InteriorsModule>(() => import('@pixel3d/town/interiors/index.js'));
+const towerRoomModule = lazy<TowerRoomModule>(() => import('@pixel3d/demo/tower-interior.js'));
+
+/** Start fetching the room modules (+ the warm-up room house-0) now. Never throws; idempotent. */
+export function prefetchInteriors(): void {
+  interiorsModule().catch(() => undefined);
+  towerRoomModule().catch(() => undefined);
+  // the same module id as the house-N import inside interiors/index.js, so the same chunk
+  import('@pixel3d/town/interiors/house-0.js').catch(() => undefined);
+}
 
 export interface InteriorLight {
   pos: THREE.Vector3;
@@ -41,16 +66,15 @@ export interface BuiltInterior {
   heightAt?(x: number, z: number): number;
 }
 
-const vendor = interiorsNS as unknown as {
+interface VendorInteriors {
   buildInterior(engine: unknown, houseId: string, ctx: { tod?: string }): Promise<unknown>;
   originOf(i: number): THREE.Vector3;
   HOUSE_COUNT: number;
-};
-
-export const INTERIOR_COUNT: number = vendor.HOUSE_COUNT;
+}
 
 /** Build cottage i's interior (not yet added to the scene). Rejects when the house id is unknown. */
 export async function buildHouseInterior(engine: unknown, index: number, o: { tod: string }): Promise<BuiltInterior> {
+  const vendor = (await interiorsModule()) as unknown as VendorInteriors;
   const it = (await vendor.buildInterior(engine, `house-${index}`, { tod: o.tod })) as BuiltInterior;
   // the §2.3 translation is anchored on this origin: a vendor re-publish that moves the rooms must fail loudly
   const want = interiorOrigin(index);
@@ -75,7 +99,7 @@ export interface TowerRoomFacade {
   time: { readonly hours: number };
 }
 
-const tower = towerRoomNS as unknown as {
+interface VendorTowerRoom {
   buildTowerRoom(engine: unknown, demo: TowerRoomFacade): {
     group: THREE.Group;
     floor: { x0: number; z0: number; x1: number; z1: number };
@@ -89,7 +113,7 @@ const tower = towerRoomNS as unknown as {
     dispose(): void;
   };
   ORIGIN: { x: number; z: number };
-};
+}
 
 /**
  * The clock tower's walkable clockwork room (vendor pass B, user request in flight 4) as a BuiltInterior, so the stage
@@ -97,7 +121,8 @@ const tower = towerRoomNS as unknown as {
  * TOWER_ROOM mirrors (checked here). The room animates from `facade` (timer, bell, hours) in its update; its lanterns
  * and dial window are `lights` for the time facade's constant pool (no new lights / programs: kit Builder geometry).
  */
-export function buildTowerInterior(engine: unknown, facade: TowerRoomFacade): BuiltInterior {
+export async function buildTowerInterior(engine: unknown, facade: TowerRoomFacade): Promise<BuiltInterior> {
+  const tower = (await towerRoomModule()) as unknown as VendorTowerRoom;
   const t0 = performance.now();
   const o = tower.ORIGIN;
   if (!o || Math.abs(o.x - TOWER_ROOM.origin.X) > 1e-6 || Math.abs(o.z - TOWER_ROOM.origin.Z) > 1e-6)

@@ -18,6 +18,7 @@ import * as townNS from '@pixel3d/town/town.js';
 import { buildTown } from '@pixel3d/town/town.js';
 import * as towerTimerNS from '@pixel3d/demo/towertimer.js';
 import type { HostedEngine } from './engineHost';
+import { prefetchInteriors } from './interiors';
 
 /** The parts of src/town/layout.js / town.js this wrapper reads beyond pixel3d.d.ts (lead-owned typings). */
 interface VendorHouseRec {
@@ -51,7 +52,24 @@ export interface TownBuildOptions {
   lights?: number;
 }
 
+/**
+ * (v3 perf, client front) The vendor's buildTown imports each piece chunk only after the previous piece is BUILT
+ * (`for … await buildPiece`): 20 serial round trips on a cold join (docs/perf-v3/recon-load.md item 1). These globs
+ * name the same modules as the build-time map injected into town/api.js (build/pixel3dImports.ts), so calling them
+ * fetches (and evaluates: piece modules only declare functions at top level) the very chunks buildPiece awaits later.
+ */
+const PIECE_CHUNKS = import.meta.glob(['@pixel3d/town/pieces/*.js', '@pixel3d/town/life/index.js']);
+let piecesPrefetched = false;
+/** Start fetching every town piece chunk + the room modules in parallel. Never throws; idempotent. */
+export function prefetchTownChunks(): void {
+  if (piecesPrefetched) return;
+  piecesPrefetched = true;
+  for (const load of Object.values(PIECE_CHUNKS)) load().catch(() => undefined);
+  prefetchInteriors();
+}
+
 export async function buildHollowmere(engine: HostedEngine, o: TownBuildOptions): Promise<BuiltTown> {
+  prefetchTownChunks();
   applyCamera(engine, 'gameplay', { focus: new THREE.Vector3(PLAZA.cx, 0, PLAZA.cz) });
   const q = new URLSearchParams({ tod: o.tod ?? 'noon', quality: o.quality === 'high' ? 'high' : 'low', life: '1', demo: 'day', lifeOff: LIFE_OFF });
   if (o.lights) q.set('lights', String(o.lights));
