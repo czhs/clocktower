@@ -50,7 +50,8 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const log = (...a: unknown[]) => console.log(`[v3-load ${new Date().toISOString().slice(11, 19)}]`, ...a);
 const NAME_SHIM = 'globalThis.__name = globalThis.__name || ((f) => f);';
 /** SwiftShader only (INTEGRATION.md §6.2; the base of v3/pixel3d/charkit/tools/shot.mjs glArgs). Never GPU flags. */
-const GL_ARGS = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'];
+// --gl swiftshader (default, the recon method) | gpu (the host GPU via ANGLE/Vulkan, allowed since 2026-10-18)
+const GL_ARGS = arg('gl', 'swiftshader') === 'gpu' ? ['--use-angle=vulkan', '--enable-features=Vulkan', '--enable-gpu', '--ignore-gpu-blocklist'] : ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'];
 const NETS: Record<string, { latency: number; down: number; up: number } | null> = {
   slow4g: { latency: 150, down: (1.6 * 1024 * 1024) / 8, up: (750 * 1024) / 8 }, // as tests/perf/client-perf.ts loadTiming
   fast: { latency: 40, down: (10 * 1024 * 1024) / 8, up: (5 * 1024 * 1024) / 8 },

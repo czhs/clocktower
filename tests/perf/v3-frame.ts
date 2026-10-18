@@ -43,7 +43,11 @@ const argv = process.argv.slice(2).filter((a) => a !== '--');
 const arg = (n: string, d: string) => (argv.includes(`--${n}`) ? argv[argv.indexOf(`--${n}`) + 1]! : d);
 const ROOT = path.resolve(arg('root', path.resolve(HERE, '../..')));
 const PORT = Number(arg('port', '3488'));
-if (PORT < 3488 || PORT > 3489) throw new Error('v3-perf-frame owns ports 3488-3489 only');
+// v3-perf-frame owns 3488-3489; v3-perf-client (the merged client front) runs it on its own 3490-3494
+if (PORT < 3488 || PORT > 3494) throw new Error('v3-frame: ports 3488-3489 (v3-perf-frame) or 3490-3494 (v3-perf-client) only');
+// --gl swiftshader (default: CPU raster, the recon method) | gpu (the host GPU via ANGLE/Vulkan, allowed since 2026-10-18)
+const GL = arg('gl', 'swiftshader');
+const GL_ARGS = GL === 'gpu' ? ['--use-angle=vulkan', '--enable-features=Vulkan', '--enable-gpu', '--ignore-gpu-blocklist'] : ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'];
 const TIERS = arg('tiers', 'high,low').split(',') as ('high' | 'low')[];
 const [VW, VH] = arg('viewport', '1920x1080').split('x').map(Number) as [number, number];
 const WORLD = arg('world', 'v3');
@@ -207,6 +211,8 @@ function summariseHeap(head: HeapNode, frames: number) {
     kbPerFrame: r2(total / 1024 / f),
     bucketsKbPerFrame: Object.fromEntries(Object.entries(buckets).sort((a, b) => b[1] - a[1]).map(([k, v]) => [k, r2(v / 1024 / f)])),
     topSitesKbPerFrame: [...sites.entries()].sort((a, b) => b[1] - a[1]).slice(0, 25).map(([k, v]) => [k, r2(v / 1024 / f)]),
+    // the game's own sites (game3d/*, client/*, packages): what the client front can fix without a vendor change
+    gameSitesKbPerFrame: [...sites.entries()].filter(([k]) => / (game3d\/|client\/|packages)/.test(k)).sort((a, b) => b[1] - a[1]).slice(0, 25).map(([k, v]) => [k, r2(v / 1024 / f)]),
   };
 }
 
@@ -277,6 +283,9 @@ async function measureTier(tier: 'high' | 'low'): Promise<Json> {
   await page.evaluate(() => {
     localStorage.clear();
     localStorage.setItem('ct.debug.camera', '1');
+    // no runtime perf sampler / auto fallback while measuring (as the e2e specs): a slow first second must not swap
+    // the measured town for Classic or a rebuilt tier mid-run
+    localStorage.setItem('ct.debug.v3force', '1');
   });
   const cdp = await ctx.newCDPSession(page);
   await cdp.send('Performance.enable');
@@ -432,7 +441,7 @@ async function main() {
   vite.stderr?.on('data', (d) => process.stderr.write(`[vite] ${d}`));
   await waitForVite();
   log('vite up');
-  browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--enable-precise-memory-info'] });
+  browser = await chromium.launch({ args: [...GL_ARGS, '--enable-precise-memory-info'] });
   const tiers: Json[] = [];
   for (const tier of TIERS) {
     const t0 = Date.now();
@@ -450,6 +459,7 @@ async function main() {
     root: ROOT,
     rev: process.env.V3_FRAME_REV ?? null,
     viewport: [VW, VH],
+    gl: GL,
     world: WORLD,
     players: PLAYERS,
     walk: WALK,

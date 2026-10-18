@@ -7,7 +7,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { PATCHES, patchVendor } from '../../build/pixel3dImports';
+import { PATCHES, patchVendor, trimRoster } from '../../build/pixel3dImports';
 
 const V = fileURLToPath(new URL('../../../../v3/pixel3d/', import.meta.url));
 
@@ -86,12 +86,21 @@ describe('build-time vendor rewrites (build/pixel3dImports.ts)', () => {
     expect(chars).toContain("'../chars/smear.js': () => import('../chars/smear.js')");
     expect(chars).not.toContain('new URL(`../../characters/${id}.js`, import.meta.url)');
     const roster = read('demo/roster.js');
-    expect(roster).toMatch(/^import __ctRoster from '\.\/roster\.json';/);
+    expect(roster).toMatch(/^import __ctRoster from '\.\/roster\.json\?ct-trim';/);
     expect(roster).not.toContain("fetch(new URL('./roster.json'");
     expect(read('town/pieces/ground.js')).toContain('const ga = engine.__ctGrassArea ?? viewArea(engine, 3);');
     // not a target: untouched
     expect(patchVendor(path.join(V, 'src/core/Engine.js'), 'x')).toBeNull();
     expect(patchVendor('/elsewhere/town/api.js', 'x')).toBeNull();
+  });
+
+  it('the trimmed roster keeps every row with its id, name and offer flags (and nothing else)', () => {
+    const raw = JSON.parse(readFileSync(path.join(V, 'src/demo/roster.json'), 'utf8')) as { characters: Record<string, unknown>[] };
+    const text = trimRoster(JSON.stringify(raw));
+    const t = JSON.parse(text) as { characters: Record<string, unknown>[] };
+    expect(t.characters.map((c) => [c.id, c.name, c.offered, c.finished, c.playable])).toEqual(raw.characters.map((c) => [c.id, c.name, c.offered, c.finished, c.playable]));
+    for (const c of t.characters) expect(Object.keys(c).every((k) => ['id', 'name', 'status', 'shipped', 'finished', 'playable', 'offered', 'complete', 'wipOffered'].includes(k))).toBe(true);
+    expect(text.length).toBeLessThan(JSON.stringify(raw).length / 4);
   });
 
   it('a changed vendor snippet fails loudly', () => {

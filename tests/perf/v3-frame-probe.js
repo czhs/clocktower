@@ -212,7 +212,8 @@
       const orig = EP.renderAt;
       const w = function (t) {
         P.renderAts++;
-        if (!P.engine) P.engine = this;
+        // the LATEST live engine (a mount can rebuild: the first engine is disposed, its scene nulled)
+        if (P.engine !== this && this.scene) P.engine = this;
         const f = P.cur;
         if (!P.on || !f) return orig.call(this, t);
         try {

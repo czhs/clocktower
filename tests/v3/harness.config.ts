@@ -27,7 +27,8 @@ export default defineConfig({
     trace: 'off',
     video: 'off',
     screenshot: 'off',
-    launchOptions: { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--js-flags=--expose-gc', '--enable-precise-memory-info'] },
+    // CT_GL=gpu: the host GPU via ANGLE/Vulkan (allowed since 2026-10-18; v3-perf-client memory runs); default SwiftShader
+    launchOptions: { args: [...(process.env.CT_GL === 'gpu' ? ['--use-angle=vulkan', '--enable-features=Vulkan', '--enable-gpu', '--ignore-gpu-blocklist'] : ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist']), '--js-flags=--expose-gc', '--enable-precise-memory-info'] },
   },
   webServer: {
     command: `pnpm --filter @ct/client exec vite preview -c vite.harness.config.ts --port ${PORT} --strictPort --host 127.0.0.1`,
