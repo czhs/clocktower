@@ -25,7 +25,7 @@ import { serverNow } from '../../net/serverTime';
 import { PX_PER_M } from '../coords';
 import type { Layer3d, Scene3dState, Tier } from '../contract';
 import type { EngineHost } from '../vendor/engineHost';
-import { buildDoorBoards, buildHollowmere, canopyMaterials, createCutDriver, createTowerFace, daisApi, releaseTown, removeDaisCandles, doorAngles, gateHouseLights, groundHeight, houseApis, houseLightAnchors, houseProxies, lifePiece, lifeStats, poolLights, seatStones, towerDials, towerDoorApi, voteCameraPreset, warmViews, warmWholeTown, type BuiltTown, type HouseApi, type HouseBox, type VendorCameraShot } from '../vendor/town';
+import { buildDoorBoards, buildHollowmere, canopyMaterials, createCutDriver, createTowerFace, daisApi, mergeTownKit, releaseTown, removeDaisCandles, doorAngles, gateHouseLights, groundHeight, houseApis, houseLightAnchors, houseProxies, lifePiece, lifeStats, poolLights, seatStones, towerDials, towerDoorApi, voteCameraPreset, warmViews, warmWholeTown, type BuiltTown, type HouseApi, type HouseBox, type TownKitMerge, type VendorCameraShot } from '../vendor/town';
 import { buildTowerInterior, type TowerRoomFacade } from '../vendor/interiors';
 import { createTownTime, presetForHour, type TownTime } from '../vendor/time';
 import { createDaisDriver, daisDebug, daisPlan, showcasePlan, type DaisApi, type DaisPlan } from './dais';
@@ -197,9 +197,25 @@ export async function createStage(host: EngineHost, o: StageOptions): Promise<St
   // (`ct.debug.v3canopy=0` = off, an A/B switch for perf runs; read once per build)
   let canopyOff = false;
   let shadowOverride: string | null = null;
+  let mergeOff = false;
+  let mergeCell = 12;
+  let mergeMode: 'batch' | 'merge' = 'batch';
+  let mergeOrder: number | undefined;
+  let mergeCull: 'view' | 'three' = 'view';
+  let mergeAB = false;
   try {
     canopyOff = localStorage.getItem('ct.debug.v3canopy') === '0';
     shadowOverride = localStorage.getItem('ct.debug.v3shadowEvery');
+    // perf(v3.1 stage) A/B switches of the static kit merge: v3merge=0 = off, v3mergeMode=merge (plain merged geometry
+    // per cell instead of the default BatchedMesh per material), v3mergeCell = that cell edge (m),
+    // v3mergeAB=1 = window.__ctMergeAB (toggle + render the same frame twice, for pixel diffs)
+    mergeOff = localStorage.getItem('ct.debug.v3merge') === '0';
+    mergeCell = Number(localStorage.getItem('ct.debug.v3mergeCell')) || 12;
+    mergeMode = localStorage.getItem('ct.debug.v3mergeMode') === 'merge' ? 'merge' : 'batch';
+    mergeAB = localStorage.getItem('ct.debug.v3mergeAB') === '1';
+    const mo = localStorage.getItem('ct.debug.v3mergeOrder'); // A/B: the merged meshes' renderOrder
+    mergeCull = localStorage.getItem('ct.debug.v3mergeCull') === 'three' ? 'three' : 'view';
+    mergeOrder = mo !== null && Number.isFinite(Number(mo)) ? Number(mo) : undefined;
   } catch {
     canopyOff = false;
   }
@@ -231,6 +247,53 @@ export async function createStage(host: EngineHost, o: StageOptions): Promise<St
   };
   // the tower's dials: the Storyteller's countdown face (towerClock.ts dialFace), else the time-of-day hands
   const towerFace = createTowerFace(engine, town);
+  // perf(v3.1 stage): the static kit meshes of the cottages / tower / props / ground / foliage merged across pieces, one
+  // BatchedMesh per kit material + caster flag (vendor/town.ts mergeTownKit, world/merge.ts; ~ -25 % of the frame's
+  // draws, docs/perf-v3/stage.md §6), before the warm-up compiles the batching program variants
+  let kitMerge: TownKitMerge | null = null;
+  if (!mergeOff) {
+    try {
+      kitMerge = mergeTownKit(engine, town, { cell: mergeCell, mode: mergeMode, renderOrder: mergeOrder, cull: mergeCull });
+    } catch (e) {
+      console.warn('[town3d] kit merge failed (unmerged town):', e);
+      kitMerge = null;
+    }
+  }
+  const abHook = mergeAB && kitMerge
+    ? {
+        set: (on: boolean) => kitMerge?.merged.setEnabled(on),
+        render: () => {
+          // the same frame again (no updaters); returns its draw calls (all passes, the shadow map included)
+          const info = engine.renderer.info;
+          info.reset();
+          shadowMap.autoUpdate = true;
+          engine.pipeline.render();
+          return info.render.calls;
+        },
+        info: () => (kitMerge ? { ...kitMerge.merged.info(), left: kitMerge.left } : null),
+        /** The draws of one re-render of this frame, by "parent/mesh name | material" (debug census). */
+        drawn: () => {
+          const r = engine.renderer as unknown as { renderBufferDirect: (...a: unknown[]) => unknown };
+          const orig = r.renderBufferDirect;
+          const out = new Map<string, number>();
+          r.renderBufferDirect = function (this: unknown, ...a: unknown[]) {
+            const obj = a[4] as THREE.Object3D;
+            const mat = a[3] as THREE.Material;
+            const k = `${obj.parent?.name ?? ''}/${obj.name} | ${mat.name || mat.type}`;
+            out.set(k, (out.get(k) ?? 0) + 1);
+            return orig.apply(this, a);
+          };
+          try {
+            shadowMap.autoUpdate = true;
+            engine.pipeline.render();
+          } finally {
+            r.renderBufferDirect = orig;
+          }
+          return [...out].sort((p, q) => q[1] - p[1]);
+        },
+      }
+    : null;
+  if (abHook) (window as unknown as { __ctMergeAB?: unknown }).__ctMergeAB = abHook;
   let towerFaceKey = 'tod';
   const faceBuf: DialFace = { mode: 'running', stage: 'discussion', q: 0, flashOn: false, night: false };
   let towerReadout: string | null = null;
@@ -270,6 +333,7 @@ export async function createStage(host: EngineHost, o: StageOptions): Promise<St
     rooms.update(t, dt);
     reserve.update(darkness(clock.hour), t);
     cut?.update();
+    kitMerge?.update();
     if (shadows.every > 1) {
       const c = engine.camera;
       shadowIn.ready = isReady;
@@ -499,6 +563,7 @@ export async function createStage(host: EngineHost, o: StageOptions): Promise<St
         cut: cut ? cut.info() : null,
         canopy: { patched: canopyPatched, ...canopy.debug() },
         candlesRemoved,
+        merge: kitMerge ? kitMerge.merged.info() : null,
         shadows: { every: shadows.every, rendered: shadows.rendered, skipped: shadows.skipped },
         timer: { available: !!towerFace, readout: towerReadout, face: towerFaceKey, ...(towerFace ? { info: towerFace.info() } : {}) },
         vote: voteLast ? { yaw: Math.round((voteLast.yaw * 180) / Math.PI), pitch: Math.round((voteLast.pitch * 180) / Math.PI), viewHeight: +voteLast.viewHeight.toFixed(3), target: [+voteLast.target.x.toFixed(3), +voteLast.target.z.toFixed(3)], key: voteKey } : { preset: voteCameraPreset() },
@@ -513,6 +578,11 @@ export async function createStage(host: EngineHost, o: StageOptions): Promise<St
       rooms.dispose();
       shadowMap.autoUpdate = true;
       towerFace?.dispose();
+      kitMerge?.merged.dispose();
+      if (abHook) {
+        const w = window as unknown as { __ctMergeAB?: unknown };
+        if (w.__ctMergeAB === abHook) delete w.__ctMergeAB;
+      }
       // the piece registry: a closure the vendor keeps (V8 allocation-site feedback of a piece api literal) must not
       // reach every piece of this town after the unmount (C1 leak check)
       releaseTown(town);

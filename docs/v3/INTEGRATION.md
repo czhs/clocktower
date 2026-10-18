@@ -1750,6 +1750,14 @@ additive clocktower hook, vendor `docs/TOWN.md` §13). Game-side wiring per item
   time (`apps/client/build/pixel3dImports.ts`, `town/life/index.js`). Same pattern to avoid anywhere a build
   function adds an accessor whose closure captures the build scope: `town/life/cycle.js` `Object.defineProperty(pl,
   'intensity', { get, set })` on pool lights (not in the game's path today: the game never calls `setTimeOfDay`).
+- (v3.1 stage) Mark the town's animated kit meshes so a cross-piece merge can leave them out up front: e.g.
+  `mesh.userData.dynamic = true` (or a piece api list) on the house-3 crow, the house-11 weather vane, the props garlic
+  string and the stall lanterns (their swing groups are not named `*-pivot`), the fountain-water glass, the ground boat,
+  `house-14-water` (geometry swapped) and `house-1-bubbles` (draw range). Today `world/merge.ts` detects them on the first
+  frame they change (transform / visibility / geometry compare) and EJECTS them from the batch, which is correct but
+  keeps a dead instance per mesh. Optional, larger: the kit Builder / composer could emit the static town as one
+  `BatchedMesh` per kit layer itself (the game's `game3d/world/merge.ts` shows the bake rules: positions, normals and
+  the `aTownPart` centroid / bottom go to root space, `aTownPiece` 0-padded).
 
 ### 9.3 Risks
 
