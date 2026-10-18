@@ -2176,3 +2176,11 @@ sections named; corrections and rejections:
   the Classic UI-driven specs that create lobbies from `/` (e.g. `lobby.spec`, `v23-settings`) now create v3 lobbies
   unless routed through `tests/e2e/appPath.ts appUrl` / `CT_E2E_BASE_PATH=/v2` (not run in this gate; doors +
   chat-bubbles use bot lobbies = v2 and pass). Next: merge the perf branches, then the v3.0 dev deploy.
+- 2026-10-18 (**v3.0 release**, `v3-release`, acting as lead + qa-deploy): the merged tree `116024f` (WP8 + perf stage /
+  ui / learn / server / cpu + the cherry-picked client commit) passed the release gate with no fixes: typecheck 7/7 +
+  tests tsconfig, build, budgets all ok (TownGame 281.1/300 KiB br; `town3d` 336 kB gzip, was 381), full `pnpm test`
+  172 files / 1978 tests pass, every v3 e2e on the host GPU on the first run (`v3-paths` 4, `v3-boot`, `v3-vote`,
+  `v3-doors`, `v3-social`, `v3-mixed`, `v3-life`, `v3-fallback` 4) + Classic `doors` / `chat-bubbles`
+  (docs/test-results.md "v3.0 release gate"). Committed as "v3.0: release gate + docs", tagged `v3.0`, deployed to the
+  DEV service only (prod stays v2.4 until the user says so). Release note: docs/RELEASE-v3.md. Next = v3.1: the remaining
+  perf branches (cpu / client / server), C2 QA, the learnings plan (docs/perf-v3/learnings.md).

@@ -2,6 +2,25 @@
 
 All commands run on **the host** via `scripts/remote.sh` unless stated otherwise.
 
+## 2026-10-18 — v3.0 release gate (`v3-release`, branch `v3-game`, the host, sandbox `v3-release`)
+
+Tree = `116024f`: WP8 (`d66c622`) + the lead's merges of `v3-perf-stage`, `v3-perf-ui`, `v3-perf-learn`, `v3-perf-server`,
+`v3-perf-cpu` (hand-resolved conflicts in `world/stage.ts`, `voice/reconciler.ts`, `vendor/engineHost.ts`) + the
+cherry-picked `v3-perf-client` `68f9ef4`. First test of these merges together. No fixes were needed.
+
+| Command (`CT_AGENT=v3-release scripts/remote.sh …`, under `flock -s ~/clocktower/v3-heavy.lock`) | Result |
+|---|---|
+| `pnpm -r run typecheck && pnpm exec tsc -p tests/tsconfig.json --noEmit` | exit 0: 7/7 projects clean, tests tsconfig clean |
+| `pnpm build` | exit 0 (8.5 s client). `town3d` 1066.5 kB / 336.2 kB gzip (WP8: 1177.8 / 381.0), entry `index` 143.3 / 51.8 kB gzip, `TownGame` 1283.2 / 359.4 kB gzip |
+| `node scripts/perf/bundle-report.mjs --json /tmp/v3rel-bundle.json` + `node scripts/perf/budgets.mjs --bundle /tmp/v3rel-bundle.json` | **all measured budgets ok**: entry JS 43.9/45, entry CSS 12.3/15, LobbyRoute 68.3/72, TownGame 281.1/300 KiB br, town atlases 578.5/700 KiB (runtime keys SKIP: no perf inputs) |
+| `pnpm test` (full, after the build) | **exit 0: 172 files pass, 1 skipped; 1978 tests pass, 5 skipped** (133.1 s). Includes the merge-sensitive files `apps/server/test/voice.reconciler.test.ts` 2/2, `lifecycle.leaks.test.ts`, `apps/client/test/game3d/frameGate.test.ts` 7/7, `cpuTier.test.ts` 7/7, `bootPerf.test.ts` 17/17, `town.tier.test.ts` 15/15, `perf.hotpath.test.ts` 2/2 |
+| v3 e2e, one spec at a time: `E2E_V3=1 E2E_PORT=3450 CT_GL=gpu CT_E2E_NO_BUILD=1 flock -s v3-heavy.lock flock browser.lock nice -n 19 pnpm test:e2e --project=v3 <spec>` (host RTX 3060) | **all pass on the first run**: `v3-paths` 4/4 (29.4 s), `v3-boot` 1/1 (12.2 s), `v3-vote` 1/1 (28.2 s), `v3-doors` 1/1 (23.3 s; no flake this time), `v3-social` 1/1 (10.1 s), `v3-mixed` 1/1 (13.0 s), `v3-life` 1/1 (1.1 min), `v3-fallback` 4/4 (38.2 s) |
+| Classic regression: `E2E_PORT=3450 CT_E2E_NO_BUILD=1 … pnpm test:e2e --project=chromium doors.spec chat-bubbles.spec` (bot lobbies = v2) | **2/2 pass** (53.3 s) |
+
+Engine merge check (by reading, `vendor/engineHost.ts`): `fpsLimit: tierFpsLimit(tier, ct.debug.fps)` (cpu tier → 30,
+`ct.debug.fps > 0` wins) and `maxFps: V3_MAX_FPS` (0 when `ct.debug.fps < 0`); `runFrameLoop` gates on `fpsLimit` when > 0,
+else `maxFps`, so the cpu cap and the 60 fps cap both hold. The dev deploy of the tagged `v3.0` commit and its browser smoke are recorded in the follow-up commit ("v3.0 dev deploy" below).
+
 ## 2026-10-18 — v3 WP8 gate (`v3-wp8`, branch `v3-game`, the host, sandbox `v3-wp8`, capped remote.sh)
 
 Tree = "v3 C1" (`0cfd0b8`) + WP8: URL paths finished (`LobbyRoute` path move), the v3 loading scene wired into

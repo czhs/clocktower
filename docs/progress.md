@@ -168,7 +168,8 @@ The pre-pivot art-overhaul WIP is preserved on branch `wip/art-overhaul`.
 ## v3 status (2026-10-18, branch `v3-game`) — the pixel3d / three.js town in the real game
 
 Contract: `docs/v3/INTEGRATION.md` (§8 Status table, §10 "How to continue", §11 decision log). v3 is opt-in per lobby
-(`world: 'v2' | 'v3'`, fixed at creation); v2 "Classic" stays the default and is unchanged. Nothing v3 is deployed.
+(`world: 'v2' | 'v3'`, fixed at creation); v2 "Classic" stays the default and is unchanged. Nothing v3 is deployed. (Superseded: since WP8 `/` = v3 and `/v2/` =
+v2; v3.0 is on the dev service, see "v3 handoff" below.)
 
 - **Works (C0, WP0 Foundation):** three@0.170.0 pinned to the vendor; Vite/vitest resolve `three`, `@pixel3d/`,
   `@v3assets/` and patch the vendor imports at build time (`apps/client/build/pixel3dImports.ts`, fails loudly on
@@ -211,7 +212,23 @@ Contract: `docs/v3/INTEGRATION.md` (§8 Status table, §10 "How to continue", §
   WP3 soft-layer fade behind thatched cottages, WP4 bubble details); pixel3d-side requests are collected in
   INTEGRATION.md §9.2.
 
-### v3 handoff (2026-10-18 ~08:20 PDT, swarms stopped for a user break — RESTART FROM HERE)
+### v3 handoff (2026-10-18 evening, after the v3.0 release — RESTART FROM HERE)
+
+- **v3.0 = the commit "v3.0: release gate + docs" on `v3-game`, tag `v3.0`, deployed to the DEV service only**
+  (`clocktower-dev`, 127.0.0.1:3001, reached through `scripts/dev.sh`; the tunnel serves only prod). Contents: C1 + WP8
+  (`/` = v3, `/v2/` = v2, the v3 loading screen, no voting-circle candles, laptop-first note) + the merged perf branches
+  stage (low-tier shadow cadence), ui, learn (60 fps cap), server (Storyteller view throttle, path planning, LiveKit
+  calls; deflate opt-in), cpu (`cpu` tier on software GL) + the cherry-picked client commit (smaller `town3d`, parallel
+  fetches). Gate: docs/test-results.md "v3.0 release gate". Release note: docs/RELEASE-v3.md.
+- **Prod still runs v2.4 (`4ca13aa`). Deploy v3 to prod only after the user says so.** Prod keeps `/v3-art-demo/`
+  through its `DEMOS_DIR`; `v3-game` carries the same route (`app.ts`), so a future prod deploy keeps it as long as
+  `prod.env` keeps `DEMOS_DIR`.
+- **Next = v3.1:** (1) the remaining work on the perf branches `v3-perf-cpu`, `v3-perf-client` and `v3-perf-server`
+  (their agents were still running at the release; review each as text and re-gate); (2) C2 QA on the host GPU plus a
+  small `CT_GL=swiftshader` set, the art checks, and one combined fix round; (3) the plan in
+  `docs/perf-v3/learnings.md` (with the budget keys it proposes); (4) the known issues in docs/RELEASE-v3.md.
+
+### v3 handoff (2026-10-18 ~08:20 PDT, swarms stopped for a user break — superseded by the v3.0 entry above)
 
 Pushed checkpoints on `v3-game`: `f838b6a` **v3 C1a** (phase-1 packages WP1-WP6 finished, not wired; D1-D4; WP7a harness
 + v3 e2e; perf recon tooling) → `5fb072f` merge of `v3-dev` pass A+B (vendor reviewed as text, nothing unsafe; up to
