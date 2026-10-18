@@ -336,9 +336,17 @@ Why per-room, and not replacing v2:
   - Outdoor walk shapes: `src/demo/collision.js createCollision` needs a `demo`-like object (registry, layout). If it
     cannot run headless in Node, run the same extraction in a headless chromium page on the host (logic only;
     SwiftShader is fine).
+  - **As built (WP5a):** everything runs headless in plain Node. An in-process `module.registerHooks` resolve hook maps
+    `three` / `three/addons/*` onto `apps/client/node_modules/three` (no `--import` flag needed). `createCollision(null)`
+    runs as is (no registry: doors = the layout's placed real doors, which `town.js` checks against the piece anchors);
+    `buildInterior` and the house / tower pieces (`api.js buildPiece`, `strict`, placed with `town.js placementMatrix`)
+    build against a stub engine (geometry only; no WebGL, no chromium). Any vendor `console.warn` fails the export.
+    `--check` exits 1 when the committed JSON is stale; `--dump=x0,y0,x1,y1` prints a tile map with block reasons.
 - **Output.** `packages/assets/src/hollowmere/hollowmere.generated.json` (committed, deterministic, sorted keys),
-  with `vendorHash` (sha256 of the source files read). The assets test recomputes it and fails with "re-run
-  export-hollowmere" when the vendor copy changed.
+  with `vendorHash` (sha256 over `vendorFiles`, every vendor module the exporter loaded, path + content). The assets
+  test recomputes it and fails with "re-run export-hollowmere" when the vendor copy changed. `collision` is stored as
+  43 strings of `0`/`1` (`layoutV3.ts` expands it to the row-major `number[]`); the JSON also carries `map` (objects,
+  styles, decals, lights, the vendor `propDefs`), `npcHomes` and the review data under `meta`.
 - **Schema** (tiles or v2 px, y-down; metres never stored):
 
 | Field | Value / source | Rule |
@@ -360,6 +368,21 @@ Why per-room, and not replacing v2:
 | `interiors[i]` | §2.3 | `interior` rect, `interiorDoor`, `bed`, `visitPoint`, blocked tiles. |
 | `npcHomes` | the game's list (`TownScene.ts:1421-1451`) re-checked against the new collision | Moved to the nearest free outdoor tile if blocked. |
 | `meta.wallError` | per house `{x, z}` m | The §2.3 quantisation error, for review. |
+| `meta.*` (WP5a) | `occl` (vendor `?occl=1` stat), `hidden` / `hiddenKept` / `hiddenSoft`, `pockets`, `openedDoors`, `interiorPockets`, `outlines` (placed corners), `doorPoints`, `rooms`, `interiorFreeTiles` | Review data and the inputs of the assets tests. |
+
+**Collision rules as built (WP5a, §11).** Beyond "feet point inside a walk shape" the exporter applies, in order:
+(a) a solid prop whose shape covers no feet point at all (lamp posts r 0.17, signposts, stumps) blocks the tile its
+centre is in; (d) a door tile blocked only by blocking ground / the map border is opened (house-12's SE chamfer door
+opens onto the west border column, inside the vendor's carved door corridor); (b) a tile where a character is hidden
+from the gameplay camera (yaw 0, pitch 30°) is blocked: rays from the feet (5 cm) **and** the head (1.2 m) toward the
+camera both hit the hard geometry of a cottage or the tower (walls, roofs, glass, signs; tree canopies and `-soft`
+dressing such as house-11's oak crown do not count and are listed in `meta.hiddenSoft`), except a door's only approach
+(`meta.hiddenKept`, empty at the baseline); blocking ground always stays solid even where a door corridor carved its
+box (house-9's doorstep row 42); (c) walkable outdoor pockets the spawn cannot reach, and interior floor the interior
+door cannot reach, are blocked. Interiors: a tile is free iff its feet point maps strictly inside the 3D floor and
+outside every non-wall collider; `bed` / `visitPoint` are the nearest reachable free tiles to the 3D points (never the
+interior door tile, never each other). At the vendor baseline: 137 hidden tiles blocked, 70 under canopies, 29 pockets,
+13 centre tiles; interior free tiles 26-44 per room.
 
 `packages/assets/src/hollowmere/layoutV3.ts` turns the JSON into a `TownLayout` and a v2-shaped `townMapV3`
 (§2.5). It is exported **only** from the subpath `@ct/assets/hollowmere` (`townLayoutV3`, `townMapV3`), never from the
@@ -370,9 +393,11 @@ package index, so it never lands in a static chunk. `@ct/assets` index exports a
 - `collision.length === widthTiles·heightTiles`, `ground.length === heightTiles`, every row `widthTiles` long.
 - Every interior rect lies outside `townBounds` and inside the map; interior rects are pairwise disjoint with ≥ 1
   free column between bands.
-- No walkable outdoor tile is hidden at the gameplay camera: for each walkable tile, its feet point is south of the
-  occluding ground line of every house whose x span covers it (data from `town.js` `?occl=1`, `stats.occl`,
-  exported alongside).
+- No walkable outdoor tile is hidden at the gameplay camera. As built (WP5a): the exporter ray-casts the real geometry
+  (rule (b) above) and blocks hidden tiles; the test checks every `meta.hidden` tile is blocked, every `meta.hiddenKept`
+  tile is a door approach, the back lane stays solid, and the exported `meta.occl` (`town.js` `?occl=1` statistic)
+  lies behind each cottage. (The literal "south of the occluding ground line" wording was dropped: `occl` is the
+  *northern* limit of what a cottage hides, so every walkable tile north of it would have failed.)
 - vendorHash fresh; every v3 door reachable from spawn; door ranges disjoint; seats walkable for n = 5..15; spawns
   not blocked and not on the dais; interior bed/visit reachable; house-3 room fits its band (below).
 
@@ -445,9 +470,9 @@ world at creation avoids that. (Q9 asks whether the host needs to change it late
 while WAITING, rebuild modules, teleport everyone with reason `'spawn'`, clients remount".)
 
 **Server (WP0).** `apps/server/src/rooms/worldLayout.ts` (`worldAvailable`, `layoutForWorld`) is the single place that maps
-a world to its layout. Until WP5a sets its `V3_LAYOUT` to `townLayoutV3`, `worldAvailable('v3')` is false: the directory
-answers `POST /api/lobbies {world:'v3'}` with 409 `conflict` ("The v3 town is not available on this server yet") and no
-room is created. `GameRoom` resolves `this.layout` once in `onCreate`, `host.layout()` returns it, and `createModules`
+a world to its layout. While its `V3_LAYOUT` is null, `worldAvailable('v3')` is false: the directory answers
+`POST /api/lobbies {world:'v3'}` with 409 `conflict` ("The v3 town is not available on this server yet") and no room is
+created. Since WP5a, `V3_LAYOUT = townLayoutV3` (static server import) and v3 lobbies are created (201). `GameRoom` resolves `this.layout` once in `onCreate`, `host.layout()` returns it, and `createModules`
 passes it to the default game/world/voice/social factories (injected test factories keep `(host)`). The lobby summary and
 every `lobby:view` carry `world`.
 
@@ -900,9 +925,9 @@ the order is WP0 (extraction) → WP0s (layer splits) → WP5b (layout injection
 | WP | Owner | Checkpoint | Last commit | Blocking |
 |---|---|---|---|---|
 | WP0 | v3-lead | C0 | **C0 passed, committed** as "v3 C0: …" on `v3-game` (gate `v3-gate`, 2026-10-17): `pnpm -r run typecheck`, `pnpm build`, `pnpm test` (126 files / 1393 tests pass, 1 file / 3 tests skipped), C0 smoke `scripts/v3/smoke-mount.mjs` (5 mount/destroy + 1 injected crash, exit 0, Vite dev + SwiftShader); lead also ran e2e `doors` + `chat-bubbles` (2 passed). Known gaps: stub draws no interiors/remote avatars; context loss falls back to Classic (WP1 adds rebuild); the 5x cycle used `smoke-mount.mjs`, not the WP7 harness | — |
-| WP0s | v3-core | C0b | — (next; unblocked by C0) | — |
-| WP5a | v3-world | C0b | — (next; unblocked by C0). Until it lands the server answers `world: 'v3'` with 409 and client `currentLayout()` throws for v3 | — |
-| WP1-4, WP5b, WP6 | see below | C1 | — | C0b |
+| WP0s | v3-core | C0b | **C0b passed, committed** as "v3 C0b: …" on `v3-game` (gate `v3-gate`, 2026-10-17; gate ran typecheck, `pnpm build`, full `pnpm test` = 131 files / 1506 tests pass, 1 file / 3 tests skipped). Author's notes: `gameplay/{core,phaserView}.ts`, `social/{controller,phaserView}.ts`, `index.ts` barrels, unit `gameplay.core.test.ts` (10) + `social.controller.test.ts` (18). Ran: client typecheck, `pnpm -r run typecheck` + `pnpm build` + `pnpm test` (1417 pass; the only 4 failures are WP5a's in-flight "v3 refused" flips in `lobby.world.test.ts`/`layoutRules.test.ts`), e2e `doors`, `door-boards`, `door-reconnect`, `chat-bubbles`, `v2-social` quick (pass); `v2-social` "desktop and phone" fails on the phone step **also on the unmodified C0 tree** (pie centre clamped near the screen edge commits a wedge on lift; see §9.3) | — |
+| WP5a | v3-world | C0b | **C0b passed, committed** in the same "v3 C0b: …" commit (gate as in the WP0s row): `scripts/v3/export-hollowmere.mjs` + `hollowmere.generated.json`, `@ct/assets/hollowmere` (`townLayoutV3`, `townMapV3`, `npcHomesV3`, `PROP_DEFS_V3`), `layoutFor`; server `V3_LAYOUT` and client `importV3Layout()` wired (v3 lobbies are created: 201, `host.layout()` = `townLayoutV3`); per-world `sound/areas.ts`; tests `hollowmere.test.ts`, `layout`/`navigation` parameterised by world, `world.v3.test.ts`, `sound.areas.v3.test.ts`, flipped `lobby.world` / `layoutRules`. Verified on the host: typecheck, `pnpm build`, full `pnpm test` (131 files / 1499 tests pass, 1 file / 3 tests skipped), `export-hollowmere --check` (deterministic). Entry +0.28 KiB br, lobby +0.07 KiB br vs HEAD; `layoutV3` chunk 5.65 KiB br, dynamic-only | — |
+| WP1-4, WP5b, WP6 | see below | C1 | — (may start: C0b passed) | — |
 | WP7 | v3-qa | C2 | — (harness may start now; take over `scripts/v3/smoke-mount.mjs`) | C1 |
 
 ### Phase 0: WP0 Foundation (`v3-lead`), checkpoint **C0**
@@ -940,6 +965,16 @@ the order is WP0 (extraction) → WP0s (layer splits) → WP5b (layout injection
   `door-boards.spec.ts`, `chat-bubbles.spec.ts`, social specs); new unit tests for `core.ts`/`controller.ts` without
   Phaser.
 - **Accept:** no behaviour change in Classic; `core.ts`/`controller.ts` import no `phaser` (grep test).
+- **API (as built).** `gameplay/core.ts createGameplayCore(ctx)` → `frame()` (publishes `gameplayState`, returns a
+  `GameplayFrame` in v2 px: `picking`, `hands` of visible voters, seat `markers`, vote `clock` targets, personal
+  `hint`), `drive()`, `wantsLocalInput()`, `doorOverride(id)`/`doorOverrideVersion()`, `isPicking()`,
+  `pickAt(x, y)` / `releasePointer()` (Escape is handled inside). `social/controller.ts
+  createSocialController(ctx, surface)`: the renderer passes a `SocialSurface` (`worldAt`, `clientOf`, `cssZoom`,
+  `pinAt` over its drawn pins, `isSurface`, optional `emoteAdded`/`emoteRemoved`/`nickFace`/`placeChanged`) and
+  forwards `pointerDown/Move/Up/Over/Out` + `onTap(wx, wy, pointer)` as `SocialPointer`s in its own screen
+  coordinates; it draws from `displayPins(t, known)` (+ `adopted` re-keying), `emotes()`/`emoteAge`, `tick(t)`
+  (long-press ring), `hoverText`, `here()`, `placeSince()`, and merges `debug()` into `__ctSocial`. The Phaser
+  views keep `createGameplayLayer(scene, ctx)` / `createSocialLayer(scene, ctx)`; `TownScene.ts` needed no edit.
 
 **WP5a World export (`v3-world`)**
 
@@ -1098,6 +1133,22 @@ isolated behind one constant/setting so a later answer is a small change.
 | Q9 world switch | fixed at lobby creation | simplest |
 | Q10 render host | NOT used until the user allows it (CLAUDE.local.md forbids the other machine for this project). Visual stills: SwiftShader on the host inside the capped slice (CPU only, never the host GPU), lowest quality, few frames. Real perf: `ct.debug.v3perf` on the dev service from the user's own devices | respects both host rules |
 
+
+**User requests in flight on the pixel3d side (2026-10-17) — wire them on the game side as they land in `v3-dev`:**
+1. **Voting-circle camera** reframed to show more of the players and the clock tower's clock. Game side (WP3/WP1 camera):
+   use the vendor's new vote framing whenever the player is on the dais/circle during nominations and votes.
+2. **The clock tower's clock is the Storyteller's timer** and gets a tasteful in-universe **digital readout**. Game side:
+   drive the tower clock face + readout from the game's existing stage timer (`game:view` clock / `endsAt` / `serverNow`;
+   the Storyteller already sets it from the ST panel; v2.1 clock). No new server feature unless the timer data is missing
+   (then protocol change by WP0/rules owner). Falls back to the time-of-day hands when no timer runs. (WP3, UI parts WP6)
+3. **No NPCs in the voting circle** (there are enough characters now). Game side (WP2 NPC roamer + WP5a export): NPC
+   homes/paths must never enter the square/circle area in v3 worlds; v2 unchanged.
+4. **The clock tower can be entered.** Game side (WP5a export + server world): when the vendor adds the clock tower
+   interior, export it as an enterable building (door, interior band, collision) and wire it like the cottages (WP3
+   interiors). It is not a player's home: decide visitability like other non-home rooms (open to all by day).
+Until a change is published, keep the current behaviour; the lead merges `v3-dev` + re-runs `scripts/v3/import-assets.sh`
+when it lands and notes it here.
+
 ### 9.2 CONTRACT-REQUESTs for the pixel3d session (collected; append, never edit vendor)
 
 - `Engine({parent, size, rendererOptions: {powerPreference, failIfMajorPerformanceCaveat}})` + `dispose()` +
@@ -1132,16 +1183,20 @@ isolated behind one constant/setting so a later answer is a small change.
 | Draw calls with 15 characters + overlays | Re-baselined budget, character LOD, transform-only overlays |
 | Misleading ambient life | `lifeOff` set + gated tower + `v3-life` e2e |
 | The UI conversion keeps moving | Adopt only the baked atlases now |
+| (found in WP0s, pre-existing v2) A touch long-press within ~136 px of the viewport edge: `radial.ts show` clamps the pie centre away from the finger, so lifting in place lands on a wedge and commits it (`v2-social.spec.ts` "desktop and phone" fails whenever the target sits there; reproduced on the C0 tree) | world-art / qa-deploy: release relative to the press point, or start the touch gesture `left`-aware; then the spec is stable |
 
 ---
 
 ## 10. How to continue (for future agents)
 
-- **Current state (2026-10-17, after C0):** WP0 is committed on `v3-game`. Next: C0b = WP0s (`v3-core`) and WP5a
-  (`v3-world`) in parallel; WP7 may start the harness. Open WP0 follow-ups: the two `CONTRACT-REQUEST(WP5a)` hooks
-  (`apps/server/src/rooms/worldLayout.ts`, `apps/client/src/net/layout.ts`) and the "v3 refused" assertions to flip
-  (`apps/server/test/lobby.world.test.ts`, `apps/client/test/game3d/layoutRules.test.ts`); `sound/areas.ts` v3 fields
-  (WP5a, §8). Summary for humans: `docs/progress.md` "v3 status".
+- **Current state (2026-10-17, after C0b):** WP0, WP0s and WP5a are committed on `v3-game`. v3 lobbies can be
+  created (`world: 'v3'` → `townLayoutV3`, Hollowmere); the gameplay/social logic is Phaser-free in
+  `game/gameplay/core.ts` and `game/social/controller.ts` (import those directly from `game3d/**`, not the
+  `index.ts` barrels, so `phaserView` stays out of the `town3d` chunk). Next: phase 1 (WP1 ∥ WP2 ∥ WP3 ∥ WP4 ∥ WP5b ∥
+  WP6), then C1; WP7 harness may proceed. Known open items: `v2-social.spec.ts` "desktop and phone" is flaky on the
+  pre-existing pie-edge bug (§9.3, world-art/qa-deploy); WP0s review lows (widen the import-closure scan to
+  `export … from`/side-effect/dynamic imports; expose `GameplayFrame.picking` as `{ label }` only). Summary for
+  humans: `docs/progress.md` "v3 status".
 - **Running things on the host from a v3 worktree:** `remote.sh` quotes each argument, so wrap lock/pipe chains in
   `sh -c '…'` and use `$HOME` (not `~`) inside it, e.g.
   `CT_AGENT=v3-<name> scripts/remote.sh sh -c 'flock $HOME/clocktower/v3-heavy.lock pnpm test'`.
@@ -1204,6 +1259,24 @@ isolated behind one constant/setting so a later answer is a small change.
   gameplay/sound; rules-storyteller: hints/script/stage) are recorded in the C0 commit message.
 - 2026-10-17 (WP0): the extracted rules live in `apps/client/src/game/rules/{input,doors,movement,cast}.ts`; `castKey`
   is split into the renderer-free `castIdentity` (rules/cast.ts) and TownScene's sheet-key lookup.
+- 2026-10-17 (WP5a): Hollowmere collision = vendor walk shapes at the feet point plus four derived rules (§2.2 "Collision
+  rules as built"): thin-prop centre tiles, door tiles opened through border ground, camera-hidden tiles blocked (feet
+  and head behind hard cottage / tower geometry; canopies excluded, door approaches kept), unreachable pockets blocked.
+  Hidden-tile check is a ray cast on the real geometry, not the `occl` line (the contract wording was inverted).
+- 2026-10-17 (WP5a): everything is exported headless in Node (stub engine), no chromium step; `collision` is stored as
+  row strings; the exporter fails on any vendor `console.warn` and checks every interior's doorway/exit anchor.
+- 2026-10-17 (WP5a): `layoutFor(world, v3?)` lives in `packages/assets/src/hollowmere/layoutFor.ts` (re-exported from the
+  index; imports no v3 data). `sound/areas.ts` fetches `townMapV3` through the same lazy `@ct/assets/hollowmere` chunk
+  and caches its derived fields per world; outdoor ambience is silent for the few ms before that chunk resolves.
+- 2026-10-17 (WP5a): `navigation.test.ts` v3 doorsteps: the tile in front of a door may be map-border forest when the
+  door opens onto the road along the map edge (house-9's bay door, house-12's west-edge door).
+- 2026-10-17 (WP0s): `gameplay/index.ts` and `social/index.ts` stay as barrels over core/controller + phaserView, so
+  `TownScene.ts` and every other importer are unchanged. The vote-clock smoothing and all bob/pulse animation stay
+  in the views (render-only state); the core hands out targets. The controller owns the emote models and the
+  `__ctSocial` members `seen/hold/radial/pie`; each view adds its own `emotes/pins/zoom`.
+- 2026-10-17 (C0b, `v3-gate`): WP0s and WP5a committed together as one "v3 C0b: …" commit after typecheck, build and
+  full `pnpm test` (131 files / 1506 tests pass, 3 skipped) on the host. The known `v2-social` phone-edge flake is
+  pre-existing v2 (reproduced on the C0 tree) and does not block C0b; it is tracked in §9.3.
 
 ## 12. Review log (round 1)
 

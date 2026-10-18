@@ -1,7 +1,9 @@
 // (v3 WP0, v3-lead acting for lobby-auth) A lobby's world: chosen at creation (CreateLobbyRequest.world,
 // default 'v2'), carried into the room (host.layout(), the lobby summary, every lobby:view) and immutable
-// afterwards (lobby:settings has no world field). Until the v3 layout exists (WP5a) v3 lobbies are refused.
+// afterwards (lobby:settings has no world field). Since WP5a the v3 layout (Hollowmere) exists and v3 lobbies are
+// created (before it, they were refused with 409; that path stays covered by worldAvailable/layoutForWorld below).
 import { townLayout } from '@ct/assets';
+import { townLayoutV3 } from '@ct/assets/hollowmere';
 import { CreateLobbyRequest } from '@ct/protocol';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { createLobby, fakeModules, makeAccount, startTestServer, TestClient, api, type TestServer } from '../src/rooms/testkit.js';
@@ -30,12 +32,14 @@ afterEach(async () => {
 });
 
 describe('world layouts', () => {
-  it("'v2' (and absent) is the classic layout; v3 is not available until WP5a publishes it", () => {
+  it("'v2' (and absent) is the classic layout; 'v3' is Hollowmere (WP5a)", () => {
     expect(layoutForWorld(undefined)).toBe(townLayout);
     expect(layoutForWorld('v2')).toBe(townLayout);
     expect(worldAvailable('v2')).toBe(true);
-    expect(worldAvailable('v3')).toBe(false);
-    expect(() => layoutForWorld('v3')).toThrow('v3 layout not built');
+    expect(worldAvailable('v3')).toBe(true);
+    expect(layoutForWorld('v3')).toBe(townLayoutV3);
+    expect(townLayoutV3).not.toBe(townLayout);
+    expect(townLayoutV3.version).toBe(3);
   });
 
   it('CreateLobbyRequest accepts world v2 / v3 / absent and nothing else', () => {
@@ -76,10 +80,12 @@ describe('LobbyDirectory (unit)', () => {
     expect(inits[b.id]).toBe('v2');
   });
 
-  it('refuses a v3 lobby while the v3 layout is not built (no lobby is created)', async () => {
+  it("creates a v3 lobby now that the v3 layout exists: summary and the room's init say 'v3'", async () => {
     const d = dir();
-    await expect(d.create(acct('c'), { ...req, world: 'v3' })).rejects.toMatchObject({ status: 409, code: 'conflict' });
-    expect(d.size).toBe(0);
+    const c = await d.create(acct('c'), { ...req, world: 'v3' });
+    expect(c.world).toBe('v3');
+    expect(inits[c.id]).toBe('v3');
+    expect(d.size).toBe(1);
   });
 });
 
@@ -101,9 +107,25 @@ describe('GameRoom', () => {
     expect(after.lobby.world).toBe('v2');
   });
 
-  it('POST /api/lobbies with world v3 is refused (409) until the v3 layout exists', async () => {
+  it('POST /api/lobbies with world v3 creates a Hollowmere lobby: host.layout() is townLayoutV3, fixed for good', async () => {
     const host = await makeAccount(srv, 'world-host-2');
-    const r = await api(srv, 'POST', '/api/lobbies', { cookie: host.cookie, body: { name: 'V3 lobby', maxPlayers: 5, world: 'v3' } });
-    expect(r.status).toBe(409);
+    const r = await api<{ lobby: { id: string; world?: string } }>(srv, 'POST', '/api/lobbies', {
+      cookie: host.cookie,
+      body: { name: 'V3 lobby', maxPlayers: 5, world: 'v3', takeStoryteller: true },
+    });
+    expect(r.status).toBe(201);
+    const lobby = r.body.lobby;
+    expect(lobby.world).toBe('v3');
+    const st = await TestClient.join(srv, host.cookie, lobby.id, 'storyteller', 'world-host-2');
+    open.push(st);
+    const v = await st.view((x) => x.lobby.id === lobby.id);
+    expect(v.world).toBe('v3');
+    expect(v.lobby.world).toBe('v3');
+    const g = fakes.registry.games.get(lobby.id) as unknown as { host: { layout(): unknown } };
+    expect(g.host.layout()).toBe(townLayoutV3);
+    st.send('lobby:settings', { name: 'Renamed v3', world: 'v2' } as never);
+    const after = await st.view((x) => x.lobby.name === 'Renamed v3');
+    expect(after.world).toBe('v3');
+    expect(after.lobby.world).toBe('v3');
   });
 });

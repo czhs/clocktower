@@ -6,9 +6,9 @@
 // synchronous and call `currentLayout()` (never cache it in a module-level constant: one page can leave a
 // v2 lobby and join a v3 lobby).
 //
-// Until WP5a publishes the v3 layout, `ensureLayout('v3')` rejects and `currentLayout()` throws
-// "v3 layout not built" in a v3 lobby: no placeholder layout is ever drawn over v2 doors (the server
-// refuses to create v3 lobbies meanwhile, apps/server/src/rooms/worldLayout.ts).
+// (WP5a) `ensureLayout('v3')` imports '@ct/assets/hollowmere'; until it resolved, `currentLayout()` throws
+// "v3 layout not built" in a v3 lobby: no placeholder layout is ever drawn over v2 doors. A failed chunk load
+// rejects and may be retried.
 import { townLayout } from '@ct/assets';
 import type { TownLayout, WorldId } from '@ct/protocol';
 
@@ -20,9 +20,8 @@ let v3Load: Promise<TownLayout | null> | null = null;
 
 /** The v3 layout module (lazy chunk). Null while it does not exist yet. */
 async function importV3Layout(): Promise<TownLayout | null> {
-  // CONTRACT-REQUEST(WP5a): once '@ct/assets/hollowmere' exists, replace the body with
-  //   return (await import('@ct/assets/hollowmere')).townLayoutV3;
-  return null;
+  // (WP5a) the v3 layout's own lazy chunk; a v2 lobby never fetches it
+  return (await import('@ct/assets/hollowmere')).townLayoutV3;
 }
 
 /** Bumped by every ensureLayout / selectLayoutIfLoaded: only the latest request may switch `world`. */

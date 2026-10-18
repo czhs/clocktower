@@ -1,9 +1,10 @@
-// v3 WP0 (v3-lead). net/layout.ts (the lobby's layout: v2 now, v3 refused until WP5a) and the
+// v3 WP0 (v3-lead). net/layout.ts (the lobby's layout: v2, or v3 = Hollowmere since WP5a) and the
 // renderer-free door rules extracted to game/rules (the v3 doorNormal inward rule).
 import { townLayout } from '@ct/assets';
+import { townLayoutV3 } from '@ct/assets/hollowmere';
 import type { BuildingDef } from '@ct/protocol';
 import { afterEach, describe, expect, it } from 'vitest';
-import { currentLayout, currentWorld, ensureLayout, selectLayoutIfLoaded, setV3LayoutForTests, V3_LAYOUT_MISSING } from '../../src/net/layout';
+import { currentLayout, currentWorld, ensureLayout, selectLayoutIfLoaded, setV3LayoutForTests } from '../../src/net/layout';
 import { autoEnterDoor, doorInward, doorLocked, doorPrompt, doorSpots, houseInUse, lockText, tapTarget } from '../../src/game/rules/doors';
 import { dir8, keyDir, keyVector, toFacing } from '../../src/game/rules/input';
 import { integrateStep, interpolate, moveSpeed, poseChanged, routeStep } from '../../src/game/rules/movement';
@@ -22,19 +23,22 @@ describe('net/layout', () => {
     expect(currentLayout()).toBe(townLayout);
   });
 
-  it('v3 before WP5a: ensureLayout rejects and the previous world stays current (no placeholder over v2 doors)', async () => {
+  it('v3 (WP5a): ensureLayout loads Hollowmere; the previous world stays current until it resolved', async () => {
     expect(selectLayoutIfLoaded('v3')).toBe(false);
     const p = ensureLayout('v3');
     // while the chunk loads, consumers of the previous (v2) lobby keep their layout
     expect(currentWorld()).toBe('v2');
     expect(currentLayout()).toBe(townLayout);
-    await expect(p).rejects.toThrow(V3_LAYOUT_MISSING);
-    // a failed load restores nothing because nothing switched: still v2, no throw
-    expect(currentWorld()).toBe('v2');
-    expect(currentLayout()).toBe(townLayout);
+    await p;
+    expect(currentWorld()).toBe('v3');
+    expect(currentLayout()).toBe(townLayoutV3);
+    expect(currentLayout().widthTiles).toBe(112);
     await ensureLayout('v2'); // leaving for a v2 lobby in the same page works
     expect(currentLayout()).toBe(townLayout);
+    expect(selectLayoutIfLoaded('v3')).toBe(true); // loaded once, switching back is synchronous
+    expect(currentLayout()).toBe(townLayoutV3);
   });
+
 
   it('world switches only once the v3 layout resolved; a later v2 request wins the race', async () => {
     const fake = { ...townLayout, version: 3 };

@@ -178,11 +178,20 @@ Contract: `docs/v3/INTEGRATION.md` (§8 Status table, §10 "How to continue", §
   Movement/door/input rules extracted to `apps/client/src/game/rules/`; `currentLayout()` (`net/layout.ts`) replaces
   direct `townLayout` imports; protocol has `world`, `doorNormal`, dais stones. Server refuses `world: 'v3'` (409)
   until the v3 layout exists.
-- **Gate:** typecheck, build, full `pnpm test` (126 files / 1393 tests pass, 3 skipped), C0 mount/destroy smoke
+- **Gate C0:** typecheck, build, full `pnpm test` (126 files / 1393 tests pass, 3 skipped), C0 mount/destroy smoke
   (`scripts/v3/smoke-mount.mjs`, SwiftShader) all pass.
-- **Next:** C0b = WP0s (core splits, `v3-core`) ∥ WP5a (Hollowmere export → `townLayoutV3`, wire the two
-  `CONTRACT-REQUEST(WP5a)` hooks, flip the "v3 refused" tests). Then C1 (WP1-4, WP5b, WP6 in parallel), C2 (WP7 QA
-  harness + e2e), C3.
+- **Works (C0b, committed 2026-10-17):** WP0s split the gameplay and social layers into Phaser-free logic
+  (`game/gameplay/core.ts`, `game/social/controller.ts`, unit-tested with Phaser/three mocked to throw) plus thin
+  Phaser views; Classic behaviour unchanged, `TownScene.ts` untouched. WP5a exported Hollowmere into
+  `@ct/assets/hollowmere` (`townLayoutV3`, `townMapV3`, `npcHomesV3`, `PROP_DEFS_V3`, `layoutFor`; deterministic
+  `scripts/v3/export-hollowmere.mjs --check`); the server now creates `world: 'v3'` lobbies with the Hollowmere
+  layout and the client loads it lazily (`layoutV3` chunk 5.65 KiB br); `sound/areas.ts` surfaces follow the world.
+- **Gate C0b:** typecheck, build, full `pnpm test` (131 files / 1506 tests pass, 1 file / 3 tests skipped) on the host.
+- **Next:** phase 1 in parallel: WP1 (net/input/debug on the core + controller), WP2 avatars, WP3 stage
+  (town/interiors/time), WP4 overlays, WP5b (Classic 2D in a v3 world), WP6 UI; then C1, WP7 QA harness + e2e (C2), C3.
 - **Open issues:** the stub draws no interiors or remote avatars; WebGL context loss swaps to Classic (rebuild is
-  WP1); the C0 5x cycle ran in `smoke-mount.mjs`, not yet in the WP7 harness; `sound/areas.ts` still reads v2
-  surfaces (WP5a); pixel3d-side requests are collected in INTEGRATION.md §9.2.
+  WP1); the C0 5x cycle ran in `smoke-mount.mjs`, not yet in the WP7 harness; pre-existing v2 bug: a phone
+  long-press near the screen edge commits a pie wedge on lift (`social/radial.ts` clamps the centre), which makes
+  `tests/e2e/v2-social.spec.ts` "desktop and phone" flaky (world-art/qa-deploy, INTEGRATION.md §9.3); WP0s review
+  lows (import-closure scan misses re-exports/dynamic imports; `GameplayFrame.picking` exposes `onPick`);
+  pixel3d-side requests are collected in INTEGRATION.md §9.2.

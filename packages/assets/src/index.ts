@@ -4,3 +4,4 @@ export { CHARACTER_PRESETS, PRESET_IDS, presetById, presetSheetKey } from './pre
 export type { CharacterPreset } from './presets.js';
 export { CAST, PLAYABLE, PLAYABLE_IDS, castById, CAST_FW, CAST_FH, CAST_ANCHOR, CAST_DIRS, CAST_FRAMES, CAST_HD_SCALE } from './cast.js';
 export type { CastMember, CastKind, CastDir } from './cast.js';
+export { layoutFor } from './hollowmere/layoutFor.js'; // (v3 WP5a) pure; never imports the v3 data
