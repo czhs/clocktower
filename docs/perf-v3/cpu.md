@@ -168,3 +168,76 @@ re-runs of the same tool.
 
 Not run: the e2e suites (`v3-*`, `CT_GL=swiftshader`), a GPU still of `high` / `low` on this branch, `pnpm build` /
 bundle report (the change adds a few KiB unminified to the lazy town3d chunk, nothing to the entry).
+
+## 7. v3.1 (branch `v31-cpu`): where the rest of a cpu frame goes
+
+Agent `v31-cpu`, 2026-10-18. Same harness (`tests/perf/v3-cpu-tier.ts`, host SwiftShader, 960×540, 14 remotes,
+noon, DEV), ports 3490-3491. Host load during the exclusive windows 7-13 (other agents' pages and builds).
+
+**Result: the cpu tier is unchanged in look and speed (190 ms synced, 7.6-7.8 fps).** The lever this front was given
+("replace the toon materials") turned out to be the vendor **cut-away** code that rides on every town toon material,
+not the toon shading. Nothing that loses the cut-away can ship (the game uses it: walls / roofs open around the
+player), so the material twins built here are opt-in and the only default change is a pixel-identical rewrite.
+
+### 7.1 Measurements (synced ms per frame, p50; one mount per row group)
+
+| lever on the v3.0 cpu tier | synced | Δ | what it tells |
+|---|---|---|---|
+| v3.0 cpu tier | 186-198 | | |
+| `unlit` (every lit material → MeshBasic, colour only) | 84 | −55 % | the old "toon shader" floor |
+| `unlitKit` / `unlitGround` / `unlitChars` | 125 / 150 / 172 | −35 / −21 / −9 % | per family |
+| `res135` (240×135 instead of 320×180) | | −8 to −13 % | pixels are a small share |
+| program rewrites: grid lane setts, cheap kit patterns, hard toon bands, flight branches off | 186-204 | ±5 % (noise) | per-pixel arithmetic is cheap |
+| dead-code diagnostics: kit patterns / ground patterns / whole lighting block / all three | 187 / 177 / 183 / 171 | −0 / −6 / −2 / −9 % | ditto |
+| kit → per-vertex MeshBasic twin (no cut-away) | 128 | −31 % | looked like the win … |
+| + ground → per-pixel MeshBasic twin (no cut-away) | 92-99 | −48 % | … |
+| kit + ground twins **with the vendor cut-away hooks** (correct) | 181-190 | **−0 to −5 %** | the cost was the cut-away |
+| `charsHidden` on top of the twins | | −8 to −20 % | rigs: 126 k of 229 k tris |
+
+RAF / input (sets, same mount): v3.0 7.57 fps, input p50 91 ms (max 158); twins with cut-away 7.82 fps, input p50
+59 ms (max 96) — input is noisy at this frame time (one 130-190 ms frame decides it).
+
+Why the cut-away: `town/cutaway.js patchCutMaterial` wraps every town toon material; per pixel it runs `townDiscard`
+(lift loop ×4, box loop ×3) and the section rim `townCutRim` (4 more `townCut` calls), and SwiftShader evaluates all
+of it whatever the uniforms say (masked SIMD; §1). MeshBasic swaps, the earlier `unlit` lever included, silently
+dropped it, which is why they looked so cheap.
+
+### 7.2 What is in the branch
+
+- `vendor/cpuTier.ts`: a `gl.shaderSource` hook on the cpu renderer's own context with named program rewrites
+  (default: `flight` — the ground's intro-flight `uCamFlight` branches compiled out; the game never sets it, so
+  pixel-identical) and dead-code diagnostics (`xKitFlat`, `xGroundFlat`, `xToonMid`); the **toon twin** (re-hosts a
+  vendor toon material's own hooks incl. the cut-away on a MeshBasicMaterial, toon band per pixel; opt-in
+  `kitBasic` / `groundTwin`); the per-vertex kit twin (`kitBasic,kitVtx`, diagnostic only: no cut-away).
+  `ct.debug.cpuShade` (localStorage) picks the set: unset = default, `none` = v3.0, or a comma list.
+  GPU tiers: untouched (everything is installed by `installCpuTier`, tier `cpu` only).
+- `tests/perf/v3-cpu-probe.js`: `unlitGround` / `unlitKit` / `unlitChars`, `shade*` levers that switch the live set
+  and recompile (`engine.__ctCpuShade`); `v3-cpu-run.sh` profiles `shade`, `shadediag`, `kit`, `twin`; the runner
+  accepts ports 3486-3494.
+
+### 7.3 Next levers (in order)
+
+1. **Cut-away at the cpu tier** (the big one): compile out the section rim and size the loops to the live counts.
+   A game-side program rewrite can do the rim (`townCutRim` → 0: loses only the dark 1-px section line) and is the
+   next thing to measure; the clean fix is the CONTRACT-REQUEST in INTEGRATION.md §9.2. Expected: most of the
+   −48 % the no-cut twins showed, i.e. ~100 ms synced / ~12 fps on this host.
+2. Then the twins (default them on once the cut-away is cheap: their gain shows only then).
+3. Characters: rigs are 55 % of the triangles at the square; `charsHidden` = −8 to −20 % depending on what else
+   is left. A cpu LOD (fewer far rigs at full detail, or a lower update rate) is the next geometry lever.
+
+### 7.4 Commands (v3.1; all on the host via `scripts/remote.sh`, CT_AGENT=v31-cpu)
+
+| command | result |
+|---|---|
+| `sh tests/perf/v3-cpu-check.sh` (client tsc + game3d unit tests), 6 times while iterating | tsc 0; 428 → 433 tests pass (every run green) |
+| `env PORT=3490 SETS='before=shadeNone' sh tests/perf/v3-cpu-run.sh shade test-results/v31-shade` | ok (§7.1 rewrites) |
+| `env PORT=3490 sh tests/perf/v3-cpu-run.sh shadediag test-results/v31-diag` | ok (dead-code diagnostics) |
+| `env PORT=3490 sh tests/perf/v3-cpu-run.sh shade test-results/v31-kit` | ok (kit twin, no cut-away) |
+| `env PORT=3490 sh tests/perf/v3-cpu-run.sh kit test-results/v31-kit2` | levers ok; its sets are **void** (a second run started on the same sandbox mid-way) |
+| `env PORT=3490 sh tests/perf/v3-cpu-run.sh twin test-results/v31-twin` (1st) | **failed**: port 3490 still held by the run above; stopped, its runner killed by PID |
+| `env PORT=3491 sh tests/perf/v3-cpu-run.sh twin test-results/v31-twin` | ran, but the twin programs **failed to compile** (`aTownPart` undeclared: the cut-away hooks were not captured) — the −48 % rows above are without the cut-away |
+| `env PORT=3491 sh -c 'pnpm exec tsx tests/perf/v3-cpu-tier.ts --port 3491 --tiers cpu --levers shadeNone,unlitChars,charsHidden,res135,postOff --sets v30=shadeNone --out test-results/v31-final'` | ok, no console errors: twins with cut-away 190 ms vs v3.0 191 ms |
+
+Also `sh tests/perf/v3-cpu-check.sh full`: `pnpm -r run typecheck` 0, 433 tests pass.
+
+Not run: e2e (`v3-*`), a GPU still (GPU tiers are untouched by construction), `pnpm build`, a GPU-browser check.
