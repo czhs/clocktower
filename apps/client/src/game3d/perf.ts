@@ -185,11 +185,160 @@ export function createFrameGate(fps: number): (ts: number) => boolean {
   };
 }
 
+// ------------------------------------------------------------------ idle rendering (v3.2, fullstack.md lever 2)
+
+/**
+ * v3.2 perf: the frame rate while nothing on screen changes (no camera move, nobody moving / talking, no vote, no
+ * recent input or state change; game3d/idle.ts decides). The waiting room, a still discussion and a night alone in a
+ * house cost the same per frame as walking (fullstack.md §6): half the frames there halves the GPU and main-thread
+ * work, and only the ambient motion (wind, water, fireflies, idle breathing) steps at 30 Hz. Any input or change snaps
+ * back to the full rate on the very next vsync.
+ */
+export const V3_IDLE_FPS = 30;
+/** After the last change / input, hold the full rate this long (covers door swings 1.5 s, fades, the die hold 1.5 s). */
+export const IDLE_LINGER_MS = 3000;
+
+/** Is idle rendering on? Off under ct.debug.fps (tests / perf runs own the frame rate) and ct.debug.v3idle = '0'. */
+export function idleEnabled(s: Pick<Storage, 'getItem'> | null): boolean {
+  try {
+    if (s?.getItem('ct.debug.v3idle') === '0') return false;
+    return !Number(s?.getItem('ct.debug.fps') ?? 0);
+  } catch {
+    return true;
+  }
+}
+
+/** The pose fields that change what is drawn. */
+interface PoseLike {
+  x: number;
+  y: number;
+  location: string;
+  facing: string;
+  moving: boolean;
+}
+
+export interface ActivityFrame {
+  me: PoseLike | null;
+  remotes: ReadonlyMap<string, PoseLike>;
+  hour: number;
+  /** The camera's view-projection (16 numbers) and the texel-snap offset of this frame. */
+  viewProj: ArrayLike<number>;
+  offsetX: number;
+  offsetY: number;
+  /** Something animates on its own this frame (camera transition, a vote / nomination, somebody talking). */
+  busy: boolean;
+}
+
+/** What made the last frame active (debug: `__ctCamera.camera3d().idle`). */
+export type ActivityReason = 'none' | 'busy' | 'camera' | 'pose' | 'hour' | 'wake';
+
+const CAM_EPS = 1e-6;
+const POS_EPS = 1e-3;
+
+/**
+ * "Something changed" for idle rendering. `observe()` once per drawn frame compares it with the previous one;
+ * `wake()` (input, a state / chat / voice change, a teleport, a door) holds the full rate for `linger` ms. `idle()`
+ * = nothing changed for `linger` ms. Pure: no DOM, no three.
+ */
+export class ActivityWatch {
+  private until = -Infinity;
+  private vp = new Float64Array(16);
+  private off: [number, number] = [NaN, NaN];
+  private hour = NaN;
+  private me: [number, number, string, string] | null = null;
+  private poses = new Map<string, [number, number, string, string]>();
+  /** Reason for the last active frame / wake. */
+  reason: ActivityReason = 'none';
+  /** Debug: which pose made the last 'pose' frame active ('me' / a remote pid, + 'moving' / 'moved' / 'new' / 'gone'). */
+  detail = '';
+  constructor(
+    private readonly now: () => number,
+    private readonly linger = IDLE_LINGER_MS,
+  ) {}
+  wake(): void {
+    this.until = this.now() + this.linger;
+    this.reason = 'wake';
+  }
+  idle(): boolean {
+    return this.now() >= this.until;
+  }
+  /** One drawn frame. Returns true when it was active (and holds the full rate for `linger`). */
+  observe(f: ActivityFrame): boolean {
+    let why: ActivityReason = 'none';
+    if (f.busy) why = 'busy';
+    // always refresh the stored copies (cheap: 16 + 2 numbers + one tuple per pose)
+    let cam = false;
+    for (let i = 0; i < 16; i++) {
+      const v = f.viewProj[i] ?? 0;
+      if (Math.abs(v - this.vp[i]!) > CAM_EPS * Math.max(1, Math.abs(v))) cam = true;
+      this.vp[i] = v;
+    }
+    if (f.offsetX !== this.off[0] || f.offsetY !== this.off[1]) cam = true;
+    this.off[0] = f.offsetX;
+    this.off[1] = f.offsetY;
+    if (cam && why === 'none') why = 'camera';
+    // (the first frame: this.hour is NaN -> the comparison is false -> active)
+    if (!(Math.abs(f.hour - this.hour) <= 1e-6) && why === 'none') why = 'hour';
+    this.hour = f.hour;
+    let pose = false;
+    if (f.me) {
+      if (f.me.moving || !this.me || !samePose(this.me, f.me)) {
+        pose = true;
+        this.detail = `me ${f.me.moving ? 'moving' : 'moved'}`;
+      }
+      if (!this.me) this.me = [0, 0, '', ''];
+      copyPose(this.me, f.me);
+    } else if (this.me) {
+      pose = true;
+      this.detail = 'me gone';
+      this.me = null;
+    }
+    if (f.remotes.size !== this.poses.size) {
+      pose = true;
+      this.detail = 'remotes count';
+    }
+    for (const [pid, p] of f.remotes) {
+      let q = this.poses.get(pid);
+      if (!q) {
+        pose = true;
+        this.detail = `${pid} new`;
+        this.poses.set(pid, (q = [0, 0, '', '']));
+      } else if (p.moving || !samePose(q, p)) {
+        pose = true;
+        this.detail = `${pid} ${p.moving ? 'moving' : 'moved'}`;
+      }
+      copyPose(q, p);
+    }
+    if (this.poses.size > f.remotes.size) for (const pid of [...this.poses.keys()]) if (!f.remotes.has(pid)) this.poses.delete(pid);
+    if (pose && why === 'none') why = 'pose';
+    if (why === 'none') return false;
+    this.reason = why;
+    this.until = this.now() + this.linger;
+    return true;
+  }
+}
+
+function samePose(q: [number, number, string, string], p: PoseLike): boolean {
+  return Math.abs(q[0] - p.x) <= POS_EPS && Math.abs(q[1] - p.y) <= POS_EPS && q[2] === p.location && q[3] === p.facing;
+}
+function copyPose(q: [number, number, string, string], p: PoseLike): void {
+  q[0] = p.x;
+  q[1] = p.y;
+  q[2] = p.location;
+  q[3] = p.facing;
+}
+
 export interface FrameLoopOptions {
   /** ct.debug.fps: cap the loop (tests); 0 = every animation frame (up to maxFps). Wins over maxFps. */
   fpsLimit?: number;
   /** The default cap when no fpsLimit is set (engineHost: V3_MAX_FPS); 0 / unset = every animation frame. */
   maxFps?: number;
+  /**
+   * v3.2 idle rendering: while `isIdle()` is true the loop draws at most `idleFps` (on top of the cap above; a lower
+   * cap, e.g. the cpu tier's 30 fps, is never raised). The check runs per vsync, so a wake draws on the next one.
+   */
+  idleFps?: number;
+  isIdle?(): boolean;
   /** One frame: `t` = seconds since start (+2 warm-up frames), monotonic; `dtMs` = time since the last frame. */
   step(t: number, dtMs: number): void;
   /** The first throw from `step` stops the loop for good and lands here (TownGame3d: crash -> Classic). */
@@ -211,6 +360,7 @@ export function runFrameLoop(o: FrameLoopOptions, deps: FrameLoopDeps): FrameLoo
   let id = 0;
   let running = true;
   const gate = createFrameGate(o.fpsLimit && o.fpsLimit > 0 ? o.fpsLimit : (o.maxFps ?? 0));
+  const idleGate = o.isIdle && o.idleFps && o.idleFps > 0 ? createFrameGate(o.idleFps) : null;
   const stop = () => {
     if (!running) return;
     running = false;
@@ -221,7 +371,9 @@ export function runFrameLoop(o: FrameLoopOptions, deps: FrameLoopDeps): FrameLoo
     if (!running) return;
     id = deps.raf(loop);
     const now = deps.now();
-    if (!gate(typeof ts === 'number' && ts > 0 ? ts : now)) return;
+    const at = typeof ts === 'number' && ts > 0 ? ts : now;
+    if (!gate(at)) return;
+    if (idleGate && o.isIdle!() && !idleGate(at)) return;
     const dtMs = now - prev;
     prev = now;
     // a hidden tab resumes where it stopped (never a jump of more than 0.25 s)

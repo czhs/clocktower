@@ -251,3 +251,133 @@ All builds and servers on the host via `scripts/remote.sh` from a `git archive v
 | `curl` × 2 passes over 139 `/assets` URLs from prod (headers only + br bytes) | table §4 |
 | local `zlib.brotliCompressSync` q4 / q5 / q11 of the prod chunks | table §4 |
 | `node prodhome.mjs` (prod landing as a guest, 3 networks × CPU ×1/×4) | §2, §4 |
+
+## 10. v3.2 early items (agent `v32-early`, branch `v32-early`): levers 2, 3, 5
+
+### 10.1 Idle rendering (lever 2)
+
+`perf.ts` `runFrameLoop` gained `idleFps` / `isIdle`: a second phase-locked gate (`createFrameGate(V3_IDLE_FPS = 30)`)
+applied on top of the normal cap, only while idle, checked per vsync (a wake draws on the very next vsync). It never
+raises a lower cap (cpu tier 30 fps, `ct.debug.fps`). The "something changed" signal is `game3d/idle.ts`
+(`createIdleSignal`, pure core `perf.ts ActivityWatch`), wired in `TownGame3d.ts` with 5 isolated lines:
+
+- per drawn frame: camera view-projection or texel-snap offset changed, any pose changed or anybody walking (own /
+  remotes; appear / vanish), the shown hour moved (dawn ease), a camera transition, a vote or open nomination (clock
+  hand), somebody talking (talk clip, label ring);
+- events: keyboard / pointer / wheel / touch / resize input, lobby / game / chat store changes, `chat:message`,
+  `world:teleport`, `sound`, core `placed` / `poof` / `door`, voice presence.
+
+Idle = none of those for `IDLE_LINGER_MS` = 3 s (covers the 1.5 s door swing, the 1.5 s die hold, fades). Ambient
+motion (wind, water, fireflies, breathing) keeps running at 30 Hz. Off under `ct.debug.fps` (tests and uncapped perf
+runs own the rate) and with `ct.debug.v3idle = '0'` (A/B switch). Debug: `__ctCamera.camera3d().idle` =
+`{on, idle, reason, wake, wakes}`.
+
+Measured with the §1 setup (host server + 1 ST + 14 bots on 127.0.0.1:3482, this machine's GPU Chromium, 1440×900
+DPR 2, tier high), **CPU ×4** (the weak-laptop profile; the unthrottled 60 Hz ms/s is clock-down inflated, §1), same
+build A/B: `before` = `ct.debug.v3idle=0` (v3.0 behaviour), `after` = default. 10 s windows, rendered fps = frames
+drawn into the default framebuffer.
+
+| window (CPU ×4) | before fps / main ms/s | **after fps / main ms/s** | idle reason at the end |
+|---|---|---|---|
+| waiting room, nobody moving | 60.7 / 561 | **30.3 / 328 (−42 %)** | idle |
+| waiting room, 14 walking | 60.7 / 648 | 60.3 / 654 | `pose` (somebody walking) |
+| day square, 14 walking | 60.7 / 651 | 60.5 / 669 | `pose` |
+| day square, everybody still | 60.7 / 569 | **30.3 / 317 (−44 %)** | idle |
+| vote (clock, 8 hands) | 60.0 / 742 | 59.9 / 749 | `busy` (vote) |
+| night, alone inside own house | 60.6 / 102 | **30.3 / 61 (−41 %)** | idle |
+
+Unthrottled (v3.0 build vs this branch, 60 Hz): waiting room 60.6 fps / 297 ms/s → 30.4 / 216; night inside 60.6 /
+110 → 30.3 / 76; walking and the vote unchanged at 60 fps. GPU work halves with the frame count (per-frame draws
+unchanged: 336 waiting room, 39-45 night). A first run kept "day still" at 60 fps: one bot stayed `moving: true` at the
+server because the bots' wander loop stops without the `moving: false` a real client sends on key release, so its
+avatar walked in place (a real animation: 60 fps was right). The driver now sends that stop; `camera3d().idle.detail`
+names the pose that keeps a frame active.
+
+### 10.2 Join path (lever 3)
+
+`ui/common/townPrefetch.ts`: `warmRenderer(world)` loads only the renderer select.ts will pick (Phaser only for a v2
+lobby or where Classic is chosen: Graphics = Classic, phone, boot guard, auto-fallback memo, no webgl2); LobbyRoute
+calls it at join start with the page's app world (so `town3d` now starts with the ticket instead of after
+`lobby:view`) and again with the lobby's real world. An in-place fallback still imports Phaser on demand in
+GameScreen. `main.tsx`: on the v3 app's landing (signed out) and home screens, `whenIdle` (≤ 4 s) prefetches
+LobbyRoute + `town3d` unless Save-Data / effectiveType 2g / slow-2g / 3g, or select.ts would pick Classic. `/v2/`
+is unchanged (Classic, no three.js). Known trade-off: an old v2 share link opened at `/lobby/x` (v3 path) starts
+`town3d` before `lobby:view` moves it to `/v2/` (rare; the page then loads Phaser too).
+
+Playwright network log of a cold v3 join (`/lobby/<id>`, 15-player lobby, same setup):
+
+| | v3.0 build (`v3-game`) | this branch, straight to the lobby | this branch, from the home page (8 s idle first) |
+|---|---|---|---|
+| `TownGame` (Phaser) fetched | **yes**, 94 → 134 ms, 1 283 457 B (identity on the local origin; 360 KB br at the edge) | **no** | **no** |
+| `town3d` request start → end | 220 → 243 ms (after `lobby:view`) | 185 → 197 ms (with the ticket), 279 736 B br | from cache (prefetched on the home page) |
+| home page JS | `LobbyRoute` | — | `LobbyRoute` + `town3d` (14 JS files) |
+| ready (CPU ×1 / ×4) | 3 061 / — ms | — / 8 994 ms | 2 864 / — ms |
+
+`/v2/` still loads Phaser (the Classic e2e `doors` and `chat-bubbles` pass, and `v3-paths` checks the v2 app);
+`v3-fallback` (chunk failure, context loss, boot guard, perf sampler → Classic in place) passes, so the on-demand
+Phaser import works. Not measured: Save-Data / slow-connection skips (unit-tested, `ui.townPrefetch.test.ts`).
+Ready improves little on a fast link (the join is CPU-bound, §2); the gain is −360 KB br and −55 ms (×4: −200 ms) of
+Phaser evaluation per join, and `town3d` moved off the join on slow links.
+
+### 10.3 Compression (lever 5)
+
+`apps/client/build/precompress.mjs` (after `vite build`): `.br` (q11) + `.gz` (9) next to every js / mjs / css /
+json / svg ≥ 1 KiB, kept when < 95 % of the original (130 + 130 of 139 files, ≈ 4-5 s). `apps/server/src/precompressed.ts`
+serves them before express.static: q-value negotiation (br preferred; `br;q=0` respected), original Content-Type,
+`Content-Encoding`, compressed `Content-Length`, the same Cache-Control (immutable for `/assets`), global CSP,
+`Vary: Accept-Encoding` on every compressible response, a per-variant weak ETag (304s), identity for Range requests,
+404 for direct `.br` / `.gz` URLs. No compression middleware anywhere else (no double compression). The 6 JSON atlases
+are already content-hashed under `/assets/` (imported with `?url`) and were already `immutable` at the origin: their
+`DYNAMIC` status at the edge is Cloudflare's default extension list, fixed by the cache rule below.
+
+| file | raw | br q11 (origin now) | edge q4 (v3.0) | gzip 9 |
+|---|---|---|---|---|
+| town3d | 1 068 623 | 279 551 | ≈ 336 600 (prod edge, v3.0 build) | 336 643 |
+| TownGame | 1 283 103 | 288 006 | ≈ 360 200 | 357 574 |
+| LobbyRoute | 240 846 | 68 399 | ≈ 81 300 | 77 933 |
+| entry index | 148 543 | 46 738 | 51 942 | 53 746 |
+| town-v3 atlas json | 225 805 | 11 661 | | 20 482 |
+
+Live check on the host (127.0.0.1:3484): `Accept-Encoding: br` → `content-encoding: br`, `content-length: 279551`,
+`vary: Accept-Encoding`, `cache-control: public, max-age=31536000, immutable`, CSP present; gzip and identity likewise.
+
+**Owner actions (Cloudflare dashboard, after the deploy that ships this):**
+
+1. **Cache Rule** (Caching → Cache Rules → Create rule), name `assets cache everything`: when *URI Path starts with
+   `/assets/`* (and *Hostname equals clocktower.chrisshi.com*) → *Eligible for cache*; Edge TTL = *Use cache-control
+   header if present, bypass cache if not* (origin sends `max-age=31536000, immutable`); Browser TTL = *Respect origin*;
+   cache key unchanged (the origin already refuses query strings). This makes the 6 hashed `.json` atlases cacheable.
+2. **Tiered Cache** (Caching → Tiered Cache): enable **Smart Tiered Caching**, so an edge location's miss fills from an
+   upper-tier Cloudflare location instead of going through the tunnel to the origin.
+3. **Compression:** leave Speed → Brotli on; check Rules → Compression Rules has no rule that disables compression or
+   forces another encoding on `/assets/*`. Cloudflare passes an origin response that already carries
+   `Content-Encoding: br` through to br-capable clients and only compresses identity responses itself (the q4 seen in §4).
+4. **Verify** (release agent, after deploy): `curl -sI -H 'Accept-Encoding: br' https://clocktower.chrisshi.com/assets/<town3d chunk>`
+   → `content-encoding: br`, `vary: accept-encoding`, the immutable cache-control; body size
+   `curl -s -H 'Accept-Encoding: br' <url> | wc -c` ≈ the build's `.br` size (279.5 KB for this build, was 336.6 KB at q4).
+   Run twice: the second shows `cf-cache-status: HIT`. Repeat for one `/assets/*.json` atlas: `HIT` instead of `DYNAMIC`.
+   If the edge still returns ≈ 336 KB, Cloudflare is re-compressing (check the Compression Rules, then contact the owner).
+
+### 10.4 Commands (v32-early)
+
+All on the host via `scripts/remote.sh` from the `v32-early` worktree (`CT_AGENT=v32-early`; the compression
+sub-agent used `CT_AGENT=v32-early-br`, port 3484; the v3.0 baseline was an archive of `origin/v3-game` built in
+`CT_AGENT=v32-base`). Ports 3481 (e2e), 3482 (measurement), 3484 (live header check).
+
+| Command | Result |
+|---|---|
+| `pnpm vitest run apps/client/test/game3d/{idle,frameGate,bootPerf}.test.ts` | 40 passed |
+| `pnpm --filter @ct/client run typecheck` (several times) | ok |
+| `pnpm vitest run apps/client/test/{ui.townPrefetch,game3d/idle,ui.appWorld,ui.v3loading}.test.ts` | 43 passed |
+| `pnpm vitest run apps/server/test/static` (sub-agent) | first run 1 failure (fixture under 1 KiB, nothing compressed; fixture enlarged), then 38 passed |
+| `pnpm build` (both sandboxes, shared heavy lock) | ok; precompress 130 .br / 130 .gz of 139 files in 3.8-4.9 s |
+| live: built server on 127.0.0.1:3484 + `curl -sI -H 'Accept-Encoding: br/gzip/identity'` (sub-agent) | headers as §10.3 |
+| measurement sessions (`flock -x` heavy lock, ≤ 5 min each): `after1` (×1, home), `before1` (v3.0 build, ×1, home), `after2` (×4), `after3` (×4), `before3` (×4, `ct.debug.v3idle=0`) | 0 page errors in every session. The first attempt waited 7.5 min for the exclusive lock and gave up (fixed: `flock` before `timeout`). `after2`'s "day still" stayed at 60 fps because of the bot artifact above |
+| `pnpm -r run typecheck` | ok |
+| `pnpm vitest run apps/server apps/client tests/security/web-client.test.ts` (after the build) | 121 files, 1 354 tests passed |
+| `E2E_V3=1 E2E_PORT=3481 CT_GL=gpu CT_E2E_NO_BUILD=1 pnpm test:e2e --project=v3 v3-boot v3-paths v3-life v3-fallback` | 10 passed (2.8 min) |
+| `E2E_PORT=3481 CT_E2E_NO_BUILD=1 pnpm test:e2e tests/e2e/doors.spec.ts tests/e2e/chat-bubbles.spec.ts` (Classic) | 2 passed (1.6 min) |
+
+Proposed budget keys for `scripts/perf/budgets.mjs` (not edited): `v3IdleLobbyFps` ≤ 32 (rendered fps in the waiting
+room after 4 s of stillness), `v3IdleNightFps` ≤ 32, `v3WalkFps` ≥ 58 (must not regress), `v3JoinPhaserChunk` = 0
+(no `TownGame-*.js` request in a v3 join), `town3dChunkBrKiB` measured on the precompressed `.br` (279.6 KB now).

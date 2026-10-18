@@ -21,6 +21,7 @@ import { lazyComponent, whenIdle } from './ui/common/lazy';
 import { LoadingScreen, StatusScreen } from './ui/common/StatusScreen';
 import { navigate, parseRoute, type Route } from './ui/common/route';
 import { appWorld } from './ui/common/appWorld';
+import { prefetchAllowed, prefetchTown3dForHome } from './ui/common/townPrefetch';
 import { V3Loading } from './ui/common/v3loading';
 import { installUiSounds } from './game/audio';
 
@@ -103,11 +104,22 @@ function App() {
       window.removeEventListener('ct:navigate', onNav);
     };
   }, []);
-  // Signed in on the home screen: fetch the lobby chunk while the user picks a lobby.
+  // Signed in on the home screen: fetch the lobby chunk while the user picks a lobby. (v3.2 perf) In the v3 app the
+  // landing (signed out) and home screens also prefetch the lobby chunk and the 3D town when idle, unless this page
+  // would draw Classic or the connection is slow / Save-Data (ui/common/townPrefetch.ts).
   const home = !!account && route.name === 'home';
+  const landing = account === null || home;
   useEffect(() => {
     if (home) return whenIdle(() => void LobbyRoute.preload());
   }, [home]);
+  useEffect(() => {
+    if (!landing || appWorld() !== 'v3') return;
+    return whenIdle(() => {
+      if (!prefetchAllowed()) return;
+      void LobbyRoute.preload();
+      prefetchTown3dForHome();
+    }, 4000);
+  }, [landing]);
 
   if (account === undefined)
     return unreachable > 0 ? (
