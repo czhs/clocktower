@@ -4,8 +4,10 @@ Branch `v3-perf-cpu` (from `4e99bc8`), agent `v3-perf-cpu`, 2026-10-18. User goa
 (software GL; SwiftShader as the stand-in): ≥ 20 fps at 960×540 with 8-15 players visible, input → motion ≤ 100 ms,
 through a `cpu` quality tier that is **picked automatically** when the WebGL renderer is software.
 
-Status: the `cpu` tier is built, wired and unit-tested; measured on the host's SwiftShader (numbers below). The
-goal is **not reached on the host** (see §4 for what is left and why the host is a pessimistic proxy).
+Status: the `cpu` tier is built, wired and unit-tested; measured on the host's SwiftShader. Before → after
+(960×540, 14 remotes + NPCs, synced frame / RAF fps / input → motion p50): **`low` 1199 ms / 3.1 fps / 466 ms →
+`cpu` 194 ms / 7.6 fps / 109 ms** (6.2× cheaper frames). The goal (≥ 20 fps, ≤ 100 ms) is **not reached yet**: §4
+says what is left (mostly the vendor toon shader).
 
 ## 1. What changed
 
@@ -14,7 +16,7 @@ goal is **not reached on the host** (see §4 for what is left and why the host i
 | `game3d/contract.ts` (lead) | `Tier = 'low' \| 'high' \| 'cpu'` |
 | `game3d/select.ts` (lead) | Row 6: a WebGL2 context that exists only **without** `failIfMajorPerformanceCaveat` (Chrome's verdict for SwiftShader / blocklisted GPUs), or a renderer string matching `/SwiftShader\|llvmpipe\|Software/i`, now mounts **v3 at `cpu`** (was Classic). Rows 3 (pref classic), 4 (boot guard), 7 (auto-fallback memo) and 8 (phones under Auto) still win. `v3force` (row 2, the host e2e) keeps the row-9 tier, so e2e behaviour is unchanged. `mayUseV3` now says yes on software GL (prefetch hint). The probe cache keeps one result per flag. |
 | `game3d/perf.ts`, `net/lifecycle.ts` (lead / v3-core) | Step-down chain **high → low → cpu → Classic**: `PerfSampler` at `low` answers `rebuild-cpu` (was `fallback`); at `cpu` the slow threshold is a median > 66 ms (under 15 fps; `PERF_SLOW_MEDIAN_CPU_MS`) instead of 45 ms. Promotion is unchanged (only low → high). |
-| `game3d/vendor/cpuTier.ts` (new) | The cpu levers, installed by `engineHost` for tier `cpu` only (GPU tiers untouched), before the town build compiles anything: internal rows ≈ 180 (`pixelScale = max(2, round(h/180))`: 960×540 → 3 → 320×180, low is 2 → 480×270); a 30 fps rAF cap (`ct.debug.fps` still wins); no shadow map, the sun casts none; the **normal pass skipped** (the pipeline already cleared `rtNormal` to a flat normal) with the passes that read it (`outline`, `contact`) off; the per-body water passes off (`river`, `water-*`); every Point / SpotLight moved to a camera-invisible layer (three only gathers lights the camera sees: the game's light pool, borrowing and carried lanterns keep working, but every program compiles with 0 point lights, day and night); the toon lighting's **cloud-shadow FBM and normal noise compiled out** (two macros appended to three's `clipping_planes_pars_fragment` chunk, which three includes after the vendor shader head and before `main()`; restored on dispose). |
+| `game3d/vendor/cpuTier.ts` (new) | The cpu levers, installed by `engineHost` for tier `cpu` only (GPU tiers untouched), before the town build compiles anything: internal rows ≈ 180 (`pixelScale = max(2, round(h/180))`: 960×540 → 3 → 320×180, low is 2 → 480×270); a 30 fps rAF cap (`ct.debug.fps` still wins); no shadow map, the sun casts none; the **normal pass skipped** (the pipeline already cleared `rtNormal` to a flat normal) with the passes that read it (`outline`, `contact`) off; the per-body water passes off (`river`, `water-*`); every Point / SpotLight moved to a camera-invisible layer (three only gathers lights the camera sees: the game's light pool, borrowing and carried lanterns keep working, but every program compiles with 0 point lights, day and night); the grass / reed / flower tuft sprite fields (meshes named `grass`) hidden; the toon lighting's **cloud-shadow FBM and normal noise compiled out** (two macros appended to three's `clipping_planes_pars_fragment` chunk, which three includes after the vendor shader head and before `main()`; restored on dispose). |
 | `game3d/vendor/engineHost.ts` (lead) | cpu pixel scale, the tier frame cap, `installCpuTier` + a `pipe.render` hook that re-asserts the levers each frame (the water `vis()` updaters re-enable their pass), `info().cpu` stats |
 | `vendor/town.ts`, `vendor/time.ts`, `world/lights.ts` (WP3) | accept `'cpu'` (= the vendor's `low` town and life; the light budget stays the low one: 8 / 2) |
 | `avatars/layer.ts`, `overlay/index.ts` | `cpu` gets the low-tier character LOD / no FX motes and the low bubble cap |
@@ -35,8 +37,8 @@ swapping every lit material for an unlit one saved 61 %. So the expensive shader
 - `synced`: frames rendered back to back with a 1-px `readPixels` each, so SwiftShader raster is inside the number
   (the cost of one frame). `raf`: a 10 s window of the real game loop (fps = frames / s). `input`: keydown on window →
   the end of the first rAF frame after which `__ctCamera.me()` moved (JS-visible; + about one frame to the screen).
-- Each command runs in `remote.sh`'s systemd scope (CPUQuota **300 %**, nice 19) — the rasteriser gets at most 3
-  cores. Mounts take the heavy lock shared; every measurement window takes it exclusive. Other agents' mounted pages
+- Each command runs in `remote.sh`'s systemd scope (nice 19; the cgroup recorded no CPU throttling, the scope used
+  ≈ 10.6 cores in the final window). Mounts take the heavy lock shared; every measurement window takes it exclusive. Other agents' mounted pages
   (waiting for the lock) keep rendering in the background: the host load during the windows was 11-19 on 12 threads,
   recorded per window in the JSON (`locks[].loadIn/loadOut`, cgroup usage).
 - Commands (from the worktree root):
@@ -97,7 +99,7 @@ Sets (RAF window + input, the same tier):
 |---|---|---|---|
 | `low` baseline (§3.2) | 1199 ms | 3.1 | 466 / 770 ms |
 | **cpu tier** (`cb9b81d`) | 353 ms | 5.2 | 307 / 575 ms |
-| **cpu tier + grass hidden** (`13f40b5`, final run) | FINAL_SYNCED | FINAL_FPS | FINAL_INPUT |
+| **cpu tier + grass hidden** (`13f40b5`, final run) | **194 ms** | **7.6** | **109 / 146 ms** |
 
 Mount (SwiftShader): `low` ready 13.0 s (host load 0.9), avatars 15/15 built after 80 s; `cpu` ready 17-20 s (host
 load 19-23), avatars built after 34-36 s (fewer programs per rig: no shadow / normal variants).
@@ -105,7 +107,7 @@ load 19-23), avatars built after 34-36 s (fewer programs per rig: no shadow / no
 Look (960×540, noon, 14 remotes; stills `cpu-low-baseline.png` / `cpu-cpu-baseline.png` in the host sandbox
 `test-results/v3-cpu-*`): the cpu tier keeps the palette, the bands, the characters, labels and bubbles; it loses
 cast shadows, the ink outlines, the water bodies (the fountain and well basins show empty), cloud shadows and the
-lantern light pools at night; with the grass lever also the grass tufts (the lawn keeps its toon colours).
+lantern light pools at night, and most grass tufts (the lawn keeps its toon colours; a few decorative tufts from other pieces remain).
 
 The GPU tiers are unchanged by construction: `installCpuTier` only runs for tier `cpu`, `pixelScaleFor` and the
 vendor `quality` param map `high` / `low` exactly as before, the light budgets for `high` / `low` are the same
@@ -114,13 +116,15 @@ engine of a tier rebuild is created after the old one is disposed). A GPU still 
 
 ## 4. Verdict and what is left
 
-- **Goal not reached on the host.** The cpu tier is ≈ 3.4× (cpu) to FINAL_X× (cpu + grass) cheaper per frame than
-  `low` on SwiftShader, and input → motion drops from 466 ms to FINAL_INPUT_P50 ms (p50), but the target is
+- **Goal not reached on the host.** The cpu tier is ≈ 3.4× (cpu) to 6.2× (cpu + grass) cheaper per frame than
+  `low` on SwiftShader, and input → motion drops from 466 ms to 109 ms (p50, max 146), but the target is
   ≥ 20 fps / ≤ 100 ms.
-- **The host is a pessimistic proxy.** SwiftShader got at most 3 cores (`remote.sh` CPUQuota 300 %, nice 19) on a
-  6-core Ryzen 5 5500 while the host load was 19-23 (other agents' builds, e2e and their mounted pages, which keep
-  rendering while they wait for the lock), on a DEV build. A real CPU-only desktop gives SwiftShader every core;
-  cpuB (§3.2, a 102 ms frame) already reached 12 fps and 77 ms input on this host.
+- **How fair is the host as a proxy?** A 6-core / 12-thread Ryzen 5 5500 desktop CPU. The `remote.sh` scope was
+  **not** throttling (cgroup `throttledMs` 0; the scope used ≈ 10.6 cores during the final set window), so
+  SwiftShader had most of the machine, but the host load was 13-23 during the windows (other agents' builds, e2e and
+  their mounted pages, which keep rendering while they wait for the lock) on a DEV build. A quiet 6-8-core desktop
+  should do somewhat better; a 2-4-core laptop worse. cpuB (§3.2, unlit materials, a 102 ms frame) reached 12 fps
+  and 77 ms input on this host: the shading is the remaining gap.
 - **What is left is shader work in the colour pass**: on top of the cpu tier, unlit materials remove another
   69 % (grass included). The toon shader is vendor code (`materials/toon.js`); SwiftShader evaluates every branch,
   so only a compiled-out variant helps. Next steps, in order:
@@ -142,12 +146,12 @@ re-runs of the same tool.
 
 | key | proposed | measured | meaning |
 |---|---|---|---|
-| `v3CpuSyncedP50Ms` | ≤ 300 | FINAL_SYNCED_NUM | synced frame at the cpu tier (catches a lever regressing) |
-| `v3CpuVsLowRatio` | ≤ 0.35 | FINAL_RATIO | cpu synced / low synced |
-| `v3CpuCalls` | ≤ 130 | 113 | draw calls at the square (no normal / shadow passes) |
-| `v3CpuPrograms` | ≤ 45 | 43 | programs after ready (0-light, no-shadow variants only) |
-| `v3CpuInputP50Ms` | ≤ 250 | FINAL_INPUT_P50 | input → motion, host SwiftShader (goal on a real CPU-only device: ≤ 100) |
-| `v3CpuRafFps` | ≥ 5 | FINAL_FPS | RAF window fps, host SwiftShader (goal on a real CPU-only device: ≥ 20) |
+| `v3CpuSyncedP50Ms` | ≤ 250 | 194 | synced frame at the cpu tier (catches a lever regressing) |
+| `v3CpuVsLowRatio` | ≤ 0.25 | 0.16 (194 / 1199) | cpu synced / low synced |
+| `v3CpuCalls` | ≤ 130 | 111 | draw calls at the square (no normal / shadow passes) |
+| `v3CpuPrograms` | ≤ 45 | 41 | programs after ready (0-light, no-shadow variants only) |
+| `v3CpuInputP50Ms` | ≤ 150 | 109 | input → motion, host SwiftShader (goal on a real CPU-only device: ≤ 100) |
+| `v3CpuRafFps` | ≥ 6 | 7.6 | RAF window fps, host SwiftShader (goal on a real CPU-only device: ≥ 20) |
 
 ## 6. Commands run (all on the host via `scripts/remote.sh`; every failure listed)
 
@@ -157,7 +161,7 @@ re-runs of the same tool.
 | `CT_AGENT=v3-perf-cpu scripts/remote.sh --no-sync sh -c 'cd …proto && ls…'` | failed: the sandbox did not exist yet (`--no-sync`); re-run with sync |
 | `CT_AGENT=v3-perf-cpu scripts/remote.sh sh tests/perf/v3-cpu-run.sh levers test-results/v3-cpu-base` | ok (done 19:07 UTC): §3.1, §3.2 |
 | `CT_AGENT=v3-perf-cpu-t scripts/remote.sh env PORT=3487 sh tests/perf/v3-cpu-run.sh cpuplus test-results/v3-cpu-plus` | **partial**: cpu base, levers and the baseline set measured (§3.3), then the runner's 48-min watchdog aborted it while it waited for the exclusive lock (exit 3, no JSON; numbers from its log). Its orphaned `flock` waiter was killed by PID. |
-| `CT_AGENT=v3-perf-cpu scripts/remote.sh env PORT=3486 TIERS=cpu sh tests/perf/v3-cpu-run.sh tiers test-results/v3-cpu-final` | FINAL_STATUS |
+| `CT_AGENT=v3-perf-cpu scripts/remote.sh env PORT=3486 TIERS=cpu sh tests/perf/v3-cpu-run.sh tiers test-results/v3-cpu-final` | ok (20:21 UTC): §3.3 last row; mount → exclusive waits 27 + 8 min; console: the probe's fake members make the pre-warm pump warn once (`castIdentity … preset`, harness-only: its members carry no cast id), plus SwiftShader's `KHR_parallel_shader_compile` / ReadPixels-stall driver notes |
 | `CT_AGENT=v3-perf-cpu-t scripts/remote.sh sh tests/perf/v3-cpu-check.sh` (client `tsc` + `vitest run apps/client/test/game3d apps/client/test/ui.graphicsStatus.test.ts`) | 1st: 2 fails (`cpuTier.test.ts`: layer-31 mask sign); 2nd: `tsc` error (engine type); 3rd: 1 fail (macro test after an undisposed install); then **tsc 0, 30 files / 407 tests pass** |
 | `CT_AGENT=v3-perf-cpu-u scripts/remote.sh sh tests/perf/v3-cpu-check.sh full` | **`pnpm -r run typecheck` 0**, 30 files / 407 tests pass |
 | `CT_AGENT=v3-perf-cpu-u scripts/remote.sh --no-sync flock -s <heavy lock> pnpm vitest run apps/client` | **66 files / 870 tests pass** |
