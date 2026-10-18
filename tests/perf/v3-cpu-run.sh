@@ -18,6 +18,14 @@ case "$P" in
   cpuplus)
     $T --tiers cpu --levers res135,unlit,charsHidden,noGrass,noFlowers,noDetail,noNpc,postOff,cssUpscale \
       --sets 'cpuGrass=noGrass;cpuGrassDetail=noGrass+noDetail;cpuGrassRes=noGrass+res135' --out "$OUT" ;;
+  # v3.1: where the cost lives (unlit per material family, dead-code fragment diagnostics) and the kit swap A/B
+  shade)
+    $T --tiers cpu --levers unlit,unlitGround,unlitKit,unlitChars,shadeToonKit,shadeKitFlat,shadeGroundFlat,shadeToonMid,shadeAllFlat \
+      --sets "${SETS:-v30=shadeToonKit}" --out "$OUT" ;;
+  # v3.1: the kit swap with / without the vendor patterns, the v3.0 look, and what is left on top
+  kit)
+    $T --tiers cpu --levers shadeToonKit,shadeKitPat,unlitGround,unlitChars,charsHidden,res135,postOff \
+      --sets "${SETS:-v30=shadeToonKit;kitPat=shadeKitPat}" --out "$OUT" ;;
   gpu)
     $T --tiers "${TIERS:-high,low,cpu}" --levers none --gl gpu --out "$OUT" ;;
   *) echo "unknown profile $P" >&2; exit 2 ;;
