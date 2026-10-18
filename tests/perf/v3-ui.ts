@@ -7,6 +7,7 @@
 //   idle    standing outdoors by day, 15 others wandering
 //   walk    walking a WASD square on an open outdoor spot (Storyteller teleport first)
 //   vote    a 15-seat nomination vote running (clock hand moving, hands going up), the page standing
+//   bedtime the walk-home phase (hint + countdown + compass), the page walking
 // Per window: DOM mutations/s (MutationObserver on <body>: all, and without the overlay's per-frame `style`
 // transform writes) + the top churning elements, style recalcs/s, layouts/s, layout+style ms/s (CDP
 // Performance.getMetrics), long tasks, rAF fps, the overlay's own counters (__ctCamera.overlay()).
@@ -192,6 +193,8 @@ async function measure(name: string, page: Page, cdp: CDPSession, during?: (stop
     jsHeapMb: Math.round((m1.JSHeapUsedSize ?? 0) / 1048576),
     domMutationsPerSec: r1(p.muts / secs),
     domMutationsNoTransformPerSec: r1(p.mutsNoTransform / secs),
+    // the DOM UI's own churn (HUD, chat, social dock, voice, compass): non-transform writes outside the 3D overlay
+    domMutationsUiPerSec: r1(Object.entries(p.by).filter(([k]) => !k.startsWith('T ') && !/ (span|div|canvas)\.ct-v3-/.test(k)).reduce((a, [, n]) => a + n, 0) / secs),
     domMutationsTop: Object.entries(p.by)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 12)
@@ -371,6 +374,22 @@ async function main() {
       players.slice(0, 8).forEach((b, i) => setTimeout(() => b.send('game:vote', { nominationId: nom.id, vote: true }), 300 + i * 700));
       results.vote = await measure('vote', page, cdp);
       results.voteStatusAfter = stView()?.day?.nominations[0]?.status;
+    }
+    if (want('bedtime')) {
+      // bedtime: the HUD's busiest player state (walk-home hint + countdown, compass), the page walking
+      g.cmd({ type: 'advance_phase', to: 'bedtime' });
+      try {
+        await until(() => stView()?.phase === 'bedtime', 3000, 'bedtime').catch(() => {
+          g.cmd({ type: 'force_phase', to: 'bedtime' });
+          return until(() => stView()?.phase === 'bedtime', 6000, 'bedtime (forced)');
+        });
+        await sleep(1500);
+        await toSpot();
+        const track = { path: 0 };
+        results.bedtime = { ...(await measure('bedtime', page, cdp, (stop) => walk(page, stop, track))), walkedPx: track.path };
+      } catch (e) {
+        log('warn: bedtime window skipped', (e as Error).message);
+      }
     }
     results.css = await page.evaluate(() =>
       performance
