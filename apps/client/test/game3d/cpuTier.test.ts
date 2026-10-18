@@ -87,12 +87,22 @@ describe('cpu tier', () => {
     f.renderer.shadowMap.enabled = true;
     const late = new THREE.PointLight();
     f.scene.add(late);
+    const grass = new THREE.Mesh();
+    grass.name = 'grass';
+    const ground = new THREE.Mesh();
+    ground.name = 'ground-grass-area';
+    f.scene.add(grass, ground);
     for (let i = 0; i < 60; i++) cpu.beforeRender();
     expect(f.passes[3]!.enabled).toBe(false);
     expect(f.sun.castShadow).toBe(false);
     expect(f.renderer.shadowMap.enabled).toBe(false);
     expect(late.layers.mask).toBe((1 << CPU_LIGHT_LAYER) >>> 0);
-    expect(cpu.info()).toMatchObject({ lightsHidden: 3, passesOff: 5 });
+    expect(grass.visible).toBe(false);
+    expect(ground.visible).toBe(true);
+    grass.visible = true; // a vendor updater shows it again: hidden again before the next render
+    cpu.beforeRender();
+    expect(grass.visible).toBe(false);
+    expect(cpu.info()).toMatchObject({ lightsHidden: 3, meshesHidden: 1, passesOff: 5 });
     cpu.dispose();
   });
 

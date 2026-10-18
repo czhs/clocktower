@@ -11,6 +11,9 @@
 //   post         the per-body water passes are off by default; grade + vignette stay (the look's colour)
 //   point lights kept out of the render with a camera-invisible layer: the game's light pool (borrow / aim / dim, the
 //                carried lanterns) runs unchanged, every program compiles with 0 point lights, day and night
+//   grass        the grass / reed / flower tuft sprites hidden (vendor world/grass.js meshes named 'grass'): 40-80 k
+//                instanced alpha-cut 12×12-texel sprites whose fragment count does not shrink with the resolution;
+//                −47 % of a cpu-tier frame on SwiftShader. The ground underneath keeps the same toon colours.
 //   materials    the toon lighting without the per-fragment cloud-shadow FBM and the normal noise: SwiftShader runs
 //                both sides of a branch (masked SIMD), so a uniform that switches them off saves nothing (measured);
 //                they are compiled out with two macros (CPU_TOON_MACROS) appended to a fragment chunk three includes
@@ -37,6 +40,8 @@ export const CPU_PASSES_OFF = /^(outline|contact|river|water-)/;
 export const CPU_TOON_MACROS = '\n#define cloudAtten(p) 1.0\n#define uNormalNoise 0.0\n';
 /** The three chunk that carries the macros (fragment only; included after the toon head, right before main()). */
 export const CPU_TOON_CHUNK = 'clipping_planes_pars_fragment';
+/** Meshes hidden at the cpu tier (by mesh name): the vendor's tuft sprite fields (createGrass names them 'grass'). */
+export const CPU_HIDDEN_MESH = /^grass$/;
 /** Light re-scan period (frames): lights created after the warm-up (none today) leave the render within this. */
 const RESCAN_FRAMES = 60;
 
@@ -68,7 +73,7 @@ export interface CpuTier {
   /** Before every pipeline render (engineHost's pipe.render wrapper): re-asserts the levers the vendor may flip back. */
   beforeRender(): void;
   /** Stats for __ctCamera.v3() / the perf doc. */
-  info(): { lightsHidden: number; normalSkipped: number; passesOff: number };
+  info(): { lightsHidden: number; meshesHidden: number; normalSkipped: number; passesOff: number };
   dispose(): void;
 }
 
@@ -98,12 +103,25 @@ export function cheapenToonChunks(chunks: Record<string, string> = THREE.ShaderC
   };
 }
 
+/** Find the meshes the cpu tier hides (CPU_HIDDEN_MESH) that are not in `out` yet; returns how many were added. */
+export function findHiddenMeshes(scene: THREE.Object3D, out: Set<THREE.Object3D>): number {
+  let n = 0;
+  scene.traverse((o) => {
+    if ((o as THREE.Mesh).isMesh && CPU_HIDDEN_MESH.test(o.name) && !out.has(o)) {
+      out.add(o);
+      n++;
+    }
+  });
+  return n;
+}
+
 export function installCpuTier(engine: CpuEngine): CpuTier {
   const r = engine.renderer;
   // before the town build compiles anything: three resolves #include chunks when it builds a program
   const restoreChunks = cheapenToonChunks();
   const pipe = engine.pipeline;
   const hidden = new Set<THREE.Light>();
+  const hiddenMeshes = new Set<THREE.Object3D>();
   let frames = 0;
   let normalSkipped = 0;
   let passesOff = 0;
@@ -133,13 +151,18 @@ export function installCpuTier(engine: CpuEngine): CpuTier {
           off++;
         }
       passesOff = off;
-      if (++frames % RESCAN_FRAMES === 1) hideLights(engine.scene, hidden);
+      if (++frames % RESCAN_FRAMES === 1) {
+        hideLights(engine.scene, hidden);
+        findHiddenMeshes(engine.scene, hiddenMeshes);
+      }
+      for (const m of hiddenMeshes) m.visible = false;
     },
-    info: () => ({ lightsHidden: hidden.size, normalSkipped, passesOff }),
+    info: () => ({ lightsHidden: hidden.size, meshesHidden: hiddenMeshes.size, normalSkipped, passesOff }),
     dispose() {
       if (r.render !== prevRender) r.render = prevRender;
       restoreChunks();
       hidden.clear();
+      hiddenMeshes.clear();
     },
   };
 }

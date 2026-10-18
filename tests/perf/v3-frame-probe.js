@@ -212,7 +212,11 @@
       const orig = EP.renderAt;
       const w = function (t) {
         P.renderAts++;
-        if (!P.engine) P.engine = this;
+        // a rebuild (tier change, context loss) makes a NEW Engine: follow it
+        if (P.engine !== this && !this.__ctDisposed) {
+          if (P.engine) P.engineSwaps = (P.engineSwaps ?? 0) + 1;
+          P.engine = this;
+        }
         const f = P.cur;
         if (!P.on || !f) return orig.call(this, t);
         try {
@@ -280,14 +284,23 @@
       layout = L.currentLayout();
     }
     const { createTownGame3d } = await import('/src/game3d/TownGame3d.ts');
-    const handlers = new Map();
+    const subs = new Map();
+    const handlers = { get: (k) => (subs.has(k) ? (x) => [...subs.get(k)].forEach((fn) => fn(x)) : undefined) };
     const pids = ['me', ...Array.from({ length: players }, (_, i) => `r${i + 1}`)];
     const members = pids.map((pid, i) => ({ pid, role: 'player', seat: i, displayName: pid === 'me' ? 'You' : `Player ${i}` }));
     const conn = {
       lobbyView: mk({ youPid: 'me', world: worldUsed, members, lobby: { phase: 'waiting', world: worldUsed } }),
       gameView: mk(gameView ?? null),
       status: mk('open'),
-      events: { on: (k, fn) => (handlers.set(k, fn), () => handlers.delete(k)) },
+      // several modules subscribe to the same event (net/core + overlay/gameplayView both take world:teleport): keep all
+      events: {
+        on: (k, fn) => {
+          let set = subs.get(k);
+          if (!set) subs.set(k, (set = new Set()));
+          set.add(fn);
+          return () => set.delete(fn);
+        },
+      },
       send: () => undefined,
     };
     const fallbacks = [];
