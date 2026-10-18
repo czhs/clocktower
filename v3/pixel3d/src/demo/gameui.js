@@ -267,10 +267,23 @@ export async function createGameUI(demo) {
   const MARK_SLOT = 0;
   const markSlotOf = (m) => (!m.you && m.slot >= 1000 && staged() && demo.passB?.marks && (store.state.phase === 'vote' || store.state.phase === 'nomination') ? MARK_SLOT : 0);
   /** (B) a seated cast member's label in the staged court: a titled name's last word when the full name is long */
+  const labDebug = (demo.params ?? new URLSearchParams()).get('labDebug') === '1';   // (vote-fix4) window.__labDbg: the ring names' slots
   const courtName = (m) => {
-    if (m.you || m.slot < 1000 || !(staged() || vcRing())) return m.name;
-    const w = String(m.name).split(' ');
-    return w.length > 1 && textWidth(m.name) > 40 ? w[w.length - 1] : m.name;
+    if (m.slot < 1000 && !m.you) return m.name;
+    if (!(staged() || vcRing())) return m.name;
+    // (vote-fix4) a NARROW screen (a phone: the ring is width-bound, ~half the names had no room) in the vote camera:
+    // SHORT names - up to 8 letters as is; a longer titled name its last word when that is <= 8 letters, else its
+    // initials ("Sir Croaksworth" -> "S.C."); a longer single word its first 5 letters + "." ("Clarabelle" -> "Clara.");
+    // YOURS reads "You" (under the gold chevron)
+    const nm = String(m.name), w = nm.split(' ');
+    if (vcRing() && (W() - (cover.right || 0)) < 400) {
+      if (m.you) return 'You';
+      if (nm.length <= 8) return nm;
+      if (w.length > 1) return w[w.length - 1].length <= 8 ? w[w.length - 1] : w.map((s) => s[0]).join('.') + '.';
+      return nm.slice(0, 5) + '.';
+    }
+    if (m.you) return nm;
+    return w.length > 1 && textWidth(nm) > 40 ? w[w.length - 1] : nm;
   };
   /** (critic P3-16) the ghost label's little sheet ghost at D=2 (the 1x 5x5 grid EPX'd + re-lit, 14 x 14; was 2x2 blocks) */
   const ghostWispHD = (T) => cached(`wispHD${T.ghost}${T.ghostSh}`, () => shadeGrid(epx(['.###.', '#####', '#-#-#', '#####', '#.#.#']),
@@ -952,27 +965,45 @@ export async function createGameUI(demo) {
       // seal, the spotlight and the figure still show the seat)
       let side = 0;
       const ringLab = ring && !m.you && m.slot >= 1000;
-      if (ringLab) {
-        const c = LL.at(RING_C), f = LL.at(m.pos), ax = f.x - c.x, ay = (f.y - c.y) / Math.max(0.3, Math.sin(engine.camera.pitch));
-        const cs = ax / Math.max(1e-3, Math.hypot(ax, ay));
-        const bw = Math.max(4, Math.round((0.3 * (m.scale ?? 1)) / engine.camera.texelWorld));
-        if (Math.abs(cs) > 0.6) { side = Math.sign(cs); cxT = side > 0 ? f.x + bw + 2 + (lwT >> 1) : f.x - bw - 2 - (lwT >> 1); top = Math.round(p.y + (f.y - p.y) * 0.28); }
-        else top = Math.round(p.y + IA.LABEL_DY + 2);
-        cxT = Math.max(LL.MARGIN + 2 + (lwT >> 1) + (ghostly ? 7 : 0), Math.min(WW - LL.MARGIN - 2 - (lwT >> 1), cxT));
-      }
       let lx0 = cxT - (lwT >> 1);
       let steps = 0;
       const maxSteps = ringLab ? 1 : staged() ? 3 : 2, stepT = ringLab ? Math.round(rowT / 2) : rowT;
       // (a 2-texel gap counts as touching: long back-row names in the court ran into each other)
       const hits = () => placedLabels.some((r) => lx0 < r.x1 + 2 && lx0 + lwT > r.x0 - 2 && Math.abs(top - r.top) < rowT)
         || (ringLab && figs.some((b) => b.slot !== m.slot && lx0 < b.x1 && lx0 + lwT > b.x0 && top < b.y1 && top + rowT - 2 > b.y0));
-      while (steps < maxSteps && hits()) { top -= stepT; steps++; }
-      // (the ring) a side name that still collides tries the tight slot over the head before it is left out
-      if (ringLab && side && hits()) {
-        side = 0; steps = 0; top = Math.round(p.y + IA.LABEL_DY + 2);
-        cxT = Math.max(LL.MARGIN + 2 + (lwT >> 1) + (ghostly ? 7 : 0), Math.min(WW - LL.MARGIN - 2 - (lwT >> 1), p.x)); lx0 = cxT - (lwT >> 1);
-        while (steps < maxSteps && hits()) { top -= stepT; steps++; }
-      }
+      const clampCx = (x) => Math.max(LL.MARGIN + 2 + (lwT >> 1) + (ghostly ? 7 : 0), Math.min(WW - LL.MARGIN - 2 - (lwT >> 1), x));
+      if (ringLab) {
+        // (vote-fix4) the slots tried in order, the first one clear of every other name, figure and seal wins: beside the
+        // figure outward (the ring's left / right seats) + a half-row up, over the head + a half-row up, UNDER THE FEET
+        // (below its own seal: the phone's ring had no room left for half the names), beside it inward (over the dais)
+        const c = LL.at(RING_C), f = LL.at(m.pos), ax = f.x - c.x, ay = (f.y - c.y) / Math.max(0.3, Math.sin(engine.camera.pitch));
+        const cs = ax / Math.max(1e-3, Math.hypot(ax, ay));
+        const bw = Math.max(4, Math.round((0.3 * (m.scale ?? 1)) / engine.camera.texelWorld));
+        const sideOf = Math.abs(cs) > 0.6 ? Math.sign(cs) : 0;
+        const sideCx = (sg) => (sg > 0 ? f.x + bw + 2 + (lwT >> 1) : f.x - bw - 2 - (lwT >> 1));
+        const sideTop = Math.round(p.y + (f.y - p.y) * 0.28), headTop = Math.round(p.y + IA.LABEL_DY + 2);
+        const sb = demo.passB?.marks?.sealBoxOf?.(m.slot - 1000);
+        const footTop = Math.round(Math.max(f.y + 2, sb && Math.abs((sb.x0 + sb.x1) / 2 - f.x) < lwT ? sb.y1 + 1 : f.y + 2));
+        const cands = [];
+        if (sideOf) cands.push([sideOf, sideCx(sideOf), sideTop, 0], [sideOf, sideCx(sideOf), sideTop - stepT, 1]);
+        cands.push([0, p.x, headTop, 0], [0, p.x, headTop - stepT, 1], [2, f.x, footTop, 0]);
+        // (inward: past its own seal, which lies on that side of the feet)
+        const inCx = !sideOf ? 0 : sideOf > 0 ? Math.min(sideCx(-1), sb ? sb.x0 - 2 - (lwT >> 1) : Infinity) : Math.max(sideCx(1), sb ? sb.x1 + 2 + (lwT >> 1) : -Infinity);
+        // (first hugging the figure just above its own seal, then past the seal)
+        if (sideOf && sb) cands.push([-sideOf, sideCx(-sideOf), Math.min(sideTop, sb.y0 - rowT + 1), 0]);
+        if (sideOf) for (const y of [sideTop, sideTop - stepT, sideTop + stepT, headTop, footTop]) cands.push([-sideOf, inCx, y, 0]);
+        cands.push([2, f.x, footTop + stepT, 0]);
+        let pick = null;
+        const dbg = labDebug ? [] : null;
+        for (const [sg, x, y, st] of cands) {
+          cxT = clampCx(x); lx0 = cxT - (lwT >> 1); top = y;
+          if (!hits()) { pick = [sg, x, y, st]; break; }
+          if (dbg) dbg.push(`${sg}@${lx0},${top}:${placedLabels.filter((r) => lx0 < r.x1 + 2 && lx0 + lwT > r.x0 - 2 && Math.abs(top - r.top) < rowT).map((r) => 'L' + (r.who.slot - 1000)).join('')}${figs.filter((b) => b.slot !== m.slot && lx0 < b.x1 && lx0 + lwT > b.x0 && top < b.y1 && top + rowT - 2 > b.y0).map((b) => (b.slot === -1 ? 'S' : 'F' + (b.slot - 1000))).join('')}`);
+        }
+        if (dbg) (window.__labDbg ??= {})[m.slot - 1000] = { f: [f.x, f.y], w: lwT, pick: pick ? pick.slice(0, 3) : null, miss: dbg };
+        pick ??= cands[0];
+        side = pick[0]; cxT = clampCx(pick[1]); lx0 = cxT - (lwT >> 1); top = pick[2]; steps = pick[3];
+      } else while (steps < maxSteps && hits()) { top -= stepT; steps++; }
       // in the staged court a name that still collides after the steps is left out (a narrow phone frame): unreadable
       // overprinted names were worse than a missing one (its vote mark, pops and talk glyph still show)
       if ((staged() || ringLab) && !m.you && hits()) {
@@ -1850,6 +1881,9 @@ export async function createGameUI(demo) {
     get texPerLogical() { return 1 / t2l(); },
     /** the action bar's rect as drawn last frame (logical px), or null (votemarks.js puts its tally plaque above it) */
     get barRect() { return R.barRect ? { ...R.barRect } : null; },
+    /** (vote-fix4) the top row as drawn last frame (logical px): { x0 (the clock chip's left), y1 (its bottom), chipsEnd,
+     *  row2 } or null (votemarks.js puts its tally plaque under the chips on a wide screen) */
+    get topRow() { return R.topRow ? { x0: R.topRow.spans[0][0] + 2, y1: R.topRow.y1, chipsEnd: R.topRow.spans[0][1], row2: !!R.chips?.row2 } : null; },
     /** the events vote clock card's rect as drawn last frame (logical px), or null (none: no vote / the staged court) */
     /** the toolbar's box as drawn last frame (logical px), or null */
     get toolbarRect() { const v = Object.values(R.toolbar ?? {}); if (!v.length) return null; const x0 = Math.min(...v.map((r) => r.x)), x1 = Math.max(...v.map((r) => r.x + r.w)); return { x: x0, y: v[0].y, w: x1 - x0, h: v[0].h }; },
@@ -1882,7 +1916,7 @@ export async function createGameUI(demo) {
         // from the canvas's top-left), unitDev = device px per logical px, density = the art density (2 | 1)
         unit: unitDev() * (canvas.getBoundingClientRect().width / Math.max(1, engine.width)), unitDev: unitDev(), density: dd(),
         hd: L.hd ? { d: L.hd.d, scale: L.hd.scale, k: +L.hd.k.toFixed(3), policy: L.hd.policy, stats: { ...L.hd.stats } } : null,
-        members: members.map((m) => { const k = talk.get(keyOf(m)); return { id: m.id, name: m.name, you: m.you, slot: m.slot, clip: m.clip, talking: !!k?.on, bubble: k?.line && t < k.bubbleUntil ? k.line : null, screen: atS(m.pos), shown: !!m._shown, ghostLabel: !!m.clip?.startsWith?.('ghost') || (m.you && m.ghost) }; }),
+        members: members.map((m) => { const k = talk.get(keyOf(m)); return { id: m.id, name: m.name, you: m.you, slot: m.slot, clip: m.clip, talking: !!k?.on, bubble: k?.line && t < k.bubbleUntil ? k.line : null, screen: atS(m.pos), shown: !!m._shown, label: m._shown && !m._noLabel ? courtName(m) : null, ghostLabel: !!m.clip?.startsWith?.('ghost') || (m.you && m.ghost) }; }),
         hover: hover ? { kind: hover.kind, k: hover.k ?? null } : null,
         point: point ? { kind: point.target.kind, age: +(t - point.t0).toFixed(2), scale: hud.uiOptions.pointerScale, frameSize: framesNow().point?.size ?? 20 } : null,
         pie: pie ? { open: !pie.commit && pie.cancel == null, input: pie.input, sticky: pie.sticky, hot: pie.hot, items: pie.items.map((x) => x.key), off: [...pie.off], at: [pie.cx, pie.cy] } : null,

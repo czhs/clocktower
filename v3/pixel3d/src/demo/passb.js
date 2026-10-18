@@ -21,6 +21,7 @@ const parts = [
   ['interior', './tower-interior.js', 'createTowerInterior'],
   ['ui', './timer-ui.js', 'createTimerUI'],
   ['marks', './votemarks.js', 'createVoteMarks'],
+  ['daisdress', './daisdress.js', 'createDaisDress'],   // (vote-fix4) the dais' candle stakes out while the vote camera is up
 ];
 
 export async function createPassB(demo) {

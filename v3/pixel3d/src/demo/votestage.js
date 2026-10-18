@@ -83,7 +83,9 @@ const seats = () => Array.from({ length: N }, (_, i) => { const s = seatPos(i, N
 // dais: null | {scale, x, z} (the dais piece moved / shrunk while staged); onStones: the cast stay on the seat stones.
 const TC = { cx: 22.5, cz: 12.35 };       // the TOWER COURT: the paving between the tower's plinth (z 9.0) and the ring
 export const STAGES = {
-  A: { name: 'Pass B (now)', desc: 'the 15 seat stones (r 6.25), yaw 45 auto, pitch 30', spots: seats, onStones: true, yaw: null, pitch: 30, scale: 1, dial: 'tower' },
+  // (vote-fix4) A at pitch 23 (was 30): the ring's depth shrinks (r sin p) while the figures stand taller (h cos p),
+  // so the same frame holds them ~15 % larger (1280x720: 56 -> 64 px with the plaque top left); ?votePitch= overrides
+  A: { name: 'Pass B (now)', desc: 'the 15 seat stones (r 6.25), yaw 45 auto, pitch 23 (portrait 30)', spots: seats, onStones: true, yaw: null, pitch: 23, pitchPortrait: 30, scale: 1, dial: 'tower' },
   B: { name: 'Inner ring', desc: 'inner ring r 4.1 on the setts round the dais, yaw 45 auto', spots: () => ring(CIRCLE.cx, CIRCLE.cz, 4.1), yaw: null, pitch: 30, scale: 1, dial: 'tower' },
   C: { name: 'Inner ring, low cam', desc: 'inner ring r 4.1, yaw 0 toward the tower, pitch 20', spots: () => ring(CIRCLE.cx, CIRCLE.cz, 4.1), yaw: 0, pitch: 20, scale: 1, dial: 'tower' },
   D: { name: 'Tower court', desc: 'a horseshoe before the tower door (open to the camera), yaw 0, pitch 30', spots: () => horseshoe(TC.cx, TC.cz, 4.3, 2.75, 128), yaw: 0, pitch: 30, scale: 1, dial: 'tower' },
@@ -120,6 +122,8 @@ export function createVoteStage(demo) {
   const params = demo.params ?? new URLSearchParams();
   const letter = stageOf(params.get('voteStage'));
   const def = STAGES[letter];
+  // (vote-fix4) ?votePitch=15..35 (degrees): the stage's camera pitch for a comparison
+  const pq = Number(params.get('votePitch')), pitchQ = params.get('votePitch') !== null && Number.isFinite(pq) && pq >= 15 && pq <= 35 ? pq : null;
   const spots = def.spots();
   const dais = demo.town?.registry?.get('dais');
   const groundApi = demo.town?.registry?.get('ground')?.api;
@@ -207,7 +211,9 @@ export function createVoteStage(demo) {
   const api = {
     letter, def, spots, twin, info,
     get scale() { return def.scale ?? 1; },
-    get pitch() { return (def.pitch ?? 30) * DEG; },
+    // (vote-fix4) a PORTRAIT screen (a phone) is width-bound: a higher pitch (pitchPortrait) costs the figures nothing
+    // in size and spreads the ring's stacked left / right seats apart for their names
+    get pitch() { const c = engine.camera, portrait = c.lowW > 0 && c.lowW < c.lowH; return (pitchQ ?? (portrait ? def.pitchPortrait : null) ?? def.pitch ?? 30) * DEG; },
     get yaw() { return def.yaw; },
     get onStones() { return !!def.onStones; },
     get active() { return active; },

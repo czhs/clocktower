@@ -49,8 +49,8 @@ import { createSpotlights } from './spotlight.js';
 const N = 15;
 const gk = (dt) => Math.floor(dt * GRID_HZ + 1e-6);          // whole grid frames since an event
 export const KINDS = ['waiting', 'sealed', 'withdrawn', 'counted', 'passed', 'ghost', 'ghost-sealed', 'ghost-withdrawn', 'ghost-counted', 'ghost-passed', 'spent'];
-const SEAL_M = 0.27;            // the seal's radius (m, x the cast scale)
-const SEAL_AHEAD = 0.62;        // m in front of the feet (facing the dais; against the seat stone's rim: it reads as theirs)
+export const SEAL_M = 0.27;     // the seal's radius (m, x the cast scale)
+export const SEAL_AHEAD = 0.62;       // m in front of the feet (facing the dais; against the seat stone's rim: it reads as theirs)
 const T_SLAM = 4, T_REST = 14, T_WD = 10, T_STAMP = 12;        // grid frames: the slam, the slap done, withdraw done, stamp done
 const END_S = 0.5;              // the marks dissolve this long after the vote phase ends
 
@@ -316,7 +316,15 @@ function sparkQ(img, x, y, r, q, S) {
 }
 
 // ------------------------------------------------------------------------------------------------ the tally plaque
-export const PLAQUE = { h: 15, pad: 9, gap: 4 };
+// (vote-fix4) COMPACT + out of the ring's way: on a wide screen (visible area >= PLAQUE.topMinW logical px) the plaque
+// sits TOP LEFT, under the clock / phase chips ("THE VOTE" -> "Clover: 5 votes · 7 needed"), where the stage-A frame
+// never puts a seat (the ring's near tip is bottom centre, right over the action bar: a plaque there cost the frame
+// ~22 of 360 rows, the figures 57.7 -> 49.1 px). On a narrow screen (a phone: the frame is width-bound, rows are free)
+// it stays bottom centre above the action bar. The threshold text is the compact form everywhere ("Clover: ON THE
+// BLOCK · 9 votes"): <= ~170 px with the longest short name, clear of the centred caption (<= 232 px) at 640 px.
+export const PLAQUE = { h: 15, pad: 9, gap: 4, topMinW: 400 };
+/** where the plaque goes on a visible area visW logical px wide: 'top' (left, under the chips) | 'bottom' (centre) */
+export const plaqueSpot = (visW) => (visW >= PLAQUE.topMinW ? 'top' : 'bottom');
 /** the plaque's text: the NOMINEE (critic-3 P1-3: named for the whole vote) + the count. Before the threshold
  *  "Clover: 3 votes · 7 needed"; from it "Clover: 9 votes · 7 needed · ON THE BLOCK" (narrow: "Clover: ON THE BLOCK ·
  *  9 votes"). Segments n (name) a (the count) b c, drawn in their own inks. */
@@ -330,7 +338,7 @@ const textOf = (o) => `${o.n}${o.a}${o.b}${o.c}`;
 export const plaqueWidth = (tally, needed, passed, narrow, name = '') => textWidth(textOf(plaqueText(tally, needed, passed, narrow, name))) + 2 * PLAQUE.pad;
 /** the widest the plaque gets on a visible area `visW` wide (the vote camera's keep-out: the threshold text, 2 digits,
  *  a long name) */
-export const plaqueW = (visW) => plaqueWidth(15, 15, true, visW < 330, 'Croaksworth');
+export const plaqueW = (visW) => Math.max(plaqueWidth(15, 15, true, true, 'Croaksworth'), plaqueWidth(15, 15, false, true, 'Croaksworth'));
 /** a nominee's name for the plaque: a titled name's last word when it is long ("Archivist Hoot" -> "Hoot") */
 export const shortName = (s) => { const w = String(s).split(' '); return w.length > 1 && s.length > 11 ? w[w.length - 1] : s; };
 
@@ -531,7 +539,9 @@ export function createVoteMarks(demo) {
       const sp0 = new THREE.Vector3(sx, gy, sz);
       const f = atW(sp0), fx = Math.round(f.x), fy = Math.round(f.y);
       const rx = pxOf(SEAL_M * sc1), ry = Math.max(2, Math.round(rx * sp * 1.04)), th = Math.max(1, q);
-      { const s1 = 1 / kk; sealBoxes.set(i, { x0: Math.floor((fx - rx * 1.4) * s1), x1: Math.ceil((fx + rx * 1.4) * s1), y0: Math.floor((fy - ry * 1.6) * s1), y1: Math.ceil((fy + ry * 1.6) * s1) }); }
+      // (vote-fix4) the seal's BODY (+ its rim / thickness, 1 px): a name may graze the settled wax drops round it, never
+      // the seal (was x 1.4 / 1.6: on the phone it kept 4 side names out)
+      { const s1 = 1 / kk; sealBoxes.set(i, { x0: Math.floor((fx - rx * 1.15 - q) * s1), x1: Math.ceil((fx + rx * 1.15 + q) * s1), y0: Math.floor((fy - ry * 1.2 - q) * s1), y1: Math.ceil((fy + ry * 1.2 + th + q) * s1) }); }
       const handP = atW(at.pos.clone().setY(at.pos.y + at.height * 0.98).addScaledVector(toCam, 0.3 * sc1));
       const kind = m.kind, pale = kind.startsWith('ghost');
       const red = pale ? 'ghost' : 'red', gold = pale ? 'ghostgold' : 'gold';
@@ -654,10 +664,16 @@ export function createVoteMarks(demo) {
     if (!img) return;
     const bar = gameui.barRect ?? null;
     const visW = img.w - ((demo.passB?.votecam?.info?.cover?.right ?? 0) / (gameui.texPerLogical ?? 1));
-    const narrow = visW < 330, name = nomineeName(live.v.nominee - 1), w = plaqueWidth(tally, needed, passed, narrow, name), h = PLAQUE.h;
-    const cx = bar ? Math.floor(bar.x + bar.w / 2) : Math.floor(visW / 2);
-    const y = (bar ? bar.y : img.h - 26) - PLAQUE.gap - h;
-    const x = cx - (w >> 1);
+    // (vote-fix4) the compact threshold text on every screen; top left under the chips when wide (plaqueSpot)
+    const narrow = true, name = nomineeName(live.v.nominee - 1), w = plaqueWidth(tally, needed, passed, narrow, name), h = PLAQUE.h;
+    const top = plaqueSpot(visW) === 'top' ? gameui.topRow : null;
+    let x, y;
+    if (top) { x = top.x0; y = top.y1 + PLAQUE.gap; }
+    else {
+      const cx = bar ? Math.floor(bar.x + bar.w / 2) : Math.floor(visW / 2);
+      y = (bar ? bar.y : img.h - 26) - PLAQUE.gap - h;
+      x = cx - (w >> 1);
+    }
     const goldK = passed ? gk(t - live.S.passedAt) : -1;
     const gold = passed && (goldK >= 2 || reduced);
     const fk = live.liftAt != null ? gk(t - live.liftAt) : 99;
@@ -676,7 +692,7 @@ export function createVoteMarks(demo) {
       for (const [sx, sy] of [[x - 2, y - 2], [x + w + 1, y - 2], [x - 2, y + h], [x + w + 1, y + h]]) sparkQ(dst, sx * dd, sy * dd, r, dd, G);
     }
     dst.mark?.((x - 3) * dd, (y - 3) * dd, (x + w + 3) * dd, (y + h + 3) * dd);
-    info.plaque = { x, y, w, h, tally, needed, passed, gold, lifting: lift === 2, hd: !!HD, text: textOf(plaqueText(tally, needed, passed, narrow, name)) };
+    info.plaque = { x, y, w, h, spot: top ? 'top' : 'bottom', tally, needed, passed, gold, lifting: lift === 2, hd: !!HD, text: textOf(plaqueText(tally, needed, passed, narrow, name)) };
   }
   /** the nominee's display name (the cast member on that seat; "You" on your seat), short form */
   function nomineeName(i) {

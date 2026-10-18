@@ -32,7 +32,7 @@
 //            trans 0..1 | null, inFrame {seats (of 15 inside the visible area, none under a keep-out), dial} }
 import * as THREE from 'three';
 import { seatPos } from '../town/layout.js';
-import { PLAQUE, plaqueW } from './votemarks.js';
+import { PLAQUE, plaqueW, plaqueSpot, SEAL_AHEAD, SEAL_M } from './votemarks.js';
 
 const DEG = Math.PI / 180;
 const PITCH = Math.PI / 6;
@@ -53,7 +53,9 @@ const KEEP = {
   // (seal vote: no vote clock card any more) the clock + phase chips: one row (to y 24), two rows on a narrow screen
   tl: { w: 196, h: 25, chips: 25, row2: 38 },
   tr: { w: 72, h: 22 },       // the toolbar (4 x 17 px)
-  bar: { w: 142, h: 26 },     // the action bar, centred on the visible area (7 buttons: your seal leads it in a vote)
+  // the action bar, centred on the visible area (7 buttons: your seal leads it in a vote); (vote-fix4) its real rect
+  // (gameui: 7 x 18 + gaps = 138 wide, y = H - 22) + 2 px round it
+  bar: { w: 142, h: 24 },
   br: { w: 30, h: 30 },       // the dock button (your portrait)
   tc: { x: 196, w: 150, h: 23 },   // the tower timer's chip (timer-ui.js): the top row, right of the game UI's chips
   cap: { y: 24, w: 232, h: 20 },   // the phase caption ribbon (gameui: centred on the visible area, y0 + 26; up for the whole vote)
@@ -109,8 +111,10 @@ function contentPoints(yaw, heights, dials, stage = null) {
       const a = (k / 8) * Math.PI * 2, x = s.x + Math.cos(a) * BODY_R * sc, z = s.z + Math.sin(a) * BODY_R * sc;
       for (const f of [0, 0.35, 0.7, 1]) add(x, y0 + (top - y0) * f, z);
     }
-    // the seat's wax seal (votemarks.js) lies SEAL_AHEAD m x the scale in front of the feet, toward the camera
-    add(s.x + Math.sin(yaw) * (0.78 * sc + 0.35), 0, s.z + Math.cos(yaw) * (0.78 * sc + 0.35));
+    // the seat's wax seal (votemarks.js) lies SEAL_AHEAD m x the scale in front of the feet, toward the camera at
+    // worst (the near arc); (vote-fix4) its real reach: + 1.6 radii (the rim, the slam's squash, the settled drops)
+    const ahead = (SEAL_AHEAD + 1.6 * SEAL_M) * sc;
+    add(s.x + Math.sin(yaw) * ahead, 0, s.z + Math.cos(yaw) * ahead);
   }
   const dial = stage?.twin ?? facingDial(dials, yaw, pitch);
   if (dial) {
@@ -144,9 +148,11 @@ export function screenAreas(lowW, lowH, { right = 0, hud = true, staged = false,
     {
       const capY = narrow ? K.tl.row2 : K.cap.y;
       if (staged) keep.push({ x0: cx - K.cap.w / 2, y0: capY, x1: cx + K.cap.w / 2, y1: capY + K.cap.h });
-      // (critic-3 P1-2) the tally plaque's REAL box (votemarks.js PLAQUE / plaqueW) + its gap, above the action bar
-      const pw = (plaqueW((vis.x1 - vis.x0) / ui) + 6) * ui, ph = (PLAQUE.h + PLAQUE.gap + 3) * ui;
-      keep.push({ x0: cx - pw / 2, y0: lowH - K.bar.h - ph, x1: cx + pw / 2, y1: lowH - K.bar.h });
+      // (critic-3 P1-2) the tally plaque's REAL box (votemarks.js PLAQUE / plaqueW) + its gap. (vote-fix4) a wide screen:
+      // top left under the chips (the ring never goes there: no frame height spent); narrow: above the action bar
+      const pw = (plaqueW((vis.x1 - vis.x0) / ui) + 4) * ui, ph = (PLAQUE.h + PLAQUE.gap + 2) * ui;
+      if (plaqueSpot((vis.x1 - vis.x0) / ui) === 'top') keep.push({ x0: 0, y0: 0, x1: vis.x0 + pw, y1: K.tl.h + ph });
+      else keep.push({ x0: cx - pw / 2, y0: lowH - K.bar.h - ph, x1: cx + pw / 2, y1: lowH - K.bar.h });
     }
   }
   return { vis, keep };

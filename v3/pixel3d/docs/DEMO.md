@@ -534,7 +534,8 @@ Loaded by main.js after the view inset and BEFORE the shader warm-up (one `load`
 `// (B)`), so the vote camera wraps the rig's final update and every program the pass adds compiles behind the loading
 screen. `demo.passB = { votecam, timer, seats, interior, ui, update, info() }`; each part can be switched off with
 `?passB.<part>=0` (`?passB=0` = none: the A/B baseline), a failing part is reported in `__demo.errors` and skipped.
-Parts in load order: `stage` (votestage.js), `votecam`, `timer`, `seats`, `interior`, `ui`, `marks` (votemarks.js).
+Parts in load order: `stage` (votestage.js), `votecam`, `timer`, `seats`, `interior`, `ui`, `marks` (votemarks.js),
+`daisdress` (daisdress.js: the dais' candle stakes out while the vote camera is up).
 (Merged 2026-10-17 from the vote-staging copy `pixel3d-vote-final`, which forked from pass B before the D=2 switch: its
 new files votestage.js / votemarks.js and its passb.js / votecam.js taken whole (main's versions had no other edits),
 seatcast.js / gameui.js / tools/demo-play-passb.mjs hand-merged onto main's D=2 + seat-swap + program-name work.)
@@ -542,12 +543,46 @@ seatcast.js / gameui.js / tools/demo-play-passb.mjs hand-merged onto main's D=2 
   layout, remember in game there won't be the side panel, so you can use the whole screen"): the cast stay on the 15
   seat stones round the dais at 1.0x, no gather / puff, the vote camera's own fit (yaw 45 at 1280 x 720) with the tower
   dial in frame, the dais' own brass hand sweeping (+ the lit brass hand on the ground), the SEAL VOTE (below: seals at
-  the voters' feet, spotlights, no vote clock card; YOU sit in the circle), the tally plaque bottom centre above the
-  action bar, no chatter bubbles in the vote camera, the idle NPCs walking radially out to r 11-16 m (no names).
+  the voters' feet, spotlights, no vote clock card; YOU sit in the circle), the tally plaque top left under the chips
+  (bottom centre on a phone), no chatter bubbles in the vote camera, the idle NPCs walking radially out to r 11-16 m (no names).
+- **vote-fix4 (2026-10-18, the seal vote's leftovers; evidence `shots/vote-fix4/`, checkpoint `PROGRESS.md` there)**:
+  - **Figure size** (a 1.3 m figure, `votecam.check().px.seat13`, screen px): 1280 x 720 **49.1 -> 65.1 px**, 1920 x 1080
+    **92.0 px**, phone 31.3 px (width-bound); all 15 seats + their seals + the tower dial in frame, clear of the HUD. How:
+    (1) the tally plaque is COMPACT (the threshold text "Clover: ON THE BLOCK · 9 votes" on every screen) and sits TOP
+    LEFT under the clock / phase chips on a wide screen (`plaqueSpot(visW)`: visible width >= 400 logical px; the ring's
+    near tip is bottom centre over the action bar, so a plaque there cost ~22 of 360 rows) - bottom centre on a phone,
+    whose frame is width-bound; the vote camera's keep-out follows it (56.0 px at pitch 30); (2) the action bar keep-out
+    is its real rect + 2 px (h 24, was 26); the seal's content point is its real reach (0.62 m + 1.6 radii, was 1.13 m);
+    (3) **stage A pitch 23** (`STAGES.A.pitch`; was 30): the ring's depth shrinks (r sin p) while the figures stand
+    taller (h cos p) -> 65.1 px. A portrait screen keeps pitch 30 (`pitchPortrait`: width-bound, it only spreads the
+    side seats apart for their names). `?votePitch=15..35` overrides. Lower pitch brought house-8's chimney (6.94 m out,
+    just outside the cut-away's circle r 6.9) up under YOUR seat: the vote camera's protected cylinder is r 7.5 / top
+    2.0 m (api.js createCutController; 6.9 / 1.6 otherwise).
+  - **The dais' candle stakes** (src/town/pieces/dais.js is read-only) are taken out while the vote camera is up by
+    `daisdress.js`: the dais is one merged kit mesh per layer, so it is done by geometry through the town registry
+    (`registry.get('dais').group`, meshes by name): `dais-solid` triangles on the seat ring (|r - 6.25| < 0.2), > 0.5 m
+    from every stone and reaching above y 0.12 (the post / cup / candle: 510 tris; the foot plate, ring blocks, hour bars,
+    XII diamond stay), `dais-fx` triangles by FX slot (aFx.x: wisp 30.., candle 45.., wisp pool 85.., candle halo 160..:
+    1500 tris), `dais-states-solid` triangles > 0.6 m from every seat (the block pennants: 780). Each is collapsed onto its
+    first corner (zero area: no raster, no shadow) and restored from a saved copy when the camera leaves; two buffer
+    uploads per switch, no programs. The 4 central braziers, the stones and the hands stay. `?daisStakes=1` keeps them.
+  - **Facing**: in the vote camera on the stones the seated cast turn from "at the dais" toward the camera by half the
+    angle between (far arc front, sides 3/4 front looking inward, near arc profile); YOUR figure by 0.7 (3/4 front:
+    `player.faceTo`, never while walking). `?seatTurn=0` = the old facing.
+  - **Seated ghosts** are drawn at 0.78 size in the vote camera (seatcast `GHOST_SEATED`, scaled about the feet; the
+    members' scale -> label / figure keep-outs, `spotOf().height`; seals unchanged): chonk's pale sheet crowded Morel.
+  - **Names in the ring** (gameui): slots tried in order, the first clear of every other name, figure and SEAL wins -
+    beside it outward, + half a row, over the head, + half a row, UNDER THE FEET (below its own seal), inward hugging
+    the figure above its own seal, inward past its own seal (5 heights), under the feet + half a row; else left out.
+    The seal keep-out is the seal's body (was x 1.4 / 1.6 with the drops). On a NARROW screen the vote camera shows
+    short names: <= 8 letters as is, a titled name its last word (<= 8) or its initials, a long single word its first 5
+    letters + "." ("Clara."); yours reads "You". Phone 11 -> **15 / 15** names, 1280 x 720 / 1080p 15 / 15.
+    `?labDebug=1` fills `window.__labDbg` (per seat: the slots tried and what each hit); `gameui.info().members[].label`.
+  - `?uidensity=1` (the 1x tiers) checked: plaque top left (1x), seals, 15 / 15 names, programs 67 -> 67.
   (2026-10-18, seal vote: the frame's placement search takes the SMALLEST shift first - the first row of shifts had
   pushed the ring 8 m sideways to clear a keep-out - and on the stones the short-lived caption is no keep-out; the
   plaque's real box is. Measured 1280 x 720: yaw 45, vh 16.5, a 1.3 m figure 49.1 px; the earlier 57.7 px frame had no
-  bottom keep-out for the plaque and let the dial sit under the chips at 1080p.) **While the vote camera is up the demo's control panel
+  bottom keep-out for the plaque and let the dial sit under the chips at 1080p. Superseded by vote-fix4 below: 65.1 px.) **While the vote camera is up the demo's control panel
   SLIDES OUT** past the right edge (ui.js `.dui-away`, 0.25 s in 5 steps, nothing saved; it slides back when the camera
   leaves the vote): the frame fits the WHOLE canvas (votecam / main.js / gameui / timer-ui ignore a `.dui-away` panel
   from its first frame, so the transition does not reframe). Measured (`votecam.check()`, a 1.3 m figure / the dial's
@@ -593,7 +628,8 @@ seatcast.js / gameui.js / tools/demo-play-passb.mjs hand-merged onto main's D=2 
   own heights) + the tower dial facing the camera, projected into the snap space, fitted to the VISIBLE area (the whole
   canvas: the demo panel slides out) with the HUD's corners as keep-out boxes (chips + vote clock top left, toolbar top right,
   the timer chip in the top row, the action bar bottom centre, the dock button bottom right), the smallest viewHeight wins
-  (a placement search slides the content inside the slack). Pitch stays 30 deg (every preset's), yaw is a 45 deg stop:
+  (a placement search slides the content inside the slack). Pitch is the stage's (A: 23 deg since vote-fix4, 30 on a
+  portrait screen; the follow camera's 30 otherwise), yaw is a 45 deg stop (the figures below were measured at 30):
   the tower stands 11 m NORTH of the ring, so at yaw 0 the dial sits ~10 m above the ring on screen (content 13.7 x
   15.3 m: viewHeight 15.9); at yaw +-45 the tower stands beside the ring (16.0 x 13.7 m: viewHeight 14.3, the default
   pick: a later candidate wins when > 4 % tighter); +-90 would be tighter still (21 x 9 m: ~12) but the side dial is half
@@ -703,9 +739,10 @@ seatcast.js / gameui.js / tools/demo-play-passb.mjs hand-merged onto main's D=2 
     faint over the figure (3 bands, Bayer-dithered edges, faint where the figure stands, fading at the top), then a pool:
     a disc on the stone top + a ring on the ground (3 bands). Warm gold (pale-blue for a ghost); gain day 0.42 / 0.38,
     night 0.5 / 0.55. Up to 15 at once; stays while the vote stands. `?spotlights=0` = off; `marks.spotlights.info()`.
-  - **The tally**: ONE small plaque bottom centre above the action bar, snug round its text, naming the nominee for the
-    whole vote: "Clover: 3 votes · 7 needed"; from the threshold gold "Clover: 8 votes · 7 needed · ON THE BLOCK"
-    (narrow screens < 330 logical px: "Clover: ON THE BLOCK · 8 votes"); a new count lifts the number 1 px, lit (no
+  - **The tally**: ONE small plaque, top left under the chips (wide screens; bottom centre above the action bar on a
+    narrow one: vote-fix4 `plaqueSpot`), snug round its text, naming the nominee for the
+    whole vote: "Clover: 3 votes · 7 needed"; from the threshold gold "Clover: ON THE BLOCK · 8 votes" (the compact
+    form on every screen since vote-fix4); a new count lifts the number 1 px, lit (no
     blank mid-flip drawing). The vote camera reserves its widest box (`PLAQUE`, `plaqueW`). **No vote-dial card** on
     any screen (`gameui.voteCardRect` = null).
   - **Captions** name the nominee: "Clover is nominated. Slap a seal to vote." (4.5 s on the stones; the whole sweep in

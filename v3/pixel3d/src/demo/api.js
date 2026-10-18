@@ -388,7 +388,7 @@ export function createCutController(demo) {
   };
   let sig = '';
   // (perf) the rebuild key as numbers (the string key was built every frame): on, onSquare, house, cell x / z, yaw
-  const K = [null, null, null, NaN, NaN, NaN];
+  const K = [null, null, null, NaN, NaN, NaN, NaN];
   const info = { on: false, circle: false, house: null, boxes: 0, inside: false };
   // entering / leaving a cottage: rebuild on the next town frame (the doorstep cell on the way out is the same cell
   // as on the way in, so the quantised key alone would not notice that the cut was switched off meanwhile)
@@ -420,8 +420,12 @@ export function createCutController(demo) {
       // quantise the player box to 5 cm: the boxes are rebuilt only when something really changed
       const px = p ? Math.round(p.x * 20) / 20 : 0, pz = p ? Math.round(p.z * 20) / 20 : 0;
       const hid = house?.id ?? null, yq = Math.round(c.yaw * 1000);
-      if (sig === 'town' && K[0] === on && K[1] === onSquare && K[2] === hid && K[3] === px && K[4] === pz && K[5] === yq) return;
-      sig = 'town'; K[0] = on; K[1] = onSquare; K[2] = hid; K[3] = px; K[4] = pz; K[5] = yq;
+      // (vote-fix4) the vote camera (pitch 23): the circle's protected cylinder grows to hold the seals in front of the
+      // near arc (seat r 6.25 + 0.95 m) and the tallest seated figure: house-8's chimney stood 6.94 m out, just outside
+      // r 6.9, right under YOUR seat on the near arc (it read as a pillar you stood on)
+      const vq = s.camera === 'vote' ? 1 : 0;
+      if (sig === 'town' && K[0] === on && K[1] === onSquare && K[2] === hid && K[3] === px && K[4] === pz && K[5] === yq && K[6] === vq) return;
+      sig = 'town'; K[0] = on; K[1] = onSquare; K[2] = hid; K[3] = px; K[4] = pz; K[5] = yq; K[6] = vq;
       const boxes = [];
       if (on && p) boxes.push({ min: [px - 0.45, 0.03, pz - 0.45], max: [px + 0.45, 1.8, pz + 0.45] });
       if (house) {
@@ -430,7 +434,7 @@ export function createCutController(demo) {
       } else cut.setKeep(null);
       cut.setBoxes(boxes);
       cut.setLifts([]);
-      cut.setCircle(on && onSquare ? { cx: layout.CIRCLE.cx, cz: layout.CIRCLE.cz, r: 6.9, top: 1.6 } : null);
+      cut.setCircle(on && onSquare ? { cx: layout.CIRCLE.cx, cz: layout.CIRCLE.cz, r: vq ? 7.5 : 6.9, top: vq ? 2.0 : 1.6 } : null);
       cut.enabled = on && (boxes.length > 0 || onSquare);
       Object.assign(info, { on: cut.enabled, circle: on && onSquare, house: house?.id ?? null, boxes: boxes.length });
     },

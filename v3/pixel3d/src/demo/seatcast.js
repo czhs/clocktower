@@ -69,7 +69,7 @@ export async function createSeatCast(demo) {
     // count the player's + the idle NPCs' models by 'character:' and their 'char-fx' / 'smears' holders
     for (const o of engine.scene.children) if (!before.has(o) && /^(char-fx|smears)/.test(o.name)) { o.name = `seat-cast-${o.name}`; o.userData.seatCast = i; }
     const old = rec.h;
-    Object.assign(rec, { id, h, face: rec.staged ? rec.face : home, shown: true, clip: 'idle', want: 'idle', dieAt: -1, pointUntil: -1, oneShotUntil: -1 });
+    Object.assign(rec, { id, h, face: rec.staged ? rec.face : home, shown: true, clip: 'idle', want: 'idle', dieAt: -1, pointUntil: -1, oneShotUntil: -1, gscale: 1 });
     if (rec.staged) { h.root.scale.setScalar(stage()?.scale ?? 1); }
     h.ch.drive(() => ({ pos: rec.pos, face: rec.face }));
     h.root.name = `seat-cast:${i}:${id}`; h.root.userData.seatCast = i;
@@ -88,7 +88,8 @@ export async function createSeatCast(demo) {
   // ---- the game UI: seated cast as townsfolk (slot 100 + seat)
   // (spot = where the seat stands NOW: the stone, or its vote spot while staged; scale = the staged cast scale, gameui
   // lifts the name label by it)
-  const members = seats.map((r) => ({ slot: 1000 + r.i, get id() { return r.id; }, get spot() { return r.pos; }, get face() { return r.face; }, get handle() { return r.h; }, get scale() { return r.staged ? stage()?.scale ?? 1 : 1; }, seat: r.i }));
+  // (vote-fix4: r.gscale = a seated GHOST's smaller size in the vote camera, see GHOST_SEATED)
+  const members = seats.map((r) => ({ slot: 1000 + r.i, get id() { return r.id; }, get spot() { return r.pos; }, get face() { return r.face; }, get handle() { return r.h; }, get scale() { return r.staged ? stage()?.scale ?? 1 : r.gscale ?? 1; }, seat: r.i }));
 
   // ---- staging: put a seat on its vote spot / back on its stone in ONE drawing. The Character's motion state is
   // re-seated at the new spot (no velocity spike: no stumble, no lean, the feet re-planted under the body, the facing
@@ -98,7 +99,7 @@ export async function createSeatCast(demo) {
     r.staged = staged;
     r.pos.set(x, 0, z);
     r.face = face;
-    r.h.root.scale.setScalar(staged ? stage()?.scale ?? 1 : 1);
+    r.h.root.scale.setScalar(staged ? stage()?.scale ?? 1 : 1); r.gscale = 1;
     const ch = r.h.ch, s = ch._s;
     if (!s) return;
     const y = ch.opts.ground ? ch.opts.ground.heightAt(x, z) : 0, P = new THREE.Vector3(x, y, z);
@@ -187,6 +188,23 @@ export async function createSeatCast(demo) {
     events.emit('seat:yours', { seat: -1 });
   }
   const ringStage = () => { const st = stage(); return !st || st.onStones; };
+  // (vote-fix4) 3/4 TOWARD THE CAMERA in the vote camera on the stones: a seat facing the dais showed the camera its
+  // back on the near arc (YOUR seat too). The facing turns from "at the dais" toward "at the camera" by TURN of the
+  // angle between them: far arc = front (unchanged), the sides = 3/4 front still looking inward, the near arc =
+  // profile looking along the ring toward the dais' side; yours turns further (TURN_YOU: 3/4 front) so your face shows.
+  // Off in the follow camera and while staged (the stage's own facings). ?seatTurn=0 = the old "at the dais".
+  const TURN = 0.5, TURN_YOU = 0.3, GHOST_SEATED = 0.78;
+  const turnOn = params.get('seatTurn') !== '0';
+  const wrapA = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+  /** the vote camera's yaw (rad) while it is up on the stones, else null */
+  const voteYaw = () => {
+    const vc = demo.passB?.votecam;
+    if (!turnOn || store.state.camera !== 'vote' || !vc?.info?.active || !ringStage()) return null;
+    const y = vc.frame?.yaw;
+    return Number.isFinite(y) ? y : null;
+  };
+  /** the facing at seat position (x, z) with the dais at C: turned toward the camera at yaw cy by k */
+  const turned = (x, z, cy, k) => { const home = Math.atan2(C.cx - x, C.cz - z); return cy + wrapA(home - cy) * k; };
   offs.push(store.on('camera', ({ value, prev }) => {
     if (value === 'vote' && prev !== 'vote' && ringStage() && params.get('yourSeat') !== '0') sit(pickYours());
     else if (value !== 'vote' && prev === 'vote') stand();
@@ -241,7 +259,7 @@ export async function createSeatCast(demo) {
       const r = seats[i];
       if (!r) return null;
       const sc = r.staged ? stage()?.scale ?? 1 : 1;
-      return { pos: new THREE.Vector3(r.pos.x, r.staged ? terrain(r.pos.x, r.pos.z) : SEAT_TOP, r.pos.z), height: (r.h?.height ?? 1.4) * sc, scale: sc, staged: r.staged, id: r.id, shown: r.shown, shownAt: r.shownAt ?? null, face: r.face };
+      return { pos: new THREE.Vector3(r.pos.x, r.staged ? terrain(r.pos.x, r.pos.z) : SEAT_TOP, r.pos.z), height: (r.h?.height ?? 1.4) * sc * (r.staged ? 1 : r.gscale ?? 1), scale: sc, staged: r.staged, id: r.id, shown: r.shown, shownAt: r.shownAt ?? null, face: r.face };
     },
     members,
     /** (seal vote) your seat in the vote (0-based) or -1; toggleSeal() = X; sit(i) / stand() for tests */
@@ -271,6 +289,12 @@ export async function createSeatCast(demo) {
         const q = layout.seatPos(yours, N), p = demo.player.position;
         if (Math.hypot(p.x - q.x, p.z - q.z) > 0.6 && t - yoursAt > 0.5) stand({ move: false });
       }
+      const vy = voteYaw();
+      // (vote-fix4) your figure on your stone: 3/4 toward the camera (never while you walk / a path is set)
+      if (yours >= 0 && vy !== null && demo.player && !demo.player.moving && !demo.player.path && !demo.player.transition) {
+        const q = layout.seatPos(yours, N), f = turned(q.x, q.z, vy, TURN_YOU), p = demo.player.position;
+        if (Math.abs(wrapA(demo.player.facing - f)) > 0.02) demo.player.faceTo?.(p.x + Math.sin(f), p.z + Math.cos(f));
+      }
       let shown = 0;
       shownMembers.length = 0;
       for (const r of seats) {
@@ -283,7 +307,7 @@ export async function createSeatCast(demo) {
         placeFor(r, t);
         // the persistent clip
         let want = 'idle';
-        r.face = r.staged ? stage().spots[r.i].face : r.home;
+        r.face = r.staged ? stage().spots[r.i].face : vy !== null ? turned(r.spot.x, r.spot.z, vy, TURN) : r.home;
         if (st.dead) {
           if (r.dieAt < 0) r.dieAt = t;
           const fresh = t - r.dieAt < DIE_S && has(r, 'die') && r.wasAlive;
@@ -307,6 +331,11 @@ export async function createSeatCast(demo) {
           else if (want !== 'idle') { play(r, want); r.oneShotUntil = -1; }
         }
         r.wantNow = want;
+        // (vote-fix4) a seated GHOST in the vote camera at GHOST_SEATED size: the hovering pale sheet (+ its halo) of a big
+        // figure (chonk) crowded the next seats' figures and names; scaled about its feet on the stone
+        const gs = !r.staged && st.dead && vy !== null ? GHOST_SEATED : 1;
+        // (no version bump: the vote camera's frame keeps its fit, the stone and the seal do not move)
+        if (!r.staged && (r.gscale ?? 1) !== gs) { r.gscale = gs; r.h.root.scale.setScalar(gs); }
         r.h.update(t);
         info.updated++;
       }
