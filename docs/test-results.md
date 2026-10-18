@@ -21,6 +21,17 @@ Engine merge check (by reading, `vendor/engineHost.ts`): `fpsLimit: tierFpsLimit
 `ct.debug.fps > 0` wins) and `maxFps: V3_MAX_FPS` (0 when `ct.debug.fps < 0`); `runFrameLoop` gates on `fpsLimit` when > 0,
 else `maxFps`, so the cpu cap and the 60 fps cap both hold. The dev deploy of the tagged `v3.0` commit and its browser smoke are recorded in the follow-up commit ("v3.0 dev deploy" below).
 
+### v3.0 dev deploy (same day, after the push; the tagged commit `v3.0` = `4be9bb4`)
+
+| Command (from the orchestrator checkout unless noted) | Result |
+|---|---|
+| `scripts/secret-scan.sh`; `git push origin v3-game`; `git tag -a v3.0 4be9bb4`; `git push origin v3.0` | scan clean (388716 lines); pre-push scan clean (23 unpublished commits); `d66c622..4be9bb4`; new tag `v3.0` |
+| `scripts/deploy-hshi-u1.sh dev 4be9bb4` | **exit 0 in 14 s**: sandboxed build, `clocktower-dev` restarted (only that unit), `healthy: {"ok":true,"env":"development","version":"4be9bb4c2420689667d775adca53803c71efa6e3"}`; carry-assets kept 20 files of the previous dev release |
+| on the host: `systemctl status clocktower-dev`; `curl 127.0.0.1:3001/healthz` and `/internal/version`; `GET / /v2/ /lobby/x /v2/lobby/x /v3-art-demo/`; `journalctl -u clocktower-dev -n 50` | active (running); `{"ok":true}` / version `4be9bb4…`; every path 200 `text/html` (the SPA shell); journal: shutdown, database ready, listening on 127.0.0.1:3001 with the new version, no errors. `/v3-art-demo/` on dev is the SPA shell, as before the deploy: `dev.env` has no `DEMOS_DIR` (prod has it; prod untouched, still `4ca13aa`, its `/v3-art-demo/` still serves the Hollowmere demo) |
+| browser smoke on the host GPU against 127.0.0.1:3001 (scratch Playwright spec in the sandbox `.smoke/`, not in git; `flock browser.lock`; 1 page + 6 protocol bots, `ct.fxQuality=auto`, 1920×1080) | **1/1 pass (18.2 s)**: the v3 loading scene, the 3D town ready at tier `high` on the RTX 3060 (296 calls, 850k tris at ready; frame p50 1.6 ms), a game started, everyone teleported to the circle, a nomination → the vote framing (472 calls, 1.47M tris, p50 16.7 ms = the 60 fps cap), `/v2/` lobby finder. **2 page errors**: `TypeError: Cannot read properties of undefined (reading 'isReady')` = three.js `compileAsync`'s poll timer (`currentProgram.isReady()`) after an avatar body's material lost its program (avatars `prewarm`); the entry shows after `PREWARM_MAX_MS` anyway; not seen in the e2e (low tier); v3.1 item |
+
+Stills (this machine, gitignored): `tests/v3/shots/v3.0/dev/{loading,town-square-players,voting-circle,v2-lobby-list}.png`.
+
 ## 2026-10-18 — v3 WP8 gate (`v3-wp8`, branch `v3-game`, the host, sandbox `v3-wp8`, capped remote.sh)
 
 Tree = "v3 C1" (`0cfd0b8`) + WP8: URL paths finished (`LobbyRoute` path move), the v3 loading scene wired into

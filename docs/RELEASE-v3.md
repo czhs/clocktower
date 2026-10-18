@@ -73,6 +73,9 @@ the secrecy model are the same as v2.
   stone, the short hand and the overlay still mark who is on the block.
 - Classic UI-driven e2e specs that create lobbies from `/` need `CT_E2E_BASE_PATH=/v2`. Only `doors`
   and `chat-bubbles` were re-run for this release.
+- **An uncaught `TypeError … 'isReady'`** can show in the console at the high tier: three.js `compileAsync`'s
+  poll timer hits an avatar material that lost its program (avatars `prewarm`). The avatar still shows after
+  the pre-warm timeout. It was seen twice in the dev smoke.
 - Open review items: docs/v3/INTEGRATION.md §11 "C1 review fix round" (deferred low findings).
 - **Not merged yet (v3.1):** the remaining work on the cpu, client and server perf branches, C2 QA (art
   checks and the full v3 e2e on GPU and SwiftShader), and the plan in docs/perf-v3/learnings.md.
