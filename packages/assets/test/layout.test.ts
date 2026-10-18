@@ -10,6 +10,7 @@ import {
   GHOST_STYLES,
   HAIR_COLORS,
   HAIR_STYLES,
+  homeBuilding,
   inSquare,
   isBlockedPx,
   isBlockedTile,
@@ -40,7 +41,7 @@ interface World {
 }
 const WORLDS: World[] = [
   { world: 'v2', L: townLayout, townMap: townMapV2, defs: PROP_DEFS, size: { town: [TOWN_W, TOWN_H], map: [MAP_W, MAP_H] } },
-  { world: 'v3', L: townLayoutV3, townMap: townMapV3, defs: PROP_DEFS_V3, size: { town: [45, 43], map: [112, 43] } },
+  { world: 'v3', L: townLayoutV3, townMap: townMapV3, defs: PROP_DEFS_V3, size: { town: [45, 43], map: [125, 43] } },
 ];
 // the layout under test (set by each world's describe block before its tests run)
 let L: TownLayout = townLayout;
@@ -87,20 +88,22 @@ describe.each(WORLDS)('handcrafted town layout ($world one-screen town)', (W) =>
     expect(L.townBounds).toEqual({ x: 0, y: 0, w: W.size.town[0], h: W.size.town[1] });
     if (W.world === 'v2') expect([TOWN_W, TOWN_H]).toEqual([45, 37]);
     expect([L.widthTiles, L.heightTiles]).toEqual(W.size.map);
-    expect(L.buildings).toHaveLength(15);
+    // v3: + the enterable clock tower (nobody's home, vendor pass B); v2: the 15 cottages only
+    expect(L.buildings).toHaveLength(W.world === 'v3' ? 16 : 15);
+    expect(L.buildings.filter((b) => b.kind === 'house')).toHaveLength(15);
     for (let i = 0; i < 15; i++) {
       const b = L.buildings.find((x) => x.id === `house-${i}`)!;
       expect(b.kind).toBe('house');
       expect(b.houseIndex).toBe(i);
     }
     const ids = L.buildings.map((b) => b.id);
-    for (const gone of ['tavern', 'chapel', 'shop', 'clocktower']) expect(ids).not.toContain(gone);
+    for (const gone of ['tavern', 'chapel', 'shop', ...(W.world === 'v3' ? [] : ['clocktower'])]) expect(ids).not.toContain(gone);
     expect(new Set(ids).size).toBe(ids.length);
     expect(townMap.ground.length).toBe(L.heightTiles);
     for (const row of townMap.ground) expect(row.length).toBe(L.widthTiles);
   });
 
-  it('the clock tower is a solid landmark, never an enterable building', () => {
+  it.runIf(W.world === 'v2')('v2: the clock tower is a solid landmark, never an enterable building', () => {
     const tower = townMap.landmarks.find((b) => b.id === 'clocktower')!;
     expect(tower).toBeDefined();
     expect(L.buildings.some((b) => b.id === tower.id || b.kind === 'clocktower')).toBe(false);
@@ -110,6 +113,19 @@ describe.each(WORLDS)('handcrafted town layout ($world one-screen town)', (W) =>
     expect(tower.interior.w * tower.interior.h).toBe(0);
     // no cottage door is the tower's "door" tile (nothing to walk into)
     for (const b of L.buildings) expect(b.door).not.toEqual(tower.door);
+  });
+
+  it.runIf(W.world === 'v3')('v3: the clock tower is an enterable building (vendor pass B), solid outside, nobody\'s home', () => {
+    expect(townMap.landmarks).toEqual([]);
+    const tower = L.buildings.find((b) => b.id === 'clocktower')!;
+    expect([tower.kind, tower.houseIndex, tower.bed]).toEqual(['clocktower', null, undefined]);
+    for (let y = tower.footprint.y; y < tower.footprint.y + tower.footprint.h; y++)
+      for (let x = tower.footprint.x; x < tower.footprint.x + tower.footprint.w; x++) expect(isBlockedTile(L, x, y), `tower ${x},${y}`).toBe(true);
+    expect(walkable(tower.door)).toBe(true);
+    const c = tileCenterPx(L, tower.interiorDoor);
+    expect(locationAt(L, c.x, c.y)).toBe('bld:clocktower');
+    // homes are the cottages only: no seat ever lives in the tower
+    for (let seat = 0; seat < 15; seat++) expect(homeBuilding(L, seat)?.id).toBe(`house-${seat}`);
   });
 
   it('the square and the voting circle sit in the middle of town and contain the spawns', () => {
@@ -213,7 +229,8 @@ describe.each(WORLDS)('handcrafted town layout ($world one-screen town)', (W) =>
         expect(isBlockedTile(L, r.x + r.w - 1, y)).toBe(true);
       }
       const reach = reachable(b.interiorDoor);
-      for (const p of [b.bed!, b.visitPoint!]) {
+      // cottages have both; the v3 clock tower (nobody's home) only a visit point
+      for (const p of b.kind === 'house' ? [b.bed!, b.visitPoint!] : [b.visitPoint!]) {
         expect(inRect(r, p)).toBe(true);
         expect(walkable(p), `${b.id} bed/visit`).toBe(true);
         expect(reach.has(`${p.x},${p.y}`), `${b.id} bed/visit reachable`).toBe(true);

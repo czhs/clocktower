@@ -31,8 +31,14 @@ export interface HollowmereMeta {
     openedDoors: { id: string; x: number; y: number }[];
     /** Free interior floor tiles the interior door cannot reach (blocked). */
     interiorPockets: { id: string; x: number; y: number }[];
+    /** Free tiles per room ('house-<i>', 'clocktower'). */
     interiorFreeTiles: Record<string, number>;
-    rooms: Record<string, { w: number; d: number; t: number }>;
+    /** 3D floor size per room (m); cottages also carry the wall thickness `t`. */
+    rooms: Record<string, { w: number; d: number; t?: number }>;
+    /** The clock tower room's walkable tiles ("x,y") -> floor height (m: 0 floor, stair steps, 1.1 landing). */
+    towerHeights: Record<string, number>;
+    /** Tower room tiles blocked by the height-cliff rule (a neighbour more than 0.5 m higher: the landing's edge). */
+    towerCliffs: { x: number; y: number; h: number; up: number }[];
     /** Placed outline corners [x, z] (m) of every cottage (rotated houses: the true shape). */
     outlines: Record<string, [number, number][]>;
     /** Placed real door points (m). */

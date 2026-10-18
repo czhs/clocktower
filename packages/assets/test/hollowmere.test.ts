@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { circleCentre, circleRadii, circleSpots, isBlockedPx, isBlockedTile, locationAt, stoneOfSeatIndex, tileCenterPx, type TilePoint, type TileRect } from '@ct/protocol';
 import { BLOCKING_GROUND, layoutFor, townLayout } from '../src/index.js';
-import { hollowmere, npcHomesV3, PROP_DEFS_V3, townLayoutV3 as L, townMapV3 as M } from '../src/hollowmere/layoutV3.js';
+import { hollowmere, npcHomesV3, PROP_DEFS_V3, towerRoomV3, townLayoutV3 as L, townMapV3 as M } from '../src/hollowmere/layoutV3.js';
 import { hollowmereMeta as H } from '../src/hollowmere/meta.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -27,6 +27,9 @@ const DAIS_R_PX = 2.4 * TS; // src/demo/collision.js DAIS_R
 const key = (p: TilePoint) => `${p.x},${p.y}`;
 const inRect = (r: TileRect, p: TilePoint) => p.x >= r.x && p.y >= r.y && p.x < r.x + r.w && p.y < r.y + r.h;
 const inTown = (p: TilePoint) => inRect(L.townBounds, p);
+/** The 15 cottages (homes); the 16th building is the enterable clock tower (nobody's home). */
+const houses = L.buildings.filter((b) => b.kind === 'house');
+const tower = L.buildings.find((b) => b.id === 'clocktower')!;
 
 function reachable(from: TilePoint, within: (p: TilePoint) => boolean = () => true): Set<string> {
   const seen = new Set([key(from)]);
@@ -45,16 +48,18 @@ function reachable(from: TilePoint, within: (p: TilePoint) => boolean = () => tr
 const town = reachable(L.playerSpawn, inTown);
 
 describe('hollowmere export: shape of the data', () => {
-  it('has the §2.2 dimensions: 112 x 43 tiles, town 45 x 43, 16 px tiles, version 3', () => {
-    expect([L.version, L.tileSize, L.widthTiles, L.heightTiles]).toEqual([3, 16, 112, 43]);
+  it('has the §2.2 dimensions: 125 x 43 tiles (a 6th band column for the clock tower), town 45 x 43, 16 px tiles, version 3', () => {
+    expect([L.version, L.tileSize, L.widthTiles, L.heightTiles]).toEqual([3, 16, 125, 43]);
     expect(L.townBounds).toEqual({ x: 0, y: 0, w: 45, h: 43 });
     expect(L.collision.length).toBe(L.widthTiles * L.heightTiles);
     expect(L.collision.every((v) => v === 0 || v === 1)).toBe(true);
     expect(M.ground.length).toBe(L.heightTiles);
     for (const row of M.ground) expect(row.length).toBe(L.widthTiles);
-    expect([M.width, M.height, M.tileSize]).toEqual([112, 43, 16]);
-    expect(L.buildings.map((b) => b.id)).toEqual(Array.from({ length: 15 }, (_, i) => `house-${i}`));
-    L.buildings.forEach((b, i) => expect([b.kind, b.houseIndex]).toEqual(['house', i]));
+    expect([M.width, M.height, M.tileSize]).toEqual([125, 43, 16]);
+    // house-0 .. house-14 (seat = houseIndex), then the enterable clock tower: nobody's home
+    expect(L.buildings.map((b) => b.id)).toEqual([...Array.from({ length: 15 }, (_, i) => `house-${i}`), 'clocktower']);
+    houses.forEach((b, i) => expect([b.kind, b.houseIndex]).toEqual(['house', i]));
+    expect([tower.kind, tower.houseIndex, tower.name, tower.bed]).toEqual(['clocktower', null, 'The Clocktower', undefined]);
   });
 
   it('the circle, square and plaza are the vendor CIRCLE / SQUARE / PLAZA in px, with 15 stones', () => {
@@ -146,8 +151,10 @@ describe('hollowmere export: shape of the data', () => {
 describe('hollowmere export: interiors (§2.3 band rooms)', () => {
   const bands = L.buildings.map((b) => b.interior);
 
-  it('band rooms R_i = {47 + (i%5)*13, 1 + floor(i/5)*14, 12, 12}: outside the town, inside the map, disjoint with a free column', () => {
-    L.buildings.forEach((b, i) => expect(b.interior, b.id).toEqual({ x: 47 + (i % 5) * 13, y: 1 + Math.floor(i / 5) * 14, w: 12, h: 12 }));
+  it('band rooms R_i = {47 + (i%5)*13, 1 + floor(i/5)*14, 12, 12} (the tower: a 6th column, {112, 1}): outside the town, inside the map, disjoint with a free column', () => {
+    houses.forEach((b, i) => expect(b.interior, b.id).toEqual({ x: 47 + (i % 5) * 13, y: 1 + Math.floor(i / 5) * 14, w: 12, h: 12 }));
+    expect(tower.interior).toEqual({ x: 47 + 5 * 13, y: 1, w: 12, h: 12 });
+    expect(tower.interior.x + tower.interior.w + 1).toBe(L.widthTiles);
     for (const r of bands) {
       expect(r.x).toBeGreaterThanOrEqual(L.townBounds.x + L.townBounds.w);
       expect(r.x + r.w <= L.widthTiles && r.y + r.h <= L.heightTiles).toBe(true);
@@ -177,7 +184,7 @@ describe('hollowmere export: interiors (§2.3 band rooms)', () => {
   });
 
   it('bed and visit point are distinct free floor tiles reachable from the interior door; nothing leaks out of the room', () => {
-    for (const b of L.buildings) {
+    for (const b of houses) {
       const reach = reachable(b.interiorDoor);
       for (const k of reach) {
         const [x, y] = k.split(',').map(Number) as [number, number];
@@ -197,7 +204,7 @@ describe('hollowmere export: interiors (§2.3 band rooms)', () => {
 
   it('wall quantisation error is at most 0.5 m and matches the §2.3 table', () => {
     const X = [0.2, 0.2, 0, 0.5, 0.2, 0, 0, 0.3, 0.3, 0.2, 0.5, 0.5, 0.3, 0, 0];
-    L.buildings.forEach((b, i) => {
+    houses.forEach((b, i) => {
       const e = H.meta.wallError[b.id]!;
       expect(e.x, b.id).toBeCloseTo(X[i]!, 6);
       expect(Math.max(e.x, e.z)).toBeLessThanOrEqual(0.5);
@@ -215,6 +222,44 @@ describe('hollowmere export: interiors (§2.3 band rooms)', () => {
     const floorCols = new Set<number>();
     for (let y = r.y; y < r.y + r.h; y++) for (let x = r.x; x < r.x + r.w; x++) if (M.ground[y]![x] === 'f') floorCols.add(x - r.x);
     expect([...floorCols].sort((a, c) => a - c)).toEqual([2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  });
+
+  it('the clock tower room (vendor pass B): nobody\'s home, a free visit point on the landing, the landing reached by the stair only', () => {
+    const r = tower.interior;
+    const reach = reachable(tower.interiorDoor);
+    for (const k of reach) expect(inRect(r, { x: Number(k.split(',')[0]), y: Number(k.split(',')[1]) }), `tower leaks at ${k}`).toBe(true);
+    expect(reach.size).toBe(H.meta.interiorFreeTiles['clocktower']);
+    expect(reach.size).toBeGreaterThanOrEqual(12);
+    expect(H.meta.rooms['clocktower']).toEqual({ w: 8, d: 5.5 });
+    // heights: exactly the reachable tiles; floor 0, the stair's steps, the landing 1.1 m
+    const hs = H.meta.towerHeights;
+    expect(Object.keys(hs).sort()).toEqual([...reach].sort());
+    const landing = Object.entries(hs).filter(([, h]) => h > 1).map(([k]) => k);
+    const floor = Object.entries(hs).filter(([, h]) => h === 0).map(([k]) => k);
+    expect(landing.length).toBeGreaterThanOrEqual(4);
+    expect(floor.length).toBeGreaterThanOrEqual(6);
+    // no two 4-neighbour walkable tiles differ by more than one stair step (0.5 m): no hop onto the landing
+    for (const [k, h] of Object.entries(hs)) {
+      const [x, y] = k.split(',').map(Number) as [number, number];
+      for (const [dx, dy] of [[1, 0], [0, 1]] as const) {
+        const hn = hs[`${x + dx},${y + dy}`];
+        if (hn !== undefined) expect(Math.abs(hn - h), `${k} -> ${x + dx},${y + dy}`).toBeLessThanOrEqual(0.5);
+      }
+    }
+    expect(H.meta.towerCliffs.length).toBeGreaterThan(0);
+    for (const c of H.meta.towerCliffs) expect(isBlockedTile(L, c.x, c.y), `cliff ${key(c)}`).toBe(true);
+    // the visit point (where a Storyteller teleport lands) is a free landing tile; there is no bed
+    const v = tower.visitPoint!;
+    expect(reach.has(key(v))).toBe(true);
+    expect(hs[key(v)]).toBeGreaterThan(1);
+    expect(v).not.toEqual(tower.interiorDoor);
+    expect(M.ground[v.y]![v.x]).toBe('f');
+    // the 3D map: the vendor room's exit spot is the doorway tile's centre (px = anchorPx + (m - anchorM) * 16)
+    const D = { x: r.x + 6, y: r.y + 11 };
+    expect(towerRoomV3.anchorPx).toEqual({ x: (D.x + 0.5) * TS, y: (D.y + 0.5) * TS });
+    expect(towerRoomV3.anchorM).toEqual({ x: 650, z: 22.5 });
+    // room lights carried for Classic / ambience
+    expect(M.lights.filter((l) => l.building === 'clocktower').length).toBeGreaterThanOrEqual(3);
   });
 });
 
@@ -261,7 +306,7 @@ describe('hollowmere export: town, doors, seats, spawns', () => {
       expect(town.has(key(b.door)), `${b.id} door reachable`).toBe(true);
       for (const [id, poly] of Object.entries(H.meta.outlines)) expect(inside(poly, b.door.x + 0.5, b.door.y + 0.875), `${b.id} door inside ${id}`).toBe(false);
       const [nx, ny] = b.doorNormal!;
-      expect(Math.hypot(nx, ny)).toBeCloseTo(1, 2);
+      expect(Math.hypot(nx, ny), b.id).toBeCloseTo(1, 2);
       // the door tile lies in front of the real door (along its outward normal)
       const dp = H.meta.doorPoints[b.id]!;
       expect((b.door.x + 0.5 - dp.x) * nx + (b.door.y + 0.5 - dp.z) * ny, `${b.id} door tile in front of the door`).toBeGreaterThan(0);
@@ -305,14 +350,14 @@ describe('hollowmere export: town, doors, seats, spawns', () => {
       expect(isBlockedTile(L, x, y)).toBe(false);
     }
     // the vendor's ?occl=1 line is north of (behind) every cottage's front: the exporter read real geometry
-    for (const b of L.buildings) {
+    for (const b of houses) {
       const [best, x0, x1] = H.meta.occl[b.id]!;
       expect(best, b.id).toBeLessThan(b.footprint.y + b.footprint.h);
       expect(x0).toBeLessThanOrEqual(x1);
     }
     // an independent geometric check (not the exporter's ray data): directly behind (north of) the middle of every
     // south-facing cottage a character is under its roof from the gameplay camera, so that tile is never walkable
-    for (const b of L.buildings.filter((c) => c.doorNormal![1] >= 0.9)) {
+    for (const b of houses.filter((c) => c.doorNormal![1] >= 0.9)) {
       const t = { x: b.footprint.x + Math.floor(b.footprint.w / 2), y: b.footprint.y - 1 };
       expect(isBlockedTile(L, t.x, t.y), `${b.id}: ${key(t)} behind it is walkable`).toBe(true);
     }
@@ -344,22 +389,26 @@ describe('hollowmere export: town, doors, seats, spawns', () => {
     expect(pockets).toEqual([]);
   });
 
-  it('npc homes are free, reachable outdoor tiles near TownScene\'s homes', () => {
+  it('npc homes are free, reachable outdoor tiles near TownScene\'s homes, never in the town square (user request: no NPCs in the voting circle)', () => {
     const want: Record<string, TilePoint> = { 'npc-sweeper': { x: 16, y: 12 }, 'npc-vendor': { x: 10, y: 17 }, 'npc-elder': { x: 10, y: 21 }, 'npc-porter': { x: 22, y: 34 } };
     expect(Object.keys(npcHomesV3).sort()).toEqual(Object.keys(want).sort());
     for (const [id, p] of Object.entries(npcHomesV3)) {
       expect(town.has(key(p)), id).toBe(true);
       expect(Math.hypot(p.x - want[id]!.x, p.y - want[id]!.y), `${id} moved too far`).toBeLessThanOrEqual(4);
+      // outside the square (inSquare: the voting circle + its ring) with a tile to spare, and outside the plaza ellipse
+      // x 1.1 (TownScene NPC_PLAZA_CLEAR): the roamers (3D avatars/npcs.ts, Classic npcSpot) also never step in there
+      const c = tileCenterPx(L, p);
+      expect(Math.hypot(c.x - L.square.cx, c.y - L.square.cy), `${id} in the square`).toBeGreaterThan(L.square.r + TS);
+      expect(Math.hypot((c.x - M.plaza.cx) / M.plaza.rx, (c.y - M.plaza.cy) / M.plaza.ry), `${id} in the plaza`).toBeGreaterThan(1.1);
     }
   });
 
-  it('map data: a lamp at every streetlight, known prop kinds, a style per cottage, the tower as the only landmark', () => {
+  it('map data: a lamp at every streetlight, known prop kinds, a style per building, no landmark (the tower is a building)', () => {
     for (const p of L.streetlights) expect(M.objects.some((o) => o.kind === 'lamp' && o.x === p.x && o.y === p.y), key(p)).toBe(true);
     for (const o of M.objects) if (o.kind !== 'building') expect(PROP_DEFS_V3[o.kind], o.kind).toBeDefined();
     expect(M.objects.filter((o) => o.kind === 'building').length).toBe(16);
     for (const b of L.buildings) expect(M.styles[b.id], b.id).toBeDefined();
-    expect(M.landmarks.map((b) => b.id)).toEqual(['clocktower']);
-    const tower = M.landmarks[0]!;
+    expect(M.landmarks).toEqual([]);
     for (let y = tower.footprint.y; y < tower.footprint.y + tower.footprint.h; y++)
       for (let x = tower.footprint.x; x < tower.footprint.x + tower.footprint.w; x++) expect(isBlockedTile(L, x, y), `tower ${x},${y}`).toBe(true);
     expect(M.lights.some((l) => l.building === null) && M.lights.some((l) => l.building === 'house-0')).toBe(true);

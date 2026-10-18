@@ -1,0 +1,2736 @@
+{
+ "image": "portraits-hd-night.png",
+ "width": 1024,
+ "height": 419,
+ "frames": {
+  "icon_frog": {
+   "x": 1,
+   "y": 1,
+   "w": 24,
+   "h": 24
+  },
+  "icon_mushroom": {
+   "x": 26,
+   "y": 1,
+   "w": 24,
+   "h": 24
+  },
+  "icon_fox": {
+   "x": 51,
+   "y": 1,
+   "w": 24,
+   "h": 24
+  },
+  "icon_owl": {
+   "x": 76,
+   "y": 1,
+   "w": 24,
+   "h": 24
+  },
+  "icon_crow": {
+   "x": 101,
+   "y": 1,
+   "w": 24,
+   "h": 24
+  },
+  "icon_moth": {
+   "x": 126,
+   "y": 1,
+   "w": 24,
+   "h": 24
+  },
+  "icon_goat": {
+   "x": 151,
+   "y": 1,
+   "w": 24,
+   "h": 24
+  },
+  "icon_skeleton-chef": {
+   "x": 176,
+   "y": 1,
+   "w": 24,
+   "h": 24
+  },
+  "icon_rabbit": {
+   "x": 201,
+   "y": 1,
+   "w": 24,
+   "h": 24
+  },
+  "icon_mole": {
+   "x": 226,
+   "y": 1,
+   "w": 24,
+   "h": 24
+  },
+  "icon_snail": {
+   "x": 251,
+   "y": 1,
+   "w": 24,
+   "h": 24
+  },
+  "icon_toad": {
+   "x": 276,
+   "y": 1,
+   "w": 24,
+   "h": 24
+  },
+  "icon_green-hood": {
+   "x": 301,
+   "y": 1,
+   "w": 24,
+   "h": 24
+  },
+  "icon_honk": {
+   "x": 326,
+   "y": 1,
+   "w": 24,
+   "h": 24
+  },
+  "icon_chonk": {
+   "x": 351,
+   "y": 1,
+   "w": 24,
+   "h": 24
+  },
+  "icon_polly": {
+   "x": 376,
+   "y": 1,
+   "w": 24,
+   "h": 24
+  },
+  "icon_clarabelle": {
+   "x": 401,
+   "y": 1,
+   "w": 24,
+   "h": 24
+  },
+  "icon_requin": {
+   "x": 426,
+   "y": 1,
+   "w": 24,
+   "h": 24
+  },
+  "icon_progress": {
+   "x": 451,
+   "y": 1,
+   "w": 24,
+   "h": 24
+  },
+  "icon_preservation": {
+   "x": 476,
+   "y": 1,
+   "w": 24,
+   "h": 24
+  },
+  "icon_opal": {
+   "x": 501,
+   "y": 1,
+   "w": 24,
+   "h": 24
+  },
+  "icon_cilantro": {
+   "x": 526,
+   "y": 1,
+   "w": 24,
+   "h": 24
+  },
+  "icon_mincut": {
+   "x": 551,
+   "y": 1,
+   "w": 24,
+   "h": 24
+  },
+  "icon_maxflow": {
+   "x": 576,
+   "y": 1,
+   "w": 24,
+   "h": 24
+  },
+  "icon_theo-rem": {
+   "x": 601,
+   "y": 1,
+   "w": 24,
+   "h": 24
+  },
+  "icon_greenting": {
+   "x": 626,
+   "y": 1,
+   "w": 24,
+   "h": 24
+  },
+  "icon_storyteller": {
+   "x": 651,
+   "y": 1,
+   "w": 24,
+   "h": 24
+  },
+  "icon_npc-sweeper": {
+   "x": 676,
+   "y": 1,
+   "w": 24,
+   "h": 24
+  },
+  "icon_npc-vendor": {
+   "x": 701,
+   "y": 1,
+   "w": 24,
+   "h": 24
+  },
+  "icon_npc-elder": {
+   "x": 726,
+   "y": 1,
+   "w": 24,
+   "h": 24
+  },
+  "icon_npc-porter": {
+   "x": 751,
+   "y": 1,
+   "w": 24,
+   "h": 24
+  },
+  "icon_wanderer": {
+   "x": 776,
+   "y": 1,
+   "w": 24,
+   "h": 24
+  },
+  "icon_keeper": {
+   "x": 801,
+   "y": 1,
+   "w": 24,
+   "h": 24
+  },
+  "icon_hound": {
+   "x": 826,
+   "y": 1,
+   "w": 24,
+   "h": 24
+  },
+  "icon_duelist": {
+   "x": 851,
+   "y": 1,
+   "w": 24,
+   "h": 24
+  },
+  "icon_frog/ghost": {
+   "x": 876,
+   "y": 1,
+   "w": 24,
+   "h": 24
+  },
+  "icon_frog/ghost-spent": {
+   "x": 901,
+   "y": 1,
+   "w": 24,
+   "h": 24
+  },
+  "icon_frog/dead": {
+   "x": 926,
+   "y": 1,
+   "w": 24,
+   "h": 24
+  },
+  "icon_mushroom/ghost": {
+   "x": 951,
+   "y": 1,
+   "w": 24,
+   "h": 24
+  },
+  "icon_mushroom/ghost-spent": {
+   "x": 976,
+   "y": 1,
+   "w": 24,
+   "h": 24
+  },
+  "icon_mushroom/dead": {
+   "x": 1,
+   "y": 26,
+   "w": 24,
+   "h": 24
+  },
+  "icon_fox/ghost": {
+   "x": 26,
+   "y": 26,
+   "w": 24,
+   "h": 24
+  },
+  "icon_fox/ghost-spent": {
+   "x": 51,
+   "y": 26,
+   "w": 24,
+   "h": 24
+  },
+  "icon_fox/dead": {
+   "x": 76,
+   "y": 26,
+   "w": 24,
+   "h": 24
+  },
+  "icon_owl/ghost": {
+   "x": 101,
+   "y": 26,
+   "w": 24,
+   "h": 24
+  },
+  "icon_owl/ghost-spent": {
+   "x": 126,
+   "y": 26,
+   "w": 24,
+   "h": 24
+  },
+  "icon_owl/dead": {
+   "x": 151,
+   "y": 26,
+   "w": 24,
+   "h": 24
+  },
+  "icon_crow/ghost": {
+   "x": 176,
+   "y": 26,
+   "w": 24,
+   "h": 24
+  },
+  "icon_crow/ghost-spent": {
+   "x": 201,
+   "y": 26,
+   "w": 24,
+   "h": 24
+  },
+  "icon_crow/dead": {
+   "x": 226,
+   "y": 26,
+   "w": 24,
+   "h": 24
+  },
+  "icon_moth/ghost": {
+   "x": 251,
+   "y": 26,
+   "w": 24,
+   "h": 24
+  },
+  "icon_moth/ghost-spent": {
+   "x": 276,
+   "y": 26,
+   "w": 24,
+   "h": 24
+  },
+  "icon_moth/dead": {
+   "x": 301,
+   "y": 26,
+   "w": 24,
+   "h": 24
+  },
+  "icon_goat/ghost": {
+   "x": 326,
+   "y": 26,
+   "w": 24,
+   "h": 24
+  },
+  "icon_goat/ghost-spent": {
+   "x": 351,
+   "y": 26,
+   "w": 24,
+   "h": 24
+  },
+  "icon_goat/dead": {
+   "x": 376,
+   "y": 26,
+   "w": 24,
+   "h": 24
+  },
+  "icon_skeleton-chef/ghost": {
+   "x": 401,
+   "y": 26,
+   "w": 24,
+   "h": 24
+  },
+  "icon_skeleton-chef/ghost-spent": {
+   "x": 426,
+   "y": 26,
+   "w": 24,
+   "h": 24
+  },
+  "icon_skeleton-chef/dead": {
+   "x": 451,
+   "y": 26,
+   "w": 24,
+   "h": 24
+  },
+  "icon_rabbit/ghost": {
+   "x": 476,
+   "y": 26,
+   "w": 24,
+   "h": 24
+  },
+  "icon_rabbit/ghost-spent": {
+   "x": 501,
+   "y": 26,
+   "w": 24,
+   "h": 24
+  },
+  "icon_rabbit/dead": {
+   "x": 526,
+   "y": 26,
+   "w": 24,
+   "h": 24
+  },
+  "icon_mole/ghost": {
+   "x": 551,
+   "y": 26,
+   "w": 24,
+   "h": 24
+  },
+  "icon_mole/ghost-spent": {
+   "x": 576,
+   "y": 26,
+   "w": 24,
+   "h": 24
+  },
+  "icon_mole/dead": {
+   "x": 601,
+   "y": 26,
+   "w": 24,
+   "h": 24
+  },
+  "icon_snail/ghost": {
+   "x": 626,
+   "y": 26,
+   "w": 24,
+   "h": 24
+  },
+  "icon_snail/ghost-spent": {
+   "x": 651,
+   "y": 26,
+   "w": 24,
+   "h": 24
+  },
+  "icon_snail/dead": {
+   "x": 676,
+   "y": 26,
+   "w": 24,
+   "h": 24
+  },
+  "icon_toad/ghost": {
+   "x": 701,
+   "y": 26,
+   "w": 24,
+   "h": 24
+  },
+  "icon_toad/ghost-spent": {
+   "x": 726,
+   "y": 26,
+   "w": 24,
+   "h": 24
+  },
+  "icon_toad/dead": {
+   "x": 751,
+   "y": 26,
+   "w": 24,
+   "h": 24
+  },
+  "icon_green-hood/ghost": {
+   "x": 776,
+   "y": 26,
+   "w": 24,
+   "h": 24
+  },
+  "icon_green-hood/ghost-spent": {
+   "x": 801,
+   "y": 26,
+   "w": 24,
+   "h": 24
+  },
+  "icon_green-hood/dead": {
+   "x": 826,
+   "y": 26,
+   "w": 24,
+   "h": 24
+  },
+  "icon_honk/ghost": {
+   "x": 851,
+   "y": 26,
+   "w": 24,
+   "h": 24
+  },
+  "icon_honk/ghost-spent": {
+   "x": 876,
+   "y": 26,
+   "w": 24,
+   "h": 24
+  },
+  "icon_honk/dead": {
+   "x": 901,
+   "y": 26,
+   "w": 24,
+   "h": 24
+  },
+  "icon_chonk/ghost": {
+   "x": 926,
+   "y": 26,
+   "w": 24,
+   "h": 24
+  },
+  "icon_chonk/ghost-spent": {
+   "x": 951,
+   "y": 26,
+   "w": 24,
+   "h": 24
+  },
+  "icon_chonk/dead": {
+   "x": 976,
+   "y": 26,
+   "w": 24,
+   "h": 24
+  },
+  "icon_polly/ghost": {
+   "x": 1,
+   "y": 51,
+   "w": 24,
+   "h": 24
+  },
+  "icon_polly/ghost-spent": {
+   "x": 26,
+   "y": 51,
+   "w": 24,
+   "h": 24
+  },
+  "icon_polly/dead": {
+   "x": 51,
+   "y": 51,
+   "w": 24,
+   "h": 24
+  },
+  "icon_clarabelle/ghost": {
+   "x": 76,
+   "y": 51,
+   "w": 24,
+   "h": 24
+  },
+  "icon_clarabelle/ghost-spent": {
+   "x": 101,
+   "y": 51,
+   "w": 24,
+   "h": 24
+  },
+  "icon_clarabelle/dead": {
+   "x": 126,
+   "y": 51,
+   "w": 24,
+   "h": 24
+  },
+  "icon_requin/ghost": {
+   "x": 151,
+   "y": 51,
+   "w": 24,
+   "h": 24
+  },
+  "icon_requin/ghost-spent": {
+   "x": 176,
+   "y": 51,
+   "w": 24,
+   "h": 24
+  },
+  "icon_requin/dead": {
+   "x": 201,
+   "y": 51,
+   "w": 24,
+   "h": 24
+  },
+  "icon_progress/ghost": {
+   "x": 226,
+   "y": 51,
+   "w": 24,
+   "h": 24
+  },
+  "icon_progress/ghost-spent": {
+   "x": 251,
+   "y": 51,
+   "w": 24,
+   "h": 24
+  },
+  "icon_progress/dead": {
+   "x": 276,
+   "y": 51,
+   "w": 24,
+   "h": 24
+  },
+  "icon_preservation/ghost": {
+   "x": 301,
+   "y": 51,
+   "w": 24,
+   "h": 24
+  },
+  "icon_preservation/ghost-spent": {
+   "x": 326,
+   "y": 51,
+   "w": 24,
+   "h": 24
+  },
+  "icon_preservation/dead": {
+   "x": 351,
+   "y": 51,
+   "w": 24,
+   "h": 24
+  },
+  "icon_opal/ghost": {
+   "x": 376,
+   "y": 51,
+   "w": 24,
+   "h": 24
+  },
+  "icon_opal/ghost-spent": {
+   "x": 401,
+   "y": 51,
+   "w": 24,
+   "h": 24
+  },
+  "icon_opal/dead": {
+   "x": 426,
+   "y": 51,
+   "w": 24,
+   "h": 24
+  },
+  "icon_cilantro/ghost": {
+   "x": 451,
+   "y": 51,
+   "w": 24,
+   "h": 24
+  },
+  "icon_cilantro/ghost-spent": {
+   "x": 476,
+   "y": 51,
+   "w": 24,
+   "h": 24
+  },
+  "icon_cilantro/dead": {
+   "x": 501,
+   "y": 51,
+   "w": 24,
+   "h": 24
+  },
+  "icon_mincut/ghost": {
+   "x": 526,
+   "y": 51,
+   "w": 24,
+   "h": 24
+  },
+  "icon_mincut/ghost-spent": {
+   "x": 551,
+   "y": 51,
+   "w": 24,
+   "h": 24
+  },
+  "icon_mincut/dead": {
+   "x": 576,
+   "y": 51,
+   "w": 24,
+   "h": 24
+  },
+  "icon_maxflow/ghost": {
+   "x": 601,
+   "y": 51,
+   "w": 24,
+   "h": 24
+  },
+  "icon_maxflow/ghost-spent": {
+   "x": 626,
+   "y": 51,
+   "w": 24,
+   "h": 24
+  },
+  "icon_maxflow/dead": {
+   "x": 651,
+   "y": 51,
+   "w": 24,
+   "h": 24
+  },
+  "icon_theo-rem/ghost": {
+   "x": 676,
+   "y": 51,
+   "w": 24,
+   "h": 24
+  },
+  "icon_theo-rem/ghost-spent": {
+   "x": 701,
+   "y": 51,
+   "w": 24,
+   "h": 24
+  },
+  "icon_theo-rem/dead": {
+   "x": 726,
+   "y": 51,
+   "w": 24,
+   "h": 24
+  },
+  "icon_greenting/ghost": {
+   "x": 751,
+   "y": 51,
+   "w": 24,
+   "h": 24
+  },
+  "icon_greenting/ghost-spent": {
+   "x": 776,
+   "y": 51,
+   "w": 24,
+   "h": 24
+  },
+  "icon_greenting/dead": {
+   "x": 801,
+   "y": 51,
+   "w": 24,
+   "h": 24
+  },
+  "icon_wanderer/ghost": {
+   "x": 826,
+   "y": 51,
+   "w": 24,
+   "h": 24
+  },
+  "icon_wanderer/ghost-spent": {
+   "x": 851,
+   "y": 51,
+   "w": 24,
+   "h": 24
+  },
+  "icon_wanderer/dead": {
+   "x": 876,
+   "y": 51,
+   "w": 24,
+   "h": 24
+  },
+  "icon_keeper/ghost": {
+   "x": 901,
+   "y": 51,
+   "w": 24,
+   "h": 24
+  },
+  "icon_keeper/ghost-spent": {
+   "x": 926,
+   "y": 51,
+   "w": 24,
+   "h": 24
+  },
+  "icon_keeper/dead": {
+   "x": 951,
+   "y": 51,
+   "w": 24,
+   "h": 24
+  },
+  "icon_hound/ghost": {
+   "x": 976,
+   "y": 51,
+   "w": 24,
+   "h": 24
+  },
+  "icon_hound/ghost-spent": {
+   "x": 1,
+   "y": 76,
+   "w": 24,
+   "h": 24
+  },
+  "icon_hound/dead": {
+   "x": 26,
+   "y": 76,
+   "w": 24,
+   "h": 24
+  },
+  "icon_duelist/ghost": {
+   "x": 51,
+   "y": 76,
+   "w": 24,
+   "h": 24
+  },
+  "icon_duelist/ghost-spent": {
+   "x": 76,
+   "y": 76,
+   "w": 24,
+   "h": 24
+  },
+  "icon_duelist/dead": {
+   "x": 101,
+   "y": 76,
+   "w": 24,
+   "h": 24
+  },
+  "avatar_frog": {
+   "x": 126,
+   "y": 76,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_frog/ghost": {
+   "x": 175,
+   "y": 76,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_frog/ghost-spent": {
+   "x": 224,
+   "y": 76,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_frog/dead": {
+   "x": 273,
+   "y": 76,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_mushroom": {
+   "x": 322,
+   "y": 76,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_mushroom/ghost": {
+   "x": 371,
+   "y": 76,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_mushroom/ghost-spent": {
+   "x": 420,
+   "y": 76,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_mushroom/dead": {
+   "x": 469,
+   "y": 76,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_fox": {
+   "x": 518,
+   "y": 76,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_fox/ghost": {
+   "x": 567,
+   "y": 76,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_fox/ghost-spent": {
+   "x": 616,
+   "y": 76,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_fox/dead": {
+   "x": 665,
+   "y": 76,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_owl": {
+   "x": 714,
+   "y": 76,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_owl/ghost": {
+   "x": 763,
+   "y": 76,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_owl/ghost-spent": {
+   "x": 812,
+   "y": 76,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_owl/dead": {
+   "x": 861,
+   "y": 76,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_crow": {
+   "x": 910,
+   "y": 76,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_crow/ghost": {
+   "x": 959,
+   "y": 76,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_crow/ghost-spent": {
+   "x": 1,
+   "y": 125,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_crow/dead": {
+   "x": 50,
+   "y": 125,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_moth": {
+   "x": 99,
+   "y": 125,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_moth/ghost": {
+   "x": 148,
+   "y": 125,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_moth/ghost-spent": {
+   "x": 197,
+   "y": 125,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_moth/dead": {
+   "x": 246,
+   "y": 125,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_goat": {
+   "x": 295,
+   "y": 125,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_goat/ghost": {
+   "x": 344,
+   "y": 125,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_goat/ghost-spent": {
+   "x": 393,
+   "y": 125,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_goat/dead": {
+   "x": 442,
+   "y": 125,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_skeleton-chef": {
+   "x": 491,
+   "y": 125,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_skeleton-chef/ghost": {
+   "x": 540,
+   "y": 125,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_skeleton-chef/ghost-spent": {
+   "x": 589,
+   "y": 125,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_skeleton-chef/dead": {
+   "x": 638,
+   "y": 125,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_rabbit": {
+   "x": 687,
+   "y": 125,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_rabbit/ghost": {
+   "x": 736,
+   "y": 125,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_rabbit/ghost-spent": {
+   "x": 785,
+   "y": 125,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_rabbit/dead": {
+   "x": 834,
+   "y": 125,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_mole": {
+   "x": 883,
+   "y": 125,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_mole/ghost": {
+   "x": 932,
+   "y": 125,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_mole/ghost-spent": {
+   "x": 1,
+   "y": 174,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_mole/dead": {
+   "x": 50,
+   "y": 174,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_snail": {
+   "x": 99,
+   "y": 174,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_snail/ghost": {
+   "x": 148,
+   "y": 174,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_snail/ghost-spent": {
+   "x": 197,
+   "y": 174,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_snail/dead": {
+   "x": 246,
+   "y": 174,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_toad": {
+   "x": 295,
+   "y": 174,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_toad/ghost": {
+   "x": 344,
+   "y": 174,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_toad/ghost-spent": {
+   "x": 393,
+   "y": 174,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_toad/dead": {
+   "x": 442,
+   "y": 174,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_green-hood": {
+   "x": 491,
+   "y": 174,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_green-hood/ghost": {
+   "x": 540,
+   "y": 174,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_green-hood/ghost-spent": {
+   "x": 589,
+   "y": 174,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_green-hood/dead": {
+   "x": 638,
+   "y": 174,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_honk": {
+   "x": 687,
+   "y": 174,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_honk/ghost": {
+   "x": 736,
+   "y": 174,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_honk/ghost-spent": {
+   "x": 785,
+   "y": 174,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_honk/dead": {
+   "x": 834,
+   "y": 174,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_chonk": {
+   "x": 883,
+   "y": 174,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_chonk/ghost": {
+   "x": 932,
+   "y": 174,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_chonk/ghost-spent": {
+   "x": 1,
+   "y": 223,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_chonk/dead": {
+   "x": 50,
+   "y": 223,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_polly": {
+   "x": 99,
+   "y": 223,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_polly/ghost": {
+   "x": 148,
+   "y": 223,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_polly/ghost-spent": {
+   "x": 197,
+   "y": 223,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_polly/dead": {
+   "x": 246,
+   "y": 223,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_clarabelle": {
+   "x": 295,
+   "y": 223,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_clarabelle/ghost": {
+   "x": 344,
+   "y": 223,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_clarabelle/ghost-spent": {
+   "x": 393,
+   "y": 223,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_clarabelle/dead": {
+   "x": 442,
+   "y": 223,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_requin": {
+   "x": 491,
+   "y": 223,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_requin/ghost": {
+   "x": 540,
+   "y": 223,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_requin/ghost-spent": {
+   "x": 589,
+   "y": 223,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_requin/dead": {
+   "x": 638,
+   "y": 223,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_progress": {
+   "x": 687,
+   "y": 223,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_progress/ghost": {
+   "x": 736,
+   "y": 223,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_progress/ghost-spent": {
+   "x": 785,
+   "y": 223,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_progress/dead": {
+   "x": 834,
+   "y": 223,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_preservation": {
+   "x": 883,
+   "y": 223,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_preservation/ghost": {
+   "x": 932,
+   "y": 223,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_preservation/ghost-spent": {
+   "x": 1,
+   "y": 272,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_preservation/dead": {
+   "x": 50,
+   "y": 272,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_opal": {
+   "x": 99,
+   "y": 272,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_opal/ghost": {
+   "x": 148,
+   "y": 272,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_opal/ghost-spent": {
+   "x": 197,
+   "y": 272,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_opal/dead": {
+   "x": 246,
+   "y": 272,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_cilantro": {
+   "x": 295,
+   "y": 272,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_cilantro/ghost": {
+   "x": 344,
+   "y": 272,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_cilantro/ghost-spent": {
+   "x": 393,
+   "y": 272,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_cilantro/dead": {
+   "x": 442,
+   "y": 272,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_mincut": {
+   "x": 491,
+   "y": 272,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_mincut/ghost": {
+   "x": 540,
+   "y": 272,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_mincut/ghost-spent": {
+   "x": 589,
+   "y": 272,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_mincut/dead": {
+   "x": 638,
+   "y": 272,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_maxflow": {
+   "x": 687,
+   "y": 272,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_maxflow/ghost": {
+   "x": 736,
+   "y": 272,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_maxflow/ghost-spent": {
+   "x": 785,
+   "y": 272,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_maxflow/dead": {
+   "x": 834,
+   "y": 272,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_theo-rem": {
+   "x": 883,
+   "y": 272,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_theo-rem/ghost": {
+   "x": 932,
+   "y": 272,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_theo-rem/ghost-spent": {
+   "x": 1,
+   "y": 321,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_theo-rem/dead": {
+   "x": 50,
+   "y": 321,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_greenting": {
+   "x": 99,
+   "y": 321,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_greenting/ghost": {
+   "x": 148,
+   "y": 321,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_greenting/ghost-spent": {
+   "x": 197,
+   "y": 321,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_greenting/dead": {
+   "x": 246,
+   "y": 321,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_storyteller": {
+   "x": 295,
+   "y": 321,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_npc-sweeper": {
+   "x": 344,
+   "y": 321,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_npc-vendor": {
+   "x": 393,
+   "y": 321,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_npc-elder": {
+   "x": 442,
+   "y": 321,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_npc-porter": {
+   "x": 491,
+   "y": 321,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_wanderer": {
+   "x": 540,
+   "y": 321,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_wanderer/ghost": {
+   "x": 589,
+   "y": 321,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_wanderer/ghost-spent": {
+   "x": 638,
+   "y": 321,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_wanderer/dead": {
+   "x": 687,
+   "y": 321,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_keeper": {
+   "x": 736,
+   "y": 321,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_keeper/ghost": {
+   "x": 785,
+   "y": 321,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_keeper/ghost-spent": {
+   "x": 834,
+   "y": 321,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_keeper/dead": {
+   "x": 883,
+   "y": 321,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_hound": {
+   "x": 932,
+   "y": 321,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_hound/ghost": {
+   "x": 1,
+   "y": 370,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_hound/ghost-spent": {
+   "x": 50,
+   "y": 370,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_hound/dead": {
+   "x": 99,
+   "y": 370,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_duelist": {
+   "x": 148,
+   "y": 370,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_duelist/ghost": {
+   "x": 197,
+   "y": 370,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_duelist/ghost-spent": {
+   "x": 246,
+   "y": 370,
+   "w": 48,
+   "h": 48
+  },
+  "avatar_duelist/dead": {
+   "x": 295,
+   "y": 370,
+   "w": 48,
+   "h": 48
+  }
+ },
+ "meta": {
+  "density": 2,
+  "iconSize": 24,
+  "avatarSize": 48,
+  "ids": [
+   "frog",
+   "mushroom",
+   "fox",
+   "owl",
+   "crow",
+   "moth",
+   "goat",
+   "skeleton-chef",
+   "rabbit",
+   "mole",
+   "snail",
+   "toad",
+   "green-hood",
+   "honk",
+   "chonk",
+   "polly",
+   "clarabelle",
+   "requin",
+   "progress",
+   "preservation",
+   "opal",
+   "cilantro",
+   "mincut",
+   "maxflow",
+   "theo-rem",
+   "greenting",
+   "storyteller",
+   "npc-sweeper",
+   "npc-vendor",
+   "npc-elder",
+   "npc-porter",
+   "wanderer",
+   "keeper",
+   "hound",
+   "duelist"
+  ],
+  "players": [
+   "frog",
+   "mushroom",
+   "fox",
+   "owl",
+   "crow",
+   "moth",
+   "goat",
+   "skeleton-chef",
+   "rabbit",
+   "mole",
+   "snail",
+   "toad",
+   "green-hood",
+   "honk",
+   "chonk",
+   "polly",
+   "clarabelle",
+   "requin",
+   "progress",
+   "preservation",
+   "opal",
+   "cilantro",
+   "mincut",
+   "maxflow",
+   "theo-rem",
+   "greenting",
+   "wanderer",
+   "keeper",
+   "hound",
+   "duelist"
+  ],
+  "anchors": {
+   "icon_frog": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_frog": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_frog/ghost": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_frog/ghost": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_frog/ghost-spent": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_frog/ghost-spent": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_frog/dead": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_frog/dead": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_mushroom": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_mushroom": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_mushroom/ghost": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_mushroom/ghost": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_mushroom/ghost-spent": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_mushroom/ghost-spent": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_mushroom/dead": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_mushroom/dead": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_fox": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_fox": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_fox/ghost": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_fox/ghost": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_fox/ghost-spent": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_fox/ghost-spent": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_fox/dead": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_fox/dead": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_owl": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_owl": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_owl/ghost": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_owl/ghost": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_owl/ghost-spent": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_owl/ghost-spent": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_owl/dead": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_owl/dead": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_crow": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_crow": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_crow/ghost": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_crow/ghost": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_crow/ghost-spent": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_crow/ghost-spent": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_crow/dead": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_crow/dead": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_moth": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_moth": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_moth/ghost": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_moth/ghost": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_moth/ghost-spent": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_moth/ghost-spent": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_moth/dead": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_moth/dead": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_goat": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_goat": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_goat/ghost": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_goat/ghost": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_goat/ghost-spent": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_goat/ghost-spent": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_goat/dead": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_goat/dead": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_skeleton-chef": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_skeleton-chef": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_skeleton-chef/ghost": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_skeleton-chef/ghost": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_skeleton-chef/ghost-spent": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_skeleton-chef/ghost-spent": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_skeleton-chef/dead": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_skeleton-chef/dead": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_rabbit": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_rabbit": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_rabbit/ghost": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_rabbit/ghost": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_rabbit/ghost-spent": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_rabbit/ghost-spent": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_rabbit/dead": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_rabbit/dead": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_mole": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_mole": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_mole/ghost": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_mole/ghost": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_mole/ghost-spent": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_mole/ghost-spent": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_mole/dead": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_mole/dead": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_snail": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_snail": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_snail/ghost": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_snail/ghost": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_snail/ghost-spent": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_snail/ghost-spent": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_snail/dead": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_snail/dead": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_toad": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_toad": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_toad/ghost": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_toad/ghost": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_toad/ghost-spent": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_toad/ghost-spent": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_toad/dead": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_toad/dead": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_green-hood": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_green-hood": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_green-hood/ghost": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_green-hood/ghost": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_green-hood/ghost-spent": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_green-hood/ghost-spent": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_green-hood/dead": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_green-hood/dead": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_honk": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_honk": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_honk/ghost": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_honk/ghost": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_honk/ghost-spent": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_honk/ghost-spent": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_honk/dead": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_honk/dead": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_chonk": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_chonk": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_chonk/ghost": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_chonk/ghost": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_chonk/ghost-spent": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_chonk/ghost-spent": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_chonk/dead": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_chonk/dead": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_polly": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_polly": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_polly/ghost": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_polly/ghost": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_polly/ghost-spent": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_polly/ghost-spent": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_polly/dead": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_polly/dead": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_clarabelle": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_clarabelle": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_clarabelle/ghost": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_clarabelle/ghost": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_clarabelle/ghost-spent": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_clarabelle/ghost-spent": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_clarabelle/dead": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_clarabelle/dead": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_requin": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_requin": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_requin/ghost": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_requin/ghost": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_requin/ghost-spent": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_requin/ghost-spent": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_requin/dead": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_requin/dead": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_progress": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_progress": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_progress/ghost": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_progress/ghost": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_progress/ghost-spent": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_progress/ghost-spent": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_progress/dead": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_progress/dead": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_preservation": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_preservation": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_preservation/ghost": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_preservation/ghost": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_preservation/ghost-spent": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_preservation/ghost-spent": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_preservation/dead": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_preservation/dead": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_opal": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_opal": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_opal/ghost": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_opal/ghost": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_opal/ghost-spent": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_opal/ghost-spent": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_opal/dead": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_opal/dead": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_cilantro": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_cilantro": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_cilantro/ghost": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_cilantro/ghost": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_cilantro/ghost-spent": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_cilantro/ghost-spent": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_cilantro/dead": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_cilantro/dead": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_mincut": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_mincut": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_mincut/ghost": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_mincut/ghost": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_mincut/ghost-spent": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_mincut/ghost-spent": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_mincut/dead": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_mincut/dead": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_maxflow": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_maxflow": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_maxflow/ghost": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_maxflow/ghost": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_maxflow/ghost-spent": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_maxflow/ghost-spent": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_maxflow/dead": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_maxflow/dead": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_theo-rem": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_theo-rem": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_theo-rem/ghost": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_theo-rem/ghost": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_theo-rem/ghost-spent": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_theo-rem/ghost-spent": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_theo-rem/dead": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_theo-rem/dead": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_greenting": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_greenting": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_greenting/ghost": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_greenting/ghost": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_greenting/ghost-spent": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_greenting/ghost-spent": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_greenting/dead": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_greenting/dead": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_storyteller": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_storyteller": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_npc-sweeper": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_npc-sweeper": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_npc-vendor": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_npc-vendor": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_npc-elder": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_npc-elder": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_npc-porter": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_npc-porter": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_wanderer": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_wanderer": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_wanderer/ghost": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_wanderer/ghost": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_wanderer/ghost-spent": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_wanderer/ghost-spent": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_wanderer/dead": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_wanderer/dead": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_keeper": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_keeper": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_keeper/ghost": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_keeper/ghost": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_keeper/ghost-spent": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_keeper/ghost-spent": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_keeper/dead": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_keeper/dead": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_hound": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_hound": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_hound/ghost": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_hound/ghost": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_hound/ghost-spent": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_hound/ghost-spent": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_hound/dead": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_hound/dead": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_duelist": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_duelist": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_duelist/ghost": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_duelist/ghost": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_duelist/ghost-spent": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_duelist/ghost-spent": {
+    "x": 24,
+    "y": 24
+   },
+   "icon_duelist/dead": {
+    "x": 12,
+    "y": 12
+   },
+   "avatar_duelist/dead": {
+    "x": 24,
+    "y": 24
+   }
+  },
+  "newStyle": {
+   "tod": "night",
+   "what": "UI density D=2 (docs/UI.md §2.10): the 1x icons / avatars re-rendered from the 3D cast at 2x the texel density (ppm x 2, crops x 2; same framing rule, art direction and variant cues), drawn at the SAME on-screen size as the 1x frames on the L.hd tiers",
+   "framing": {
+    "frog": {
+     "iconPpm": 24,
+     "avatarPpm": 40
+    },
+    "mushroom": {
+     "iconPpm": 32,
+     "avatarPpm": 40
+    },
+    "fox": {
+     "iconPpm": 48,
+     "avatarPpm": 56
+    },
+    "owl": {
+     "iconPpm": 36,
+     "avatarPpm": 44
+    },
+    "crow": {
+     "iconPpm": 32,
+     "avatarPpm": 40
+    },
+    "moth": {
+     "iconPpm": 32,
+     "avatarPpm": 44
+    },
+    "goat": {
+     "iconPpm": 28,
+     "avatarPpm": 36
+    },
+    "skeleton-chef": {
+     "iconPpm": 56,
+     "avatarPpm": 64
+    },
+    "rabbit": {
+     "iconPpm": 28,
+     "avatarPpm": 64
+    },
+    "mole": {
+     "iconPpm": 48,
+     "avatarPpm": 56
+    },
+    "snail": {
+     "iconPpm": 44,
+     "avatarPpm": 48
+    },
+    "toad": {
+     "iconPpm": 40,
+     "avatarPpm": 48
+    },
+    "green-hood": {
+     "iconPpm": 48,
+     "avatarPpm": 56
+    },
+    "honk": {
+     "iconPpm": 68,
+     "avatarPpm": 88
+    },
+    "chonk": {
+     "iconPpm": 40,
+     "avatarPpm": 48
+    },
+    "polly": {
+     "iconPpm": 56,
+     "avatarPpm": 64
+    },
+    "clarabelle": {
+     "iconPpm": 32,
+     "avatarPpm": 36
+    },
+    "requin": {
+     "iconPpm": 44,
+     "avatarPpm": 48
+    },
+    "progress": {
+     "iconPpm": 32,
+     "avatarPpm": 40
+    },
+    "preservation": {
+     "iconPpm": 36,
+     "avatarPpm": 44
+    },
+    "opal": {
+     "iconPpm": 44,
+     "avatarPpm": 48
+    },
+    "cilantro": {
+     "iconPpm": 52,
+     "avatarPpm": 60
+    },
+    "mincut": {
+     "iconPpm": 48,
+     "avatarPpm": 56
+    },
+    "maxflow": {
+     "iconPpm": 36,
+     "avatarPpm": 44
+    },
+    "theo-rem": {
+     "iconPpm": 68,
+     "avatarPpm": 80
+    },
+    "greenting": {
+     "iconPpm": 32,
+     "avatarPpm": 88
+    },
+    "storyteller": {
+     "iconPpm": 44,
+     "avatarPpm": 48
+    },
+    "npc-sweeper": {
+     "iconPpm": 68,
+     "avatarPpm": 80
+    },
+    "npc-vendor": {
+     "iconPpm": 68,
+     "avatarPpm": 80
+    },
+    "npc-elder": {
+     "iconPpm": 68,
+     "avatarPpm": 80
+    },
+    "npc-porter": {
+     "iconPpm": 56,
+     "avatarPpm": 64
+    },
+    "wanderer": {
+     "iconPpm": 44,
+     "avatarPpm": 52
+    },
+    "keeper": {
+     "iconPpm": 56,
+     "avatarPpm": 64
+    },
+    "hound": {
+     "iconPpm": 48,
+     "avatarPpm": 56
+    },
+    "duelist": {
+     "iconPpm": 40,
+     "avatarPpm": 44
+    }
+   },
+   "oneX": "out/ui/portraits{,-night}.{png,json} (12x12 / 24x24) unchanged; frame names identical; wanderer / keeper / hound / duelist exist only here",
+   "skipped": [
+    "nicksong",
+    "brianbi"
+   ]
+  },
+  "bakedBy": "pixel3d tools/uibake",
+  "tod": "noon"
+ }
+}

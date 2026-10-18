@@ -68,7 +68,7 @@ const outdoorDrawn = objects.filter((o) => (o.type === 'prop' || o.type === 'fla
 const anchorOf = (o: TObj) => `${o.name}@${o.x / TS},${(o.y + o.height) / TS - 1}`;
 
 describe('town-v3.json: the v3 layout, tile for tile', () => {
-  it('is a 112 x 43 map of 16 px tiles marked world v3 (the v2 town.json is untouched)', () => {
+  it('is a 125 x 43 map of 16 px tiles marked world v3 (the v2 town.json is untouched)', () => {
     expect([town.width, town.height, town.tilewidth]).toEqual([L.widthTiles, L.heightTiles, TS]);
     expect(prop(town, 'world')).toBe('v3');
     expect(JSON.parse(String(prop(town, 'townBounds')))).toEqual(L.townBounds);
@@ -132,7 +132,9 @@ describe('town-v3.json: the v3 layout, tile for tile', () => {
 
 describe('cottages: v2 sprites on the v3 doors', () => {
   it('every v3 cottage + the tower has one building object at its drawn footprint', () => {
-    expect(drawn.map((d) => d.id)).toEqual([...L.buildings.map((b) => b.id), 'clocktower']);
+    // the enterable clock tower is the 16th building of the v3 layout (vendor pass B), no longer a landmark
+    expect(drawn.map((d) => d.id)).toEqual(L.buildings.map((b) => b.id));
+    expect(drawn.at(-1)!.id).toBe('clocktower');
     for (const d of drawn) {
       const bo = objects.filter((o) => o.type === 'building' && o.name === d.id);
       expect(bo.length, d.id).toBe(1);
@@ -198,7 +200,8 @@ describe('cottages: v2 sprites on the v3 doors', () => {
 describe('square-props-v3.json: overlays move with their sprite', () => {
   it('has every cottage: boarded planks, door glow and board anchor; frames exist', () => {
     expect(fxV3.world).toBe('v3');
-    expect(Object.keys(fxV3.meta.houses).sort()).toEqual(L.buildings.map((b) => b.id).sort());
+    // the cottages only: the clock tower is nobody's home (never boarded, no door board)
+    expect(Object.keys(fxV3.meta.houses).sort()).toEqual(L.buildings.filter((b) => b.kind === 'house').map((b) => b.id).sort());
     for (const [id, h] of Object.entries(fxV3.meta.houses)) {
       expect(h.boarded && h.doorglow && h.board, id).toBeTruthy();
       for (const ov of [h.boarded, h.unlit]) if (ov) expect(ov.atlas === 'objects-v3' ? !!extraAtlas.frames[ov.frame] : !!fxV2.frames[ov.frame], `${id} ${ov.frame}`).toBe(true);
@@ -283,8 +286,8 @@ describe('interiors and props', () => {
       for (let j = 0; j < c.h; j++) for (let i = 0; i < c.w; i++) tiles.push(`${bed.x + c.x + i},${bed.y + c.y + j}`);
       expect(spots.some((sp) => tiles.includes(`${sp.x},${sp.y}`)), `${b.id}: the bed is next to the bed spot ${b.bed!.x},${b.bed!.y}`).toBe(true);
     }
-    // §2.5 "Known look gaps": the rooms whose 3D bed sits in the wall band draw no bed
-    expect(noBed.sort()).toEqual(['house-11', 'house-4', 'house-6']);
+    // §2.5 "Known look gaps": the rooms whose 3D bed sits in the wall band draw no bed; the clock tower has none
+    expect(noBed.sort()).toEqual(['clocktower', 'house-11', 'house-4', 'house-6']);
     // town-v3.json is fresh: exactly these pieces, at these anchors
     const inRooms = objects.filter((o) => (o.type === 'prop' || o.type === 'flat') && o.x >= L.townBounds.w * TS);
     expect(inRooms.map((o) => `${o.name}@${o.x / TS},${(o.y + o.height) / TS - 1}`).sort()).toEqual(furn.map((o) => `${o.kind}@${o.x},${o.y}`).sort());

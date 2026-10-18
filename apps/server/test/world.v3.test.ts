@@ -1,5 +1,6 @@
 // OWNED BY v3-world (WP5a). The server world module on the v3 layout (Hollowmere, townLayoutV3): doors of every
-// cottage (rotated ones included) in and out, bedtime / night send-home, Storyteller visits, seats on the 15 dais
+// cottage (rotated ones included) and of the enterable clock tower (nobody's home: open to all by day, locked for
+// players at night like any room that is not their home) in and out, bedtime / night send-home, Storyteller visits, seats on the 15 dais
 // stones, the Storyteller spawn off the dais, and the per-world layout plumbing (host.layout(), world fixed at
 // creation: lobby.world.test.ts covers lobby:settings over a real room).
 import { describe, expect, it } from 'vitest';
@@ -39,10 +40,10 @@ const byId = (id: string) => L.buildings.find((b) => b.id === id)!;
 const DAIS_R_PX = 2.4 * 16;
 
 describe('world module on the v3 layout (Hollowmere)', () => {
-  it('layoutForWorld maps worlds to layouts; v3 is a different map (112 x 43) with its own doors', () => {
+  it('layoutForWorld maps worlds to layouts; v3 is a different map (125 x 43) with its own doors', () => {
     expect(layoutForWorld('v3')).toBe(L);
     expect(layoutForWorld('v2')).toBe(townLayout);
-    expect([L.widthTiles, L.heightTiles]).toEqual([112, 43]);
+    expect([L.widthTiles, L.heightTiles]).toEqual([125, 43]);
     expect(byId('house-9').door).not.toEqual(townLayout.buildings.find((b) => b.id === 'house-9')!.door);
   });
 
@@ -121,6 +122,62 @@ describe('world module on the v3 layout (Hollowmere)', () => {
     world.exitBuilding('st', 'storyteller');
     expect(world.locationOf('st')).toBe('outdoors');
     expect(world.positionOf('st')).toEqual(tileCenterPx(L, byId('house-3').door));
+  });
+
+  it('the clock tower is nobody\'s home: open to every player by day and at bedtime, locked for players at night (the Storyteller may always enter); a player inside at nightfall is sent home to bed', () => {
+    const { host, world, pids } = setup();
+    const tower = byId('clocktower');
+    expect([tower.kind, tower.houseIndex, tower.bed]).toEqual(['clocktower', null, undefined]);
+    // waiting room: anyone walks in and out
+    const walkIn = (pid: string) => {
+      world.teleportTo(pid, { kind: 'point', ...tileCenterPx(L, tower.door) });
+      world.handleUseDoor(pid, { buildingId: 'clocktower' });
+    };
+    walkIn('p0');
+    expect(world.locationOf('p0')).toBe('bld:clocktower');
+    expect(world.positionOf('p0')).toEqual(tileCenterPx(L, tower.interiorDoor));
+    world.handleUseDoor('p0', { buildingId: 'clocktower' });
+    expect(world.locationOf('p0')).toBe('outdoors');
+    expect(world.positionOf('p0')).toEqual(tileCenterPx(L, tower.door));
+    start(host, pids);
+    phase(host, 'day');
+    for (const pid of ['p1', 'p2']) walkIn(pid);
+    expect(world.locationOf('p1')).toBe('bld:clocktower');
+    expect(world.locationOf('p2')).toBe('bld:clocktower');
+    // the landing (the vendor's visit point) is free floor of the same location
+    const vp = tileCenterPx(L, tower.visitPoint!);
+    expect(isBlockedPx(L, vp.x, vp.y)).toBe(false);
+    expect(locationAt(L, vp.x, vp.y)).toBe('bld:clocktower');
+    phase(host, 'bedtime');
+    world.handleUseDoor('p2', { buildingId: 'clocktower' });
+    expect(world.locationOf('p2')).toBe('outdoors'); // bedtime: still free to leave
+    walkIn('p3');
+    expect(world.locationOf('p3')).toBe('bld:clocktower'); // ... and to go in
+    world.handleUseDoor('p3', { buildingId: 'clocktower' });
+    phase(host, 'night');
+    // p1 was still in the tower at nightfall: in bed at home, like a player in someone else's cottage
+    expect(world.locationOf('p1')).toBe('bld:house-1');
+    expect(world.positionOf('p1')).toEqual(tileCenterPx(L, byId('house-1').bed!));
+    // at night the tower is locked for players (they are locked in at home; outdoors they may only enter their own home)
+    const before = errors(host, 'p4').length;
+    world.exitBuilding('p4', 'door'); // (the Storyteller's API: put p4 outdoors at night)
+    expect(world.teleportTo('p4', { kind: 'point', ...tileCenterPx(L, tower.door) })).toBeNull();
+    expect(world.locationOf('p4')).toBe('outdoors');
+    world.handleUseDoor('p4', { buildingId: 'clocktower' });
+    expect(world.locationOf('p4')).toBe('outdoors');
+    expect(errors(host, 'p4').length).toBeGreaterThan(before);
+    // the Storyteller may always go in (a visit lands on the interior door tile: visit points are for cottages)
+    world.teleportToBuilding('st', 'clocktower', 'storyteller');
+    expect(world.locationOf('st')).toBe('bld:clocktower');
+    expect(world.positionOf('st')).toEqual(tileCenterPx(L, tower.interiorDoor));
+    world.exitBuilding('st', 'storyteller');
+    expect(world.locationOf('st')).toBe('outdoors');
+    // the next day the tower is open again
+    phase(host, 'dawn');
+    phase(host, 'day');
+    world.exitBuilding('p0', 'door');
+    walkIn('p0');
+    expect(world.locationOf('p0')).toBe('bld:clocktower');
   });
 
   it.each([5, 9, 15])('n=%i: seats map onto the 15 dais stones (round(k*15/n)) and are walkable', (n) => {

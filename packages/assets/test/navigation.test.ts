@@ -54,7 +54,12 @@ const WORLDS: World[] = [
       const [nx, ny] = b.doorNormal!;
       return Math.abs(nx) > Math.abs(ny) ? (nx > 0 ? 'east' : 'west') : 'south';
     },
-    onPlan: (o, p) => inPoly(hollowmereMeta.meta.outlines[o.id]!, p.x + 0.5, p.y + 0.875),
+    // cottages: the placed outline; the clock tower (axis-aligned, no outline in the meta): its footprint
+    onPlan: (o, p) => {
+      const poly = hollowmereMeta.meta.outlines[o.id];
+      if (poly) return inPoly(poly, p.x + 0.5, p.y + 0.875);
+      return p.x >= o.footprint.x && p.x < o.footprint.x + o.footprint.w && p.y >= o.footprint.y && p.y < o.footprint.y + o.footprint.h;
+    },
   },
 ];
 

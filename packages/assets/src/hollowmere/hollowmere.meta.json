@@ -1,10 +1,11 @@
 {
   "generator": "scripts/v3/export-hollowmere.mjs",
-  "generatorHash": "faf5778dd3edcb4aea94e4b6213f1d040792592776bb35869388810dd1e5e98d",
+  "generatorHash": "17c0254b3cbc87105e9a0d1d5e56c5b0cddc37e1e9a0b1e755df5c1f173dc2e0",
   "meta": {
     "canopiesBlock": false,
     "centreTiles": 13,
     "doorPoints": {
+      "clocktower": {"x":22.5,"z":9},
       "house-0": {"x":10.5,"z":9},
       "house-1": {"x":16.5,"z":9},
       "house-10": {"x":14.966,"z":34.076},
@@ -260,6 +261,7 @@
       {"by":"foliage:rim","x":28,"y":41}
     ],
     "interiorFreeTiles": {
+      "clocktower": 22,
       "house-0": 26,
       "house-1": 36,
       "house-10": 31,
@@ -344,6 +346,7 @@
       {"x":43,"y":24}
     ],
     "rooms": {
+      "clocktower": {"d":5.5,"w":8},
       "house-0": {"d":6.6,"t":0.3,"w":6.6},
       "house-1": {"d":6.2,"t":0.3,"w":8.6},
       "house-10": {"d":5.4,"t":0.3,"w":8},
@@ -359,6 +362,36 @@
       "house-7": {"d":5.6,"t":0.3,"w":7.6},
       "house-8": {"d":5.6,"t":0.3,"w":8.4},
       "house-9": {"d":6,"t":0.3,"w":9.4}
+    },
+    "towerCliffs": [
+      {"h":0,"up":1.1,"x":116,"y":9},
+      {"h":0,"up":1.1,"x":117,"y":9},
+      {"h":0,"up":1.1,"x":118,"y":9},
+      {"h":0,"up":1.1,"x":119,"y":9}
+    ],
+    "towerHeights": {
+      "115,7": 1.1,
+      "115,8": 1.1,
+      "116,10": 0,
+      "116,11": 0,
+      "116,8": 1.1,
+      "117,10": 0,
+      "117,11": 0,
+      "117,8": 1.1,
+      "118,10": 0,
+      "118,11": 0,
+      "118,8": 1.1,
+      "119,10": 0,
+      "119,11": 0,
+      "119,8": 1.1,
+      "120,10": 0,
+      "120,11": 0,
+      "120,8": 1.1,
+      "121,10": 0.413,
+      "121,11": 0,
+      "121,7": 1.1,
+      "121,8": 1.1,
+      "121,9": 0.825
     },
     "wallError": {
       "house-0": {"x":0.2,"z":0.35},
@@ -383,6 +416,8 @@
     "v3/pixel3d/src/core/glsl.js",
     "v3/pixel3d/src/core/noise.js",
     "v3/pixel3d/src/demo/collision.js",
+    "v3/pixel3d/src/demo/tower-interior.js",
+    "v3/pixel3d/src/demo/towertimer.js",
     "v3/pixel3d/src/materials/toon.js",
     "v3/pixel3d/src/post/fog.js",
     "v3/pixel3d/src/post/godrays.js",
@@ -433,5 +468,5 @@
     "v3/pixel3d/src/world/sky.js",
     "v3/pixel3d/src/world/trees.js"
   ],
-  "vendorHash": "bbc50fe7a9272c5cebc1b512f6d5891aac047bf50971166444999f60f1e852cb"
+  "vendorHash": "f8f9b364859b2beb64047ba8c9825ac58d71be20896ea6b3ee3eee1ac0ff13f5"
 }

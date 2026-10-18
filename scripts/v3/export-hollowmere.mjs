@@ -31,6 +31,11 @@
 //   - interior band room R_i = {47 + (i%5)*13, 1 + floor(i/5)*14, 12, 12}; translation-only map with the doorway
 //     centre on the doorway tile D_i = (R.x+6, R.y+11); a tile is free iff its feet point maps inside the 3D floor
 //     and outside every furniture collider.
+//   - the CLOCK TOWER is enterable (vendor pass B, src/demo/tower-interior.js buildTowerRoom; user request 2026-10-17):
+//     the 16th building (after house-0..14), nobody's home (houseIndex null, no bed), in a 6th band column
+//     R = {112, 1, 12, 12} (map width 125). Same translation-only map, anchored on the room's 3D EXIT spot (the
+//     doorway tile's centre); its stair / landing have height (raw.heightAt), which the tile grid cannot carry, so a
+//     free tile next to a free tile more than STEP_M higher is blocked (the landing is reached by the stair only).
 import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { registerHooks } from 'node:module';
@@ -70,6 +75,7 @@ const collisionMod = await V('demo/collision.js');
 const interiors = await V('town/interiors/index.js');
 const api = await V('town/api.js');
 const town = await V('town/town.js');
+const towerInterior = await V('demo/tower-interior.js');
 
 // quiet the vendor's build chatter (piece warnings would be failures anyway: strict builds below)
 const warn = console.warn;
@@ -83,7 +89,9 @@ const BAND_X = TOWN_W + 2; // 47
 const STRIDE_X = 13;
 const STRIDE_Y = 14;
 const ROOM = 12;
-const MAP_W = BAND_X + 5 * STRIDE_X; // 112
+const TOWER_COL = 5; // the clock tower's band: a 6th band column, row 0
+const MAP_W = BAND_X + (TOWER_COL + 1) * STRIDE_X; // 125
+const STEP_M = 0.5; // tower room: the largest height step between two walkable tiles (the stair's steps: 0.41 m)
 const MAP_H = Math.max(TOWN_H, 1 + 2 * STRIDE_Y + ROOM); // 43
 const FEET = 0.875; // feet point inside a tile (tileCenterPx: y*16 + 14)
 const EPS = 1e-6;
@@ -92,7 +100,7 @@ const PLAYER_SPAWN = { x: 22, y: 27 };
 const STORYTELLER_SPAWN = { x: 22, y: 23 }; // moved off the dais (v2 22,20 is inside it), §2.2
 const NPC_HOMES = { 'npc-sweeper': { x: 16, y: 12 }, 'npc-vendor': { x: 10, y: 17 }, 'npc-elder': { x: 10, y: 21 }, 'npc-porter': { x: 22, y: 34 } };
 const r3 = (v) => Math.round(v * 1000) / 1000;
-if (MAP_W !== 112 || MAP_H !== 43 || TOWN_W !== 45 || TOWN_H !== 43) throw new Error(`unexpected map size ${MAP_W}x${MAP_H} (town ${TOWN_W}x${TOWN_H}): update §2.2`);
+if (MAP_W !== 125 || MAP_H !== 43 || TOWN_W !== 45 || TOWN_H !== 43) throw new Error(`unexpected map size ${MAP_W}x${MAP_H} (town ${TOWN_W}x${TOWN_H}): update §2.2`);
 
 // ------------------------------------------------------------------------------------------------ stub engine
 const uniforms = new Proxy({}, { get: (t, k) => (t[k] ??= { value: k === 'uSunDir' ? new THREE.Vector3(0, 1, 0) : 0 }) });
@@ -267,7 +275,7 @@ function rayHits(x, y0, z, withSoft) {
   return null;
 }
 const hiddenBy = (x, z, withSoft) => (rayHits(x, HEAD_M, z, withSoft) ? rayHits(x, 0.05, z, withSoft) : null);
-const doorTiles = new Set(layout.houses.map((h) => `${h.door.x},${h.door.z}`));
+const doorTiles = new Set([...layout.houses, layout.clocktower].map((h) => `${h.door.x},${h.door.z}`));
 const hiddenAll = new Map(); // "x,y" -> occluder id (blocked unless a door approach)
 const hiddenSoft = [];
 for (let ty = 0; ty < TOWN_H; ty++)
@@ -283,7 +291,7 @@ for (let ty = 0; ty < TOWN_H; ty++)
 // a door whose doorstep is hidden keeps the shortest walk from its door tile to the visible town open (door approach)
 const visibleTown = flood(PLAYER_SPAWN, (x, y) => x < TOWN_W && y < TOWN_H && !hiddenAll.has(`${x},${y}`));
 const kept = new Set();
-for (const h of layout.houses) {
+for (const h of [...layout.houses, layout.clocktower]) {
   const s0 = `${h.door.x},${h.door.z}`;
   if (visibleTown.has(s0)) continue;
   const prev = new Map([[s0, null]]);
@@ -382,6 +390,81 @@ for (let i = 0; i < 15; i++) {
     lights: it.lights.map((l) => ({ x: r3(A.x + (l.pos.x - O.x) * TS), y: r3(A.y + (l.pos.z - O.z) * TS), r: r3((l.r ?? 3) * TS), kind: l.kind })) });
 }
 
+// ------------------------------------------------------------------------------------------------ the clock tower's room
+// Pass B made the tower enterable (src/demo/tower-interior.js buildTowerRoom: an 8 x 5.5 m clockwork room at x 650, a
+// raised landing along the back reached by a stair up the east wall). It is nobody's home: no bed; the visit point is
+// the vendor's (on the landing). The room record is world-space: floor {x0, z0, x1, z1}, colliders (rects {x0..z1},
+// circles {x, z, r}, centre boxes {cx, cz, w, d}), spawn, exit (in the doorway), visitPoint, heightAt(x, z).
+const towerDemo = { engine, events: { on: () => () => {} }, passB: null, time: { hours: 12 } };
+const tw = towerInterior.buildTowerRoom(engine, towerDemo);
+const towerOut = (() => {
+  const R = { x: BAND_X + TOWER_COL * STRIDE_X, y: 1, w: ROOM, h: ROOM };
+  const D = { x: R.x + 6, y: R.y + 11 };
+  // anchor: the 3D exit spot (in the doorway, like a cottage's doorway centre) is D's tile centre
+  const A = { x: (D.x + 0.5) * TS, y: (D.y + 0.5) * TS };
+  const E = tw.exit;
+  const toM = (pxX, pxY) => ({ x: E.x + (pxX - A.x) / TS, z: E.z + (pxY - A.y) / TS });
+  const toTile = (p) => ({ x: Math.floor((A.x + (p.x - E.x) * TS) / TS), y: Math.floor((A.y + (p.z - E.z) * TS) / TS) });
+  const sdCol = (c, x, z) => {
+    if (c.r !== undefined) return Math.hypot(x - c.x, z - c.z) - c.r;
+    if (c.w !== undefined) return sdRect({ x0: c.cx - c.w / 2, z0: c.cz - c.d / 2, x1: c.cx + c.w / 2, z1: c.cz + c.d / 2 }, x, z);
+    return sdRect(c, x, z);
+  };
+  for (const c of tw.colliders) if (!(c.r !== undefined || c.w !== undefined || c.x0 !== undefined)) throw new Error(`clocktower: unknown collider shape ${JSON.stringify(c)}`);
+  const feet = (tx, ty) => toM((tx + 0.5) * TS, (ty + FEET) * TS);
+  const height = new Map();
+  const inner = (tx, ty) => tx > R.x && tx < R.x + R.w - 1 && ty > R.y && ty < R.y + R.h - 1;
+  let free = 0;
+  for (let ty = R.y; ty < R.y + R.h; ty++)
+    for (let tx = R.x; tx < R.x + R.w; tx++) {
+      const m = feet(tx, ty);
+      const isFloor = sdRect(tw.floor, m.x, m.z) < -EPS && inner(tx, ty);
+      ground[ty][tx] = isFloor ? 'f' : 'W';
+      const ok = isFloor && tw.colliders.every((c) => sdCol(c, m.x, m.z) >= EPS);
+      col[idx(tx, ty)] = ok ? 0 : 1;
+      if (ok) { free++; height.set(`${tx},${ty}`, tw.heightAt(m.x, m.z)); }
+    }
+  ground[D.y][D.x] = 'D';
+  col[idx(D.x, D.y)] = 1;
+  const ex = toTile(E);
+  if (ex.x !== D.x || ex.y !== D.y) throw new Error(`clocktower: 3D exit maps to ${ex.x},${ex.y}, not the doorway ${D.x},${D.y}`);
+  const interiorDoor = toTile(tw.spawn);
+  if (interiorDoor.x !== D.x || interiorDoor.y !== D.y - 1) throw new Error(`clocktower: spawn maps to ${interiorDoor.x},${interiorDoor.y}, not the tile above the doorway`);
+  // height cliffs: the landing rail / the stair's sides are thinner than a tile, so the grid would let a player step
+  // straight from the floor onto the 1.1 m landing; the lower tile of every step > STEP_M is blocked (the stair's own
+  // steps are 0.41 m: the landing is reached by the stair only)
+  const cliffs = [];
+  for (const [k, h] of height) {
+    const [x, y] = k.split(',').map(Number);
+    if (col[idx(x, y)]) continue;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const hn = height.get(`${x + dx},${y + dy}`);
+      if (hn !== undefined && hn - h > STEP_M) { col[idx(x, y)] = 1; free--; cliffs.push({ x, y, h: r3(h), up: r3(hn) }); break; }
+    }
+  }
+  if (col[idx(interiorDoor.x, interiorDoor.y)]) throw new Error(`clocktower: interior door ${interiorDoor.x},${interiorDoor.y} is blocked`);
+  const reach = flood(interiorDoor, (x, y) => x >= R.x && y >= R.y && x < R.x + R.w && y < R.y + R.h);
+  for (let ty = R.y; ty < R.y + R.h; ty++)
+    for (let tx = R.x; tx < R.x + R.w; tx++)
+      if (!col[idx(tx, ty)] && !reach.has(`${tx},${ty}`)) { col[idx(tx, ty)] = 1; free--; interiorPockets.push({ id: 'clocktower', x: tx, y: ty }); }
+  // the landing must stay reachable (the stair works on the grid)
+  const landing = [...reach].filter((k) => (height.get(k) ?? 0) > 1);
+  if (!landing.length) throw new Error('clocktower: the landing is not reachable from the door');
+  let visitPoint = null, bd = Infinity;
+  const vt = toTile(tw.visitPoint);
+  for (const k of reach) {
+    const [x, y] = k.split(',').map(Number);
+    if (x === interiorDoor.x && y === interiorDoor.y) continue;
+    const d = Math.hypot(x - vt.x, y - vt.y);
+    if (d < bd - 1e-9 || (Math.abs(d - bd) < 1e-9 && (y < visitPoint.y || (y === visitPoint.y && x < visitPoint.x)))) { bd = d; visitPoint = { x, y }; }
+  }
+  const heights = Object.fromEntries([...reach].sort().map((k) => [k, r3(height.get(k) ?? 0)]));
+  const lights = tw.lights.map((l) => ({ x: r3(A.x + (l.pos.x - E.x) * TS), y: r3(A.y + (l.pos.z - E.z) * TS), r: r3((l.r ?? 3) * TS), kind: l.kind }));
+  return { R, D, interiorDoor, visitPoint, free, cliffs, heights, lights, anchor: { px: { x: A.x, y: A.y }, m: { x: r3(E.x), z: r3(E.z) } },
+    room: { w: r3(tw.floor.x1 - tw.floor.x0), d: r3(tw.floor.z1 - tw.floor.z0) } };
+})();
+tw.dispose?.();
+
 // a tile painted with blocking ground stays solid even where a vendor door corridor carved its box open (the bottom
 // border row under house-9's doorstep): the ground codes and the collision must agree for Classic and the server
 for (let y = 0; y < TOWN_H; y++)
@@ -424,18 +507,28 @@ if (col[idx(STORYTELLER_SPAWN.x, STORYTELLER_SPAWN.y)]) throw new Error('storyte
 const town0 = flood(PLAYER_SPAWN, inTown);
 const pockets = [];
 for (let y = 0; y < TOWN_H; y++) for (let x = 0; x < TOWN_W; x++) if (!col[idx(x, y)] && !town0.has(`${x},${y}`)) { col[idx(x, y)] = 1; blockReason[`${x},${y}`] = 'pocket'; pockets.push({ x, y }); }
-for (const h of layout.houses) if (!town0.has(`${h.door.x},${h.door.z}`)) throw new Error(`${h.id}: door tile ${h.door.x},${h.door.z} unreachable from the spawn (${blockReason[`${h.door.x},${h.door.z}`] ?? 'pocket'})`);
+for (const h of [...layout.houses, layout.clocktower]) if (!town0.has(`${h.door.x},${h.door.z}`)) throw new Error(`${h.id}: door tile ${h.door.x},${h.door.z} unreachable from the spawn (${blockReason[`${h.door.x},${h.door.z}`] ?? 'pocket'})`);
 
 // the canopy-hidden tiles that are still walkable at the end (blocking ground / pockets came later)
 const hiddenSoftOpen = hiddenSoft.filter((t) => !col[idx(t.x, t.y)]);
 
 // ------------------------------------------------------------------------------------------------ npc homes
+// (user request 2026-10-17 "no NPCs in the voting circle") a home is a reachable outdoor tile whose feet point is
+// outside the plaza ellipse x NPC_PLAZA_CLEAR (TownScene's npcSpot rule) and outside the square (protocol inSquare,
+// the 3D roamer's rule): the townsfolk start clear of the voting circle in both renderers
+const NPC_PLAZA_CLEAR = 1.1;
+const npcOk = (x, y) => {
+  const px = (x + 0.5) * TS, py = (y + FEET) * TS;
+  const P0 = layout.PLAZA, S0 = layout.SQUARE;
+  return Math.hypot(px - P0.cx * TS, py - P0.cz * TS) / (P0.r * TS) > NPC_PLAZA_CLEAR && Math.hypot(px - S0.cx * TS, py - S0.cz * TS) > S0.r * TS;
+};
 const npcHomes = {};
 for (const [id, p] of Object.entries(NPC_HOMES)) {
-  if (town0.has(`${p.x},${p.y}`)) { npcHomes[id] = { ...p }; continue; }
+  if (town0.has(`${p.x},${p.y}`) && npcOk(p.x, p.y)) { npcHomes[id] = { ...p }; continue; }
   let best = null, bd = Infinity;
   for (const k of town0) {
     const [x, y] = k.split(',').map(Number);
+    if (!npcOk(x, y)) continue;
     const d = Math.hypot(x - p.x, y - p.y);
     if (d < bd - 1e-9 || (Math.abs(d - bd) < 1e-9 && (y < best.y || (y === best.y && x < best.x)))) { bd = d; best = { x, y }; }
   }
@@ -454,12 +547,14 @@ const buildings = layout.houses.map((h, i) => {
     interior: it.R, interiorDoor: it.interiorDoor, bed: it.bed, visitPoint: it.visitPoint,
   };
 });
+// the clock tower: the 16th building (enterable since vendor pass B), nobody's home (no bed); the Storyteller's
+// visit point is the vendor's (on the landing)
 const ct = layout.clocktower;
-const clocktower = {
+buildings.push({
   id: 'clocktower', kind: 'clocktower', name: ct.name, houseIndex: null,
-  footprint: tileAabb(ct.footprint), door: { x: ct.door.x, y: ct.door.z },
-  interior: { x: 0, y: 0, w: 0, h: 0 }, interiorDoor: { x: 0, y: 0 },
-};
+  footprint: tileAabb(ct.footprint), door: { x: ct.door.x, y: ct.door.z }, doorNormal: ct.doorNormal.map(r3),
+  interior: towerOut.R, interiorDoor: towerOut.interiorDoor, visitPoint: towerOut.visitPoint,
+});
 const styles = Object.fromEntries([...layout.houses, ct].map((h) => [h.id, { ...h.style }]));
 const objects = [
   ...[...layout.houses, ct].map((h) => { const f = tileAabb(h.footprint); return { kind: 'building', x: f.x, y: f.y + f.h - 1, frame: h.id }; }),
@@ -471,6 +566,7 @@ const lights = [
   ...layout.lights2d.map((l) => ({ x: r3(l.x * TS), y: r3(l.z * TS), r: r3(l.r * TS), color: l.color, building: null })),
 ];
 for (const o of interiorOut) for (const l of o.lights) lights.push({ x: l.x, y: l.y, r: l.r, color: LIGHT[l.kind] ?? 'warm', building: `house-${o.i}` });
+for (const l of towerOut.lights) lights.push({ x: l.x, y: l.y, r: l.r, color: LIGHT[l.kind] ?? 'warm', building: 'clocktower' });
 const P = layout.PLAZA, C = layout.CIRCLE;
 const collisionRows = Array.from({ length: MAP_H }, (_, y) => Array.from(col.subarray(y * MAP_W, (y + 1) * MAP_W)).join(''));
 for (const b of buildings) if (col[idx(b.door.x, b.door.y)]) throw new Error(`${b.id}: door tile blocked`);
@@ -494,7 +590,9 @@ const out = {
   ground: ground.map((r) => r.join('')),
   collision: collisionRows,
   buildings,
-  clocktower,
+  // the tower room's px <-> m translation (the 3D client's interior map for bld:clocktower): px = anchor.px +
+  // (m - anchor.m) * tileSize; anchor.m = the vendor room's exit spot (world metres), anchor.px = the doorway tile centre
+  towerRoom: { anchorPx: towerOut.anchor.px, anchorM: towerOut.anchor.m },
   circle: { cx: C.cx * TS, cy: C.cz * TS, rx: C.r * TS, ry: C.r * TS, startDeg: 0, sweepDeg: 360, stones: 15 },
   square: { cx: layout.SQUARE.cx * TS, cy: layout.SQUARE.cz * TS, r: layout.SQUARE.r * TS },
   plaza: { cx: P.cx * TS, cy: P.cz * TS, rx: P.r * TS, ry: P.r * TS },
@@ -516,10 +614,14 @@ const metaOut = {
     centreTiles,
     openedDoors,
     interiorPockets,
-    interiorFreeTiles: Object.fromEntries(interiorOut.map((o) => [`house-${o.i}`, o.free])),
-    rooms: Object.fromEntries(interiorOut.map((o) => [`house-${o.i}`, o.room])),
+    interiorFreeTiles: { ...Object.fromEntries(interiorOut.map((o) => [`house-${o.i}`, o.free])), clocktower: towerOut.free },
+    rooms: { ...Object.fromEntries(interiorOut.map((o) => [`house-${o.i}`, o.room])), clocktower: towerOut.room },
+    // the tower room: the heights of its walkable tiles (m, vendor raw.heightAt at the feet point; stair 0 .. 1.1 landing)
+    // and the tiles blocked by the height-cliff rule
+    towerHeights: towerOut.heights,
+    towerCliffs: towerOut.cliffs,
     outlines: Object.fromEntries(layout.houses.map((h) => [h.id, h.corners.map(([x, z]) => [r3(x), r3(z)])])),
-    doorPoints: Object.fromEntries(layout.houses.map((h) => [h.id, { x: r3(h.doorPoint.x), z: r3(h.doorPoint.z) }])),
+    doorPoints: Object.fromEntries([...layout.houses, ct].map((h) => [h.id, { x: r3(h.doorPoint.x), z: r3(h.doorPoint.z) }])),
   },
   vendorFiles: files,
   vendorHash: hash.digest('hex'),
@@ -544,9 +646,9 @@ function fmt(v, ind = '') {
 const outputs = [[OUT, fmt(sortKeys(out)) + '\n'], [OUT_META, fmt(sortKeys(metaOut)) + '\n']];
 const read = (f) => { try { return readFileSync(f, 'utf8'); } catch { return null; } /* first run */ };
 const stale = outputs.filter(([f, text]) => read(f) !== text).map(([f]) => path.relative(ROOT, f));
-const summary = `hollowmere: ${MAP_W}x${MAP_H}, ${buildings.length} houses, ${files.length} vendor files, hash ${metaOut.vendorHash.slice(0, 12)}, generator ${generatorHash.slice(0, 12)} (three@${threeVersion}), ` +
+const summary = `hollowmere: ${MAP_W}x${MAP_H}, ${buildings.length - 1} houses + the clock tower, ${files.length} vendor files, hash ${metaOut.vendorHash.slice(0, 12)}, generator ${generatorHash.slice(0, 12)} (three@${threeVersion}), ` +
   `hidden ${hiddenTiles.length} blocked + ${hiddenKept.length} kept on door approaches (+${hiddenSoftOpen.length} walkable under canopies; canopies ${CANOPIES_BLOCK ? 'block' : 'walk'}), pockets ${pockets.length}, centre tiles ${centreTiles}, ` +
-  `interior free tiles ${interiorOut.map((o) => o.free).join('/')}`;
+  `interior free tiles ${interiorOut.map((o) => o.free).join('/')}, clock tower ${towerOut.free} (${towerOut.cliffs.length} cliff tiles)`;
 if (CHECK) {
   if (stale.length) { console.error(`${summary}\nSTALE: ${stale.join(', ')} differ, re-run export-hollowmere`); process.exit(1); }
   console.log(`${summary}\nup to date`);

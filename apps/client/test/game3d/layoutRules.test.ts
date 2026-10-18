@@ -32,7 +32,7 @@ describe('net/layout', () => {
     await p;
     expect(currentWorld()).toBe('v3');
     expect(currentLayout()).toBe(townLayoutV3);
-    expect(currentLayout().widthTiles).toBe(112);
+    expect(currentLayout().widthTiles).toBe(125);
     await ensureLayout('v2'); // leaving for a v2 lobby in the same page works
     expect(currentLayout()).toBe(townLayout);
     expect(selectLayoutIfLoaded('v3')).toBe(true); // loaded once, switching back is synchronous

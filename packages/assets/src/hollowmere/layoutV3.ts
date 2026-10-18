@@ -25,8 +25,10 @@ export interface HollowmereJson {
   ground: string[];
   /** heightTiles rows of widthTiles '0' / '1' (1 = blocked), row-major like TownLayout.collision. */
   collision: string[];
+  /** house-0 .. house-14 (houseIndex = seat), then the enterable clock tower (houseIndex null, nobody's home). */
   buildings: BuildingDef[];
-  clocktower: BuildingDef;
+  /** The clock tower room's px <-> m translation (3D client): px = anchorPx + (m - anchorM) * tileSize. */
+  towerRoom: { anchorPx: TilePoint; anchorM: { x: number; z: number } };
   circle: NonNullable<TownLayout['circle']>;
   square: TownLayout['square'];
   plaza: TownMap['plaza'];
@@ -62,7 +64,10 @@ function expandCollision(rows: readonly string[], w: number, h: number): number[
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
 
-/** The v3 world's TownLayout (version 3, 112 x 43 tiles: town 45 x 43 + five interior bands of stride 13). */
+/**
+ * The v3 world's TownLayout (version 3, 125 x 43 tiles: town 45 x 43 + five cottage band columns of stride 13 + a
+ * sixth column for the clock tower's room). The clock tower is the 16th building: enterable, nobody's home.
+ */
 export const townLayoutV3: TownLayout = {
   version: H.version,
   widthTiles: H.widthTiles,
@@ -88,9 +93,12 @@ export const townMapV3: TownMap = {
   styles: clone(H.map.styles),
   lights: H.map.lights.map((l) => ({ ...l })),
   decals: H.map.decals.map((d) => ({ ...d })),
-  landmarks: [clone(H.clocktower)],
+  landmarks: [], // the clock tower is an enterable building in this world (townLayoutV3.buildings)
   plaza: { ...H.plaza },
 };
+
+/** The clock tower room's px <-> m translation (bld:clocktower; the 3D room is the vendor's src/demo/tower-interior.js). */
+export const towerRoomV3: Readonly<HollowmereJson['towerRoom']> = clone(H.towerRoom);
 
 /** Townsfolk home tiles in the v3 world (TownScene / the 3D NPC roamer). */
 export const npcHomesV3: Readonly<Record<string, TilePoint>> = clone(H.npcHomes);

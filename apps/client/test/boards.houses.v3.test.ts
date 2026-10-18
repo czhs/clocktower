@@ -10,11 +10,13 @@ import { boardSpans, fitBoard, tokenWorldSize } from '../src/game/gameplay/board
 type HouseFx = { board?: { x: number; y: number }; boarded?: { wx: number; wy: number; w: number; h: number } };
 const v2 = (fxV2 as unknown as { meta: { houses: Record<string, HouseFx> } }).meta.houses;
 const v3 = (fxV3 as unknown as { meta: { houses: Record<string, HouseFx> } }).meta.houses;
+// the cottages (the enterable clock tower is nobody's home: no door board, no boarded overlay)
+const cottages = townLayoutV3.buildings.filter((b) => b.kind === 'house');
 
 describe('v3 door boards', () => {
   it('every v3 cottage has a board anchor and its post foot lies inside its own slot', () => {
     const spans = boardSpans(v3);
-    for (const b of townLayoutV3.buildings) {
+    for (const b of cottages) {
       const h = v3[b.id];
       expect(h?.board, b.id).toBeDefined();
       const s = spans[b.id]!;
@@ -23,17 +25,23 @@ describe('v3 door boards', () => {
     }
   });
 
+  it('the clock tower has no board / overlays (nobody lives there)', () => {
+    expect(cottages).toHaveLength(15);
+    expect(townLayoutV3.buildings.some((b) => b.id === 'clocktower')).toBe(true);
+    expect(v3['clocktower']).toBeUndefined();
+  });
+
   it('the slots differ from the v2 slots wherever a house moved (they are per world)', () => {
     const s2 = boardSpans(v2);
     const s3 = boardSpans(v3);
-    const moved = townLayoutV3.buildings.filter((b) => v2[b.id]!.board!.x !== v3[b.id]!.board!.x);
+    const moved = cottages.filter((b) => v2[b.id]!.board!.x !== v3[b.id]!.board!.x);
     expect(moved.length).toBeGreaterThan(0);
     expect(moved.some((b) => JSON.stringify(s2[b.id]) !== JSON.stringify(s3[b.id]))).toBe(true);
   });
 
   it('a full board (4 tokens) fits its v3 slot at the phone and desktop zooms', () => {
     const spans = boardSpans(v3);
-    for (const b of townLayoutV3.buildings)
+    for (const b of cottages)
       for (const zoom of [0.94, 1.8]) {
         const span = spans[b.id]!;
         const fit = fitBoard(4, 0, tokenWorldSize(zoom), v3[b.id]!.board!.x, span);

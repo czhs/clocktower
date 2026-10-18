@@ -9,8 +9,10 @@ Do not write machine names, hardware, tailnet names or home paths into this file
 `scripts/secret-scan.sh` checks for them. Host specifics live only in the gitignored `CLAUDE.local.md` /
 `ops.local.env`.
 
-**Vendor baseline.** Checked against the `v3/pixel3d` tree last changed in commit `8b50668` (2026-10-17), with
-`find v3/pixel3d/src -name '*.js' | LC_ALL=C sort | xargs cat | shasum -a 256` = `43efbcd05609e2b8…`. Vendor code is
+**Vendor baseline.** Checked against the `v3/pixel3d` tree of `v3-dev` `bd4c9ff` (2026-10-18: demo pass A + pass B +
+the seal-vote rounds; merged into `v3-game` as `5fb072f` "v3: merge v3-dev pass A+B (vendor)"), with
+`find v3/pixel3d/src -name '*.js' | LC_ALL=C sort | xargs cat | shasum -a 256` = `68adf1d4a8012201…` (previous baseline
+`8b50668`, `43efbcd05609e2b8…`). Vendor code is
 cited as `file` + **symbol** (for example `src/core/Engine.js Engine.constructor`); line numbers are hints only and
 shift with every re-publish. Repo code is cited as `file:line`.
 
@@ -353,22 +355,23 @@ Why per-room, and not replacing v2:
 |---|---|---|
 | `version` | `3` | |
 | `tileSize` | `16` | 1 tile = 1 m (§2.3). |
-| `widthTiles` | **`112`** = 45 + 2 + 5·13 | Full map width (town + gap + 5 interior bands of stride 13, §2.3). Collision is row-major over `widthTiles·heightTiles` (`packages/protocol/src/world.ts:53,69`, `apps/client/src/game/path.ts:27-32`). |
+| `widthTiles` | **`125`** = 45 + 2 + 6·13 (was `112` = 45 + 2 + 5·13 until the enterable clock tower, 2026-10-18) | Full map width (town + gap + 5 cottage band columns of stride 13 + a 6th column for the clock tower's room, §2.3). Collision is row-major over `widthTiles·heightTiles` (`packages/protocol/src/world.ts:53,69`, `apps/client/src/game/path.ts:27-32`). |
 | `heightTiles` | **`43`** | `max(TOWN_H = 43, 1 + 2·14 + 12 = 41)`. |
 | `townBounds` | **`{x:0, y:0, w:45, h:43}`** | Read by `apps/server/src/world/index.ts:837`, `apps/server/src/social/index.ts:157`, `apps/client/src/game/sound/areas.ts:76`, `TownScene.ts:58`. |
-| `ground[]` (43 strings of 112) | `layout.ground` | Same char codes as v2 (`BLOCKING_GROUND` identical). |
+| `ground[]` (43 strings of 125) | `layout.ground` | Same char codes as v2 (`BLOCKING_GROUND` identical). |
 | `collision` (town part) | rasterised walk shapes | Tile blocked if its **feet point** (tx+0.5, ty+0.875) m lies inside any shape of `src/demo/collision.js createCollision`: house outlines (rotated), the clocktower box, the **`backlane`** boxes behind the north row and the 1 m slots between those buildings (players there are hidden by eaves), prop circles/boxes, and the **dais** circle (r = `DAIS_R` 2.4 m at `layout.CIRCLE`). Walk-through props do not block. |
 | `buildings[i]` (`house-0..14`) | `layout.houses[i]` | `footprint` = tile-quantised AABB of the placed outline. `door` = `houses[i].door` (tile in front of the real door). `doorNormal` = `houses[i].doorNormal` (new optional field, §2.4). `name`, `houseIndex` unchanged. |
-| `clocktower` | `layout.clocktower` | Landmark collision only, as in v2. |
+| `buildings[15]` = the clock tower | `layout.clocktower` + `src/demo/tower-interior.js buildTowerRoom` (vendor pass B) | **Enterable** since the 2026-10-18 vendor refresh (user request, §9.1 item 4): id / kind `clocktower`, `houseIndex: null` (nobody's home: no `bed`), `door` (22,9), `doorNormal` (0,1), `interior` = the 6th band column `{112, 1, 12, 12}`, `interiorDoor`, `visitPoint` (the vendor's, on the landing; the server places a Storyteller visit at `interiorDoor`, as for every non-cottage). The top-level `clocktower` field and `townMapV3.landmarks` are gone (`landmarks: []`); v2 keeps its non-enterable landmark. |
+| `towerRoom` | the tower room's 3D anchor | `{anchorPx, anchorM}`: px = `anchorPx + (m − anchorM)·16` (bld:clocktower; `anchorM` = the vendor room's exit spot (650, 22.5) m, `anchorPx` = its doorway tile's centre). Exported as `towerRoomV3` from `@ct/assets/hollowmere`. |
 | `circle` | `layout.CIRCLE` | `{cx:360, cy:316, rx:100, ry:100, startDeg:0, sweepDeg:360, stones:15}` (new optional `stones`). |
 | `square` | `layout.SQUARE` | `{cx:360, cy:364, r:144}`. |
 | `playerSpawn` | `(22,27)` | Unchanged. |
 | `storytellerSpawn` | **moved** to `(22,23)` | Feet at y = 23.875 m, 4.1 m from the centre: outside the dais, inside the seat ring. v2 `(22,20)` is inside the dais. Q8 may change this (walkable stage). |
 | `streetlights` | `layout.streetlights` | Unchanged meaning. |
 | `interiors[i]` | §2.3 | `interior` rect, `interiorDoor`, `bed`, `visitPoint`, blocked tiles. |
-| `npcHomes` | the game's list (`TownScene.ts:1421-1451`) re-checked against the new collision | Moved to the nearest free outdoor tile if blocked. |
+| `npcHomes` | the game's list (`TownScene.ts:1421-1451`) re-checked against the new collision | Moved to the nearest free, reachable outdoor tile if blocked **or inside the plaza ellipse × 1.1 / the square** (user request "no NPCs in the voting circle"; since 2026-10-18 the sweeper's home moved (16,12) → (16,10)). |
 | `meta.wallError` | per house `{x, z}` m | The §2.3 quantisation error, for review. |
-| `meta.*` (WP5a) | `occl` (vendor `?occl=1` stat), `hidden` / `hiddenKept` / `hiddenSoft`, `pockets`, `openedDoors`, `interiorPockets`, `outlines` (placed corners), `doorPoints`, `rooms`, `interiorFreeTiles` | Review data and the inputs of the assets tests. |
+| `meta.*` (WP5a) | `occl` (vendor `?occl=1` stat), `hidden` / `hiddenKept` / `hiddenSoft`, `pockets`, `openedDoors`, `interiorPockets`, `outlines` (placed corners), `doorPoints` (+ the tower), `rooms` (+ `clocktower` 8 × 5.5 m), `interiorFreeTiles` (+ `clocktower` 22), `towerHeights` (tile → floor height m), `towerCliffs` | Review data and the inputs of the assets tests. |
 
 **Collision rules as built (WP5a, §11).** Beyond "feet point inside a walk shape" the exporter applies, in order:
 (a) a solid prop whose shape covers no feet point at all (lamp posts r 0.17, signposts, stumps) blocks the tile its
@@ -383,6 +386,19 @@ door cannot reach, are blocked. Interiors: a tile is free iff its feet point map
 outside every non-wall collider; `bed` / `visitPoint` are the nearest reachable free tiles to the 3D points (never the
 interior door tile, never each other). At the vendor baseline: 137 hidden tiles blocked, 70 under canopies, 29 pockets,
 13 centre tiles; interior free tiles 26-44 per room.
+
+**The clock tower room (as built 2026-10-18, v3-world, vendor pass B).** The exporter builds the vendor's walkable
+clockwork room (`src/demo/tower-interior.js buildTowerRoom(engine, demo)` against the stub engine and a stub `demo`)
+and maps it like a cottage, translation only, into the 6th band column `R = {112, 1, 12, 12}`, anchored on the room's
+3D **exit** spot (in the doorway: its tile is the doorway `D = (R.x+6, R.y+11)`, blocked `D`; the 3D spawn maps to
+`interiorDoor` = the tile above). A tile is free iff its feet point lies strictly inside the 3D floor (8 × 5.5 m) and
+outside every collider (rects, circles and centre boxes: landing rail, balustrade, the movement's cage, gallows,
+pendulum, bell rope, workbench, ladder). The room has height (`raw.heightAt`: floor 0, an 8-step stair up the east wall,
+a 1.1 m landing along the back) and its rail / balustrade are thinner than a tile, so one more rule: **a free tile with
+a free 4-neighbour more than 0.5 m higher is blocked** (`meta.towerCliffs`, 4 tiles under the landing's front); the
+stair's own steps are 0.41 m, so the landing is reached by the one-tile stair column only. Result: 22 free tiles (12
+floor, 3 stair, 7 + 2 landing), `visitPoint` (119,8) on the landing, no bed. Known gap: a side step from the floor onto
+the stair's second step (0.41 m) passes the balustrade line on the grid (the 3D draw is still on the step).
 
 `packages/assets/src/hollowmere/layoutV3.ts` turns the JSON into a `TownLayout` and a v2-shaped `townMapV3`
 (§2.5). It is exported **only** from the subpath `@ct/assets/hollowmere` (`townLayoutV3`, `townMapV3`), never from the
@@ -449,6 +465,10 @@ px:      x_px = X * 16        y_px = Z * 16
   in the doorway gap itself (`W(0, RD/2 + RT·0.5)`) and maps to `D_i`, which is blocked with code `D`, so
   `pushesOut`/`ExitGate` work unchanged.
 - `bed` / `visitPoint` = the tiles of the 3D `bed` / `visit` points, moved to the nearest free tile if blocked.
+- **Clock tower** (`bld:clocktower`, since 2026-10-18): the same translation with the room's 3D exit spot on the doorway
+  tile centre: `X = 650 + (x_px − 1896)/16`, `Z = 22.5 + (y_px − 200)/16` (`towerRoomV3`), floor height from the vendor
+  room's `heightAt(X, Z)` (stair / landing). `coords.ts houseOfLocation` / `interiorMap` cover cottages only today
+  (lead, CONTRACT-REQUEST in the WP5a row of §8).
 - **No display clamp.** The 3D avatar is drawn exactly at its px position for every viewer (own and remote); the
   quantised collision is the truth (error ≤ 0.5 m, Q5). A clamp applied only to one's own avatar would desync
   overlays and other viewers.
@@ -501,7 +521,7 @@ Consumers that switch to `currentLayout()`: `GameScreen.tsx`, `gameplay/index.ts
 `TownScene` is far from layout-agnostic today. WP5b (v3-world acting for world-art) delivers:
 
 - **Generated Classic data.** An `assets:generate` pass (`packages/assets` generator) that emits
-  `generated/town-v3.json` (Tiled map, 112×43, ground + door object layers from `townMapV3`) and
+  `generated/town-v3.json` (Tiled map, 125×43 since the enterable tower (112×43 before), ground + door object layers from `townMapV3`) and
   `generated/square-props-v3.json` `meta.houses` (boarded/unlit overlays, door glow, board and smoke anchors in v3
   world px). Today `TownScene.ts:454` loads `townJsonUrl` (v2 `generated/town.json`), `setupDoors` (`:870-885`) reads
   the map's object layers, and the overlay anchors are absolute v2 px (`TownScene.ts:131-145`).
@@ -519,7 +539,7 @@ Consumers that switch to `currentLayout()`: `GameScreen.tsx`, `gameplay/index.ts
 - **Generator.** `pnpm assets:generate` ends with a v3 pass, `packages/assets/scripts/v3/classic.ts`, run in its own
   process (`scripts/ground.ts` derives its tables at import time from `scripts/lib/world.ts`, which picks the v3 world
   when `CT_ASSETS_WORLD=v3`). It writes `generated/terrain-v3.{png,webp}` (the v3 ground painted by the v2 ground
-  painter, 4097 unique tiles), `generated/town-v3.json` (112 × 43; ground / decor / collision layers, the collision
+  painter, 4097 unique tiles), `generated/town-v3.json` (125 × 43; ground / decor / collision layers, the collision
   layer = `townLayoutV3.collision` exactly; objects; map properties `world`, `townBounds`, `square`, `plaza`,
   `npcHomes`), `generated/square-props-v3.json` (`meta.houses` in v3 world px; frames = the v2 `square-props.*` atlas)
   and `generated/objects-v3.{png,webp,json}` (the few v3-only sprites). The v2 outputs are byte-identical (checked:
@@ -574,6 +594,13 @@ Consumers that switch to `currentLayout()`: `GameScreen.tsx`, `gameplay/index.ts
   walk through these parts of a drawn house; ≥ 50 % opaque sprite pixels on a walkable tile, 37 tiles): house-14 11,
   house-4 8, house-12 5, house-7 4, house-10 4, house-11 3, house-13 2; all others 0. The reverse (blocked tiles no
   sprite covers) is filled outdoors (above), so it is no longer a gap.
+- **The enterable clock tower in Classic (2026-10-18).** `drawnBuildings` takes the tower from `townLayoutV3.buildings`
+  (same sprite and spot as before, `placement.ts towerAt`); its door is a plain door spot (no swing art, no chimney),
+  the v2 ground painter adds a door spur, the room (band column 6) is painted like a cottage room and its blocked floor
+  tiles (rail line, cage, workbench) get v2 furniture (no bed). `square-props-v3.json` has no entry for it (no boards,
+  no boarded overlay). Open (lead / world-art, CONTRACT-REQUEST in the §8 WP5a row): `rules/doors.ts houseInUse`
+  returns false for a building with `houseIndex: null` during a game, so Classic shows "Nobody lives here" at the tower
+  door and generic planks on it; it must return true for non-cottages (v2 has none, so v2 is unchanged).
 - **Refresh after a vendor re-publish.** When `export-hollowmere --check` reports a stale export, re-run it, then
   `pnpm assets:generate` (the v3 Classic pass follows `townLayoutV3`); `classicV3.test.ts` fails on any stale
   `town-v3.json`: its map property `sourceHash` = sha256 over `townLayoutV3` + `townMapV3` (ground, paths, objects,
@@ -741,15 +768,15 @@ result (vendor baseline):
 
 | ghost mode | specs (**measured** at the vendor baseline by `avatars.castMap.test.ts`, WP2) | v3 behaviour while dead |
 |---|---|---|
-| `shared` (`spec.ghost` present) | cilantro, clarabelle, greenting, maxflow, mincut, opal, preservation, progress, requin, theo-rem, npc-sweeper, npc-vendor, npc-elder, npc-porter | `ch.ghost = ghostVoteAvailable ? 1 : 2`; works walking and idle. |
-| `clips` (own `ghost`/`ghost-spent` loop clips, no `spec.ghost`) | chonk, crow, fox, frog, goat, green-hood, honk, mole, moth, mushroom, owl, polly, rabbit, skeleton-chef, snail, toad | Loop clips replace idle only, so a walking ghost would look alive. While dead: hold the loop clip (`ghost`, or `ghost-spent` once the ghost vote is used) and **slide**: the vendor Character stays where the slide began (its gait never leaves idle) and the avatar's holder group carries the motion (`vendor/characters.ts createDriver().setSlide`), plus the `tint` wrapper below at 50 % (dither alpha 0.8). A revival leaves the slide **in place** (the Character is reset at rest at the feet, `resetMotion`; no rebuild, the avatar and its label never vanish). |
+| `shared` (`spec.ghost` present) | cilantro, clarabelle, greenting, maxflow, mincut, opal, preservation, progress, requin, theo-rem, npc-sweeper, npc-vendor, npc-elder, npc-porter; since the 2026-10-18 vendor refresh also crow, fox, frog, owl, polly, toad | `ch.ghost = ghostVoteAvailable ? 1 : 2`; works walking and idle. |
+| `clips` (own `ghost`/`ghost-spent` loop clips, no `spec.ghost`) | chonk, goat, green-hood, honk, mole, moth, mushroom, rabbit, skeleton-chef, snail (crow, fox, frog, owl, polly, toad moved to `shared` on 2026-10-18) | Loop clips replace idle only, so a walking ghost would look alive. While dead: hold the loop clip (`ghost`, or `ghost-spent` once the ghost vote is used) and **slide**: the vendor Character stays where the slide began (its gait never leaves idle) and the avatar's holder group carries the motion (`vendor/characters.ts createDriver().setSlide`), plus the `tint` wrapper below at 50 % (dither alpha 0.8). A revival leaves the slide **in place** (the Character is reset at rest at the feet, `resetMotion`; no rebuild, the avatar and its label never vanish). |
 | `tint` (neither) | storyteller, wanderer (stand-in), nicksong + brianbi (billboards) | `avatars/ghostTint.ts`: a material wrapper on every avatar material (pale ramp + an ordered-dither alpha 0.6 + 0.15 m hover), added via `onBeforeCompile` **at build time for every handle** (uniforms toggled, so no recompiles on death). Billboards use the v2 ghost frames when they exist (`brianbi/ghost*` in cast-hd, `nicksong/ghost*` in cast-ghosts) with a light tint. |
 
 The table replaces revision 2's (written before the vendor's wave-3 ghost work moved 10 specs to `shared` and 8 to
 `clips`). `castMap` always prefers the live probe (`specCapsOf` after `loadSpec`); `GHOST_BASELINE` is only the
 pre-load guess and the test's expectation.
 
-CONTRACT-REQUEST (§9.2): add `spec.ghost: {hover}` to the 16 `clips` specs and to storyteller / wanderer, the cheap
+CONTRACT-REQUEST (§9.2): add `spec.ghost: {hover}` to the 10 remaining `clips` specs and to storyteller / wanderer, the cheap
 shared opt-in (the slide and tint workarounds then disappear for them).
 
 **Deaths.** Alive→dead seen while in view: `play('die')` if `handle.emotes.die` (held 1.5 s) → ghost mode above.
@@ -1155,7 +1182,7 @@ the order is WP0 (extraction) → WP0s (layer splits) → WP5b (layout injection
 |---|---|---|---|---|
 | WP0 | v3-lead | C0 | **C0 passed, committed** as "v3 C0: …" on `v3-game` (gate `v3-gate`, 2026-10-17): `pnpm -r run typecheck`, `pnpm build`, `pnpm test` (126 files / 1393 tests pass, 1 file / 3 tests skipped), C0 smoke `scripts/v3/smoke-mount.mjs` (5 mount/destroy + 1 injected crash, exit 0, Vite dev + SwiftShader); lead also ran e2e `doors` + `chat-bubbles` (2 passed). Known gaps: stub draws no interiors/remote avatars; context loss falls back to Classic (WP1 adds rebuild); the 5x cycle used `smoke-mount.mjs`, not the WP7 harness | — |
 | WP0s | v3-core | C0b | **C0b passed, committed** as "v3 C0b: …" on `v3-game` (gate `v3-gate`, 2026-10-17; gate ran typecheck, `pnpm build`, full `pnpm test` = 131 files / 1506 tests pass, 1 file / 3 tests skipped). Author's notes: `gameplay/{core,phaserView}.ts`, `social/{controller,phaserView}.ts`, `index.ts` barrels, unit `gameplay.core.test.ts` (10) + `social.controller.test.ts` (18). Ran: client typecheck, `pnpm -r run typecheck` + `pnpm build` + `pnpm test` (1417 pass; the only 4 failures are WP5a's in-flight "v3 refused" flips in `lobby.world.test.ts`/`layoutRules.test.ts`), e2e `doors`, `door-boards`, `door-reconnect`, `chat-bubbles`, `v2-social` quick (pass); `v2-social` "desktop and phone" fails on the phone step **also on the unmodified C0 tree** (pie centre clamped near the screen edge commits a wedge on lift; see §9.3) | — |
-| WP5a | v3-world | C0b | **C0b passed, committed** in the same "v3 C0b: …" commit (gate as in the WP0s row): `scripts/v3/export-hollowmere.mjs` + `hollowmere.generated.json`, `@ct/assets/hollowmere` (`townLayoutV3`, `townMapV3`, `npcHomesV3`, `PROP_DEFS_V3`), `layoutFor`; server `V3_LAYOUT` and client `importV3Layout()` wired (v3 lobbies are created: 201, `host.layout()` = `townLayoutV3`); per-world `sound/areas.ts`; tests `hollowmere.test.ts`, `layout`/`navigation` parameterised by world, `world.v3.test.ts`, `sound.areas.v3.test.ts`, flipped `lobby.world` / `layoutRules`. Verified on the host: typecheck, `pnpm build`, full `pnpm test` (131 files / 1499 tests pass, 1 file / 3 tests skipped), `export-hollowmere --check` (deterministic). Entry +0.28 KiB br, lobby +0.07 KiB br vs HEAD; `layoutV3` chunk 5.65 KiB br, dynamic-only | — |
+| WP5a | v3-world | C0b | **C0b passed, committed** in the same "v3 C0b: …" commit (gate as in the WP0s row): `scripts/v3/export-hollowmere.mjs` + `hollowmere.generated.json`, `@ct/assets/hollowmere` (`townLayoutV3`, `townMapV3`, `npcHomesV3`, `PROP_DEFS_V3`), `layoutFor`; server `V3_LAYOUT` and client `importV3Layout()` wired (v3 lobbies are created: 201, `host.layout()` = `townLayoutV3`); per-world `sound/areas.ts`; tests `hollowmere.test.ts`, `layout`/`navigation` parameterised by world, `world.v3.test.ts`, `sound.areas.v3.test.ts`, flipped `lobby.world` / `layoutRules`. Verified on the host: typecheck, `pnpm build`, full `pnpm test` (131 files / 1499 tests pass, 1 file / 3 tests skipped), `export-hollowmere --check` (deterministic). Entry +0.28 KiB br, lobby +0.07 KiB br vs HEAD; `layoutV3` chunk 5.65 KiB br, dynamic-only  **Vendor refresh B (2026-10-18, v3-world):** `v3-dev` `bd4c9ff` merged (`5fb072f`), assets re-imported, the clock tower exported as an enterable building (16th building, band column 6, `widthTiles` 125, `towerRoomV3`, height-cliff rule; §2.2), NPC homes off the plaza / square, tests updated (`hollowmere`, `layout`, `navigation`, `classicV3`, `boards.houses.v3`, `layoutRules`, server `world.v3` incl. the tower's day / bedtime / night rules), the Classic v3 pass regenerated (`terrain-v3.*`, `town-v3.json`; v2 outputs byte-identical). Gate (host, one `v3-heavy.lock` run, `CT_AGENT=v3-world`): `export-hollowmere --check` up to date, `pnpm -r run typecheck` 0, `pnpm build` 0, full `pnpm test` 159 files / 1873 tests pass (1 file / 5 tests skipped). Not run: e2e (`classic-in-v3` would now also tap into the tower), smokes. **CONTRACT-REQUESTs:** (lead / world-art) `game/rules/doors.ts houseInUse` → `true` when `b.houseIndex == null` (Classic otherwise says "Nobody lives here" at the tower door during a game and boards it; v2 has no such building); (lead) `coords.ts` interior map for `bld:clocktower` from `towerRoomV3` + the room's `heightAt`; (WP3) build / show the tower room (`buildTowerRoom`) and the tower timer face (§9.1 item 2); (WP2) the NPC guard (§9.1 item 3) and avatar feet on the tower room's `heightAt` | — |
 | WP5b | v3-world | C1 | **Committed in "v3 C1a: …"** on `v3-game` (gate `v3-gate`, 2026-10-18: `pnpm -r run typecheck`, `pnpm build`, full `pnpm test` = 159 files / 1870 tests pass, 1 file / 3 tests skipped). Done; review fix round done 2026-10-17. Classic 2D in a v3 world as built in §2.5: generator v3 pass (`scripts/v3/{classic,placement}.ts`, `scripts/lib/world.ts`; outputs `terrain-v3.*`, `town-v3.json`, `square-props-v3.json`, `objects-v3.*`), `@ct/assets/runtime-v3`, per-instance layout state in `TownScene.ts`, per-world board slots in `boardTokens.ts`. Fix round: no invisible walls outdoors (dais plinth `dais@v3` + `outdoorFiller`, 247 pieces), `sourceHash` freshness + decor / outdoor-anchor checks, bed test per room, v3 plaza = v2 `PLAZA` assertion (TownGame canvas sizing), townsfolk kept off the v3 voting circle (`npcSpot`), e2e page-error collection in all three tests, phone shots in the town + a touch tap into a cottage; §2.5 lists the 37 sprite-over-walkable tiles. Host runs (`CT_AGENT=v3-world` / `v3-world-gen`): `pnpm -r run typecheck` clean; `tsc -p tests/tsconfig.json` clean; v3 pass `tsx scripts/v3/classic.ts --review` (only `town-v3.json` + `objects-v3.*` change; `terrain-v3.*` and every v2 output untouched); `classicV3.test.ts` 18/18; `boards.houses{,.v3}.test.ts` 22 + 3 pass; `packages/assets` 173 pass, 3 skipped, **1 fail = hollowmere.test.ts:109 caused by WP3's `apps/client/src/game3d/world/dev/stageSmoke.mjs` reading the meta file (WP3 fix, not WP5b)**; `apps/client/test` 60 files / 790 pass. E2E after the fix round **pass** (2026-10-18, `CT_AGENT=v3-world`, `E2E_PORT=3475`, both locks, build via the webServer, `--project=chromium classic-in-v3 doors.spec`): **4/4 passed (2.2 min)**: `classic-in-v3` 3/3 (all 15 cottages entered through their v3 doors 54.7 s; v2 then v3 lobby in one page 2.8 s; Q7 shots incl. phone teleport-to-square + phone touch-tap into house-2 + townsfolk-off-circle check 35.7 s) + `doors` 1/1 (29.4 s). Same 4/4 in the detached queued run (log `~/clocktower/work/v3-world/test-results/wp5b-e2e.log`, exit 0). Stills 00-16 (incl. `14-phone-portrait`, `15-phone-landscape`, `16-phone-inside`) on the host in `~/clocktower/work/v3-world/test-results/classic-v3/`. Last passing run (before the fix round): `classic-in-v3` 3/3 on 3475, v2 Classic regression `doors`, `door-boards`, `door-reconnect`, `chat-bubbles`, `v2-look`, `v2-phone` on 3476. `playwright.config.ts` reads `E2E_PORT` (D4 done in the tree). Full `pnpm test`: run by the C1a gate (pass) | — |
 | WP1 | v3-core | C1 | **Committed in "v3 C1a: …"** on `v3-game` (gate `v3-gate`, 2026-10-18: `pnpm -r run typecheck`, `pnpm build`, full `pnpm test` = 159 files / 1870 tests pass, 1 file / 3 tests skipped). Code + unit tests done, **NOT yet wired into `TownGame3d.ts`** (lead-owned composition root; integration steps in the WP1 "API (as built)" bullet). `game3d/net/{core,local,remotes,lifecycle}.ts`, `game3d/input/{camera,pick,tap,keys,pointer,crosshair}.ts`, `game3d/debug/{hooks,frameStats,perfOverlay}.ts`; unit `core.pick.test.ts` (21: pick roof/lane at 5 real-PixelCamera states, interiors, tap rules, camera goal), `core.net.test.ts` (20: interpolation, ST poofs, prediction / moves / fencing, doors, routes, prompts, keys, pointer order, core state + `__ctCamera`, import closure), `core.lifecycle.test.ts` (16: sampler, safe moment, promotion, context loss, crash, boot marks, debug helpers). Ran on the host: client typecheck (clean), `vitest run apps/client/test` (54 files / 681 tests pass). Not run: e2e `v3-boot`/`v3-doors`/`v3-fallback` and `doors`/`door-reconnect` on a v3 lobby (need the TownGame3d wiring and WP7's `v3` project) | wiring |
 | WP3 | v3-stage | C1 | **Committed in "v3 C1a: …"** on `v3-game` (gate `v3-gate`, 2026-10-18: `pnpm -r run typecheck`, `pnpm build`, full `pnpm test` = 159 files / 1870 tests pass, 1 file / 3 tests skipped). Code + unit tests + DEV smoke pass after the review fix round (2026-10-18); **wired into `TownGame3d.ts`** (the minimal WP3 edit in the lead-owned root, unchanged: `createStage` replaces `buildHollowmere`, `stage.layer` registered first, `stage.warmUp`, `Layer3dServices.stage`, `state.hour = stage.hour()`). Fix round: (high) DEV smoke moved to `scripts/v3/stage-smoke.mjs` (it reads `hollowmere.meta.json`; `packages/assets/test/hollowmere.test.ts` passes again); (medium) doors also infer door use from a remote vanishing at / appearing at a cottage door for outdoor non-Storyteller viewers (the server's per-location snapshots), with a 1.5 s own-view settle (§8 "As built"); smoke step E now deletes the remote at the door; (medium) a dead nominee keeps the nomination halo; (low) per-frame work allocation-free (hour input, canopy pool / slot list / numeric yaw-pitch compare, tower plan only on clock / second change via `timerTick`, door entries mutated in place, reused interior camera arg, `interiors.drawn()` cached); (low) interior budget: the smoke walks up to house-5 (prefetch) and asserts `lastSwitchMs ≤ 120`, and reports a cold Storyteller teleport separately (lead to record the qualified budget in §7 / §11); (low) `dimNearAnchors` extracted to `world/lights.ts`; new `world.stage.test.ts` (dimNearAnchors, canopyMaterials over a fake registry, createCutDriver null cases + facade); (low, open) soft-layer fade artefact behind thatched cottages waits for a WP7 still (§8 "As built"). Files: `game3d/world/{stage,hour,dais,doors,interiors,lights,park,store,canopy,towerClock}.ts`, `game3d/vendor/{town,time,interiors}.ts`, `scripts/v3/stage-smoke.mjs`; unit `world.{hour,dais,store,doors,canopy,towerClock,lights,stage}.test.ts` (70). Ran on the host (`CT_AGENT=v3-stage`): client `tsc --noEmit` (exit 0); `vitest run apps/client/test/game3d/world packages/assets/test/hollowmere.test.ts` (9 files / 104 pass); `vitest run packages/assets apps/client/test` (70 files pass, 1 skipped / 967 pass, 3 skipped); `stage-smoke.mjs` under both locks, SwiftShader, low tier, canopy on: **27/27 checks pass** (ready 8.1 s, programs 41 constant through ready → day → canopy → vote → night → prefetched interior → back → cold interior → back → dawn → idle; remote vanishing at house-3 swings it open + shut; canopy hole 252 px vs baseline 102; prefetched house-5 switch 1 ms; cold Storyteller teleport into house-1 144 ms; 6 s idle without door / bell; clean destroy). After that run only the smoke's hitch sampler got a `d.length < 3` guard (it returned no samples on SwiftShader's slow frames; not re-run). Known: a Storyteller teleport in / out of a cottage swings its door (the own location change; the teleport reason is not in `Scene3dState`). Full `pnpm test`: C1a gate (pass). Not run: e2e `v3-vote` / `v3-life`, harness shots (WP7) | — |
@@ -1568,20 +1595,55 @@ isolated behind one constant/setting so a later answer is a small change.
 | Q10 render host | NOT used until the user allows it (CLAUDE.local.md forbids the other machine for this project). Visual stills: SwiftShader on the host inside the capped slice (CPU only, never the host GPU), lowest quality, few frames. Real perf: `ct.debug.v3perf` on the dev service from the user's own devices | respects both host rules |
 
 
-**User requests in flight on the pixel3d side (2026-10-17) — wire them on the game side as they land in `v3-dev`:**
-1. **Voting-circle camera** reframed to show more of the players and the clock tower's clock. Game side (WP3/WP1 camera):
-   use the vendor's new vote framing whenever the player is on the dais/circle during nominations and votes.
-2. **The clock tower's clock is the Storyteller's timer** and gets a tasteful in-universe **digital readout**. Game side:
-   drive the tower clock face + readout from the game's existing stage timer (`game:view` clock / `endsAt` / `serverNow`;
-   the Storyteller already sets it from the ST panel; v2.1 clock). No new server feature unless the timer data is missing
-   (then protocol change by WP0/rules owner). Falls back to the time-of-day hands when no timer runs. (WP3, UI parts WP6)
-3. **No NPCs in the voting circle** (there are enough characters now). Game side (WP2 NPC roamer + WP5a export): NPC
-   homes/paths must never enter the square/circle area in v3 worlds; v2 unchanged.
-4. **The clock tower can be entered.** Game side (WP5a export + server world): when the vendor adds the clock tower
-   interior, export it as an enterable building (door, interior band, collision) and wire it like the cottages (WP3
-   interiors). It is not a player's home: decide visitability like other non-home rooms (open to all by day).
-Until a change is published, keep the current behaviour; the lead merges `v3-dev` + re-runs `scripts/v3/import-assets.sh`
-when it lands and notes it here.
+**User requests in flight on the pixel3d side (2026-10-17) — wire them on the game side as they land in `v3-dev`.**
+Status after the 2026-10-18 vendor refresh (`v3-dev` `bd4c9ff` merged as `5fb072f`, assets re-imported; v3-world):
+all four are **delivered by the vendor in the demo layer** (`src/demo/passb.js` parts; the town piece only got an
+additive clocktower hook, vendor `docs/TOWN.md` §13). Game-side wiring per item:
+1. **Voting-circle camera** reframed to show more of the players and the clock tower's clock. **Vendor: delivered**
+   as a COMPUTED frame, not a preset: `src/demo/votecam.js voteFrame({yaw, lowW, lowH, right, hud, heights, dials,
+   stage, ui}) -> {target (ground Vector3), viewHeight, yaw, pitch, tw, box, dial, shift, staged}` (every seat with its
+   occupant + the dial facing the camera, fitted inside the visible area minus HUD keep-out boxes), `towerDials(demo)`
+   (needs `demo.town.registry`), `facingDial(dials, yaw, pitch)`, `CANDIDATES = [0, 45, -45]`; default staging = stage
+   A of `votestage.js` (`STAGES.A`: cast on the 15 stones, yaw auto (45 at 16:9), **pitch 23°** (30° portrait)); the
+   demo's `installVoteCam(demo)` wraps the demo camera rig (not usable as is). `town/api.js CAMERAS.vote` is
+   **unchanged** (yaw 0, viewHeight 19), so WP3's `Stage.voteCamera()` still returns the old shot. **Game side to do
+   (WP3 + WP1 camera):** call `voteFrame` (through `vendor/`) with the game's HUD keep-outs, the seat heights and
+   `api.dials` (use `dials[i].local` × the piece group's current `matrixWorld`: `center` / `normal` are captured at
+   build time) while the player is on the circle during nominations / votes; the pitch ≠ 30° must flow into the
+   projection (`coords.ts` reads the camera live) and the pick.
+2. **The clock tower's clock is the Storyteller's timer** with an in-universe readout. **Vendor: delivered differently
+   from the §9.2 `setTimer` request**: (a) additive clocktower hook `api.dials` (the 4 dials: `{matrix, local, center,
+   normal, k, dial, bezel, surround}`), `api.hands` (the live hands group: hide it while a countdown shows) and
+   `api.body` (door / stage / belfry dimensions); (b) `src/demo/towertimer.js drawDialFace(builder, {frac, mode
+   ('set'|'running'|'paused'|'done'), stage ('discussion'|'nominations'|'bedtime'), flashOn, k, mirror, night})`
+   draws the v2-style countdown (a stage-coloured wedge = time left, one iron hand, pause bars) into a kit `Builder`
+   pushed on a dial's `local` frame (kit solid + glass: no new program); the demo's `createTowerTimer(demo)` is a
+   self-clocked ST countdown with keys K / Y / U / I (not usable as is). (c) **The in-world digital readout was dropped
+   by the user on the pixel3d side** ("instead of the digital clock on the clocktower, have the counter just be part of
+   the HUD"): the split-flap board is off (`?board=1` only); the readout is the HUD timer chip (`src/ui/hud/art.js
+   drawClockChip` / `drawStClock`, demo `timer-ui.js`). The `createTime` tower gate does not matter (the face is drawn
+   beside the hands, never through `setTime`). **Game side to do:** WP3 `vendor/town.ts towerTimerApi` probes
+   `api.setTimer` (never published): replace it by a game-side face (hide `api.hands`; one Builder over the 4
+   `dials[i].local` with `drawDialFace` from the §3.1 / `towerClock.ts` plan, rebuilt only when the 2° wedge step,
+   mode, stage, flash or night changes; `null` plan = show the hands again); the readout = the existing `ClockChip`
+   (v2.1) in the v3 skin (WP6), optionally drawn with `drawClockChip`. No server change (the stage timer data exists).
+3. **No NPCs in the voting circle.** **Vendor: delivered for the demo** (`seatcast.js` puts cast on the seats instead of
+   mannequins, idle NPCs walk out to r 11-16 m during a vote, `ringclear.js`). **Game side:** WP5a export (done
+   2026-10-18): NPC homes are outside the plaza ellipse × 1.1 and the square (the sweeper's home moved (16,12) →
+   (16,10)); Classic `npcSpot` (plaza × 1.1) keeps every roam step out; the life piece runs with `folk` / `ambient`
+   off (§3.1). **Open (WP2, CONTRACT-REQUEST):** the 3D roamer (`avatars/npcs.ts`) guards with protocol `inSquare`
+   only, whose circle (centre y 364, r 144) does not contain the voting circle's north arc: 23 walkable tiles within
+   the seat ring + 24 px lie outside it ((19-25,12), (17-20,13), (24-27,13), (16-17,14), (27-28,14), (16,15), (28,15),
+   (15,16), (29,16)); also exclude the plaza ellipse × 1.1 (Classic's rule) or `circleCentre` distance ≤ `rx` + 32 px.
+4. **The clock tower can be entered.** **Vendor: delivered** (`src/demo/tower-interior.js`: an 8 × 5.5 m clockwork
+   room at x 650 with a stair and a 1.1 m landing; the town piece unchanged, entered through its `clocktower-door`
+   anchor). **WP5a export: done** (2026-10-18, §2.2 "The clock tower room"): the 16th building `clocktower`, nobody's
+   home, open to all by day / bedtime and locked for players at night by the existing server rules (no server change;
+   `world.v3.test.ts`). **Game side to do:** WP3 interiors (`bld:clocktower` → `buildTowerRoom(engine, demo)` with a
+   facade `demo = {engine, events: {on}, passB: {timer: {state}}, time: {hours}}`, its `update(t)` per frame, the
+   room's `lights` for the constant pool, park the town as for cottages), `coords.ts` (the `towerRoomV3` translation +
+   `heightAt` for the floor Y), WP2 (avatar feet on `heightAt`), WP1 (door / pick / auto-enter for the tower: rules
+   already data-driven), the tower door art (`world/doors.ts` filters `/^house-\d+$/`), Classic `houseInUse` (§2.5).
 
 ### 9.2 CONTRACT-REQUESTs for the pixel3d session (collected; append, never edit vendor)
 
@@ -1598,11 +1660,13 @@ when it lands and notes it here.
 - `dais`: confirm the 15-stone mapping (§2.4) is intended, or add a seat-count-aware `seatAngle`.
 - `src/ui/**` icon fetch path configurable (`markers/draw.js`, `indicators/hud.js` hard-code `out/ui/portraits.json`)
   [unpublished].
-- `spec.ghost: {hover}` for the 16 measured `clips` specs (chonk, crow, fox, frog, goat, green-hood, honk, mole, moth,
-  mushroom, owl, polly, rabbit, skeleton-chef, snail, toad) and storyteller, wanderer (WP2 re-measured, §4); a `point`
-  clip for nicksong (every other cast spec has one now).
-- (WP2) `createCharacter(engine, id, {lights: false})` (today `vendor/characters.ts suppressSpecLights` pre-fills the
-  private `ch._lights`), and a public `handle.sockets` / `handle.ghost` (today read via `ch.rig.sockets`, `ch.ghost`).
+- `spec.ghost: {hover}` for the 10 remaining `clips` specs (chonk, goat, green-hood, honk, mole, moth, mushroom, rabbit,
+  skeleton-chef, snail; crow / fox / frog / owl / polly / toad got it in the 2026-10-18 refresh) and storyteller,
+  wanderer (WP2 re-measured, §4); a `point` clip for nicksong (every other cast spec has one now).
+- (WP2) a public `handle.sockets` / `handle.ghost` (today read via `ch.rig.sockets`, `ch.ghost`). (The `{lights: false}`
+  part is satisfied since the 2026-10-18 refresh: `createCharacter` always builds the Character from `lightless(spec)`
+  and exposes the spec lights as socket nodes, `handle.lights = [{L, node}]`; `vendor/characters.ts suppressSpecLights`
+  is now redundant and harmless.)
 - (WP2) a public `Character.teleport(pos, face?)` (or `handle.teleport`): put the fixed-step sim at rest at a new
   spot (prevPos = pos, vel / velF / prevVelF / lean zeroed, `gait.reset(pos, facingYaw, ground)`, chains re-seeded).
   `_step` derives the velocity from the drive's position difference, so a door step (outdoors → interior origin,
@@ -1619,18 +1683,6 @@ when it lands and notes it here.
   skips that keep the v2 art in v3 lobbies).
 - Delete the stray temp files `v3/assets/sprites/.skeleton-chef-preview.png.wgV9lp` and
   `.frog-preview.png.7amzXJ` upstream, so the next import drops them.
-- (WP3, user request in flight 2: the tower clock = the Storyteller's timer) `pieces/clocktower.js` api
-  `setTimer(plan | null)` with `plan = {stage: 'discussion'|'nominations'|'bedtime', remainingMs, totalMs, paused,
-  progress /* 0..1 elapsed */, readout /* 'm:ss' | 'h:mm:ss' */}`: the dial shows the countdown (hands or a sweep) and
-  the in-universe digital readout shows `readout`; `null` = back to the time-of-day hands. It must pass `createTime`'s
-  tower gate (`demo/time.js` TOWER: today only its own `setTime` / `ring` calls pass) or the gate must expose an
-  exemption. The game calls it at most once per readout second (`world/towerClock.ts timerKey`); detection is
-  `typeof api.setTimer === 'function'` (`vendor/town.ts towerTimerApi`), so nothing changes game-side until it lands.
-- (WP3, user request in flight 1: the voting-circle camera) keep the reframe in `town/api.js CAMERAS.vote`
-  (`{yaw, viewHeight, target: [x, y, z]}`, optional `pitch`): the game reads it live (`vendor/town.ts
-  voteCameraPreset`, `Stage.voteCamera()`), so a re-publish of that preset needs no game change. If the framing needs
-  more than one fixed shot (e.g. per seat count), export a function `voteCamera({seats, aspect}) -> {target, yaw,
-  pitch, viewHeight}` instead.
 - (WP3) `demo/time.js createTime`: honour a gated / boarded house in its lit-in-order map (e.g. read
   `api.setLit`'s effective state, or a `params`/facade `skipLights(pieceId)` predicate), so the pool never aims a
   PointLight at a dark cottage's lantern. Today `world/stage.ts` zeroes those pool lights after every `time.update`.
@@ -1667,6 +1719,9 @@ when it lands and notes it here.
   only the own stub avatar and no labels / bubbles / pins. Import the gameplay/social logic from
   `game/gameplay/core.ts` and `game/social/controller.ts` directly (not the `index.ts` barrels), so `phaserView`
   stays out of the `town3d` chunk.
+- **Vendor refresh B (2026-10-18):** `v3-dev` `bd4c9ff` (pass A + B + seal vote) is merged and the clock tower is an
+  enterable v3 building (WP5a). What the vendor delivered for the four user requests and what the game still has to
+  wire is in §9.1 (vote camera, tower timer face, NPC guard, tower room in 3D, Classic `houseInUse`).
 - **Next = C1 proper (lead), then WP7 part B (C2):**
   1. `TownGame3d.ts`: wire WP1 (§8 WP1 "API (as built)"), WP2 (register `createAvatarLayer` after `net/` and before
      `overlay/`, `await avatars.selfReady(5000)` before `stage.warmUp`, pass `avatars.registry` to the overlay,
@@ -1919,6 +1974,28 @@ when it lands and notes it here.
   `tests/support/bot.ts`, `scripts/v3/**`, `scripts/perf/**`, `ops.example.env` by WP5b / WP6 / WP7a / perf recon).
 - 2026-10-18 (C1a): the v3-avatars port range is 3462-3464 (3461 is held by an orphaned Vite server on the host;
   never use or kill it). The avatar smoke defaults to `SMOKE_PORT=3462`.
+- 2026-10-18 (vendor refresh B, v3-world): `v3-dev` up to `bd4c9ff` (demo pass A, pass B, the seal-vote rounds)
+  reviewed as text (§10: no eval / Function / workers / absolute URLs in the runtime tree; new dynamic imports only in
+  demo-layer modules the game never imports: `passb.js` over a static list of local parts, `timer-ui.js`
+  `import('./actionbar.js')`; style / link element creation only in `src/ui/hd/*` and `scenes/`, which the game does
+  not import; none of the patched snippets of `build/pixel3dImports.ts` changed) and merged with `-X theirs`
+  (`5fb072f`); `scripts/v3/import-assets.sh` added the HD portrait atlases (`v3/assets/ui/portraits-hd{,-night}.*`).
+  Game-side expectation updated: `castMap.ts GHOST_BASELINE` (crow, fox, frog, owl, polly, toad: `clips` → `shared`).
+- 2026-10-18 (WP5a, v3-world; no code change in world-art's `apps/server/src/world/**`): **the clock tower is
+  enterable in the v3 world** (user request, §9.1 item 4): the 16th building of `townLayoutV3` (`clocktower`,
+  `houseIndex: null`), its room in a 6th band column (`widthTiles` 112 → 125), anchored on the vendor room's exit spot,
+  plus the height-cliff rule for its stair / landing (§2.2). It is nobody's home and follows the existing rules for
+  rooms that are not your home (`apps/server/src/world/index.ts canEnter / canExit`: any player by day and at bedtime,
+  locked for players at night, a player inside at nightfall is sent home to bed, the Storyteller always): **no server
+  code change**. `townMapV3.landmarks` is empty; v2 keeps its non-enterable landmark tower (v2 layout hash unchanged).
+  Classic in a v3 world draws it as before (`placement.ts towerAt`), with a door spot, a door spur and room furniture.
+- 2026-10-18 (WP5a): NPC homes are exported outside the plaza ellipse × 1.1 and the square (user request "no NPCs in the
+  voting circle"); the sweeper's home moved (16,12) → (16,10). The 3D roamer's `inSquare`-only guard misses the circle's
+  north arc: CONTRACT-REQUEST to WP2 (§9.1 item 3).
+- 2026-10-18 (vendor refresh B): §9.2's `clocktower api.setTimer` and `CAMERAS.vote` requests are withdrawn: the vendor
+  delivered the tower dial hook (`api.dials` / `api.hands` / `api.body` + `towertimer.js drawDialFace`) and a computed
+  vote frame (`votecam.js voteFrame`) instead, and the user moved the timer readout into the HUD (§9.1 items 1-2 say
+  what the game wires). The `{lights: false}` part of WP2's character request is satisfied (`lightless(spec)`).
 
 ## 12. Review log (round 1)
 

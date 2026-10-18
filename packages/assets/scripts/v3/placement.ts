@@ -10,7 +10,9 @@
 //              Exception (GENERIC_SOUTH): a house whose v2 sprite would land off the map is drawn as a generic
 //              south-facing cottage in its own style instead (house-12: its door opens onto the west map edge and
 //              faces mostly south, doorNormal (0.34, 0.94); the v2 east-facing sprite would sit entirely at x < 0).
-//   tower      the clock tower sprite at the v3 footprint's bottom-left (same size in both worlds).
+//   tower      the clock tower sprite at the v3 footprint's bottom-left (same size in both worlds). Enterable in the v3
+//              world (a building since vendor pass B): its door is a plain door spot (no swing art), its room gets
+//              furniture like the cottages' (no bed: nobody lives there).
 //   props      the v3 map objects with their v2 sprite (kinds missing in v2 art fall back to a look-alike).
 //   interiors  v3 rooms have no furniture objects (the 3D rooms are built by pixel3d). Every floor tile the v3
 //              collision blocks gets a piece of v2 furniture drawn on it (bed next to the bed spot first), so
@@ -55,11 +57,24 @@ function v2Def(id: string): BuildingDef {
   return b;
 }
 
-/** Every v3 cottage + the clock tower, with the drawn (v2 sprite) footprint. Layout order, tower last. */
+/** The clock tower's sprite: same size in both worlds, at the bottom-left of the v3 footprint (no door art). */
+function towerAt(b: BuildingDef, v2: BuildingDef): DrawnBuilding {
+  const shift = { dx: b.footprint.x - v2.footprint.x, dy: b.footprint.y + b.footprint.h - (v2.footprint.y + v2.footprint.h) };
+  return { id: b.id, generic: false, def: b, footprint: { ...v2.footprint, x: v2.footprint.x + shift.dx, y: v2.footprint.y + shift.dy }, shift };
+}
+
+/**
+ * Every v3 cottage + the clock tower, with the drawn (v2 sprite) footprint. Layout order: the tower is the 16th
+ * building of the v3 layout since the vendor's pass B made it enterable (a landmark in older layouts: drawn last).
+ */
 export function drawnBuildings(layout: TownLayout = townLayoutV3, map: TownMap = townMapV3): DrawnBuilding[] {
   const out: DrawnBuilding[] = [];
   for (const b of layout.buildings) {
     const v2 = v2Def(b.id);
+    if (b.kind === 'clocktower') {
+      out.push(towerAt(b, v2));
+      continue;
+    }
     if (GENERIC_SOUTH.has(b.id)) {
       // a 5 x 4 front-door cottage whose door (x + 2, below the footprint) is the v3 door tile
       const footprint = { x: b.door.x - 2, y: b.door.y - 4, w: 5, h: 4 };
@@ -69,12 +84,7 @@ export function drawnBuildings(layout: TownLayout = townLayoutV3, map: TownMap =
     const shift = { dx: b.door.x - v2.door.x, dy: b.door.y - v2.door.y };
     out.push({ id: b.id, generic: false, def: b, footprint: { ...v2.footprint, x: v2.footprint.x + shift.dx, y: v2.footprint.y + shift.dy }, shift });
   }
-  for (const b of map.landmarks) {
-    const v2 = v2Def(b.id);
-    // same-size sprite: bottom-left of the v3 footprint (the tower has no door logic)
-    const shift = { dx: b.footprint.x - v2.footprint.x, dy: b.footprint.y + b.footprint.h - (v2.footprint.y + v2.footprint.h) };
-    out.push({ id: b.id, generic: false, def: b, footprint: { ...v2.footprint, x: v2.footprint.x + shift.dx, y: v2.footprint.y + shift.dy }, shift });
-  }
+  for (const b of map.landmarks) out.push(towerAt(b, v2Def(b.id)));
   return out;
 }
 

@@ -62,19 +62,21 @@ export const SPEC_IDS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * The ghost probe of every spec at the vendor baseline (measured by importing each spec, 2026-10-17). Used
- * before a spec has loaded; the runtime always prefers the live probe. The contract's original table (§4,
- * revision 2) predates the vendor's wave-3 ghost work; this is the measured state (decision log, §11).
+ * The ghost probe of every spec at the vendor baseline (measured by importing each spec, 2026-10-17; re-measured
+ * at the 2026-10-18 vendor refresh). Used before a spec has loaded; the runtime always prefers the live probe. The
+ * contract's original table (§4, revision 2) predates the vendor's wave-3 ghost work; this is the measured state
+ * (decision log, §11).
  */
 export const GHOST_BASELINE: Readonly<Record<string, GhostMode>> = {
-  // spec.ghost (shared)
+  // spec.ghost (shared); crow / fox / frog / owl / polly / toad moved here from 'clips' with the v3-dev pass A+B
+  // vendor refresh (2026-10-18: the vendor gave them spec.ghost, walking ghosts stay ghostly)
   cilantro: 'shared', clarabelle: 'shared', greenting: 'shared', maxflow: 'shared', mincut: 'shared', opal: 'shared',
   preservation: 'shared', progress: 'shared', requin: 'shared', 'theo-rem': 'shared',
+  crow: 'shared', fox: 'shared', frog: 'shared', owl: 'shared', polly: 'shared', toad: 'shared',
   'npc-elder': 'shared', 'npc-porter': 'shared', 'npc-sweeper': 'shared', 'npc-vendor': 'shared',
   // own ghost / ghost-spent loop clips, no spec.ghost
-  chonk: 'clips', crow: 'clips', fox: 'clips', frog: 'clips', goat: 'clips', 'green-hood': 'clips', honk: 'clips',
-  mole: 'clips', moth: 'clips', mushroom: 'clips', owl: 'clips', polly: 'clips', rabbit: 'clips',
-  'skeleton-chef': 'clips', snail: 'clips', toad: 'clips',
+  chonk: 'clips', goat: 'clips', 'green-hood': 'clips', honk: 'clips', mole: 'clips', moth: 'clips', mushroom: 'clips',
+  rabbit: 'clips', 'skeleton-chef': 'clips', snail: 'clips',
   // neither
   storyteller: 'tint', wanderer: 'tint', nicksong: 'tint', keeper: 'tint', hound: 'tint', duelist: 'tint', mannequin: 'tint',
 };
