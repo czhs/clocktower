@@ -57,6 +57,7 @@ import { noteServerTime, serverNow } from '../net/serverTime';
 import { LOW_TIER_AMBIENCE, TierState } from './fx/tier';
 import { reducedMotion } from './fx/motion';
 import { fillSliceFan } from './render/fan';
+import { StaticCuller } from './render/cull';
 import { createTalkingLayer, type TalkingLayer } from './fx/talking';
 import { createBoardTokenLayer, type BoardTokenLayer } from './gameplay/boardTokens';
 import { createHouseNameLayer, houseOwners, type HouseLabelInput, type HouseNameLayer } from './gameplay/houseNames';
@@ -380,6 +381,8 @@ export class TownScene extends Phaser.Scene {
   private lightSrcs: LightSrc[] = [];
   private lightRT!: Phaser.GameObjects.RenderTexture;
   private mask!: Phaser.GameObjects.Graphics;
+  /** (v3 perf) hides the map's static props / buildings that are outside the camera view (render/cull.ts). */
+  private culler = new StaticCuller();
   private ambient = { r: 0xd0, g: 0xc8, b: 0xdc };
   private area = { x: 0, y: 0, w: 0, h: 0 };
   // (v3 WP5b) the lobby's world and everything derived from its layout / map (set in init / create)
@@ -521,6 +524,7 @@ export class TownScene extends Phaser.Scene {
         .setOrigin(0, 0)
         .setDepth(type === 'flat' ? 2 : 10 + depth);
       if (type === 'flat') ground.push(img);
+      else this.culler.add(img, img.x, img.y, img.width, img.height);
       if (type === 'building') {
         const id = String(prop(o, 'building') ?? '');
         const ck = prop(o, 'clock');
@@ -554,6 +558,17 @@ export class TownScene extends Phaser.Scene {
     }
     this.setupDoors(map, buildingDepth, drawnFp);
     this.bakeGround(map.widthInPixels, map.heightInPixels, ground);
+    // Static sprites outside the view are skipped by the renderer. Run at PRE_RENDER, after every
+    // camera move of the frame (update, resize, teleport, entering a building); same view maths as
+    // Camera.preRender (origin 0.5, no camera bounds in this scene).
+    const cull = () => {
+      const cam = this.cameras.main;
+      const w = cam.width / cam.zoomX;
+      const h = cam.height / cam.zoomY;
+      this.culler.update(cam.scrollX + cam.width * 0.5 - w / 2, cam.scrollY + cam.height * 0.5 - h / 2, w, h);
+    };
+    this.events.on(Phaser.Scenes.Events.PRE_RENDER, cull);
+    this.offs.push(() => this.events.off(Phaser.Scenes.Events.PRE_RENDER, cull));
     // --- lighting (world-space multiply layer over the current area) + letterbox mask
     this.lightRT = this.add.renderTexture(0, 0, Math.max(this.TOWN.w, 400), Math.max(this.TOWN.h, 400)).setOrigin(0, 0).setDepth(5000).setBlendMode(Phaser.BlendModes.MULTIPLY);
     this.mask = this.add.graphics().setDepth(5300);
