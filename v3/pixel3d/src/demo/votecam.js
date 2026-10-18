@@ -32,7 +32,7 @@
 //            trans 0..1 | null, inFrame {seats (of 15 inside the visible area, none under a keep-out), dial} }
 import * as THREE from 'three';
 import { seatPos } from '../town/layout.js';
-import { PLAQUE, plaqueW, plaqueSpot, SEAL_AHEAD, SEAL_M } from './votemarks.js';
+import { PLAQUE, plaqueW, plaqueSpot, UNDER_REACH } from './votemarks.js';
 
 const DEG = Math.PI / 180;
 const PITCH = Math.PI / 6;
@@ -115,9 +115,9 @@ function contentPoints(yaw, heights, dials, stage = null) {
       const a = (k / 8) * Math.PI * 2, x = s.x + Math.cos(a) * BODY_R * sc, z = s.z + Math.sin(a) * BODY_R * sc;
       for (const f of [0, 0.35, 0.7, 1]) add(x, y0 + (top - y0) * f, z);
     }
-    // the seat's wax seal (votemarks.js) lies SEAL_AHEAD m x the scale in front of the feet, toward the camera at
-    // worst (the near arc); (vote-fix4) its real reach: + 1.6 radii (the rim, the slam's squash, the settled drops)
-    const ahead = (SEAL_AHEAD + 1.6 * SEAL_M) * sc;
+    // the seat's vote mark (votemarks.js; vote-fix6: the under-circle round the feet) reaches UNDER_REACH m x the
+    // scale toward the camera (its rim, the slam's squash, the settled drops, the ghost token at its front rim)
+    const ahead = UNDER_REACH * sc;
     add(s.x + Math.sin(yaw) * ahead, 0, s.z + Math.cos(yaw) * ahead);
   }
   const dial = stage?.twin ?? facingDial(dials, yaw, pitch);
@@ -353,6 +353,9 @@ export function installVoteCam(demo) {
   }));
   // the ceremony (time.js playCeremony) switched follow -> vote: back to follow 3 s after it reaches night
   offs.push(store.on('phase', ({ value, source }) => { if (ceremonyCam && source === 'time' && value === 'night') nightAt = engine.time; }));
+  // (vote-fix6, "P doesn't reliably send me to join the voting circle") a NEW ceremony is the ceremony's camera even when
+  // the vote camera is already up (P inside the 3 s after the last one's night handed it back to follow mid-ceremony)
+  offs.push(demo.events?.on?.('ceremony', ({ start } = {}) => { if (start) { nightAt = null; ceremonyCam = true; } }));
 
   const base = rig.update.bind(rig);
   rig.update = (t, dt) => {

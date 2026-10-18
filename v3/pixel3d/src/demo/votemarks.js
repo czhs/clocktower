@@ -6,27 +6,35 @@
 // important so that butler can be played properly"; "what are the candles? they are a little bit visually messy";
 // "when vote is locked, how about a spotlight on the character".
 //
+// (vote-fix6) the user after playing it: "the stamp placement is still a little ambiguous about the player who is
+// casting"; "perhaps instead of stamp there is some sort of undercircle - or the stamp is the undercircle". The seal is
+// no longer slapped 0.62 m in front of the voter: THE SEAL IS THE UNDER-CIRCLE - a wax disc pressed onto the voter's
+// own seat stone, centred on their feet (UNDER_M), a ground decal the figure standing on it hides (putGroundHD), so it
+// can only ever read as theirs.
 // THE STATES (the seal vote, sealvote.js: a seal lying at a voter's feet when the clock hand reaches them COUNTS):
 //   waiting        nothing at all (a living voter with no seal down)
-//   SLAP           the voter plays their 'vote' clip (seatcast.js) and slaps a red WAX SEAL onto the ground just in
-//                  front of their feet (toward the viewer, so no figure ever hides it): the seal held up (2 frames), the
-//                  fall (2 drawings, a streak), the SLAM (squashed, slam dashes), a dust puff (4 drawings) and a ring of
-//                  wax drops flung out that settle round it; then it rests there, drawn in the UI's own colours (lit by
-//                  day and by night). Real time, for everyone: a Butler can watch their master's seal.
-//   WITHDRAW       before the hand arrives: the seal un-stamps (hops up, the drops vanish), rises back to the voter's
-//                  hand and is gone in a small puff; no seal = no vote
-//   LOCKED         the hand reaches a seat with a seal: a BRASS STAMP comes down on it (3 drawings), the seal turns GOLD
-//                  under it (a flash + a brass chime ring + sparks), the stamp lifts away; a SPOTLIGHT drops onto the
-//                  voter (spotlight.js: a warm beam from above + a pool at the feet) and stays while the vote stands
-//   passed, no     nothing (clean)
-//   ghost vote     a dead player's one ghost vote: a small pale GHOST TOKEN hovers at their feet; used = it becomes a
-//                  pale seal (slap / withdraw / lock as above, a pale beam); spent / no ghost vote = nothing
-// THE NOMINEE: a crimson ring round their feet for the whole nomination + vote; the THRESHOLD (the tally reaches the
-//   votes needed): a crimson + gold burst at the nominee HELD ~0.9 s (4 drawings), the ring becomes the BLOCK RING (vote-fix5:
-//   a solid gold double ring + the STOCKS icon in front of it), a CRIMSON BEAM drops onto the nominee (spotlight slot
-//   15), the tower bell rings, the tally turns gold, the caption says "<name> is on the block". The nominee faces the
-//   camera full on (seatcast.js).
-// NO VOTE (vote-fix5): the hand passed a living voter with no seal: a tiny grey ring where the seal would lie.
+//   SLAP           the voter plays their 'vote' clip (seatcast.js); a small red wax seal is held up (2 frames), falls
+//                  in front of them (2 drawings, a streak) and PRESSES DOWN into a wax-red UNDER-CIRCLE round their feet:
+//                  it hits small, squashes wide (slam dashes), a dust puff (4 drawings) and wax drops flung off its rim
+//                  that settle round it; the disc rests there: a scalloped wax rim, the pressed groove, the seal's mark
+//                  in front of the feet, wax drips down the stone's face. Real time, for everyone: a Butler can watch
+//                  their master's circle.
+//   WITHDRAW       before the hand arrives: the circle lifts (a hop), shrinks and dissolves while the small seal rises
+//                  back to the voter's hand, gone in a small puff; no circle = no vote
+//   LOCKED         the hand reaches a seat with a circle: a small BRASS SEAL-PRESS comes down on the circle's mark (3
+//                  drawings), the whole circle turns BRASS-GOLD under it (a flash hugging the rim + a brass chime ring +
+//                  sparks), the press lifts away; a SPOTLIGHT drops onto the voter (spotlight.js: a warm beam from above +
+//                  a pool at the feet) and stays while the vote stands
+//   passed, no     a faint dithered grey ring hugging the stone (vote-fix5 "registered: no vote")
+//   ghost vote     a dead player's one ghost vote: a small pale GHOST TOKEN hovers at the front of their stone; used =
+//                  a PALE circle (slap / withdraw / lock as above, a pale beam). Spent (counted once) / no ghost vote =
+//                  nothing - and the ghost loses its halo (seatcast.js 'ghost-spent')
+// THE NOMINEE (vote-fix6: never alike a voter's circle): a HOLLOW crimson ring, wider than any vote circle, with four
+//   inward CHEVRONS pointing at the accused (a voter's mark is a FILLED wax disc; a hollow toothed ring is only ever the
+//   nominee); the THRESHOLD (the tally reaches the votes needed): a crimson + gold burst at the nominee HELD ~0.9 s
+//   (4 drawings), the ring becomes the BLOCK RING (vote-fix5: a solid gold double ring, its chevrons gold, + the STOCKS
+//   icon in front of it), a CRIMSON BEAM drops onto the nominee (spotlight slot 15), the tower bell rings, the tally
+//   turns gold, the caption says "<name> is on the block". The nominee faces the camera full on (seatcast.js).
 // THE CURRENT VOTER: the clock hand's outer end drawn on the ground in LIT brass (gold + a pale-gold light line: it
 //   reads at night) from the dais (stage A: the dais' own hand turns under it) or the staging's hub to that voter.
 // THE TALLY: one small plaque bottom centre above the action bar: "3 votes · 7 needed"; at the threshold it turns gold
@@ -52,8 +60,13 @@ import { createSpotlights } from './spotlight.js';
 const N = 15;
 const gk = (dt) => Math.floor(dt * GRID_HZ + 1e-6);          // whole grid frames since an event
 export const KINDS = ['waiting', 'sealed', 'withdrawn', 'counted', 'passed', 'ghost', 'ghost-sealed', 'ghost-withdrawn', 'ghost-counted', 'ghost-passed', 'spent'];
-export const SEAL_M = 0.27;     // the seal's radius (m, x the cast scale)
-export const SEAL_AHEAD = 0.62;       // m in front of the feet (facing the dais; against the seat stone's rim: it reads as theirs)
+export const SEAL_M = 0.27;     // the small seal's radius in the hand / falling (m, x the cast scale)
+// (vote-fix6) THE UNDER-CIRCLE: radius UNDER_M m round the feet, a flat pool on the plane the feet stand on (the seat
+// stone's top course is 0.36 m, its lower course 0.43: the pool covers the stone's top and barely passes its edge - a
+// bigger disc on the stone's top hung out over the ring like a tabletop); UNDER_REACH = its reach toward the camera
+// (the splatter, the ghost token at the front rim) for the vote camera's frame; NOM_M = the nominee's hollow ring
+export const UNDER_M = 0.44, UNDER_REACH = 0.66, NOM_M = 0.74;
+const UNDER_Y = 0.205;          // the pool's plane on a seat stone: its top (0.2 m), where the feet stand (boss 0.235)
 const T_SLAM = 4, T_REST = 14, T_WD = 10, T_STAMP = 12;        // grid frames: the slam, the slap done, withdraw done, stamp done
 // (vote-fix5, critic-4 P2-4) the threshold moment HOLDS: the burst in 4 drawings of BURST_D grid frames (0.93 s), the
 // sparks as long; the nominee's crimson beam is spotlight slot NOM_SPOT (after the 15 seats')
@@ -130,6 +143,48 @@ function sealArt(kind, rx, ry, T, th = 1) {
     return img;
   });
 }
+/**
+ * (vote-fix6) THE UNDER-CIRCLE: the seal pressed into a wax disc round the voter's feet (rx x ry px ellipse on the
+ * ground, centred on the feet): a scalloped wax rim (12 lobes) lit upper-left / shaded lower-right, the pressed groove
+ * inside it, a flat wax floor (under the feet: the figure hides it), the seal's 4-point mark in FRONT of the feet (toward
+ * the viewer: it shows under any figure), the disc's thickness as a band under the near rim and 3 wax drips running
+ * down from the near rim (over the stone's front face). FILLED on purpose: the nominee's mark is a hollow ring.
+ * kind 'red' | 'gold' | 'ghost' | 'ghostgold'. -> PixelImage, centre (the feet) at (ox, oy).
+ */
+function underArt(kind, rx, ry, T, q) {
+  return memo(`under|${kind}|${rx}|${ry}|${q}|${T.gold}`, () => {
+    // (vote-fix6, lead review) FLAT on the ground, a pressed wax POOL, not a tabletop: no thickness band, no drips
+    // hanging below the rim (they read as a little round table's legs); the rim LIT on the far side (the pool's far
+    // wall faces the viewer) and SHADED on the near side; splatter blobs lying in the ground plane outside the rim,
+    // foreshortened like the disc
+    const M = matOf(kind, T);
+    const R = Math.ceil(rx * 1.42) + 3, Rv = Math.ceil(ry * 1.42) + 3;
+    const img = new PixelImage(2 * R + 1, 2 * Rv + 1);
+    const cx = R + 0.5, cy = Rv + 0.5;
+    for (let y = 0; y < img.h; y++) for (let x = 0; x < img.w; x++) {
+      const ax = (x + 0.5 - cx) / rx, ay = (y + 0.5 - cy) / ry, d = Math.hypot(ax, ay);
+      if (d > 1 + 0.055 * Math.cos(Math.atan2(ay, ax) * 12 + 0.4)) continue;
+      let c = M.mid;
+      if (d > 0.8) c = ay < -0.3 ? M.hi : ay > 0.3 ? M.sh : M.mid;                // the raised rim: far lit, near shaded
+      else if (d > 0.68) c = ay < -0.2 ? M.sh : M.mid;                           // the pressed groove (concave)
+      // the seal's mark in front of the feet: a 4-point star (+ its arms)
+      const ex = ax / 0.2, ey = (ay - 0.42) / 0.3, s = Math.abs(ex) + Math.abs(ey), st = Math.min(Math.abs(ex), Math.abs(ey));
+      if (s < 0.95 || (st < 0.24 && Math.max(Math.abs(ex), Math.abs(ey)) < 1.55)) c = ex + ey < 0 ? M.markHi : M.mark;
+      img.set(x, y, c);
+    }
+    // splatter: 7 flat blobs out from the rim (mostly the near half and the sides: the far half is under the figure)
+    for (const [a, f, s] of [[0.35, 1.2, 1], [0.95, 1.32, 0.8], [1.45, 1.18, 1.1], [2.05, 1.3, 0.75], [2.7, 1.16, 1], [3.5, 1.22, 0.8], [5.9, 1.25, 0.85]]) {
+      const bx = cx + Math.cos(a) * rx * f, by = cy + Math.sin(a) * ry * f, br = Math.max(1.2, rx * 0.075 * s), bv = Math.max(0.9, br * (ry / rx) * 1.15);
+      img.ellipse(bx, by, br, bv, M.mid);
+      img.set(Math.round(bx - br * 0.5 - 0.5), Math.round(by - bv * 0.4 - 0.5), M.hi);
+    }
+    img.outline(M.line);
+    img.ox = R; img.oy = Rv;
+    return img;
+  });
+}
+/** a cached dissolved copy of a cached piece (k 0.25 | 0.5 | 0.75) */
+const dissolved = (im, k, key) => memo(`dis|${k}|${key}`, () => { const o = dissolve(im.clone(), k); o.ox = im.ox; o.oy = im.oy; return o; });
 /** A dust puff round the seal's slam (k 0..3): 7 tufts flung out along the ground, swelling then thinning */
 function dustArt(k, rx, ry, q) {
   return memo(`dust|${k}|${rx}|${ry}|${q}`, () => {
@@ -254,14 +309,32 @@ function ghostArt(h, k, T) {
     return img;
   });
 }
-/** The nominee's ring round the feet (crimson; `block` = on the block: + a gold inner ring and 4 gold studs) */
+/** (vote-fix6) four inward CHEVRONS on a ring (the nominee's shape language: pointing at the accused): filled
+ *  arrowheads on the diagonals, tip toward the centre, L px long, half-width W px, in ramp C (hi / mid / line) */
+function chevrons(img, cx, cy, rx, ry, q, C) {
+  const L = 4 * q + 1, W = 2.5 * q + 0.5, o = new PixelImage(img.w, img.h);
+  for (const a of [Math.PI / 4, (3 * Math.PI) / 4, (5 * Math.PI) / 4, (7 * Math.PI) / 4]) {
+    const px = cx + Math.cos(a) * (rx - 1.5 * q), py = cy + Math.sin(a) * (ry - q);
+    let ux = cx - px, uy = (cy - py) * (rx / Math.max(1, ry)) * 0.55;            // inward, flattened like the ground
+    const n = Math.hypot(ux, uy) || 1; ux /= n; uy /= n;
+    const vx = -uy, vy = ux;
+    for (let y = Math.floor(py - L - W - 2); y <= py + L + W + 2; y++) for (let x = Math.floor(px - L - W - 2); x <= px + L + W + 2; x++) {
+      const dx = x + 0.5 - px, dy = y + 0.5 - py, al = dx * ux + dy * uy, ac = Math.abs(dx * vx + dy * vy);
+      if (al < -q * 0.5 || al > L) continue;
+      if (ac <= W * (1 - Math.max(0, al) / L) + 0.3) o.set(x, y, al < L * 0.35 && dx * vx + dy * vy < 0 ? C.hi : C.mid);
+    }
+  }
+  o.outline(C.line);
+  img.blit(o, 0, 0);
+}
+/** The nominee's ring round the feet (crimson, hollow, + 4 inward chevrons; `block` = on the block) */
 function nomRingArt(rx, ry, q, T, block) {
   return memo(`nom|${rx}|${ry}|${q}|${block}|${T.gold}`, () => {
     const R = Math.ceil(rx) + 3 * q, Rv = Math.ceil(ry) + 3 * q;
     const img = new PixelImage(2 * R + 1, 2 * Rv + 1), cx = R + 0.5, cy = Rv + 0.5;
     // (vote-fix5, critic-4 P2-4) ON THE BLOCK = a SOLID GOLD DOUBLE RING (a wide gold band + a thin bright inner ring),
     // nothing crimson left: it reads as a different state at a glance (the old block ring was the crimson one + a thin
-    // gold line); the stocks icon stands in front of it (stocksArt)
+    // gold line); the stocks icon stands in front of it (stocksArt). (vote-fix6) + the chevrons, gold.
     if (block === 'gold') {
       const G = { hi: '#FFF6C8', mid: T.goldHi, sh: T.gold, line: T.goldLine };
       A.annulus(img, cx, cy, rx, ry, G, { tx: 3 * q, ty: 2 * q });
@@ -269,10 +342,12 @@ function nomRingArt(rx, ry, q, T, block) {
       for (let i = 0; i < Math.max(1, q); i++) g.ring(cx, cy, rx - 5 * q - i, ry - 3.5 * q - i * 0.5, T.goldHi);
       g.outline(T.goldLine);
       img.blit(g, 0, 0);
+      chevrons(img, cx, cy, rx - 3 * q, ry - 2 * q, q, { hi: '#FFFFFF', mid: T.goldHi, line: T.goldLine });
       img.ox = R; img.oy = Rv;
       return img;
     }
     A.annulus(img, cx, cy, rx, ry, CRIMSON, { tx: 3 * q, ty: 2 * q });
+    chevrons(img, cx, cy, rx - 3 * q, ry - 2 * q, q, CRIMSON);
     if (block) {
       const g = new PixelImage(img.w, img.h);
       for (let i = 0; i < q; i++) g.ring(cx, cy, rx - 3 * q - 1 - i, ry - 2 * q - 1 - i * 0.5, T.goldHi);
@@ -310,16 +385,17 @@ function stocksArt(u, T) {
     return img;
   });
 }
-/** (vote-fix5) the hand passed a seat with no seal: a tiny grey ring where a seal would lie ("registered: no vote");
- *  k 0 = popping (1 px wider), 1 = at rest. Subtle on purpose: a dim stone grey, dithered. */
+/** (vote-fix5) the hand passed a seat with no seal: a faint grey ring ("registered: no vote"); (vote-fix6) under the
+ *  feet, hugging the stone (0.82 of the vote circle: thin, dithered, no fill - never a vote circle nor the nominee's
+ *  toothed crimson ring); k 0 = popping (1 px wider), 1 = at rest. */
 function noVoteArt(rx, ry, q, k) {
   return memo(`novote|${rx}|${ry}|${q}|${k}`, () => {
-    const r = Math.max(3, Math.round(rx * 0.42)) + (k ? 0 : q), rv = Math.max(2, Math.round(ry * 0.42)) + (k ? 0 : q);
+    const r = Math.max(3, Math.round(rx * 0.82)) + (k ? 0 : q), rv = Math.max(2, Math.round(ry * 0.82)) + (k ? 0 : q);
     const o = new PixelImage(2 * r + 5, 2 * rv + 5), cx = r + 2.5, cy = rv + 2.5;
     for (let i = 0; i < Math.max(1, q); i++) o.ring(cx, cy, r - i, rv - i * 0.5, '#8C8A92');
     o.outline('#3C3A44');
     o.ox = r + 2; o.oy = rv + 2;
-    return k ? o : dissolve(o, 0.25);
+    return dissolve(o, k ? 0.25 : 0.5);
   });
 }
 /** The threshold burst at the nominee (k 0..3): crimson + gold rings racing out */
@@ -445,9 +521,10 @@ export function createVoteMarks(demo) {
       const d = S?.seats?.[i + 1];
       let kind = dead ? (ghostVote ? 'ghost' : 'spent') : 'waiting', since = null, lockAt = null, wdAt = null;
       if (d) {
-        const pale = d.ghost;
+        // (vote-fix6) YOU as a ghost (the ghost emote's state, player.js) vote with a pale circle too
+        const pale = d.ghost || (i === demo.passB?.seats?.yours && !!demo.player?.ghost);
         if (d.yes) { kind = pale ? 'ghost-counted' : 'counted'; since = d.changeAt; lockAt = d.lockAt; }
-        else if (d.no) kind = pale ? 'ghost-passed' : dead ? 'spent' : 'passed';
+        else if (d.no) kind = d.ghost ? 'ghost-passed' : dead ? 'spent' : 'passed';
         else if (d.down) { kind = pale ? 'ghost-sealed' : 'sealed'; since = d.changeAt; }
         else if (d.changeAt != null && !d.on) { wdAt = d.changeAt; if (t - wdAt < T_WD / GRID_HZ) kind = pale ? 'ghost-withdrawn' : 'withdrawn'; }
         // a ghost who passed with the token still up keeps it until the vote ends; one counted is spent after it
@@ -459,21 +536,8 @@ export function createVoteMarks(demo) {
   }
 
   const towardCam = () => { const y = cam.yaw; return new THREE.Vector3(Math.sin(y), 0, Math.cos(y)); };
-  /** where seat i's seal lies: SEAL_AHEAD m in front of the feet FACING THE DAIS (the ring's centre / the court's
-   *  focus); where that would put it behind the figure (the near arc: the dais lies away from the viewer) it turns toward
-   *  the viewer, blended between - so it always shows, at its own voter's feet, inward of them (never between two
-   *  neighbours stacked on screen at the ring's sides) */
-  const sealDir = new THREE.Vector3();
-  function sealDirOf(at, toCam) {
-    const st = stage(), staged = !!st && !st.onStones && st.active;
-    const fx = staged ? at.pos.x + Math.sin(at.face ?? 0) : C.cx, fz = staged ? at.pos.z + Math.cos(at.face ?? 0) : C.cz;
-    sealDir.set(fx - at.pos.x, 0, fz - at.pos.z).normalize();
-    // (vote-fix5, critic-4 P2-1) on the stones the side arcs' seals turn TOWARD THE CAMERA (straight down on screen,
-    // under their own feet): inward they slid sideways toward the next seat (Bones' seal read as Morel's). The far arc
-    // (the dais toward the camera) keeps "inward"; from side-on (dot 0) the camera wins (w 0.85), the near arc fully.
-    const dot = sealDir.dot(toCam), w = staged ? Math.min(1, Math.max(0, (-dot - 0.25) / 0.5)) : Math.min(1, Math.max(0, (0.6 - dot) / 0.7));
-    return sealDir.lerp(toCam, w).normalize();
-  }
+  // (vote-fix6) the in-front seal spot (SEAL_AHEAD m toward the dais / the camera, sealDirOf) is gone: every mark is
+  // centred on its own voter's feet (the under-circle)
   const sealBoxes = new Map();   // seat -> the seal's box (L.world texels) last frame (gameui keeps names off it)
   let nomBox = null;             // (vote-fix5) the nominee's ring (+ the stocks) box (L.world texels) last frame, or null
   const groundApi = demo.town?.registry?.get?.('ground')?.api;
@@ -569,7 +633,7 @@ export function createVoteMarks(demo) {
     if (nomIdx != null && nomIdx >= 0 && (ph === 'nomination' || ph === 'vote' || live)) {
       const at = sc.spotOf(nomIdx);
       if (at?.shown) {
-        const f = atW(at.pos), rx = pxOf(0.66 * at.scale), ry = Math.max(2, Math.round(rx * sp * 1.02));
+        const f = atW(at.pos), rx = pxOf(NOM_M * at.scale), ry = Math.max(2, Math.round(rx * sp * 1.02));
         const passed = S?.passedAt != null && t >= S.passedAt;
         const im = nomRingArt(rx, ry, q, T, passed ? 'gold' : false);
         const fx0 = Math.round(f.x), fy0 = Math.round(f.y);
@@ -614,24 +678,34 @@ export function createVoteMarks(demo) {
       if (!at || !at.shown) { spots?.off(i); continue; }
       if (prevKind.get(i) !== m.kind) { if (prevKind.has(i)) log({ seat: i, kind: m.kind, t: +t.toFixed(2) }); prevKind.set(i, m.kind); }
       const sc1 = at.scale ?? 1;
-      // the seal's spot: SEAL_AHEAD m in front of the feet, facing the dais (sealDirOf), on the ground (stage A: the ring)
-      const dir = sealDirOf(at, toCam), sx = at.pos.x + dir.x * SEAL_AHEAD * sc1, sz = at.pos.z + dir.z * SEAL_AHEAD * sc1;
-      const gy = at.staged ? terrain(sx, sz) + 0.03 : 0.05;
+      // (vote-fix6) THE UNDER-CIRCLE: centred on the voter's own feet, on their seat stone (UNDER_Y) or the stage spot's
+      // ground; the figure standing on it hides its back half (putGroundHD: the depth tier, like L.ground)
+      const sx = at.pos.x, sz = at.pos.z;
+      const gy = at.staged ? terrain(sx, sz) + 0.03 : UNDER_Y;
       const sp0 = new THREE.Vector3(sx, gy, sz);
       const f = atW(sp0), fx = Math.round(f.x), fy = Math.round(f.y);
-      const rx = pxOf(SEAL_M * sc1), ry = Math.max(2, Math.round(rx * sp * 1.04)), th = Math.max(1, q);
-      // (vote-fix4) the seal's BODY (+ its rim / thickness, 1 px): a name may graze the settled wax drops round it, never
-      // the seal (was x 1.4 / 1.6: on the phone it kept 4 side names out)
-      { const s1 = 1 / kk; sealBoxes.set(i, { x0: Math.floor((fx - rx * 1.15 - q) * s1), x1: Math.ceil((fx + rx * 1.15 + q) * s1), y0: Math.floor((fy - ry * 1.2 - q) * s1), y1: Math.ceil((fy + ry * 1.2 + th + q) * s1) }); }
+      const rx = pxOf(UNDER_M * sc1), ry = Math.max(2, Math.round(rx * sp * 1.0)), th = Math.max(1, q);
+      // the small seal (in the hand / falling / rising back)
+      const srx = pxOf(SEAL_M * sc1), sry = Math.max(2, Math.round(srx * sp * 1.04));
+      // the circle's box (its rim + the drips; L.world texels): gameui keeps names off it
+      { const s1 = 1 / kk; sealBoxes.set(i, { x0: Math.floor((fx - rx * 1.08 - q) * s1), x1: Math.ceil((fx + rx * 1.08 + q) * s1), y0: Math.floor((fy - ry * 1.1 - q) * s1), y1: Math.ceil((fy + ry * 1.1 + th + 6 * q) * s1) }); }
       const handP = atW(at.pos.clone().setY(at.pos.y + at.height * 0.98).addScaledVector(toCam, 0.3 * sc1));
       const kind = m.kind, pale = kind.startsWith('ghost');
       const red = pale ? 'ghost' : 'red', gold = pale ? 'ghostgold' : 'gold';
       let drawn = null;
-      const restSeal = (kd) => { const im = sealArt(kd, rx, ry, T, th); ground(im, fx - im.ox, fy - im.oy, sp0, im.oy); };
-      const drops = (k, kd) => { const im = dropsArt(Math.min(3, k), rx, ry, q, kd, T); if (k >= 3) ground(im, fx - im.ox, fy - im.oy, sp0, im.oy); else blitF(Wimg, im, fx - im.ox, fy - im.oy); };
-      // the seal in the air (face-on, shrinking with height): u = 0 at the hand .. 1 on the ground
+      const under = (kd, sx1 = 1, sy1 = 1, dis = 0, dy = 0) => {
+        let im = underArt(kd, Math.max(3, Math.round(rx * sx1)), Math.max(2, Math.round(ry * sy1)), T, q);
+        if (dis > 0) im = dissolved(im, dis, `under|${kd}|${im.w}|${im.h}|${q}|${T.gold}`);
+        ground(im, fx - im.ox, fy - im.oy - dy, sp0, im.oy + dy);
+      };
+      // the wax drops flung off the circle's rim: in flight on the world tier, settled on the ground
+      // (settled at 1.42 x these: ~1.3 x the rim, spatter apart from it - hugging the rim they read as knobs)
+      const dRx = Math.round(rx * 0.92), dRy = Math.max(2, Math.round(ry * 0.92));
+      // (the settled splatter is part of the pool's art: only the drops in flight are drawn here)
+      const drops = (k, kd) => { if (k >= 3) return; const im = dropsArt(k, dRx, dRy, q, kd, T); blitF(Wimg, im, fx - im.ox, fy - im.oy); };
+      // the small seal in the air (face-on, shrinking with height): u = 0 at the hand .. 1 at the feet
       const airSeal = (kd, u) => {
-        const r = Math.max(2, Math.round(rx * (0.8 + 0.2 * u))), rv = Math.max(2, Math.round(r + (ry - r) * u * u));
+        const r = Math.max(2, Math.round(srx * (0.8 + 0.2 * u))), rv = Math.max(2, Math.round(r + (sry - r) * u * u));
         const im = sealArt(kd, r, rv, T, th), x = Math.round(handP.x + (fx - handP.x) * u), y = Math.round(handP.y + (fy - handP.y) * u);
         blitF(Wimg, im, x - im.ox, y - im.oy);
         return y;
@@ -641,26 +715,27 @@ export function createVoteMarks(demo) {
         if (k < 2) { airSeal(red, 0); drawn = 'lift'; }
         else if (k < T_SLAM) {
           const y = airSeal(red, k === 2 ? 0.45 : 0.85);
-          for (const dx of [-Math.round(rx * 0.45), 0, Math.round(rx * 0.45)]) Wimg.rect?.(fx + dx, y - (6 + Math.abs(dx) % 3) * q - Math.round(ry), Math.max(1, q >> 1) || 1, 4 * q, T.parchmentHi);
+          for (const dx of [-Math.round(srx * 0.45), 0, Math.round(srx * 0.45)]) Wimg.rect?.(fx + dx, y - (6 + Math.abs(dx) % 3) * q - Math.round(sry), Math.max(1, q >> 1) || 1, 4 * q, T.parchmentHi);
           drawn = 'fall';
         } else {
           if (k < T_SLAM + 2) {
-            // the SLAM: squashed wide + the slam dashes
-            const im = sealArt(red, Math.round(rx * 1.22), Math.max(2, Math.round(ry * 0.78)), T, th);
-            ground(im, fx - im.ox, fy - im.oy, sp0, im.oy);
-            const sl = slamArt(rx, ry, q, T); blitF(Wimg, sl, fx - sl.ox, fy - sl.oy);
+            // the SLAM: the seal hits the stone small (k 4), then PRESSES OUT into the circle squashed wide (k 5),
+            // with the slam dashes round the rim
+            const big = k === T_SLAM + 1;
+            under(red, big ? 1.12 : 0.6, big ? 0.84 : 0.6);
+            const sl = slamArt(Math.round(rx * (big ? 1 : 0.6)), Math.round(ry * (big ? 1 : 0.6)), q, T); blitF(Wimg, sl, fx - sl.ox, fy - sl.oy);
             drawn = 'slam';
-          } else { restSeal(red); drawn = k < T_REST ? 'settle' : 'rest'; }
+          } else { under(red); drawn = k < T_REST ? 'settle' : 'rest'; }
           drops(Math.floor((k - T_SLAM) / 2), red);
-          if (k - T_SLAM < 8) { const du = dustArt(Math.min(3, (k - T_SLAM) >> 1), rx, ry, q); blitF(Wimg, du, fx - du.ox, fy - du.oy); }
+          if (k - T_SLAM < 8) { const du = dustArt(Math.min(3, (k - T_SLAM) >> 1), dRx, dRy, q); blitF(Wimg, du, fx - du.ox, fy - du.oy); }
         }
         spots?.off(i);
       } else if (kind === 'withdrawn' || kind === 'ghost-withdrawn') {
+        // TAKE BACK: the circle lifts (a hop, 2 drawings), shrinks + dissolves while the small seal rises back to the
+        // voter's hand (4), then a small puff at their middle (4)
         const k = gk(t - m.wdAt);
-        if (k < 2) {
-          const im = sealArt(red, rx, ry, T, th); blitF(Wimg, im, fx - im.ox, fy - im.oy - 2 * q);   // un-stamped: a hop
-          drawn = 'unstamp';
-        } else if (k < 6) { airSeal(red, k < 4 ? 0.7 : 0.55); drawn = 'rise'; }
+        if (k < 2) { under(red, 1, 1, 0.25, 2 * q); drawn = 'unstamp'; }
+        else if (k < 6) { under(red, k < 4 ? 0.8 : 0.6, k < 4 ? 0.8 : 0.6, k < 4 ? 0.5 : 0.75); airSeal(red, k < 4 ? 0.7 : 0.4); drawn = 'rise'; }
         else if (k < T_WD) {
           // (vote-fix5, critic-4 P3) the take-back puff at the voter's middle (was at the head: it rose over the name)
           const du = dustArt(k < 8 ? 1 : 2, Math.round(rx * 0.45), Math.round(rx * 0.45), q);
@@ -671,18 +746,20 @@ export function createVoteMarks(demo) {
       } else if (kind === 'counted' || kind === 'ghost-counted') {
         const k = reduced ? 99 : gk(t - m.lockAt);
         const pressed = k >= 3;
-        restSeal(pressed ? gold : red);
+        under(pressed ? gold : red);
         drops(3, pressed ? gold : red);
         if (k < T_STAMP) {
-          // the brass stamp: down (3 drawings), pressed (2), up (2)
-          const w = Math.round(rx * 1.5), st = stampArt(w, q, T, k >= 3 && k < 5), drop = Math.round((ry + 26 * q) * 1.0);
+          // the brass SEAL-PRESS comes down on the circle's mark (in front of the feet): down (3 drawings), pressed (2),
+          // up (2); from the press the whole circle is BRASS-GOLD (a flash hugging its rim, the chime ring, sparks)
+          const my = fy + Math.round(ry * 0.42);
+          const w = Math.max(8 * q, Math.round(rx * 0.62)), st = stampArt(w, q, T, k >= 3 && k < 5), drop = Math.round(ry + 22 * q);
           const dy = k < 3 ? [1, 0.55, 0.2][k] * drop : k < 5 ? 0 : k < 8 ? 0.35 * drop : 0.8 * drop;
-          if (k < 10) blitF(Wimg, st, fx - st.ox, Math.round(fy - Math.round(ry * 0.35) - dy) - st.oy);
+          if (k < 10) blitF(Wimg, st, fx - st.ox, Math.round(my - dy) - st.oy);
           if (k >= 3 && k < 5) { const fl = flashArt(rx, ry, q, T); blitF(Wimg, fl, fx - fl.ox, fy - fl.oy); }
           if (k >= 3) { const ch = chimeArt(Math.min(2, (k - 3) / 3 | 0), rx, ry, q, T); ground(ch, fx - ch.ox, fy - ch.oy, sp0, ch.oy); }
           if (k >= 4 && k < 11) {
             const G = pale ? { core: '#FFFFFF', arm: T.ghost, tip: T.ghostSh } : { core: '#FFFFFF', arm: T.goldHi, tip: T.gold };
-            for (let j = 0; j < 4; j++) { const a = (j / 4) * Math.PI * 2 + 0.78, rr = 1 + (k - 4) * 0.16; sparkQ(Wimg, fx + Math.cos(a) * rx * rr * 1.25, fy + Math.sin(a) * ry * rr * 1.6 - (k - 4) * q, k < 8 ? 1 : 0, q, G); }
+            for (let j = 0; j < 4; j++) { const a = (j / 4) * Math.PI * 2 + 0.78, rr = 1 + (k - 4) * 0.12; sparkQ(Wimg, fx + Math.cos(a) * rx * rr * 1.08, fy + Math.sin(a) * ry * rr * 1.3 - (k - 4) * q, k < 8 ? 1 : 0, q, G); }
           }
           drawn = k < 3 ? 'stamp-down' : k < 5 ? 'pressed' : 'stamp-up';
         } else drawn = 'gold';
@@ -694,16 +771,19 @@ export function createVoteMarks(demo) {
           lit.add(i);
         }
       } else if (kind === 'ghost' || kind === 'ghost-passed') {
-        // the ghost token: a small pale ghost hovering at the seal's spot
-        const hT = pxOf(0.58 * sc1), bob = reduced ? 0 : frameAt(t + i * 0.37, 2.5, 2);
+        // the ghost token: a small pale ghost hovering at the FRONT of the voter's stone (vote-fix6: under their feet,
+        // toward the viewer - the under-circle's front rim)
+        const fp = sp0.clone().addScaledVector(toCam, UNDER_M * 0.9 * sc1), g0 = atW(fp), gx = Math.round(g0.x), gy0 = Math.round(g0.y);
+        const hT = pxOf(0.5 * sc1), bob = reduced ? 0 : frameAt(t + i * 0.37, 2.5, 2);
         const gt = ghostArt(hT, bob, T);
-        blitF(Wimg, gt, fx - gt.ox, fy - gt.oy - (2 + bob) * q);
-        const sh = memo(`gsh|${rx}|${q}`, () => { const o = new PixelImage(2 * Math.round(rx * 0.5) + 3, 2 * Math.round(ry * 0.4) + 3); o.ellipse(o.w / 2, o.h / 2, rx * 0.5, Math.max(1, ry * 0.4), '#3A4860'); o.ox = o.w >> 1; o.oy = o.h >> 1; return dissolve(o, 0.5); });
-        ground(sh, fx - sh.ox, fy - sh.oy, sp0, sh.oy);
+        blitF(Wimg, gt, gx - gt.ox, gy0 - gt.oy - (2 + bob) * q);
+        const shr = Math.round(srx * 0.5), shv = Math.max(1, Math.round(sry * 0.4));
+        const sh = memo(`gsh|${shr}|${shv}|${q}`, () => { const o = new PixelImage(2 * shr + 3, 2 * shv + 3); o.ellipse(o.w / 2, o.h / 2, shr, shv, '#3A4860'); o.ox = o.w >> 1; o.oy = o.h >> 1; return dissolve(o, 0.5); });
+        ground(sh, gx - sh.ox, gy0 - sh.oy, fp, sh.oy);
         drawn = 'token';
         spots?.off(i);
       } else if (kind === 'passed' && S && !m.nominee) {
-        // (vote-fix5, critic-4 P3) "registered: no" - the hand passed a living voter with no seal: a tiny grey ring
+        // (vote-fix5, critic-4 P3) "registered: no" - the hand passed a living voter with no seal: a faint grey ring
         const d = S.seats?.[i + 1], k = reduced || !d ? 9 : gk(t - d.lockAt);
         const nv = noVoteArt(rx, ry, q, k < T_NOVOTE ? 0 : 1);
         ground(nv, fx - nv.ox, fy - nv.oy, sp0, nv.oy);
@@ -712,7 +792,8 @@ export function createVoteMarks(demo) {
       } else spots?.off(i);
       const top = Math.round(handP.y - 2 * q);
       if (drawn && drawn !== 'rest' && drawn !== 'gold' && drawn !== 'novote') markTop.set(i, HD ? Math.floor(top / kk) : top);
-      marks[i] = { kind, drawn, current: m.current, nominee: m.nominee, at: [fx, fy], w: [+sx.toFixed(2), +sz.toFixed(2)], spot: lit.has(i) };
+      // (vote-fix6) w = the mark's centre in the world (= the feet: the attribution check projects it), y its plane
+      marks[i] = { kind, drawn, current: m.current, nominee: m.nominee, at: [fx, fy], w: [+sx.toFixed(2), +sz.toFixed(2)], y: +gy.toFixed(3), r: [rx, ry], spot: lit.has(i) };
     }
     info.seats = marks;
     if (spots) {
@@ -820,6 +901,7 @@ export function voteStateArt(T, { hd = false } = {}) {
   const q = hd ? 2 : 1, rx = 13 * q, ry = 7 * q, out = {};
   for (const k of ['red', 'gold', 'ghost', 'ghostgold']) out[`seal_${k}`] = sealArt(k, rx, ry, T, q);
   out.seal_face = sealArt('red', 10 * q, 10 * q, T, q);
+  for (const k of ['red', 'gold', 'ghost', 'ghostgold']) out[`under_${k}`] = underArt(k, 24 * q, 9 * q, T, q);
   for (let k = 0; k < 4; k++) { out[`dust_${k}`] = dustArt(k, rx, ry, q); out[`drops_${k}`] = dropsArt(k, rx, ry, q, 'red', T); }
   out.slam = slamArt(rx, ry, q, T);
   out.stamp = stampArt(Math.round(rx * 1.5), q, T); out.stamp_pressed = stampArt(Math.round(rx * 1.5), q, T, true);

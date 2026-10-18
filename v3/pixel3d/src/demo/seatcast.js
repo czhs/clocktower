@@ -156,14 +156,29 @@ export async function createSeatCast(demo) {
   // gameui.js). Walking off the stone gives the seat back; leaving the vote camera puts you down just outside the ring.
   let yours = -1, yoursAt = -1;
   const P0 = new THREE.Vector3();
+  const spentNow = new Set();     // (vote-fix6) dead seats whose ghost vote the running vote has counted
+  // (vote-fix6, the user: "p doesn't reliably send me to join the voting circle") the cases found (shots/vote-fix6/
+  // pcases-before): inside a house / the tower (no seat: the vote camera stays off indoors), the screen fading through
+  // a door (the seat taken, the deferred teleport landed after the walk-off check gave it back), the Storyteller (no
+  // seat, left where they stood), a HELD walk key (walked straight off the stone), any camera mode but follow (time.js),
+  // P again inside the 3 s after a ceremony's night (votecam.js), P twice (time.js) - all fixed: starting the ceremony
+  // ALWAYS brings you to your seat (the Storyteller to the dais)
+  const isST = () => demo.player?.handle?.id === 'storyteller' || store.state.character === 'storyteller';
+  /** where you are for picking the nearest seat: in a room (a house / the tower) its door's doorstep in the town */
+  function whereYouAre() {
+    const pl = demo.player;
+    if (!pl?.position) return null;
+    if (pl.location && pl.location !== 'town') { const s = pl.spots?.()?.[pl.location]; if (s) return s; }
+    return pl.position;
+  }
+  const ceremonySeat = (i) => !(demo.time?.ceremony && (i === CEREMONY.nominee || CEREMONY.dead.includes(i)));
   function pickYours() {
-    const p = demo.player?.position;
-    if (!p || demo.player?.interior || demo.player?.handle?.id === 'storyteller') return -1;
-    const s = store.state, cer = !!demo.time?.ceremony, nom = s.nominee ?? s.seats.findIndex((x) => x.nominated);
+    const p = whereYouAre();
+    if (!p || isST()) return -1;
+    const s = store.state, nom = s.nominee ?? s.seats.findIndex((x) => x.nominated);
     let best = -1, bd = Infinity;
     for (let i = 0; i < N; i++) {
-      if (i === nom || s.seats[i]?.dead) continue;
-      if (cer && (i === CEREMONY.nominee || CEREMONY.dead.includes(i))) continue;
+      if (i === nom || s.seats[i]?.dead || !ceremonySeat(i)) continue;
       const q = layout.seatPos(i, N), d = Math.hypot(q.x - p.x, q.z - p.z);
       if (d < bd) { bd = d; best = i; }
     }
@@ -173,6 +188,10 @@ export async function createSeatCast(demo) {
     if (i < 0 || !demo.player?.teleport) return;
     yours = i; yoursAt = engine.time;
     const q = layout.seatPos(i, N);
+    // (vote-fix6) out of a room at once (teleport: location 'town', no fade); a walk in progress stops and a HELD walk
+    // key no longer counts until it is let go (player.holdKeys); mid-fade the teleport runs when the fade ends (the
+    // walk-off check waits for it)
+    demo.player.holdKeys?.();
     demo.player.teleport(q.x, q.z, Math.atan2(C.cx - q.x, C.cz - q.z), { exact: true, location: 'town', keepCamera: true });
     version++;
     events.emit('seat:yours', { seat: i });
@@ -186,6 +205,38 @@ export async function createSeatCast(demo) {
     }
     version++;
     events.emit('seat:yours', { seat: -1 });
+  }
+  // (vote-fix6) THE STORYTELLER takes no seat: they stand by the dais, at its foot on the camera's side (the vote
+  // camera's yaw when it is known), facing out over the ring
+  let stAt = null;
+  function daisSpot() {
+    const vy = demo.passB?.votecam?.frame?.yaw;
+    const y = Number.isFinite(vy) ? vy : engine.camera.yaw ?? 0;
+    const r = 2.95, x = C.cx + Math.sin(y) * r, z = C.cz + Math.cos(y) * r;
+    return { x, z, face: y };
+  }
+  function standST() {
+    if (!demo.player?.teleport) return;
+    const s = daisSpot();
+    demo.player.holdKeys?.();
+    demo.player.teleport(s.x, s.z, s.face, { location: 'town', keepCamera: true });
+    stAt = { x: s.x, z: s.z, t: engine.time };
+    events.emit('seat:yours', { seat: -1, storyteller: true });
+  }
+  /** (vote-fix6) bring you into the vote now (the ceremony's start when the vote camera is already up): the
+   *  Storyteller to the dais; you to a seat (a new one if yours is now the ceremony's nominee / dead seat) */
+  function join() {
+    if (!ringStage() || params.get('yourSeat') === '0') return;
+    if (isST()) { if (yours >= 0) stand({ move: false }); standST(); return; }
+    stAt = null;
+    if (yours >= 0 && ceremonySeat(yours) && !store.state.seats[yours]?.dead) {
+      // still a good seat: make sure you are on it (out of a room / back from a walk)
+      const q = layout.seatPos(yours, N), p = demo.player?.position;
+      if (!p || demo.player?.location !== 'town' || Math.hypot(p.x - q.x, p.z - q.z) > 0.3) sit(yours);
+      return;
+    }
+    if (yours >= 0) stand({ move: false });
+    sit(pickYours());
   }
   const ringStage = () => { const st = stage(); return !st || st.onStones; };
   // (vote-fix4) 3/4 TOWARD THE CAMERA in the vote camera on the stones: a seat facing the dais showed the camera its
@@ -206,8 +257,8 @@ export async function createSeatCast(demo) {
   /** the facing at seat position (x, z) with the dais at C: turned toward the camera at yaw cy by k */
   const turned = (x, z, cy, k) => { const home = Math.atan2(C.cx - x, C.cz - z); return cy + wrapA(home - cy) * k; };
   offs.push(store.on('camera', ({ value, prev }) => {
-    if (value === 'vote' && prev !== 'vote' && ringStage() && params.get('yourSeat') !== '0') sit(pickYours());
-    else if (value !== 'vote' && prev === 'vote') stand();
+    if (value === 'vote' && prev !== 'vote' && ringStage() && params.get('yourSeat') !== '0') { if (isST()) standST(); else { stAt = null; sit(pickYours()); } }
+    else if (value !== 'vote' && prev === 'vote') { stAt = null; stand(); }
   }));
   /** slap / take back YOUR seal (X, the action bar's seal button) -> { ok, why } */
   // (vote-fix5, critic-4 P2-5) DEBOUNCED: a second toggle within SEAL_DEBOUNCE s of the last one is ignored (a
@@ -216,7 +267,9 @@ export async function createSeatCast(demo) {
   let lastToggle = -1e9;
   function toggleSeal() {
     const s = store.state, tm = demo.time;
-    if (yours < 0) return { ok: false, why: 'You have no seat in this vote' };
+    if (yours < 0) return { ok: false, why: stAt || isST() ? 'The Storyteller does not vote' : 'You have no seat in this vote' };
+    // (vote-fix6) your ghost (the ghost emote's state) has ONE vote: spent once the clock hand counted it
+    if (demo.player?.ghost && demo.player.ghostSpent && !tm?.seals?.downAt?.(yours, engine.time)) return { ok: false, why: 'Your ghost vote is spent' };
     if (s.phase !== 'vote') return { ok: false, why: s.phase === 'nomination' ? 'Wait for the vote to open' : 'There is no vote right now' };
     // (a press within SEAL_DEBOUNCE of the previous PRESS is ignored and extends the quiet: X held / spammed = one slap)
     const since = engine.time - lastToggle;
@@ -273,6 +326,9 @@ export async function createSeatCast(demo) {
     /** (seal vote) your seat in the vote (0-based) or -1; toggleSeal() = X; sit(i) / stand() for tests */
     get yours() { return yours; },
     toggleSeal, sit, stand,
+    /** (vote-fix6) bring you into the vote now (seat / the Storyteller's dais spot); the Storyteller's spot (tests) */
+    join, daisSpot,
+    get storyteller() { return !!stAt; },
     update(t) {
       const s = store.state, ph = s.phase;
       if (ph !== prevPhase) {
@@ -292,10 +348,34 @@ export async function createSeatCast(demo) {
       }
       info.nominator = nominator;
       const nom = nomineeOf(s), seals = demo.time?.seals;
-      // walked off your stone: the seat goes back to its cast member
+      // walked off your stone: the seat goes back to its cast member ((vote-fix6) not while a door fade still holds
+      // the teleport onto it: the grace starts when the fade is over)
       if (yours >= 0 && demo.player?.position) {
+        if (demo.player.transition || demo.player.pending) yoursAt = t;
         const q = layout.seatPos(yours, N), p = demo.player.position;
         if (Math.hypot(p.x - q.x, p.z - q.z) > 0.6 && t - yoursAt > 0.5) stand({ move: false });
+      }
+      // (vote-fix6) the Storyteller's dais spot follows the vote camera's yaw once its frame is known (one re-place)
+      if (stAt && !stAt.fixed && store.state.camera === 'vote' && demo.passB?.votecam?.frame && !demo.player?.transition) {
+        stAt.fixed = true;
+        const sp = daisSpot();
+        if (Math.hypot(sp.x - stAt.x, sp.z - stAt.z) > 0.5) { const keep = stAt; standST(); stAt.fixed = true; stAt.t = keep.t; }
+      }
+      // (vote-fix6) GHOST VOTES SPENT: a dead seat's ghost vote counted in this vote (the clock hand locked its pale
+      // circle) is spent from that moment: the seat shows 'ghost-spent' (no halo); when the vote phase ends the store
+      // records it (ghostVote false), so it stays spent. YOUR ghost (the ghost emote's state) the same (player.js).
+      if (ph === 'vote' && demo.gameui?.voteOf) {
+        const V = demo.gameui.voteOf(t), S = V ? sealVoteAt(V, t, seals?.log) : null;
+        if (S) for (const [k, d] of Object.entries(S.seats)) {
+          if (!d.yes) continue;
+          const i = +k - 1;
+          // (the halo's loss: 'ghost:spent' {seat, t} the moment it is counted, for the halo's snuff)
+          if (d.ghost && !spentNow.has(i)) { spentNow.add(i); events.emit('ghost:spent', { seat: i, t: +t.toFixed(3) }); }
+          if (i === yours && demo.player?.ghost && !demo.player.ghostSpent) demo.player.setGhostSpent?.(true);
+        }
+      } else if (spentNow.size) {
+        for (const i of spentNow) if (s.seats[i]?.dead && s.seats[i].ghostVote !== false) store.setSeat(i, { ghostVote: false }, 'vote');
+        spentNow.clear();
       }
       const vy = voteYaw();
       // (vote-fix4) your figure on your stone: 3/4 toward the camera (never while you walk / a path is set)
@@ -321,8 +401,17 @@ export async function createSeatCast(demo) {
         if (st.dead) {
           if (r.dieAt < 0) r.dieAt = t;
           const fresh = t - r.dieAt < DIE_S && has(r, 'die') && r.wasAlive;
-          want = fresh ? 'die' : st.ghostVote !== false ? (has(r, 'ghost') ? 'ghost' : 'idle') : has(r, 'ghost-spent') ? 'ghost-spent' : has(r, 'ghost') ? 'ghost' : 'idle';
+          // (vote-fix6, the user: "chonk didn't lose their halo") spent = no ghost vote left (the store) OR counted in
+          // this vote (spentNow): 'ghost-spent' (its own look: no halo); a character with spec.ghost but no
+          // 'ghost-spent' clip keeps 'ghost' at the library's spent level (ch.ghost 2: dimmer, no halo)
+          const spent = st.ghostVote === false || spentNow.has(r.i);
+          want = fresh ? 'die' : !spent ? (has(r, 'ghost') ? 'ghost' : 'idle') : has(r, 'ghost-spent') ? 'ghost-spent' : has(r, 'ghost') ? 'ghost' : 'idle';
+          const lv = spent && !fresh && r.h.spec?.ghost ? 2 : null;
+          if (r.h.ch && r.h.ch.ghost !== lv) r.h.ch.ghost = lv;
+          r.spent = spent;
         } else {
+          if (r.h.ch && r.h.ch.ghost != null) r.h.ch.ghost = null;
+          r.spent = false;
           r.dieAt = -1; r.wasAlive = true;
           // (seal vote) the 'vote' clip plays as the voter SLAPS their seal down and holds while it lies there;
           // taking it back releases it (the seals' log, sealvote.js: scripted voters are written ahead)
@@ -369,7 +458,14 @@ export async function createSeatCast(demo) {
     info() {
       const clips = {};
       for (const r of seats) if (r?.shown) { const cs = r.h?.ch?.state; clips[r.i] = cs?.action ? `${cs.action}` : cs?.clip ?? r.clip; }
-      return { ids: seats.map((r) => r?.id), shown: info.shown, nominator: info.nominator, clips, folkHidden: folk ? !folk.visible : null, members: shownMembers.length };
+      // (vote-fix6) the ghosts' halos: per dead seat its ghost level (rig) and halo scale (spec.ghost: the library's
+      // 'ghostHalo' bone, 1 shown / 0 hidden; a character's own 'halo' bone (chonk): its clip-keyed scale, > 10 shown)
+      const ghosts = {};
+      for (const r of seats) if (r?.shown && store.state.seats[r.i]?.dead) {
+        const rig = r.h?.ch?.rig, b = rig?.bones ?? {}, hb = b.ghostHalo ?? b.halo ?? null;
+        ghosts[r.i] = { id: r.id, spent: !!r.spent, level: rig?.ghostLevel ?? null, halo: hb ? +hb.scale.x.toFixed(2) : null, haloBone: b.ghostHalo ? 'ghostHalo' : b.halo ? 'halo' : null, haloShown: hb ? (b.ghostHalo ? hb.scale.x > 0.5 : hb.scale.x > 10) : null };
+      }
+      return { ids: seats.map((r) => r?.id), shown: info.shown, nominator: info.nominator, clips, folkHidden: folk ? !folk.visible : null, members: shownMembers.length, ghosts, spentNow: [...spentNow] };
     },
     dispose() { for (const o of offs) o?.(); for (const r of seats) r?.h?.dispose(); if (folk) folk.visible = true; },
   };

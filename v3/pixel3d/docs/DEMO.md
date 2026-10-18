@@ -638,6 +638,44 @@ seatcast.js / gameui.js / tools/demo-play-passb.mjs hand-merged onto main's D=2 
     "The voting ceremony begins"; the notebook wraps a long name to 2 lines; a tiny grey **NO VOTE ring** where the seal
     would lie once the hand passed a living voter without one; at night six RING anchors (r 5.2, 2.4 m up) join the
     constant light pool while the vote camera is up on the stones (no new light; `time.info.ringLit`).
+- **vote-fix6 (2026-10-18, the user's playtest of the live seal vote; evidence + scripts `shots/vote-fix6/`, checkpoint
+  `PROGRESS.md`)**: "the stamp placement is still a little ambiguous about the player who is casting" / "perhaps instead
+  of stamp there is some sort of undercircle - or the stamp is the undercircle" / "chonk didn't lose their halo" / "p
+  doesn't reliably send me to join the voting circle".
+  - **The under-circle** (votemarks.js, see "The marks" below): the in-front seal spot (`SEAL_AHEAD`, `sealDirOf`) is
+    gone; every mark is centred on its own voter's feet (`info().seats[i].w` = the feet, `.y` its plane, `.r` its px
+    radii). votecam's frame reach toward the camera is `UNDER_REACH` 0.66 m (was 0.62 + 1.6 x 0.27). Attribution
+    (`shots/vote-fix6/vote6.mjs`: each drawn mark's centre within 3 px of its own feet and nearer them than any other
+    seat's feet, every frame): 0 exceptions, max 1 px (720p) / 2.2 px (1080p) off, the nearest other feet >= 57 / 84 px.
+    The nominee's ring is hollow + chevrons (never a filled pool).
+  - **Spent ghost votes lose the halo** (seatcast.js): a dead seat's ghost vote COUNTED by the clock hand is spent from
+    that moment (`spentNow`): the seat plays `ghost-spent` (its own look: Chonk's clip keys the halo bone back to a speck),
+    and a `spec.ghost` character without a `ghost-spent` clip keeps `ghost` at the library's spent level (`ch.ghost = 2`:
+    dimmer, `rig.setGhost` hides the shared halo) - no src/chars change was needed. When the vote phase ends the store
+    records it (`ghostVote: false`): spent for good (a spent seat at the ceremony's start - seat 11 - never shows one).
+    Event **`ghost:spent`** `{seat, t}` / `{you: true, t}` the moment a ghost vote is counted (for a halo "snuff");
+    `seats.info().ghosts` = per dead seat `{id, spent, level, halo, haloBone, haloShown}`. YOUR ghost (the ghost emote's
+    state) the same: `player.ghostSpent` / `setGhostSpent()` (its 'ghost-spent' clip or `ch.ghost = 2`; cleared by the
+    ghost emote off), X then says "Your ghost vote is spent". Measured: Chonk halo bone 1000 -> 2 at its lock;
+    clarabelle (you, ghost) level 1 -> 2, halo 1 -> 0; mincut (spent at the start) level 2, halo 0.
+  - **P always brings you into the circle** (time.js / seatcast.js / votecam.js / player.js). Reproduced
+    (`shots/vote-fix6/pcases.mjs`, before -> after): from inside a house / the tower (no seat; the vote camera is off
+    indoors), during a door's fade (the seat taken, the deferred teleport landed after the walk-off check gave it back),
+    as the Storyteller (left where they stood), with a HELD walk key (walked straight off the stone), from the overview /
+    iso / free cameras (`playCeremony` only switched from follow), and P inside the 3 s after a ceremony's night (the
+    old ceremony's hand-back to follow fired mid-ceremony) all FAILED; near / far / click-walk / the vote camera already up
+    / ghosted / after a whole ceremony / the touch tray's ceremony button passed. Now: a start switches ANY camera mode to
+    the vote camera, or (already up) `seats.join()` seats you - re-seating you off a seat the ceremony needs (its nominee
+    / dead); a room's DOORSTEP picks the nearest seat and the teleport leaves the room at once; `player.holdKeys()` (held
+    walk keys count again only after release; a click path stops); the walk-off check waits while a fade holds the
+    teleport (and a pending teleport keeps `keepCamera`); the STORYTELLER takes no seat: they stand by the dais
+    (`seats.daisSpot()`: r 2.95 on the vote camera's side, facing out; `seats.storyteller`; X says "The Storyteller
+    does not vote"); votecam's `'ceremony'` listener resets the stale night hand-back; P within 1 s of a start is
+    ignored (a double press stopped it); P later STOPS cleanly (seals cleared, day, follow camera). 16 / 16 cases pass.
+  - Playtest (demo-play-passb): every drawn mark centred on its own feet; seat 3's halo shown before its ghost vote and
+    gone from the lock (`ghost-spent`), seat 11 never; `ghost:spent` for seat 3 only; seat 3 recorded spent after the
+    vote; 11 P cases (house, tower, door fade, Storyteller, held W, overview / iso / free, vote camera first next to the
+    nominee's seat, P after a night, P twice) + P-to-stop.
 - **The vote staging, the court** (`?voteStage=N`; `votestage.js createVoteStage`; the user: "voting arrangement is still not focussing on the
   players + clock of the clocktower as central, we want to be as closely cropped as possible to maximize the detail on
   the characters" / "the voting circle can exaggerate things compared to the day - can take artistic licenses"). While
@@ -758,25 +796,32 @@ seatcast.js / gameui.js / tools/demo-play-passb.mjs hand-merged onto main's D=2 
     the stone top), `spotOf(yours)` is you. **X** (also the action bar's leading SEAL button while you sit in a vote -
     lit while your seal is down - and the tray) slaps your seal / takes it back (your 'vote' clip / idle); after the
     hand passed you a toast says why not. Walking off the stone gives the seat back; leaving the vote camera puts you
-    1.25 m outside the ring. `?yourSeat=0` = no seat.
+    1.25 m outside the ring. `?yourSeat=0` = no seat. (vote-fix6) P ALWAYS seats you (from a room, a fade, any camera
+    mode, mid-walk, the vote camera already up: `seats.join()`); the Storyteller stands by the dais instead (above).
   - **The marks** (`votemarks.js`, the game UI's pixel layers z 40, stepped drawings on the 30 Hz grid, every piece
-    drawn from its WORLD size at the tier's density): the **seal** lies 0.62 m in front of the voter's feet FACING THE
-    DAIS, against its own seat stone (on the near arc, where the dais lies away from the viewer, the direction blends
-    toward the viewer so no figure hides it): a red wax disc 0.54 m across, bumpy rim, lit band, impression groove, a
-    gold 4-point mark, its thickness under the near rim. **SLAP**: the voter's `vote` clip; the seal held up at the hand
-    (2 frames), the fall (2 drawings + a streak), the SLAM (squashed wide + slam dashes), a dust puff (4 drawings) and 7
-    wax drops flung out that settle round it; then it rests (UI colours: readable by day and by night). **TAKE BACK**:
-    it hops off the ground (un-stamped, drops gone), rises to the hand (2 drawings) and is gone in a small puff.
-    **LOCK** (the hand reaches a seat with a seal): a brass seal-press comes down (3 drawings), presses (the flash, the
-    seal turns GOLD, a brass chime ring, 4 sparks), lifts away; the **spotlight** drops onto the voter. **No seal when
-    the hand passes**: a tiny grey ring where the seal would lie (vote-fix5). **Ghost vote available**: a small pale sheet-ghost token hovers at the seal's spot; used =
-    a pale seal (the same slap / take back / lock, a pale-gold seal and a pale beam); spent: nothing.
-    **The nominee**: a crimson ring round their feet through the nomination and the vote; at the THRESHOLD a crimson +
-    gold burst races out (held 0.93 s), sparks, and it becomes the BLOCK ring (vote-fix5: a solid gold double ring + the
-    stocks icon; a crimson beam on the nominee); the tower
+    drawn from its WORLD size at the tier's density). (vote-fix6) **THE UNDER-CIRCLE**: the seal IS a flat wax pool
+    pressed onto the voter's own seat stone, CENTRED ON THEIR FEET (`UNDER_M` 0.44 m radius, the plane the feet stand
+    on: 0.205 m, the stone's top; a staged spot: the terrain), a ground decal the figure standing in it hides
+    (`putGroundHD`): a 12-lobe scalloped rim LIT on the far side and SHADED on the near side, the pressed groove, the
+    seal's 4-point mark IN FRONT of the feet (it shows under any figure), 7 flat splatter blobs out from the rim
+    (foreshortened like the pool; no thickness band, no drips - they read as a little table's legs). **SLAP**: the
+    voter's `vote` clip; a small seal held up at the hand (2 frames), falls in front of them (2 drawings + a streak),
+    hits the stone small and PRESSES OUT squashed wide (slam dashes), a dust puff (4 drawings), wax drops in flight;
+    then the pool rests (UI colours: readable by day and by night). **TAKE BACK**: the pool lifts (a hop, dithered),
+    shrinks and dissolves while the small seal rises back to the hand, then a small puff at the voter's middle.
+    **LOCK** (the hand reaches a seat with a pool): a small brass seal-press comes down ON THE MARK (3 drawings),
+    presses (the flash hugging the rim, the whole pool turns BRASS-GOLD, a brass chime ring, 4 sparks), lifts away; the
+    **spotlight** drops onto the voter. **No seal when the hand passes**: a faint dithered grey ring hugging the stone
+    (0.82 of the pool). **Ghost vote available**: a small pale sheet-ghost token hovers at the FRONT of the voter's stone
+    (the pool's front rim); used = a PALE pool (the same slap / take back / lock, pale-gold when counted, a pale beam);
+    spent: nothing - and the ghost LOSES ITS HALO (below). Your ghost (the ghost emote's state) votes with a pale pool.
+    **The nominee** (never alike a voter's mark: a voter's is a FILLED pool, the nominee's is HOLLOW and toothed): a
+    crimson ring (`NOM_M` 0.74 m, wider than any pool) with four inward CHEVRONS pointing at the accused, through the
+    nomination and the vote; at the THRESHOLD a crimson + gold burst races out (held 0.93 s), sparks, and it becomes the
+    BLOCK ring (a solid gold double ring, its chevrons gold, + the stocks icon; a crimson beam on the nominee); the tower
     bell strikes (`time.ringBell`, `events 'vote:threshold'`). **The current voter**: the clock hand's outer end drawn
     on the ground in LIT brass (gold, a pale-gold light line, the chevron tip; from the dais past its treads to the
-    voter's seal on the stones, from the hub in a court). Ground pieces (resting seals, drops, rings, the hand) are
+    voter's stone on the stones, from the hub in a court). Ground pieces (the pools, rings, the hand) are
     decals on the HD depth tier (`putGroundHD`: whoever stands nearer hides them); the falling seal, the stamp, the
     ghost token and sparks on `L.hd.world`. After the vote phase everything dissolves out in 0.5 s.
   - **The spotlights** (`spotlight.js createSpotlights`): NO real lights - ONE mesh + ONE ShaderMaterial for all 15

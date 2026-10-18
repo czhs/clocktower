@@ -104,6 +104,13 @@ export async function createPlayer(demo) {
   // swap / a teleport (re-applied to the new character when it can be a ghost: a 'ghost' clip; the Storyteller never
   // ghosts, nor a character without one: the state is cleared with a toast).
   let ghosted = false;
+  // (vote-fix6) a ghost's ONE vote: once the clock hand counted it (seatcast.js) the ghost is SPENT: the character's
+  // 'ghost-spent' clip when it has one, and the library's spent level (ch.ghost 2: dimmer, NO HALO); the ghost emote
+  // off (alive again) clears it
+  let ghostSpent = false;
+  // (vote-fix6) holdKeys(): the movement keys held right now do not walk until they are all let go (taking your seat
+  // mid-walk: a held W walked you straight off the stone)
+  let keyHold = false;
 
   // ------------------------------------------------------------------------------------------------ character
   const speeds = () => {
@@ -153,14 +160,32 @@ export async function createPlayer(demo) {
     const n = h.emotes ? h.emotes.ghost : 'ghost';
     return n && h.spec.clips?.[n] ? n : null;
   };
+  /** (vote-fix6) the ghost's idle loop: 'ghost-spent' once the ghost vote is spent (when the character has it) */
+  const ghostIdle = (h = handle) => {
+    const g = ghostClip(h);
+    if (!g || !ghostSpent) return g;
+    const n = h.emotes?.['ghost-spent'] ?? 'ghost-spent';
+    return h.spec.clips?.[n] ? n : g;
+  };
   /** Put the current character into (on) / out of (off) the ghost state. Returns false when it cannot be a ghost. */
   function applyGhost(on) {
     if (!handle?.ch) return false;
-    const clip = on ? ghostClip() : null;
+    const clip = on ? ghostIdle() : null;
     if (on && !clip) return false;
-    handle.ch.ghost = on ? 1 : null;
+    handle.ch.ghost = on ? (ghostSpent ? 2 : 1) : null;
     play(on ? clip : 'idle');
     return true;
+  }
+  /** (vote-fix6) the ghost vote spent (on) / restored (off); re-applies the ghost look when ghosted */
+  function setGhostSpent(on) {
+    on = !!on;
+    if (on === ghostSpent) return ghostSpent;
+    ghostSpent = on;
+    if (ghosted) applyGhost(true);
+    events.emit('player:ghost', { on: ghosted, spent: ghostSpent });
+    // (the halo's loss: the same event as a seated ghost's, seatcast.js, for the halo's snuff)
+    if (ghostSpent) events.emit('ghost:spent', { you: true, t: +lastT.toFixed(3) });
+    return ghostSpent;
   }
   /** Ghost on / off (the ghost emote's toggle). Returns the new state, or null when this character cannot ghost. */
   function setGhost(on) {
@@ -169,6 +194,7 @@ export async function createPlayer(demo) {
     if (on && !ghostClip()) return null;
     path = null; emoting = null;
     ghosted = on;
+    if (!on) ghostSpent = false;
     applyGhost(on);
     events.emit('player:ghost', { on });
     events.emit('player:emote', { clip: 'ghost', name: on ? ghostClip() : null, off: !on });
@@ -202,7 +228,7 @@ export async function createPlayer(demo) {
     const c = handle.spec.clips[name];
     // (critic P2-4) a one-shot played over a looping emote (talk) returns to the IDLE (or the ghost idle when
     // ghosted), not to the loop: release the loop first
-    if (emoting && !(c.loop || c.hold)) { play(ghosted ? ghostClip() ?? 'idle' : 'idle'); emoting = null; }
+    if (emoting && !(c.loop || c.hold)) { play(ghosted ? ghostIdle() ?? 'idle' : 'idle'); emoting = null; }
     play(name);
     events.emit('player:emote', { clip: clip ?? 'signature', name });
     emoting = c.loop || c.hold || name === 'vote' || name === 'die' ? name : null;
@@ -262,7 +288,7 @@ export async function createPlayer(demo) {
   }
   function teleport(x, z, face, { exact = false, location: loc, internal = false, keepCamera = false } = {}) {
     // a teleport asked for while the screen fades (enter / leave) runs when the fade is over (the last request wins)
-    if (transition && !internal) { pending = { kind: 'teleport', args: [x, z, face, { exact, location: loc }] }; return { x, z }; }
+    if (transition && !internal) { pending = { kind: 'teleport', args: [x, z, face, { exact, location: loc, keepCamera }] }; return { x, z }; }
     // from inside a house, a point outside the room means the town: leave at once (no fade)
     if (loc === undefined && location !== 'town' && room) {
       const f = room.floor;
@@ -502,6 +528,11 @@ export async function createPlayer(demo) {
     setCharacter, teleport, walkTo, goTo, spots, speeds, emote,
     /** The ghost state (the ghost emote's toggle): get / set (setGhost(on) -> new state | null = cannot ghost). */
     get ghost() { return ghosted; },
+    /** (vote-fix6) the ghost vote spent (seatcast.js sets it when the clock hand counts your ghost's vote) */
+    get ghostSpent() { return ghostSpent; },
+    setGhostSpent,
+    /** (vote-fix6) ignore the movement keys held now until they are all let go (seated mid-walk); stops a click path */
+    holdKeys() { keyHold = true; path = null; },
     setGhost,
     /** The ghost level the character's material shows now (rig.ghostLevel 0 | 1 | 2; 0 for a spec without spec.ghost,
      *  whose ghost clip carries its own look): tests. */
@@ -545,10 +576,14 @@ export async function createPlayer(demo) {
       }
       const { fwd, right } = cameraAxes(engine.camera.targetYaw ?? engine.camera.yaw, AXES);
       mv.set(0, 0, 0);
-      if (input.any('KeyW', 'ArrowUp')) mv.add(fwd);
-      if (input.any('KeyS', 'ArrowDown')) mv.sub(fwd);
-      if (input.any('KeyD', 'ArrowRight')) mv.add(right);
-      if (input.any('KeyA', 'ArrowLeft')) mv.sub(right);
+      // (vote-fix6) after holdKeys() the held movement keys count again only once they are all let go
+      if (keyHold && !input.any('KeyW', 'ArrowUp', 'KeyS', 'ArrowDown', 'KeyD', 'ArrowRight', 'KeyA', 'ArrowLeft')) keyHold = false;
+      if (!keyHold) {
+        if (input.any('KeyW', 'ArrowUp')) mv.add(fwd);
+        if (input.any('KeyS', 'ArrowDown')) mv.sub(fwd);
+        if (input.any('KeyD', 'ArrowRight')) mv.add(right);
+        if (input.any('KeyA', 'ArrowLeft')) mv.sub(right);
+      }
       const shift = input.any('ShiftLeft', 'ShiftRight');
       const sp = speeds();
       let want = 0;
@@ -570,10 +605,10 @@ export async function createPlayer(demo) {
         else { mv.set(dx / d, 0, dz / d); want = Math.min(want, d / Math.max(dt, 1e-3)); }
       }
       moving = want > 0;
-      if (emoting && emoteUntil !== null && t >= emoteUntil && !moving) { play(ghosted ? ghostClip() ?? 'idle' : 'idle'); emoting = null; emoteUntil = null; }
+      if (emoting && emoteUntil !== null && t >= emoteUntil && !moving) { play(ghosted ? ghostIdle() ?? 'idle' : 'idle'); emoting = null; emoteUntil = null; }
       if (moving) {
         // (a ghost's held / looping emote returns to the ghost loop; ch.ghost = 1 keeps the walk ghost-shaded)
-        if (emoting) { play(ghosted ? ghostClip() ?? 'idle' : 'idle'); emoting = null; }
+        if (emoting) { play(ghosted ? ghostIdle() ?? 'idle' : 'idle'); emoting = null; }
         const step = want * dt;
         const got = collision.move(position, mv.x * step, mv.z * step);
         if (location === 'town') pushNPCs();

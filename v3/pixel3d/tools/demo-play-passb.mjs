@@ -96,7 +96,7 @@ export async function runPassB({ page, sleep, info, shot, fail, note, press, hol
   r.nomination = { ghost3: nomMark?.seats?.[3]?.kind ?? null, nominee: nomMark?.nominee ?? null };
   if (onStones && r.nomination.ghost3 !== 'ghost') fail(`passb: no ghost token at the ghost seat 3 in the nomination (${JSON.stringify(nomMark?.seats?.[3])})`);
   if (onStones && r.nomination.nominee?.seat !== 6) fail(`passb: no nominee marker at seat 6 (${JSON.stringify(r.nomination.nominee)})`);
-  await ev(() => { window.__voteBells = 0; window.__demo.demo.events.on('bell', () => { window.__voteBells++; }); });
+  await ev(() => { window.__voteBells = 0; window.__demo.demo.events.on('bell', () => { window.__voteBells++; }); window.__ghostSpent = []; window.__demo.demo.events.on('ghost:spent', (e) => { window.__ghostSpent.push(e); }); });
   await ev(() => { const d = window.__demo.demo; for (const i of [7, 9, 10, 12, 0, 1, 3]) d.time.setVote(i, true); d.store.set({ phase: 'vote' }, 'test'); });
   const tv0 = Date.now();
   let shotCounted = false;
@@ -105,6 +105,10 @@ export async function runPassB({ page, sleep, info, shot, fail, note, press, hol
   const acts = [[900, 'xx'], [1700, 'x'], [2300, 'wd1'], [2500, 'late14'], [2900, 'x']];
   const pressed = [];
   let ringMin = Infinity, ringIn = new Set(), beamSeen = false, burstSeen = false;
+  // (vote-fix6) the under-circle: every drawn mark centred on its own voter's feet (marks.seats[i].w = the seat's feet,
+  // world; off by > 2 cm = bad); the ghost halo: seat 3's halo shown before its ghost vote is counted, gone from the lock
+  // on (+ 'ghost-spent'); seat 11 (spent at the start) never shows one
+  const offFeet = [], halo3 = [], halo11 = new Set();
   while (Date.now() - tv0 < 24000) {
     for (const a of acts) if (!a.done && Date.now() - tv0 >= a[0]) {
       a.done = true;
@@ -120,6 +124,13 @@ export async function runPassB({ page, sleep, info, shot, fail, note, press, hol
     if (marksInfo?.nominee?.burst) burstSeen = true;
     if (!marksInfo) break;
     for (const [i, x] of Object.entries(marksInfo.seats)) { (stateSeen[x.kind] ??= new Set()).add(+i); if (x.drawn) (drawnSeen[x.drawn] ??= new Set()).add(+i); }
+    {
+      const g = await ev(() => { const d = window.__demo.demo, s = d.passB.seats; const feet = {}; for (let i = 0; i < 15; i++) { const p = s.spotOf(i)?.pos; if (p) feet[i] = [p.x, p.z]; } return { feet, ghosts: s.info().ghosts }; });
+      for (const [i, x] of Object.entries(marksInfo.seats)) if (x.drawn && x.drawn !== 'token' && g.feet[i] && Math.hypot(x.w[0] - g.feet[i][0], x.w[1] - g.feet[i][1]) > 0.02) offFeet.push(`${i}:${x.kind}`);
+      const g3 = g.ghosts?.[3], k3 = marksInfo.seats?.[3]?.kind ?? null;
+      if (g3) halo3.push([k3, g3.haloShown, g3.spent]);
+      if (g.ghosts?.[11]?.haloShown) halo11.add(marksInfo.seats?.[11]?.kind ?? '?');
+    }
     for (const i of marksInfo.spot?.lit ?? []) lit.add(i);
     if (marksInfo.plaque?.text) plaques.add(marksInfo.plaque.text);
     kindsAt.push({ ms: Date.now() - tv0, tally: marksInfo.tally, plaque: marksInfo.plaque?.text ?? null });
@@ -129,7 +140,14 @@ export async function runPassB({ page, sleep, info, shot, fail, note, press, hol
     await sleep(100);
   }
   r.cast.voting = voting;
-  r.ring = { nearest: Number.isFinite(ringMin) ? +ringMin.toFixed(2) : null, inside: [...ringIn] };
+  r.under = { offFeet: [...new Set(offFeet)].slice(0, 10), halo3: halo3.filter((x, j) => !j || JSON.stringify(x) !== JSON.stringify(halo3[j - 1])), halo11: [...halo11] };
+  if (offFeet.length) fail(`passb: vote marks not centred on their own voter's feet (${r.under.offFeet.join(', ')})`);
+  if (!halo3.some(([k, h]) => k === 'ghost' && h === true)) fail(`passb: the ghost seat 3 showed no halo before its vote (${JSON.stringify(r.under.halo3)})`);
+  // (one sample at the lock itself may still hold the old clip's pose: at most 2 samples with the halo after the lock)
+  if (!halo3.some(([k, h, sp]) => k === 'ghost-counted' && h === false && sp === true) || halo3.filter(([k, h]) => k === 'ghost-counted' && h === true).length > 2) fail(`passb: the ghost seat 3 kept its halo after its ghost vote was counted (${JSON.stringify(r.under.halo3)})`);
+  r.under.spentEvents = await ev(() => window.__ghostSpent);
+  if (!(r.under.spentEvents ?? []).some((e) => e.seat === 3) || r.under.spentEvents.some((e) => e.seat === 11)) fail(`passb: 'ghost:spent' events ${JSON.stringify(r.under.spentEvents)} (want seat 3 once, never the already-spent 11)`);
+  if (halo11.size) fail(`passb: the spent ghost seat 11 showed a halo (${r.under.halo11.join(',')})`);
   if (ringIn.size || (Number.isFinite(ringMin) && ringMin < 8)) fail(`passb: a townsperson inside r 8 m of the ring during the vote (${JSON.stringify(r.ring)})`);
   r.threshold = { beam: beamSeen, burst: burstSeen };
   if (!beamSeen || !burstSeen) fail(`passb: the threshold moment (the burst + the nominee's crimson beam) not seen (${JSON.stringify(r.threshold)})`);
@@ -333,6 +351,77 @@ export async function runPassB({ page, sleep, info, shot, fail, note, press, hol
   r.programs = [progs0, progs1];
   if (progs1 !== progs0) { const pn1 = await pnames(); fail(`passb: programs ${progs0} -> ${progs1} (new: ${pn1.filter((x) => !pn0.includes(x)).join(', ')}; gone: ${pn0.filter((x) => !pn1.includes(x)).join(', ')})`); }
   await ev(() => window.__demo.demo.store.set({ camera: 'follow', phase: 'day', nominee: null }, 'test'));
+  // (vote-fix6) the ghost vote seat 3 used is recorded spent once the vote phase ended (the store: ghostVote false)
+  await sleep(200);
+  r.under.spentAfter = await ev(() => window.__demo.demo.store.state.seats[3]?.ghostVote);
+  if (r.under.spentAfter !== false) fail(`passb: the counted ghost vote of seat 3 was not recorded spent after the vote (ghostVote ${r.under.spentAfter})`);
+
+  // ---- (vote-fix6) P ALWAYS SEATS YOU (the user: "p doesn't reliably send me to join the voting circle"): P from a
+  // room, the tower, a door fade, as the Storyteller (by the dais, no seat), with a held walk key, from every camera
+  // mode, with the vote camera already up (never on a seat the ceremony needs), inside the 3 s after a ceremony's
+  // night, P twice; P again later stops it (follow + day). Seated = the vote camera up, seats.yours >= 0, within
+  // 0.3 m of that stone, in the town, at +1.5 s and still at +4 s.
+  {
+    const char0 = await ev(() => window.__demo.demo.player.handle?.id);
+    const pst = () => ev(() => {
+      const d = window.__demo.demo, p = d.player, y = d.passB.seats.yours, q = y >= 0 ? d.layout.seatPos(y, 15) : null, C = d.layout.CIRCLE;
+      return { cam: d.store.state.camera, vc: !!d.passB.votecam.info.active, yours: y, dSeat: q ? +Math.hypot(p.position.x - q.x, p.position.z - q.z).toFixed(2) : null, loc: p.location, cer: !!d.time.ceremony, st: d.passB.seats.storyteller, rDais: +Math.hypot(p.position.x - C.cx, p.position.z - C.cz).toFixed(2), phase: d.store.state.phase };
+    });
+    const seated = (s, st) => st ? s.cam === 'vote' && s.vc && s.loc === 'town' && s.yours < 0 && s.st === true && s.rDais < 3.6 : s.cam === 'vote' && s.vc && s.yours >= 0 && s.dSeat < 0.3 && s.loc === 'town';
+    const preset = async (char) => {
+      await page.keyboard.up('KeyW');
+      await ev(async (char) => {
+        const d = window.__demo.demo;
+        d.time.stopCeremony?.();
+        d.store.set({ camera: 'follow', phase: 'day', nominee: null }, 'test');
+        if (d.player.location !== 'town') await d.player.leave({ instant: true });
+        if (d.player.handle?.id !== char) await d.player.setCharacter(char);
+        const s = d.player.spots().spawn; d.player.teleport(s.x, s.z);
+      }, char);
+      await sleep(900);
+    };
+    const cases = [
+      ['house', async () => { await ev(() => window.__demo.demo.player.enter('house-3', { instant: true })); await sleep(900); }],
+      ['tower', async () => { await ev(() => window.__demo.demo.player.enter('clocktower', { instant: true })); await sleep(900); }],
+      ['doorfade', async () => { await ev(() => { window.__demo.demo.player.enter('house-2'); }); await sleep(100); }],
+      ['storyteller', async () => { await ev(() => window.__demo.demo.player.setCharacter('storyteller')); await sleep(1200); }, { st: true }],
+      ['walkkey', async () => { await page.keyboard.down('KeyW'); await sleep(350); }, { hold: true }],
+      ['camOverview', async () => { await ev(() => window.__demo.demo.store.set({ camera: 'overview' }, 'key')); await sleep(600); }],
+      ['camIso', async () => { await ev(() => window.__demo.demo.store.set({ camera: 'iso' }, 'key')); await sleep(600); }],
+      ['camFree', async () => { await ev(() => window.__demo.demo.store.set({ camera: 'free' }, 'key')); await sleep(600); }],
+      // the vote camera already up (C) next to the ceremony's nominee seat 6: you must not keep seat 6
+      ['camVoteFirst', async () => { await ev(() => { const d = window.__demo.demo, s = d.player.spots()['seat-6']; d.player.teleport(s.x, s.z); }); await sleep(500); await ev(() => window.__demo.demo.store.set({ camera: 'vote' }, 'key')); await sleep(900); }, { notSeat: [6, 3, 11] }],
+      // a ceremony's night 1 s ago (the vote camera hands back to follow 3 s after it): P again
+      ['afterNight', async () => { await ev(() => { const d = window.__demo.demo; d.store.set({ camera: 'vote' }, 'time'); }); await sleep(900); await ev(() => window.__demo.demo.store.set({ phase: 'night' }, 'time')); await sleep(1000); }],
+      ['twice', async () => {}, { twice: true }],
+    ];
+    r.pcases = {};
+    for (const [name, setup, o = {}] of cases) {
+      await preset(char0);
+      let s1 = null, s4 = null, err = null;
+      try {
+        await setup();
+        await press('KeyP');
+        if (o.twice) { await sleep(150); await page.keyboard.press('KeyP'); }
+        await sleep(1500);
+        s1 = await pst();
+        if (o.hold) { await sleep(800); await page.keyboard.up('KeyW'); await sleep(1700); } else await sleep(2500);
+        s4 = await pst();
+      } catch (e) { err = String(e); }
+      const ok = !err && seated(s1, o.st) && seated(s4, o.st) && s4.cer && !(o.notSeat ?? []).includes(s4.yours);
+      r.pcases[name] = ok ? 'ok' : { s1, s4, err };
+      if (!ok) fail(`passb: P (${name}) did not bring you into the voting circle (${JSON.stringify({ s1, s4, err })})`);
+    }
+    // P again (> 1 s after the start) stops the ceremony: back to the follow camera and day, your seat given back
+    await sleep(300);
+    await press('KeyP');
+    await sleep(900);
+    const sp = await pst();
+    r.pcases.stop = sp.cam === 'follow' && !sp.cer && sp.phase === 'day' && sp.yours < 0 ? 'ok' : sp;
+    if (r.pcases.stop !== 'ok') fail(`passb: P during the ceremony did not stop it cleanly (${JSON.stringify(sp)})`);
+    await preset(char0);
+    console.log(`   P cases: ${JSON.stringify(r.pcases)}`);
+  }
   console.log(`   vote: panel yaw ${r.votePanel.yaw} vh ${r.votePanel.vh} (old ${r.oldPanel.vh}) seat ${r.votePanel.px?.seat13} px (old ${r.oldPanel.seat13}) · no panel vh ${r.voteNoPanel.vh} seat ${r.voteNoPanel.px?.seat13} px · transition ${r.transition.poses} poses ${r.transition.settledMs} ms`);
   console.log(`   cast ${r.cast.ids.join(',')} · voting ${r.cast.voting.join(',')} · timer ${JSON.stringify(r.timer.running)} · tower ${JSON.stringify(r.tower.programs)} drum ${JSON.stringify(r.tower.drum)} landing y ${r.tower.landing?.y} · programs ${r.programs.join(' -> ')}`);
   console.log(`   staging ${JSON.stringify(r.stage)} · marks ${JSON.stringify(r.marks)}`);

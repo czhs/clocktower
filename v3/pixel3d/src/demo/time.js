@@ -708,10 +708,29 @@ export function createTime(demo) {
     // ---- (end P2-4)
     cer = { t0: engine.time, k: 0, steps };
     events.emit('ceremony', { start: true, t0: engine.time });
-    if (store.state.camera === 'follow') store.set({ camera: 'vote' }, 'time');
+    // (vote-fix6, the user: "p doesn't reliably send me to join the voting circle") EVERY start brings you to your
+    // seat: from ANY camera mode (overview / iso / free kept their camera: no vote camera, no seat) to the vote camera
+    // (seatcast.js seats you as it comes up); already in the vote camera (C, or P inside the 3 s after the last
+    // ceremony's night) there is no camera change to seat you: seatcast.join() does it (and re-seats you off a seat the
+    // ceremony needs: its nominee / its dead)
+    if (store.state.camera !== 'vote') store.set({ camera: 'vote' }, 'time');
+    else demo.passB?.seats?.join?.();
     events.emit('toast', { text: 'The voting ceremony begins' });
   }
-  const stopCeremony = () => { cer = null; };
+  // (vote-fix6) stopping the ceremony (P again, the panel's button) ends it cleanly: no seals, back to day and to the
+  // follow camera (it left the vote camera up over a frozen nomination before; P then started a new one with no
+  // camera change = no seat)
+  function stopCeremony() {
+    if (!cer) return;
+    cer = null;
+    clearSeals();
+    store.set({ phase: 'day', nominee: null }, 'time');
+    if (store.state.camera === 'vote') store.set({ camera: 'follow' }, 'time');
+  }
+  // (vote-fix6) P: a second press within CER_BOUNCE s of the start is ignored (a double press / bounce stopped the
+  // ceremony it had just started)
+  const CER_BOUNCE = 1.0;
+  const toggleCeremony = () => { if (!cer) playCeremony(); else if (engine.time - cer.t0 >= CER_BOUNCE) stopCeremony(); };
 
   // ---- life on / off: hide + skip its update (the composer's updater calls registry piece.update by name)
   // NOT group.visible = false: life holds PointLights (the keeper's lantern, characters/keeper.js) and hiding a light
@@ -766,7 +785,7 @@ export function createTime(demo) {
     input.bind('Comma', () => store.set({ timeSpeed: store.state.timeSpeed <= 0.5 ? 0 : store.state.timeSpeed / 2 }, 'key'), { desc: 'clock slower (x1/2)', group: 'time' }),
     input.bind('KeyN', () => nextPreset(1), { desc: 'jump to the next time of day', group: 'time' }),
     input.bind('KeyV', () => store.set({ phase: PHASES[(PHASES.indexOf(store.state.phase) + 1) % PHASES.length] }, 'key'), { desc: 'next phase', group: 'town' }),
-    input.bind('KeyP', () => (cer ? stopCeremony() : playCeremony()), { desc: 'play / stop the voting ceremony', group: 'town' }),
+    input.bind('KeyP', () => toggleCeremony(), { desc: 'play / stop the voting ceremony', group: 'town' }),
     input.bind('KeyL', () => store.set({ life: !store.state.life }, 'key'), { desc: 'life on / off', group: 'town' }),
   );
 
