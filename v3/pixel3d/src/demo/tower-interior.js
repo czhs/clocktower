@@ -100,9 +100,15 @@ export function buildTowerRoom(engine, demo) {
   const sw = STAIR.x1 - STAIR.x0, run = (STAIR.z1 - STAIR.z0) / STAIR.steps, rise = PLAT.y / STAIR.steps;
   for (let i = 0; i < STAIR.steps; i++) {
     const z = STAIR.z1 - (i + 0.5) * run, y = (i + 1) * rise;
-    b.box(sw, y, run, { ...STONE, scale: 0.8, tint: 0.9, at: [(STAIR.x0 + STAIR.x1) / 2, 0, z] });
-    b.box(sw + 0.04, 0.05, run + 0.03, { ...TIM, tint: i % 2 ? 0.96 : 1.02, at: [(STAIR.x0 + STAIR.x1) / 2, y - 0.04, z + 0.01] });
+    // (critic P2-7: at yaw 0 the flight read as dark shelves) lighter dressed-stone risers, warm treads, and a pale
+    // stone NOSING on every step's front edge: each step reads as a step
+    b.box(sw, y, run, { ...STONE, scale: 0.8, tint: 1.04, at: [(STAIR.x0 + STAIR.x1) / 2, 0, z] });
+    b.box(sw + 0.04, 0.05, run + 0.03, { ...TIM, tint: i % 2 ? 1.1 : 1.18, at: [(STAIR.x0 + STAIR.x1) / 2, y - 0.04, z + 0.01] });
+    b.box(sw + 0.06, 0.035, 0.05, { ...DRESS, tint: 1.08, at: [(STAIR.x0 + STAIR.x1) / 2, y - 0.03, z + run / 2] });
   }
+  // (critic P2-7) a dark warm BACKDROP under / round the room (the room stands alone at x 650: by day the void beside it
+  // was the flat pale sky colour): one big timber-dark slab below the floor fills every ray the room does not catch
+  b.box(56, 0.05, 56, { tones: 'timber', pattern: 'none', tint: 0.42, at: [0, -0.36, 0] });
   for (let i = 0; i <= 4; i++) {
     const z = STAIR.z1 - 0.3 - i * ((STAIR.z1 - STAIR.z0 - 0.3) / 4), y = Math.max(0, ((STAIR.z1 - z) / (STAIR.z1 - STAIR.z0)) * PLAT.y);
     b.box(0.07, 0.9, 0.07, { ...TIM, at: [STAIR.x0 + 0.04, y, z] });
@@ -325,7 +331,9 @@ export function buildTowerRoom(engine, demo) {
     if (st && st.mode !== 'idle') {
       const q = st.mode === 'done' ? 180 : Math.round(st.frac * 180);
       const flashOn = st.mode === 'done' && st.doneAt !== null && t - st.doneAt < 6 && Math.floor((t - st.doneAt) * 4) % 2 === 0;
-      setHands(`timer|${st.mode}|${st.stage}|${q}|${flashOn}`, (hb) => drawDialFace(hb, { frac: q / 180, mode: st.mode, stage: st.stage, flashOn, k: DIAL.r / (1.12 * 0.86) * 0.86, mirror: true }));
+      // (critic P2-8) the wedge solid (not glowing) on the glowing dial back at night
+      const night = hours >= 19.5 || hours < 6;
+      setHands(`timer|${st.mode}|${st.stage}|${q}|${flashOn}|${night}`, (hb) => drawDialFace(hb, { frac: q / 180, mode: st.mode, stage: st.stage, flashOn, k: DIAL.r / (1.12 * 0.86) * 0.86, mirror: true, night }));
     } else {
       const tot = Math.floor(((hours % 12) + 12) % 12 * 60);
       setHands(`tod|${tot}`, (hb) => {
@@ -374,7 +382,9 @@ export function buildTowerRoom(engine, demo) {
     colliders,
     spawn: { x: wx(0), z: wz(1.8), facing: Math.PI },
     exit: { x: wx(0), z: wz(2.5), r: 0.45, normal: [0, 1] },
-    camera: { target: [wx(0), 0, wz(-3.95)], viewHeight: 7.6, yaw: 0 },
+    // (critic P2-7) framed with a margin for the bottom HUD band (the action bar): the spawn spot (z 1.8) stands ~18 %
+    // above the bottom edge, the dial's top still in frame (was vh 7.6 / z -3.95: the player at the bottom edge)
+    camera: { target: [wx(0), 0, wz(-3.4)], viewHeight: 8.2, yaw: 0 },
     origin: { x: wx(0), z: wz(0) },
     visitPoint: { x: wx(0.5), z: wz(-1.4) },
     lights,

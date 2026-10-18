@@ -323,7 +323,10 @@ once (their sprites carry `.hd`; 1x callers never read it): after it `E.drawDock
 draw HD with no other change. Anchors: `ANCHORS_HD` = 2 × markers `ANCHORS`.
 **Runtime helpers** (`src/ui/hd/draw.js`): `fastBlit` (marks the dirty band), `up2`, `drawPlacePinHD(L, {p, color, icon,
 iconKey, age, removeAt, settled, still, hover})` (depth tier; markers drop / removal timing), `drawPersonPinsHD(L, {cx,
-labelTopHD, pins, t, still})`, `labelHD(L, head, name, variant, T)` (cached; returns the HD box + label top).
+labelTopHD, pins, t, still})`, `labelHD(L, head, name, variant, T)` (cached; returns the HD box + label top;
+additive opts `{top, x}`: the HD label top / the HD x of its centre instead of the head's, for a caller that clamps or
+de-collides labels; no opts = as before). Also additive (2026-10-17, the demo's critic round): hud `drawStClock` o.done
+(the countdown at zero: the stage's due label and a "Start" button instead of "Pause"; no o.done = as before).
 
 **Perf** (render-host RTX 4090, headless; `scenes/ui-density-perf.js` + `shots/ui-hd/bench.mjs`: the demo's typical UI —
 clock + phase chips, toolbar, tip, open dock + button, 4 labels, a person pin, 2 place pins — as cached pieces through

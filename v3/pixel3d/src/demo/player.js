@@ -52,6 +52,7 @@ import { gameSpeed } from '../chars/locomotion.js';
 const RUN_FACTOR = 1.75;
 const DOOR_NEAR = 1.6, DOOR_LEAVE = 2.1;     // m from the door's centre (in front of it)
 const EMOTE_KEYS = ['talk', 'vote', 'point', 'die', 'ghost', null];   // Digit1..6 (null = the signature)
+const EMOTE_LOOP_S = 4;   // (critic P2-4) a looping emote (talk) plays this long, then the idle (or the ghost idle) returns
 const HIST = 24;
 const AXES = { fwd: new THREE.Vector3(), right: new THREE.Vector3() };   // (perf) cameraAxes' reused output
 const NPC_R = 0.3;
@@ -93,6 +94,7 @@ export async function createPlayer(demo) {
   let facing = 0, handle = null, loading = null, nearDoor = null, lastT = 0, moving = false, running = false;
   let path = null;          // { pts: [{x, z}], run, face, stuck }
   let emoting = null;       // clip name of a looping / held emote (released when walking)
+  let emoteUntil = null;    // (critic P2-4) when a looping emote (talk) ends by itself (engine.time)
   // the GHOST STATE (a dead player who keeps walking, Clocktower rules; the user's bug "after ghost-emoting, walking
   // turns me back"): the ghost emote (5 / its button) is a TOGGLE. On: the character's idle loop is its 'ghost' clip and
   // ch.ghost = 1 (the character library's walking-ghost override, src/chars/character.js _ghostLevel), so walking, the
@@ -195,10 +197,15 @@ export async function createPlayer(demo) {
       return false;
     }
     path = null;
+    const c = handle.spec.clips[name];
+    // (critic P2-4) a one-shot played over a looping emote (talk) returns to the IDLE (or the ghost idle when
+    // ghosted), not to the loop: release the loop first
+    if (emoting && !(c.loop || c.hold)) { play(ghosted ? ghostClip() ?? 'idle' : 'idle'); emoting = null; }
     play(name);
     events.emit('player:emote', { clip: clip ?? 'signature', name });
-    const c = handle.spec.clips[name];
     emoting = c.loop || c.hold || name === 'vote' || name === 'die' ? name : null;
+    // a LOOPING emote (talk) is time-boxed: EMOTE_LOOP_S, then back to the idle (it never ended while standing still)
+    emoteUntil = c.loop && !c.hold && name !== 'vote' && name !== 'die' ? (lastT ?? engine.time ?? 0) + EMOTE_LOOP_S : null;
     return true;
   }
 
@@ -427,6 +434,18 @@ export async function createPlayer(demo) {
       const d = doors.find((q) => q.id === piece);
       if (d) { const f = doorFront(d); return walkTo(f.x, f.z, { run, face: f.face, enter: enterable(d.id) ? d.id : null }); }   // (B)
     }
+    // (critic P3-12) a tap IN an open doorway or on its doorstep (the ray passes the door opening and meets the ground
+    // at the threshold: no piece) counts as a tap on that door: walk to it and in, in one tap (the tower took two)
+    if (!piece && ground) {
+      let best = null, bd = 1.4;
+      for (const q of doors) {
+        // in the opening: at / behind the threshold (along the door's outward normal), within its width
+        const dx = ground.x - q.pos.x, dz = ground.z - q.pos.z, s = dx * q.normal[0] + dz * q.normal[1], lat = Math.abs(dx * q.normal[1] - dz * q.normal[0]);
+        const dd = Math.hypot(dx, dz);
+        if (s < 1.0 && s > -1.5 && lat < 0.9 && dd < bd && enterable(q.id)) { bd = dd; best = q; }   // (the doorstep counts)
+      }
+      if (best) { const f = doorFront(best); return walkTo(f.x, f.z, { run, face: f.face, enter: best.id }); }
+    }
     if (piece === 'dais' && ground) {
       const c = layout.CIRCLE, a = Math.atan2(ground.x - c.cx, ground.z - c.cz);
       return walkTo(c.cx + Math.sin(a) * 2.9, c.cz + Math.cos(a) * 2.9, { run, face: a + Math.PI });
@@ -548,6 +567,7 @@ export async function createPlayer(demo) {
         else { mv.set(dx / d, 0, dz / d); want = Math.min(want, d / Math.max(dt, 1e-3)); }
       }
       moving = want > 0;
+      if (emoting && emoteUntil !== null && t >= emoteUntil && !moving) { play(ghosted ? ghostClip() ?? 'idle' : 'idle'); emoting = null; emoteUntil = null; }
       if (moving) {
         // (a ghost's held / looping emote returns to the ghost loop; ch.ghost = 1 keeps the walk ghost-shaded)
         if (emoting) { play(ghosted ? ghostClip() ?? 'idle' : 'idle'); emoting = null; }

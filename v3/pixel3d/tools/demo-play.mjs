@@ -873,7 +873,9 @@ try {
       r.pointPlace = g.point;
       if (g.point?.kind !== 'place') fail(`gameui: right-click on the ground did not point at a spot (${JSON.stringify(g.point)})`);
       await sleep(3300);
-      // -- the pie: right-hold, hover teal, release = a teal pin with the drop animation
+      // -- the pie: right-hold, hover the Pin wedge (your colour: teal here), release = a teal pin with the drop animation
+      // (emoji, docs/UI-EMOJI.md: the pie = Point, the 7 reactions, ONE Pin wedge in your current colour)
+      await page.evaluate(() => { window.__demo.demo.gameui.color = 'teal'; });
       g = await gi();
       const pinsBefore = g.pins.length;
       const pc = px({ x: you().screen.x - 70, y: you().screen.y + 30 });
@@ -884,6 +886,11 @@ try {
       r.pie = g.pie;
       if (!g.pie?.open) fail('gameui: holding the right button did not open the pie');
       else {
+        // the wedges: Point, the 7 reactions, one Pin (no colour wedges)
+        const EJK = ['agree', 'heart', 'laugh', 'shocked', 'question', 'suspicious', 'disagree'].map((x) => `emoji:${x}`);
+        r.pieItems = g.pie.items;
+        if (g.pie.items[0] !== 'point' || !EJK.every((x) => g.pie.items.includes(x)) || g.pie.items.filter((x) => x.startsWith('pin:')).length !== 1 || g.pie.items.length !== 9)
+          fail(`gameui: the pie's wedges are not Point + 7 reactions + one Pin (${JSON.stringify(g.pie.items)})`);
         const k = g.pie.items.indexOf('pin:teal'), n = g.pie.items.length, ang = -Math.PI / 2 + k * 2 * Math.PI / n;
         await page.mouse.move((g.pie.at[0] + Math.cos(ang) * 26) * S, (g.pie.at[1] + Math.sin(ang) * 26) * S, { steps: 4 });
         await sleep(200);
@@ -902,7 +909,23 @@ try {
       if (!teal) fail('gameui: releasing on the teal wedge dropped no teal pin');
       if (!g.pops.some((p) => p.who === 'you' && p.kind === 'pin' && p.color === 'teal')) fail('gameui: no pin pop over the player');
       await shot('ui-pin');
+      // -- a REACTION from the pie: right-hold, hover the laugh wedge, release = the laugh emoji pops over you
+      await sleep(900);
+      {
+        const pr = px({ x: you().screen.x - 60, y: you().screen.y + 40 });
+        await page.mouse.move(pr.x, pr.y); await page.mouse.down({ button: 'right' }); await sleep(400);
+        g = await gi();
+        const k = g.pie?.items?.indexOf('emoji:laugh') ?? -1;
+        if (k >= 0) { const n = g.pie.items.length, ang = -Math.PI / 2 + k * 2 * Math.PI / n; await page.mouse.move((g.pie.at[0] + Math.cos(ang) * 26) * S, (g.pie.at[1] + Math.sin(ang) * 26) * S, { steps: 4 }); await sleep(150); }
+        await page.mouse.up({ button: 'right' }); await sleep(300);
+        await shot('ui-react-pop');
+        g = await gi();
+        r.reactPie = g.pops.filter((p) => p.kind === 'emoji').map((p) => [p.who, p.emoji]);
+        if (!g.pops.some((p) => p.who === 'you' && p.kind === 'emoji' && p.emoji === 'laugh')) fail(`gameui: the pie's laugh wedge popped no laugh over you (${JSON.stringify(g.pops)})`);
+        if (g.pins.length !== (await gi()).pins.length) fail('gameui: a reaction dropped a pin');
+      }
       // right-drag (moves past RIGHT_DRAG_PX at once) + release in the dead zone = sticky; then click the crimson wedge
+      await page.evaluate(() => { window.__demo.demo.gameui.color = 'crimson'; });
       const pd = px({ x: you().screen.x + 80, y: you().screen.y - 10 });
       await page.mouse.move(pd.x, pd.y);
       await page.mouse.down({ button: 'right' });
@@ -920,24 +943,48 @@ try {
         g = await gi();
         if (!g.pins.some((p) => p.color === 'crimson' && !p.removing)) fail('gameui: clicking the crimson wedge of the sticky pie dropped no pin');
       }
-      // the dock: G, the violet swatch, F at the cursor
+      // the dock (the REACTIONS dock): G; no swatch row; its small colour button opens the AUTO + 8-dot picker, violet
+      // picked (saved in localStorage 'ct-pin-color'), F at the cursor = a violet pin; 1-7 react while it is open
       await press('KeyG');
       await sleep(200);
       g = await gi();
-      if (!g.dock?.open || !g.dock.rects) fail('gameui: G did not open the social dock');
+      if (!g.dock?.open || !g.dock.rects) fail('gameui: G did not open the reactions dock');
       else {
-        const sw = g.dock.rects['swatch:violet'];
-        await page.mouse.click((sw.x + sw.w / 2) * S, (sw.y + sw.h / 2) * S);
-        await sleep(150);
+        const keys = Object.keys(g.dock.rects);
+        r.dockRects = keys;
+        if (keys.some((k) => k.startsWith('swatch:'))) fail(`gameui: the dock still has a swatch row (${keys.join(',')})`);
+        if (keys.filter((k) => k.startsWith('emoji:')).length !== 7 || !g.dock.rects.pinColor) fail(`gameui: the dock lacks the 7 reactions / the colour button (${keys.join(',')})`);
+        await shot('ui-dock-reactions');
+        const cb = g.dock.rects.pinColor;
+        await page.mouse.click((cb.x + cb.w / 2) * S, (cb.y + cb.h / 2) * S);
+        await sleep(200);
+        g = await gi();
+        if (!g.dock.picker?.rects?.['color:violet']) fail(`gameui: the colour button opened no picker (${JSON.stringify(g.dock.picker)})`);
+        else {
+          await shot('ui-pin-picker');
+          const sw = g.dock.picker.rects['color:violet'];
+          await page.mouse.click((sw.x + sw.w / 2) * S, (sw.y + sw.h / 2) * S);
+          await sleep(200);
+        }
         const pf = px({ x: you().screen.x + 30, y: you().screen.y - 46 });
         await page.mouse.move(pf.x, pf.y);
         await press('KeyF');
         await sleep(600);
         g = await gi();
-        r.dock = { color: g.dock.color, pins: g.pins.map((p) => p.color) };
-        if (g.dock.color !== 'violet') fail(`gameui: the violet swatch set the colour to ${g.dock.color}`);
+        const stored = await page.evaluate(() => { try { return localStorage.getItem('ct-pin-color'); } catch { return null; } });
+        r.dock = { color: g.dock.color, pins: g.pins.map((p) => p.color), pinColor: g.pinColor, stored, picker: !!g.dock.picker };
+        if (g.dock.color !== 'violet' || g.pinColor?.auto !== false) fail(`gameui: the picker's violet set the colour to ${g.dock.color} (auto ${g.pinColor?.auto})`);
+        if (stored !== 'violet') fail(`gameui: the picked colour was not saved (localStorage ${stored})`);
+        if (g.dock.picker) fail('gameui: the picker stayed open after a pick');
         if (!g.pins.some((p) => p.color === 'violet' && !p.removing)) fail('gameui: F at the cursor dropped no violet pin');
         await shot('ui-dock');
+        // number keys while the dock is open: 3 = the question reaction (eaten: no point emote)
+        await sleep(900);
+        await press('Digit3'); await sleep(250);
+        g = await gi();
+        r.dockKeys = { pops: g.pops.filter((p) => p.who === 'you').map((p) => [p.kind, p.emoji]), point: g.point, clip: g.members.find((m) => m.you)?.clip };
+        if (!g.pops.some((p) => p.who === 'you' && p.emoji === 'question')) fail(`gameui: 3 with the dock open popped no question reaction (${JSON.stringify(r.dockKeys)})`);
+        if (/point/.test(r.dockKeys.clip ?? '')) fail('gameui: 3 with the dock open also played the point emote');
       }
       // left-click your own pin = remove it; Clear my pins
       g = await gi();
@@ -1008,6 +1055,21 @@ try {
         if (g.pins.some((p) => !p.removing)) fail(`gameui: Clear my pins left ${JSON.stringify(g.pins)}`);
       }
       await press('KeyG');
+      // the dock closed: 1 is the character's talk emote again (no reaction); it ends by itself (critic P2-4: ~4 s)
+      {
+        await sleep(1000);
+        const nE0 = (await gi()).reactions?.you ?? 0;
+        await press('Digit1'); await sleep(500);
+        g = await gi();
+        const c1 = g.members.find((m) => m.you)?.clip;
+        r.keysClosed = { clip: c1, reactions: [nE0, g.reactions?.you] };
+        if (g.reactions?.you !== nE0) fail('gameui: 1 with the dock closed sent a reaction');
+        if (c1 !== 'talk') fail(`gameui: 1 with the dock closed did not play the talk emote (${c1})`);
+        await sleep(4200);
+        const c2 = (await gi()).members.find((m) => m.you)?.clip;
+        r.keysClosed.after = c2;
+        if (c2 === 'talk') fail('gameui: the talk emote did not end by itself (critic P2-4)');
+      }
       // -- the notebook: J, Seats, the Notes tab, typing (quill), saved, Esc
       await press('KeyJ');
       await sleep(700);
@@ -1256,6 +1318,18 @@ try {
         await shot('ui2-tip-glow');
         if (!r.fly.flying && !r.fly.glowing) fail('gameui2: closing the tip did not fly it into the bulb');
         if (!r.glow) fail('gameui2: the bulb does not glow after the tip flew into it');
+        // (critic P1-1) the flight is drawn FROM the tip TOWARD the bulb (it drew at the top-left corner: NaN centres)
+        {
+          const F = g.tipState.fly, p = F?.path ?? [];
+          r.flyPath = F;
+          const fin = (q) => Number.isFinite(q?.[0]) && Number.isFinite(q?.[1]);
+          const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+          if (!F || p.length < 3 || !p.every(fin) || !fin(F.from) || !fin(F.to)) fail(`gameui2: the tip's flight was not drawn at real positions (${JSON.stringify(F)})`);
+          else {
+            const d0 = dist(p[0], F.to), d1 = dist(p[p.length - 1], F.to);
+            if (!(d1 < d0 - 10) || p.some((q) => q[0] <= 1 && q[1] <= 1)) fail(`gameui2: the tip's flight did not move toward the bulb (${JSON.stringify(F)})`);
+          }
+        }
         await clickR(g.toolbar.tip); g = await gi();
         await clickR(g.tipState.rect.never); await sleep(200); g = await gi();
         r.never = { never: g.tipState.never, saved: g.tipState.neverSaved, shown: g.tipState.shown, ls: await page.evaluate(() => { try { return localStorage.getItem('hollowmere-tip:never'); } catch { return 'no storage'; } }) };
@@ -1479,6 +1553,8 @@ try {
       const cdp = await ctx.newCDPSession(ph);
       const touch = (type, x, y) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y, id: 1 }] });
       const pos0 = await ph.evaluate(() => window.__demo.info().player);
+      // (emoji) the touch pie's one Pin wedge is in your colour: teal for this check
+      await ph.evaluate(() => { if (window.__demo.demo.gameui) window.__demo.demo.gameui.color = 'teal'; });
       await touch('touchStart', sp.x, sp.y); await ph.waitForTimeout(250);
       r.pieEarly = (await gi()).pie;
       await ph.waitForTimeout(450);
@@ -1578,6 +1654,9 @@ try {
     await setState({ character: ch, phase: 'nomination', timeOfDay: 19.25, timeSpeed: 0 });
     for (let k = 0; k < 60; k++) { if ((await info()).character === ch) break; await sleep(100); }
     const before = await info();
+    // (pass-B leftover) the tower timer runs into the reload: it must come back running with the time it had left
+    const tm0 = await page.evaluate(() => { const T = window.__demo.demo.passB?.timer; if (!T) return null; T.reset(); T.setMinutes(3); T.start(); return { at: Date.now(), ...T.state }; });
+    const pinBefore = await page.evaluate(() => { try { return { stored: localStorage.getItem('ct-pin-color') }; } catch { return null; } });
     const nav = page.waitForNavigation({ timeout: 30000 });
     await setState({ quality: 'low' });
     await nav;
@@ -1585,6 +1664,18 @@ try {
     if (!SKIP.has('loading')) await skipIntro({ flyMs: 300 });
     await sleep(1200);
     const after = await info();
+    if (tm0) {
+      const tm1 = await page.evaluate(() => window.__demo.demo.passB?.timer?.state ?? null);
+      report.steps.timerReload = { before: tm0.remaining, after: tm1?.remaining, mode: tm1?.mode, minutes: tm1?.minutes };
+      if (tm1?.mode !== 'running' || !(tm1.remaining < tm0.remaining) || tm1.remaining < tm0.remaining - (Date.now() - tm0.at) / 1000 - 5) fail(`reload: the tower timer was not kept across the quality reload (${JSON.stringify(report.steps.timerReload)})`);
+      await page.evaluate(() => window.__demo.demo.passB?.timer?.reset());
+    }
+    // (emoji) the saved pin colour (the picker, 6b) holds across the reload
+    if (pinBefore?.stored) {
+      const pinAfter = await page.evaluate(() => window.__demo.demo.gameui?.pinColor ?? null);
+      report.steps.pinColourReload = { before: pinBefore, after: pinAfter };
+      if (pinAfter?.color !== pinBefore.stored || pinAfter.auto) fail(`reload: the saved pin colour was not kept (${JSON.stringify(report.steps.pinColourReload)})`);
+    }
     // "never show again" (6d) holds across the reload: no automatic tip, the bulb is still there
     if (!SKIP.has('gameui2')) {
       await sleep(2200);

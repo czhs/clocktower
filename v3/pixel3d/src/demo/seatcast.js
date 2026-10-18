@@ -25,7 +25,7 @@ import { loadRoster } from './roster.js';
 const N = 15;
 const SEAT_TOP = 0.235;
 const NEED = ['talk', 'vote'];
-const TALK_EVERY = 2.7, SIG_EVERY = 9.5, POINT_S = 1.8, DIE_S = 1.7;
+const TALK_EVERY = 2.7, SIG_EVERY = 9.5, POINT_S = 2.6, DIE_S = 1.7;
 
 export async function createSeatCast(demo) {
   const { engine, store, events, layout } = demo;
@@ -46,8 +46,13 @@ export async function createSeatCast(demo) {
   }
   const ids = pickIds();
   if (!ids.length) throw new Error('seat cast: no offered cast character with talk + vote clips');
-  const ground = { heightAt: () => SEAT_TOP };
-  const seats = [];       // { i, id, h (handle), spot, home, face, shown, clip, dieAt, pointUntil, member }
+  // (B) the vote staging (votestage.js): while staged a seat stands on its VOTE spot (on the setts / the tower court:
+  // the terrain's height, not the stone's) at the stage's cast scale; it swaps between stone and spot in one drawing,
+  // hidden by the Storyteller's puff (votemarks.js draws the poofs)
+  const stage = () => demo.passB?.stage ?? null;
+  const groundApi = demo.town?.registry?.get?.('ground')?.api;
+  const terrain = (x, z) => (typeof groundApi?.heightAt === 'function' ? groundApi.heightAt(x, z) : 0);
+  const seats = [];       // { i, id, h (handle), spot (the stone), home, pos (where it stands now), staged, face, shown, clip, ... }
   let version = 0;
 
   async function spawn(i, id) {
@@ -55,14 +60,16 @@ export async function createSeatCast(demo) {
     const spot = new THREE.Vector3(s.x, 0, s.z);
     const home = Math.atan2(C.cx - s.x, C.cz - s.z);
     const before = new Set(engine.scene.children);
-    const h = await createCharacter(engine, id, { position: spot, face: home, ground });
+    const rec = seats[i] ?? { i, spot, home, pos: spot.clone(), staged: false };
+    const ground = { heightAt: (x, z) => (rec.staged ? terrain(x, z) : SEAT_TOP) };
+    const h = await createCharacter(engine, id, { position: rec.pos, face: home, ground });
     // the Character's scene-level FX / smear holders and its root get seat-cast names: the roster / playtest checks
     // count the player's + the idle NPCs' models by 'character:' and their 'char-fx' / 'smears' holders
     for (const o of engine.scene.children) if (!before.has(o) && /^(char-fx|smears)/.test(o.name)) { o.name = `seat-cast-${o.name}`; o.userData.seatCast = i; }
-    const rec = seats[i] ?? { i, spot, home };
     const old = rec.h;
-    Object.assign(rec, { id, h, face: home, shown: true, clip: 'idle', want: 'idle', dieAt: -1, pointUntil: -1, oneShotUntil: -1 });
-    h.ch.drive(() => ({ pos: spot, face: rec.face }));
+    Object.assign(rec, { id, h, face: rec.staged ? rec.face : home, shown: true, clip: 'idle', want: 'idle', dieAt: -1, pointUntil: -1, oneShotUntil: -1 });
+    if (rec.staged) { h.root.scale.setScalar(stage()?.scale ?? 1); }
+    h.ch.drive(() => ({ pos: rec.pos, face: rec.face }));
     h.root.name = `seat-cast:${i}:${id}`; h.root.userData.seatCast = i;
     engine.scene.add(h.root);
     old?.dispose();
@@ -77,7 +84,38 @@ export async function createSeatCast(demo) {
   if (folk) folk.visible = false;
 
   // ---- the game UI: seated cast as townsfolk (slot 100 + seat)
-  const members = seats.map((r) => ({ slot: 1000 + r.i, get id() { return r.id; }, spot: r.spot, get face() { return r.face; }, get handle() { return r.h; }, seat: r.i }));
+  // (spot = where the seat stands NOW: the stone, or its vote spot while staged; scale = the staged cast scale, gameui
+  // lifts the name label by it)
+  const members = seats.map((r) => ({ slot: 1000 + r.i, get id() { return r.id; }, get spot() { return r.pos; }, get face() { return r.face; }, get handle() { return r.h; }, get scale() { return r.staged ? stage()?.scale ?? 1 : 1; }, seat: r.i }));
+
+  // ---- staging: put a seat on its vote spot / back on its stone in ONE drawing. The Character's motion state is
+  // re-seated at the new spot (no velocity spike: no stumble, no lean, the feet re-planted under the body, the facing
+  // sector set directly) - src/chars is read-only, so this writes the few fields Character._resetSim initialises.
+  const V0 = new THREE.Vector3(), TAU = Math.PI * 2;
+  function warp(r, x, z, face, staged) {
+    r.staged = staged;
+    r.pos.set(x, 0, z);
+    r.face = face;
+    r.h.root.scale.setScalar(staged ? stage()?.scale ?? 1 : 1);
+    const ch = r.h.ch, s = ch._s;
+    if (!s) return;
+    const y = ch.opts.ground ? ch.opts.ground.heightAt(x, z) : 0, P = new THREE.Vector3(x, y, z);
+    const cam = engine.camera.targetYaw ?? 0, step = TAU / (ch.opts.facingSteps || 8), k = Math.round((face - cam) / step);
+    s.k = k; s.facingYaw = cam + k * step; s.desired = face; s.heading = face;
+    s.prevPos.copy(P); s.vel.set(0, 0, 0); s.velF?.reset?.(V0.clone()); s.prevVelF?.set(0, 0, 0);
+    s.lean?.reset?.(new THREE.Vector2()); s.chestYaw?.reset?.(s.facingYaw); s.headYaw?.reset?.(s.facingYaw);
+    ch.gait?.reset?.(P, s.facingYaw, ch.opts.ground);
+    for (const c of ch._chains ?? []) { c.init = false; c.cached = false; for (const L of c.links) L.dir = null; }
+    s.snapChains = true;
+    ch.root.position.copy(P); ch.root.rotation.set(0, s.facingYaw, 0); ch.root.updateMatrixWorld(true);
+  }
+  function placeFor(r, t) {
+    const st = stage();
+    const want = !!st && st.gathered(r.i, t);
+    if (want === r.staged) return;
+    if (want) { const p = st.spots[r.i]; warp(r, p.x, p.z, p.face, true); } else warp(r, r.spot.x, r.spot.z, r.home, false);
+    version++;
+  }
   const shownMembers = [];
   if (demo.npcs && params.get('seatLabels') !== '0') {
     const npcs = demo.npcs;
@@ -126,18 +164,30 @@ export async function createSeatCast(demo) {
   let talkK = -1, sigK = -1;
   const info = { ids: seats.map((r) => r.id), shown: 0, updated: 0, clips: {}, nominator: -1 };
   const api = {
-    get list() { return seats.map((r) => ({ seat: r.i, id: r.id, shown: r.shown, clip: r.h?.ch?.state?.clip ?? r.clip, face: +r.face.toFixed(3) })); },
+    get list() { return seats.map((r) => ({ seat: r.i, id: r.id, shown: r.shown, clip: r.h?.ch?.state?.clip ?? r.clip, face: +r.face.toFixed(3), staged: r.staged, at: [+r.pos.x.toFixed(2), +r.pos.z.toFixed(2)] })); },
     get version() { return version; },
     heightOf: (i) => (seats[i]?.h ? seats[i].h.height ?? null : null),
+    /** (B) where seat i stands now: { pos (feet, world), height (as shown, x the cast scale), staged } */
+    spotOf(i) {
+      const r = seats[i];
+      if (!r) return null;
+      const sc = r.staged ? stage()?.scale ?? 1 : 1;
+      return { pos: new THREE.Vector3(r.pos.x, r.staged ? terrain(r.pos.x, r.pos.z) : SEAT_TOP, r.pos.z), height: (r.h?.height ?? 1.4) * sc, scale: sc, staged: r.staged, id: r.id, shown: r.shown, shownAt: r.shownAt ?? null };
+    },
     members,
     update(t) {
       const s = store.state, ph = s.phase;
       if (ph !== prevPhase) {
-        if (ph === 'nomination') {
-          // the nominator: the nearest living occupied seat before the nominee (counter-clockwise)
+        // the nominator: the nearest living occupied seat before the nominee (counter-clockwise); points at the nominee
+        // when the nomination is made AND again as the vote opens (the accusation stands while the hand starts round)
+        if (ph === 'nomination' || ph === 'vote') {
           const nom = nomineeOf(s);
           nominator = -1;
-          if (nom >= 0) for (let k = 1; k < N; k++) { const j = (nom - k + N) % N; const st = s.seats[j]; if (st.occupied && !st.dead) { nominator = j; break; } }
+          // (the nearest one whose character HAS a point clip: a nominator that cannot point reads as nobody accusing)
+          if (nom >= 0) for (const needPoint of [true, false]) {
+            for (let k = 1; k < N && nominator < 0; k++) { const j = (nom - k + N) % N; const st = s.seats[j]; if (st.occupied && !st.dead && (!needPoint || (seats[j] && has(seats[j], 'point')))) nominator = j; }
+            if (nominator >= 0) break;
+          }
           nominatedAt = t;
         }
         prevPhase = ph;
@@ -149,13 +199,14 @@ export async function createSeatCast(demo) {
       for (const r of seats) {
         if (!r?.h) continue;
         const st = s.seats[r.i], on = warm || seatOn(st);
-        if (on !== r.shown) { r.shown = on; r.h.root.visible = on; }
+        if (on !== r.shown) { r.shown = on; r.h.root.visible = on; if (on && !warm) r.shownAt = t; }
         if (!on) continue;
         shown++;
         if (!warm) shownMembers.push(members[r.i]);
+        placeFor(r, t);
         // the persistent clip
         let want = 'idle';
-        r.face = r.home;
+        r.face = r.staged ? stage().spots[r.i].face : r.home;
         if (st.dead) {
           if (r.dieAt < 0) r.dieAt = t;
           const fresh = t - r.dieAt < DIE_S && has(r, 'die') && r.wasAlive;
@@ -164,14 +215,18 @@ export async function createSeatCast(demo) {
           r.dieAt = -1; r.wasAlive = true;
           if (ph === 'vote' && votes?.has?.(r.i) && sweep) {
             const off = ((r.i - sweep.from + N) % N) || N;
-            if (t >= sweep.t0 + (off - 1) * sweep.per - 0.25) want = 'vote';
+            // hands go up as the vote opens (gameui's events vote: raise = 0.3 s before the first reach + a stagger)
+            if (t >= sweep.t0 - 0.3 + (off % 3) * 0.07) want = 'vote';
           }
-          if (ph === 'nomination' && r.i === nominator && nom >= 0 && t - nominatedAt < POINT_S + 0.4 && has(r, 'point')) {
-            const q = layout.seatPos(nom, N);
-            r.face = Math.atan2(q.x - r.spot.x, q.z - r.spot.z);
+          if ((ph === 'nomination' || ph === 'vote') && r.i === nominator && nom >= 0 && t - nominatedAt < POINT_S + 0.4 && has(r, 'point') && want === 'idle') {
+            const q = seats[nom]?.pos ?? layout.seatPos(nom, N);
+            r.face = Math.atan2(q.x - r.pos.x, q.z - r.pos.z);
             if (t - nominatedAt > 0.4) want = 'point';
           }
         }
+        // the accusation holds through its window: a point that finished is drawn again (one-shot clips end ~1 s)
+        if (want === 'point' && r.clip === 'point' && !r.h.ch?.state?.action && t - (r.pointAt ?? -9) > 0.3) r.clip = 'idle';
+        if (want === 'point' && r.clip !== 'point') r.pointAt = t;
         if (want !== 'idle' || r.oneShotUntil < t) {
           if (want === 'idle' && r.clip !== 'idle' && r.oneShotUntil < t) play(r, 'idle');
           else if (want !== 'idle') { play(r, want); r.oneShotUntil = -1; }

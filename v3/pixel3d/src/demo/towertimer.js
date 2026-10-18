@@ -93,7 +93,7 @@ function dynMeshes(engine, parent, name, { castShadow = false } = {}) {
 }
 
 /** The countdown face in a dial frame (+z out, +y = XII): wedge (glass) + hand or pause bars + hub (solid). */
-export function drawDialFace(b, { frac, mode, stage, flashOn = false, k = 1, mirror = false }) {
+export function drawDialFace(b, { frac, mode, stage, flashOn = false, k = 1, mirror = false, night = false }) {
   const R = 1.12 * 0.86 * k;
   const st = mode === 'done' ? (flashOn ? STAGE_TONES.flash : STAGE_TONES[stage]) : mode === 'paused' ? STAGE_TONES.paused : STAGE_TONES[stage];
   const sgn = mirror ? -1 : 1;
@@ -103,7 +103,10 @@ export function drawDialFace(b, { frac, mode, stage, flashOn = false, k = 1, mir
     const pts = q >= DIAL_STEPS ? [] : [[0, 0]];
     for (let i = 0; i <= n; i++) { const a = (i / n) * L; pts.push([sgn * Math.sin(a) * R, Math.cos(a) * R]); }
     if (mirror) pts.reverse();
-    b.prism(pts.length > 2 ? pts : [[0, 0], [0, R], [R * 0.01, R]], 0.005, { at: [0, 0, 0.064], tones: st.tones, layer: 'glass', glow: st.glow, glowKind: 1 });
+    // (critic P2-8) at night the dial face glows: a glowing wedge vanished into it. Night = kit SOLID (no glow) in the
+    // stage's saturated mid / shadow tones: a dark coloured sector on the lit face (the town's solid program: no new one)
+    const W = night && !(mode === 'done' && flashOn) ? { tones: [st.tones[1], st.tones[1], st.tones[2]] } : { tones: st.tones, layer: 'glass', glow: st.glow, glowKind: 1 };
+    b.prism(pts.length > 2 ? pts : [[0, 0], [0, R], [R * 0.01, R]], 0.005, { at: [0, 0, 0.064], ...W });
   }
   const IRON = { tones: 'iron', pattern: 'none' };
   if (mode === 'paused') {
@@ -180,9 +183,28 @@ export function createTowerTimer(demo) {
   if (params.get('timerStage')) timer.setStage(params.get('timerStage'));
   if (Number(params.get('timer')) > 0) {
     const s = Number(params.get('timer'));
-    minutes = clampMin(s / 60); timer.setMinutes(minutes); duration = rem0 = Math.max(1, s);
+    minutes = clampMin(Number(params.get('timerMin')) || s / 60); timer.setMinutes(minutes); duration = rem0 = Math.max(1, s);
+    // (a quality reload: the countdown's full length, so the dials' wedge keeps its fraction)
+    if (Number(params.get('timerDur')) >= rem0) duration = Number(params.get('timerDur'));
     if (params.get('timerRun') === '1') { t0 = now(); mode = 'running'; emit('start'); }
+    else if (params.get('timerPaused') === '1') { mode = 'paused'; emit('pause'); }
   }
+  // (B, pass-B leftover) a QUALITY RELOAD keeps the timer: demo.reload writes the state into the URL from demo.params
+  // (`keep`), so the timer's own keys are refreshed there just before (remaining s, running / paused, the armed
+  // minutes, the full length, a chosen stage); idle / done = none of them (a reload restarts it idle)
+  const TIMER_KEYS = ['timer', 'timerRun', 'timerPaused', 'timerMin', 'timerDur', 'timerStage'];
+  function toParams(q) {
+    for (const k of TIMER_KEYS) q.delete(k);
+    if (stageSet) q.set('timerStage', stage);
+    if (mode === 'idle' || mode === 'done') return q;
+    q.set('timer', remaining().toFixed(2)); q.set('timerMin', String(minutes)); q.set('timerDur', String(Math.round(duration * 100) / 100));
+    if (mode === 'running') q.set('timerRun', '1');
+    if (mode === 'paused') q.set('timerPaused', '1');
+    return q;
+  }
+  const reload0 = typeof demo.reload === 'function' ? demo.reload : null;
+  if (reload0) { demo.reload = (patch = {}) => { toParams(params); return reload0(patch); }; offs.push(() => { if (demo.reload !== reload0) demo.reload = reload0; }); }
+  timer.toParams = toParams;
 
   // ------------------------------------------------------------------------------------------------ the tower dials
   const info = { dials: 0, rebuilds: 0, board: false, boardRebuilds: 0, shown: false, key: '', digits: '', lit: false, flips: 0, strikes: 0 };
@@ -194,6 +216,8 @@ export function createTowerTimer(demo) {
   const face = dynMeshes(engine, faceGroup, 'demo-tower-timer');
   info.dials = dials.length;
   let faceKey = null;
+  /** (critic P2-8) the dials glow (dusk to dawn): the wedge is drawn solid then */
+  const dialsNight = () => { const h = Number.isFinite(demo.time?.hours) ? demo.time.hours : store.state.timeOfDay; return h >= 19.5 || h < 6; };
   function drawDials(t) {
     const shown = mode !== 'idle';
     if (handsNode && dials.length) handsNode.visible = !shown;   // (no api.dials: the dials keep the time of day)
@@ -201,11 +225,12 @@ export function createTowerTimer(demo) {
     if (!shown) { if (faceKey !== 'idle') { face.hide(); faceKey = 'idle'; } return; }
     const flashOn = mode === 'done' && doneAt !== null && t - doneAt < DONE_FLASH && Math.floor((t - doneAt) * 4) % 2 === 0;
     const q = mode === 'done' ? DIAL_STEPS : Math.round(frac(t) * DIAL_STEPS);
-    const key = `${mode}|${stage}|${q}|${flashOn}`;
+    const night = dialsNight();
+    const key = `${mode}|${stage}|${q}|${flashOn}|${night}`;
     if (key === faceKey) return;
     faceKey = key; info.key = key;
     const b = new Builder(engine, { name: 'demo-tower-timer' });
-    for (const d of dials) { b.push(d.local); drawDialFace(b, { frac: q / DIAL_STEPS, mode, stage, flashOn, k: d.k }); b.pop(); }
+    for (const d of dials) { b.push(d.local); drawDialFace(b, { frac: q / DIAL_STEPS, mode, stage, flashOn, k: d.k, night }); b.pop(); }
     face.set(b);
     info.rebuilds++;
   }
@@ -216,9 +241,13 @@ export function createTowerTimer(demo) {
   const BOARD = { y0: 2.9, y1: 3.62, w: 2.26, z: zF + 0.16, d: 0.07 };
   const CARD = { w: 0.46, h: 0.54, xs: [-0.84, -0.34, 0.34, 0.84], y: (BOARD.y0 + BOARD.y1) / 2, z: BOARD.z + BOARD.d / 2 + 0.012 };
   const CELL = { w: 0.13, h: 0.09 };
+  // (the user, 2026-10-17: "instead of the digital clock on the clocktower, have the counter just be part of the HUD")
+  // the split-flap board is OFF by default (not built, not drawn: the countdown lives in the HUD timer chip and on the
+  // tower's dials); ?board=1 brings it back for review
+  const boardOn = params.get('board') === '1';
   const boardGroup = new THREE.Group(); boardGroup.name = 'demo-tower-board';
-  if (towerGroup) towerGroup.add(boardGroup);
-  if (towerGroup) {
+  if (towerGroup && boardOn) towerGroup.add(boardGroup);
+  if (towerGroup && boardOn) {
     const b = new Builder(engine, { name: 'demo-tower-board' });
     const TIM = { tones: 'timber', pattern: 'vboards', scale: 0.7 }, BR = { tones: 'brass', pattern: 'none' }, IR = { tones: 'iron', pattern: 'none' };
     const zc = BOARD.z, h = BOARD.y1 - BOARD.y0;
@@ -249,7 +278,7 @@ export function createTowerTimer(demo) {
   const nums = dynMeshes(engine, boardGroup, 'demo-tower-numerals');
   let shownDigits = null, flipAt = [-1, -1, -1, -1], boardKey = null;
   function drawBoard(t) {
-    if (!towerGroup) return;
+    if (!towerGroup || !boardOn) return;
     const lit = mode !== 'idle';
     const r = remaining(t);
     const dg = boardDigits(r);
@@ -257,7 +286,9 @@ export function createTowerTimer(demo) {
     shownDigits = dg;
     const flashOn = mode === 'done' && doneAt !== null && t - doneAt < DONE_FLASH && Math.floor((t - doneAt) * 4) % 2 === 0;
     const flipping = flipAt.map((f) => f >= 0 && t - f < FLIP_S);
-    const colon = mode === 'running' ? (r % 1) > 0.5 || r <= 0 : mode !== 'idle';
+    // (critic P3-14: "7 56" read as "756") the colon is ALWAYS shown while the board is lit, as two big lit studs in the
+    // numerals' own glass (no blinking dark brass)
+    const colon = mode !== 'idle';
     const key = `${dg.join('')}|${lit}|${stage}|${flashOn}|${flipping.join('')}|${colon}|${mode}`;
     if (key === boardKey) return;
     boardKey = key; info.digits = dg.join(''); info.lit = lit;
@@ -267,7 +298,6 @@ export function createTowerTimer(demo) {
     for (const x of CARD.xs) cb.box(CARD.w, CARD.h, 0.025, { tones: cardTones, pattern: 'none', origin: 'center', at: [x, CARD.y, CARD.z - 0.0125] });
     CARD.xs.forEach((x, i) => { if (flipping[i]) cb.box(CARD.w, 0.06, 0.035, { tones: PAL.iron[2], pattern: 'none', origin: 'center', at: [x, CARD.y, CARD.z + 0.014] }); });
     // the hairline split of each card (a flip board): two brass pins already sit at its ends (static frame)
-    if (colon) for (const dy of [-0.11, 0.11]) cb.box(0.11, 0.11, 0.03, { tones: lit ? 'brass' : 'iron', pattern: 'none', origin: 'center', at: [0, CARD.y + dy, CARD.z] });
     cards.set(cb);
     // numerals (glass: lit = cream by day, glowing lamp-warm at night; idle = dim, unlit)
     const nb = new Builder(engine, { name: 'demo-tower-numerals' });
@@ -283,6 +313,7 @@ export function createTowerTimer(demo) {
         }
       }
     });
+    if (colon) for (const dy of [-0.12, 0.12]) nb.box(0.15, 0.13, 0.02, { tones: NUM.tones, layer: 'glass', glow: NUM.glow, glowKind: NUM.glowKind, origin: 'center', at: [0, CARD.y + dy, BOARD.z + BOARD.d / 2 + 0.012] });
     nums.set(nb);
     info.boardRebuilds++;
   }

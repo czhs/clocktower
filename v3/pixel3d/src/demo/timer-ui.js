@@ -42,11 +42,13 @@ function paint(c, img, S) {
 }
 
 /** drawStClock's own layout (src/ui/hud/art.js), mirrored for hit tests: [{k, x, y, w, h}] in the panel's texels */
-export function stClockRects(x, y, w, { isSet, paused, minutes }) {
+export function stClockRects(x, y, w, { isSet, paused, minutes, done = false }) {
   const R = [];
   if (isSet) {
     let bx = x + w - 5;
-    const items = [['clear', 13], ['add', HA.buttonWidth('+1m', 4)], [paused ? 'resume' : 'pause', HA.buttonWidth(paused ? 'Resume' : 'Pause', 4) + 7]];
+    // (critic P3-13) at zero the third button is Start (restart), not Pause
+    const go = paused ? ['resume', 'Resume'] : done ? ['start', 'Start'] : ['pause', 'Pause'];
+    const items = [['clear', 13], ['add', HA.buttonWidth('+1m', 4)], [go[0], HA.buttonWidth(go[1], 4) + 7]];
     for (const [k, bw] of items) { bx -= bw; R.push({ k, x: bx, y: y + 3, w: bw, h: 13 }); bx -= 2; }
   }
   const r2 = y + 27;
@@ -83,7 +85,7 @@ export function createTimerUI(demo) {
   let panelEl = null;
   const coverRight = () => {
     panelEl ??= document.querySelector('#demo-ui > .dui-panel');
-    if (!panelEl || !store.state.ui || panelEl.classList.contains('collapsed')) return 0;
+    if (!panelEl || !store.state.ui || panelEl.classList.contains('collapsed') || panelEl.classList.contains('dui-away')) return 0;
     const p = panelEl.getBoundingClientRect(), c = canvas.getBoundingClientRect();
     if (p.width < 1 || p.height < c.height / 3 || p.left < c.left + c.width / 2 || p.left >= c.right) return 0;
     return Math.max(0, c.right - p.left);
@@ -124,7 +126,7 @@ export function createTimerUI(demo) {
     const S = engine.pixelScale || 1;
     if (!showST() || hidden()) { stC.style.display = 'none'; info.st = null; return; }
     const st = timer.state, isSet = st.mode === 'running' || st.mode === 'paused' || st.mode === 'done';
-    const o = { isSet, stage: st.stage, time: HA.formatCountdown(st.remaining * 1000), paused: st.mode === 'paused', urgent: st.mode === 'running' && st.remaining <= 30, minutes: st.minutes, hover, onTheBlock: onBlock() };
+    const o = { isSet, stage: st.stage, time: HA.formatCountdown(st.remaining * 1000), paused: st.mode === 'paused', done: st.mode === 'done', urgent: st.mode === 'running' && st.remaining <= 30, minutes: st.minutes, hover, onTheBlock: onBlock() };
     // bottom left, above the status line (DOM, #demo-status or the panel's status) when there is one
     const cw = canvas.getBoundingClientRect();
     const status = document.querySelector('.dui-status');
@@ -152,6 +154,7 @@ export function createTimerUI(demo) {
     if (k === 'clear') timer.reset();
     else if (k === 'add') timer.add(60);
     else if (k === 'pause' || k === 'resume') timer.toggle();
+    else if (k === 'start') { timer.reset(); timer.start(); }
     else if (k === 'minus') timer.setMinutes(st.minutes - 1);
     else if (k === 'plus') timer.setMinutes(st.minutes + 1);
     else if (STAGES.includes(k)) { timer.setStage(k); timer.reset(); timer.start(); }
@@ -221,10 +224,11 @@ export function createTimerUI(demo) {
   // the action bar's "more" tray (gameui.js draws src/demo/actionbar.js TRAY at draw time): a third row with a button
   // for each timer key, so every key stays clickable (the user's rule; demo-play's gameui2 coverage check)
   const TIMER_ROW = [
-    { code: 'KeyK', hint: 'K', tip: 'Tower timer: start / pause', glyph: 'pause', passB: true },
-    { code: 'KeyY', hint: 'Y', tip: 'Tower timer: reset', glyph: 'close', passB: true },
-    { code: 'KeyU', hint: 'U', tip: 'Tower timer: one minute less', glyph: 'minus', passB: true },
-    { code: 'KeyI', hint: 'I', tip: 'Tower timer: one minute more', glyph: 'plus', passB: true },
+    // (critic P2-2) the timer's own glyphs: an hourglass, back-to-start, -1 / +1 (they reused T / Esc / zoom - + glyphs)
+    { code: 'KeyK', hint: 'K', tip: 'Tower timer: start / pause', glyph: 'timer', passB: true },
+    { code: 'KeyY', hint: 'Y', tip: 'Tower timer: reset', glyph: 'reset', passB: true },
+    { code: 'KeyU', hint: 'U', tip: 'Tower timer: one minute less', glyph: 'minus1', passB: true },
+    { code: 'KeyI', hint: 'I', tip: 'Tower timer: one minute more', glyph: 'plus1', passB: true },
   ];
   // ---- the game UI's HUD client (see the header): both pieces on the game UI's screen tier
   const host = demo.gameui?.hudHost ?? null;
@@ -250,10 +254,11 @@ export function createTimerUI(demo) {
         const a = G.toClient(x, y), b = G.toClient(x + w, y + h);
         info.chip = { x: Math.round(a.x), y: Math.round(a.y), w: Math.round(b.x - a.x), h: Math.round(b.y - a.y), text: `${o.label} ${o.time ?? ''}`.trim(), stage: o.stage, logical: { x, y, w, h } };
         if (top) out.top = { x, w };
+        else out.row2 = { y1: y + h };   // (critic P2-9) under the chips: the game UI moves its caption below it
       } else info.chip = null;
       // the Storyteller's control: above the status line; above the action bar where the bar stands there (a phone)
       if (showST() && !hidden()) {
-        const o = { isSet: ['running', 'paused', 'done'].includes(st.mode), stage: st.stage, time: HA.formatCountdown(st.remaining * 1000), paused: st.mode === 'paused',
+        const o = { isSet: ['running', 'paused', 'done'].includes(st.mode), stage: st.stage, time: HA.formatCountdown(st.remaining * 1000), paused: st.mode === 'paused', done: st.mode === 'done',
           urgent: st.mode === 'running' && st.remaining <= 30, minutes: st.minutes, hover: G.hover, onTheBlock: onBlock() };
         const w = ST_W + 2, h = ST_H + 2, x = G.x0;
         let y = (G.status ? G.status.y0 : G.H - 4) - 3 - h;

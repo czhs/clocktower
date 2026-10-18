@@ -138,7 +138,10 @@ export function mountUI(demo) {
   const charBtns = roster.map((c) => {
     const tile = h('span', { class: 'dui-mono-tile', style: { background: tint(c.id) } },
       c.thumb ? h('img', { src: c.thumb, alt: '' }) : String(c.name || c.id).trim()[0].toUpperCase());
-    const sub = [c.status === 'wip' ? 'WIP' : null, c.bodyPlan, Number(c.height) ? `${Number(c.height).toFixed(1)} m` : null].filter(Boolean).join(' · ') || c.blurb || 'ready';
+    // (critic P2-6) a human subtitle: the character's own line (blurb) when it has one, else its height; never the rig id
+    // ("uprightAnimal", "longNeck", "hopper")
+    const tall = Number(c.height) ? `${Number(c.height).toFixed(1)} m tall` : null;
+    const sub = (c.status === 'wip' ? ['WIP', tall] : [c.blurb || tall]).filter(Boolean).join(' · ') || 'ready';
     const b = h('button', { type: 'button', class: 'dui-char', title: c.blurb || c.name || c.id, onclick: () => pickChar(c.id) },
       tile, h('span', { class: 'dui-char-text' }, h('span', { class: 'dui-char-name' }, c.name || titleCase(c.id)), h('span', { class: 'dui-char-sub' }, sub)));
     b.dataset.id = c.id;
@@ -479,15 +482,28 @@ export function mountUI(demo) {
   // "Notebook: held / big" = store.bookStyle ('held': the small book at the reader's hands | 'big': a real 3D book
   // unfolding in front of the reader); "Pointer: new / v2 size" = store.pointerScale ('new' | 'v2': the finger at the
   // v2 size relative to the character). Both switch live (no reload); ?book= / ?pointer= seed them (docs/DEMO.md §5).
+  // (emoji, docs/UI-EMOJI.md "Pin colour: where it lives") "Pin colour": AUTO (each player's automatic colour, the
+  // default) or one of the 8, the same choice as the reactions dock's small colour button (saved by the game UI)
+  // (the colours + their hex: the UI kit's PIN_COLORS / PIN_HEX through the game UI)
+  const pinKinds = demo.gameui?.pinColors ? ['auto', ...demo.gameui.pinColors] : [];
+  const pinBtns = pinKinds.map((c) => btn(c === 'auto' ? 'auto' : h('span', { class: 'dui-pindot', style: { background: demo.gameui.pinHex?.[c] ?? '#888' } }),
+    () => demo.gameui?.setPinColor?.(c), { title: c === 'auto' ? 'automatic pin colour (each player gets their own)' : `${c} pins`, 'aria-label': c === 'auto' ? 'automatic pin colour' : `${c} pins` }));
+  const paintPin = () => {
+    const pc = demo.gameui?.pinColor;
+    if (!pc) return;
+    pinKinds.forEach((c, i) => { pressed(pinBtns[i], c === 'auto' ? pc.auto : !pc.auto && pc.color === c); pinBtns[i].classList.toggle('dui-pinauto', pc.auto && c === pc.color); });
+  };
   const gameSec = section('gameui', 'Game UI',
     stack('notebook', seg('bookStyle', BOOK_STYLES, (o) => (o === 'held' ? 'held' : 'big'), (o) => (o === 'held' ? 'Notebook: the book at the reader\'s hands' : 'Notebook: a big 3D book in front of the reader'))),
     stack('pointer', seg('pointerScale', POINTER_SCALES, (o) => (o === 'new' ? 'new' : 'v2 size'), (o) => (o === 'new' ? 'Pointer: the new finger' : 'Pointer: the v2 size relative to the character'))),
+    pinBtns.length ? stack('pin colour', h('div', { class: 'dui-seg dui-pinseg' }, pinBtns)) : null,
     h('div', { class: 'dui-btns' },
       btn('notebook', () => demo.gameui?.notebook?.toggle(), { class: 'dui-btn wide', title: 'open / close the notebook (J)' }),
-      btn('pin palette', () => { if (demo.gameui) demo.gameui.dockOpen = !demo.gameui.dockOpen; }, { class: 'dui-btn wide', title: 'the social dock: point, pins, colours (G)' })),
-    h('div', { class: 'dui-note' }, !demo.gameui ? 'Game UI off (?gameui=0)' : demo.gameui.touch ? 'Hold a finger on the town: point / pins · your portrait: the palette · the book: notebook'
-      : 'Right-click: point · right-drag: pins · F: pin · J: notebook · G: palette'),
+      btn('reactions', () => { if (demo.gameui) demo.gameui.dockOpen = !demo.gameui.dockOpen; }, { class: 'dui-btn wide', title: 'the reactions dock: react, point, pin (G)' })),
+    h('div', { class: 'dui-note' }, !demo.gameui ? 'Game UI off (?gameui=0)' : demo.gameui.touch ? 'Hold a finger on the town: point / react / pin · your portrait: the reactions · the book: notebook'
+      : 'Right-click: point · right-drag: react / pin · F: pin · J: notebook · G: reactions (1-7)'),
   );
+  if (pinBtns.length) { paintPin(); offs.push(events.on('gameui:pincolor', paintPin)); }
   const paintGameAside = (s) => { gameSec.aside.textContent = `${s.bookStyle} · ${s.pointerScale === 'v2' ? 'v2 size' : 'new'}`; };
   onKey('bookStyle', paintGameAside); onKey('pointerScale', paintGameAside);
   // (no notebook open / close toasts: the panel itself is the feedback, and the toast column covered name labels.
@@ -523,11 +539,34 @@ export function mountUI(demo) {
   // it and the two filled the screen; never saved, the fold button unfolds it again)
   offs.push(events.on('notebook', ({ open }) => { if (open && innerWidth < NARROW_W && !folded()) { override = true; paintCollapsed(); } }));
   offs.push(() => removeEventListener('resize', refold), store.on('location', refold));
+  // (the user: "in game there won't be the side panel, so you can use the whole screen") while the VOTE camera is up the
+  // panel SLIDES OUT past the right edge (.dui-away: a 0.25 s transform; nothing saved, the store's `ui` untouched) and
+  // slides back when the camera leaves the vote: the vote frame fits the whole canvas (votecam.js measures the panel's
+  // box: off the canvas = 0) and no seat / label / mark sits under it. The status line stays.
+  const paintAway = () => panel.classList.toggle('dui-away', store.state.camera === 'vote');
+  paintAway();
+  offs.push(store.on('camera', paintAway));
   // buttons / selects must not keep keyboard focus: Space / arrows / letters belong to the game (walking, emotes)
   panel.addEventListener('click', (e) => { const b = e.target.closest?.('button'); if (b) b.blur(); });
   panel.addEventListener('mousedown', (e) => { if (e.target.closest?.('button')) e.preventDefault(); });
 
   const status = h('div', { class: 'dui-status', 'aria-live': 'off' });
+
+  // (critic P2-6) one UI scale at every pixel scale: at 1080p 'round' (pixelScale 3) the canvas HUD is drawn 1.5x the
+  // 720p size but the DOM panel / status line / keys card stayed at the 720p size (dim 10-px subtitles, truncated
+  // "GOL…" buttons: two UIs). With the game UI (the skinned panel) they are zoomed by pixelScale / 2 (CSS zoom) and
+  // wear the --px 2 skin, so the 9-slice art lands on whole device px (2 x 1.5 = 3) and the text grows with the HUD;
+  // the max heights divide by the zoom (vh is not zoomed). 720p / phones: zoom 1, as before.
+  const zoomEls = () => [panel, status, helpCard];
+  const fitZoom = () => {
+    const ps = demo.engine?.pixelScale || 2, z = demo.gameui && ps > 2 ? ps / 2 : 1;
+    for (const e of zoomEls()) {
+      if (z === 1) { e.style.removeProperty('zoom'); e.style.removeProperty('--px'); e.style.removeProperty('--uizoom'); }
+      else { e.style.zoom = String(z); e.style.setProperty('--px', '2'); e.style.setProperty('--uizoom', String(z)); }
+    }
+  };
+  addEventListener('resize', fitZoom);
+  offs.push(() => removeEventListener('resize', fitZoom));
 
   // --- help overlay -------------------------------------------------------------------------------
   const helpCard = h('div', { class: `dui-help-card${skin}`, role: 'dialog', 'aria-label': 'keyboard shortcuts' });
@@ -546,7 +585,8 @@ export function mountUI(demo) {
     if (demo.player?.clickAt) add('move', ['click'], 'walk there (a cottage: to its door)');
     if (demo.gameui) {
       add('emote', ['right-click'], 'point at a townsperson / a spot');
-      add('emote', ['right-drag'], 'the pie: point, 8 pin colours, remove my pin');
+      add('emote', ['right-drag'], 'the pie: point, 7 reactions, a pin (your colour), remove my pin');
+      add('emote', ['G', '1-7'], 'the reactions dock; 1-7 react while it is open');
       add('emote', ['click pin'], 'remove your own pin');
     }
     for (const b of input.bindings()) add(b.group || 'misc', [keyLabel(b.code)], b.desc || b.code);
@@ -568,6 +608,7 @@ export function mountUI(demo) {
   }
 
   root.append(panel, status, toasts, helpEl);
+  fitZoom();
   onKey('ui', (s) => { panel.style.display = s.ui ? '' : 'none'; status.style.display = s.ui ? '' : 'none'; });
 
   // --- keys + event toasts ------------------------------------------------------------------------

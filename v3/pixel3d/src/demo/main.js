@@ -213,7 +213,8 @@ function installViewInset(demo) {
   let want = 0, px = 0, panelEl = null, ro = null;
   const measure = () => {
     panelEl ??= document.querySelector('#demo-ui > .dui-panel');
-    if (!panelEl || !store.state.ui || panelEl.classList.contains('collapsed') || document.body.classList.contains('ct-intro')) { want = 0; return; }
+    // (.dui-away: the panel slides out while the vote camera is up, ui.js: no band, from its first frame)
+    if (!panelEl || !store.state.ui || panelEl.classList.contains('collapsed') || panelEl.classList.contains('dui-away') || document.body.classList.contains('ct-intro')) { want = 0; return; }
     const p = panelEl.getBoundingClientRect(), c = canvas.getBoundingClientRect();
     // only a panel standing on the canvas' right part, taller than a third of it, frames anything out
     if (p.width < 1 || p.height < c.height / 3 || p.left < c.left + c.width / 2 || p.left >= c.right) { want = 0; return; }

@@ -3,17 +3,24 @@
 // One factory, loaded by main.js after the view inset (so the vote camera wraps the rig's final update) and BEFORE the
 // shader warm-up (so every program the pass adds - the seated cast, the tower interior - compiles behind the loading
 // screen). Each part is optional: a part that fails is reported in __demo.errors and the rest keeps running.
-//   votecam.js        the voting-circle camera (tight frame of the seated ring + the tower's clock face)
+//   votestage.js      the vote STAGING: where the cast stand during the vote, their scale, the camera's yaw / pitch,
+//                     which clock face shares the frame (?voteStage=<letter>; the staging study's options)
+//   votecam.js        the voting-circle camera (tight frame of the staged cast + the clock face)
 //   towertimer.js     the Storyteller's countdown (state, keys, events) + the tower dials showing it + the readout board
-//   seatcast.js       the cast characters on the 15 seats (instead of the townsfolk mannequins)
+//   seatcast.js       the cast characters on the 15 seats (instead of the townsfolk mannequins), gathering to their
+//                     vote spots while staged
 //   tower-interior.js the walkable clockwork room inside the clock tower
 //   timer-ui.js       the HUD chip + the Storyteller's controls + the control panel section
+//   votemarks.js      the per-voter vote states in the world (candle tokens, raised hands, the wax seal of a counted
+//                     vote, guttering no-votes, ghost flames), the tally plaque, the threshold moment, the gather puffs
 const parts = [
+  ['stage', './votestage.js', 'createVoteStage'],
   ['votecam', './votecam.js', 'installVoteCam'],
   ['timer', './towertimer.js', 'createTowerTimer'],
   ['seats', './seatcast.js', 'createSeatCast'],
   ['interior', './tower-interior.js', 'createTowerInterior'],
   ['ui', './timer-ui.js', 'createTimerUI'],
+  ['marks', './votemarks.js', 'createVoteMarks'],
 ];
 
 export async function createPassB(demo) {

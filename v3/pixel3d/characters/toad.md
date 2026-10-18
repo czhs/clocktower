@@ -4,6 +4,22 @@
 bake `shots/char-toad/bake/` → `out/sprites/toad*`. Identity source (read only): `pipgws/packages/assets/scripts/cast/toad.ts`,
 `refs/cast/toad.png`. Everything rendered on render-host (RTX 4090, report.txt GPU line).
 
+## Ghost port (2026-10-17) — shared `spec.ghost` (supersedes the t2 ghost recipe below)
+- **Why:** the t2 ghost (`ghostFlag`/`halo` bones + `material.tones` shader) only existed inside the ghost clips, so a
+  dead player walking as Toadley looked alive until he stopped. `spec.ghost` + `ch.ghost = 1` now shade walk/talk/emotes.
+- **Spec:** `ghost: { hover: 0.14, keepHue: 0.25, lo: 0, slope: 1.6, spent: ['#3A4260', '#B0BACE'], halo: { lift: 0.2 } }`.
+  keepHue 0.25 (dark olive character) keeps a sage tint; lo 0 / slope 1.6 lift the dark olive up the pale ramp (defaults
+  gave a grey-olive ghost and a dark slate spent toad: `shots/ghost-port/toad/z-g8.png` vs `z-g8-b.png`); halo lift 0.2:
+  at 0.12 the ring rested on the far eye bump (`pack-r1-clip-ghost.png`, islands 1 → 1) — now 2 → 2. Removed: `ghostFlag`
+  + `halo` bones, the 8-box halo parts, `GHOST` / `ghostMaterial()`, `HALO_*`, the `three` import.
+- **Clips (pose only, `dynamics: 'hold'`):** ghost f 0/18/36/54: `pos` bob [0, 0.028, 0.056, 0.028] over the module's
+  0.14 m hover (FK floating legs, knees 16 / −26 / feet 28), chest −4, head −6, eyes −0.2 (half-lidded), arms drifting out.
+  ghost-spent: 1 texel lower, bob [0, 0.028, 0.028, 0], chest +6, head +7 with roll [3, 0, −3, 0], eyes −0.6.
+- **Checks (render-host):** pack `shots/ghost-port/toad/pack/` 115 pass / 15 warn / 0 fail (= before); ghost amplitude 27 %,
+  key_delta 55 %, off_grid 0, flicker 0, islands 2 → 2; spent amplitude 12 %, key_delta 14 %. Living renders: 0 / 2395 raw
+  frames differ vs the pre-port pack. Demo walking ghost (`?char=toad`, key 5, D held): level 1 while moving, pale at
+  noon and night (`shots/ghost-port/toad/walking-ghost-{noon,night}.png`). The t2 ghost notes below are historical.
+
 ## Touch-up t2 (2026-10-16, Clocktower clip list) — point / ghost / ghost-spent
 Rendered on render-host (RTX 4090). Evidence `shots/char-toad/t2/`. Full cast pack re-rendered (`--preset cast --raw`,
 `shots/char-toad/report.txt`: 85 pass / 19 warn / 0 fail) + new-clip pack `t2/pack/report.txt` (point/ghost/ghost-spent:
@@ -111,8 +127,9 @@ Measured r2: sig_ground noon-sun dL −28 %, noon-shade −28 %, golden-sun −2
   shrug (6) · f33 idle.
 - point (t2): f0 wind-up (4) · f4 POINT arm [60, 0, 75], jaw 20 + puff (12) · f16 emphasis, chest −27, arm out 80 (8) ·
   f24 POINT held (60) · f84 idle.
-- ghost / ghost-spent (t2, loop 72): pos y 0.30 + bob [0, 0.028, 0.056, 0.028] (spent half) at f 0/18/36/54;
-  `ghostFlag.s` 1 / 0.5; halo `halo.p` +0.39 (ghost only); head −6 / +7.
+- ghost / ghost-spent (ghost port, loop 72, hold): pos y = bob [0, 0.028, 0.056, 0.028] (spent −0.028 + [0, 0.028,
+  0.028, 0]) at f 0/18/36/54 over the module hover 0.14 m; head −6 / +7 (spent roll ±3); ramps + halo (lift 0.2) from
+  `spec.ghost`. (t2 was pos 0.30 + `ghostFlag.s` + `halo.p`.)
 - walk/run (LegGait biped, style bird): cycle [0.3, 0.267] s, 4 drawings, duty [0.25, 0.2], roll [10, 8], lift [0.06, 0.08].
 
 ## Lights

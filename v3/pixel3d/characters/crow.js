@@ -48,14 +48,9 @@ export function skeleton(opts = {}) {
   S.push({ name: 'dirt', parent: 'shovel', pos: DIRT_AT, axis: 'down' });
   // coat tails: two back flaps either side of the vent (keyed: the gait's elbow channel drives them, see locomotion)
   for (const s of ['L', 'R']) S.push({ name: `flap${s}`, parent: 'hips', pos: [(s === 'L' ? 1 : -1) * 0.085, 0.045, -0.19], axis: 'down' });
-  // touch-up (ghost clips): the gold HALO floats over the hat crown (microscopic rest geometry, scaled ×1000 with
-  // 'halo.s' in `ghost` only), and GHOSTK, a part-less control bone on the hips whose scale is the ghost level the
-  // material reads (0 alive, 'ghostK.s' 1 → ghost, 2 → ghost-spent; see GHOST_GLSL)
-  S.push({ name: 'halo', parent: 'hat', pos: HALO_AT, axis: 'up' });
-  S.push({ name: 'ghostK', parent: 'hips', pos: [0, 0, 0], axis: 'up' });
+  // (ghost port) no halo / ghostK bones any more: spec.ghost (shared ghost look) appends its own 'ghostHalo' bone (on the hat)
   return Object.defineProperties(S, { sockets: { value: S0.sockets }, meta: { value: S0.meta } });
 }
-const HALO_AT = [0, 0.50, -0.06];   // hat-local: ≈ 0.2 m over the (tilted-back) crown top (a gap like v2)
 
 // ── shovel geometry (shovel-bone local = character axes at rest; origin = the grip) ──
 // shaft direction: top leans 7° toward the body, blade end out
@@ -152,13 +147,6 @@ export function parts(S) {
   // dirt clod: microscopic at rest (scaled ×300 in the dig emote → 0.24 × 0.18 m, ≥ 6×5 texels); r2: near-black
   // feather slot (dark earth) so it reads against the pale iron blade at 1×
   add('dirt', K.xf(K.chamferBox(0.0008, 0.0006, 0.0008, 0.5), { rot: [0, BLADE_YAW, 0] }), [0, 0, 0], 'feather', { name: 'dirt' });
-  // halo (ghost only): an open octagonal ring, r 0.17 m, bar 0.045 m (≥ 1.5 texels: no 1-px arc), built at 1/1000 size
-  const ring = [];
-  for (let i = 0; i < 8; i++) {
-    const a = (i + 0.5) * Math.PI / 4;
-    ring.push(K.xf(K.box(0.15, 0.045, 0.05), { rot: [0, a * 180 / Math.PI, 0], at: [Math.sin(a) * 0.165, 0, Math.cos(a) * 0.165] }));
-  }
-  add('halo', K.xf(K.merge(...ring), { scale: HALO_MICRO }), [0, 0, 0], 'brass', { name: 'halo' });
   return P;
 }
 
@@ -191,94 +179,18 @@ const DEAD = { pos: [0, -0.14, 0.18], hips: [84, 0, 0], spine: [4, 0, 0], head: 
   thighL: [75, 0, 0], shinL: [-110, 0, 0], thighR: [75, 0, 0], shinR: [-110, 0, 0],
   upperArmL: [-20, 0, 40], forearmL: [-10, 0, 0], upperArmR: [-30, 0, 30], forearmR: [0, 0, 0] };
 
-// ── touch-up: GHOST look (spec-only, no shared code). The dead player hovers as a pale blue ghost (v2 ghost row of
-// refs/cast/crow.png: the whole sprite re-toned pale blue, values kept, the lower body fading out, a gold halo while the
-// ghost vote is unspent). The clip sets the scale of the part-less bone `ghostK`; the vertex shader reads it back from
-// the bone texture as det(ghostK) / det(hips) = (1 + s)³ (rotation-free, so any pose/facing) → vCrowGhost 0 / 1 / 2.
-// Fragment (toon `tones` hook): every tone (hi, mid, sh separately: the shading steps survive) is mapped by its
-// lightness onto a pale ramp (ghost: slate blue → ice white; spent: a dimmer grey-blue ramp); bands in BIND height
-// fade the coat toward mist (y < 0.40 / 0.28) and dissolve it (y < 0.22: checker, y < 0.15: gone — talons, hem, blade
-// tip); the halo (found by its bind position) keeps its gold. Shadow casting is untouched (the ground shadow under the
-// hovering figure shows the hover gap).
-const HALO_MICRO = 0.001;
-const lin3 = (hex) => { const c = new THREE.Color(hex); return `vec3(${c.r.toFixed(5)}, ${c.g.toFixed(5)}, ${c.b.toFixed(5)})`; };
-export const GHOST = {
-  ghost: ['#3E5C9E', '#EEF8FF'],   // [dark end, light end] sRGB: pale blue (v2 ghost #9DB4CE…#D8E6F0)
-  spent: ['#3E4662', '#9EA8C0'],   // dimmer grey-blue: the spent ghost (no halo)
-  mist: '#DCE6F6',                  // the fading hem blends toward this
-};
-function boneOrder(S) {   // = rig.js buildCharacter topological order (the bone texture index)
-  const by = new Map(S.map((b) => [b.name, b])), seen = new Set(), out = [];
-  const visit = (b) => { if (seen.has(b.name)) return; if (b.parent) visit(by.get(b.parent)); seen.add(b.name); out.push(b.name); };
-  S.forEach(visit);
-  return out;
-}
-function restWorld(S, name) {
-  const by = new Map(S.map((b) => [b.name, b]));
-  const p = [0, 0, 0];
-  for (let b = by.get(name); b; b = b.parent ? by.get(b.parent) : null) for (let i = 0; i < 3; i++) p[i] += (b.pos || [0, 0, 0])[i];
-  return p;
-}
-function ghostMaterial(S) {
-  const order = boneOrder(S), iG = order.indexOf('ghostK'), iH = order.indexOf('hips');
-  const h = restWorld(S, 'halo');
-  return {
-    vertexHead: 'varying float vCrowGhost;',
-    vertex: `
-      vCrowGhost = 0.0;
-      #ifdef USE_SKINNING
-      {
-        float dG = determinant(mat3(getBoneMatrix(${iG}.0))), dH = determinant(mat3(getBoneMatrix(${iH}.0)));
-        float rg = dG / max(abs(dH), 1e-6);
-        vCrowGhost = rg > 16.0 ? 2.0 : (rg > 4.0 ? 1.0 : 0.0);
-      }
-      #endif`,
-    fragmentHead: `varying float vCrowGhost;
-      vec3 crowGhostTone(vec3 c, vec3 d, vec3 l) {
-        float v = sqrt(max(dot(c, vec3(0.2126, 0.7152, 0.0722)), 0.0));   // perceptual lightness of the linear tone
-        return mix(d, l, clamp((v - 0.16) * 1.6, 0.0, 1.0));
-      }`,
-    tones: `
-      if (vCrowGhost > 0.5) {
-        bool crowHalo = distance(vCharBind, vec3(${h.map((v) => v.toFixed(4)).join(', ')})) < 0.01;
-        if (!crowHalo) {
-          bool sp = vCrowGhost > 1.5;
-          vec3 gd = sp ? ${lin3(GHOST.spent[0])} : ${lin3(GHOST.ghost[0])};
-          vec3 gl = sp ? ${lin3(GHOST.spent[1])} : ${lin3(GHOST.ghost[1])};
-          float y = vCharBind.y;
-          ivec2 px = ivec2(gl_FragCoord.xy);
-          if (y < 0.15) discard;
-          if (y < 0.22 && ((px.x + px.y) & 1) == 1) discard;
-          float fm = y < 0.28 ? 0.6 : (y < 0.40 ? 0.3 : 0.0);
-          vec3 mist = sp ? ${lin3(GHOST.spent[1])} : ${lin3(GHOST.mist)};
-          toonHi = mix(crowGhostTone(toonHi, gd, gl), mist, fm);
-          toonMid = mix(crowGhostTone(toonMid, gd, gl), mist, fm);
-          toonSh = mix(crowGhostTone(toonSh, gd, gl), mist, fm);
-          // night: a faint self-glow keeps the ghost pale in the dark (keeper night test: luma of the hi ramp)
-          float kNight = 1.0 - smoothstep(0.35, 0.6, dot(uRampHi, vec3(0.299, 0.587, 0.114)));
-          totalEmissiveRadiance += toonMid * (sp ? 0.12 : 0.3) * kNight;
-        } else {
-          // the halo glows: one flat gold (emissive, unlit) at every time of day, in and out of shadow
-          totalEmissiveRadiance = ${lin3(PALETTE.brass[0])};
-          toonHi = vec3(0.0); toonMid = vec3(0.0); toonSh = vec3(0.0);
-        }
-      }`,
-  };
-}
-
-// ghost pose: hovering calm (the hover is `pos` y; the idle leg IK dips the hips ≤ 0.1 m to keep the — invisible —
-// talons on the ground, so pos carries hover + 0.1), arms drifting out a little, coat tails trailing, the shovel held
-const HOVER = 0.1;
-const GHOSTK = (lv) => ({ 'ghostK.s': [lv, lv, lv] });
-const HALO = { 'halo.s': [1 / HALO_MICRO - 1, 1 / HALO_MICRO - 1, 1 / HALO_MICRO - 1] };
-const ghostPose = (lv, up, d, extra = {}) => ({ pos: [0, HOVER + up, 0], ...GHOSTK(lv), ...(lv === 1 ? HALO : {}),
+// ghost pose (ghost port: POSE ONLY — spec.ghost draws the pale / spent ramps, the gold halo over the hat, the
+// bind-height dissolve of hem + talons, the night self-glow, and adds the 0.14 m hover with floating FK legs): hovering
+// calm, a whole-texel bob (+2/+1/0/+1 texels over the module hover), arms drifting out a little, coat tails trailing, the
+// shovel held; level 2 (spent) = 1 texel lower and the head bowed 4° more
+const ghostPose = (lv, up, d, extra = {}) => ({ pos: [0, up - (lv === 2 ? 0.028 : 0), 0],
   chest: [3 * d, 0, 0], head: [-3 * d + (lv === 2 ? 4 : 0), 0, 0], upperArmL: [8, 0, 10 + 6 * d], forearmL: [24, 0, 0],
   upperArmR: [4, 0, 4 * d], flapL: [-18 - 10 * d, 0, 0], flapR: [-28 + 10 * d, 0, 0], ...extra });
 const ghostClip = (lv) => ({ fps: 30, loop: true, interp: 'step', length: 64, dynamics: 'hold', keys: [
-  { f: 0, pose: ghostPose(lv, 0.16, 0) },
-  { f: 16, pose: ghostPose(lv, 0.13, 0.5) },
-  { f: 32, pose: ghostPose(lv, 0.10, 1) },
-  { f: 48, pose: ghostPose(lv, 0.13, 0.5, { head: [-2 + (lv === 2 ? 4 : 0), 14, 6] }) },   // a slow look aside
+  { f: 0, pose: ghostPose(lv, 0.056, 0) },
+  { f: 16, pose: ghostPose(lv, 0.028, 0.5) },
+  { f: 32, pose: ghostPose(lv, 0.0, 1) },
+  { f: 48, pose: ghostPose(lv, 0.028, 0.5, { head: [-2 + (lv === 2 ? 4 : 0), 14, 6] }) },   // a slow look aside
 ] });
 
 const POINT_ARM = [115, 0, 35];   // left upper arm: forward, 25° above level and 35° out (depth reads as height at 30° pitch: the hand clears the hat brim side)
@@ -386,7 +298,14 @@ export function make(opts = {}) {
     emote: 'dig',
     fx: { dust: ['#E8D8B8', '#BCA484', '#8C7868'], spark: ['#FFF8DC', '#FFD27A'], sockets: { blade: { length: 0, tip: 0 } },
       vote: { node: 'blade' }, speech: { node: 'hat' } },
-    material: { sides: { eyeL: 'mid', eyeR: 'mid', flapL: 'mid', flapR: 'mid', handR: 'mid' }, ...ghostMaterial(S) },
+    // (ghost port) the shared ghost look (was the touch-up ghostK bone + micro halo + material.tones shader): pale ramp,
+    // gold halo over the hat crown (level 1), dimmer spent ramp, bind-height dissolve, night self-glow, 0.14 m hover with
+    // floating FK legs; also shades the WALK when a dead player walks (ch.ghost = 1). keepHue 0.25: dark character;
+    // lo 0.04 / slope 1.7 lift the near-black feathers + charcoal coat up the pale ramp (defaults: a dim slate figure,
+    // shots/ghost-port/crow/z-g8.png vs z-g8-vA.png); spent light end #B0BACE (default spent read as alive at 1x)
+    // halo on the hat bone, lift 0.22: at 0.12 the crown poked through the ring (pack-r1-clip-ghost.png)
+    ghost: { hover: 0.14, keepHue: 0.25, lo: 0.04, slope: 1.7, spent: ['#3A4260', '#B0BACE'], halo: { bone: 'hat', lift: 0.22 } },
+    material: { sides: { eyeL: 'mid', eyeR: 'mid', flapL: 'mid', flapR: 'mid', handR: 'mid' } },
   };
 }
 

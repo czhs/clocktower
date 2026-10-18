@@ -6,7 +6,6 @@
 // per step, re-pinned per frame), the whole body rolls onto the planted foot and yaws toward it, the head thrusts on
 // each touchdown and the arms flap out — the portly merchant rocks side to side at 3.95 H/s. The satchel on the right
 // hip is a 1-link spring chain that swings with the roll. (The frog leaps on two feet; the toad waddles.)
-import * as THREE from 'three';
 import { chibi } from '../src/chars/rig.js';
 import * as K from '../src/chars/kit.js';
 
@@ -37,8 +36,6 @@ const SCROLL_UP = 1 / SCROLL_K - 1;          // 'scroll.s' value that shows it a
 // satchel: 1-link chain on the right hip, hanging down; the bag's scroll rides on its own child bone (hidden in vote)
 const BAG_AT = [-0.285, 0.02, -0.04];      // r2: 0.025 higher + tucked in (dir-2 walk: bag bottom stays near the sole line)
 
-const HALO_REST_Y = 0.14, HALO_UP = 0.39;  // ring inside the skull (y 0.075–0.232, rx 0.33) at rest; +0.39 → y 0.53 over the bumps (top 0.385)
-
 export function skeleton() {
   const S0 = chibi({ height: SKH, heads: 2.3, legs: 0.7, arms: 0.85, snout: 0, ears: false, tail: false, shoulders: 0.5, hips: 0.2,
     face: { eye: [EYE_X, EYE_Y, EYE_Z], brow: false, mouth: false } });
@@ -51,12 +48,7 @@ export function skeleton() {
   S.push({ name: 'bagR0', parent: 'hips', pos: BAG_AT, axis: [0, -1, 0] });
   S.push({ name: 'bagScrollR', parent: 'bagR0', pos: [-0.02, -0.06, -0.07], axis: [0, 1, 0] });
   S.push({ name: 'scroll', parent: 'handR', pos: [0, -0.04, 0.01], axis: [0, 1, 0] });
-  // (t2) GHOST bones, appended LAST (every earlier bone keeps its index → living clips pixel-identical): 'ghostFlag' has
-  // no geometry, its keyed scale is the ghost signal the vertex shader reads (ghost .s +1 → 2×, spent +0.5 → 1.5×, every
-  // other clip 1×); 'halo' carries the ghost halo ring, parked INSIDE the skull at rest and lifted over the eye bumps by
-  // 'halo.p' in the live ghost clip only (frog t2 recipe; no shared code has a per-clip tint)
-  S.push({ name: 'ghostFlag', parent: 'hips', pos: [0, 0, 0], axis: 'up' });
-  S.push({ name: 'halo', parent: 'head', pos: [0, HALO_REST_Y, 0.0], axis: 'up' });
+  // (ghost port) no ghost bones any more: spec.ghost (shared ghost look) appends its own 'ghostHalo' bone
   return Object.defineProperties(S, { sockets: { value: S0.sockets }, meta: { value: S0.meta } });
 }
 
@@ -149,67 +141,7 @@ export function parts(S) {
   const k = SCROLL_K;
   add('scroll', K.xf(K.prism(6, 0.075, 0.74), { scale: [k, k, k] }), [0, -0.31 * k, 0], 'cream', { name: 'scrollRoll' });
   add('scroll', K.xf(K.prism(6, 0.088, 0.06), { scale: [k, k, k] }), [0, -0.56 * k, 0], 'leather', { name: 'scrollTie' });
-  // ── (t2) ghost halo: an octagonal brass ring (r 0.15) of 8 boxes, parked inside the skull except in 'ghost' ──
-  for (let k = 0; k < 8; k++) {
-    const a = k * 45, r = 0.15, L = 2 * r * Math.tan(Math.PI / 8) + 0.03;
-    add('halo', K.xf(K.box(L, 0.035, 0.045), { rot: [0, a, 0], at: [r * Math.sin(a * Math.PI / 180), 0, r * Math.cos(a * Math.PI / 180)] }), [0, 0, 0], 'brass', { name: `halo${k}` });
-  }
   return P;
-}
-
-// ── (t2) GHOST look through the characterMaterial hooks (frog t2 recipe, no shared code changed) ──
-// vertex: ghost signal = world scale of 'ghostFlag' / world scale of bone 0: 0 in every living clip, 1 'ghost', 0.5
-// 'ghost-spent'. fragment: tones re-mapped by luminance onto a pale-blue ramp (spent: dimmer grey-blue) so eyes, smile and
-// part steps keep their value order; halo pale gold; below the belly a 2×2 ordered dither DISCARDS 1/4 → 1/2 → 3/4 of the
-// texels toward the boots (bind-space y, so the fade rides the body) = the v1 ghost's fading tail (alpha 0 in the bake).
-const glsl3 = (hex) => { const c = new THREE.Color(hex); return `vec3(${c.r.toFixed(5)}, ${c.g.toFixed(5)}, ${c.b.toFixed(5)})`; };
-export const GHOST = {
-  ramp: ['#E4F2FF', '#A2C8EE', '#5470AA'],     // light / mid / dark ghost tones (sRGB), live ghost
-  spent: ['#C6CEDC', '#8C9AB4', '#4C5470'],    // dimmer, greyer: ghost vote spent
-  halo: ['#FFF8D0', '#FFE38C', '#D8AE5E'],
-  fade: [[0.50, 0.25], [0.38, 0.5], [0.24, 0.75]],   // bind-space y (m) below which this share of texels is dropped
-};
-function ghostMaterial(gi, hi) {
-  return {
-    vertexHead: 'flat varying float vToadGhost; flat varying float vToadHalo;',
-    vertex: `
-      #ifdef USE_SKINNING
-        {
-          float g0 = length(getBoneMatrix(0.0)[0].xyz);
-          float g1 = length(getBoneMatrix(${gi.toFixed(1)})[0].xyz);
-          vToadGhost = g1 / max(g0, 1e-4) - 1.0;
-          vToadHalo = abs(skinIndex.x - ${hi.toFixed(1)}) < 0.5 ? 1.0 : 0.0;
-        }
-      #else
-        vToadGhost = 0.0; vToadHalo = 0.0;
-      #endif`,
-    fragmentHead: `flat varying float vToadGhost; flat varying float vToadHalo;
-      vec3 toadGhostTone(vec3 c, vec3 lo, vec3 md, vec3 hi) {
-        float t = clamp((sqrt(dot(c, vec3(0.2126, 0.7152, 0.0722))) - 0.2) * 1.6, 0.0, 1.0);
-        return t < 0.5 ? mix(lo, md, t * 2.0) : mix(md, hi, t * 2.0 - 1.0);
-      }`,
-    tones: `
-      if (vToadGhost > 0.25) {
-        float kNight = 1.0 - smoothstep(0.35, 0.6, dot(uRampHi, vec3(0.299, 0.587, 0.114)));
-        if (vToadHalo > 0.5) {
-          toonHi = ${glsl3(GHOST.halo[0])}; toonMid = ${glsl3(GHOST.halo[1])}; toonSh = ${glsl3(GHOST.halo[2])};
-          totalEmissiveRadiance = toonMid * 0.6 * kNight;
-        } else {
-          bool live = vToadGhost > 0.75;
-          vec3 gl = live ? ${glsl3(GHOST.ramp[2])} : ${glsl3(GHOST.spent[2])};
-          vec3 gm = live ? ${glsl3(GHOST.ramp[1])} : ${glsl3(GHOST.spent[1])};
-          vec3 gh = live ? ${glsl3(GHOST.ramp[0])} : ${glsl3(GHOST.spent[0])};
-          toonHi = toadGhostTone(toonHi, gl, gm, gh); toonMid = toadGhostTone(toonMid, gl, gm, gh); toonSh = toadGhostTone(toonSh, gl, gm, gh);
-          totalEmissiveRadiance = toonMid * (live ? 0.35 : 0.18) * kNight;
-          vec2 fq = mod(floor(gl_FragCoord.xy), 2.0);
-          float bay = (fq.x * 2.0 + fq.y * 3.0 - fq.x * fq.y * 4.0 + 0.5) / 4.0;
-          float drop = vCharBind.y < ${GHOST.fade[2][0].toFixed(3)} ? ${GHOST.fade[2][1].toFixed(2)}
-            : vCharBind.y < ${GHOST.fade[1][0].toFixed(3)} ? ${GHOST.fade[1][1].toFixed(2)}
-            : vCharBind.y < ${GHOST.fade[0][0].toFixed(3)} ? ${GHOST.fade[0][1].toFixed(2)} : 0.0;
-          if (bay < drop) discard;
-        }
-      }`,
-  };
 }
 
 // ── clips (pose triples [fwd, twist, out], degrees; 30 Hz grid) ──────────────────────────────────────────────────
@@ -226,14 +158,16 @@ const breathe = (d, c) => ({ pos: [0, -0.01 - d, 0], spine: [c * 0.5, 0, 0], che
 // hand on the belly
 const POINT = { pos: [0, 0.0, 0.02], spine: [-2, -8, 0], chest: [-4, -20, 0], head: [-8, 12, 0], ...EYES(0.1, 0.12), jaw: [6, 0, 0],
   upperArmR: [60, 0, 75], forearmR: [0, 0, 0], handR: [0, 0, 0], upperArmL: [24, 0, 22], forearmL: [84, 0, 0] };
-// (t2) ghost hover: pos up (loop clips IK the feet to the ground: past reach the legs just hang) + a 2-texel bob
+// (ghost port) ghost pose i (0..3), POSE ONLY: spec.ghost draws the pale / spent ramps, the gold halo, the bind-height
+// dissolve, the night self-glow and adds the 0.14 m hover with floating FK legs. Here: a whole-texel bob, chin up, arms
+// drifting out, knees a little bent; spent = 1 texel lower, head bowed, eyes nearly shut, arms hanging, a head roll per key.
 const GHOST_BOB = [0, 0.028, 0.056, 0.028];
-function ghostPose(b, i, k) {
-  const live = k > 0.75, a = [0, 2, 4, 2][i];
-  return { pos: [0, 0.30 + b, 0], spine: [-3, 0, 0], chest: [live ? -4 : 6, 0, 0], head: [live ? -6 : 7, 0, 0],
-    ...(live ? EYES(0, -0.2) : EYES(0, -0.6)), 'ghostFlag.s': [k, k, k], ...(live ? { 'halo.p': [0, HALO_UP, -0.02] } : {}),
+function ghostPose(b, i, live) {
+  const a = [0, 2, 4, 2][i];
+  return { pos: [0, live ? b : b - 0.028, 0], spine: [-3, 0, 0], chest: [live ? -4 : 6, 0, 0], head: [live ? -6 : 7, 0, live ? 0 : [3, 0, -3, 0][i]],
+    ...(live ? EYES(0, -0.2) : EYES(0, -0.6)),
     upperArmL: [8, 0, live ? 22 + a : 6], forearmL: [live ? 20 : 8, 0, 0], upperArmR: [8, 0, live ? 22 + a : 6], forearmR: [live ? 20 : 8, 0, 0],
-    thighL: [10, 0, 4], shinL: [-20, 0, 0], thighR: [10, 0, 4], shinR: [-20, 0, 0] };
+    thighL: [16, 0, 4], shinL: [-26, 0, 0], footL: [28, 0, 0], thighR: [16, 0, 4], shinR: [-26, 0, 0], footR: [28, 0, 0] };
 }
 
 export const CLIPS = {
@@ -309,11 +243,13 @@ export const CLIPS = {
     { f: 24, pose: POINT },
     { f: 84, pose: breathe(0, 0) },
   ] },
-  // (t2) ghost (loop 72): the dead merchant hovers, pale blue, halo over the eye bumps, chin up, arms drifting out, eyes
-  // half-lidded; a 2-texel float bob in 4 held drawings (18 frames each)
-  ghost: { fps: 30, loop: true, interp: 'step', length: 72, keys: [0, 18, 36, 54].map((f, i) => ({ f, pose: ghostPose(GHOST_BOB[i], i, 1) })) },
-  // (t2) ghost-spent (loop 72): the same hover, dimmer + greyer, NO halo (vote used), head bowed, eyes nearly shut, half bob
-  'ghost-spent': { fps: 30, loop: true, interp: 'step', length: 72, keys: [0, 18, 36, 54].map((f, i) => ({ f, pose: ghostPose(GHOST_BOB[i] * 0.5, i, 0.5) })) },
+  // ghost (loop 72; ghost port: spec.ghost draws the pale ramp, the gold halo over the eye bumps, the hover and the
+  // floating legs): the dead merchant hovers chin up, arms drifting out, eyes half-lidded; a 2-texel float bob in 4 held
+  // drawings (18 frames each)
+  ghost: { fps: 30, loop: true, interp: 'step', length: 72, dynamics: 'hold', keys: [0, 18, 36, 54].map((f, i) => ({ f, pose: ghostPose(GHOST_BOB[i], i, true) })) },
+  // ghost-spent (loop 72): dimmer + greyer (module spent ramp), NO halo (vote used), 1 texel lower, head bowed, eyes
+  // nearly shut, a lazier 1-texel bob
+  'ghost-spent': { fps: 30, loop: true, interp: 'step', length: 72, dynamics: 'hold', keys: [0, 18, 36, 54].map((f, i) => ({ f, pose: ghostPose([0, 0.028, 0.028, 0][i], i, false) })) },
 };
 
 // vote / die end on a HELD pose (clip.hold): repeat the last key later so the clip length covers the FX tail
@@ -341,10 +277,16 @@ export function make() {
     locomotion: { plan: 'biped', style: 'bird', walkSpeed: V_GAME, runSpeed: 2 * V_GAME, cycleTime: [0.3, 0.267], poses: [4, 4],
       duty: [0.25, 0.2], roll: [10, 8], headBob: [8, 6], lean: [6, 12], lift: [0.06, 0.08], surge: false },
     character: { quant: { yaw: 8, chain: 4 } },
+    // (ghost port) the shared ghost look (was the t2 ghostFlag/halo bones + material.tones shader): pale ramp, gold halo
+    // over the eye bumps (level 1), dimmer spent ramp, bind-height dissolve, night self-glow, 0.14 m hover with floating
+    // FK legs; also shades the WALK when a dead player walks (ch.ghost = 1). keepHue 0.25: dark olive character;
+    // lo 0 / slope 1.6 lift the dark olive up the pale ramp (defaults left a grey-olive live ghost and a dark slate spent
+    // one); spent light end #B0BACE (preservation)
+    // halo lift 0.2: at 0.12 the ring rested on the far eye bump (pack-r1-clip-ghost.png)
+    ghost: { hover: 0.14, keepHue: 0.25, lo: 0, slope: 1.6, spent: ['#3A4260', '#B0BACE'], halo: { lift: 0.2 } },
     clips: CLIPS,
     fx: { stepClips: ['walk', 'run'], stepEvery: 2, speech: { node: 'crown' } },
-    material: { sides: { eyeL: 'mid', eyeR: 'mid', handL: 'mid', handR: 'mid' },
-      ...ghostMaterial(S.findIndex((b) => b.name === 'ghostFlag'), S.findIndex((b) => b.name === 'halo')) },
+    material: { sides: { eyeL: 'mid', eyeR: 'mid', handL: 'mid', handR: 'mid' } },
   };
 }
 

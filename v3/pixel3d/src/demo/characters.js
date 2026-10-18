@@ -446,20 +446,31 @@ export async function createNPCs(demo, { count = 3 } = {}) {
     const th = Math.PI + a;
     return new THREE.Vector3(C.cx + Math.sin(th) * r, 0, C.cz - Math.cos(th) * r);
   }).filter((p) => !layout.blocked(Math.floor(p.x), Math.floor(p.z))).slice(0, Math.max(0, Math.min(6, count || 0)));
-  const npcs = [];   // per slot: { id, slot, spot, handle, face, home, next }
-  let playerId = store.state.character, disposed = false;
+  const npcs = [];   // per slot: { id, slot, spot (live), base, away, handle, face, home, next, walking }
+  let playerId = store.state.character, disposed = false, lastT = null;
   const available = () => (demo.characters ?? []).filter((c) => c.complete).map((c) => c.id);
 
+  // (B) while the vote camera is up (any vote stage, votestage.js) the idle NPCs walk AWAY south, out of the vote frame
+  // (on the stones they stood just outside the ring and read as part of it; in the court at the frame's bottom edge), and
+  // walk back to their spots afterwards. n.spot is the LIVE position (the game UI's labels read it); n.base the spot.
+  // (radially out from the circle to r 16-11 m: the vote frames (every yaw) hold the ring + labels, r <= ~9)
+  const awayOf = (b) => {
+    const a = Math.atan2(b.x - C.cx, b.z - C.cz);
+    for (const r of [16, 15, 14, 13, 12, 11]) { const x = C.cx + Math.sin(a) * r, z = C.cz + Math.cos(a) * r; if (!layout.blocked(Math.floor(x), Math.floor(z))) return new THREE.Vector3(x, 0, z); }
+    return b.clone();
+  };
+  const WALK = 1.15;          // m / s (a stroll: the walk clip, not the run)
   async function spawn(slot, id) {
-    const spot = spots[slot];
-    const home = Math.atan2(C.cx - spot.x, C.cz - spot.z);
+    const base = spots[slot];
+    const live = npcs[slot]?.spot ?? base.clone();
+    const home = Math.atan2(C.cx - base.x, C.cz - base.z);
     let h;
-    try { h = await createCharacter(engine, id, { position: spot, face: home }); } catch (e) {
+    try { h = await createCharacter(engine, id, { position: live, face: home }); } catch (e) {
       console.warn(`[demo] NPC '${id}' failed:`, e?.message || e); return null;
     }
     if (disposed) { h.dispose(); return null; }
-    const n = { id, slot, spot, handle: h, face: home, home, next: 3 + slot * 2.9 };
-    h.ch.drive(() => ({ pos: spot, face: n.face }));
+    const n = { id, slot, spot: live, base, away: awayOf(base), handle: h, face: home, home, next: 3 + slot * 2.9, walking: false };
+    h.ch.drive(() => ({ pos: n.spot, face: n.face }));
     engine.scene.add(h.root);
     npcs[slot]?.handle?.dispose();
     npcs[slot] = n;
@@ -478,19 +489,33 @@ export async function createNPCs(demo, { count = 3 } = {}) {
   });
 
   const api = {
-    get list() { return npcs.filter(Boolean).map((n) => ({ id: n.id, pos: [n.spot.x, n.spot.z], clip: n.handle.ch.state.clip })); },
+    get list() { return npcs.filter(Boolean).map((n) => ({ id: n.id, pos: [+n.spot.x.toFixed(2), +n.spot.z.toFixed(2)], clip: n.handle.ch.state.clip, walking: !!n.walking, away: Math.hypot(n.spot.x - n.away.x, n.spot.z - n.away.z) < 0.05 })); },
     /** The live NPC records for the game UI (src/demo/gameui.js: labels, talk, pops, readers): no copies per frame.
      *  [{ slot, id, name, spot (Vector3), face (rad), height, handle }] */
     get members() { return npcs; },
     update(t) {
       const p = demo.player?.position;
+      // (B) out of the vote frame while the VOTE camera is up (any stage: on the stones, stage A, they stood just outside
+      // the ring and read as part of it; in the court they stood at the frame's bottom edge)
+      const out = !!demo.passB && store.state.camera === 'vote' && !demo.player?.interior;
+      const dt = Math.min(0.1, Math.max(0, t - (lastT ?? t))); lastT = t;
       for (const n of npcs) {
         if (!n) continue;
+        // (B) out of the vote frame while the court is staged, back afterwards: walk (the Character's own gait)
+        const goal = out ? n.away : n.base, dx = goal.x - n.spot.x, dz = goal.z - n.spot.z, d = Math.hypot(dx, dz);
+        n.walking = d > 0.02;
+        if (n.walking) {
+          const s = Math.min(d, WALK * dt);
+          n.spot.x += (dx / d) * s; n.spot.z += (dz / d) * s;
+          n.face = Math.atan2(dx, dz);
+          n.handle.update(t);
+          continue;
+        }
         // face the player while it stands within 3.5 m (the Character turns in stop-motion 45° steps), else the circle
         const near = p && Math.hypot(p.x - n.spot.x, p.z - n.spot.z) < 3.5;
         n.face = near ? Math.atan2(p.x - n.spot.x, p.z - n.spot.z) : n.home;
         const tau = n.handle.clock;
-        if (tau >= n.next) {
+        if (tau >= n.next && !out) {
           const opts = NPC_EMOTES.filter((c) => n.handle.spec.clips?.[c]);
           if (n.handle.emotes.signature && !opts.includes(n.handle.emotes.signature)) opts.push(n.handle.emotes.signature);
           if (opts.length) n.handle.play(opts[Math.floor(tau * 7.13) % opts.length]);

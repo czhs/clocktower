@@ -162,6 +162,22 @@ const ROWS = {
     '..IIIIIIIIIi..',
     '...iiiiiiii...',
     '..............'],
+  // (critic P2-2) the tower timer's tray row: an hourglass in an iron frame (start / pause the tower's countdown)
+  timer: [
+    'IIIIIIIIIIIIII',
+    '.jiiiiiiiiiij.',
+    '..hhhhhhhhhp..',
+    '..hhhhhhhhhp..',
+    '...hPPPPPPp...',
+    '....hPPPPp....',
+    '.....hPPp.....',
+    '......Pp......',
+    '.....h.Pp.....',
+    '....h..PPp....',
+    '...h..PPPPp...',
+    '..hPPPPPPPPp..',
+    '.jiiiiiiiiiij.',
+    'IIIIIIIIIIIIII'],
   life: [
     '.....HHMM.....',
     '...HHMMMMMS...',
@@ -245,14 +261,20 @@ const G = {
   },
 };
 
-const LINE = { talk: 'n', vote: 'n', die: 'n', ghost: 'O', camera: 'L', bell: 'L', scales: 'L', candle: 'L', life: 'L' };
+const LINE = { talk: 'n', vote: 'n', die: 'n', ghost: 'O', camera: 'L', bell: 'L', scales: 'L', candle: 'L', life: 'L', timer: 'O' };
+// (critic P2-2) the timer row's reset (back to the start: a bar + a left triangle) and the -1 / +1 minute glyphs
+G.reset = (T) => stroke(T, (x, y) => (x > 1.5 && x < 4 && y > 2 && y < 12) || (x > 5 && x < 12.5 && y > 2 && y < 12 && Math.abs(y - 7) <= (x - 5) * 0.72 + 0.2));
+const one = (x, y) => (x > 8.5 && x < 10.8 && y > 2 && y < 12) || (y > 2 && y < 5 && x > 6.8 && x < 9 && x + y > 10.5) || (y > 10 && y < 12 && x > 7 && x < 12.5);
+G.minus1 = (T) => stroke(T, (x, y) => (x > 0.5 && x < 6 && y > 6 && y < 8) || one(x, y));
+G.plus1 = (T) => stroke(T, (x, y) => (x > 0.5 && x < 6.5 && y > 6 && y < 8) || (x > 2.5 && x < 4.5 && y > 4 && y < 10) || one(x, y));
 /** The HD glyph image of a button key (16x16 incl. its line; library glyphs keep their size), or null. */
 export function glyphHD(k, T, { color = 'crimson', paused = false } = {}) {
   return memo(`${k}|${color}|${paused}|${tk(T)}`, () => {
     const Lc = (c) => key(T)[c];
     if (ROWS[k]) return lined(art(ROWS[k], T), Lc(LINE[k]));
     switch (k) {
-      case 'emote': case 'more': case 'minus': case 'plus': case 'close': case 'star': case 'dawn': return lined(G[k](T), T.goldLine);
+      case 'emote': case 'more': case 'minus': case 'plus': case 'close': case 'star': case 'dawn':
+      case 'reset': case 'minus1': case 'plus1': return lined(G[k](T), T.goldLine);
       case 'palette': return lined(G.palette(T), T.outline);
       case 'pause': return lined(paused ? G.play(T) : G.pause(T), T.goldLine);
       case 'slower': return lined(G.chev(T, 2, -1), T.goldLine);
@@ -279,6 +301,9 @@ const EXTRA_HD = {
   ']': ['####', '..##', '..##', '..##', '..##', '..##', '..##', '..##', '..##', '####'],
   '`': ['##..', '.##.', '..##', '....', '....', '....', '....', '....', '....', '....'],
   '=': ['......', '......', '......', '######', '......', '......', '######', '......', '......', '......'],
+  // (critic P2-3) the tiny@2 V read as U and C as [: a V that narrows to a point, a C with turned-in tips
+  V: ['##...##', '##...##', '##...##', '.##.##.', '.##.##.', '.##.##.', '..###..', '..###..', '...#...', '...#...'],
+  C: ['.####.', '##..##', '##....', '##....', '##....', '##....', '##....', '##....', '##..##', '.####.'],
   // a space bar (the bracket under a key)
   '␣': ['..........', '..........', '..........', '..........', '..........', '##......##', '##......##', '##......##', '##########', '##########'],
   // a mouse with its right button lit (RMB)

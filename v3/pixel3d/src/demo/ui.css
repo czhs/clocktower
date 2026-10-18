@@ -24,10 +24,13 @@
 
 /* ---------------------------------------------------------------- panel shell */
 #demo-ui > .dui-panel {
-  position: absolute; top: 8px; right: 8px; width: 316px; max-width: calc(100vw - 16px);
-  max-height: calc(100vh - 16px); display: flex; flex-direction: column;
+  position: absolute; top: 8px; right: 8px; width: 316px; max-width: calc((100vw - 16px) / var(--uizoom, 1));
+  max-height: calc((100vh - 16px) / var(--uizoom, 1)); display: flex; flex-direction: column;
   font: 12px/1.3 var(--dui-serif); user-select: none; -webkit-user-select: none;
 }
+/* the vote camera: the panel slides out past the right edge (ui.js paintAway) and back after */
+#demo-ui > .dui-panel { transition: transform 0.25s steps(5, end); }
+#demo-ui > .dui-panel.dui-away { transform: translateX(calc(100% + 24px)); pointer-events: none; }
 /* the plain look (?gameui=0); with the game UI the panel wears the library skin (end of this file) */
 #demo-ui > .dui-panel:not(.dui-skinned) {
   background: var(--dui-bg); border: 1px solid var(--dui-edge);
@@ -184,7 +187,7 @@
 
 /* ---------------------------------------------------------------- status line, toasts */
 #demo-ui > .dui-status {
-  position: absolute; left: 8px; bottom: 8px; pointer-events: none; padding: 4px 8px 5px; max-width: calc(100vw - 340px);
+  position: absolute; left: 8px; bottom: 8px; pointer-events: none; padding: 4px 8px 5px; max-width: calc((100vw - 340px * var(--uizoom, 1)) / var(--uizoom, 1));
   background: rgba(14, 16, 24, 0.78); border: 1px solid var(--dui-edge); box-shadow: inset 0 0 0 1px #2f3547;
   font: 11px/1.35 var(--dui-mono); color: var(--dui-text); white-space: pre; overflow: hidden; text-overflow: ellipsis;
 }
@@ -213,7 +216,7 @@
 }
 .dui-help[hidden] { display: none !important; }
 .dui-help-card {
-  width: min(640px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow: auto; padding: 14px 18px 16px;
+  width: min(640px, calc((100vw - 32px) / var(--uizoom, 1))); max-height: calc((100vh - 32px) / var(--uizoom, 1)); overflow: auto; padding: 14px 18px 16px;
   font: 12px/1.35 var(--dui-serif);
 }
 .dui-help-card:not(.dui-skinned) { background: var(--dui-bg); border: 1px solid var(--dui-edge); box-shadow: inset 0 0 0 1px var(--dui-line), 4px 4px 0 rgba(0, 0, 0, 0.5); }
@@ -239,7 +242,8 @@
   .dui-sec-body { gap: 5px; padding-bottom: 6px; }
 }
 @media (max-width: 720px) {
-  #demo-ui > .dui-status { max-width: calc(100vw - 16px); bottom: 8px; }
+  /* (critic P2-11) never over the dock button (the portrait, bottom right of the canvas: ~30 CSS px + margins) */
+  #demo-ui > .dui-status { max-width: calc(100vw - 90px); bottom: 8px; }
   #demo-ui > .dui-panel { max-height: calc(100vh - 64px); }
 }
 
@@ -325,6 +329,28 @@
 #demo-ui .dnb.dnb-hd .dnb-status { padding: 0 3px; }
 #demo-ui .dnb.dnb-hd .dnb-foot { color: #9C91A8; }
 #demo-ui .dnb.dnb-hd .dnb-note { line-height: 16px; }
+/* (critic P2-5) ONE scale for the whole HD notebook: every size follows --hdpx (1 at 720p, 2 at 1080p 'round'), the
+   integer scale the page's own HD face already uses (16 x --hdpx). Before, at 1080p the Notes page was 32-px text in a
+   420-px box (~4 words a line) while the header / Seats rows stayed 16-px 1x-size, and the x was clipped. Now the box
+   grows with the face (300 x --hdpx: the same words per line at both sizes, room for "Sir Croaksworth" at 720p), the
+   header, names, marks, notes and the avatar boxes scale with it, and the avatar boxes show the 48-px HD portrait 1:1
+   at --hdpx 2 (gameui.js hands the notebook the HD avatar there). */
+#demo-ui > .dnb.dnb-hd { width: calc(300px * var(--hdpx, 1)); }
+#demo-ui .dnb.dnb-hd .dnb-status, #demo-ui .dnb.dnb-hd .dnb-name, #demo-ui .dnb.dnb-hd .dnb-mark, #demo-ui .dnb.dnb-hd .dnb-note,
+#demo-ui .dnb.dnb-hd .dnb-foot, #demo-ui .dnb.dnb-hd .dnb-pic { font-size: calc(16px * var(--hdpx, 1)); line-height: calc(18px * var(--hdpx, 1)); }
+#demo-ui .dnb.dnb-hd .dnb-note { line-height: calc(16px * var(--hdpx, 1)); height: calc(26px * var(--hdpx, 1)); }
+#demo-ui .dnb.dnb-hd .dnb-title { font: 400 calc(16px * var(--hdpx, 1)) / 1 'CT Pixel Body HD', var(--dui-serif), serif; font-variant: normal; letter-spacing: 0; -webkit-font-smoothing: none; }
+#demo-ui .dnb.dnb-hd .dnb-head { min-height: calc(26px * var(--hdpx, 1)); }
+#demo-ui .dnb.dnb-hd .dnb-close { width: calc(26px * var(--hdpx, 1)); min-height: calc(26px * var(--hdpx, 1)); flex: none; }
+#demo-ui .dnb.dnb-hd .dnb-mark { width: calc(22px * var(--hdpx, 1)); min-height: calc(22px * var(--hdpx, 1)); }
+#demo-ui .dnb.dnb-hd .dnb-row .dnb-pic { width: calc(24px * var(--hdpx, 1) + 6px); height: calc(24px * var(--hdpx, 1) + 6px); }
+#demo-ui .dnb.dnb-hd .dnb-row .dnb-pic img { width: calc(24px * var(--hdpx, 1)); height: calc(24px * var(--hdpx, 1)); }
+
+/* (emoji) the Game UI section's "Pin colour" row: AUTO + 8 square colour dots (hard edges, a dark 1-px ring); the
+   colour AUTO resolves to carries a gold underline (as the dock's picker) */
+#demo-ui .dui-pinseg > .dui-btn { display: flex; align-items: center; justify-content: center; }
+#demo-ui .dui-pindot { display: inline-block; width: 8px; height: 8px; box-shadow: 0 0 0 1px #14121c; }
+#demo-ui .dui-pinauto .dui-pindot { box-shadow: 0 0 0 1px #14121c, 0 4px 0 -1px #e6b632; }
 
 /* a phone (narrow, the panel auto-folds below 700 px): the notebook spans the top and stays under 40 % of the height
    (notebook.js fit() sizes the Notes page to it), so the reader and the book in their hands stay in view below it */

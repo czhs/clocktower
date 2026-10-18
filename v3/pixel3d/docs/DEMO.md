@@ -26,14 +26,14 @@ Console errors / page errors / shader errors = failure. No git commits.
 | **characters** | `src/demo/characters.js` | which characters are complete, loading a spec, creating a runtime Character handle |
 | **time** (town states) | `src/demo/time.js` | continuous clock → sky / sun / lights / tower hands / hour strikes; phase / nominee / seats → dais + ceremony; bell; life on/off; quality (reload) |
 | **ui** | `src/demo/ui.js` | the control panel, status line, help overlay, toasts |
-| **ui** (game UI) | `src/demo/gameui.js`, `src/demo/actionbar.js`, `src/demo/notebook.js`, `src/demo/ui-assets.json`, `src/ui/runtime/layer.js` + `src/ui/runtime/book3d.js` (new, additive to the UI library) | the pixel3d UI library in the demo (§4.7): labels, talk + bubbles, emote pops, point / pie / pins, the pixel HUD (clock + phase chips, toolbar + the tip's lightbulb, toasts, prompts, the controls tip, social dock), the ACTION BAR (every key as a button), the events group (captions, night veil / dawn, vote clock, execution, ghost reveal, poof), off-screen arrows, the notebook + the reading book, the panel skin |
+| **ui** (game UI) | `src/demo/gameui.js`, `src/demo/actionbar.js`, `src/demo/notebook.js`, `src/demo/ui-assets.json`, `src/ui/runtime/layer.js` + `src/ui/runtime/book3d.js` (new, additive to the UI library) | the pixel3d UI library in the demo (§4.7): labels, talk + bubbles, emote pops, point / pie / pins, the pixel HUD (clock + phase chips, toolbar + the tip's lightbulb, toasts, prompts, the controls tip, the reactions dock + pin-colour picker, the emoji reactions), the ACTION BAR (every key as a button), the events group (captions, night veil / dawn, vote clock, execution, ghost reveal, poof), off-screen arrows, the notebook + the reading book, the panel skin |
 | **ui** (ambient) | `src/demo/ambient.js` | the ambient library (`src/ambient/**`, read only) in the demo (§4.8): pigeons, fireflies / moths / butterflies, the cauldron fire, props, reacting to the player |
 | **deploy** | `src/demo/deploy.js`, `tools/demo-serve.mjs`, `tools/demo-check*.mjs` (+ `shots/demo-deploy/`) | `window.__demo` automation hooks, error overlay, perf watchdog, serving, the playtest automation |
 | **player** (houses) | `src/demo/interior.js`, `src/demo/camera.js`, `src/demo/collision.js` | entering / leaving cottages (fade, room collision, the dollhouse camera), the texel-locked follow, collision + walk-through props |
 | **intro** | `src/demo/loading.js`, `src/demo/loading.css`, `src/demo/intro.js`, the `#demo-loading` markup in demo.html | the loading screen (real progress), the opening cinematic |
 | **roster** | `tools/demo-roster.sh` (run this) → `tools/demo-roster.mjs`, `src/demo/roster.js`, `src/demo/roster.json` (generated) | which characters are offered (shipped / WIP), portraits; the wrapper brings the host's roster.json back to the Mac (a sync would overwrite it otherwise) |
 | interiors (town side) | `src/town/interiors/*` (read-only for the demo) | the 15 rooms (`buildInterior`, `aimLights`), docs/INTERIORS.md |
-| **pass B** (voting circle + tower) | `src/demo/passb.js` (loader), `src/demo/votecam.js`, `src/demo/towertimer.js`, `src/demo/timer-ui.js`, `src/demo/seatcast.js`, `src/demo/tower-interior.js`, `tools/demo-play-passb.mjs`, `shots/demo-passB/` | the vote camera, the Storyteller's tower timer (dials, hour-board, HUD chip, ST control, panel section), the cast on the seats, the walkable tower interior (§4.9) |
+| **pass B** (voting circle + tower) | `src/demo/passb.js` (loader), `src/demo/votestage.js`, `src/demo/votecam.js`, `src/demo/towertimer.js`, `src/demo/timer-ui.js`, `src/demo/seatcast.js`, `src/demo/tower-interior.js`, `src/demo/votemarks.js`, `tools/demo-play-passb.mjs`, `shots/demo-passB/`, `shots/demo-vote-emoji/` | the vote staging (the tower court), the vote camera, the Storyteller's tower timer (dials, hour-board, HUD chip, ST control, panel section), the cast on the seats, the vote marks + tally plaque (D=2), the walkable tower interior (§4.9) |
 
 Every non-lead file exists as a **working stub** written by the lead (so the page runs end to end from minute one).
 Owners replace their stub; keep the exported names and signatures below (add freely, never rename).
@@ -324,9 +324,30 @@ moments; the demo never imports `scenes/`). `?gameui=0` turns it off (the A/B ba
   finger + marching trail at them + the ping at their feet; on the ground = a place point (ping + mark). The player turns
   to the target (`player.faceTo`) and plays its `point` clip when the character has one. 3.5 s (`EMOTE_POINT_MS`).
   `pointerScale` `v2` swaps the frame set (`markerFramesV2size`) live.
-- **Pie** (emotes `drawPie`): right-hold (250 ms) or right-drag (> 6 px) opens it at the press point: Point, 8 pin
-  colours, "Remove my pin" when pressed on your own pin; release on a wedge commits; release in the dead zone = sticky
-  (8 s, click a wedge; Esc / click elsewhere cancels). Pin wedges grey out at the cap (6 pins per player).
+- **Pie** (emotes `drawPie`, items `EJ.pieItemsEmoji`): right-hold (250 ms) or right-drag (> 6 px) opens it at the
+  press point: Point · agree · trust · laugh · gasp · [Remove my pin] · question · suspicious · disagree · ONE Pin wedge
+  in your current colour (title "Point, pin or react", or the person's name; reactions on a person read "Agree with
+  Bram", "Suspicious of Bram"); release on a wedge commits; release in the dead zone = sticky (8 s, click a wedge; Esc /
+  click elsewhere cancels); 1-7 while it is open commit that reaction's wedge. The Pin wedge greys out at the cap (6 pins
+  per player). The pie never changes the pin colour.
+- **Emoji reactions** (the user: "replace the pins in the palette with emotes that spawn emojis above the character's
+  head, save one slot for the pin color — let pin color switching be stored somewhere else out of the way, since from
+  playtesting different pins are actually not that important"; the library: docs/UI-EMOJI.md, `src/ui/emotes/emoji.js`
+  + `src/ui/hd/emoji.js`, `prepareEmojiHD` after `prepareWave2HD` at z -1). 7 reactions: agree, disagree, question,
+  suspicious, gasp, laugh, trust. `gameui.react(key, target)` (the pie, the dock, 1-7 with the dock open; a 0.8 s
+  cooldown; you turn to the target) pops the emoji over YOUR head (`pop('you', 'emoji', key)`: one pop per head, the
+  burst / 2.7 s hold / dissolve; HD frames on `L.hd.world`), event `gameui:emoji`. The TOWNSFOLK react too
+  (`gameui.npcReact(slot, key, delay)`, deterministic picks): a nomination = one or two seats + an idle NPC
+  'suspicious'; the vote's end = the counted voters 'agree', a few who kept their hands down 'disagree', the nominee
+  'gasp' when it passed; an execution / a death = the neighbours 'gasp'; idle chat (not in the staged court) = now and
+  then a neighbour 'laugh' / 'agree' / 'question'. In the vote court the pops stand above the 1.35x cast's names (their
+  vote marks sit on the heads). `info().reactions` {you, cast, byKey, queued, last}; pops carry `emoji`.
+- **Pin colour, out of the way**: AUTOMATIC per player by default (`EJ.autoPinColor` of the player's identity: in the
+  demo the character id, recomputed on a swap while auto); a manual pick from the dock's small colour button (the AUTO
+  + 8-dot picker popover over the dock; a pick closes it, so do Esc / a click elsewhere) or from the control panel's
+  Game UI row "Pin colour" (AUTO + 8 square dots; the auto colour underlined gold) is saved in localStorage
+  `ct-pin-color` (try / catch) and survives reloads. `gameui.setPinColor('auto' | c)`, `gameui.pinColor`, event
+  `gameui:pincolor`; the test hook `gameui.color = c` sets without saving.
 - **Touch** (a coarse pointer, or `?touch=1`; `?touch=0` forces the mouse wording): a finger held still on the town for
   `LONG_PRESS_MS` (450 ms, emotes art TIMING) opens the TOUCH pie (bigger wedges, `PIE.touch`) under it; slide to a
   wedge and lift = commit, lift in the dead zone = sticky (tap a wedge). A finger that moves > 10 px first is a pan, a
@@ -345,9 +366,26 @@ moments; the demo never imports `scenes/`). `?gameui=0` turns it off (the A/B ba
   shows the hand cursor, the remove badge and "Your pin on <name> · click to remove"; a press on a townsperson who
   carries your pin (or on the pin) offers the pie's "Remove my pin"; Clear my pins clears person pins too. The tip and
   the Pin button's tooltip say so ("click a pin to remove it", "their pin again: remove").
-- **Social dock** (emotes `drawDock`, bottom right of the view; G or a click on your portrait in the gold ring = the dock
-  button): Point / Pin (arm, then click the town; the armed pill has Cancel), the 8 swatches (current colour), Clear my
-  pins, the key hints.
+- **Reactions dock** (`EJ.drawEmoteDock`, 112 x 90, bottom right of the view; G or a click on your portrait in the gold
+  ring = the dock button; the bar's laughing-face button): Point / Pin (arm, then click the town; the armed pill has
+  Cancel) + the small colour button (the picker), the 7 reactions over their number keys (a just-sent one lit gold),
+  Clear my pins, the key hints ("F pin, 1-7 react"). No swatch row. While it is open the number keys 1-7 react (eaten in
+  the capture phase before the player's emote bindings); closed, 1-6 are the character emotes as before.
+- **Critic fixes (the HD playtest critic, 16/24 on v/9825a03779)**: P1-1 the dismissed tip flies from the tip into the
+  bulb (its fly lacked w / h: NaN centres drew it at the top-left corner; `info().tipState.fly` = the drawn centres, the
+  playtest checks them); P2-2 / P2-3 the tray's timer row has its own glyphs, the tiny@2 key plates draw their own V and
+  C; P2-4 the talk emote ends by itself after 4 s and a one-shot over it returns to the idle (or the ghost idle);
+  P2-5 the HD notebook uses ONE scale (--hdpx) for the box (300 x --hdpx), header, names, marks, notes and avatar boxes,
+  the 48-px HD portraits where the box is HD; P2-6 at pixelScale > 2 the DOM panel / status line / keys card are CSS-zoomed
+  by pixelScale / 2 on the --px 2 skin (whole device px, the text grows with the HUD; max sizes divided by the zoom) and
+  the character tiles show the character's line or height, not the rig id; P2-9 a HUD client's second row (the timer chip
+  under the chips) pushes the caption / vote card / room line below it (`out.row2`); P2-11 the phone status line stops
+  short of the dock button; P3-15 every label steps up over an overlapping one (sizes in texels at either density) and
+  is clamped inside the view (`labelHD` opts.x, additive), no door prompt in the vote camera; P3-16 a key press hides
+  the hover tooltip until the mouse moves, the ghost label's wisp is HD (EPX + re-lit); a GHOST's name label (yours,
+  an NPC's, a seated ghost's) rises over the shared spec.ghost HALO (`spec.ghost.halo.lift` + hover, else 0.3 m, + 0.18
+  m: it covered the halo; `shots/demo-vote-emoji/ghost-walk-*`). P2-7 / P2-8 / P3-12 / P3-13 /
+  P3-14: §4.9.
 - **HUD (S)** (hud art): the town clock chip (stage of the day / the ceremony, the time, the dial = what is left of the
   day or night period; paused / clock stands = the paused dial) + the phase chip (day ☼, nomination / vote ◯, execution
   bell, night ☾) top left; the toolbar top right (notebook, ⚙ = the control panel, ? = the keys overlay); the toast column
@@ -496,10 +534,61 @@ Loaded by main.js after the view inset and BEFORE the shader warm-up (one `load`
 `// (B)`), so the vote camera wraps the rig's final update and every program the pass adds compiles behind the loading
 screen. `demo.passB = { votecam, timer, seats, interior, ui, update, info() }`; each part can be switched off with
 `?passB.<part>=0` (`?passB=0` = none: the A/B baseline), a failing part is reported in `__demo.errors` and skipped.
+Parts in load order: `stage` (votestage.js), `votecam`, `timer`, `seats`, `interior`, `ui`, `marks` (votemarks.js).
+(Merged 2026-10-17 from the vote-staging copy `pixel3d-vote-final`, which forked from pass B before the D=2 switch: its
+new files votestage.js / votemarks.js and its passb.js / votecam.js taken whole (main's versions had no other edits),
+seatcast.js / gameui.js / tools/demo-play-passb.mjs hand-merged onto main's D=2 + seat-swap + program-name work.)
+- **THE DEFAULT IS STAGE A** (the user, 2026-10-17, after seeing the options: "I like option A the best for the voting
+  layout, remember in game there won't be the side panel, so you can use the whole screen"): the cast stay on the 15
+  seat stones round the dais at 1.0x, no gather / puff, the vote camera's own fit (yaw 45 at 1280 x 720) with the tower
+  dial in frame, the dais' own brass hand sweeping, the vote marks at the stones (D=2; the candle at half the court's
+  size there: the 1x drawing at 1 HD px per art px, the court's candle was taller than a seated figure), the vote clock
+  card top left, the tally plaque top right under the toolbar (the toasts start below it), no chatter bubbles in the
+  vote camera, the idle NPCs walking radially out to r 11-16 m. **While the vote camera is up the demo's control panel
+  SLIDES OUT** past the right edge (ui.js `.dui-away`, 0.25 s in 5 steps, nothing saved; it slides back when the camera
+  leaves the vote): the frame fits the WHOLE canvas (votecam / main.js / gameui / timer-ui ignore a `.dui-away` panel
+  from its first frame, so the transition does not reframe). Measured (`votecam.check()`, a 1.3 m figure / the dial's
+  diameter, screen px): 1280 x 720 **57.7 px / 99.4 px** (yaw 45, vh 14.06; before, pass B with the panel open: 54.9 /
+  94.5), 1920 x 1080 **79.9 / 137.6 px** (yaw -45, vh 15.22; before 81 / 147 with the panel open: the D=2 HUD's corner
+  keep-outs are 4/3 of the 1x size at 1080p 'round' and now also hold the plaque, so the gain from the whole canvas is
+  spent there); all 15 seats + the dial in frame and clear of the HUD. The frame is HEIGHT-bound at yaw 45 (content
+  16 x 13.7 m), so the panel's width mattered little; the board no longer existing changes nothing (it was never in the
+  fit's content). Evidence `shots/demo-vote-emoji/stageA-*.png`. The staged court below is `?voteStage=N`.
+- **The vote staging, the court** (`?voteStage=N`; `votestage.js createVoteStage`; the user: "voting arrangement is still not focussing on the
+  players + clock of the clocktower as central, we want to be as closely cropped as possible to maximize the detail on
+  the characters" / "the voting circle can exaggerate things compared to the day - can take artistic licenses"). While
+  the vote camera is up the scene is STAGED: the 15 seated cast leave the stones and stand in the **tower court** before
+  the great door, one open crescent of 15 (seat 0 / XII at the middle of the back, clockwise to the east end = seat 7,
+  the west end = seat 8 back to 14; 0.97 m apart, the ends curving toward the camera z = 9.85 + 0.058 u^2, every other
+  seat a 0.6 m step forward so neighbouring name labels sit at two heights), every face toward the camera, the cast at
+  **1.35x**, the camera at yaw 0 / **pitch 22.5** (a lower look: more face, less setts), the tower's own clock face
+  top-centre above them. 14 options were rendered (the staging study, `shots/vote-options/` in the vote copy);
+  `?voteStage=<A..N>` keeps every one of them (A = the stones, the default). **The gather**: when the vote camera comes up each seat in turn (clockwise from XII,
+  35 ms apart) vanishes from its stone in the Storyteller's puff (the events group's poof, drawn by votemarks.js: the HD
+  poof at D=2) and appears on its vote spot in a second puff at the poof's swap drawing; leaving the vote camera runs it
+  back. The camera steps through its 4 key poses (target, viewHeight, yaw AND pitch) in the same 0.75 s. A seat taken
+  while staged (the ceremony's seat fill) appears on its spot in a puff. The Character's motion state is re-seated at
+  the new spot (seatcast.js `warp`: no velocity spike, feet re-planted, facing sector set). Measured at 1280 x 720 with
+  the panel open (a 1.3 m figure as staged): pass B 54.9 px -> **97.9 px** (102.6 px panel hidden), the dial in frame.
+  **While the court is staged** (`stage.court`: from the middle seat's swap): time.js PARKS the dais (`time.restage()`:
+  its stones set empty = candles out, no vote glow / ghost lights, no sweep, the long brass hand pointing north at the
+  court via the dais api `setHand(0)`), the time module's constant light pool re-aims up to three of its lights at three
+  warm 'court' anchors over the crescent at dusk / night (score bonus; NO new light, the count never changes: the cast
+  read warm next to their candles), the idle NPCs (keeper / hound / duelist ...) WALK out of the vote frame (any stage:
+  radially to r 11-16 m, characters.js createNPCs, 1.15 m/s, back to their spots afterwards), and the game UI hides the chatter bubbles (they
+  covered the back row's names; the talk glyph stays), draws no vote-clock card (the marks + the plaque carry the vote;
+  the card covered the crescent's west end on a phone / at 1080p) and no door prompt.
 - **The vote camera** (`votecam.js installVoteCam`; the user: "focus on the players + the clock, as closely cropped as
-  possible"). The frame is COMPUTED, not a preset: every seat with its occupant (feet .. a raised hand: the seated cast's
-  own heights) + the tower dial facing the camera, projected into the snap space, fitted to the VISIBLE area (the
-  panel's right band left out) with the HUD's corners as keep-out boxes (chips + vote clock top left, toolbar top right,
+  possible"). Staged (votestage.js), the content is the cast on their VOTE spots at the stage's scale (+ 0.3 m over the
+  raised hand for the name label + its mark), their vote candles (1 m x scale in front of the feet), the stage's dial, at
+  the stage's pitch and yaw (Q / E / `?voteYaw=` still step it), plus keep-outs for the phase caption ribbon (top centre)
+  and the tally plaque (bottom centre above the action bar); the top-left keep-out shrinks to the chips' row (no vote
+  clock card in the court). The keep-outs scale with the HUD's logical px (`gameui.texPerLogical`: 4/3 at 1080p 'round',
+  where the D=2 HUD is 4/3 of the 1x size). On the stones (stage A, the default; `?passB.stage=0`) it is pass B's frame
+  below with the plaque's keep-out under the toolbar (top right), fitted to the WHOLE canvas (the panel slides out).
+  The frame is COMPUTED, not a preset: every seat with its occupant (feet .. a raised hand: the seated cast's
+  own heights) + the tower dial facing the camera, projected into the snap space, fitted to the VISIBLE area (the whole
+  canvas: the demo panel slides out) with the HUD's corners as keep-out boxes (chips + vote clock top left, toolbar top right,
   the timer chip in the top row, the action bar bottom centre, the dock button bottom right), the smallest viewHeight wins
   (a placement search slides the content inside the slack). Pitch stays 30 deg (every preset's), yaw is a 45 deg stop:
   the tower stands 11 m NORTH of the ring, so at yaw 0 the dial sits ~10 m above the ring on screen (content 13.7 x
@@ -518,13 +607,22 @@ screen. `demo.passB = { votecam, timer, seats, interior, ui, update, info() }`; 
   engine.time (`remaining = rem0 - (t - t0)`; the zero is detected at its exact crossing time). Minutes 1..30, stages
   discussion / nominations / bedtime (the v2 clock's gold / red / blue; idle follows the game phase). Keys **K** start /
   pause, **Y** reset, **U / I** -/+ 1 minute (also a third row of the action bar's tray, added at runtime from
-  timer-ui.js); `?timer=<s>&timerRun=1&timerStage=`. Events `timer` {action, state}. While not idle the tower's own
+  timer-ui.js, with its OWN glyphs: an hourglass, back-to-start, -1 / +1); `?timer=<s>&timerRun=1&timerStage=` (+
+  `timerPaused=1`, `timerMin=`, `timerDur=`). **A quality reload keeps it**: towertimer.js wraps `demo.reload` and writes
+  the remaining seconds, running / paused, the armed minutes, the full length and a chosen stage into the URL first
+  (idle / done write nothing). At night (19:30-06:00) the dials' wedge is kit SOLID in the stage's saturated tones (a
+  glowing wedge vanished into the glowing face; also on the dial back inside). The countdown's READOUT is the HUD
+  timer chip (below; the user: "instead of the digital clock on the clocktower, have the counter just be part of the
+  HUD") - shown in the vote camera and inside the tower too. The ST control at
+  zero offers Start (restart) next to the x, not Pause (hud art `drawStClock` o.done, additive). Events `timer` {action, state}. While not idle the tower's own
   hands are hidden (`api.hands`, the town hook) and ALL FOUR dials show the countdown the v2 way (library
   `src/ui/hud/tower.js`, the HUD chip's mini dial): a stage-coloured enamel wedge = the time left, clockwise from XII,
   one iron hand at its end sweeping back to XII, pause bars when paused; at zero the dials + the board flash (4 Hz,
   6 s) and the bell strikes 3 times (`time.ringBell`: the belfry bell swings; there is no audio path in the demo). Kit
   glass (wedge: lit by day, glowing at night like the dial) + kit solid: no new program; rebuilt when the rim moves 2 deg.
-- **The hour-board** (the in-universe readout): a split-flap board hung from the base cornice over the great door
+- **The hour-board: OFF by default since 2026-10-17** (the user: "instead of the digital clock on the clocktower, have
+  the counter just be part of the HUD"): not built, not drawn (programs at boot 71 -> 68); `?board=1` brings it back for
+  review (then its colon is two big lit studs, always shown: "7 56" read as "756"). What it was: a split-flap board hung from the base cornice over the great door
   (2.3 m, dark timber, brass frame, a pointed crest, iron hooks): four dark enamel cards with LIT cream numerals (3 x 5
   cells, 0.39 x 0.45 m: ~10 px tall at the vote camera, glowing lamp-warm at night), brass colon studs blinking while it
   runs, a 2-drawing flip on each changing digit, dim unlit numerals (the armed length) while idle. (Dark numerals on
@@ -542,13 +640,52 @@ screen. `demo.passB = { votecam, timer, seats, interior, ui, update, info() }`; 
   0.235 m, facing the dais) instead of time.js's townsfolk mannequins (`demo-time-folk`: hidden). Built at boot (all
   visible in the warm-up frames: +12 programs, all compiled behind the loading screen; ready +0.6 s), then only occupied
   seats show; hidden ones are not updated. Clips follow the store + the time module: idle; dead = `ghost` / `ghost-spent`
-  (`die` first when the seat dies in view); the vote = `vote` (held) when the dais' brass hand reaches a voter
-  (`time.sweep` / `time.votes`: the folk's timing); nomination: the nominator (the nearest living seat before the
-  nominee) turns to the nominee and plays `point`; day / nomination chatter: one seat `talk`s every 2.7 s, a signature
-  emote every 9.5 s (deterministic per time slot). A held clip (vote / die) is released with `play('idle')` before the
-  next (Character clip.hold). Picking a seated character as yours puts your previous one on that seat. The game UI sees
-  them as townsfolk (`demo.npcs.members` extended, slot 1000 + seat: name labels, talk bubbles, point / pin targets, the
-  notebook's Seats; `?seatLabels=0` keeps them out). `?seatCast=0` = the old mannequins.
+  (`die` first when the seat dies in view); the vote = `vote` (held) as the vote OPENS (0.3 s before the brass hand
+  reaches the first voter, a 0.07 s stagger: in Clocktower hands go up before the hand comes round; gameui's events vote
+  raises at the same moment); nomination AND the vote's opening: the nominator (the nearest living seat before the
+  nominee whose character has a point clip) turns to the nominee and points for 2.6 s (a finished point is drawn again);
+  day / nomination chatter: one seat `talk`s every 2.7 s, a signature emote every 9.5 s (deterministic per time slot).
+  A held clip (vote / die) is released with `play('idle')` before the next (Character clip.hold). Picking a seated
+  character as yours puts your previous one on that seat (a previous character that cannot sit - no talk + vote clips -
+  seats the last castable one you played, else a free one). The game UI sees them as townsfolk (`demo.npcs.members`
+  extended, slot 1000 + seat: name labels, talk bubbles, point / pin targets, the notebook's Seats; `?seatLabels=0`
+  keeps them out; a member's `spot` is where the seat stands NOW and its `scale` the staged cast scale: gameui lifts the
+  label by it). `spotOf(i)` = { pos (feet), height (as shown), scale, staged, shownAt }. Staged the seat stands on its
+  vote spot (terrain height) at the cast scale (`root.scale`). `?seatCast=0` = the old mannequins.
+- **The vote marks** (`votemarks.js createVoteMarks`; the user: "whether a character is voting or not also needs to be
+  extremely obvious - and whether their vote registered" / "do this with on-theme animations / effects"). Drawn into the
+  game UI's pixel layers (`gameui.layers`, z 40; no light, no new program), stepped drawings on the 30 Hz grid, pure
+  functions of the demo clock and of the events group's vote (`gameui.voteOf(t)`: the same EV.voteAt state as the HUD,
+  so world and HUD agree). Per seat: a ring round the feet (ground tier, the figure hides its back half), a VOTE CANDLE
+  on a brass dish 1 m x scale in front of the feet (world tier), a mark: (1) waiting = no ring, an unlit pale candle;
+  (2) voting (hand up, the hand not there yet) = the candle FLARES alight (2 drawings + thrown sparks) then burns in a
+  dithered warm glow (3-drawing flicker), a flickering ember ring, the parchment hand pops up and bobs; (3) COUNTED = a
+  brass chime ring pulses out (3 rings), a red WAX SEAL stamps (lands at 2x, settles, the lock sparks), candle-gold
+  sparks fall from the seal to the candle, then a gold candle with a tall white-gold flame in a gold halo, the seal on
+  its wax + a thick gold ring; (4) passed with the hand down = the candle gutters (3 drawings), a curl of smoke rises (5
+  drawings), a burnt dark stub + a thin iron ring + an iron candle SNUFFER comes down; (5) a ghost's one vote = a pale
+  candle with a swaying blue spirit flame + a shimmering dotted pale ring; counted = a pale-blue seal, then the spirit
+  flame snuffs into a pale curl of smoke; a spent ghost = a cracked grey stub. The current voter: the events pulse ring
+  + the clock hand drawn on the ground from the court's hub to the voter. The TALLY PLAQUE (screen tier, centred above
+  the action bar: `gameui.barRect`): "VOTES CAST 5 / 7 NEEDED 2 MORE", a split-flap flip on each count. The THRESHOLD
+  (the count that reaches `needed` = ceil(alive / 2)): the tower bell swings and strikes (`time.ringBell`), a ripple of
+  gold runs round the counted seats in voting order, the plaque flips to gold "ON THE BLOCK ... ENOUGH" with corner
+  sparks. After the vote phase the marks dissolve out in 0.5 s.
+  **At D=2** (the game UI's density, docs/UI.md §2.10; `?uidensity=1` = the 1x art) every mark has its OWN HD art, not
+  2x2 blocks: the candle / dish / wax / flame / glow re-rasterised on the HD grid (rounder ellipse and teardrop flame,
+  1-px lines and light bands, a 2-px flame core, a 1-px wick, a finer glow dither, a melt pool and rounded drips), the
+  smoke curl at 2x radii, the rings (radius = the world size x k, 1-px line and bands, finer ghost dashes, 3-line chime),
+  the wax seal (round groove, bumpy rim, the gold hand EPX'd), the snuffer and the four hands (the 1x grids EPX'd +
+  re-lit with 1-px bands, like the wave-2 glove), the lock flash / sparks (1-px arms), the pulse ring and the court's
+  clock hand (2-px shaft + 1-px side, HD chevron tip + hub). Tiers: candles / hands / seals / sparks on `L.hd.world`, the
+  rings / pulse / clock hand as ground decals on the HD depth tier (`putGroundHD`: hidden under the figures), the puffs
+  through `worldLayerHD` (the events group's HD poof), the plaque through the screen tier's density view (D=2 frame +
+  faces) on `L.hd.screen`. Same on-screen size as the 1x art (4/3 of it at 1080p 'round', like every HD HUD piece).
+  **In the staged court the mark stands on the head**, in a 14-art-px slot gameui reserves between the head and the
+  name (`gameui.markSlotOf(slot)`): over the name it landed on the stepped-up label of the row above. `?voteMarks=0`
+  off; `marks.info()` = { seats {i: {kind, token, ring}}, tally, needed, passed, bell, plaque {.., hd}, hand, poofs,
+  events, hd {d, k} }, `marks.states(t)`, `marks.topOf(seat)`; the art for review: `voteStateArt(T, {hd})`. gameui's
+  own 'alert' pop on a seated voter's `vote` clip is left out while the marks run.
 - **The tower interior** (`tower-interior.js`; interior.js `register` + player.js `enterable` hooks, store location
   `'clocktower'`): walk into the great door like a cottage ("Walk in: The Clocktower", the fade, the dollhouse camera,
   the room's own collision, walk out on the exit spot back onto the doorstep); `?in=clocktower` starts inside. An 8 x
@@ -565,19 +702,31 @@ screen. `demo.passB = { votecam, timer, seats, interior, ui, update, info() }`; 
   geometry only: **entering compiles no program** (measured 68 -> 68; a first visit of ANY interior used to link a
   second `char-depth-snap` shadow variant: the room module renders one bare colour pass at boot so it is built behind the
   loading screen, which removes it for the cottages too: house-8's first visit 3 -> 2 programs, its own two).
+  (critic P2-7) Framed with a margin for the bottom HUD band (camera target z -3.4, viewHeight 8.2: the spawn spot stands
+  ~18 % above the bottom edge); the room's "walk out the door to leave" line stands at the TOP (under the chips / the
+  caption: at the bottom it covered the player at the door); on a narrow (portrait) canvas every room's dollhouse view
+  widens until the floor's width + 0.6 m fits across (camera.js; the stair / landing / pendulum were off-screen on the
+  phone); a dark timber backdrop slab (56 m) under the room fills the void that read flat pale sky by day; the stair has
+  lighter risers, warm treads and a pale stone nosing per step (at yaw 0 it read as dark shelves). (P3-12) a tap in an
+  open doorway / on its doorstep (the ray meets the ground at the threshold, no piece) walks to that door AND in, one tap.
 - **Perf** (render-host, 1280 x 720, `tools/demo-perf.mjs --secs 5-6`, noisy run to run): spawn noon 296 -> 297 calls,
   programs 56 -> 68 (the seat cast, at boot), CPU/frame ~3.0 both; the vote scene with 15 seats: calls 566-572 -> 513-516,
   tris 1.45M -> 1.96M (15 cast characters vs instanced mannequins), CPU 6.85 -> 7.05-7.9 ms (passB.update 0.5 ms: the 15
   Characters; the camera's texel snap of 15 roots +0.15 ms), GPU-synced 4.1 -> 7.1-7.3 ms, 60 fps; inside the tower 134
   calls. No program is compiled after the boot by anything in the pass (playtest step 8).
-- **Known issues / open**: (1) yaw +-90 would give ~+20 % more figure size but its side dial is half hidden by the
-  cottage roofs beside the tower (a cut box on the dial's line of sight in the lead's cut controller would open it);
-  (2) the idle NPCs (keeper / hound / duelist, r 7.6 on the square's south arc) stand just outside the ring and read as
-  part of it in the vote frame; (3) the seated cast STANDS on the stones (no cast spec has a sit clip); (4) the cost of 15
-  real Characters (tris +0.5M, GPU-synced +3 ms on the 4090, ready +0.6 s, +12 programs at boot); a swap that takes a
-  seated character rebuilds that seat (a 50-140 ms frame); (5) the timer is not in the store / URL: a quality reload
-  resets it; (6) inside, the gold 'discussion' wedge on the glowing dial back is low-contrast at night; (7) with
-  `?passB=0` the rig's old preset (town/api.js CAMERAS.vote) comes back.
+  The staging + the marks + the reactions: see §10 "Vote staging merge + emoji reactions" (before / after numbers).
+- **Known issues / open**: (0) stage A (the default) is height-bound at yaw 45: the whole canvas gains little over the
+  panel-open frame (57.7 vs 54.9 px at 720p) - a lower pitch for the stones or ?voteYaw=90 (the side dial behind the
+  roofs) would be the next step; (1) the PLAYER is not staged (`?voteStage=N`): standing in the tower court during a vote, your character
+  stands among the crescent (the cast make room for nobody); (2) (N) on a portrait phone the crescent is small (13.6 m wide
+  in a tall frame) and crowded labels are left out rather than overprinted (their marks / pops still show); a two- or
+  three-row "choir" stage for narrow screens (the study's option K) would fit it better; (3) the seated cast STANDS (no
+  cast spec has a sit clip); the staged 1.35x root scale leaves the leg / chain dynamics in unscaled units (standing
+  still: invisible); (4) option G moves + shrinks the dais piece's group while staged: review only; (5) yaw +-90 of the
+  unstaged ring would hide the side dial behind the cottage roofs; (6) the cost of 15 real Characters (tris +0.5M,
+  ready +0.6 s, +12 programs at boot); a swap that takes a seated character rebuilds that seat (a 50-140 ms frame);
+  (7) the tower's great door at night (the town piece's glowing stair hall behind dark stair silhouettes) reads as
+  stripes: src/town (the town session's), not changed here; (8) with `?passB=0` the rig's old preset comes back.
 
 ## 5. URL parameters (`demo.html?...`)
 
@@ -586,7 +735,7 @@ State: `char=<id>` `tod=<hours>|night|morning|noon|afternoon|golden` `speed=<min
 `at=<x>,<z>` player start; `in=house-N` start inside a cottage (state.location; written by `demo.reload` instead of
 `at` while inside); `intro=0|1` the cinematic (default on in a browser, off under automation / capture); `npcs=<n>` idle
 townsfolk characters (0 = off); `roster=shipped|all|a,b`, `thumbs=0`, `exercise=0` (characters.js);
-`interiorKit=stub`; `demoGrass=wide4` (review: the old grass area); pass B (§4.9): `passB=0`, `passB.<votecam|timer|seats|interior|ui>=0`, `voteYaw=<deg>`, `timer=<s>`, `timerRun=1`, `timerStage=<discussion|nominations|bedtime>`, `stControls=1`, `seatCast=0`, `seatLabels=0`, `in=clocktower`; game UI (§4.7): `book=held|big` (state.bookStyle),
+`interiorKit=stub`; `demoGrass=wide4` (review: the old grass area); pass B (§4.9): `passB=0`, `passB.<stage|votecam|timer|seats|interior|ui|marks>=0`, `voteStage=<A..N>` (the staging study's options; A = the stones, the default; N = the tower court), `voteMarks=0`, `board=1` (the old hour-board over the tower door), `voteYaw=<deg>`, `timer=<s>`, `timerRun=1`, `timerPaused=1`, `timerMin=<n>`, `timerDur=<s>` (the last three: written by a quality reload), `timerStage=<discussion|nominations|bedtime>`, `stControls=1`, `seatCast=0`, `seatLabels=0`, `in=clocktower`; game UI (§4.7): `book=held|big` (state.bookStyle),
 `pointer=new|v2` (state.pointerScale), `gameui=0` (no game UI: the A/B baseline), `ambient=0` (no ambient layer, §4.8), `touch=1|0` (force the touch /
   mouse wording; default: the coarse-pointer media query), `bookmerge=0` (the library's per-part 3D books, A/B), `rm=1` (reduced motion: no pops / bobs /
 marching / page turns). Engine: `scale=<n>|fit`, `capture=1` (headless: renders t = 0 only, no loop). Town params pass
@@ -627,16 +776,17 @@ ends. A click overrides the automatic fold until the condition changes. On a pho
 | [ / ], 1-6, Space | previous / next character; emotes 1-6 (talk, vote, point, die, ghost, signature); Space opens / closes the emote palette (game UI); 5 = the GHOST toggle (on: you stay a ghost, walking too; 5 again: alive) | player |
 | N | jump to the next time of day | time |
 | right-click | point at a townsperson (finger + trail + ping) or a spot; the character turns and plays `point` | ui (game UI) |
-| right-drag / right-hold | the pie: Point, 8 pin colours, Remove my pin; release on a wedge (dead zone = sticky, click a wedge) | ui (game UI) |
+| right-drag / right-hold | the pie: Point, the 7 reactions, one Pin (your colour), Remove my pin; release on a wedge (dead zone = sticky, click a wedge; 1-7 = that reaction) | ui (game UI) |
 | F | drop a pin of the current colour at the cursor (a townsperson: on their name; one pin of yours per townsperson: F on them again = the same colour removes it, another colour recolours it) | ui (game UI) |
 | click / tap your own pin | remove it (a place pin, or your pin over a townsperson's name; hand cursor + remove badge + tooltip on hover) | ui (game UI) |
-| G / click your portrait (bottom right) | the social dock: Point / Pin (arm, then click), colours, Clear my pins | ui (game UI) |
+| G / click your portrait (bottom right) | the reactions dock: 7 reactions (1-7 while it is open), Point / Pin (arm, then click), the pin-colour button (AUTO + 8), Clear my pins | ui (game UI) |
+| C to the vote camera / P | (B) the vote frame on the stones (the panel slides out, back after); with `?voteStage=N` the cast gather to the tower court in the Storyteller's puffs and go back to the stones after | pass B |
 | J / the toolbar's book | the notebook (Seats / Notes); Esc closes it (and the pie / an armed dock) | ui (game UI) |
 | P | play / stop the voting ceremony | time |
 | K / Y / U / I | (B) the tower timer: start / pause, reset, one minute less / more (also the tray's third row, the ST control, the panel's "Tower timer") | pass B |
 | Q / E in the vote camera | (B) step the vote camera to the next 45 deg stop (each with its own tight frame) | pass B |
 | walk into the tower door | (B) the clockwork interior; the exit spot leads back out | pass B |
-| the action bar (bottom) | emotes palette (Space / 1-6), point, pin (F), pin palette (G), notebook (J), more = the tray with every other key (Q E − = C T , . N B V P L [ ] ` H Esc): click / tap; the key in each button's corner | ui (game UI) |
+| the action bar (bottom) | emotes palette (Space / 1-6), point, pin (F), reactions (G), notebook (J), more = the tray with every other key (Q E − = C T , . N B V P L [ ] ` H Esc): click / tap; the key in each button's corner | ui (game UI) |
 | the lightbulb (toolbar, top right) | reopen the controls tip; × / Esc / the bulb close it (it flies into the bulb); "Never show again" | ui (game UI) |
 | walk into a door | go into the cottage; on the exit spot (or pushing out on it): back out | player |
 | click | walk there (a cottage: to its door and in) | player |
@@ -789,9 +939,13 @@ walks to the night-visit point with lights lit; leaves by walking out / 'leave';
 on; a re-visit compiles nothing) · doors (4 doors incl. house-14, steps back off each doorstep) · roster (`--chars 5`:
 shipped + WIP, the panel's groups / portraits, one model per character, programs) · time (scrub, 24 h at 120 min/s:
 programs constant, no frame > 50 ms) · phases (V) + bell · ceremony (P: day → nomination → vote → execution → night)
-· controls · **gameui** (real mouse / keys: right-click point at a townsperson + a spot, the pie by right-hold + hover +
-release = a teal pin with its drop + pop, right-drag + dead zone = sticky + click = a crimson pin, G + the violet swatch
-+ F at the cursor, click your own pin = remove; PERSON pins on a townsperson: F = one pin, F again (same colour) =
+· controls · **gameui** (real mouse / keys: right-click point at a townsperson + a spot, the pie's wedges = Point + the
+7 reactions + ONE Pin, right-hold + hover the Pin wedge (teal) + release = a teal pin with its drop + pop, the laugh
+wedge = a laugh pop over you (no pin), right-drag + dead zone = sticky + click = a crimson pin; G = the reactions dock
+(no swatch row, 7 reactions, the colour button), the colour button opens the picker, violet picked (the picker closes,
+saved to localStorage `ct-pin-color`), F at the cursor = a violet pin; 3 with the dock open = the question reaction
+(not the point emote); 1 with the dock closed = the talk emote (no reaction), talk ends by itself within ~4 s; click
+your own pin = remove; PERSON pins on a townsperson: F = one pin, F again (same colour) =
 removed, another colour = recoloured (still one), hover = the hand cursor + remove badge, a click on it = removed, the
 right-hold pie on them offers "Remove my pin" and it removes it; Clear my pins (a person pin among them); J = the notebook (Seats rows, the held book on the player),
 the Notes tab + typing = the quill, keys never reach the game, saved to localStorage, Esc closes and the book goes; the
@@ -804,7 +958,7 @@ tray by a tap and its L by a tap, a tap on the town closes it; no errors, no CSP
 bar: every key binding has a button, hover tooltip, the emote palette + the point pop fallback, the tray's Q E = - T B L
 ] [ Esc by real clicks, pin / point armed from the bar, the dock and the notebook from the bar; an off-screen arrow for a
 far place pin; no label drawn under the panel; the tip: shown at the first run and gone by itself, the bulb reopens it,
-its × flies it into the bulb + the glow, "never show again" closes + saves it; the ambient layer: 4 systems, 0 lights,
+its × flies it into the bulb + the glow (its drawn centres move from the tip toward the bulb, never at 0,0), "never show again" closes + saves it; the ambient layer: 4 systems, 0 lights,
 ≤ 16 calls, butterflies by day, pigeons scatter when you walk at them, fireflies + moths at night; the events: captions,
 vote clock, execution, night veil, dawn; the GHOST STATE with a `spec.ghost` character (clarabelle): 5 = on (reveal,
 ghost label, rig level 1), walking (D held) stays ghost (level 1, `ch.ghost` 1, ghost label), stopped + a talk emote
@@ -816,8 +970,9 @@ and closes the emote palette, the default character greys none of the six, 6 pla
 palette and opens the dock, the tray closes the dock (P2-5); touch: the open dock covers no bar button (P2-5), a tapped
 tray button shows its name (P2-6); the bundle verify serves the published `v/<hash>/` layout and fails on any 404
 (P1-1)). Every gameui rect / point is in the game UI's LOGICAL px: client = `info().unit` x logical (`unitDev` on the
-phone page) · **passb** (`tools/demo-play-passb.mjs`: the vote camera's stepped transition (<= 7 distinct poses, settled < 1.5 s), every seat + the dial inside the visible area with the panel open AND hidden and the frame tighter than the old preset, 15 cast seats (no player / Storyteller id, the mannequins hidden), dead seats in ghost clips, >= 4 voters raise 'vote', the timer by K / Y / U / I + a real click on the ST control's Resume, the dial wedge / hour-board digits / HUD chip agreeing with the state, the tower's hands hidden while it runs and back after reset, zero = done + a bell, walking INTO the tower door (held W) with no program compiled, the timer wheel turning while running and still while paused, the stair raising the feet onto the landing, walking out onto the doorstep) · quality reload (state + position kept;
-no automatic tip after "never show again", the bulb still there) + a reload inside a house (`?in=` brings the player back in).
+phone page) · **passb** (`tools/demo-play-passb.mjs`: the vote camera's stepped transition (<= 7 distinct poses, settled < 1.5 s), every seat + the dial inside the visible area with the panel open AND hidden and the frame tighter than the old preset, 15 cast seats (no player / Storyteller id, the mannequins hidden), the panel slid out (`.dui-away`, the fit's right band 0), the staging when a court stage is chosen (`?voteStage=N`: all 15 gathered onto their vote spots, puffs drawn, the cast scale on every root; back on the stones + pitch 30 after the vote camera), the timer chip in the HUD during the vote and inside the tower and NO hour-board built, dead seats in ghost clips, >= 4 voters raise 'vote' as the vote opens, the vote marks (every state seen on its seat: waiting, raised, counted, passed, ghost-raised, ghost-counted, spent; the tally 7 / 7 counting up, the threshold ringing the tower bell, the plaque gold; the marks + the plaque on the D=2 tiers), the townsfolk's reactions ('suspicious' at the nomination, 'agree' at the vote's end), (N) the court staged = the dais parked (hand at the court, stones empty), the idle NPCs walked out of the frame (any stage), the timer by K / Y / U / I + a real click on the ST control's Resume, the dial wedge / hour-board digits / HUD chip agreeing with the state, the tower's hands hidden while it runs and back after reset, zero = done + a bell, walking INTO the tower door (held W) with no program compiled, the timer wheel turning while running and still while paused, the stair raising the feet onto the landing, walking out onto the doorstep) · quality reload (state + position kept;
+no automatic tip after "never show again", the bulb still there; the running tower timer comes back running with the
+time it had left; the saved pin colour holds) + a reload inside a house (`?in=` brings the player back in).
 
 1. `demo.html` boots to the town in < 6 s on the 4090, no console / page / shader errors (`tools/demo-lead.mjs` exit 0),
    boot screen gone, 60 fps reported.
@@ -976,3 +1131,34 @@ no automatic tip after "never show again", the bulb still there) + a reload insi
     location.href))` 404'd in the staged layout (now resolved against main.js's URL), and a mid-step compile in passb
     from the gameui2 ghost test swapping a SEATED character in and out (the test now uses requin + duelist; seatcast.js
     also seats your last castable character when a non-castable one leaves you on a seat).
+- **Vote staging merge + emoji reactions + the HD critic round + the user's vote decisions (2026-10-17 night)**, render-host
+  (RTX 4090, headless Chromium), every PNG / GIF looked at; evidence `shots/demo-vote-emoji/`:
+  - Merge: `pixel3d-vote-final` (forked from pass B before D=2; its base identified by file comparison with the sibling
+    copies) -> votestage.js / votemarks.js new, passb.js / votecam.js taken whole (main's had no other edits), seatcast.js /
+    gameui.js / demo-play-passb.mjs hand-merged (main's seat-swap fix, D=2 labels, program-name diagnostics kept),
+    timer-ui.js main's (HUD clients). The marks then converted to D=2 (§4.9).
+  - Library regressions after the two additive src/ui changes (labelHD opts.x, drawStClock o.done): `node
+    shots/ui-hd/regress.mjs` -> 524 checks, 0 differences; `node shots/ui-hd-wave2/regress.mjs` (its snapshots copied from
+    ~/pixel3d-hd2 on the host) -> wave 2 pass 1 / 2: 1108 checks, 0 differences each; emoji pass 3: 1108, 0; pass 4: 76, 0.
+  - `tools/demo-roster.sh --browser` -> `browser check OK`, `roster ok: 27 offered, 8 WIP, 35 rows`.
+  - `VERIFY_PLAY=1 BUNDLE_PORT=8094 tools/demo-bundle.sh all` (final code) -> 225 files, 7.72 MB, CSP-safe; staged layout
+    `index.html + v/<hash>/`; CSP header exact; **SMOKE OK 5/5, csp violations 0**; **PLAYTEST OK (313 s)** incl. the
+    new checks (pie = Point + 7 reactions + one Pin, a laugh pop from the pie, the dock without swatches + the picker ->
+    violet saved, 3 = a reaction with the dock open, 1 = talk with it closed and talk ending by itself, the tip's flight
+    toward the bulb, the timer + the saved pin colour across the quality reload; passb stage A: 57.7 px, every vote state,
+    7 / 7 + bell + gold plaque, marks + plaque on the D=2 tiers, 'suspicious' + 'agree' reactions, NPCs walked out, the
+    panel slid out, the timer chip in the vote and inside the tower, no hour-board, programs 68 -> 68); 2344 requests, 1
+    non-200 (the redirect), `404s in the staged layout: 0`.
+  - Played myself (`shots/demo-vote-emoji/probe.mjs` + `steps-court.mjs` / `steps-ui.mjs` / `steps-chip.mjs` /
+    `steps-ghost.mjs`, `phone.mjs` on a 390 x 844 @2x touch page): stage A and N mid-vote / threshold day + night at
+    1280 x 720 and 1920 x 1080, the pie / dock / picker / pops, the HUD timer chip in the vote and in the tower, the
+    walking-ghost Frog noon + night, the phone (one tap into the tower, the room fitting the phone, the court, the dock).
+    The critic's own desk script (`shots/critic-hd/desk.mjs --url` the final bundle served on 127.0.0.1) at 1280 and
+    1920 -> `shots/demo-vote-emoji/critic2/`.
+  - Perf (`tools/demo-perf.mjs --secs 6`, 1280 x 720): before (session start, pass B + D=2, the live code) vote scene
+    calls 509, tris 1.97M, programs 71, 60 fps, frame p95 16.7-16.8, CPU / frame 5.7-6.4 ms, spawn 301 calls, CPU 5.9;
+    after (stage A) vote calls 490, tris 1.75M, programs 68 (the hour-board's programs gone), 60 fps, p95 16.7-16.8, CPU
+    7.9-8.1 ms - but the unchanged spawn scene measured 7.9-8.0 in the same later window (4.3-7.8 earlier), so the host's
+    level moved; the same-window A/B `voteMarks=0` vs on: CPU 8.0 vs 8.0 ms, calls 490 both (the marks cost nothing
+    measurable on the CPU). Stage N: 405 calls, 1.57M tris. The `synced` metric is bimodal on this host (4.6 vs 12-14 ms
+    for the same page, with or without the marks, also at the spawn): not used.

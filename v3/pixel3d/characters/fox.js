@@ -20,28 +20,8 @@ export const PALETTE = {
   dark: ['#7A5048', '#4E3438', '#3E2C36'],    // ear tips, nose, eyes, mouth inside, boots
   wood: ['#C08A50', '#8A5A32', '#5E4038'],    // the mug
   bow: ['#8AA8E8', '#3D5EA6', '#2E3C6E'],     // accent: collar bow
-  // touch-up (ghost clips): pale-blue ghost shell (v2 ghost row) + gold halo; a dimmer grey-blue shell for ghost-spent
-  gFur: ['#E2F0FF', '#A8C8EC', '#7894C4'],
-  gCream: ['#F4FAFF', '#D4E6F8', '#9CB4D8'],
-  gDress: ['#B4C4EE', '#8CA0D4', '#6474AA'],
-  gDark: ['#6C80B8', '#4C5C96', '#3E4A7A'],
-  halo: ['#FFF4C8', '#F2D27A', '#B8945A'],
-  sFur: ['#AAB4CC', '#8890AC', '#646C8A'],
-  sCream: ['#BEC6D8', '#9EA6BC', '#767E98'],
-  sDress: ['#8C90AE', '#6C7090', '#545670'],
-  sDark: ['#5A5E7C', '#464A64', '#383A50'],
+  // (ghost port) the touch-up ghost-shell slots (g*/s*/halo) are gone: spec.ghost re-tones the living slots
 };
-// ghost shells: every visible part gets a pale copy on a part-less child bone (g_<bone> ghost, s_<bone> spent), baked at
-// 1/1000 size so it is invisible in every other clip; the ghost clips scale those bones ×1000 ('<bone>.s' 999). Each copy is
-// inflated by SHELL_D about its own (or its split group's) centre so it covers the living part. Boots are hidden instead.
-const SHELL_BONES = ['head', 'jaw', 'eyeL', 'eyeR', 'earL0', 'earR0', 'hips', 'chest', 'upperArmL', 'forearmL', 'handL',
-  'upperArmR', 'forearmR', 'handR', 'tail0'];
-const SHELL_D = 0.006, TINY = 0.001;
-const SHELL_MAP = {
-  g: { fur: 'gFur', cream: 'gCream', dress: 'gDress', dark: 'gDark', wood: 'gDress', bow: 'gDark' },
-  s: { fur: 'sFur', cream: 'sCream', dress: 'sDress', dark: 'sDark', wood: 'sDress', bow: 'sDark' },
-};
-const SHELL_GROUP = { skull: 'head', muzzle: 'head', skirt: 'skirt', apron: 'skirt', bodice: 'bod', bib: 'bod' };
 
 const BODY = { height: 1.10, heads: 2.2, legs: 0.7, arms: 1.0, snout: 0.3, tail: false };
 // ears: 1-link bones (keyed, not sprung) standing up and a little out on the top of the head
@@ -70,7 +50,7 @@ export function skeleton() {
   // tail: one keyed bone, axis sideways so 'fwd' = yaw about the vertical (the swish); geometry points back-right-up
   S.push({ name: 'tail0', parent: 'hips', pos: TAIL_AT, axis: 'left' });
   S.push({ name: 'mugHold', parent: 'chest', pos: [0, 0, 0], axis: 'down' });
-  for (const k of ['g', 's']) for (const b of SHELL_BONES) S.push({ name: `${k}_${b}`, parent: b, pos: [0, 0, 0], axis: 'up' });
+  // (ghost port) no ghost-shell bones (g_*/s_*) any more: spec.ghost appends its own 'ghostHalo' bone
   return Object.defineProperties(S, { sockets: { value: S0.sockets }, meta: { value: S0.meta } });
 }
 
@@ -206,54 +186,7 @@ export function parts(S) {
   add('handL', K.frustum(8, 0.08, 0.074, 0.17), MUG, 'wood', { name: 'mug' });
   add('handL', K.lathe([[0.085, 0], [0.088, 0.03], [0.06, 0.055], [0, 0.065]], 8), [MUG[0], MUG[1] + 0.115, MUG[2]], 'cream', { name: 'foam' });
   add('handL', K.box(0.035, 0.09, 0.05), [MUG[0] + 0.1, MUG[1] + 0.005, MUG[2]], 'wood', { name: 'mugHandle' });
-  return [...P, ...shells(P, 'g', m), ...shells(P, 's', m)];
-}
-
-// bone-local triangle soup of a part (geometry + at)
-function soup(p) {
-  const g = p.shape.index ? p.shape.toNonIndexed() : p.shape, a = g.attributes.position.array, out = [];
-  for (let i = 0; i < a.length; i += 3) out.push([a[i] + p.at[0], a[i + 1] + p.at[1], a[i + 2] + p.at[2]]);
-  return out;
-}
-function bbox(pts) {
-  const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
-  for (const q of pts) for (let j = 0; j < 3; j++) { lo[j] = Math.min(lo[j], q[j]); hi[j] = Math.max(hi[j], q[j]); }
-  return { c: lo.map((v, j) => (v + hi[j]) / 2), sz: lo.map((v, j) => hi[j] - v) };
-}
-function shells(P, k, m) {
-  const base = P.filter((p) => SHELL_BONES.includes(p.bone));
-  const groups = {};
-  for (const p of base) { const gk = SHELL_GROUP[p.name]; if (gk) (groups[gk] ||= []).push(...soup(p)); }
-  const out = [];
-  const emit = (bone, pts, c, sz, color, name, mirror) => {
-    const sc = sz.map((v) => 1 + 2 * SHELL_D / Math.max(v, 0.02));
-    const arr = [];
-    for (let i = 0; i < pts.length; i += 3) {
-      const tri = [0, 1, 2].map((j) => pts[i + j].map((v, a) => (c[a] + sc[a] * (v - c[a])) * TINY * (a === 0 && mirror ? -1 : 1)));
-      if (mirror) tri.reverse();
-      arr.push(...tri.flat());
-    }
-    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(arr, 3));
-    out.push({ bone: `${k}_${bone}`, shape: K.flat(g), at: [0, 0, 0], color, name: `${k}_${name}` });
-  };
-  for (const p of base) {
-    const pts = soup(p), gk = SHELL_GROUP[p.name];
-    const { c, sz } = bbox(gk ? groups[gk] : pts);
-    const col = SHELL_MAP[k][p.color] || p.color;
-    emit(p.bone, pts, c, sz, col, p.name, false);
-    if (p.mirror) emit(p.bone.replace(/L(\d*)$/, 'R$1'), pts, c, sz, col, p.name + 'R', true);
-  }
-  // the ghost's lower body: a tapering wisp under the hem (no boots), leaning back as it trails
-  const hy = 0.13 - m.hipsY;
-  const W = [[0, hy + 0.03, 0, 0.235], [0, hy - 0.08, -0.04, 0.17], [0, hy - 0.17, -0.12, 0.1], [0, hy - 0.24, -0.24, 0.03]];
-  const wc = W.map((w) => w.slice(0, 3)), wr = W.map((w) => w[3]);
-  const wt = wc.map((c2, i) => { const a = wc[Math.max(0, i - 1)], b = wc[Math.min(wc.length - 1, i + 1)]; return [b[0] - a[0], b[1] - a[1], b[2] - a[2]]; });
-  const wisp = ringHull(wc, wr, wt, 8);
-  const tiny = (geo) => K.xf(geo, { scale: TINY });
-  out.push({ bone: `${k}_hips`, shape: tiny(wisp), at: [0, 0, 0], color: k === 'g' ? 'gCream' : 'sCream', name: `${k}_wisp` });
-  // halo (unspent ghost only): a flat gold disc floating above the ear tips (v2 ghost row)
-  if (k === 'g') out.push({ bone: 'g_head', shape: tiny(K.frustum(12, 0.12, 0.12, 0.02)), at: [0, 0.9 * TINY, -0.02 * TINY], color: 'halo', name: 'halo' });
-  return out;
+  return P;
 }
 
 // ── clips (pose triples [fwd, twist, out] deg; 30 Hz grid) ─────────────────────────────────────────────────────
@@ -263,13 +196,6 @@ const BLINK = EYES(0, -0.8);
 const HALF = EYES(0, -0.45);
 const WIDE = EYES(0.15, 0.2);
 const EARS = (l, r = l) => ({ earL0: l, earR0: r });
-// ghost clips: show one shell set (×1000), hide the boots
-// the living ears shrink 15 % inside their shells (the thin cream ear panel peeked through at the tips); their shells
-// compensate so they keep the full size
-const EAR_IN = 0.85, EAR_SH = 1000 / EAR_IN - 1;
-const GHOST = (k, pose) => ({ ...Object.fromEntries(SHELL_BONES.map((b) => [`${k}_${b}.s`, [999, 999, 999]])), 'footL.s': [-1, -1, -1], 'footR.s': [-1, -1, -1],
-  'earL0.s': [EAR_IN - 1, EAR_IN - 1, EAR_IN - 1], 'earR0.s': [EAR_IN - 1, EAR_IN - 1, EAR_IN - 1],
-  [`${k}_earL0.s`]: [EAR_SH, EAR_SH, EAR_SH], [`${k}_earR0.s`]: [EAR_SH, EAR_SH, EAR_SH], ...pose });
 const breathe = (d, c, extra = {}) => ({ pos: [0, -0.01 - d, 0], spine: [c * 0.5, 0, 0], chest: [c, 0, 0], head: [-1.5 * c, 0, 0], ...extra });
 // die is FK: thigh a / shin −2a keeps the ankle under the hip
 const KNEES = (a) => ({ thighL: [a, 0, 0], shinL: [-2 * a, 0, 0], thighR: [a, 0, 0], shinR: [-2 * a, 0, 0] });
@@ -332,33 +258,35 @@ export const CLIPS = {
       upperArmR: [40, 0, 25], forearmR: [40, 0, 0], tail0: [0, 8, 0] } },
     { f: 30, pose: breathe(0, 0, { tail0: [8, 0, 0] }) },
   ] },
-  // ghost (loop 48, the dead player): pale-blue shell + gold halo, boots gone, a wisp trailing under the hem; hovers
-  // 0.14–0.21 m and drifts (4 keys, 12 frames each), the free paw floating forward, tail swaying slowly, one blink.
-  ghost: { fps: 30, loop: true, interp: 'step', length: 48, legs: 'fk', dynamics: 'hold', keys: [
-    { f: 0, pose: GHOST('g', { pos: [0, 0.22, 0], spine: [4, 0, 0], chest: [2, 0, 0], head: [-4, 0, 0],
-      upperArmR: [30, 0, 25], forearmR: [40, 0, 0], handR: [30, 0, 0], tail0: [12, 6, 0] }) },
-    { f: 12, pose: GHOST('g', { pos: [0, 0.26, 0], spine: [2, 0, -3], chest: [0, -4, 0], head: [-6, -6, 5],
-      upperArmR: [44, 0, 32], forearmR: [34, 0, 0], handR: [36, 0, 0], tail0: [-4, 14, 0], ...EARS([0, 0, 0], [-20, 0, 12]) }) },
-    { f: 24, pose: GHOST('g', { pos: [0, 0.30, 0], spine: [0, 0, 0], chest: [-2, 0, 0], head: [-8, 0, 0],
-      upperArmR: [52, 0, 28], forearmR: [28, 0, 0], handR: [30, 0, 0], tail0: [-18, 16, 0] }) },
-    { f: 30, pose: GHOST('g', { pos: [0, 0.30, 0], spine: [0, 0, 0], chest: [-2, 0, 0], head: [-8, 0, 0], ...BLINK,
-      upperArmR: [52, 0, 28], forearmR: [28, 0, 0], handR: [30, 0, 0], tail0: [-18, 16, 0] }) },
-    { f: 32, pose: GHOST('g', { pos: [0, 0.30, 0], spine: [0, 0, 0], chest: [-2, 0, 0], head: [-8, 0, 0],
-      upperArmR: [52, 0, 28], forearmR: [28, 0, 0], handR: [30, 0, 0], tail0: [-18, 16, 0] }) },
-    { f: 36, pose: GHOST('g', { pos: [0, 0.26, 0], spine: [2, 0, 3], chest: [0, 4, 0], head: [-6, 6, -4],
-      upperArmR: [38, 0, 22], forearmR: [40, 0, 0], handR: [34, 0, 0], tail0: [2, 10, 0], ...EARS([-20, 0, 12], [0, 0, 0]) }) },
+  // ghost (loop 48, the dead player; ghost port: spec.ghost draws the pale ramp, the gold halo between the ears, the
+  // bind-height dissolve of hem + boots, the night self-glow, and adds the 0.14 m hover with floating FK legs — pose
+  // only here): drifts up 2 texels and back (4 keys, 12 frames each), the free paw floating forward, tail swaying
+  // slowly, one blink
+  ghost: { fps: 30, loop: true, interp: 'step', length: 48, dynamics: 'hold', keys: [
+    { f: 0, pose: { pos: [0, 0, 0], spine: [4, 0, 0], chest: [2, 0, 0], head: [-4, 0, 0],
+      upperArmR: [30, 0, 25], forearmR: [40, 0, 0], handR: [30, 0, 0], tail0: [12, 6, 0] } },
+    { f: 12, pose: { pos: [0, 0.028, 0], spine: [2, 0, -3], chest: [0, -4, 0], head: [-6, -6, 5],
+      upperArmR: [44, 0, 32], forearmR: [34, 0, 0], handR: [36, 0, 0], tail0: [-4, 14, 0], ...EARS([0, 0, 0], [-20, 0, 12]) } },
+    { f: 24, pose: { pos: [0, 0.056, 0], spine: [0, 0, 0], chest: [-2, 0, 0], head: [-8, 0, 0],
+      upperArmR: [52, 0, 28], forearmR: [28, 0, 0], handR: [30, 0, 0], tail0: [-18, 16, 0] } },
+    { f: 30, pose: { pos: [0, 0.056, 0], spine: [0, 0, 0], chest: [-2, 0, 0], head: [-8, 0, 0], ...BLINK,
+      upperArmR: [52, 0, 28], forearmR: [28, 0, 0], handR: [30, 0, 0], tail0: [-18, 16, 0] } },
+    { f: 32, pose: { pos: [0, 0.056, 0], spine: [0, 0, 0], chest: [-2, 0, 0], head: [-8, 0, 0],
+      upperArmR: [52, 0, 28], forearmR: [28, 0, 0], handR: [30, 0, 0], tail0: [-18, 16, 0] } },
+    { f: 36, pose: { pos: [0, 0.028, 0], spine: [2, 0, 3], chest: [0, 4, 0], head: [-6, 6, -4],
+      upperArmR: [38, 0, 22], forearmR: [40, 0, 0], handR: [34, 0, 0], tail0: [2, 10, 0], ...EARS([-20, 0, 12], [0, 0, 0]) } },
   ] },
-  // ghost-spent (loop 60, after the ghost's one vote): the dimmer grey-blue shell, NO halo, hovering lower (0.07–0.11 m),
-  // slumped, ears drooped, eyes heavy, paws hanging, tail low; a slow 3-key drift with one blink.
-  'ghost-spent': { fps: 30, loop: true, interp: 'step', length: 60, legs: 'fk', dynamics: 'hold', keys: [
-    { f: 0, pose: GHOST('s', { pos: [0, 0.12, 0], spine: [10, 0, 0], chest: [6, 0, 0], head: [-6, -6, 4], ...HALF, ...EARS([-40, 0, 28]),
-      upperArmR: [6, 0, 12], forearmR: [16, 0, 0], upperArmL: [-4, 0, 8], tail0: [-6, -14, 0] }) },
-    { f: 20, pose: GHOST('s', { pos: [0, 0.17, 0], spine: [8, 0, -3], chest: [4, -4, 0], head: [-8, -12, 8], ...HALF, ...EARS([-40, 0, 28], [-20, 0, 12]),
-      upperArmR: [12, 0, 18], forearmR: [22, 0, 0], upperArmL: [-4, 0, 8], tail0: [10, -10, 0] }) },
-    { f: 40, pose: GHOST('s', { pos: [0, 0.14, 0], spine: [12, 0, 3], chest: [6, 4, 0], head: [-4, 2, -2], ...BLINK, ...EARS([-40, 0, 28]),
-      upperArmR: [4, 0, 10], forearmR: [12, 0, 0], upperArmL: [-4, 0, 8], tail0: [-14, -16, 0] }) },
-    { f: 42, pose: GHOST('s', { pos: [0, 0.14, 0], spine: [12, 0, 3], chest: [6, 4, 0], head: [-4, 2, -2], ...HALF, ...EARS([-40, 0, 28]),
-      upperArmR: [4, 0, 10], forearmR: [12, 0, 0], upperArmL: [-4, 0, 8], tail0: [-14, -16, 0] }) },
+  // ghost-spent (loop 60, after the ghost's one vote; module spent ramp, NO halo): 1-2 texels lower, slumped, ears
+  // drooped, eyes heavy, paws hanging, tail low; a slow 3-key drift with one blink
+  'ghost-spent': { fps: 30, loop: true, interp: 'step', length: 60, dynamics: 'hold', keys: [
+    { f: 0, pose: { pos: [0, -0.056, 0], spine: [10, 0, 0], chest: [6, 0, 0], head: [-6, -6, 4], ...HALF, ...EARS([-40, 0, 28]),
+      upperArmR: [6, 0, 12], forearmR: [16, 0, 0], upperArmL: [-4, 0, 8], tail0: [-6, -14, 0] } },
+    { f: 20, pose: { pos: [0, -0.028, 0], spine: [8, 0, -3], chest: [4, -4, 0], head: [-8, -12, 8], ...HALF, ...EARS([-40, 0, 28], [-20, 0, 12]),
+      upperArmR: [12, 0, 18], forearmR: [22, 0, 0], upperArmL: [-4, 0, 8], tail0: [10, -10, 0] } },
+    { f: 40, pose: { pos: [0, -0.028, 0], spine: [12, 0, 3], chest: [6, 4, 0], head: [-4, 2, -2], ...BLINK, ...EARS([-40, 0, 28]),
+      upperArmR: [4, 0, 10], forearmR: [12, 0, 0], upperArmL: [-4, 0, 8], tail0: [-14, -16, 0] } },
+    { f: 42, pose: { pos: [0, -0.028, 0], spine: [12, 0, 3], chest: [6, 4, 0], head: [-4, 2, -2], ...HALF, ...EARS([-40, 0, 28]),
+      upperArmR: [4, 0, 10], forearmR: [12, 0, 0], upperArmL: [-4, 0, 8], tail0: [-14, -16, 0] } },
   ] },
   // whisper (emote, "every rumour that passes through it"): sly double-take glance (6 / 6) → leans in toward the viewer,
   // paw cupped beside the muzzle, half-lid, ears forward (speech bubble, 14) → the punchline: a WINK, head tilted, tail
@@ -405,12 +333,17 @@ export function make() {
       lift: [0.08, 0.11], twist: [6, 9], surge: false,   // r2: boots kick higher; run = a distinct flight drawing (apex +0.11 m)
       bones: { armL: ['tail0', 'mugHold'] } },
     character: { quant: { yaw: 8, chain: 4 } },
+    // (ghost port) the shared ghost look (was the touch-up geometry shells g_*/s_* + wisp + shell halo): pale ramp, gold
+    // halo between the ears (level 1), dimmer spent ramp, bind-height dissolve (hem + boots), night self-glow, 0.14 m
+    // hover with floating FK legs; also shades the WALK when a dead player walks (ch.ghost = 1). keepHue 0.3: the orange
+    // fur IS the identity
+    // halo lift 0.34: at 0.12 / 0.18 / 0.26 the ring touched the near (tall, upright) ear tip in some drawings
+    // (pack-r1-clip-ghost.png; ghost.islands WARN 1 → 2 at 0.26)
+    ghost: { hover: 0.14, keepHue: 0.3, halo: { lift: 0.34 } },
     clips: CLIPS,
     fx: { stepClips: ['walk', 'run'], stepEvery: 2, speech: { node: 'crown' } },
     material: {
-      sides: Object.fromEntries(['', 'g_', 's_'].flatMap((k) => ['eyeL', 'eyeR', 'earL0', 'earR0', 'handL'].map((b) => [k + b, 'mid']))),
-      // shell bones draw their part lines like the living bones they cover
-      merge: Object.fromEntries(['g', 's'].flatMap((k) => SHELL_BONES.map((b) => [`${k}_${b}`, b]))),
+      sides: Object.fromEntries(['eyeL', 'eyeR', 'earL0', 'earR0', 'handL'].map((b) => [b, 'mid'])),
     },
   };
 }

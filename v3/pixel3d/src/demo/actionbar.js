@@ -21,6 +21,8 @@ import { PixelImage, drawBox, drawText, textWidth, PIN_HEX } from '../ui/kit.js'
 import * as HA from '../ui/hud/art.js';
 import * as E from '../ui/emotes/art.js';
 import { glyphHD, hintPlateHD } from './actionbar-hd.js';
+import * as EJ from '../ui/emotes/emoji.js';
+import { emojiIconHD } from '../ui/hd/emoji.js';
 
 export const BTN = 18;          // button size (texels)
 export const GAP = 2;
@@ -29,7 +31,9 @@ export const BAR = [
   { k: 'emote', tip: 'Emotes: talk, vote, point, die, ghost, signature', hint: 'SPC', glyph: 'emote' },
   { k: 'point', tip: 'Point: click a townsperson or a spot', hint: 'RMB', glyph: 'point' },
   { k: 'pin', tip: 'Pin: click a spot or a townsperson (their pin again: remove)', hint: 'F', glyph: 'pin' },
-  { k: 'dock', tip: 'Pin colours + clear all my pins', hint: 'G', glyph: 'palette' },
+  // (emoji, docs/UI-EMOJI.md) the social dock is the REACTIONS dock now: 7 reactions (1-7 while it is open), point,
+  // pin, the pin colour behind its small button, clear my pins
+  { k: 'dock', tip: 'React: agree, doubt, gasp, laugh, trust (then 1-7) + pins', hint: 'G', glyph: 'react' },
   { k: 'notebook', tip: 'Notebook', hint: 'J', glyph: 'notebook' },
   { k: 'more', tip: 'More: camera, clock, town, characters', hint: null, glyph: 'more' },
 ];
@@ -85,6 +89,11 @@ const ROWS = {
   prev: ['....M', '...M.', '..H..', '.H...', '..M..', '...S.', '....S'],
   next: ['M....', '.M...', '..H..', '...H.', '..M..', '.S...', 'S....'],
   palette: ['.......', '.cc.yy.', '.cc.yy.', '.......', '.tt.vv.', '.tt.vv.', '.......'],
+  // (critic P2-2) the tower timer's tray row: its own glyphs (they reused T / Esc / zoom - +, read as duplicates)
+  timer: ['IIIIIII', '.HhhhS.', '..HhS..', '...M...', '..HPS..', '.HPPPS.', 'IIIIIII'],   // an hourglass in an iron frame
+  reset: ['HS...HS', 'HS..HMS', 'HS.HMMS', 'HSHMMMS', 'HS.SMMS', 'HS..SMS', 'HS...SS'],   // back to the start (bar + triangle)
+  minus1: ['.......', '.....M.', '....HM.', 'HMS..M.', '.....M.', '.....M.', '....HMS'],     // "-1" (a minute less)
+  plus1: ['.M.....', '.M...M.', 'HMS.HM.', '.M...M.', '.....M.', '.....M.', '....HMS'],      // "+1" (a minute more)
 };
 const glyphCache = new Map();
 const HD_OF = new WeakMap();
@@ -97,7 +106,8 @@ export function glyph(k, T, { color = 'crimson', paused = false } = {}) {
   if (g) return g;
   g = glyph1x(k, T, { color, paused });
   // (shared memoized sprites, e.g. the pin swatch, map to the same HD art for the same key: harmless)
-  const h = glyphHD(k, T, { color, paused });
+  // (emoji) the reactions button: the laughing face of the emoji emotes, its own 26x26 HD art
+  const h = k === 'react' ? emojiIconHD('laugh', T) : glyphHD(k, T, { color, paused });
   if (h) HD_OF.set(g, h);
   glyphCache.set(key, g);
   return g;
@@ -106,8 +116,10 @@ function glyph1x(k, T, { color = 'crimson', paused = false } = {}) {
   const G = HA.GLYPH;
   switch (k) {
     case 'emote': case 'talk': case 'more': case 'rotL': case 'rotR': case 'camera': case 'slower': case 'faster': case 'life': case 'prev': case 'next':
+    case 'timer': case 'reset': case 'minus1': case 'plus1':
       return art(ROWS[k], T);
     case 'palette': return art(ROWS.palette, T, { c: PIN_HEX.crimson, y: PIN_HEX.gold, t: PIN_HEX.teal, v: PIN_HEX.violet });
+    case 'react': return EJ.emojiIcon('laugh', T);
     case 'point': return lined(E.emotePoint(T), T);
     case 'pointE': return lined(E.emotePointSmall(T), T);
     case 'pin': return E.pinIcon(color, T);
@@ -213,9 +225,10 @@ export function buttonInto(img, T, { state = 'raised', glyph: g, hint = null, w 
 /** The controls tip (hud drawKeyHint tokens): mouse / touch wording; both name the action bar. */
 export function tipTokens(touch) {
   return touch
-    ? [{ s: 'Tip:', b: true }, { s: ' tap to walk · hold a finger on the town to point or pin · tap your pin to remove it · the buttons at the bottom do the rest' }]
+    ? [{ s: 'Tip:', b: true }, { s: ' tap to walk · hold a finger on the town to point, pin or react · tap your pin to remove it · the buttons at the bottom do the rest' }]
     : [{ s: 'Tip:', b: true }, { s: ' ' }, { k: 'Space' }, { s: ' emotes (or ' }, { k: '1' }, { s: '-' }, { k: '6' }, { s: ') · ' },
-      { k: 'Right' }, { s: ' point, drag: pins (click a pin to remove it) · ' }, { k: 'J' }, { s: ' notebook · or click the buttons at the bottom' }];
+      { k: 'Right' }, { s: ' point, drag: react or pin · ' }, { k: 'G' }, { s: ' reactions (' }, { k: '1' }, { s: '-' }, { k: '7' }, { s: ') · ' },
+      { k: 'J' }, { s: ' notebook · or click the buttons at the bottom' }];
 }
 
 /** A tooltip plate's size (logical px: w + 1 x 15). */

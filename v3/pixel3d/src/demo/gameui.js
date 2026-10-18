@@ -33,7 +33,7 @@
 // ?gameui=0 turns the whole module off (A/B). Deterministic: every animation is a function of the demo clock.
 import * as THREE from 'three';
 import { createUILayers } from '../ui/runtime/layer.js';   // the library's layers with dirty-box clears / uploads
-import { PixelImage, drawBox, drawText, textWidth, toCanvas, loadImage, frameAt, dissolve, withAlpha, GRID_HZ, tokens as kitTokens, hdPiece } from '../ui/kit.js';
+import { PixelImage, drawBox, drawText, textWidth, toCanvas, loadImage, frameAt, dissolve, withAlpha, GRID_HZ, tokens as kitTokens, hdPiece, PIN_COLORS, PIN_HEX } from '../ui/kit.js';
 import { registerGroupFonts } from '../ui/fonts.js';
 import { LABEL as HUD_LABEL } from '../ui/hud/font.js';
 // UI density D=2 (docs/UI.md §2.10, docs/DEMO.md §4.7 "Density"): the whole screen tier on L.hd.screen in one logical
@@ -41,7 +41,10 @@ import { LABEL as HUD_LABEL } from '../ui/hud/font.js';
 import { toolButtonHD, ANCHORS_HD, pinWithIconHD, swatchHD, gloveHD } from '../ui/hd/art.js';
 // (wave 2, docs/UI-HD-WAVE2.md) hud / events / emotes / panels at D=2
 import { prepareWave2HD, worldLayerHD, drawExecutionFxHD } from '../ui/hd/wave2.js';
-import { POP_HD } from '../ui/hd/emotes.js';
+import { POP_HD, epx, shadeGrid } from '../ui/hd/emotes.js';
+// (emoji reactions, docs/UI-EMOJI.md: the pie / dock reactions, the pin colour moved out of the way)
+import * as EJ from '../ui/emotes/emoji.js';
+import { prepareEmojiHD, EMOJI_POP_HD } from '../ui/hd/emoji.js';
 import { installPanelsHD } from '../ui/hd/panels.js';
 // (wave 1, UI.md §2.10.3) the markers / indicators / portraits HD art
 import * as IH from '../ui/indicators/hd.js';
@@ -213,8 +216,15 @@ export async function createGameUI(demo) {
   // ---- members: you + the NPCs, rebuilt every frame from the live modules (no allocation beyond the vectors)
   const groundApi = demo.town?.registry?.get?.('ground')?.api;
   const groundY = (x, z) => (typeof groundApi?.heightAt === 'function' ? groundApi.heightAt(x, z) : 0);
-  const mkMember = () => ({ id: '', name: '', pos: new THREE.Vector3(), height: 1.3, top: 1.3, face: 0, you: false, ghost: false, slot: -1, clip: 'idle', handle: null,
-    head() { return this.pos.clone().setY(this.pos.y + this.top + 0.1); }, feet() { return this.pos.clone(); } });
+  // (lift: a ghost's name stands over its HALO: the shared spec.ghost draws a gold halo above the head; the label sat on it)
+  const mkMember = () => ({ id: '', name: '', pos: new THREE.Vector3(), height: 1.3, top: 1.3, face: 0, you: false, ghost: false, slot: -1, clip: 'idle', handle: null, lift: 0,
+    head() { return this.pos.clone().setY(this.pos.y + this.top + 0.1 + this.lift); }, feet() { return this.pos.clone(); } });
+  /** metres a ghost's label rises over the halo: spec.ghost.halo.lift (+ its hover) or ~0.3, + 0.1 (0 when not a ghost) */
+  const haloLift = (h, ghost) => {
+    if (!ghost) return 0;
+    const g = h?.spec?.ghost, hl = g?.halo?.lift;
+    return (hl != null ? hl + (g.hover ?? 0) : 0.3) + 0.18;   // (+0.1 still touched the halo on the walk's bob)
+  };
   const you = Object.assign(mkMember(), { you: true });
   const npcMembers = [];
   let members = [];
@@ -227,6 +237,7 @@ export async function createGameUI(demo) {
       you.top = Math.min(VISUAL_TOP[h.id] ?? you.height, you.height);
       you.pos.set(P.position.x, room ? room.floorY ?? 0 : groundY(P.position.x, P.position.z), P.position.z);
       you.face = P.facing; you.clip = h.ch?.state?.clip ?? 'idle'; you.ghost = !!P.ghost;
+      you.lift = haloLift(h, you.ghost || you.clip === 'ghost');
       members.push(you);
     }
     const list = demo.npcs?.members;
@@ -238,11 +249,27 @@ export async function createGameUI(demo) {
       i++;
       m.id = n.id; m.name = n.handle.name ?? n.id; m.slot = n.slot; m.handle = n.handle; m.height = n.handle.height ?? 1.3;
       m.top = Math.min(VISUAL_TOP[n.id] ?? m.height, m.height);
+      if (n.scale && n.scale !== 1) { m.height *= n.scale; m.top *= n.scale; }     // (B) the vote staging's cast scale
       m.pos.set(n.spot.x, groundY(n.spot.x, n.spot.z), n.spot.z); m.face = n.face; m.clip = n.handle.ch?.state?.clip ?? 'idle';
+      m.lift = haloLift(n.handle, m.clip === 'ghost') * (n.scale || 1);
       members.push(m);
     }
   };
   const npcOf = (slot) => members.find((m) => !m.you && m.slot === slot) ?? null;
+  /** (B) the vote staging is up: the seated cast stand in the tower court (votestage.js) */
+  const staged = () => { const st = demo.passB?.stage; return !!st && !st.onStones && !!st.active; };
+  /** (B) art px reserved between a seated voter's head and name for its vote mark while the court is staged (else 0) */
+  const MARK_SLOT = 14;
+  const markSlotOf = (m) => (!m.you && m.slot >= 1000 && staged() && demo.passB?.marks && (store.state.phase === 'vote' || store.state.phase === 'nomination') ? MARK_SLOT : 0);
+  /** (B) a seated cast member's label in the staged court: a titled name's last word when the full name is long */
+  const courtName = (m) => {
+    if (m.you || m.slot < 1000 || !staged()) return m.name;
+    const w = String(m.name).split(' ');
+    return w.length > 1 && textWidth(m.name) > 40 ? w[w.length - 1] : m.name;
+  };
+  /** (critic P3-16) the ghost label's little sheet ghost at D=2 (the 1x 5x5 grid EPX'd + re-lit, 14 x 14; was 2x2 blocks) */
+  const ghostWispHD = (T) => cached(`wispHD${T.ghost}${T.ghostSh}`, () => shadeGrid(epx(['.###.', '#####', '#-#-#', '#####', '#.#.#']),
+    { '#': { hi: IA.rampOf(T.ghost).hi, mid: T.ghost, sh: T.ghostSh, line: IA.labelLineOf('ghost', T) }, '-': { flat: IA.labelLineOf('ghost', T), line: IA.labelLineOf('ghost', T) } }, { pad: 2, prefer: ['#'] }));
 
   // ---- screen helpers
   // ONE logical coordinate system for the screen tier (docs/UI.md §2.10.1 step 3): with D=2 the logical px = an HD px x
@@ -276,7 +303,7 @@ export async function createGameUI(demo) {
     const c = canvas.getBoundingClientRect(), k = (engine.width / Math.max(1, c.width)) / unitDev();
     let right = 0, left = 0, top = 0, leftBottom = 0;
     const panel = document.querySelector('#demo-ui > .dui-panel');
-    if (panel && store.state.ui && panel.style.display !== 'none') {
+    if (panel && store.state.ui && panel.style.display !== 'none' && !panel.classList.contains('dui-away')) {
       const p = panel.getBoundingClientRect();
       if (p.width > 0 && p.height > 0 && p.left < c.right && p.top < c.bottom) {
         if (p.left > c.left + c.width / 2) right = Math.ceil((c.right - p.left) * k);
@@ -319,7 +346,8 @@ export async function createGameUI(demo) {
   let tipNever = lsGet(TIP_NEVER_KEY) === '1', tipNeverSaved = null;
   let tipTokensNow = AB.tipTokens(touchUI);
   let tipState = null;       // { tokens, at, until (Infinity: opened by the bulb), auto }
-  let tipFly = null;         // { t0, im, x, y } the dismissed tip on its way into the bulb
+  let tipFly = null;         // { t0, im, x, y, w, h, path } the dismissed tip on its way into the bulb
+  let lastFly = null;        // the last flight's drawn centres (info)
   let bulbGlow = -1e9;       // L.t when the bulb's glow starts (after the fly)
   let tipRect = null, tipShown = 0, tipDismissed = [];
   const FLY_F = 16, GLOW_S = 1.8;          // fly = 16 grid frames (8 drawings at 15 fps, ~0.53 s); glow after it
@@ -333,7 +361,8 @@ export async function createGameUI(demo) {
   function closeTip(reason = 'close') {
     if (!tipState) return false;
     tipState = null;
-    if (tipRect?.im && !reduced) { tipFly = { t0: L.t, im: tipRect.im, x: tipRect.x, y: tipRect.y }; bulbGlow = L.t + FLY_F / GRID_HZ; }
+    // (critic P1-1) the fly needs the plate's size: without w / h its centre was NaN and it drew at the top-left corner
+    if (tipRect?.im && !reduced) { tipFly = { t0: L.t, im: tipRect.im, x: tipRect.x, y: tipRect.y, w: tipRect.w, h: tipRect.h, path: [] }; bulbGlow = L.t + FLY_F / GRID_HZ; }
     else { tipFly = null; bulbGlow = L.t; }
     tipDismissed.push(reason);
     events.emit('gameui:tip', { open: false, reason });
@@ -348,11 +377,48 @@ export async function createGameUI(demo) {
   // ---- point (markers), pins, pops
   let point = null;          // { t0, target: {kind:'person', slot, id} | {kind:'place', p: Vector3} }
   const pins = [];           // mine: { kind:'place', p, color, t0, removeAt } | { kind:'person', slot, id, color, t0, removeAt }
-  const pops = [];           // { who: 'you' | slot, kind, color, t0 }
-  let color = 'crimson';
+  const pops = [];           // { who: 'you' | slot, kind, color (an emoji pop: its key), t0 }
+  // (emoji, docs/UI-EMOJI.md "Pin colour: where it lives") the pin colour is AUTOMATIC per player by default
+  // (EJ.autoPinColor of the player's identity: in the demo the character id, recomputed when you swap while auto is
+  // on); a manual pick (the dock's colour button -> the AUTO + 8-dot picker, or the panel's "Pin colour" row) is saved
+  // in localStorage 'ct-pin-color' (try / catch: no storage = this visit only). The pie never changes the colour.
+  const PIN_KEY = 'ct-pin-color';
+  const savedPin = lsGet(PIN_KEY);
+  let colorAuto = !(savedPin && E.PIN_LABEL[savedPin]), pinSaved = null;
+  const autoColor = () => EJ.autoPinColor(demo.player?.handle?.id ?? store.state.character ?? 'you');
+  let color = colorAuto ? autoColor() : savedPin;
+  /** 'auto' | a pin colour: the player's choice (save: localStorage; the test hook `gameui.color = c` does not save). */
+  function setPinColor(c, { save = true } = {}) {
+    if (c === 'auto') { colorAuto = true; color = autoColor(); if (save) pinSaved = lsSet(PIN_KEY, null); }
+    else if (E.PIN_LABEL[c]) { colorAuto = false; color = c; if (save) pinSaved = lsSet(PIN_KEY, c); }
+    else return false;
+    events.emit('gameui:pincolor', { color, auto: colorAuto, saved: pinSaved });
+    return true;
+  }
+  offs.push(events.on('player:character', () => { if (colorAuto) { const c = autoColor(); if (c !== color) { color = c; events.emit('gameui:pincolor', { color, auto: true, saved: pinSaved }); } } }));
   const livePins = () => pins.filter((p) => p.removeAt == null);
   // a new pop from the same person replaces theirs (one pop per head, as v2's bubbles)
-  const pop = (who, kind, c = 'gold') => { for (let i = pops.length - 1; i >= 0; i--) if (pops[i].who === who) pops.splice(i, 1); pops.push({ who, kind, color: c, t0: L.t }); if (pops.length > 12) pops.shift(); };
+  const pop = (who, kind, c = 'gold') => { for (let i = pops.length - 1; i >= 0; i--) if (pops[i].who === who) pops.splice(i, 1); pops.push({ who, kind, color: c, t0: L.t }); if (pops.length > 24) pops.shift(); };
+  // ---- reactions (emoji over the head): yours by the pie / the dock / 1-7 while the dock is open, with a cooldown;
+  // the townsfolk's (the NPCs + the seated cast) from the game's moments, scheduled on the demo clock (deterministic)
+  let lastReact = -1e9, lastReactKey = null;
+  const reactions = { you: 0, cast: 0, byKey: {} };
+  function react(key, target = null) {
+    if (!EJ.emojiInfo(key) || !demo.player) return false;
+    if (L.t - lastReact < EJ.EMOJI_TIMING.COOLDOWN_MS / 1000) return false;
+    lastReact = L.t; lastReactKey = key;
+    if (target?.member || target?.ground) {
+      const p = target.member ? target.member.pos : target.ground;
+      demo.player.faceTo?.(p.x, p.z);
+    }
+    pop('you', 'emoji', key);
+    reactions.you++; reactions.byKey[key] = (reactions.byKey[key] ?? 0) + 1;
+    events.emit('gameui:emoji', { key, target: target?.member?.slot ?? null });
+    return true;
+  }
+  const reactQueue = [];     // { who (slot), key, at (L.t) }: townsfolk reactions waiting for their moment
+  /** A townsperson (NPC slot / seated cast 1000 + seat) reacts with `key` in `delay` s (one pop per head). */
+  function npcReact(who, key, delay = 0) { if (EJ.emojiInfo(key)) reactQueue.push({ who, key, at: L.t + delay }); }
   const framesNow = () => (hud.uiOptions.pointerScale === 'v2' ? markerFramesV2size(L.tok) : markerFrames(L.tok));
   const youPointing = () => point && L.t - point.t0 < MT.EMOTE_POINT_MS / 1000;
   function doPoint(target) {
@@ -456,7 +522,9 @@ export async function createGameUI(demo) {
     if (!rpress) return;
     const input = rpress.touch != null ? 'touch' : 'mouse', t = rpress.target, R = E.PIE[input].R;
     const cx = Math.max(R + 4, Math.min(W() - R - 4, t.s.x)), cy = Math.max(R + 4 + 20 + cover.top, Math.min(H() - R - 4, t.s.y));
-    const items = E.pieItems({ name: t.member?.name ?? null, removable: t.ownPin ? { mine: true } : null });
+    // (emoji) Point · agree · trust · laugh · gasp · [Remove my pin] · question · suspicious · disagree · Pin (ONE
+    // wedge in your current colour); pressed on yourself the reactions read "... yourself"
+    const items = EJ.pieItemsEmoji({ name: t.member?.name ?? (t.onYou ? you.name : null), self: !t.member && !!t.onYou, removable: t.ownPin ? { mine: true } : null, color });
     const full = livePins().length >= MAX_PINS;
     const off = new Set(full ? items.map((it, i) => (it.kind === 'pin' ? i : -1)).filter((i) => i >= 0) : []);
     pie = { cx, cy, input, press: { dx: t.s.x - cx, dy: t.s.y - cy }, items, off, target: t, tOpen0: L.t, hot: null, sticky: false, stickyAt: null, commit: null, cancel: null };
@@ -477,7 +545,8 @@ export async function createGameUI(demo) {
     pie.commit = { i, t0: L.t }; pie.hot = i;
     const t = pie.target;
     if (it.kind === 'point') doPoint(t);
-    else if (it.kind === 'pin') { color = it.color; dropPin(t, it.color); }
+    else if (it.kind === 'pin') dropPin(t, it.color);          // (emoji) the pie never changes the colour
+    else if (it.kind === 'emoji') react(it.emoji, t);
     else if (it.kind === 'unpin') removePin(t.ownPin);
     events.emit('gameui:pie', { open: false, commit: it.key });
   }
@@ -502,6 +571,9 @@ export async function createGameUI(demo) {
     if (!P) return null;
     let m = seatMembers.get(i + 1);
     if (!m) { m = { seat: i + 1, name: `Seat ${i + 1}`, pos: P.clone(), ghost: false, you: false, height: 1.15, head() { return this.pos.clone().setY(this.pos.y + this.height); }, feet() { return this.pos.clone(); } }; seatMembers.set(i + 1, m); }
+    // (B) where the seat's cast member stands NOW (the vote staging moves them off the stones)
+    const at = demo.passB?.seats?.spotOf?.(i);
+    if (at) m.pos.copy(at.pos); else m.pos.copy(P);
     m.ghost = !!store.state.seats[i]?.dead;
     return m;
   };
@@ -531,7 +603,10 @@ export async function createGameUI(demo) {
       const i = (sw.from + k) % N, st = s.seats[i];
       if (!(st.occupied || st.dead)) continue;
       if (st.dead) { dead.push(i + 1); if (st.ghostVote) ghosts.push(i + 1); }
-      if (votes.has(i) && (!st.dead || st.ghostVote)) raise[i + 1] = order.length * per + 0.1;
+      // (B) voters raise their hands as the vote OPENS (0.3 s before the brass hand reaches the first voter, a little
+      // stagger), not as the hand arrives: the pending "hand up" state shows for the whole sweep (seatcast.js raises
+      // the 3D 'vote' clip at the same moment; votemarks.js draws the states)
+      if (votes.has(i) && (!st.dead || st.ghostVote)) raise[i + 1] = -0.3 + (k % 3) * 0.07;
       order.push(i + 1); reach.push(sw.t0 + (k - 1) * sw.per);
     }
     if (!order.length) { vote = null; return; }
@@ -557,6 +632,54 @@ export async function createGameUI(demo) {
     else if (value === 'day') setCaption('A new day in Hollowmere.', 'sun', 3);
   }));
   offs.push(store.on('nominee', () => { if (store.state.phase === 'vote') startVote(); }));
+  // ---- (emoji) the townsfolk react to the game's moments (docs/UI-EMOJI.md step 6; deterministic picks: hashes of the
+  // seat / the nominee, delays on the demo clock). Seated cast = slot 1000 + seat (seatcast.js), idle NPCs = slot 0..5.
+  const hashK = (k) => { const x = Math.sin(k * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
+  const livingSeats = (except = -1) => store.state.seats.map((st, i) => (st.occupied && !st.dead && i !== except ? i : -1)).filter((i) => i >= 0);
+  const npcSlots = () => (demo.npcs?.members ?? []).filter((n) => n && n.slot < 1000).map((n) => n.slot);
+  offs.push(store.on('phase', ({ value }) => {
+    const s = store.state, nom = s.nominee ?? s.seats.findIndex((x) => x.nominated);
+    if (value === 'nomination' && nom >= 0) {
+      // a nomination: one or two of the circle eye the nominee (suspicious)
+      const alive = livingSeats(nom);
+      if (alive.length) {
+        const a = alive[Math.floor(hashK(nom + 1) * alive.length)], b = alive[Math.floor(hashK(nom + 9) * alive.length)];
+        npcReact(1000 + a, 'suspicious', 0.7);
+        if (b !== a) npcReact(1000 + b, 'suspicious', 1.5);
+      }
+      const n = npcSlots();
+      if (n.length) npcReact(n[Math.floor(hashK(nom + 4) * n.length)], 'suspicious', 1.1);
+    } else if (value === 'execution' && nom >= 0) {
+      // the execution: the nominee's neighbours gasp; an idle townsperson too
+      let k = 0;
+      for (const d of [1, -1, 2, -2]) { const j = (nom + d + 15) % 15, st = s.seats[j]; if (st?.occupied && !st.dead) npcReact(1000 + j, 'shocked', 0.5 + 0.35 * k++); }
+      for (const sl of npcSlots()) npcReact(sl, 'shocked', 0.9 + 0.3 * sl);
+    }
+  }));
+  // a death outside the execution (a night kill, the panel's dead toggle): the neighbours gasp
+  offs.push(store.on('seats', ({ value, prev }) => {
+    if (!prev || store.state.phase === 'execution') return;
+    value.forEach((st, i) => {
+      if (!st.dead || prev[i]?.dead) return;
+      for (const [d, dl] of [[1, 0.4], [-1, 0.8]]) { const j = (i + d + 15) % 15; if (value[j]?.occupied && !value[j].dead) npcReact(1000 + j, 'shocked', dl); }
+    });
+  }));
+  /** The vote's result (once per vote, from the events vote at its end): the counted voters agree, a few of those who
+   *  kept their hands down disagree, the nominee gasps when the vote put them on the block. */
+  function reactToVote() {
+    if (!vote || vote.reacted) return;
+    const VS = EV.voteAt(vote.v, voteClock(L.t));
+    if (!VS.done) return;
+    vote.reacted = true;
+    let ky = 0, kn = 0;
+    for (const seat of vote.v.order) {
+      const d = VS.seats?.[seat], i = seat - 1;
+      if (!d || seat === vote.v.nominee || store.state.seats[i]?.dead) continue;
+      if (d.yes && ky < 6) npcReact(1000 + i, 'agree', 0.25 + 0.16 * ky++);
+      else if (d.no && kn < 3 && hashK(seat + vote.v.nominee) < 0.6) npcReact(1000 + i, 'disagree', 0.45 + 0.22 * kn++);
+    }
+    if (VS.passed) npcReact(1000 + vote.v.nominee - 1, 'shocked', 0.2);
+  }
   // the ghost reveal when you BECOME a ghost (the ghost emote is a toggle, player.js setGhost; not on the way back)
   offs.push(events.on('player:emote', (e) => { if (e?.clip === 'ghost' && !e.fallback && !e.off) { ghostFx = { t0: L.t }; evInfo.ghosts++; } }));
   offs.push(events.on('player:character', ({ id } = {}) => {
@@ -608,13 +731,26 @@ export async function createGameUI(demo) {
 
   // ---- dock (social palette), toolbar, armed mode
   let dockOpen = false, armed = null, hover = null;   // armed: 'point' | 'pin'
+  let pickerOpen = false;                             // (emoji) the dock's pin-colour picker (AUTO + 8 dots)
   const R = {};                                       // hit rects (screen texels) from the last frame
   let cursor = null;                                  // last pointer {clientX, clientY, s} over the canvas
   const consumeUp = new Set();
 
   // ---- the notebook (DOM) + the readers
+  // (critic P2-5) where the notebook's avatar box is HD-sized (--hdpx >= 2: 1080p and up) it shows the 48-px HD portrait
+  // 1:1 (the atlas crop's .hd, or the HD-only four); at 720p the 24-px 1x one in its 24-px box
+  const hdURL = new Map();
+  const nbAvatarURL = (id) => {
+    if (!(hdOn() && (L.hd?.scale ?? 1) >= 2)) return avatarURL(id);
+    if (hdURL.has(id)) return hdURL.get(id);
+    const a = PORT?.avatar(id)?.hd ?? avatarHD(id);
+    if (!a) return avatarURL(id);
+    const u = toCanvas(a).toDataURL('image/png');
+    hdURL.set(id, u);
+    return u;
+  };
   const nb = createNotebook(demo, {
-    avatarURL,
+    avatarURL: nbAvatarURL,
     // (density) the D=2 pixel face on the page + the notebook's own text (src/ui/hd/css.js; --hdpx = L.hd.scale)
     hd: hdOn(), hdpx: () => L.hd?.scale ?? 1,
     people: () => members.map((m) => ({ key: m.you ? 'you' : `npc${m.slot}`, id: m.id, name: m.name, you: m.you })),
@@ -722,13 +858,26 @@ export async function createGameUI(demo) {
   };
 
   // tier A + Ag: labels, glyphs, chevron, ring, bubbles, pops (z 20 / 35); the point + person pins (z 15 trail / 30)
+  // (B) labels that would print over each other (the vote staging's tight row of seated cast) step up one label row:
+  // drawn lowest first, a label that overlaps one already placed this frame moves up 11 texels (at most twice); the
+  // test is in texels for both densities (HD: the same step x L.hd.k)
+  const placedLabels = [];
+  const byHead = [];
   L.add((LL) => {
     const T = LL.tok, t = LL.t;
-    for (const m of members) {
+    placedLabels.length = 0;
+    byHead.length = 0;
+    for (const m of members) { m._hy = LL.at(m.head()).y; byHead.push(m); }
+    byHead.sort((a, b) => b._hy - a._hy);
+    for (const m of byHead) {
       m._shown = false;
       // whole character above the view: no label (the indicators' rule); labels near the top edge clamp inward
       if (!visible(m) || LL.at(m.pos).y < LL.MARGIN) continue;
-      const p = LL.at(m.head()), top = Math.max(LL.MARGIN + 2 + (m.you ? 8 : 0), p.y + IA.LABEL_DY);
+      const p = LL.at(m.head());
+      // (B) in the staged court a seated voter's vote mark (hand / seal / snuffer, votemarks.js) has its own slot between
+      // the head and the name (MARK_SLOT art px): over the name it landed on the stepped-up label of the row above
+      const slotA = markSlotOf(m), slotT = Math.round(slotA * (hdOn() ? L.hd.d / L.hd.k : 1));
+      let top = Math.max(LL.MARGIN + 2 + (m.you ? 8 : 0), p.y + IA.LABEL_DY - slotT);
       // (P3.9) a label the DOM covers (the control panel's band, the folded panel's top band, the open notebook) is
       // not drawn at all (it peeked out above the panel's top edge), nor its stack (bubble, pins, pops)
       // (in logical screen px: the cover bands and the HUD rects are)
@@ -750,13 +899,36 @@ export async function createGameUI(demo) {
       // a ghost (your ghost STATE: player.ghost, walking too; or a ghost clip): the indicators' ghost label variant
       // (ghost ink + the little sheet ghost)
       const ghostly = m.clip === 'ghost' || (m.you && m.ghost);
+      // (B) in the staged vote court a titled cast name shows its short form ("Archivist Hoot" -> "Hoot"): 15 names in
+      // one crescent did not fit side by side
+      const nm = courtName(m);
+      // (critic P3-15) general label de-collision: the overlap step-up (texels; the label box = the name + its 1-px
+      // ring, + the wisp for a ghost) and the label clamped inside the view's left / right edges ("eeper")
+      // (in texels: an HD label is d / k texels per art px: 4/3 of the 1x size at 1080p 'round')
+      const uS = hdOn() ? L.hd.d / L.hd.k : 1, rowT = 11 * uS;
+      const lwT = Math.ceil((textWidth(nm) + 4 + (ghostly ? 7 : 0)) * uS), WW = LL.world?.w ?? engine.lowW;
+      const cxT = Math.max(LL.MARGIN + 2 + (lwT >> 1) + (ghostly ? 7 : 0), Math.min(WW - LL.MARGIN - 2 - (lwT >> 1), p.x)), lx0 = cxT - (lwT >> 1);
+      let steps = 0;
+      const maxSteps = staged() ? 3 : 2;
+      // (a 2-texel gap counts as touching: long back-row names in the court ran into each other)
+      const hits = () => placedLabels.some((r) => lx0 < r.x1 + 2 && lx0 + lwT > r.x0 - 2 && Math.abs(top - r.top) < rowT);
+      while (steps < maxSteps && hits()) { top -= rowT; steps++; }
+      // in the staged court a name that still collides after the steps is left out (a narrow phone frame): unreadable
+      // overprinted names were worse than a missing one (its vote mark, pops and talk glyph still show)
+      if (staged() && !m.you && hits()) {
+        m._labelTop = Math.round(p.y + IA.LABEL_DY - slotT); m._stack = m._labelTop - 1; m._noLabel = true;
+        continue;
+      }
+      m._noLabel = false;
+      top = Math.round(top);
+      placedLabels.push({ x0: lx0, x1: lx0 + lwT, top });
       if (hdOn()) {
-        // (density) the label on L.hd.world (body@2 in a 2-HD-px ring; ghost: the ghost ink + the wisp, x2 blocks),
-        // the talk glyph and your chevron in their wave-1 HD art; the stack above it is kept in texels (bubbles / pins
-        // convert with k)
+        // (density) the label on L.hd.world (body@2 in a 2-HD-px ring; ghost: the ghost ink + the HD wisp), the talk
+        // glyph and your chevron in their wave-1 HD art; the stack above it is kept in texels (bubbles / pins convert
+        // with k)
         const k = L.hd.k, d = L.hd.d, q = L.hd.at(m.head());
-        const lb = labelHD(LL, m.head(), m.name, ghostly ? 'ghost' : 'player', T, { top: Math.max(Math.round((LL.MARGIN + 2 + (m.you ? 8 : 0)) * k), q.y + IA.LABEL_DY * d) });
-        if (ghostly) fastBlit(L.hd.world, cached(`wisp${T.ghost}`, () => up2(IA.ghostWisp(T))), lb.x - 7 * d, lb.y + 2 * d);
+        const lb = labelHD(LL, m.head(), nm, ghostly ? 'ghost' : 'player', T, { x: q.x + Math.round((cxT - p.x) * k), top: Math.max(Math.round((LL.MARGIN + 2 + (m.you ? 8 : 0)) * k), q.y + (IA.LABEL_DY - slotA) * d) - steps * 11 * d });
+        if (ghostly) fastBlit(L.hd.world, ghostWispHD(T), lb.x - 7 * d, lb.y + 2 * d);
         const tk = talk.get(keyOf(m));
         if (tk?.on) {
           const step = reduced ? 0 : IA.talkStep(t), kind = m.you ? 'self' : 'talk';
@@ -769,9 +941,9 @@ export async function createGameUI(demo) {
         continue;
       }
       const lab = ghostly
-        ? piece(`labg${m.name}${T.ghost}`, 160, 12, (im) => { const g = IA.labelImage(m.name, 'ghost', T); im.blit(g, 80 - (g.w >> 1), 0); })
-        : piece(`lab${m.name}${T.labelText}${T.labelLine}`, 160, 12, (im) => IA.label(im, 80, 1, m.name, 'player', T));
-      const lx = p.x - 80 + lab.dx, ly = top - 1 + lab.dy;
+        ? piece(`labg${nm}${T.ghost}`, 160, 12, (im) => { const g = IA.labelImage(nm, 'ghost', T); im.blit(g, 80 - (g.w >> 1), 0); })
+        : piece(`lab${nm}${T.labelText}${T.labelLine}`, 160, 12, (im) => IA.label(im, 80, 1, nm, 'player', T));
+      const lx = cxT - 80 + lab.dx, ly = top - 1 + lab.dy;   // (top: after the overlap step-up above; x clamped)
       fastBlit(LL.world, lab.im, lx, ly);
       const tk = talk.get(keyOf(m));
       if (tk?.on) {
@@ -782,10 +954,12 @@ export async function createGameUI(demo) {
       m._labelTop = top - (m.you ? 8 : 0);
       m._stack = m._labelTop - 1;
     }
-    // speech bubbles (NPC talk lines), tail tip 1 px above the label
+    // speech bubbles (NPC talk lines), tail tip 1 px above the label. (B) Not while the vote court is staged: a chatter
+    // bubble from the nomination covered the back row's names (the talk glyph still shows who speaks)
+    const noBubbles = staged() || store.state.camera === 'vote';   // (and in the vote camera on the stones: stage A)
     for (const m of members) {
       const tk = talk.get(keyOf(m));
-      if (!tk?.line || !m._shown) continue;
+      if (!tk?.line || !m._shown || noBubbles) continue;
       const env = bubbleEnv(t, tk.bubbleAt, tk.bubbleUntil);
       if (!env) continue;
       const lines = cached(`lines${tk.line}`, () => IA.bubbleLines(tk.line)), sz = IA.bubbleSize(lines);
@@ -873,15 +1047,22 @@ export async function createGameUI(demo) {
     }
     // emote pops (stacked over the name / bubble / pins)
     for (let i = pops.length - 1; i >= 0; i--) {
-      const q = pops[i], ps = E.popState(t, q.t0, { reduced });
+      // (emoji) a reaction pop: the emoji emotes' bubble + glyph (burst, hold 2.7 s, dissolve), same anchor rule
+      const q = pops[i], isE = q.kind === 'emoji';
+      const ps = isE ? EJ.emojiPopState(t, q.t0, { reduced }) : E.popState(t, q.t0, { reduced });
       if (ps.f < 0) { if (t > q.t0 + 1) pops.splice(i, 1); continue; }
       const m = q.who === 'you' ? (you.id ? you : null) : npcOf(q.who);
       if (!m || !m._shown) continue;
-      const x = LL.at(m.pos).x, top = m._stack ?? (LL.at(m.head()).y - 12);
-      const pf = E.popFrame(q.kind, ps.f, LL.tok, q.color || 'gold');
+      let top = m._stack ?? (LL.at(m.head()).y - 12);
+      // (B) a seated voter's vote mark (the hand / seal / snuffer over the name, votemarks.js) stays readable: the pop
+      // stands above it
+      if (m.slot >= 1000 && demo.passB?.marks?.topOf) { const mt = demo.passB.marks.topOf(m.slot - 1000); if (mt != null) top = Math.min(top, mt - 1); }
+      const x = LL.at(m.pos).x;
+      const pf = isE ? EJ.emojiPopFrame(q.color, ps.f, LL.tok) : E.popFrame(q.kind, ps.f, LL.tok, q.color || 'gold');
+      const A1 = isE ? EJ.EMOJI_POP.anchor : E.POP.anchor, AH = isE ? EMOJI_POP_HD.anchor : POP_HD.anchor;
       // (wave 2) the HD pop (.hd after the prepare) on L.hd.world, anchored at the same scene point
-      if (hdOn() && pf.hd) fastBlit(L.hd.world, pf.hd, L.hd.at(m.pos).x - POP_HD.anchor.x, Math.round((top - 1 - ps.bob) * L.hd.k) - POP_HD.anchor.y);
-      else fastBlit(LL.world, pf, x - E.POP.anchor.x, top - 1 - E.POP.anchor.y - ps.bob);
+      if (hdOn() && pf.hd) fastBlit(L.hd.world, pf.hd, L.hd.at(m.pos).x - AH.x, Math.round((top - 1 - ps.bob) * L.hd.k) - AH.y);
+      else fastBlit(LL.world, pf, x - A1.x, top - 1 - A1.y - ps.bob);
     }
   };
   L.add((LL) => pointDraw(Object.assign(Object.create(LL), { phase: 'trail' })), 15);
@@ -1065,7 +1246,7 @@ export async function createGameUI(demo) {
   };
   // (wave 2, docs/UI-HD-WAVE2.md step 1) every HD path of the library on for this token set, BEFORE any callback draws
   // or caches a sprite (z -1): the density round's swatches / glove / toolbar glyphs + hud / events / emotes HD hooks
-  L.add((LL) => { if (hdOn()) prepareWave2HD(LL.tok, { swatchIcon: 'dot' }); }, -1);
+  L.add((LL) => { if (hdOn()) { prepareWave2HD(LL.tok, { swatchIcon: 'dot' }); prepareEmojiHD(LL.tok); } }, -1);
   L.add((LL) => {
     const img = SV(), T = LL.tok, t = LL.t, s = store.state;
     if (!img || !LL.screen) return;
@@ -1136,6 +1317,10 @@ export async function createGameUI(demo) {
     }
     // toasts (newest on top), right-aligned under the toolbar (below the phase caption ribbon while one shows)
     let ty = y0 + 24 + (caption ? 18 : 0);
+    // (B) the vote marks' tally plaque hangs under the toolbar on the stones (votemarks.js): the toasts start below it
+    { const pq = demo.passB?.marks?.plaque; if (pq && pq.x + pq.w > x1 - 170) ty = Math.max(ty, pq.y + pq.h + 6); }
+    // and below a HUD client's second row (the timer chip dropped under the chips: a toast slid under it)
+    if (R.row2Y) ty = Math.max(ty, R.row2Y + 4);
     const tw = Math.min(150, x1 - x0 - 8);
     for (const it of toasts) {
       const age = HA.sgf(t - it.at), endF = Math.round(it.ms / 1000 * GRID_HZ), left = age - endF;
@@ -1155,14 +1340,19 @@ export async function createGameUI(demo) {
     if (caption) {
       const k = EV.gridK(t - caption.t0);
       if (k > caption.durF + 8) caption = null;
-      else EV.drawCaption(LS, EF, { text: caption.text, glyph: caption.glyph, k, durF: caption.durF, cx, y: R.topRow.y1 + 4, still: reduced });
+      // (critic P2-9) below a HUD client's second row too (the timer chip under the chips on a narrow screen): last frame's
+      else EV.drawCaption(LS, EF, { text: caption.text, glyph: caption.glyph, k, durF: caption.durF, cx, y: Math.max(R.topRow.y1, R.row2Y ?? 0) + 4, still: reduced });
     }
     R.vote = null;
     if (vote) {
-      const tv = voteClock(t), rect = { x: x0, y: R.topRow.y1 + 22, w: 69, h: 90 };
-      if (rect.y + rect.h < img.h - 30) {
-        const S = EV.drawVoteHud(evHud, LS, EF, vote.v, rect, { t: tv, still: reduced });
-        R.vote = { ...rect, tally: S.tally, done: S.done, passed: S.passed, current: S.current };
+      const tv = voteClock(t), rect = { x: x0, y: Math.max(R.topRow.y1, R.row2Y ?? 0) + 22, w: 69, h: 90 };
+      // (B) in the staged court the vote clock card is NOT drawn: the court's own marks + the tally plaque show the same
+      // vote (votemarks.js), and the card covered the crescent's west end (the phone; 1080p labels); its state still
+      // drives the result caption
+      const court = staged() && !!demo.passB?.marks;
+      if (court || rect.y + rect.h < img.h - 30) {
+        const S = court ? EV.voteAt(vote.v, tv) : EV.drawVoteHud(evHud, LS, EF, vote.v, rect, { t: tv, still: reduced });
+        R.vote = { ...rect, tally: S.tally, done: S.done, passed: S.passed, current: S.current, card: !court };
         if (S.done && !vote.result) { vote.result = true; setCaption(S.passed ? `Seat ${vote.v.nominee} is on the block (${S.tally} votes).` : 'Not enough votes.', 'bell', 3.2); }
       }
     }
@@ -1201,6 +1391,7 @@ export async function createGameUI(demo) {
       R.bar.push({ k: b.k, x, y: barY, w: BT, h: BT });
     }
     const barRect = { x: barX, y: barY, w: BARW, h: BT };
+    R.barRect = barRect;
     // the popovers above the bar: the emote palette (the 6 game emotes; greyed when your character has no such clip,
     // except point: P2.8's pop fallback) and the tray (every other key, two rows + pass B's timer row)
     R.pal = null; R.tray = null;
@@ -1224,17 +1415,30 @@ export async function createGameUI(demo) {
     // (critic P2-5) the dock / armed pill stand above the dock button; where that would cover the bar (a narrow
     // screen), above the bar instead
     const overBar = (x, y, w, h) => x < barRect.x + barRect.w && x + w > barRect.x && y + h > barRect.y - 2 && y < barRect.y + barRect.h;
-    R.dock = null; R.armedCancel = null;
+    R.dock = null; R.armedCancel = null; R.picker = null;
     if (dockOpen) {
-      const dx = x1 - E.DOCK.w;
-      let dy = by - 3 - E.DOCK.h;
-      if (overBar(dx, dy, E.DOCK.w, E.DOCK.h)) dy = barY - 3 - E.DOCK.h;
+      // (emoji, docs/UI-EMOJI.md "Dock layout") the REACTIONS dock: Point / Pin (+ the small colour button), the 7
+      // reactions over their number keys, Clear my pins, the key hints; no swatch row. The colour button opens the
+      // AUTO + 8-dot picker above it (the only place, with the panel's row, that changes the pin colour)
+      const DK = EJ.EMOTE_DOCK, dx = x1 - DK.w;
+      let dy = by - 3 - DK.h;
+      if (overBar(dx, dy, DK.w, DK.h)) dy = barY - 3 - DK.h;
       const hk = hover?.kind === 'dock' ? hover.k : null, mine = livePins().length;
-      const dk = cached(`dock${armed}${color}${mine}${hk}${touchUI}${T.ink}`, () => { const im = mkImg(E.DOCK.w + 2, E.DOCK.h + 2, (v) => E.drawDock(v, 0, 0, T, { mode: armed ?? 'idle', color, mine, hover: hk, touch: touchUI })); return { im, r: im.r }; });
+      const active = lastReactKey && t - lastReact < 0.3 ? lastReactKey : null;
+      const dk = cached(`edock${armed}${color}${mine}${hk}${active}${pickerOpen}${touchUI}${T.ink}`, () => { const im = mkImg(DK.w + 2, DK.h + 2, (v) => EJ.drawEmoteDock(v, 0, 0, T, { mode: armed ?? 'idle', color, mine, hover: hk, active, picker: pickerOpen, touch: touchUI })); return { im, r: im.r }; });
       putS(dk.im, dx, dy);
       const parts = {};
       for (const [k, r] of Object.entries(dk.r)) parts[k] = { x: r.x + dx, y: r.y + dy, w: r.w, h: r.h };
-      R.dock = { x: dx, y: dy, w: E.DOCK.w, h: E.DOCK.h, parts };
+      R.dock = { x: dx, y: dy, w: DK.w, h: DK.h, parts };
+      if (pickerOpen && dk.r.pinColor) {
+        const pk = EJ.pinPickerAt(dx, dy, parts), ph = hover?.kind === 'picker' ? hover.k : null, ac = autoColor();
+        const pz = EJ.pinPickerSize();
+        const pi = cached(`picker${color}${colorAuto}${ac}${ph}${pk.tailX - pk.x}${T.ink}`, () => { const im = mkImg(pz.w + 2, pz.h + 6, (v) => EJ.drawPinPicker(v, 0, 0, T, { color, auto: colorAuto, autoColor: ac, hover: ph, tailX: pk.tailX - pk.x })); return { im, r: im.r }; });
+        putS(pi.im, pk.x, pk.y);
+        const pp = {};
+        for (const [k, r] of Object.entries(pi.r)) if (r && typeof r === 'object') pp[k] = { x: r.x + pk.x, y: r.y + pk.y, w: r.w, h: r.h };
+        R.picker = { x: pk.x, y: pk.y, w: pz.w, h: pz.h, parts: pp };
+      }
     } else if (armed) {
       const z = E.armedSize(T, { mode: armed, touch: touchUI });
       let ay = by - 3 - z.h;
@@ -1246,14 +1450,17 @@ export async function createGameUI(demo) {
     const P = demo.player, d = P?.nearDoor, room = P?.interior;
     const promptY = Math.min(img.h - 4 - 15 - 26, barY - 4 - 15);
     // (centred pieces: drawn once per text at x 320 of a 640-wide image, then placed by their offset from that centre)
-    const prompt = (text, locked = false) => {
+    const prompt = (text, locked = false, py = promptY) => {
       const pc = pieceS(`prompt${text}${locked}${T.ink}`, 640, 17, (v) => HA.drawPrompt(v, 320, 0, T, { text, locked }));
-      putS(pc.im, cx - 320 + pc.dx, promptY + pc.dy);
+      putS(pc.im, cx - 320 + pc.dx, py + pc.dy);
     };
     R.tip = null;
     if (tipState && t >= tipState.until) closeTip('timeout');
-    if (room) prompt(`${room.name ?? 'Inside'} · walk out the door to leave`);
-    else if (d) {
+    // (critic P2-7) inside, the room's line stands at the TOP (under the chips / the caption): at the bottom it covered
+    // the player standing at the door after walking in
+    if (room) prompt(`${room.name ?? 'Inside'} · walk out the door to leave`, false, Math.max(R.topRow.y1, R.row2Y ?? 0) + 4 + (caption ? 22 : 0));
+    // (critic P3-15) no "Walk in" prompt in the vote camera (it sat among the cast's labels during the ceremony)
+    else if (d && s.camera !== 'vote' && !staged()) {
       const house = demo.layout?.houses?.find((q) => q.id === d.id);
       if (d.id === 'clocktower' && !demo.passB?.interior) prompt('The clock tower is locked', true);   // (B) enterable with pass B's interior
       else prompt(`Walk in: ${house?.name ?? (d.id === 'clocktower' ? 'The Clocktower' : d.id)}`);
@@ -1281,12 +1488,17 @@ export async function createGameUI(demo) {
         const D = dd(), u = (dr + 1) / (FLY_F / 2), e = 1 - (1 - u) * (1 - u), f = 1 - 0.85 * u;
         const nD = FLY_F / 2, im0 = cached(`fly${dr}${tipFly.im.w}x${tipFly.im.h}${tipNever}${tipFly.t0}`, () => { const m = shrink(tipFly.im, f); return dr >= nD - 2 ? dissolve(m, dr === nD - 2 ? 0.5 : 0.75) : m; });
         const sx = tipFly.x + tipFly.w / 2, sy = tipFly.y + tipFly.h / 2, ex = tb.x + tb.w / 2, ey = tb.y + tb.h / 2;
-        fastBlit(SB(), im0, Math.round((sx + (ex - sx) * e) * D - im0.w / 2), Math.round((sy + (ey - sy) * e) * D - im0.h / 2));
+        const fx = sx + (ex - sx) * e, fy = sy + (ey - sy) * e;
+        fastBlit(SB(), im0, Math.round(fx * D - im0.w / 2), Math.round(fy * D - im0.h / 2));
+        // (the drawn centres, logical px: the playtest checks the flight goes from the tip toward the bulb)
+        if (tipFly.path.at(-1)?.[2] !== dr) tipFly.path.push([Math.round(fx), Math.round(fy), dr]);
+        lastFly = { from: [Math.round(sx), Math.round(sy)], to: [Math.round(ex), Math.round(ey)], path: tipFly.path.map((p) => [p[0], p[1]]) };
       }
     }
     // HUD clients (pass B's tower-timer chip + the Storyteller's town clock): drawn here, on this tier, in these
     // coordinates; their rects join the hit tests and the top row
     R.clients = [];
+    let clientRow2 = 0;
     if (hudClients.length) {
       const G = { T, t, d: dd(), hd: hdOn(), x0, x1, y0, W: img.w, H: img.h, mk: mkImg, put: putS, cached, lw, toClient,
         chipsEnd: R.topRow.spans[0][1], toolbarX: R.topRow.spans[1][0], topY: R.topRow.y1, bar: barRect, status: cover.status ?? null, coverTop: cover.top,
@@ -1297,15 +1509,17 @@ export async function createGameUI(demo) {
         if (!out) continue;
         R.clients.push({ c, rects: out.rects ?? [] });
         if (out.top) R.topRow.spans.push([out.top.x, out.top.x + out.top.w]);
+        if (out.row2) clientRow2 = Math.max(clientRow2, out.row2.y1);
       }
     }
+    R.row2Y = clientRow2;
     // the popovers last (over the tip / prompt)
     if (emotePal) R.pal = popover([AB.EMOTES], R.bar[0].x + (BT >> 1), 'pal');
     if (trayOpen) R.tray = popover(AB.TRAY, R.bar[R.bar.length - 1].x + (BT >> 1), 'tray');
     // a tooltip over the hovered bar / palette / tray button (mouse; none for a bar button whose popover is open: it
     // would cover the popover). (critic P2-6) a finger has no hover: the last-tapped palette / tray button shows its
     // name 1.6 s instead. (critic P3-9) a greyed emote says why.
-    const tipOf = touchUI ? (tapTip && t < tapTip.until ? tapTip : null) : hover;
+    const tipOf = touchUI ? (tapTip && t < tapTip.until ? tapTip : null) : keyQuiet ? null : hover;
     if (tipOf && (tipOf.kind === 'pal' || tipOf.kind === 'tray' || (tipOf.kind === 'bar' && !(tipOf.k === 'emote' && emotePal) && !(tipOf.k === 'more' && trayOpen)))) {
       const list = tipOf.kind === 'bar' ? R.bar.map((r) => ({ ...r, ...AB.BAR.find((b) => b.k === r.k) })) : (tipOf.kind === 'pal' ? R.pal : R.tray)?.items ?? [];
       const it = list.find((r) => r.k === tipOf.k);
@@ -1320,7 +1534,7 @@ export async function createGameUI(demo) {
     }
     // the pie (above the HUD)
     if (pie) {
-      const st = { size: pie.input, input: pie.input, items: pie.items, hot: pie.hot, color, off: pie.off, sticky: pie.sticky, title: pie.target.member ? `${pie.target.member.name}` : 'Point or pin',
+      const st = { size: pie.input, input: pie.input, items: pie.items, hot: pie.hot, color, off: pie.off, sticky: pie.sticky, title: pie.target.member ? `${pie.target.member.name}` : EJ.PIE_TITLE,
         tOpen: t - pie.tOpen0, press: pie.press, reduced };
       if (pie.commit) st.commit = { i: pie.commit.i, t: t - pie.commit.t0 };
       if (pie.cancel != null) st.cancel = t - pie.cancel;
@@ -1342,6 +1556,10 @@ export async function createGameUI(demo) {
     if (R.tip && inRect(s, R.tip)) return { kind: 'tip', k: inRect(s, R.tip.close) ? 'close' : inRect(s, R.tip.never) ? 'never' : null };
     for (const r of R.bar ?? []) if (inRect(s, r)) return { kind: 'bar', k: r.k };
     if (inRect(s, R.dockBtn)) return { kind: 'dockbtn' };
+    if (R.picker && inRect(s, R.picker)) {
+      for (const [k, r] of Object.entries(R.picker.parts ?? {})) if (inRect(s, r)) return { kind: 'picker', k };
+      return { kind: 'picker', k: null };
+    }
     if (R.dock && inRect(s, R.dock)) {
       for (const [k, r] of Object.entries(R.dock.parts ?? {})) if (inRect(s, r)) return { kind: 'dock', k };
       return { kind: 'dock', k: null };
@@ -1372,6 +1590,8 @@ export async function createGameUI(demo) {
       return;
     }
     const hit = screenHit(s);
+    // (emoji) the colour picker closes on any click outside it (and its button)
+    if (pickerOpen && hit?.kind !== 'picker' && !(hit?.kind === 'dock' && hit.k === 'pinColor')) pickerOpen = false;
     if (hit) { eat(e); consumeUp.add(0); uiClick(hit); return; }
     // a click / tap elsewhere closes an open popover (and does nothing else) - (critic P3-8) except on your own pin: the
     // click goes through (it removes the pin) and closes the popover too
@@ -1420,17 +1640,23 @@ export async function createGameUI(demo) {
       else if (hit.k === 'panel') store.set({ ui: !store.state.ui }, 'ui');
       else if (hit.k === 'help') demo.ui?.help?.();
     } else if (hit.kind === 'dock' && hit.k) {
-      if (hit.k === 'point' || hit.k === 'pin') { armed = armed === hit.k ? null : hit.k; if (hit.k === 'pin' && livePins().length >= MAX_PINS) armed = null; }
-      else if (hit.k.startsWith('swatch:')) color = hit.k.slice(7);
+      if (hit.k === 'point' || hit.k === 'pin') { pickerOpen = false; armed = armed === hit.k ? null : hit.k; if (hit.k === 'pin' && livePins().length >= MAX_PINS) armed = null; }
+      else if (hit.k.startsWith('emoji:')) react(hit.k.slice(6), null);
+      else if (hit.k === 'pinColor') pickerOpen = !pickerOpen;
       else if (hit.k === 'clear') { const n = clearPins(); if (n) toast(`Removed ${n} pin${n === 1 ? '' : 's'}`); }
+    } else if (hit.kind === 'picker' && hit.k) {
+      // (emoji) the pin colour, out of the way: AUTO (the automatic colour) or one of the 8; a pick closes the picker
+      if (hit.k.startsWith('color:')) { setPinColor(hit.k.slice(6)); pickerOpen = false; }
     }
     // (critic P2-6) a finger has no hover: the tapped palette / tray button's name shows 1.6 s
     if (touchUI && (hit.kind === 'pal' || hit.kind === 'tray') && hit.k) tapTip = { kind: hit.kind, k: hit.k, until: L.t + 1.6 };
     events.emit('gameui:click', { kind: hit.kind, k: hit.k ?? null, code: hit.code ?? null, off: hit.off ?? false });
   }
   /** G / the dock button: the social dock (critic P2-5: it closes the palette / tray). */
-  function toggleDock() { dockOpen = !dockOpen; if (!dockOpen) armed = null; else closePopovers(); }
+  function toggleDock() { dockOpen = !dockOpen; pickerOpen = false; if (!dockOpen) armed = null; else closePopovers(); }
+  let keyQuiet = false;
   function onMove(e) {
+    keyQuiet = false;
     if (e.target === canvas) cursor = { x: e.clientX, y: e.clientY };
     else if (!rpress && !pie) { cursor = null; hover = null; setCursor(false); return; }
     const s = toScreen(e.clientX, e.clientY);
@@ -1477,9 +1703,20 @@ export async function createGameUI(demo) {
   // (critic P3-8) a key action closes the palette / tray (they stayed open through Q, F, walking ...); Space toggles the
   // palette itself, Esc closes it (its binding), keys typed into a form field never reach the game
   const onKey = (e) => {
-    if (!(emotePal || trayOpen) || e.code === 'Space' || e.code === 'Escape' || /^(Shift|Control|Alt|Meta|OS)/.test(e.code)) return;
+    keyQuiet = true;           // (critic P3-16) a key press hides the hover tooltip until the mouse moves again
     const tg = e.target;
-    if (tg && (tg.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(tg.tagName ?? ''))) return;
+    const typing = !!tg && (tg.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(tg.tagName ?? ''));
+    // (emoji) the number keys 1-7: with the pie open = that reaction's wedge; with the reactions dock open (G) = react
+    // (eaten here, in the capture phase, before the player's emote bindings); otherwise the character emotes as before
+    const ek = !typing && !e.ctrlKey && !e.metaKey && !e.altKey ? EJ.emojiForCode(e.code) : null;
+    if (ek && hasControl()) {
+      if (pie && !pie.commit && pie.cancel == null) {
+        const i = pie.items.findIndex((x) => x.kind === 'emoji' && x.emoji === ek);
+        if (i >= 0 && !pie.off.has(i)) { e.preventDefault(); e.stopImmediatePropagation(); if (!e.repeat) commitPie(i); return; }
+      } else if (dockOpen) { e.preventDefault(); e.stopImmediatePropagation(); if (!e.repeat) react(ek, null); return; }
+    }
+    if (!(emotePal || trayOpen) || e.code === 'Space' || e.code === 'Escape' || /^(Shift|Control|Alt|Meta|OS)/.test(e.code)) return;
+    if (typing) return;
     closePopovers();
   };
   addEventListener('keydown', onKey, true);
@@ -1495,7 +1732,7 @@ export async function createGameUI(demo) {
   offs.push(() => { removeEventListener('pointercancel', onCancel, true); removeEventListener('pointerdown', onDown, true); removeEventListener('pointermove', onMove, true); removeEventListener('pointerup', onUp, true); removeEventListener('contextmenu', noMenu, true); });
   offs.push(
     input.bind('KeyJ', () => nb.toggle(), { desc: 'notebook (Seats / Notes)', group: 'ui' }),
-    input.bind('KeyG', () => toggleDock(), { desc: 'social dock: point / pins', group: 'emote' }),
+    input.bind('KeyG', () => toggleDock(), { desc: 'reactions dock: react (then 1-7), point, pin, pin colour', group: 'emote' }),
     // (critic P1-2) Space opens / closes the emote palette (it was the signature emote: most characters had none);
     // the signature is 6 and the palette's star
     input.bind('Space', () => barAction('emote'), { desc: 'emote palette (1-6 play the emotes, 6 = signature)', group: 'emote' }),
@@ -1505,7 +1742,7 @@ export async function createGameUI(demo) {
     }, { desc: 'drop a pin at the cursor', group: 'emote' }),
   );
   // Esc is bound after the panel's own Esc (on 'ready'), so the help overlay keeps its place in input.bindings()
-  offs.push(events.on('ready', () => offs.push(input.bind('Escape', () => { if (pie) cancelPie(); armed = null; emotePal = trayOpen = false; if (tipState) closeTip('esc'); if (nb.isOpen) nb.close(); }, { desc: 'close the pie / notebook / tip / palettes', group: 'ui' }))));
+  offs.push(events.on('ready', () => offs.push(input.bind('Escape', () => { if (pie) cancelPie(); armed = null; pickerOpen = false; emotePal = trayOpen = false; if (tipState) closeTip('esc'); if (nb.isOpen) nb.close(); }, { desc: 'close the pie / notebook / tip / palettes', group: 'ui' }))));
 
   // ------------------------------------------------------------------------------------------------ per frame
   const api = {
@@ -1524,7 +1761,20 @@ export async function createGameUI(demo) {
     touch: touchUI,
     // automation + the playtest (tools/demo-play.mjs): the same code paths as the pointer / keys
     doPoint, dropPin, removePin, clearPins, targetAt, openPieAt(clientX, clientY) { rpress = { cx: clientX, cy: clientY, t0: performance.now() - 1e4, target: targetAt(clientX, clientY) }; openPie(); rpress = null; return !!pie; },
-    get dockOpen() { return dockOpen; }, set dockOpen(v) { dockOpen = !!v; },
+    get dockOpen() { return dockOpen; }, set dockOpen(v) { dockOpen = !!v; if (!dockOpen) pickerOpen = false; },
+    // (emoji) reactions: yours (the same path as the pie / dock / keys, with the cooldown) and a townsperson's
+    react, npcReact, setPinColor,
+    /** the 8 pin colours + their hex (the panel's "Pin colour" row) */
+    pinColors: PIN_COLORS, pinHex: PIN_HEX,
+    /** scene texels per logical HUD px (1 at 720p; 4/3 at 1080p 'round': the HD HUD is 4/3 of the 1x size there) */
+    get texPerLogical() { return 1 / t2l(); },
+    /** the action bar's rect as drawn last frame (logical px), or null (votemarks.js puts its tally plaque above it) */
+    get barRect() { return R.barRect ? { ...R.barRect } : null; },
+    /** the events vote clock card's rect as drawn last frame (logical px), or null (none: no vote / the staged court) */
+    /** the toolbar's box as drawn last frame (logical px), or null */
+    get toolbarRect() { const v = Object.values(R.toolbar ?? {}); if (!v.length) return null; const x0 = Math.min(...v.map((r) => r.x)), x1 = Math.max(...v.map((r) => r.x + r.w)); return { x: x0, y: v[0].y, w: x1 - x0, h: v[0].h }; },
+    get voteCardRect() { return R.vote?.card ? { x: R.vote.x, y: R.vote.y, w: R.vote.w, h: R.vote.h } : null; },
+    get pinColor() { return { color, auto: colorAuto, autoColor: autoColor(), saved: pinSaved }; },
     /**
      * HUD clients (pass B's timer-ui.js): add({ id, draw(G) -> { rects: [{k, x, y, w, h, inert?}], top: {x, w}? } | null,
      * click(k) }) -> remove(). draw runs inside the HUD pass, on THIS tier (D=2 when on) in its LOGICAL px: G = { T, t,
@@ -1534,7 +1784,16 @@ export async function createGameUI(demo) {
      */
     hudHost: { add(c) { hudClients.push(c); return () => { const i = hudClients.indexOf(c); if (i >= 0) hudClients.splice(i, 1); }; }, toClient, get unit() { return unitDev(); }, get density() { return dd(); } },
     closePopovers,
-    get color() { return color; }, set color(c) { if (E.PIN_LABEL[c]) color = c; },
+    // (B) for pass B's vote marks (votemarks.js): the UI layers (draw with L.add; L.hd = the D=2 tiers) and the running
+    // vote of the events group: { v (EV.makeVote), clock (the vote clock at demo time t), reach [demo time the brass
+    // hand reaches each voter] }
+    layers: L,
+    /** the top row (L.world texels) of a member's name label as drawn this frame (after the overlap step-up), or null */
+    labelTopOf(slot) { const m = members.find((x) => x.slot === slot); return m?._shown ? m._labelTop : null; },
+    /** art px reserved between that member's head and its name for the vote mark (the staged court), else 0 */
+    markSlotOf(slot) { const m = members.find((x) => x.slot === slot); return m ? markSlotOf(m) : 0; },
+    voteOf(t = L.t) { return vote ? { v: vote.v, clock: voteClock(t), reach: vote.reach, per: vote.per, t0: vote.t0 } : null; },
+    get color() { return color; }, set color(c) { setPinColor(c, { save: false }); },
     info() {
       const t = L.t;
       return {
@@ -1548,8 +1807,10 @@ export async function createGameUI(demo) {
         point: point ? { kind: point.target.kind, age: +(t - point.t0).toFixed(2), scale: hud.uiOptions.pointerScale, frameSize: framesNow().point?.size ?? 20 } : null,
         pie: pie ? { open: !pie.commit && pie.cancel == null, input: pie.input, sticky: pie.sticky, hot: pie.hot, items: pie.items.map((x) => x.key), off: [...pie.off], at: [pie.cx, pie.cy] } : null,
         pins: pins.map((p) => ({ kind: p.kind, color: p.color, removing: p.removeAt != null, at: p.kind === 'place' ? [+p.p.x.toFixed(2), +p.p.z.toFixed(2)] : null, slot: p.slot ?? null, screen: p.kind === 'place' ? atS(p.p) : null, behind: p.behind ?? null })),
-        pops: pops.map((p) => ({ who: p.who, kind: p.kind, color: p.color, age: +(t - p.t0).toFixed(2) })),
-        dock: { open: dockOpen, armed, color, rects: R.dock?.parts ?? null, button: R.dockBtn ?? null }, toolbar: R.toolbar ?? null,
+        pops: pops.map((p) => ({ who: p.who, kind: p.kind, color: p.kind === 'emoji' ? null : p.color, emoji: p.kind === 'emoji' ? p.color : null, age: +(t - p.t0).toFixed(2) })),
+        dock: { open: dockOpen, armed, color, rects: R.dock?.parts ?? null, button: R.dockBtn ?? null, picker: R.picker ? { x: R.picker.x, y: R.picker.y, w: R.picker.w, h: R.picker.h, rects: R.picker.parts } : null }, toolbar: R.toolbar ?? null,
+        pinColor: { color, auto: colorAuto, autoColor: autoColor(), saved: pinSaved },
+        reactions: { ...reactions, byKey: { ...reactions.byKey }, queued: reactQueue.length, last: lastReactKey },
         toasts: toasts.map((x) => x.text), tip: tipState && t < tipState.until,
         notebook: nb.info(), readers: readers.map((r) => ({ ...r })),
         books3d: N.book3d ? [...N.book3d.books.values()].filter((e) => e.book.root.visible).length : 0, mergedBooks: !!N.book3d?.merged,
@@ -1558,7 +1819,7 @@ export async function createGameUI(demo) {
         palette: R.pal ? { open: true, items: R.pal.items.map((r) => ({ k: r.k, code: r.code, off: r.off, x: r.x, y: r.y, w: r.w, h: r.h })) } : { open: emotePal },
         tray: R.tray ? { open: true, items: R.tray.items.map((r) => ({ k: r.k, code: r.code, x: r.x, y: r.y, w: r.w, h: r.h })) } : { open: trayOpen },
         tipState: { shown: !!tipState, auto: tipState?.auto ?? null, rect: R.tip ? { x: R.tip.x, y: R.tip.y, w: R.tip.w, h: R.tip.h, close: R.tip.close, never: R.tip.never } : null,
-          flying: !!tipFly, glowing: t >= bulbGlow && t < bulbGlow + GLOW_S, never: tipNever, neverSaved: tipNeverSaved, shownCount: tipShown, dismissed: [...tipDismissed] },
+          flying: !!tipFly, fly: lastFly, glowing: t >= bulbGlow && t < bulbGlow + GLOW_S, never: tipNever, neverSaved: tipNeverSaved, shownCount: tipShown, dismissed: [...tipDismissed] },
         events: { ...evInfo, captions: [...evInfo.captions], caption: caption?.text ?? null, veil: !!veil, dawn: !!dawn, vote: R.vote ? { ...R.vote } : null, exec: !!exec, ghost: !!ghostFx, poof: !!poof },
         offscreen: offscreen.map((o) => ({ ...o })),
         /** your person pins' hit rects (logical screen px, generous) as drawn last frame */
@@ -1601,6 +1862,14 @@ export async function createGameUI(demo) {
       if (talkPass) talkPass.enabled = warm > 0 || talkers.length > 0;
       // right press held without moving: the pie
       if (rpress && !pie && performance.now() - rpress.t0 > (rpress.touch != null ? E.TIMING.LONG_PRESS_MS : E.TIMING.RIGHT_HOLD_MS)) openPie();
+      // (emoji) the townsfolk's reactions: the vote's result, then whatever is due (only over someone in the scene)
+      reactToVote();
+      for (let i = 0; i < reactQueue.length; i++) {
+        const q = reactQueue[i];
+        if (L.t < q.at) continue;
+        reactQueue.splice(i--, 1);
+        if (L.t - q.at < 2 && members.some((m) => !m.you && m.slot === q.who)) { pop(q.who, 'emoji', q.key); reactions.cast++; reactions.byKey[q.key] = (reactions.byKey[q.key] ?? 0) + 1; }
+      }
       // talk state per member (clip edges): glyph + outline while talking; NPCs get a line in a bubble; other emotes pop
       talkers.length = 0;
       for (const m of members) {
@@ -1612,7 +1881,15 @@ export async function createGameUI(demo) {
           if (TALK_CLIPS.has(m.clip)) {
             st.count++;
             if (!m.you) { st.line = LINES[(m.slot * 3 + st.count) % LINES.length]; st.bubbleAt = L.t; st.bubbleUntil = L.t + IA.bubbleDurationMs(st.line) / 1000; }
-          } else if (!m.you && POP_OF[m.clip] && m.clip !== 'idle') pop(m.slot, POP_OF[m.clip]);
+            // (emoji) idle chat: now and then a neighbour reacts to the line (a laugh, a nod, a doubt); not in the
+            // staged vote court (its reactions are the vote's own)
+            if (!m.you && !staged() && hashK(m.slot * 13 + st.count) < 0.4) {
+              const nb2 = m.slot >= 1000 ? (() => { const sts = store.state.seats; for (const d of [1, -1, 2]) { const j = (m.slot - 1000 + d + 15) % 15; if (sts[j]?.occupied && !sts[j].dead) return 1000 + j; } return null; })()
+                : npcSlots().find((sl) => sl !== m.slot) ?? null;
+              const h2 = hashK(m.slot + st.count * 3.1);
+              if (nb2 !== null) npcReact(nb2, h2 < 0.55 ? 'laugh' : h2 < 0.8 ? 'agree' : 'question', 1.1);
+            }
+          } else if (!m.you && POP_OF[m.clip] && m.clip !== 'idle' && !(m.clip === 'vote' && m.slot >= 1000 && demo.passB?.marks)) pop(m.slot, POP_OF[m.clip]);   // (B) a seated voter's hand: votemarks.js draws the vote states
           else if (!m.you && m.clip !== 'idle' && m.clip !== 'walk' && m.handle?.emotes?.signature === m.clip) pop(m.slot, 'question');
           st.clip = m.clip;
         }

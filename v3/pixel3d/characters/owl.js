@@ -21,24 +21,8 @@ export const PALETTE = {
   mantle: ['#C45C6C', '#943A4C', '#64304A'],   // burgundy mantle, mouth flash
   dark: ['#9A6040', '#74432A', '#4C3042'],     // ledger cover (v1 #7a4326), beak, pupils, closed-eye lash line
   amber: ['#FFD77A', '#F0A22C', '#A8643A'],    // accent: the eyes, gold hem / edges / cuffs / ledger band
-  // r3 GHOST shells (clips ghost / ghost-spent only, hidden inside the body otherwise): pale blue-lilac body, near-white
-  // disc, pale rose mantle + ledger, pale gold eyes/trim; pupils + beak use the navy robe slot. 'spent' = dimmer set.
-  ghost: ['#EEF4FF', '#C2D4F2', '#9AA2D2'],
-  ghostDisc: ['#F4F7FC', '#E4ECF8', '#BAC2E0'],
-  ghostRose: ['#F2D8EE', '#D6B6DC', '#A890C0'],
-  ghostGold: ['#FFF0BC', '#F0D488', '#BCA67A'],
-  spent: ['#AEB8D6', '#8C98BE', '#6A729C'],
-  spentDisc: ['#C8D0E4', '#AEB6D2', '#868EB0'],
-  spentRose: ['#BCA8C8', '#9E8CB0', '#766A8C'],
-  spentGold: ['#D6CC9E', '#B8AA7E', '#8C8268'],
+  // (ghost port) the r3 ghost-shell palette slots (ghost*/spent*) are gone: spec.ghost re-tones the living slots
 };
-// ghost shell sets: palette slot per original slot (dark parts named in GHOST_DARK → navy robe slot)
-const GHOST_SETS = {
-  gh: { feather: 'ghost', robe: 'ghost', disc: 'ghostDisc', mantle: 'ghostRose', amber: 'ghostGold', dark: 'ghostRose' },
-  gs: { feather: 'spent', robe: 'spent', disc: 'spentDisc', mantle: 'spentRose', amber: 'spentGold', dark: 'spentRose' },
-};
-const GHOST_DARK = /^(pupil|beak|mandible)/;
-const GHOST_K = 0.2;                          // rest scale of a shell (hidden deep inside its region); ghost key: × 1/K
 
 const BODY = { height: 1.15, heads: 2.0, legs: 0.45, arms: 1.0, shoulders: 0.48, snout: 0, tail: false };
 // head (head-local, joint = chin at world ≈ 0.54): a ball 0.60 wide, 0.535 tall, depth × HSZ
@@ -77,35 +61,10 @@ export function skeleton() {
   for (const s of ['L', 'R']) { const b = S.find((x) => x.name === `ear${s}0`); b.parent = 'tuftRoot'; b.pos = [s === 'L' ? TUFT.at[0] : -TUFT.at[0], 0, 0]; }
   S.push({ name: 'book', parent: 'chest', pos: BOOK.at, axis: 'up' });
   S.push({ name: 'bookLid', parent: 'book', pos: [-BOOK.w / 2, 0, BOOK.d / 2 - 0.005], axis: 'left' });
-  // r3 ghost shells: one part-carrying bone per region and set, at the region's centre (see SHELLS)
-  const W = worldOf(S);
-  for (const set of Object.keys(GHOST_SETS)) for (const sh of SHELLS) S.push({ name: set + sh.key, parent: sh.parent, pos: sh.rel(W), axis: 'up' });
+  // (ghost port) the r3 ghost-shell bones (gh*/gs*: pale geometry copies of every region + a wisp tail + halo) are gone:
+  // spec.ghost re-tones the living geometry and appends its own 'ghostHalo' bone
   return Object.defineProperties(S, { sockets: { value: S0.sockets }, meta: { value: m } });
 }
-
-// bind world positions (bone pos are parent offsets in character axes; parents precede children)
-function worldOf(S) {
-  const W = {};
-  for (const b of S) { const p = b.parent ? W[b.parent] : [0, 0, 0]; W[b.name] = [p[0] + b.pos[0], p[1] + b.pos[1], p[2] + b.pos[2]]; }
-  return W;
-}
-const sub = (a, b) => a.map((v, i) => v - b[i]);
-const midOf = (W, a, b) => sub(W[a].map((v, i) => (v + W[b][i]) / 2), W[a]);
-// ── GHOST SHELLS (r3). The engine has no per-clip tint, so the pale ghost is GEOMETRY: every region's parts are copied
-// (same shapes, × infl about the region centre) in the ghost palette onto a shell bone at that centre. At rest the
-// shell is built × GHOST_K (a small copy buried deep inside the region → never visible); the ghost clips scale the
-// shell bones × 1/GHOST_K, so the inflated pale copy encloses the normal body (which stays, hidden, inside it).
-// The robe becomes a tapering wisp TAIL (no feet). Two sets: 'gh' (ghost, vote unspent) and 'gs' (spent, dimmer).
-const SHELLS = [
-  { key: 'Head', parent: 'head', rel: () => [0, 0.27, 0], bones: ['head', 'jaw', 'eyeL', 'eyeR', 'earL0'], infl: 1.045, own: /^(tuft|beak|mandible)/, ownInfl: 1.15 },
-  // the WINGS ride the chest shell (ghost keys never move the arms): own-centre copies; one shell bone for torso+wings
-  // keeps the (bone, slot) pairs ≤ ~50 so look.js partTable still finds UNIQUE part-line ids (66 pairs: none → the
-  // living clips lost sleeve/robe inner lines, 37 px at the idle turnaround; shots/char-owl/owl_pairs.js)
-  { key: 'Chest', parent: 'chest', rel: () => [0, 0.07, 0.03], bones: ['chest', 'book', 'bookLid', 'upperArmL', 'upperArmR', 'forearmL', 'forearmR', 'handL', 'handR'],
-    infl: 1.05, own: /^(sleeve|cuff|wingTip)/, ownInfl: 1.12 },
-  { key: 'Hips', parent: 'hips', rel: () => [0, -0.1, 0], tail: true },
-];
-const SHELL_SKIP = /^(shutLid|lash|mouth|brow)/;      // recessed / hidden-at-rest parts stay out of the shells
 
 // ── geometry helpers ──
 // uncentred lathe (y = profile y) — K.lathe centres on the bbox
@@ -279,41 +238,6 @@ export function parts(S) {
   // ── feet (r2): long tan talons whose toes peek 2 texels out of the hem at rest (v1) and stick ≥ 3 texels out on
   // every touchdown drawing (the plant sits C/2n ahead of the hip) — contact is drawn
   add('footL', K.chamferBox(0.11, m.ankleY, 0.27, 0.35), [0, -m.ankleY / 2, 0.135], 'feather', { name: 'talon', mirror: true });
-
-  // ── r3 GHOST SHELLS (see SHELLS): copies of the region parts in the ghost palettes on the shell bones
-  const W = worldOf(S), body = P.slice();
-  // wisp tail (world bind coords): the robe bell, a pale-gold hem band, then a cone that trails back to a point
-  const TP = [[0, -0.22], [0.05, -0.19], [0.11, -0.13], [0.18, -0.06], [0.25, 0.0], [0.292, 0.06], [0.305, 0.14], [0.298, 0.24], [0.28, 0.315]];
-  const tailArr = subdivide(lathe0(TP, 10, { sz: RSZ * 1.02 }), 0.04);
-  for (let i = 0; i < tailArr.length; i += 3) { const y = tailArr[i + 1]; if (y < 0.05) tailArr[i + 2] -= 0.9 * Math.pow(0.05 - y, 1.5); }
-  const [tailHem, tailG] = splitTris(tailArr, (c) => c[1] > 0.045 && c[1] < 0.105);
-  // HALO (ghost vote unspent, v2 ghost row): a flat pale-gold ring over the crown between the tufts, 'gh' set only
-  const HALO_Y = W.head[1] + 0.62;
-  const halo = K.xf(lathe0([[0.12, 0], [0.17, 0], [0.17, 0.035], [0.12, 0.035], [0.12, 0]], 10, {}), { rot: [-12, 0, 0], at: [0, HALO_Y, -0.04] });
-  for (const [set, slots] of Object.entries(GHOST_SETS)) {
-    for (const sh of SHELLS) {
-      const bone = set + sh.key, C = W[bone];
-      if (sh.tail) {
-        for (const [g, slot, nm] of [[tailG, slots.robe, 'Tail'], [tailHem, slots.amber, 'TailHem']])
-          P.push({ bone, shape: g, at: C.map((v) => -v * GHOST_K), scale: GHOST_K, color: slot, name: set + nm });
-        continue;
-      }
-      if (sh.key === 'Head' && set === 'gh') P.push({ bone, shape: halo, at: C.map((v) => -v * GHOST_K), scale: GHOST_K, color: slots.amber, name: 'ghHalo' });
-      const s = sh.infl * GHOST_K;
-      for (const p of body) {
-        if (!sh.bones.includes(p.bone) || SHELL_SKIP.test(p.name || '')) continue;
-        // surface patches scale about the region centre (they stay coincident); thin parts (tufts, beak) about their own
-        // centre so the copy ENCLOSES them (about the head centre a thin tuft only slid outward: brown edges at N)
-        const own = sh.own?.test(p.name || ''), f = own ? sh.ownInfl : 1;
-        let cg = [0, 0, 0];
-        if (own) { p.shape.computeBoundingBox(); const bb = p.shape.boundingBox; cg = [0, 1, 2].map((i) => (bb.min.getComponent(i) + bb.max.getComponent(i)) / 2); }
-        const so = own ? GHOST_K * f : s;
-        const at = W[p.bone].map((v, i) => own ? (v + (p.at?.[i] ?? 0) + cg[i] * (1 - f) - C[i]) * GHOST_K : (v + (p.at?.[i] ?? 0) - C[i]) * s);
-        const color = p.color === 'dark' && GHOST_DARK.test(p.name || '') ? 'robe' : slots[p.color];
-        P.push({ bone, shape: p.shape, at, scale: so, color, name: set + '_' + p.name, ...(p.mirror ? { mirror: true } : {}) });
-      }
-    }
-  }
   return P;
 }
 
@@ -336,11 +260,10 @@ const VOTE_UP = { ...base(0.03), hips: [0, 0, 8], spine: [-4, 0, 8], chest: [-4,
   'book.p': [-0.6, 0.8, -0.15], book: [0, -15, -15] };
 // point (r3): right wing straight along [-0.9, 0.4, 0.25] (out to his right and up: a horizontal line at dir 1) with the chest yawed −20 (solver: wing segments ≤ 1° off)
 const POINT = (extra) => ({ chest: [0, -20, 0], ...extra, upperArmR: [-32, 47, 105], forearmR: [-60, 30, 178], handR: [22, -11, 7] });
-// ghost keys (r3): show one shell set (× 1/GHOST_K), feet scaled away, hover. A hovering LOOP clip keeps IK legs:
-// character.js _solveLegs dips the hips by its 0.1 m cap when the planted feet are out of reach, so pos carries +0.1.
-const SHOW = (set) => Object.fromEntries(SHELLS.map((s) => [`${set}${s.key}.s`, [1 / GHOST_K - 1, 1 / GHOST_K - 1, 1 / GHOST_K - 1]]));
-const NOFEET = { 'footL.s': [-0.95, -0.95, -0.95], 'footR.s': [-0.95, -0.95, -0.95] };
-const GHOSTK = (set, up, extra, dy = 0) => ({ pos: [0, 0.1 + 0.28 + dy + 0.06 * up, 0], ...SHOW(set), ...NOFEET, ...extra });
+// ghost keys (ghost port: POSE ONLY — spec.ghost draws the pale / spent ramps, the gold halo between the tufts, the
+// bind-height dissolve of hem + talons, the night self-glow, and adds the 0.14 m hover with floating FK legs): a 2-texel
+// bob (up 0/1), spent 2 texels lower
+const GHOSTK = (up, extra, dy = 0) => ({ pos: [0, dy + 0.056 * up, 0], ...extra });
 export const CLIPS = {
   idle: { fps: 30, loop: true, interp: 'step', length: 72, keys: [
     { f: 0, pose: breathe(0) },
@@ -399,21 +322,21 @@ export const CLIPS = {
     { f: 8, pose: POINT({ ...base(), head: [-4, -30, 2], ...SQUINT, ...BROWS(25), earL0: [-12, 0, 0], earR0: [-12, 0, 0] }) },
     { f: 32, pose: breathe(0) },
   ] },
-  // r3 GHOST idle (dead player): the pale shell set 'gh' (+ halo = ghost vote unspent) hovers 0.28–0.34 m up on a
-  // wisp tail, bobbing 2 texels on 20-frame holds; the tail swings (hips roll, chest counter-rolls); the owl swivels
-  // his head 60° to stare (the living idle's tell). Legs: feet scaled away; the tail hides the hips.
+  // GHOST idle (dead player; ghost port: spec.ghost = pale ramp + gold halo while the ghost vote is unspent): hovers,
+  // bobbing 2 texels on 20-frame holds; the robe sways (hips roll, chest counter-rolls) while the hem dissolves; the owl
+  // swivels his head 60° to stare (the living idle's tell)
   ghost: { fps: 30, loop: true, interp: 'step', length: 80, dynamics: 'hold', keys: [
-    { f: 0, pose: GHOSTK('gh', 0, { hips: [0, 0, 6], spine: [0, 0, -6], head: [4, 0, 0] }) },
-    { f: 20, pose: GHOSTK('gh', 1, { chest: [-2, 0, 0], head: [-2, 0, 8] }) },
-    { f: 40, pose: GHOSTK('gh', 0, { hips: [0, 0, -6], spine: [0, 0, 6], neck: [0, -25, 0], head: [2, -35, 0] }) },
-    { f: 60, pose: GHOSTK('gh', 1, { neck: [0, -25, 0], head: [-4, -35, -6] }) },
+    { f: 0, pose: GHOSTK(0, { hips: [0, 0, 6], spine: [0, 0, -6], head: [4, 0, 0] }) },
+    { f: 20, pose: GHOSTK(1, { chest: [-2, 0, 0], head: [-2, 0, 8] }) },
+    { f: 40, pose: GHOSTK(0, { hips: [0, 0, -6], spine: [0, 0, 6], neck: [0, -25, 0], head: [2, -35, 0] }) },
+    { f: 60, pose: GHOSTK(1, { neck: [0, -25, 0], head: [-4, -35, -6] }) },
   ] },
-  // r3 GHOST-SPENT (ghost vote used): the dimmer 'gs' set, no halo, hovering lower (0.22–0.28 m), head hung, slower
+  // GHOST-SPENT (ghost vote used; module spent ramp, no halo): 2 texels lower, head hung, slower
   'ghost-spent': { fps: 30, loop: true, interp: 'step', length: 96, dynamics: 'hold', keys: [
-  { f: 0, pose: GHOSTK('gs', 0, { hips: [0, 0, 5], spine: [0, 0, -5], chest: [4, 0, 0], head: [14, 0, 0] }, -0.06) },
-  { f: 24, pose: GHOSTK('gs', 1, { chest: [4, 0, 0], head: [12, 0, 8] }, -0.06) },
-  { f: 48, pose: GHOSTK('gs', 0, { hips: [0, 0, -5], spine: [0, 0, 5], chest: [4, 0, 0], neck: [0, -20, 0], head: [14, -25, 0] }, -0.06) },
-  { f: 72, pose: GHOSTK('gs', 1, { chest: [4, 0, 0], neck: [0, -20, 0], head: [12, -25, -6] }, -0.06) },
+  { f: 0, pose: GHOSTK(0, { hips: [0, 0, 5], spine: [0, 0, -5], chest: [4, 0, 0], head: [14, 0, 0] }, -0.056) },
+  { f: 24, pose: GHOSTK(1, { chest: [4, 0, 0], head: [12, 0, 8] }, -0.056) },
+  { f: 48, pose: GHOSTK(0, { hips: [0, 0, -5], spine: [0, 0, 5], chest: [4, 0, 0], neck: [0, -20, 0], head: [14, -25, 0] }, -0.056) },
+  { f: 72, pose: GHOSTK(1, { chest: [4, 0, 0], neck: [0, -20, 0], head: [12, -25, -6] }, -0.056) },
   ] },
 };
 const holdTo = (clip, f) => clip.keys.push({ f, pose: clip.keys[clip.keys.length - 1].pose });
@@ -444,6 +367,16 @@ export function make() {
       lift: [0.02 * HEIGHT, 0.04 * HEIGHT], bob: [0.03, 0.035], roll: [12, 4], headBob: [10, 6], lean: [6, 14], hop: [0.12 * HEIGHT, 0.2 * HEIGHT],
       wings: [], surge: false, bones: { neck: 'tuftRoot' } },
     character: { quant: { yaw: 8, chain: 4 } },
+    // (ghost port) the shared ghost look (was the r3 geometry shells gh*/gs* + wisp tail + shell halo): pale ramp, gold
+    // halo between the tufts (level 1), dimmer spent ramp, bind-height dissolve (hem + talons), night self-glow, 0.14 m
+    // hover with floating FK legs; also shades the WALK when a dead player walks (ch.ghost = 1). keepHue 0.25 keeps the
+    // brown head vs cream disc (the owl face) and the navy robe; lo 0.04 / slope 1.6 lift the mid-dark feathers + robe
+    // (defaults: a grey-mauve ghost and a near-alive spent one, shots/ghost-port/owl/z-g8.png vs z-g8-vA.png; vB kh 0.15
+    // went white and lost the disc); spent light end #B0BACE
+    // halo lift 0.36: the near ear tuft leans up toward the camera, so at the default 0.12 the ring sat ON a tuft tip in
+    // 4/6 ghost drawings and at 0.22 / 0.28 (or radius 0.12) it still touched it at f0 (ghost.islands WARN 1 → 2,
+    // shots/ghost-port/owl/pack-r1-clip-ghost.png, z-isl.png); 0.36 = PASS 2 → 2, a clear gap like the v1 halo
+    ghost: { hover: 0.14, keepHue: 0.25, lo: 0.04, slope: 1.6, spent: ['#3A4260', '#B0BACE'], halo: { lift: 0.36 } },
     clips: CLIPS,
     fx: { feather: ['#C69568', '#8E6E74'], spark: ['#FFF8DC', '#FFD77A'], sockets: { book: { length: 0, tip: 0 } },
       vote: { node: 'bookTop' }, speech: { node: 'crown' }, stepClips: [] },

@@ -879,16 +879,19 @@ export function drawLoading(img, cx, cy, T, { failed = false, t = 0, reduced = f
  * row 2 "Set" [−] "5 min" [+] "for"; row 3 the stage buttons (the running stage selected). w ≈ 160. Returns {w, h}.
  */
 export function drawStClock(img, x, y, w, T, o = {}) {
-  const { isSet = true, stage = 'nominations', time = '4:12', paused = false, urgent = false, minutes = 5, hover = null, onTheBlock = true } = o;
+  // (additive, 2026-10-17, the demo critic's P3-13) o.done: the countdown is at zero: the stage's due label ("Nominations
+  // open") and a "Start" button (restart) instead of "Pause" beside the 0:00; the clear x (reset) stays. No o.done = as before.
+  const { isSet = true, stage = 'nominations', time = '4:12', paused = false, urgent = false, minutes = 5, hover = null, onTheBlock = true, done = false } = o;
   const h = 58;
+  const goLabel = paused ? 'Resume' : done ? 'Start' : 'Pause', goKey = paused ? 'resume' : done ? 'start' : 'pause';
   drawBox(img, x, y, w, h, S.panel('iron'), T);
   text(img, x + 6, y + 4, 'Town clock:', T.textDim);
   if (isSet) {
-    const P = stagePal(paused ? 'paused' : stage, T), lab = stageLabel(stage, { paused, onTheBlock }).toUpperCase();
+    const P = stagePal(paused ? 'paused' : stage, T), lab = stageLabel(stage, { paused, onTheBlock, due: done }).toUpperCase();
     // UI integration r2: a long stage label ('NOMINATIONS CLOSE IN') pushed the timer under the row-1 buttons, which
     // then covered its top rows. Measure the buttons first; when the label + timer would reach them, drop the line 4 px
     // (below the buttons, still above row 2).
-    const btnW = 13 + buttonWidth('+1m', 4) + buttonWidth(paused ? 'Resume' : 'Pause', 4) + 7 + 6;
+    const btnW = 13 + buttonWidth('+1m', 4) + buttonWidth(goLabel, 4) + 7 + 6;
     const dy = x + 6 + tw(lab, LABEL) + 4 + tw(time, DISPLAY) > x + w - 5 - btnW - 2 ? 4 : 0;
     text(img, x + 6, y + 15 + dy, lab, P.label, LABEL);
     text(img, x + 6 + tw(lab, LABEL) + 4, y + 12 + dy, time, urgent ? ramp(T.danger).hi : P.time, DISPLAY);
@@ -896,7 +899,7 @@ export function drawStClock(img, x, y, w, T, o = {}) {
   // row-1 buttons (right)
   if (isSet) {
     let bx = x + w - 5;
-    const items = [['clear', null, GLYPH.close(T, T.text), 13], ['add', '+1m', null, buttonWidth('+1m', 4)], [paused ? 'resume' : 'pause', paused ? 'Resume' : 'Pause', paused ? GLYPH.play(T) : GLYPH.pause(T), 0]];
+    const items = [['clear', null, GLYPH.close(T, T.text), 13], ['add', '+1m', null, buttonWidth('+1m', 4)], [goKey, goLabel, paused || done ? GLYPH.play(T) : GLYPH.pause(T), 0]];
     items[2][3] = buttonWidth(items[2][1], 4) + 7;
     for (const [k, l, g, bw] of items) { bx -= bw; btn(img, bx, y + 3, bw, 13, l, hover === k ? 'hover' : 'normal', T, { glyph: g }); bx -= 2; }
   }

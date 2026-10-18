@@ -137,7 +137,7 @@ export function periodOf(h) {
 }
 
 // ------------------------------------------------------------------------------------------------ light anchors
-const KIND_BONUS = { lamp: 2.0, holy: 1.5, fire: 1.5, lantern: 1.5, window: -2.0 };
+const KIND_BONUS = { lamp: 2.0, holy: 1.5, fire: 1.5, lantern: 1.5, window: -2.0, court: 60 };   // (B) court: chosen first while staged
 /** installLights' wall hugging (src/town/api.js hugWall, not exported): lanterns / windows a few cm in front of their
  *  building's door wall sit 6 cm in front of it (no hard disc painted on the facade). */
 function hugged(l, layout) {
@@ -322,6 +322,16 @@ export function createTime(demo) {
     key: a.piece === 'props' && a.kind === 'lamp' ? a.pos : slot.has(a.piece) ? a.piece : null,
     score: 0, d: 0,
   }));
+  // (B) the vote COURT (votestage.js: the seated cast stand in a crescent before the tower door while the vote camera
+  // is up): at dusk / night three warm candle-light anchors over the crescent join the pool's candidates, so the cast
+  // read warm next to their vote candles. NO new light: the constant pool re-aims two or three of its lights here
+  // while the court is staged (score bonus), and back to the town's lamps afterwards.
+  const COURT_LIGHTS = [[17.4, 11.3], [22.5, 11.8], [27.6, 11.3]];
+  for (const [k, [x, z]] of COURT_LIGHTS.entries()) {
+    anchors.push({ piece: `court-${k}`, kind: 'court', court: true, pos: new THREE.Vector3(x, 1.6, z), color: new THREE.Color('#ffb45c'),
+      r: 5.5, base: 1.7, i: n, ph: (n++ * 7.31) % 13, flicker: true, key: null, score: 0, d: 0 });
+  }
+  const courtOn = () => !!demo.passB?.stage?.court;
   const fireAnchor = daisPiece ? anchors.find((a) => a.piece === 'dais' && a.kind === 'fire') ?? null : null;
   const lightGroup = new THREE.Group(); lightGroup.name = 'demo-time-lights';
   engine.scene.add(lightGroup);
@@ -386,7 +396,7 @@ export function createTime(demo) {
     carryRec.light.intensity = I;
     info.carried.intensity = +I.toFixed(2);
   }
-  const gainOf = (a, h) => (a.room ? roomGain(a) : a.kind === 'fire' ? fireGain : a.key !== null ? (lit.get(a.key) ? 1 : 0) : onAt(GENERIC, h) ? 1 : 0);
+  const gainOf = (a, h) => (a.room ? roomGain(a) : a.court ? (courtOn() && fireGain > 0.05 ? fireGain : 0) : a.kind === 'fire' ? fireGain : a.key !== null ? (lit.get(a.key) ? 1 : 0) : onAt(GENERIC, h) ? 1 : 0);
   // ---- inside a cottage (interior.js / src/town/interiors: room.lights = [{pos, color, r, kind, intensity}], world):
   // the hearth always burns, candles / lanterns are lit by day too but brighter at night, the window light follows the
   // daylight (the kit's window panes show the sky through room.setTimeOfDay, called by the player on 'tod').
@@ -570,20 +580,25 @@ export function createTime(demo) {
   let vote = { from: 0, t0: 0, per: 0.55 };
   const seatOn = (st) => st.occupied || st.dead;
   const nomineeOf = (s) => { if (s.nominee !== null && s.nominee !== undefined) return s.nominee; const i = s.seats.findIndex((x) => x.nominated); return i >= 0 ? i : null; };
+  // (B) while the vote court is staged (votestage.js `court`: the cast left the stones for the crescent before the
+  // tower door) the dais is PARKED: its stones are empty (candles out, no vote glow, no ghost lights), no sweep, and the
+  // long brass hand points north at the court (seat XII's angle) - the vote marks draw the court's own clock hand
   function applyPhase(restart = true) {
     const s = store.state;
     if (!dais) return;
-    if (s.phase === 'vote') {
-      if (restart) vote = { from: nomineeOf(s) ?? 0, t0: engine.time + 0.4, per: 0.55 };
-      dais.setPhase('vote', { from: vote.from, t0: vote.t0, perSeat: vote.per });
-    } else dais.setPhase(s.phase);
+    if (s.phase === 'vote' && restart) vote = { from: nomineeOf(s) ?? 0, t0: engine.time + 0.4, per: 0.55 };
+    if (courtOn()) { dais.setPhase('day'); dais.setHand?.(0); return; }
+    dais.setHand?.(null);
+    if (s.phase === 'vote') dais.setPhase('vote', { from: vote.from, t0: vote.t0, perSeat: vote.per });
+    else dais.setPhase(s.phase);
   }
   function applySeats() {
     const s = store.state;
     if (!dais) return;
     const nom = s.nominee, active = s.phase === 'nomination' || s.phase === 'vote' || s.phase === 'execution';
+    const parked = courtOn();
     s.seats.forEach((st, i) => {
-      if (!seatOn(st)) { dais.setSeat(i, 'empty'); return; }
+      if (!seatOn(st) || parked) { dais.setSeat(i, 'empty'); return; }
       dais.setSeat(i, {
         dead: !!st.dead, ghostVote: !!st.ghostVote,
         nominated: !st.dead && (!!st.nominated || (active && i === nom)),
@@ -738,6 +753,8 @@ export function createTime(demo) {
     presets: CLOCK_PRESETS, schedule: SCHEDULE, info,
     ringBell, jumpTo, nextPreset, playCeremony, stopCeremony,
     setVote(i, on) { if (on) votes.add(i); else votes.delete(i); applySeats(); },
+    /** (B) the vote court was staged / unstaged (votestage.js): park / restore the dais, re-aim the light pool */
+    restage() { applyPhase(false); applySeats(); aimX = aimZ = 1e9; aimT = -1; info.court = courtOn(); },
     update(t, dt) {
       const s = store.state;
       if (!s.paused && s.timeSpeed > 0) hours = (hours + (s.timeSpeed / 60) * dt) % 24;

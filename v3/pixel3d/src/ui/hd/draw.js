@@ -88,7 +88,9 @@ const _labels = new Map();
  * A name label (indicators art: body@2 glyphs in a 2-px labelLine ring) centred over world point `head` on L.hd.world,
  * IA.LABEL_DY art px above it (as the 1x label). Cached per name + variant + token set. Returns its HD box.
  */
-export function labelHD(L, head, name, variant, T, { top: top0 = null } = {}) {
+export function labelHD(L, head, name, variant, T, { top: top0 = null, x: x0 = null } = {}) {
+  // (demo, additive 2026-10-17) opts.x: the HD x of the label's centre instead of the head's (the demo clamps labels
+  // inside the view's edges and de-collides them); null = today's behaviour
   // (demo density adoption, additive) opts.top: the HD label top (the label's drawText y) instead of head + LABEL_DY
   // (the demo clamps labels near the top edge inward); the cache key also carries the ghost ink
   const H = L.hd, d = H.d, key = `${name}|${variant}|${T.labelText}|${T.labelLine}|${variant === 'ghost' ? T.ghost : ''}|${d}`;
@@ -101,8 +103,8 @@ export function labelHD(L, head, name, variant, T, { top: top0 = null } = {}) {
     _labels.set(key, lab);
     if (_labels.size > 200) _labels.delete(_labels.keys().next().value);
   }
-  const q = H.at(head), top = top0 ?? q.y + IA.LABEL_DY * d;
-  fastBlit(H.world, lab.im, q.x + lab.dx, top + lab.dy);
-  return { x: q.x + lab.dx, y: top + lab.dy, w: lab.im.w, h: lab.im.h, top };
+  const q = H.at(head), top = top0 ?? q.y + IA.LABEL_DY * d, cx = x0 ?? q.x;
+  fastBlit(H.world, lab.im, cx + lab.dx, top + lab.dy);
+  return { x: cx + lab.dx, y: top + lab.dy, w: lab.im.w, h: lab.im.h, top };
 }
 export { MT as MARKER_TIMING };
