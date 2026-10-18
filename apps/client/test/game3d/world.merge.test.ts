@@ -241,7 +241,7 @@ describe('mergeStatic: runtime', () => {
     expect(merged.group.parent).toBeNull();
   });
 
-  it('cullShadows: a merged caster casts only when its bounds or ground shadow reach the view', () => {
+  it('cull: a merged caster casts only when its bounds or ground shadow reach the view', () => {
     const { root } = town();
     const mat = kitMat('town-kit-solid');
     const add = (x: number) => {
@@ -255,7 +255,7 @@ describe('mergeStatic: runtime', () => {
     const merged = mergeStatic(root, [...near, ...far].map((mesh) => ({ mesh, cast: true })), { mode: 'merge', cell: 12 });
     expect(merged.meshes).toHaveLength(2);
     const view = { target: new THREE.Vector3(1, 0, 0), yaw: 0, pitch: Math.PI / 6, viewHeight: 12, aspect: 16 / 9, sunDir: new THREE.Vector3(0.3, 1, 0.2) };
-    merged.cullShadows(view);
+    merged.cull(view);
     const byX = [...merged.meshes].sort((p, q) => p.geometry.boundingBox!.min.x - q.geometry.boundingBox!.min.x);
     expect(byX.map((m) => m.castShadow)).toEqual([true, false]);
     expect(merged.info().culled).toBe(1);
@@ -283,7 +283,7 @@ describe('mergeStatic: batch mode (default)', () => {
     expect(bm.isBatchedMesh).toBe(true);
     expect(bm.instanceCount).toBe(2);
     expect(bm.castShadow).toBe(true);
-    expect(bm.perObjectFrustumCulled).toBe(true);
+    expect(bm.perObjectFrustumCulled).toBe(false); // cull 'view' (default): one cull per frame, not per pass
     const m4 = new THREE.Matrix4();
     expect(bm.getMatrixAt(0, m4).equals(new THREE.Matrix4())).toBe(true);
     // s2 is the nearer one (larger z): sorted first, but find its range by position
@@ -320,5 +320,36 @@ describe('mergeStatic: batch mode (default)', () => {
     expect(b.layers.mask).toBe(1);
     expect([bm.getVisibleAt(0), bm.getVisibleAt(1)].filter(Boolean)).toHaveLength(1);
     merged.dispose();
+  });
+
+  it("cull 'view': one cull per frame shows an instance when its bounds, shadow or reflection reach the view", () => {
+    const { root } = town();
+    const mat = kitMat('town-kit-solid');
+    const add = (x: number, z: number) => {
+      const m = kitMesh(mat);
+      m.position.set(x, 0, z);
+      root.add(m);
+      return m;
+    };
+    const near = add(1, 0), far = add(100, 0), north = add(1, -11); // north: 2 m tall, just above the view top
+    const merged = mergeStatic(root, [near, far, north].map((mesh) => ({ mesh, cast: true })));
+    const bm = merged.meshes[0] as THREE.BatchedMesh;
+    expect(bm.perObjectFrustumCulled).toBe(false);
+    expect(bm.sortObjects).toBe(false);
+    const view = { target: new THREE.Vector3(1, 0, 0), yaw: 0, pitch: Math.PI / 6, viewHeight: 12, aspect: 16 / 9, sunDir: new THREE.Vector3(0, 1, 0), margin: 0 };
+    merged.cull(view);
+    const shownAt = (mesh: THREE.Mesh) => {
+      // instance ids follow the front-to-back order: find the instance whose geometry bounds contain the mesh's x / z
+      for (let i = 0; i < bm.instanceCount; i++) {
+        const b = bm.getBoundingBoxAt(bm.getGeometryIdAt(i), new THREE.Box3())!;
+        if (b.containsPoint(new THREE.Vector3(mesh.position.x, 1, mesh.position.z))) return bm.getVisibleAt(i);
+      }
+      throw new Error('instance not found');
+    };
+    expect(shownAt(near)).toBe(true);
+    expect(shownAt(far)).toBe(false);
+    // its bounds are above the view's top edge, but its water reflection (y mirrored) reaches into the view
+    expect(shownAt(north)).toBe(true);
+    expect(merged.info().culled).toBe(1);
   });
 });

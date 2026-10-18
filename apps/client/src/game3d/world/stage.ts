@@ -200,6 +200,8 @@ export async function createStage(host: EngineHost, o: StageOptions): Promise<St
   let mergeOff = false;
   let mergeCell = 12;
   let mergeMode: 'batch' | 'merge' = 'batch';
+  let mergeOrder: number | undefined;
+  let mergeCull: 'view' | 'three' = 'view';
   let mergeAB = false;
   try {
     canopyOff = localStorage.getItem('ct.debug.v3canopy') === '0';
@@ -211,6 +213,9 @@ export async function createStage(host: EngineHost, o: StageOptions): Promise<St
     mergeCell = Number(localStorage.getItem('ct.debug.v3mergeCell')) || 12;
     mergeMode = localStorage.getItem('ct.debug.v3mergeMode') === 'merge' ? 'merge' : 'batch';
     mergeAB = localStorage.getItem('ct.debug.v3mergeAB') === '1';
+    const mo = localStorage.getItem('ct.debug.v3mergeOrder'); // A/B: the merged meshes' renderOrder
+    mergeCull = localStorage.getItem('ct.debug.v3mergeCull') === 'three' ? 'three' : 'view';
+    mergeOrder = mo !== null && Number.isFinite(Number(mo)) ? Number(mo) : undefined;
   } catch {
     canopyOff = false;
   }
@@ -248,7 +253,7 @@ export async function createStage(host: EngineHost, o: StageOptions): Promise<St
   let kitMerge: TownKitMerge | null = null;
   if (!mergeOff) {
     try {
-      kitMerge = mergeTownKit(engine, town, { cell: mergeCell, mode: mergeMode });
+      kitMerge = mergeTownKit(engine, town, { cell: mergeCell, mode: mergeMode, renderOrder: mergeOrder, cull: mergeCull });
     } catch (e) {
       console.warn('[town3d] kit merge failed (unmerged town):', e);
       kitMerge = null;

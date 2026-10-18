@@ -59,6 +59,15 @@ export interface MergeOptions {
    * resolve the same way inside the merged draw. Default: the town's gameplay camera (yaw 0, pitch 30 deg).
    */
   forward?: THREE.Vector3;
+  /** renderOrder of the merged meshes (default: the sources'). A/B: -1 draws the batches before the plain meshes. */
+  renderOrder?: number;
+  /**
+   * 'batch' mode culling. 'view' (default): ONE cull per frame (`cull`) against the main view, the instances' ground
+   * shadows and their water reflections, with three's per-pass instance culling and sorting OFF, so a batch costs no
+   * per-pass CPU (three only rebuilds its draw list when a visibility changed). 'three': three culls and sorts every
+   * instance in every pass (more exact, measured ~0.4 ms / frame more JS at high).
+   */
+  cull?: 'view' | 'three';
 }
 
 /** The view the shadow-caster cull tests against (the vendor's installShadowCull, town.js). */
@@ -77,8 +86,12 @@ export interface MergedTown {
   readonly meshes: readonly THREE.Mesh[];
   /** Per frame: mirror vendor attribute writes, eject sources that changed. Cheap (no allocation). */
   sync(): void;
-  /** Per frame: castShadow of each merged caster = its bounds or their ground shadow overlap the view. */
-  cullShadows(v: ShadowView): void;
+  /**
+   * Per frame, once (before the render): 'merge' mode: castShadow of each merged caster = its bounds or their ground
+   * shadow overlap the view (the vendor's installShadowCull rule). 'batch' + cull 'view': each instance is drawn when its
+   * bounds, its ground shadow or its water reflection overlap the view.
+   */
+  cull(v: ShadowView): void;
   /** A/B switch (debug): false = the sources render themselves again, the merged meshes are hidden. */
   setEnabled(on: boolean): void;
   readonly enabled: boolean;
@@ -109,6 +122,10 @@ interface SourceRec {
   attrs: AttrRec[];
   chain: number[]; // indices into nodes (mesh .. up to, excluding, root)
   live: boolean;
+  /** Root-space bounds of the baked source; whether its instance is shown by the view cull. */
+  min: THREE.Vector3;
+  max: THREE.Vector3;
+  shown: boolean;
 }
 
 interface NodeRec {
@@ -235,6 +252,7 @@ function copyAttr(kind: AttrRec['kind'], src: THREE.BufferAttribute, out: THREE.
  */
 export function mergeStatic(root: THREE.Object3D, candidates: readonly MergeCandidate[], o: MergeOptions = {}): MergedTown {
   const batch = (o.mode ?? 'batch') === 'batch';
+  const viewCull = batch && (o.cull ?? 'view') === 'view';
   const cell = batch ? Infinity : o.cell && o.cell > 0 ? o.cell : 12;
   const minSources = Math.max(2, o.minSources ?? 2);
   const name = o.name ?? 'ct-town-merged';
@@ -332,15 +350,20 @@ export function mergeStatic(root: THREE.Object3D, candidates: readonly MergeCand
         copyAttr(kind, a, out, start, s.B, N);
         attrs.push({ name: n, attr: a, version: a.version, out, kind });
       }
-      recs.push({ mesh: s.mesh, geometry: g, material: s.mesh.material as THREE.Material, layerMask: s.mesh.layers.mask, target: null as unknown as THREE.Mesh, instance: -1, start, count, B: s.B, N, attrs, chain: chainOf(s.mesh), live: true });
+      const bb = new THREE.Box3();
+      const P = outs.get('position')!;
+      for (let i = start; i < start + count; i++) bb.expandByPoint(_v.fromBufferAttribute(P, i));
+      recs.push({ mesh: s.mesh, geometry: g, material: s.mesh.material as THREE.Material, layerMask: s.mesh.layers.mask, target: null as unknown as THREE.Mesh, instance: -1, start, count, B: s.B, N, attrs, chain: chainOf(s.mesh), live: true, min: bb.min, max: bb.max, shown: true });
       start += count;
     }
     let target: THREE.Mesh;
     if (batch) {
       // one instance per source: its baked range of `geo` as its own geometry (copied into the batch), identity matrix
       const bm = new THREE.BatchedMesh(recs.length, total, 0, mat);
-      bm.perObjectFrustumCulled = true;
-      bm.sortObjects = true; // front to back per pass, as three orders the separate meshes of one material
+      // 'view': one cull per frame (cull()), instances in their front-to-back order along the gameplay camera;
+      // 'three': three culls + sorts the instances in every pass (front to back, as it orders separate meshes)
+      bm.perObjectFrustumCulled = !viewCull;
+      bm.sortObjects = !viewCull;
       for (const r of recs) {
         const part = new THREE.BufferGeometry();
         for (const n of names) {
@@ -372,7 +395,7 @@ export function mergeStatic(root: THREE.Object3D, candidates: readonly MergeCand
     target.castShadow = b.cast;
     target.receiveShadow = first.receiveShadow;
     target.frustumCulled = first.frustumCulled;
-    target.renderOrder = first.renderOrder;
+    target.renderOrder = o.renderOrder ?? first.renderOrder;
     target.matrixAutoUpdate = false; // identity in root space
     target.userData.ctMerged = { sources: b.list.length, cast: b.cast };
     group.add(target);
@@ -467,7 +490,7 @@ export function mergeStatic(root: THREE.Object3D, candidates: readonly MergeCand
         }
       }
     },
-    cullShadows(v) {
+    cull(v) {
       const margin = v.margin ?? 1.5;
       R.set(Math.cos(v.yaw), 0, -Math.sin(v.yaw));
       F.set(-Math.cos(v.pitch) * Math.sin(v.yaw), -Math.sin(v.pitch), -Math.cos(v.pitch) * Math.cos(v.yaw));
@@ -476,6 +499,31 @@ export function mergeStatic(root: THREE.Object3D, candidates: readonly MergeCand
       const k = Math.max(sd.y, 0.05);
       const hx = (v.viewHeight * v.aspect) / 2 + margin, hy = v.viewHeight / 2 + margin, tx = v.target.dot(R), ty = v.target.dot(U);
       culled = 0;
+      if (viewCull) {
+        // instances: bounds, ground shadow (corner along the sun to y = 0) and water reflection (y mirrored) extents
+        for (const s of sources) {
+          if (!s.live) continue;
+          let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+          for (let i = 0; i < 24; i++) {
+            const c = i & 7;
+            p.set(c & 1 ? s.max.x : s.min.x, c & 2 ? s.max.y : s.min.y, c & 4 ? s.max.z : s.min.z);
+            if (i >= 16) p.y = -p.y;
+            else if (i >= 8) p.addScaledVector(sd, -Math.max(p.y, 0) / k);
+            const sx = p.dot(R) - tx, sy = p.dot(U) - ty;
+            if (sx < x0) x0 = sx;
+            if (sx > x1) x1 = sx;
+            if (sy < y0) y0 = sy;
+            if (sy > y1) y1 = sy;
+          }
+          const vis = x1 > -hx && x0 < hx && y1 > -hy && y0 < hy;
+          if (vis !== s.shown) {
+            s.shown = vis;
+            (s.target as THREE.BatchedMesh).setVisibleAt(s.instance, vis);
+          }
+          if (!vis) culled++;
+        }
+        return;
+      }
       for (const it of casters) {
         let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
         for (let i = 0; i < 16; i++) {
