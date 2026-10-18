@@ -639,6 +639,12 @@ export function towerDials(town: BuiltTown): TowerDial[] {
   ];
 }
 
+/** (v3.1) The voting circle (vendor layout.js CIRCLE: centre and seat radius, metres) for the vote frame's ring edge. */
+export function voteCircle(): { cx: number; cz: number; r: number } {
+  const C = vlayout.CIRCLE ?? { cx: 22.5, cz: 19.75, r: 6.25 };
+  return { cx: Number(C.cx), cz: Number(C.cz), r: Number(C.r) || 6.25 };
+}
+
 /** The 15 dais seat stones (vendor layout.js seatPos(i, 15)) in world metres, y = the stone top (votecam SEAT_TOP). */
 export function seatStones(top = 0.235): { x: number; y: number; z: number }[] {
   return Array.from({ length: 15 }, (_, i) => {

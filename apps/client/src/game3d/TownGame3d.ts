@@ -31,7 +31,9 @@ import { readGraphicsPref } from './select';
 import { layoutProxies, type HouseProxy } from './input/pick';
 import { createEngineHost, type EngineHost } from './vendor/engineHost';
 import { lifeStats } from './vendor/town';
+import { hudKeepOuts } from './world/hudKeep';
 import { createStage, type Stage } from './world/stage';
+import type { Box } from './world/voteFrame';
 
 /** Extra layers in update order (after the stage, the avatars and the overlay). Empty; kept as an extension point. */
 export type LayerFactory = (svc: Layer3dServices) => Layer3d;
@@ -52,6 +54,8 @@ export interface TownGame3dOptions {
 export const SELF_READY_MS = 5000;
 /** The build-only pump (before the frame loop runs) steps the core + avatars this often (ms). */
 const PUMP_MS = 50;
+/** The vote frame re-measures the HUD once this long after vote entry (ms). */
+const VOTE_KEEP_SETTLE_MS = 700;
 /** The talking rim colours (game/fx/talking.ts COLOR_SELF / COLOR_TALK). */
 export const RIM_SELF = '#ff8f8a';
 export const RIM_TALK = '#ffe7a3';
@@ -132,6 +136,21 @@ export function createTownGame3d(parent: HTMLElement, bridge: TownBridge3d, opts
   let lastFrameAt = 0;
   /** ms of the last / slowest frame step (core + layers) and render (engine.renderAt), debug */
   const cost = { step: 0, render: 0, maxStep: 0, maxRender: 0 };
+
+  // (v3.1) the vote frame's keep-out boxes = the HUD over the canvas (world/hudKeep.ts), measured on vote entry (no call
+  // for a second), on a canvas resize, and once more VOTE_KEEP_SETTLE_MS after entry (the vote card mounts a render later)
+  let vk: { key: string; boxes: Box[] | null; enteredAt: number; settled: boolean; lastCall: number } | null = null;
+  const voteKeep = (canvas: HTMLElement, w: number, h: number, ps: number): Box[] | null => {
+    const now = performance.now();
+    const key = `${w}x${h}@${ps}`;
+    if (!vk || vk.key !== key || now - vk.lastCall > 1000) vk = { key, boxes: hudKeepOuts(canvas, ps), enteredAt: now, settled: false, lastCall: now };
+    else if (!vk.settled && now - vk.enteredAt > VOTE_KEEP_SETTLE_MS) {
+      vk.settled = true;
+      vk.boxes = hudKeepOuts(canvas, ps);
+    }
+    vk.lastCall = now;
+    return vk.boxes;
+  };
 
   // ------------------------------------------------------------------ the camera override (__ctCamera.setCamera)
   const debugLayer: Layer3d = {
@@ -261,7 +280,7 @@ export function createTownGame3d(parent: HTMLElement, bridge: TownBridge3d, opts
         proxies,
         interiorCamera: (loc) => st.interiorCamera(loc),
         interiorPending: (loc) => st.interiorPending(loc),
-        voteCamera: (w, h, ps) => st.voteCamera(w, h, ps),
+        voteCamera: (w, h, ps) => st.voteCamera(w, h, ps, voteKeep(host.engine.renderer.domElement, w, h, ps)),
         stats: { building: () => [], life: () => lifeStats(host.engine) },
       });
       scene = sc;

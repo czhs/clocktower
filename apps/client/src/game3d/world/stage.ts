@@ -25,7 +25,7 @@ import { serverNow } from '../../net/serverTime';
 import { PX_PER_M } from '../coords';
 import type { Layer3d, Scene3dState, Tier } from '../contract';
 import type { EngineHost } from '../vendor/engineHost';
-import { buildDoorBoards, buildHollowmere, canopyMaterials, createCutDriver, createTowerFace, daisApi, mergeTownKit, releaseTown, removeDaisCandles, doorAngles, gateHouseLights, groundHeight, houseApis, houseLightAnchors, houseProxies, lifePiece, lifeStats, poolLights, seatStones, towerDials, towerDoorApi, voteCameraPreset, warmViews, warmWholeTown, type BuiltTown, type HouseApi, type HouseBox, type TownKitMerge, type VendorCameraShot } from '../vendor/town';
+import { buildDoorBoards, buildHollowmere, canopyMaterials, createCutDriver, createTowerFace, daisApi, mergeTownKit, releaseTown, removeDaisCandles, doorAngles, gateHouseLights, groundHeight, houseApis, houseLightAnchors, houseProxies, lifePiece, lifeStats, poolLights, seatStones, towerDials, towerDoorApi, voteCameraPreset, voteCircle, warmViews, warmWholeTown, type BuiltTown, type HouseApi, type HouseBox, type TownKitMerge, type VendorCameraShot } from '../vendor/town';
 import { buildTowerInterior, type TowerRoomFacade } from '../vendor/interiors';
 import { createTownTime, presetForHour, type TownTime } from '../vendor/time';
 import { createDaisDriver, daisDebug, daisPlan, showcasePlan, type DaisApi, type DaisPlan } from './dais';
@@ -37,7 +37,8 @@ import { createTownPark } from './park';
 import { createCanopyFade, createCanopyUniforms, patchCanopyMaterial, type CanopyPoint } from './canopy';
 import { createShadowCadence, shadowEveryFor } from './shadowCadence';
 import { dialFace, dialFaceKey, DIAL_STEPS, timerTick, towerTimer, type DialFace } from './towerClock';
-import { chooseVoteFrame, keepOuts, voteFrameKey, type VoteFrame } from './voteFrame';
+import { keepKey } from './hudKeep';
+import { chooseVoteFrame, keepOuts, voteFrameKey, type Box, type VoteFrame } from './voteFrame';
 
 export interface StageOptions {
   layout: TownLayout;
@@ -81,9 +82,10 @@ export interface Stage {
   /**
    * The voting-circle frame (user request 1, world/voteFrame.ts: every seat stone + the facing tower dial, the
    * vendor's computed votecam fit at staging A) for a canvas of lowW x lowH texels at `pixelScale`; recomputed only
-   * when those change. input/camera's `RigScene.voteCamera` during nominations / votes on the square.
+   * when those change. input/camera's `RigScene.voteCamera` during nominations / votes on the square. `keep` (v3.1):
+   * the HUD actually over the canvas (world/hudKeep.ts, low-res px); omitted = voteFrame.ts keepOuts() corner sizes.
    */
-  voteCamera(lowW: number, lowH: number, pixelScale: number): VendorCameraShot | null;
+  voteCamera(lowW: number, lowH: number, pixelScale: number, keep?: readonly Box[] | null): VendorCameraShot | null;
   /** Floor height (m) at any world point: the town ground, a cottage's flat floor, the clock tower room's stair / landing. */
   floorAt(x: number, z: number): number;
   /** Debug members merged into __ctCamera (also `layer.debug`). */
@@ -525,13 +527,13 @@ export async function createStage(host: EngineHost, o: StageOptions): Promise<St
     },
     interiorPending: (loc) => rooms.drawn() !== loc && rooms.pending(),
     houseProxies: () => proxies,
-    voteCamera(lowW, lowH, pixelScale) {
+    voteCamera(lowW, lowH, pixelScale, keep) {
       if (!(lowW > 0 && lowH > 0)) return null;
-      const k = voteFrameKey(lowW, lowH, pixelScale);
+      const k = `${voteFrameKey(lowW, lowH, pixelScale)}|${keepKey(keep)}`;
       if (k !== voteKey) {
         voteKey = k;
         try {
-          const f = chooseVoteFrame({ lowW, lowH, seats: voteSeats, dials: towerDials(town), keep: keepOuts(lowW, lowH, pixelScale) });
+          const f = chooseVoteFrame({ lowW, lowH, seats: voteSeats, dials: towerDials(town), keep: keep ?? keepOuts(lowW, lowH, pixelScale), ring: voteCircle() });
           voteLast = f;
           voteShot = { X: f.target.x, Y: 0, Z: f.target.z, viewHeight: f.viewHeight, yaw: f.yaw, pitch: f.pitch };
         } catch (e) {

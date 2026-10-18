@@ -401,7 +401,9 @@ export function createHouseNamesView(env: OverlayEnv, boards: Pick<BoardsView, '
   }
 
   function update(f: OverlayFrame) {
-    if (f.location !== 'outdoors') {
+    // (v3.1 QA C2) not during the voting-circle frame: the foreground houses' pills projected into the circle, over the
+    // player labels, repeating a seated player's name (WP1 Camera3d has cameraMode(); other views never hide them)
+    if (f.location !== 'outdoors' || (env.deps.view as { cameraMode?: () => string }).cameraMode?.() === 'vote') {
       for (const c of callouts.values()) setShown(c.el, c.st, false, stats);
       return;
     }

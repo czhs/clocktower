@@ -23,6 +23,9 @@ export const VOTE_PITCH_PORTRAIT = 30 * DEG;
 /** Metres of world around the content (votecam.js MARGIN) and low-res px from the canvas edges (EDGE). */
 const MARGIN = 0.18;
 const EDGE = 2;
+/** How far the fit may zoom out past the content-only size to clear the HUD (v3.1: 1.8 -> 2.4, the HUD keep-outs are
+ *  now the real panels, e.g. the Storyteller panel over a third of a laptop screen). */
+const MAX_ZOOM_OUT = 2.4;
 /** The seat stones' top (votecam.js SEAT_TOP), the tallest standing cast height when a seat's occupant is unknown,
  *  a raised vote hand above the head, half a figure's width (HEAD_DEFAULT, HAND, BODY_R). */
 export const SEAT_TOP = 0.235;
@@ -67,7 +70,12 @@ export interface VoteFrameInput {
   dials: readonly Dial[];
   /** HUD keep-out boxes (low-res px) no seat or dial may sit under */
   keep?: readonly Box[];
+  /** (v3.1) the voting circle's paving (world metres, ground): its outer edge must stay inside the canvas (it may pass
+   *  under the HUD), so a HUD-dodging placement can never push half the circle off-screen */
+  ring?: { cx: number; cz: number; r: number };
 }
+/** Paving beyond the seat radius kept in frame (m). */
+export const RING_PAD = 0.9;
 
 export interface VoteFrame {
   /** the ground point (y = 0) the camera looks at */
@@ -150,11 +158,23 @@ export function contentPoints(i: Pick<VoteFrameInput, 'yaw' | 'pitch' | 'seats' 
 export function voteFrame(i: VoteFrameInput): VoteFrame {
   const pitch = i.pitch ?? VOTE_PITCH;
   const { pts, dial } = contentPoints({ ...i, pitch });
+  // the ring's edge: in frame (bounds + the visible rect), not tested against the keep-outs
+  const ringPts: [number, number][] = [];
+  if (i.ring) {
+    const { R, U } = voteBasis(i.yaw, pitch);
+    const rr = i.ring.r + RING_PAD;
+    for (let q = 0; q < 32; q++) {
+      const a = (q / 32) * Math.PI * 2;
+      const x = i.ring.cx + Math.cos(a) * rr;
+      const z = i.ring.cz + Math.sin(a) * rr;
+      ringPts.push([x * R.x + z * R.z, x * U.x + z * U.z]);
+    }
+  }
   let u0 = Infinity;
   let u1 = -Infinity;
   let v0 = Infinity;
   let v1 = -Infinity;
-  for (const [u, v] of pts) {
+  for (const [u, v] of ringPts.length ? [...pts, ...ringPts] : pts) {
     if (u < u0) u0 = u;
     if (u > u1) u1 = u;
     if (v < v0) v0 = v;
@@ -181,10 +201,15 @@ export function voteFrame(i: VoteFrameInput): VoteFrame {
       if (x - r < vis.x0 || x + r > vis.x1 || y - r < vis.y0 || y + r > vis.y1) return false;
       for (const k of keep) if (x + r > k.x0 && x - r < k.x1 && y + r > k.y0 && y - r < k.y1) return false;
     }
+    for (const [u, v] of ringPts) {
+      const x = vcx + dx + (u - uc0) / tw;
+      const y = vcy + dy - (v - vc0) / tw;
+      if (x < vis.x0 || x > vis.x1 || y < vis.y0 || y > vis.y1) return false;
+    }
     return true;
   };
   let best: { tw: number; dx: number; dy: number } | null = null;
-  for (let tw = tw0; tw < tw0 * 1.8 && !best; tw *= 1.01) {
+  for (let tw = tw0; tw < tw0 * MAX_ZOOM_OUT && !best; tw *= 1.01) {
     const sx = Math.max(0, (visW - (u1 - u0) / tw) / 2);
     const sy = Math.max(0, (visH - (v1 - v0) / tw) / 2);
     const xs = [0];
@@ -200,7 +225,7 @@ export function voteFrame(i: VoteFrameInput): VoteFrame {
         break;
       }
   }
-  best ??= { tw: tw0 * 1.8, dx: 0, dy: 0 };
+  best ??= { tw: tw0 * MAX_ZOOM_OUT, dx: 0, dy: 0 };
   const { tw, dx, dy } = best;
   // the screen centre in snap space, then the ground target T with T.R = uc, T.U = vc, T.y = 0
   const uc = uc0 - (vcx + dx - i.lowW / 2) * tw;

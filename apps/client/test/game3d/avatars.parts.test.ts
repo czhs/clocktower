@@ -11,7 +11,7 @@ import { nextBuild } from '../../src/game3d/avatars/queue';
 import { BILLBOARD_HEIGHT_M, billboardArt, billboardHeadM, cellUv, cylinderFacing, frameCell, frameIndex, ghostFrameIndex, GHOST_BOB, type CastHdManifest, type CastSheetManifest } from '../../src/game3d/avatars/billboardFrames';
 import { createDriver, resetMotion, specCapsOf, type CharacterHandle } from '../../src/game3d/vendor/characters';
 import { createNpcFolk, npcClear, npcHomesFor, NPC_HOMES_V2 } from '../../src/game3d/avatars/npcs';
-import { createTintUniforms, patchTint, patchTintTree, RIM_FLAT, RIM_K, setColourTint, setFade, setGhostTint, setRim, TINT_GLSL_BODY, TINT_GLSL_HEAD } from '../../src/game3d/avatars/ghostTint';
+import { createTintUniforms, patchTint, patchTintTree, RIM_BAND, RIM_EDGE, RIM_FLAT, RIM_K, setColourTint, setFade, setGhostTint, setRim, TINT_GLSL_BODY, TINT_GLSL_HEAD } from '../../src/game3d/avatars/ghostTint';
 import { lanternHour, syncLantern, type LightPool } from '../../src/game3d/avatars/lanterns';
 
 const CAST = castJson as unknown as CastSheetManifest;
@@ -267,7 +267,7 @@ describe('tint wrapper', () => {
     expect(TINT_GLSL_BODY).toContain('uCtRim.w > 0.0');
     // visible: full strength, a wide band (|n.z| < 0.65) plus a flat lift of the whole figure
     expect(RIM_K).toBe(1);
-    expect(TINT_GLSL_BODY).toContain(`${RIM_FLAT.toFixed(2)} + ${(1 - RIM_FLAT).toFixed(2)} * step(0.35,`);
+    expect(TINT_GLSL_BODY).toContain(`${RIM_FLAT.toFixed(2)} + ${RIM_BAND.toFixed(2)} * step(${RIM_EDGE.toFixed(2)},`);
     // the rim is bound at compile time like the other two (one program for every avatar of a vendor key)
     const m = new THREE.MeshLambertMaterial();
     m.userData.toon = {};
