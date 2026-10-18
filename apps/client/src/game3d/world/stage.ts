@@ -203,7 +203,8 @@ export async function createStage(host: EngineHost, o: StageOptions): Promise<St
   try {
     canopyOff = localStorage.getItem('ct.debug.v3canopy') === '0';
     shadowOverride = localStorage.getItem('ct.debug.v3shadowEvery');
-    tilesFlag = localStorage.getItem('ct.debug.v3tiles');
+    // (a build-time default for A/B e2e runs: VITE_CT_V3TILES=1 pnpm build; unset in every normal build)
+    tilesFlag = localStorage.getItem('ct.debug.v3tiles') ?? ((import.meta as unknown as { env?: Record<string, string | undefined> }).env?.VITE_CT_V3TILES || null);
   } catch {
     canopyOff = false;
   }

@@ -37,13 +37,15 @@ export const BAKE_BUDGET = 1;
 /** Ring cap (texels per side). */
 export const RING_MAX = 2048;
 const MAX_RECTS = 8;
+/** Frames between two light-key checks. */
+export const LIGHT_EVERY = 8;
 
 const toon = toonNS as unknown as { NOISE_GLSL: string; CLOUD_GLSL: string };
 
 export interface TilesOptions {
   /** materials of the canopy fade (world/canopy.ts): never cached */
   canopy: ReadonlySet<THREE.Material>;
-  /** the cpu tier compiles the cloud noise out of the toon shader: the composite does too */
+  /** the cpu tier (no shadow map, the cloud noise compiled out of the toon shader): the composite compiles both out */
   noClouds?: boolean;
   /** start enabled (`ct.debug.v3tiles=1`) or patched-but-off (`=ab`, for A/B stills) */
   enabled: boolean;
@@ -56,6 +58,7 @@ export interface TilesInfo {
   staticMeshes: number;
   demoted: number;
   demotedWhy: string[];
+  relightWhy: Record<string, number>;
   patchedMats: number;
   ring: RingSpec | null;
   ringMB: number;
@@ -221,7 +224,8 @@ export function installTiles(engine: HostedEngine, town: BuiltTown, o: TilesOpti
   const quadMat = new THREE.ShaderMaterial({
     name: 'ct-tiles-composite',
     uniforms: cu,
-    defines: o.noClouds ? { CT_NO_CLOUDS: '' } : {},
+    // SwiftShader runs both sides of a uniform branch (docs/perf-v3/cpu.md): the cpu tier compiles the unused code out
+    defines: o.noClouds ? { CT_NO_CLOUDS: '', CT_NO_SHADOW: '' } : {},
     vertexShader: 'void main() { gl_Position = vec4(position.xy, 0.0, 1.0); }',
     fragmentShader: /* glsl */ `
 #include <packing>
@@ -269,6 +273,7 @@ void main() {
   vec3 nv = normalize(n4.xyz * 2.0 - 1.0);
   vec3 Nw = normalize(nv.x * uR + nv.y * uUp - nv.z * uF);
   float sh = 1.0;
+#ifndef CT_NO_SHADOW
   if (uShadowP.w > 0.5) {
     vec4 sc = uShadowM * vec4(P + Nw * uShadowP.y, 1.0);
     sh = ctShadow(sc);
@@ -279,6 +284,7 @@ void main() {
       sh = pn > 0.5 ? 1.0 : 0.5;
     }
   }
+#endif
 #ifdef CT_NO_CLOUDS
   float cl = 1.0;
 #else
@@ -393,15 +399,31 @@ void main() {
     }
   };
   // uniforms the composite evaluates live (or that never change the baked look) are not part of the light key
-  const LIVE = /^(uTime|uPassMode|uCtBake|uCtBakeL|uCut|uCtCan|uCloud|uPenumbra|uCameraPos|uCameraDir|uCamFlight)/;
+  const LIVE = /^(uTime|uPassMode|uCtBake|uCtBakeL|uCtRect|uCut|uCtCan|uCloud|uPenumbra|uCameraPos|uCameraDir|uCamFlight)/;
+  const lightNames: string[] = [];
+  let prevValues: number[] = [];
+  const relightWhy = new Map<string, number>();
   const computeLightKey = (): string => {
     lightValues.length = 0;
-    pushVal(U.uSunDir!.value);
-    pushVal(sun.color);
-    lightValues.push(sun.intensity);
-    pushVal(skyC);
-    for (const u of lightUniforms) for (const k in u) if (!LIVE.test(k)) pushVal(u[k]!.value);
+    lightNames.length = 0;
+    const named = (name: string, v: unknown) => {
+      const n0 = lightValues.length;
+      pushVal(v);
+      for (let q = n0; q < lightValues.length; q++) lightNames.push(name);
+    };
+    named('sunDir', U.uSunDir!.value);
+    named('sunColor', sun.color);
+    named('sunI', sun.intensity);
+    named('sky', skyC);
+    for (const u of lightUniforms) for (const k in u) if (!LIVE.test(k)) named(k, u[k]!.value);
     return lightKey(lightValues);
+  };
+  /** Which uniforms changed since the last relight (debug: info().relightWhy). */
+  const noteRelight = () => {
+    if (prevValues.length === lightValues.length)
+      for (let q = 0; q < lightValues.length; q++)
+        if (Math.abs(lightValues[q]! - prevValues[q]!) > 1e-4 && relightWhy.size < 24) relightWhy.set(lightNames[q]!, (relightWhy.get(lightNames[q]!) ?? 0) + 1);
+    prevValues = lightValues.slice();
   };
 
   const anyPoolLit = (): boolean => {
@@ -593,9 +615,12 @@ void main() {
       totals.flushes++;
       for (const st of statics) st.cb = meshCells(st.mesh, st.geo, st.mesh.matrixWorld, 2);
     }
-    const lk = computeLightKey();
+    // lighting steps are slow (>= 15 game seconds, 0.5 deg sun steps): checking every LIGHT_EVERY frames is enough
+    // (tiles stay displayable while stale) and keeps the per-frame cost of the key off the frame
+    const lk = totals.frames % LIGHT_EVERY === 0 || !litKey ? computeLightKey() : litKey;
     if (lk !== litKey) {
       litKey = lk;
+      noteRelight();
       book.relight();
       totals.relights++;
     }
@@ -763,6 +788,7 @@ void main() {
       staticMeshes: statics.length,
       demoted,
       demotedWhy: [...demotedWhy],
+      relightWhy: Object.fromEntries(relightWhy),
       patchedMats,
       ring,
       ringMB: ring ? +(ringBytes(ring, 4) / 2 ** 20).toFixed(1) : 0,
