@@ -47,7 +47,12 @@ export const DEFAULT_STATE = Object.freeze({
   ui: true,                      // control panel visible
   location: 'town',              // 'town' | 'house-N': where the player is (player.js writes it, source 'player';
                                  // any other writer makes the player walk in / out: fade to the room / doorstep)
+  bookStyle: 'held',             // BOOK_STYLES: the reading notebook others see (gameui.js): 'held' at the hands | 'big' 3D book
+  pointerScale: 'new',           // POINTER_SCALES: the pointing finger 'new' | 'v2' (the v2 size relative to the character)
 });
+/** Game-UI variant toggles (docs/DEMO.md §5: ?book=held|big ?pointer=new|v2), switched live by the panel. */
+export const BOOK_STYLES = ['held', 'big'];
+export const POINTER_SCALES = ['new', 'v2'];
 /** Valid values of state.location. */
 export const LOCATION_RX = /^(town|house-(?:[0-9]|1[0-4]))$/;
 
@@ -122,13 +127,16 @@ function validate(k, v, old) {
     case 'seats': return Array.isArray(v) && v.length === SEAT_COUNT ? v : old;
     case 'paused': case 'life': case 'ui': return !!v;
     case 'location': return typeof v === 'string' && LOCATION_RX.test(v) ? v : old;
+    case 'bookStyle': return BOOK_STYLES.includes(v) ? v : old;
+    case 'pointerScale': return POINTER_SCALES.includes(v) ? v : old;
     default: return v;
   }
 }
 
 // ------------------------------------------------------------------------------------------------ URL <-> state
 /** URL params that seed the state (docs/DEMO.md §5): ?char= ?tod=<hours|preset> ?speed= ?paused=1 ?phase= ?quality=
- *  ?life=0 ?cut= ?cam= ?zoom= ?yaw= ?ui=0 ?seats=<n occupied> ?seatbits=<15 base-32 digits> ?nominee=<seat> ?in=house-N */
+ *  ?life=0 ?cut= ?cam= ?zoom= ?yaw= ?ui=0 ?seats=<n occupied> ?seatbits=<15 base-32 digits> ?nominee=<seat> ?in=house-N
+ *  ?book=held|big ?pointer=new|v2 (game-UI variants) */
 export function stateFromParams(params) {
   const p = {}, g = (k) => params.get(k);
   if (g('char')) p.character = g('char');
@@ -150,6 +158,8 @@ export function stateFromParams(params) {
   if (g('seatbits') !== null) { const s = decodeSeats(g('seatbits')); if (s) p.seats = s; }
   if (g('nominee') !== null) p.nominee = g('nominee') === '' || g('nominee') === 'none' ? null : Number(g('nominee'));
   if (g('in') !== null) p.location = g('in') || 'town';
+  if (g('book') !== null) p.bookStyle = g('book');
+  if (g('pointer') !== null) p.pointerScale = g('pointer');
   return p;
 }
 /** The inverse (what a reload keeps): URLSearchParams for the current state + the player position. */
@@ -161,6 +171,7 @@ export function stateToParams(state, { player = null, keep = new URLSearchParams
   q.set('zoom', String(state.zoom)); q.set('yaw', String(state.yaw)); q.set('ui', state.ui ? '1' : '0');
   q.delete('seats'); q.set('seatbits', encodeSeats(state.seats));
   if (state.nominee === null) q.delete('nominee'); else q.set('nominee', String(state.nominee));
+  q.set('book', state.bookStyle); q.set('pointer', state.pointerScale);
   // inside a cottage: ?in=house-N (the player starts at the town spawn and walks straight in; the room's coordinates
   // are not a town position, so no ?at=)
   if (state.location && state.location !== 'town') { q.set('in', state.location); q.delete('at'); }
@@ -282,7 +293,8 @@ export function createCameraRig(demo) {
     if (Math.abs(wheelAcc) < 60) return;
     step(Math.sign(wheelAcc)); wheelAcc = 0;
   }, { passive: false });
-  el.addEventListener('pointerdown', (e) => { if (store.state.camera === 'free') drag = { x: e.clientX, y: e.clientY }; });
+  // left button only: the right button points / opens the pie (gameui.js)
+  el.addEventListener('pointerdown', (e) => { if (store.state.camera === 'free' && e.button === 0) drag = { x: e.clientX, y: e.clientY }; });
   addEventListener('pointerup', () => { drag = null; });
   addEventListener('pointermove', (e) => {
     if (!drag) return;

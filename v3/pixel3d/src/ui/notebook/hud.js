@@ -10,19 +10,22 @@ import { notebookContext } from './draw.js';
 import { notesScript, drawNotesPage, notesRect } from './page.js';
 import { panelKit } from '../panels/art.js';
 import { SLOTS, rect } from '../placeholders.js';
+import { preloadPortBook } from './port3d.js';
 
 export const LOOP = 6.5;
 let N = null;
 
 /**
  * Variant option (additive; docs/UI.md §6 variants): bookStyle 'held' (default: the small book at the hands, 8 facings,
- * depth-tested) | 'big' (bigbook.js: a big book unfolding in front of the reader, a tier-A marker like the finger).
+ * depth-tested) | 'big' (book3d.js: a REAL 3D book unfolding in front of the reader, in the scene graph, lit / shadowed /
+ * outlined like a prop) | 'held3d' (the same 3D model at held size in the hands) | 'bigsprite' (port3d.js: the same book from its baked sprites, as the 2D game draws it).
  * Live: setOptions(hud, { bookStyle: 'big' }) (= hud.setUiOptions); the next frame draws the new style. Mock HUD: ?book=big.
  * Per call: N.drawReader(P, m, { bookStyle }) overrides it for one reader.
  */
 export function setOptions(hud, { bookStyle } = {}) {
   hud.uiOptions ??= {};
-  if (bookStyle !== undefined) hud.uiOptions.bookStyle = bookStyle === 'big' ? 'big' : 'held';
+  if (bookStyle !== undefined) hud.uiOptions.bookStyle = ['big', 'bigsprite', 'held3d'].includes(bookStyle) ? bookStyle : 'held';
+  if (bookStyle === 'bigsprite') preloadPortBook(hud.tod);
   return hud.uiOptions;
 }
 
@@ -43,6 +46,7 @@ export default {
     const page = hud.P('nbpage', 'players') === 'notes' ? 'notes' : 'players';
     hud.notebook = { page, notesAt: (t) => ({ ...notesScript(t), t }) };
     N = notebookContext(hud);
+    if (hud.uiOptions?.bookStyle === 'bigsprite') await preloadPortBook(hud.tod);
     const still = hud.P('still', '0') === '1';
     if (N.pass) N.add((P) => drawLive(hud, P, N, { still }));
     hud._notebookStill = still;

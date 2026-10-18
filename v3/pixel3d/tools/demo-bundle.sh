@@ -12,11 +12,16 @@
 #                              last build step, tools/demo-bundle-csp.py, rewrites every bare three / three/addons/
 #                              import in the bundle to a relative ./vendor/three/... path and removes the map
 #   src/**                     the runtime modules / css / json (no .py / .sh / .md tooling; not src/main.js, the
-#                              index.html scene runner, which imports scenes/)
+#                              index.html scene runner, which imports scenes/). src/ui/** (the UI asset library: its
+#                              bake / render helpers import scenes/) ships ONLY the modules the demo's import graph
+#                              actually reaches (static + literal dynamic imports, followed from src/demo/**)
+#   out/ui/<name>.{png,json,css}  exactly the baked UI files listed in src/demo/ui-assets.json (portrait atlases, the
+#                              panel / notebook DOM skins); every other out/ file and every other .png is refused
 #   characters/<id>.js         only the ids in src/demo/roster.json (the specs the demo can import)
 #   vendor/three/...           only the three r170 files reached from the import map (three.module.js + the used addons
 #                              and their relative imports) + three's LICENSE
-# Never shipped: tools/ shots/ docs/ research/ refs/ (private third-party images) out/ scenes/ node_modules/ pipeline/.
+# Never shipped: tools/ shots/ docs/ research/ refs/ (private third-party images) out/ (except the ui-assets.json list)
+# scenes/ node_modules/ pipeline/.
 # Every URL is RELATIVE: the bundle works served at any sub-path (e.g. https://host/v3-art-demo/ -- note the trailing
 # slash; a host should redirect /v3-art-demo -> /v3-art-demo/ as python http.server and most static hosts do).
 # The build fails on: inline scripts / bare three imports left after the CSP pass, eval / new Function / string timers /
@@ -63,26 +68,35 @@ const ROOT = process.cwd();
 const FORBIDDEN = /^(tools|shots|docs|research|refs|out|scenes|pipeline|node_modules)\//;
 const files = new Map();   // bundle path -> source path
 const die = (m) => { console.error('demo-bundle: ' + m); process.exit(1); };
-const add = (dst, src) => {
-  if (FORBIDDEN.test(dst)) die(`refusing to ship ${dst}`);
+const add = (dst, src, { asset = false } = {}) => {
+  if (FORBIDDEN.test(dst) && !asset) die(`refusing to ship ${dst}`);
   if (!fs.existsSync(src)) die(`missing ${src}`);
   files.set(dst, src);
 };
 const walk = (d) => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => e.isDirectory() ? walk(path.join(d, e.name)) : [path.join(d, e.name)]);
 
-// 1. src/** runtime files
+// 1. src/** runtime files; src/ui/** (the UI asset library) only as the import graph reaches it (step 4)
 for (const f of walk('src')) {
   if (!/\.(js|css|json)$/.test(f) || f === 'src/main.js') continue;
-  // src/ui/** is the UI asset library (its bake/render helpers import scenes/); the demo does not import it yet.
-  // When the demo adopts it, add only the runtime modules it reaches instead of this skip.
   if (f.startsWith('src/ui/')) continue;
   add(f, f);
 }
+// 1b. the baked UI files the demo fetches at runtime (src/demo/ui-assets.json): exactly out/ui/<name>.{png,json,css}
+const UI_ASSETS = JSON.parse(fs.readFileSync('src/demo/ui-assets.json', 'utf8')).files ?? [];
+for (const f of UI_ASSETS) {
+  if (!/^out\/ui\/[a-z0-9][a-z0-9-]*\.(png|json|css)$/.test(f)) die(`ui-assets.json: not a baked UI file: ${f}`);
+  add(f, f, { asset: true });
+}
+const uiReached = [];
 // 2. character specs offered by the roster
 const roster = JSON.parse(fs.readFileSync('src/demo/roster.json', 'utf8'));
 const ids = new Set([...(roster.characters ?? []).map((c) => c.id), ...(roster.complete ?? []), ...(roster.shipped ?? [])]);
+// never ship a cast member the user asked to skip (pipeline/skip.txt), even if a stale roster lists it
+const skipped = new Set((fs.existsSync('pipeline/skip.txt') ? fs.readFileSync('pipeline/skip.txt', 'utf8') : '')
+  .split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#')));
 for (const id of ids) {
   if (!/^[a-z0-9][a-z0-9-]*$/.test(id)) die(`bad roster id ${id}`);
+  if (skipped.has(id)) die(`roster lists skipped id ${id} (pipeline/skip.txt): re-run tools/demo-roster.mjs`);
   add(`characters/${id}.js`, `characters/${id}.js`);
 }
 // 3. the page: demo.html -> index.html, import map -> ./vendor/three/
@@ -146,6 +160,7 @@ while (queue.length) {
     if (!files.has(tgt)) {
       if (tgt.startsWith('vendor/three/')) { vend(tgt.slice('vendor/three/'.length)); queue.push(tgt); }
       else if (/^characters\/[a-z0-9-]+\.js$/.test(tgt) && fs.existsSync(tgt)) { add(tgt, tgt); queue.push(tgt); extraChars.push(tgt); }   // e.g. life's mannequin
+      else if (/^src\/ui\/[a-z0-9/_-]+\.js$/i.test(tgt) && fs.existsSync(tgt)) { add(tgt, tgt); queue.push(tgt); uiReached.push(tgt); }   // the UI library, as reached
       else die(`${dst}: imports '${spec}' -> ${tgt}, not in the bundle`);
     }
   }
@@ -162,16 +177,25 @@ let bytes = fs.statSync(path.join(OUT, 'index.html')).size;
 for (const dst of files.keys()) bytes += fs.statSync(path.join(OUT, dst)).size;
 const n = files.size + 1;
 const byTop = {};
-for (const dst of [...files.keys(), 'index.html']) { const k = dst.split('/').slice(0, dst.startsWith('src/') || dst.startsWith('vendor/') ? 2 : 1).join('/'); byTop[k] = (byTop[k] ?? 0) + fs.statSync(path.join(OUT, dst)).size; }
+for (const dst of [...files.keys(), 'index.html']) { const k = dst.split('/').slice(0, dst.startsWith('src/') || dst.startsWith('vendor/') || dst.startsWith('out/') ? 2 : 1).join('/'); byTop[k] = (byTop[k] ?? 0) + fs.statSync(path.join(OUT, dst)).size; }
 console.log(`bundle ${OUT}: ${n} files, ${bytes} bytes (${(bytes / 1048576).toFixed(2)} MiB); three: ${[...files.keys()].filter((f) => f.startsWith('vendor/')).join(', ')}`);
 console.log('  bare imports: ' + [...bare].sort().join(', ') + `; template imports checked: ${tplChecked}; characters: ${ids.size} roster + ${extraChars.length} imported (${extraChars.join(', ')})`);
+console.log(`  src/ui reached: ${uiReached.length} modules (${uiReached.map((f) => f.slice(7)).sort().join(', ')}); ui assets: ${UI_ASSETS.join(', ')}`);
 for (const [k, v] of Object.entries(byTop).sort((a, b) => b[1] - a[1])) console.log(`  ${String(v).padStart(9)}  ${k}`);
 NODE
-  # belt and braces: nothing forbidden, no private images at all
-  if find "$OUTREL" \( -path '*/refs/*' -o -path '*/tools/*' -o -path '*/shots/*' -o -path '*/docs/*' -o -path '*/research/*' -o -name '*.png' -o -name '*.jpg' -o -name '*.md' -o -name '*.py' -o -name '*.sh' \) | grep -q .; then
+  # belt and braces: nothing forbidden, no private images at all; the only images (and the only files under out/)
+  # are the baked UI files listed in src/demo/ui-assets.json
+  local allowed bad
+  allowed=$(python3 -c "import json; print('\n'.join('$OUTREL/' + f for f in json.load(open('src/demo/ui-assets.json'))['files']))")
+  bad=$(find "$OUTREL" -type f \( -path '*/refs/*' -o -path '*/tools/*' -o -path '*/shots/*' -o -path '*/docs/*' -o -path '*/research/*' -o -path "$OUTREL/out/*" -o -name '*.png' -o -name '*.jpg' -o -name '*.md' -o -name '*.py' -o -name '*.sh' \) | grep -vxF -f <(printf '%s\n' "$allowed") || true)
+  if [[ -n "$bad" ]]; then
     echo "demo-bundle: forbidden files in the bundle:" >&2
-    find "$OUTREL" \( -path '*/refs/*' -o -path '*/tools/*' -o -path '*/shots/*' -o -path '*/docs/*' -o -path '*/research/*' -o -name '*.png' -o -name '*.jpg' -o -name '*.md' -o -name '*.py' -o -name '*.sh' \) >&2
+    echo "$bad" >&2
     exit 1
+  fi
+  # no bundled module may reach scenes/ (the UI library's bake / render helpers do; the demo must not import them)
+  if grep -rlE "(from|import)[[:space:]]*\(?[[:space:]]*['\"][./]*scenes/" --include='*.js' "$OUTREL" | grep -q .; then
+    echo "demo-bundle: a bundled module imports scenes/:" >&2; grep -rlE "(from|import)[[:space:]]*\(?[[:space:]]*['\"][./]*scenes/" --include='*.js' "$OUTREL" >&2; exit 1
   fi
   # LAST step: make it CSP-safe (the host sends script-src 'self': no inline scripts, so no inline import map). Bare
   # `three` / `three/addons/...` specifiers -> relative paths into ./vendor/three/, the import map removed.

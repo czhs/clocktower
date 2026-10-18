@@ -26,9 +26,12 @@
 #demo-ui > .dui-panel {
   position: absolute; top: 8px; right: 8px; width: 316px; max-width: calc(100vw - 16px);
   max-height: calc(100vh - 16px); display: flex; flex-direction: column;
+  font: 12px/1.3 var(--dui-serif); user-select: none; -webkit-user-select: none;
+}
+/* the plain look (?gameui=0); with the game UI the panel wears the library skin (end of this file) */
+#demo-ui > .dui-panel:not(.dui-skinned) {
   background: var(--dui-bg); border: 1px solid var(--dui-edge);
   box-shadow: inset 0 0 0 1px var(--dui-line), 3px 3px 0 rgba(0, 0, 0, 0.45);
-  font: 12px/1.3 var(--dui-serif); user-select: none; -webkit-user-select: none;
 }
 .dui-head {
   display: flex; align-items: center; gap: 6px; padding: 6px 6px 6px 10px; cursor: default;
@@ -211,9 +214,9 @@
 .dui-help[hidden] { display: none !important; }
 .dui-help-card {
   width: min(640px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow: auto; padding: 14px 18px 16px;
-  background: var(--dui-bg); border: 1px solid var(--dui-edge); box-shadow: inset 0 0 0 1px var(--dui-line), 4px 4px 0 rgba(0, 0, 0, 0.5);
   font: 12px/1.35 var(--dui-serif);
 }
+.dui-help-card:not(.dui-skinned) { background: var(--dui-bg); border: 1px solid var(--dui-edge); box-shadow: inset 0 0 0 1px var(--dui-line), 4px 4px 0 rgba(0, 0, 0, 0.5); }
 .dui-help-card h2 { margin: 0 0 10px; font: 600 18px/1 var(--dui-serif); font-variant: small-caps; letter-spacing: 0.1em; color: var(--dui-text); display: flex; align-items: baseline; }
 .dui-help-card h2 small { margin-left: auto; font-size: 11px; color: var(--dui-faint); letter-spacing: 0.03em; font-weight: 400; }
 .dui-help-cols { columns: 2 250px; column-gap: 22px; }
@@ -238,4 +241,83 @@
 @media (max-width: 720px) {
   #demo-ui > .dui-status { max-width: calc(100vw - 16px); bottom: 8px; }
   #demo-ui > .dui-panel { max-height: calc(100vh - 64px); }
+}
+
+/* ================================================================ the pixel3d UI library skin (gameui.js)
+   out/ui/panels.css + out/ui/notebook.css load BEFORE this sheet. The panel frame is the ctp-panel 9-slice, buttons /
+   selects / sliders / inputs / kbd the ctp-skin 9-slices, all at the integer UI scale --px (= the render's pixel scale,
+   set on :root by gameui.js). Text stays the DOM serif (porting rule: vector text, pixel frames). The seat cells and
+   the roster tiles keep their own compact look (a 6-px 9-slice border would not fit a 13-px cell). */
+#demo-ui > .dui-panel.dui-skinned { color: #EEE3C8; }
+#demo-ui .dui-skinned .dui-head { background: none; border-bottom: 0; box-shadow: 0 1px 0 #3F3849; padding: 0 2px 4px 4px; }
+#demo-ui .dui-skinned .dui-title { color: #E3BD62; text-shadow: 1px 1px 0 #120E19; }
+#demo-ui .dui-skinned .dui-sec { border-bottom: 1px solid #3F3849; }
+#demo-ui .dui-skinned .dui-sec > summary { color: #E3BD62; padding-left: 2px; padding-right: 2px; }
+#demo-ui .dui-skinned .dui-sec-body { padding-left: 2px; padding-right: 2px; }
+#demo-ui .dui-skinned .dui-body { margin-right: -4px; padding-right: 4px; }
+#demo-ui .dui-skinned .dui-btn { padding: 0 4px; min-height: 22px; line-height: 1; box-shadow: none; transform: none; color: #EEE3C8; }
+#demo-ui .dui-skinned .dui-btn.icon { width: 26px; padding: 0; }
+#demo-ui .dui-skinned .dui-btn[aria-pressed="true"] { color: #F7E0A0; font-weight: 600; }
+#demo-ui .dui-skinned .dui-btn.warn { color: #E36E5E; }
+#demo-ui .dui-skinned .dui-seg > .dui-btn + .dui-btn { margin-left: 1px; }
+#demo-ui .dui-skinned .dui-select { min-height: 24px; box-shadow: none; color: #EEE3C8; }
+#demo-ui .dui-skinned .dui-range .dui-track { border: 2px solid #1A1524; box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.18); }
+#demo-ui .dui-skinned .dui-perf { background: #1A1524; border-color: #1A1524; }
+#demo-ui .dui-skinned .dui-perf > div { background: #211C2B; }
+/* seat cells: back to the compact cell (the button 9-slice is 6 px per side at --px 2) */
+#demo-ui .dui-skinned .dui-cell { border: 1px solid #1A1524; border-image: none; padding: 0; background: #211C2B; box-shadow: inset 0 0 0 1px #3F3849; width: 13px; height: 13px; min-height: 0; }
+#demo-ui .dui-skinned .dui-cell:hover { box-shadow: inset 0 0 0 1px #857A90; }
+#demo-ui .dui-skinned .dui-cell[aria-pressed="true"] { box-shadow: inset 1px 1px 0 rgba(255, 255, 255, 0.35), inset -1px -1px 0 rgba(0, 0, 0, 0.35); }
+#demo-ui .dui-skinned .dui-cell.k-occupied[aria-pressed="true"] { background: #EEE3C8; }
+#demo-ui .dui-skinned .dui-cell.k-dead[aria-pressed="true"] { background: #D9584A; }
+#demo-ui .dui-skinned .dui-cell.k-ghostVote[aria-pressed="true"] { background: #CFE6EE; }
+#demo-ui .dui-skinned .dui-cell.k-nominated[aria-pressed="true"] { background: #E3BD62; }
+#demo-ui .dui-skinned .dui-cell.k-onBlock[aria-pressed="true"] { background: #8A5ACF; }
+#demo-ui .dui-skinned .dui-cell.k-nominee[aria-pressed="true"] { background: #E3BD62; box-shadow: 0 0 0 1px #F7E0A0; }
+/* roster tiles: list rows of the kit (inkRaised fill, iron keyline, gold when selected) */
+#demo-ui .dui-skinned .dui-char { border: 2px solid #1A1524; border-image: none; padding: 2px 4px 2px 2px; background: #3A3247; box-shadow: inset 0 0 0 1px #5E566C; color: #EEE3C8; }
+#demo-ui .dui-skinned .dui-char:hover { background: #423A50; box-shadow: inset 0 0 0 1px #857A90; }
+#demo-ui .dui-skinned .dui-char[aria-pressed="true"] { background: #2B2536; box-shadow: inset 0 0 0 1px #E3BD62; }
+#demo-ui .dui-skinned .dui-char .dui-mono-tile { border: 1px solid #1A1524; }
+#demo-ui .dui-mono-tile img.atlas { width: 24px; height: 24px; object-fit: none; }
+#demo-ui .dui-skinned .dui-help-card, #demo-ui .dui-help-card.dui-skinned { color: #EEE3C8; }
+#demo-ui .dui-help-card.dui-skinned .dui-kbd kbd { box-shadow: none; background: none; color: #EEE3C8; padding: 0 2px; }
+
+/* ---------------------------------------------------------------- the notebook (notebook.js; notebook.css page) */
+#demo-ui > .dnb {
+  position: absolute; left: 8px; top: 8px; width: calc(140px * var(--px)); max-width: calc(100vw - 16px);
+  max-height: calc(100vh - 56px); display: flex; flex-direction: column; gap: 4px; box-sizing: border-box;
+  color: #EEE3C8; font: 12px/1.3 var(--dui-serif); z-index: 2;
+}
+#demo-ui > .dnb[hidden], #demo-ui .dnb-page[hidden] { display: none !important; }
+.dnb-head { display: flex; align-items: center; gap: 4px; min-height: 26px; }
+.dnb-title { font: 600 15px/1 var(--dui-serif); font-variant: small-caps; letter-spacing: 0.08em; color: #E3BD62; text-shadow: 1px 1px 0 #120E19; }
+.dnb-status { font: 10px/1 var(--dui-mono); color: #B9AEBF; white-space: nowrap; padding: 1px 3px; }
+.dnb-status.ctn-status-saved { color: #96C77E; }
+#demo-ui .dnb .ctn-tabs { margin-left: auto; }
+#demo-ui .dnb .dnb-close { width: 26px; min-height: 26px; padding: 0; display: grid; place-items: center; }
+.dnb-close .ctp-glyph-close { width: calc(16px * var(--px) / 2); height: calc(16px * var(--px) / 2); }
+.dnb-page { min-height: 0; display: flex; flex-direction: column; gap: 3px; }
+.dnb-rows { display: grid; gap: 2px; overflow-y: auto; max-height: calc(100vh - 140px); }
+#demo-ui .dnb .dnb-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-rows: auto auto; column-gap: 4px; align-items: center; min-height: 0; }
+.dnb-row .dnb-pic { grid-row: 1 / 3; width: calc(24px * var(--px) / 2 + 6px); height: calc(24px * var(--px) / 2 + 6px); box-sizing: content-box; display: grid; place-items: center; font: 700 13px/1 var(--dui-serif); color: #EEE3C8; overflow: hidden; }
+.dnb-row .dnb-pic img { width: 24px; height: 24px; image-rendering: pixelated; }
+.dnb-name { font-variant: small-caps; letter-spacing: 0.03em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dnb-name small { color: #E3BD62; }
+.dnb-row.you .dnb-name { color: #F7E0A0; }
+.dnb-marks { display: flex; gap: 1px; }
+#demo-ui .dnb .dnb-mark { width: 22px; min-height: 22px; padding: 0; font: 600 12px/1 var(--dui-mono); color: #B9AEBF; }
+#demo-ui .dnb .dnb-mark[aria-pressed="true"].m-trust { color: #96C77E; }
+#demo-ui .dnb .dnb-mark[aria-pressed="true"].m-unsure { color: #E8A24A; }
+#demo-ui .dnb .dnb-mark[aria-pressed="true"].m-suspect { color: #E36E5E; }
+#demo-ui .dnb .dnb-note { grid-column: 2 / 4; min-width: 0; font: 11px/1.1 var(--dui-serif); color: #EEE3C8; padding: 0 3px; height: calc(13px * var(--px)); box-sizing: border-box; }
+#demo-ui .dnb .dnb-note::placeholder { color: #857A90; }
+.dnb-foot { margin: 2px 0 0; font-size: 10px; font-style: italic; color: #857A90; }
+#demo-ui .dnb .ctn-text { width: 100%; }
+
+/* a phone (narrow, the panel auto-folds below 700 px): the notebook spans the top and stays under 40 % of the height
+   (notebook.js fit() sizes the Notes page to it), so the reader and the book in their hands stay in view below it */
+@media (max-width: 699px) {
+  #demo-ui > .dnb { right: 8px; width: auto; max-height: 40vh; overflow: hidden; }
+  #demo-ui .dnb .dnb-rows { max-height: calc(40vh - 64px); }
 }

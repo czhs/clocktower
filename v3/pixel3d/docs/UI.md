@@ -840,3 +840,78 @@ for `poof_*`, `glow_warm`, `glow_cool`).
   over its top rows (`r2/z-stclock.png`). The timer row drops 4 px when it would reach the buttons.
 - 2026-10-17 lead (integration r2): offscreen-arrow names follow one rule: opposite the pointer's vertical component,
   above for sideways pointers (the 8-px extra top margin keeps an above-name in frame for every heading).
+- 2026-10-17 notebook (3D big book, after the user's review of the flat one: "The book should be a 3d sprite like the
+  hand"). **bookStyle 'big' is now a REAL 3D BOOK** drawn by the pixel3d pipeline; the flat r1 big book is retired
+  (`bigbook.js` only re-exports the 3D runtime; frames `bookbig_<phase>_<f>` are gone). 'held' stays the default.
+  - **Model** (`src/ui/notebook/book3d.js`, toon materials via `toonMaterial`, 'full' outline + edge highlights, texel
+    snapped): two oxblood leather boards (1 texel thick) with gold corner caps, a gold clasp and a gold diamond on the
+    front cover, page blocks with the open-book "gull wing" top (dip into the gutter, hump, fall to the fore-edge), a dark
+    gutter crease, a rounded spine (an arc band that wraps the hinge as the book shuts), printed lines (ink strips that
+    ride the page curve), loose leaves printed on both faces that fan and turn, a red ribbon off the near edge, a quill
+    (cream feather turned to the sky, gold shaft, dark nib). 0.77 x 0.55 m open = ~23 x 9..13 texels at vh 12, the
+    v2-size finger's size (20 x 13). Ghost = 7 dim steps of the cast ghost ramp, no cast shadow.
+  - **Drawings** (stepped, 30 Hz grid): `open_0..5` 15 fps (pop half size + low, closed + rise, cover lifts, cover past
+    upright + leaves trail, cover falls + leaves fan, open) · `hold_0..4` 10 fps `HOLD_SEQ_3D` (2.4 s still, then a page
+    lifts, stands, passes upright, lands; seeded per reader) · `close_0..3` 15 fps (cover rises, nearly shut, closed,
+    pop away: sinks + shrinks; skips close_0 if the cover never passed upright) · `write_0..3` 10 fps (the quill walks the
+    near line of the right page, the ink grows). State: `book3dState(t, {openAt, closeAt, typing, seed, still})`.
+  - **Placement** (`PLACE3D`, `placeBook3D`): centre = feet + 0.40 m up (+0.2 ghost) + facing x 0.30 + toward-camera x
+    0.30 (+ 0.42 x away-ness to the hip on the camera side); spine along the facing, tilted toward the reader (front
+    -8°, side 22°, away 14°) so the camera always sees the pages and it turns with the facing like the hand.
+  - **Live mode**: `notebookContext(hud).book3d` = `book3dContext(hud)`: one book per reader in `engine.scene`, posed in an
+    `engine.onUpdate` before every render from the SAME callbacks as the held pass (view `{book3d: true, t}`), so stills
+    with `?t=` are exact. **Never hidden by its own reader**: a per-book VIEW-SPACE depth bias (`uBookBias`, materials share
+    one GL program) puts the whole book in front of the reader's nearest point incl. staffs (`readerR` 0.65 m); the
+    orthographic camera keeps its screen position; people standing nearer still hide it. Under labels / bubbles / the
+    finger (UI layers composite later). Casts a real shadow; does **not receive** shadows (the reader's body + staff
+    striped the pages: `shots/ui-book3d/dbg/finn.png`). Night: a faint page glow (`NIGHT_GLOW` emissive, "the reader's
+    lamp") keeps the spread light next to the ungraded UI (`shots/ui-book3d/a4/z-handbook-night{,2}.png`). Cost: ~60 draw
+    calls per open book (colour + normal + shadow), +1 program. Debug: `?b3bias=<m>`.
+  - **Port mode** (`bake3d.js`, in `tools/uibake.sh notebook` / `notebook:notebook-night`): the same model rendered from the
+    gameplay camera (yaw 0, pitch 30°, vh 12, sky.js preset + sunFor(tod), key background) = **`bookbig_<dir>_<phase>_<f>`
+    + `bookbigghost_<dir>_<phase>_<f>`**, 8 dirs (v2 point dir names) x 19 drawings x 2 = 304 frames per atlas, appended
+    to `out/ui/notebook{,-night}.{png,json}` (atlas width now 512; 543 frames). **Anchor = the reader's feet texel**, one
+    cell per dir: `meta.bigBook.anchors[dir]`, `cells[dir]`. Draw at feet - anchor, depth = avatar depth + epsilon. 0
+    mixed texels (`meta.bigBook.render.mixedTexels`). The 3D-lit colours are excluded from the palette audit. Mock:
+    `?book=bigsprite` draws these sprites (`port3d.js`, needs `preloadPortBook(tod)` in setup); live vs port at all 8
+    facings: `shots/ui-book3d/a5/cmp.png` (same shape, within 1-2 px: texel snapping).
+  - **Options**: `hud.uiOptions.bookStyle = 'held' | 'big' | 'bigsprite'` (`?book=`), `pointerScale = 'new' | 'v2'`
+    (`?pointer=`). Scene `?scene=ui-notebook&state=handbook` = the 8-facing ring with the 3D book + each reader pointing
+    along its facing (v2 finger): the user's "like the hand" check.
+  - **Pointer v2 size reviewed**: frames 24x24, hand 20x13 / 16x16 / 13x20 (0.57 H vs v2 0.55 H), centred on
+    `anchors.point` (12,12) within 1 px, alpha only 0/255 (no mixels), `--strict` 41/41 v2 names, same frame order as
+    markers.json; trail starts past the fingertip (`shots/ui-book3d/a3/z-handbook-noon.png`). No change needed.
+  - Evidence: frame sheets `shots/ui-book3d/b4/sheet-{noon,night}.png`, ghost `b3/sheet-ghost-noon.png`; live 8 facings
+    `a3/z-handbook-{noon,night}.png`; 4 toggle combos + port + night `hud/combos.png`; 1x GIFs
+    `shots/ui-book3d/gifs/{close-noon,close-night,cycle-noon,variants-noon,handbook-noon}/anim.gif` (+ strip.png).
+  - Learnings: a held prop must not receive its holder's shadow when it is a status marker (stripes read as damage); a
+    page-sized loose leaf hides the print under it unless the leaf is printed too; facing-away readers hold it on the
+    hip nearer the camera, else the side offset cancels the forward one and the book sits on the reader's back.
+- 2026-10-17 notebook (3D big book r2, art-director review 21/24 "ship", every group issue fixed; `src/ui/notebook/book3d.js`,
+  re-baked `out/ui/notebook{,-night}.*`: 543 frames each, 0 mixed texels, no cell touches its edge).
+  - **Height**: `PLACE3D.y` 0.40 -> **0.60 m** (waist level, under the face + label). At 0.40 it read as lying on the ground
+    (shadow straight under it, seat-ring dashes over the pages); now the ring sits below the spread
+    (`shots/ui-book3d/c1/z-hud4.png`). Shadow unchanged (real cast shadow, now further from the book; no separate soft shadow). Anchors still = feet (re-baked).
+  - **Up / down facings**: near the screen axis the book turns off it by up to `yawEnd` 18° (full at |d| = 1, none at the
+    diagonals), so the fore-edge thickness + gull-wing show instead of a flat face-on rectangle (ghost included:
+    `c1/fr-noon.png`, rows down / up of `c1/sheet-noon.png`, `c1/sheet-ghost-noon.png`).
+  - **Facing the camera**: the book also moves to the camera-side hip (`sideFront` 0.34 m x facing-camera-ness), so a finger
+    drawn down from the head leaves most of the spread clear (Ada in `c1/z-hb-noon.png`).
+  - **Night**: `NIGHT_GLOW` adds a faint warm lift to the leather (~1 ramp step) and ribbon and a stronger one to the gold, so
+    the shut book reads as leather with gold (`c1/fr-night.png`, `c1/sheet-night.png`, `gifs/c-close-night/pick.png` f95).
+  - **Quill**: a brown goose quill (value well below the page) with a 1.6x wider vane (>= 2 texels) instead of the cream
+    feather that vanished on the page (`c1/fr-noon.png` write frames).
+  - **Print**: its own warm brown `print` ramp (lighter than the crease ink) broken into words (`WORDS`, `WORD_GAP`); leaves
+    too. The near-black continuous dashes read as cage bars in side views. Night: a faint print glow.
+  - **Page turn**: `HOLD_SEQ_3D` now turns 0.9 s into the 3 s loop (was 2.4 s, longer than most reads), readers offset by
+    `HOLD_SEED_STEP` 11 steps; the state=close 1x loop now shows it (`gifs/c-close-noon/anim.gif`, pick.png f48-54 Ada,
+    f75 Cleo).
+  - **held3d (optional brief item) evaluated, offered opt-in, NOT adopted as default**: `bookStyle 'held3d'` (`?book=held3d`,
+    `setOptions`) draws the same model at `HELD3D.scale` 0.55 at the held grip point. At ~11 texels the 3D book loses the
+    held billboard's bold dark silhouette and reads as a pale smudge against the body (Ada facing the camera nearly vanishes):
+    `c1/z-dirs-held3d.png` vs `c1/z-dirs-held.png`. 'held' (16 px billboard) stays the default; held3d has no port frames.
+  - Evidence (all rendered and looked at): `shots/ui-book3d/c1/` (z-hb-noon / z-hb-night / z-hbs-noon = live / port at 8
+    facings next to the hand, z-hud4 + hud-*.png = the toggle combos + hud-held3d-new.png, var-noon.png, sheet-*.png,
+    fr-*.png), `shots/ui-book3d/gifs/c-close-{noon,night}/` (1x, 30 fps). Helpers: `shots/ui-book3d/{hbz.sh,pz.sh,frames.py}`.
+  - Learning: a status prop at ankle height reads as dropped, not held; anything carried should float at least at the waist.
+    Face-on views of a thin prop lose all thickness cues: a small yaw off the screen axis is cheaper than more geometry.

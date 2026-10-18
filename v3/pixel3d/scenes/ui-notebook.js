@@ -1,7 +1,7 @@
 // Notebook group scene (owner: notebook group; docs/UI.md §3.3, rows 41b/41c). The mock town square at the game camera
 // with the in-world "reading the notebook" book and the Notes page of the notebook panel, day or night.
 //
-//   index.html?scene=ui-notebook[&state=live|dirs|cycle|point|pages|close|variants][&book=held|big][&pointer=new|v2][&tod=noon|golden|night][&nbpage=notes][&still=1][&t=<s>]
+//   index.html?scene=ui-notebook[&state=live|dirs|cycle|point|pages|close|variants|handbook][&book=held|big|bigsprite|held3d][&pointer=new|v2][&tod=noon|golden|night][&nbpage=notes][&still=1][&t=<s>]
 //   tools/shot.sh ui-notebook shots/ui-notebook/r1/dirs-noon.png --size 1280x720 --t 1 --q "state=dirs"
 //
 // States
@@ -14,7 +14,10 @@
 //   close  three readers close together (game camera), staggered open / hold / write / close on a 4 s loop -> GIF crops
 //   variants  the four option combinations side by side (src/ui/notebook/variants.js): Notebook held / big x Pointer
 //          new / v2 size, one pair each (one points at the other, who reads), captioned; 5.5 s loop
-//   (any world state + ?book=big draws the big book instead of the held one: hud.uiOptions.bookStyle, scenes/ui-hud.js)
+//   handbook  the dirs ring with the 3D big book (book=big by default here) AND each reader pointing along its own facing
+//          (pointer v2 by default): the book next to the pointing hand at all 8 facings (the user's reference: "like the hand")
+//   (any world state + ?book=big draws the 3D big book instead of the held one, ?book=bigsprite its baked port sprites:
+//    hud.uiOptions.bookStyle, scenes/ui-hud.js)
 //   pages  the notebook panel 8 times over the town: Seats page, Notes typing, empty (hint), selection, scrolled,
 //          saving, offline, 85 % full
 import { buildHudStage, GROUPS } from './ui-hud.js';
@@ -48,7 +51,8 @@ async function loadGroup(hud, g) {
 
 export default async function build(engine, params) {
   const state = params.get('state') ?? 'live';
-  const opts = state === 'variants' ? { cast: VARIANT_CAST } : ['dirs', 'cycle'].includes(state) ? { cast: RING8 } : state === 'close' ? { cast: RING8.slice(0, 3), storyteller: null, ring: 1.6 } : {};
+  if (state === 'handbook') { if (!params.has('book')) params.set('book', 'big'); if (!params.has('pointer')) params.set('pointer', 'v2'); }
+  const opts = state === 'variants' ? { cast: VARIANT_CAST } : ['dirs', 'cycle', 'handbook'].includes(state) ? { cast: RING8 } : state === 'close' ? { cast: RING8.slice(0, 3), storyteller: null, ring: 1.6 } : {};
   if (state === 'point') opts.cast = [
     { id: 'frog', name: 'Ada', seat: 1, clip: 'point', role: 'Empath' }, { id: 'owl', name: 'Bram', seat: 2, clip: 'idle', role: 'Chef' },
     { id: 'fox', name: 'Cleo', seat: 3, clip: 'talk', role: 'Monk' }, { id: 'mushroom', name: 'Dov', seat: 4, clip: 'idle', role: 'Undertaker', you: true },
@@ -88,8 +92,21 @@ export default async function build(engine, params) {
   if (state === 'variants') { await installVariants(hud, { still }); return; }
   const N = notebookContext(hud);
   const members = hud.cast;
+  if (state === 'bigsprite' || hud.uiOptions.bookStyle === 'bigsprite') await (await import('../src/ui/notebook/port3d.js')).preloadPortBook(hud.tod);
   if (state === 'dirs') {
     N.add((Q) => members.forEach((m, i) => N.drawReader(Q, m, { openAt: -10, typing: m.id === 'mushroom' || m.id === 'crow', seed: i, still })));
+  } else if (state === 'handbook') {
+    const { markersContext } = await import('../src/ui/markers/stage.js');
+    const { drawPoint } = await import('../src/ui/markers/draw.js');
+    const THREE = await import('three');
+    const M = await markersContext(hud);
+    N.add((Q) => members.forEach((m, i) => N.drawReader(Q, m, { openAt: -10, seed: i, still })));
+    // each reader points 2.5 m along its own facing (the finger loops 0..4 s; ?t= 1 shows it held)
+    M.register((L) => members.forEach((m) => {
+      const face = m.actor?.st?.face ?? 0, f = new THREE.Vector3(Math.sin(face), 0, Math.cos(face));
+      const tgt = m.pos.clone().addScaledVector(f, 2.5);
+      drawPoint(L, M.frames(L), { head: M.head(L, m), aim: L.at(tgt.clone().setY(m.pos.y + m.height * 0.72)), spot: L.at(tgt), person: true, age: ((L.t % 4) + 4) % 4 + 0.3, still });
+    }));
   } else if (state === 'cycle') {
     // staggered: reader i opens at 0.15 + 0.2 i and closes 2.6 s later (mod CYCLE)
     N.add((Q) => members.forEach((m, i) => {

@@ -4,6 +4,7 @@
 //   pair 1 (Ada -> Bram)   Notebook: held  ·  Pointer: new        (the defaults)
 //   pair 2 (Cleo -> Dov)   Notebook: held  ·  Pointer: v2 size
 //   pair 3 (Finn -> Esme)  Notebook: big   ·  Pointer: new        (Esme is a ghost: the dim ghost big book)
+//   ('big' = the REAL 3D book since 2026-10-17, book3d.js; ?book=bigsprite elsewhere shows its baked port sprites)
 //   pair 4 (Gus -> Hob)    Notebook: big   ·  Pointer: v2 size
 // Loop VARIANT_LOOP s: readers open at 0.3 s, write 2.6-3.4 s, close at 4.6 s; the finger points 0.9-4.4 s.
 // A caption under each pair names its combination (tiny caps, anchored under the reader).

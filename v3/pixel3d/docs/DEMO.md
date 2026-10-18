@@ -26,6 +26,7 @@ Console errors / page errors / shader errors = failure. No git commits.
 | **characters** | `src/demo/characters.js` | which characters are complete, loading a spec, creating a runtime Character handle |
 | **time** (town states) | `src/demo/time.js` | continuous clock → sky / sun / lights / tower hands / hour strikes; phase / nominee / seats → dais + ceremony; bell; life on/off; quality (reload) |
 | **ui** | `src/demo/ui.js` | the control panel, status line, help overlay, toasts |
+| **ui** (game UI) | `src/demo/gameui.js`, `src/demo/notebook.js`, `src/demo/ui-assets.json`, `src/ui/runtime/layer.js` + `src/ui/runtime/book3d.js` (new, additive to the UI library) | the pixel3d UI library in the demo (§4.7): labels, talk + bubbles, emote pops, point / pie / pins, the pixel HUD (clock + phase chips, toolbar, toasts, prompts, tip, social dock), the notebook + the reading book, the panel skin |
 | **deploy** | `src/demo/deploy.js`, `tools/demo-serve.mjs`, `tools/demo-check*.mjs` (+ `shots/demo-deploy/`) | `window.__demo` automation hooks, error overlay, perf watchdog, serving, the playtest automation |
 | **player** (houses) | `src/demo/interior.js`, `src/demo/camera.js`, `src/demo/collision.js` | entering / leaving cottages (fade, room collision, the dollhouse camera), the texel-locked follow, collision + walk-through props |
 | **intro** | `src/demo/loading.js`, `src/demo/loading.css`, `src/demo/intro.js`, the `#demo-loading` markup in demo.html | the loading screen (real progress), the opening cinematic |
@@ -57,9 +58,9 @@ Owners replace their stub; keep the exported names and signatures below (add fre
    follow + the interior dollhouse camera) + `createCutController(demo)` (lead) → `createNPCs(demo)` (idle townsfolk
    characters, `?npcs=0` off; `demo.npcs` is a placeholder until then so listCharacters does not start them before the
    player exists) → `createIntro(demo)` (only when `loading.js introEnabled(params)` and not capture) → `createTime(demo)`
-   → `mountUI(demo)` → `installDeploy(demo)` → `installViewInset(demo)` (main.js: wraps the rig's update, §5 "Framing
-   beside the panel").
-6. ONE per-frame updater, registered after every town piece's: `player → camera → intro → cut → time → ui → deploy`
+   → `createGameUI(demo)` (gameui.js, §4.7; `?gameui=0` off) → `mountUI(demo)` → `installDeploy(demo)` →
+   `installViewInset(demo)` (main.js: wraps the rig's update, §5 "Framing beside the panel").
+6. ONE per-frame updater, registered after every town piece's: `player → camera → intro → cut → time → gameui → ui → deploy`
    (the intro reads the rig's pose of the frame as its end pose, so it runs right after the camera). A module whose
    `update` throws is reported once and switched off.
 7. **Shader warm-up** behind the boot screen: `Engine.start()` in capture mode (installs `__pixel.renderAt/info`, renders
@@ -101,6 +102,8 @@ store.on('phase', ({ value, prev, state, source }) => ...)   // per key; 'change
 | `yaw` | degrees, multiple of 45 | 0 | follow / free camera yaw (0 = the game's view, looking north) · keys, ui · lead |
 | `ui` | bool | true | control panel visible · keys (H), ui |
 | `location` | `'town'` \| `'house-0'..'house-14'` | `'town'` | where the player is · **player** writes it (source 'player') on every enter / leave; any other writer (ui Travel 'enter' / 'leave', tests, `?in=`) makes the player go in / out (fade) · player, ui, time (room lights), lead (cut-away off inside) |
+| `bookStyle` | `held` `big` | `held` | the reading notebook other players see (§4.7): `held` = the small book at the reader's hands, `big` = a REAL 3D book unfolding in front of the reader · ui (panel toggle "Notebook: held / big"), `?book=` · gameui (live, no reload) |
+| `pointerScale` | `new` `v2` | `new` | the pointing finger: `new` = the library's finger, `v2` = the finger at the v2 size relative to the character (24 px frames) · ui (panel toggle "Pointer: new / v2 size"), `?pointer=` · gameui (live) |
 
 Runtime-only data lives on the module objects, not in the store: `demo.player.position` (Vector3, logical ground point),
 `demo.player.facing`, `demo.player.handle`, `demo.player.nearDoor`, `demo.player.location`, `demo.player.interior` (the room
@@ -233,6 +236,89 @@ script, and the playtest automation (§9 as a script). **Note** `Object.assign` 
 - Inside a cottage the controller switches the town cut-away off itself (boxes, keep, circle cleared) and rebuilds on
   the first town frame after `player:location` (the doorstep cell on the way out equals the one on the way in).
 
+### 4.7 ui (game UI) — `createGameUI(demo) → gameui | null`, `src/demo/gameui.js` + `src/demo/notebook.js`
+The pixel3d UI asset library (docs/UI.md, `src/ui/<group>/**`) in the demo, driven by the demo's REAL interactions (the
+player, the NPCs, the store, the clock), not by the mock-HUD scripts (`scenes/ui-hud.js` shows the same groups with canned
+moments; the demo never imports `scenes/`). `?gameui=0` turns it off (the A/B baseline; the panel then keeps its plain look).
+- **Layers**: ONE `src/ui/runtime/layer.js createUILayers` (the library's `src/ui/layer.js` contract and shaders, pass
+  `ui-world` 300 + the screen overlay; new and additive: every layer write is tracked per band of 8 rows, so only what
+  last frame drew is cleared and only the changed band runs are uploaded with one raw `texSubImage2D` each). Tokens follow
+  the town preset (`tod` event: night / golden / noon sets). Hidden during the loading screen and the cinematic.
+- **World tier (A / Ag)**: name labels for you (gold "You" chevron + the "you are here" ring) and the NPCs (indicators art,
+  skipped when the character is above the view, clamped at the top edge); while a character plays `talk` / `whisper`:
+  the 3-bar talk glyph + the talk outline pass (indicators `talkOutline.js`, `self` rose for you); NPCs also get a short
+  speech bubble (fixed lines, deterministic per NPC slot); other NPC emotes pop an emote bubble (`!` / `?`, emotes art);
+  the stack above a name is label < bubble < person pins < pop.
+- **Point** (markers `drawPoint`): right-click (press + release within `RIGHT_HOLD_MS` 250 ms, < 6 px) on a townsperson =
+  finger + marching trail at them + the ping at their feet; on the ground = a place point (ping + mark). The player turns
+  to the target (`player.faceTo`) and plays its `point` clip when the character has one. 3.5 s (`EMOTE_POINT_MS`).
+  `pointerScale` `v2` swaps the frame set (`markerFramesV2size`) live.
+- **Pie** (emotes `drawPie`): right-hold (250 ms) or right-drag (> 6 px) opens it at the press point: Point, 8 pin
+  colours, "Remove my pin" when pressed on your own pin; release on a wedge commits; release in the dead zone = sticky
+  (8 s, click a wedge; Esc / click elsewhere cancels). Pin wedges grey out at the cap (6 pins per player).
+- **Touch** (a coarse pointer, or `?touch=1`; `?touch=0` forces the mouse wording): a finger held still on the town for
+  `LONG_PRESS_MS` (450 ms, emotes art TIMING) opens the TOUCH pie (bigger wedges, `PIE.touch`) under it; slide to a
+  wedge and lift = commit, lift in the dead zone = sticky (tap a wedge). A finger that moves > 10 px first is a pan, a
+  quick tap still walks there (player.js); the lift that ends a long press is eaten (no tap-to-walk). The canvas sets
+  `touch-action: none`. The dock, the armed pill and the first-run tip use touch wording ("Hold the town, slide to
+  choose"; "Tip: tap to walk · hold a finger on the town to point or pin"), the panel note too.
+- **Pins** (markers): place pins on the ground through the depth-tested pass (`pinPass.js`, order 301: whoever stands in
+  front hides them), person pins over a name; the drop animation (fall, dig-in, sparkle at 15 fps), your icon in the
+  socket (portraits atlas `icon_<id>`; for the shipped four, which have none, the roster thumb (the dock button's portrait)
+  fitted into 12 px: the figure's bounding square box-filtered, alpha cut at 40 %; the initial only before the thumb loads), a pin pop over you in the pin's colour. F = a pin of the current
+  colour at the cursor; left-click your own pin = remove (remove badge + tooltip on hover); the dock's Clear my pins.
+- **Social dock** (emotes `drawDock`, bottom right of the view; G or a click on your portrait in the gold ring = the dock
+  button): Point / Pin (arm, then click the town; the armed pill has Cancel), the 8 swatches (current colour), Clear my
+  pins, the key hints.
+- **HUD (S)** (hud art): the town clock chip (stage of the day / the ceremony, the time, the dial = what is left of the
+  day or night period; paused / clock stands = the paused dial) + the phase chip (day ☼, nomination / vote ◯, execution
+  bell, night ☾) top left; the toolbar top right (notebook, ⚙ = the control panel, ? = the keys overlay); the toast column
+  under it (`events 'toast'` and `ui.toast()` land here; the DOM toast stack stays empty); the door prompt ("Walk in:
+  <house>", "The clock tower is locked", inside: "<room> · walk out the door to leave") and the first-run key tip (9 s)
+  bottom centre (kept above the dock button row). Everything avoids the control panel / the notebook (the visible area
+  is measured every 0.25 s: `cover` = {left, right, top}): the panel on the canvas' right half is a right band; a panel
+  spanning the left half too but shorter than 40 % of the height (the auto-folded panel header on a phone) is a TOP band:
+  the chips, the toolbar and the toasts drop below it, so they stay visible and a tap on them reaches the canvas.
+- **Notebook** (J, the toolbar's book, the panel's "notebook" button): a DOM panel top left in the library's skin
+  (`out/ui/panels.css` ctp-panel + `out/ui/notebook.css`), tabs Seats / Notes (`role="tablist"`, `.ctn-tab-*`). Seats = the
+  townsfolk in sight (you + the NPCs) with their 24 px portrait (portraits atlas `avatar_<id>`, else the roster thumb),
+  marks ★ / ? / ✗ and a one-line note; Notes = a native `<textarea class="ctn-text">` (the lined page, height snapped to
+  whole rule rows, the pixel body face `.ctn-pixelfont`). Saved per page in `localStorage` (`hollowmere-notebook:notes`,
+  `hollowmere-notebook:seats`, `:page`), debounced 900 ms ("Saving…" → "✓ Saved"), every access in try/catch (no storage
+  = "not saved (storage off)", the panel still works). Esc closes. Keys typed into it never reach the game. No open / close
+  toasts (the panel is the feedback; the toasts covered name labels). On a phone (`innerWidth < 700`) it spans the top,
+  at most 40 % of the height (the Notes page sized to it), so the reader and the book in their hands stay in view below;
+  opening it folds the unfolded control panel away (unsaved; ui.js).
+  The page skin is pinned as inline style read from a hidden twin: panels.css's generic `textarea:hover / :focus-visible`
+  field skin out-ranks notebook.css's `.ctn-text` page otherwise (the page turned into an ink input while focused).
+- **The reading book** (notebook `notebookContext` / `book3d.js`): while the notebook is open the player's character shows
+  the book to the town (open → hold with page turns → close, the quill while typing in the last 1.5 s); `bookStyle` `held`
+  = the small book at the hands (depth-tested pass 302), `big` = the 3D book in front of the reader (scene meshes, lit,
+  outlined, never hidden by its reader; the "you are here" ring is hidden meanwhile) at 1.3x the library's model scale
+  (`BIG_SCALE`: about the reader's width). The 3D books come from `src/ui/runtime/book3d.js installMergedBooks` (put on
+  `hud._book3d` before `notebookContext`): the same model, poses, placement and bias as `book3d.js`, but each drawing is
+  merged once (in the warm-up) into ONE mesh per material (<= 8 instead of ~25 meshes x color + normal + shadow passes):
+  measured on render-host, 1 open book 278 -> 236 calls, 2 books 409 -> 323; pixel-identical at night, same book at noon
+  (`?bookmerge=0` = the library's per-part books, the A/B). NPC slot k reads for 7 s every 31 s
+  from 6 + 11 k s (demo time), so visitors see others reading from outside. The 3D books are built and their program
+  compiled in the boot warm-up frames.
+- **Panel skin**: the control panel and the keys overlay wear the library skin (`ctp-panel ctp-skin`: 9-slice frame,
+  buttons, selects, sliders, kbd, cursors) at `--px` = the render's pixel scale; seat cells and roster tiles keep a compact
+  look (ui.css "the pixel3d UI library skin"); the character switcher shows the portraits-atlas avatars.
+- **Toggles** (panel section "Game UI", URL `?book=` `?pointer=`, store keys §3): "Notebook: held / big" and "Pointer: new /
+  v2 size", live, no reload; a quality reload keeps them (`stateToParams` writes `book` / `pointer`).
+- **Perf**: the pin / book / talk passes run only while they have something to draw (all on in the warm-up frames, so
+  their programs compile behind the loading screen); HUD pieces, labels, toasts and the dock are drawn once per state and
+  copied with a byte blit. Programs 43 → 48 at boot, constant afterwards.
+- **Automation**: `demo.gameui.info()` → {members (+ talking, bubble, screen px), point, pie, pins, pops, dock (+ hit
+  rects), toolbar, toasts, tip, notebook, readers, books3d, mergedBooks, youIcon (atlas | thumb | initial), options,
+  cover {left, right, top}, touch, pressing (touch | right | null), pie.input}; `doPoint / dropPin / removePin / clearPins /
+  targetAt / openPieAt` (the same code paths as the pointer / keys). Events: `gameui:point`, `gameui:pie`, `gameui:pin`,
+  `gameui:unpin`, `gameui:click`, `notebook` `{open, page}`. Player additions: `player.pickAt(x, y)`, `player.faceTo(x, z)`;
+  NPCs: `demo.npcs.members` (the live records).
+- **Assets**: the baked files the demo fetches (`out/ui/portraits.*`, `out/ui/cast-portraits.*`, `out/ui/panels.css`,
+  `out/ui/notebook.css`) are listed in `src/demo/ui-assets.json`; the bundle ships exactly those (§6 Publish).
+
 ## 5. URL parameters (`demo.html?...`)
 
 State: `char=<id>` `tod=<hours>|night|morning|noon|afternoon|golden` `speed=<min/s>` `paused=1` `phase=<phase>`
@@ -240,9 +326,12 @@ State: `char=<id>` `tod=<hours>|night|morning|noon|afternoon|golden` `speed=<min
 `at=<x>,<z>` player start; `in=house-N` start inside a cottage (state.location; written by `demo.reload` instead of
 `at` while inside); `intro=0|1` the cinematic (default on in a browser, off under automation / capture); `npcs=<n>` idle
 townsfolk characters (0 = off); `roster=shipped|all|a,b`, `thumbs=0`, `exercise=0` (characters.js);
-`interiorKit=stub`; `demoGrass=wide4` (review: the old grass area). Engine: `scale=<n>|fit`, `capture=1` (headless: renders t = 0 only, no loop). Town params pass
+`interiorKit=stub`; `demoGrass=wide4` (review: the old grass area); game UI (§4.7): `book=held|big` (state.bookStyle),
+`pointer=new|v2` (state.pointerScale), `gameui=0` (no game UI: the A/B baseline), `touch=1|0` (force the touch /
+  mouse wording; default: the coarse-pointer media query), `bookmerge=0` (the library's per-part 3D books, A/B), `rm=1` (reduced motion: no pops / bobs /
+marching / page turns). Engine: `scale=<n>|fit`, `capture=1` (headless: renders t = 0 only, no loop). Town params pass
 through to buildTown (`lights=`, `vignette=`, `contact=0`, `shadowCull=0`, `relAz=`/`elev=` ...), except
-`cut cam yaw focus pieces pan` (the demo owns those). `demo.reload(patch)` writes the whole state back into the URL.
+`cut cam yaw focus pieces pan book pointer gameui` (the demo owns those). `demo.reload(patch)` writes the whole state back into the URL.
 It always writes `intro=0`: a reload (quality change) is a rebuild, not a new visit, so the loading screen shows but
 the opening cinematic never replays (even when the page was opened with `?intro=1`).
 
@@ -257,7 +346,8 @@ on the canvas' right half. `demo.camera.inset = {px, shift, fit}`.
 **Panel folding (ui.js):** the fold button's choice is saved (`prefs.collapsed`) on wide screens. The panel also folds
 by itself, unsaved, when `innerWidth < 700` (phones: it would cover ~80% of the view; re-checked on resize) and inside
 a cottage when `innerWidth < 1100` (the dollhouse room would sit partly under it); it unfolds again when the condition
-ends. A click overrides the automatic fold until the condition changes. Checked by `shots/lead-fix7/check.js`.
+ends. A click overrides the automatic fold until the condition changes. On a phone the notebook folds the panel when it opens
+(an unfolded panel + the notebook filled the screen). Checked by `shots/lead-fix7/check.js`.
 
 ## 6. Controls and how to run
 
@@ -266,7 +356,7 @@ ends. A click overrides the automatic fold until the condition changes. Checked 
 | W A S D / arrows | walk (relative to the camera) | player |
 | Q / E | rotate the camera 45° | lead |
 | wheel, − / = | zoom (ladder stops) | lead |
-| C | cycle camera mode (follow → vote → overview → iso → free) | lead |
+| C | cycle camera mode (follow → vote → overview → iso → free; free: drag with the LEFT button to pan, the right button is the game UI's) | lead |
 | T | pause / run the clock | time |
 | , / . | clock slower / faster (×½ / ×2) | time |
 | B | ring the bell | time |
@@ -275,6 +365,13 @@ ends. A click overrides the automatic fold until the condition changes. Checked 
 | H | the keys overlay (Esc closes) | ui |
 | ` (backquote) | show / hide the panel | ui |
 | [ / ], 1-6, Space | previous / next character; emotes (talk, vote, point, die, ghost, signature) | player |
+| N | jump to the next time of day | time |
+| right-click | point at a townsperson (finger + trail + ping) or a spot; the character turns and plays `point` | ui (game UI) |
+| right-drag / right-hold | the pie: Point, 8 pin colours, Remove my pin; release on a wedge (dead zone = sticky, click a wedge) | ui (game UI) |
+| F | drop a pin of the current colour at the cursor (a townsperson: on their name) | ui (game UI) |
+| click your own pin | remove it | ui (game UI) |
+| G / click your portrait (bottom right) | the social dock: Point / Pin (arm, then click), colours, Clear my pins | ui (game UI) |
+| J / the toolbar's book | the notebook (Seats / Notes); Esc closes it (and the pie / an armed dock) | ui (game UI) |
 | P | play / stop the voting ceremony | time |
 | walk into a door | go into the cottage; on the exit spot (or pushing out on it): back out | player |
 | click | walk there (a cottage: to its door and in) | player |
@@ -302,13 +399,17 @@ Check it: `tools/remote.sh --no-sync node tools/demo-smoke.mjs --base http://<ta
 `tools/remote.sh --no-sync node tools/demo-play.mjs --base http://<tailnet-ip>:8090`.
 
 **Publish (static bundle).** `tools/demo-bundle.sh` builds `dist/v3-art-demo/` on render-host and rsyncs it back to the Mac:
-`index.html` (= demo.html **without the import map**), the runtime `src/**` (.js/.css/.json; not `src/main.js`),
+`index.html` (= demo.html **without the import map**), the runtime `src/**` (.js/.css/.json; not `src/main.js`; of the UI
+library `src/ui/**` only the modules the demo's import graph reaches: 19 on 2026-10-17, listed by the build), exactly the
+baked UI files in `src/demo/ui-assets.json` (`out/ui/portraits.{json,png}`, `out/ui/cast-portraits.{json,png}`,
+`out/ui/panels.css`, `out/ui/notebook.css`: the only .png in the bundle and the only files under `out/`),
 `characters/<id>.js` for EVERY id in `src/demo/roster.json` (shipped + WIP, so `?wip=1` works; the public page offers the
 finished ones only) plus character modules other shipped code imports (life's `mannequin.js`), and only the three r170
 files actually reached (three.module.js, BufferGeometryUtils, ConvexGeometry, ConvexHull) + three's LICENSE. Never
-shipped: tools/ shots/ docs/ research/ **refs/** (private third-party images) out/ scenes/ node_modules/; the build also
-refuses any .png/.jpg/.md/.py/.sh. It fails on any relative import that is not in the bundle, a bare import the map does
-not cover, or an absolute URL. All URLs are relative, so copy the folder under any sub-path of another site
+shipped: tools/ shots/ docs/ research/ **refs/** (private third-party images) out/ (except the ui-assets.json list)
+scenes/ node_modules/; the build also refuses any .png (except that list) /.jpg/.md/.py/.sh, any other file under out/,
+and any bundled module that imports scenes/. It fails on any relative import that is not in the bundle, a bare import
+the map does not cover, or an absolute URL. All URLs are relative, so copy the folder under any sub-path of another site
 (`https://host/v3-art-demo/` — the trailing slash matters; static hosts redirect to it). No server-side code, no build
 step; any static file host with `text/javascript` for .js works.
 
@@ -319,7 +420,10 @@ step; any static file host with `text/javascript` for .js works.
 `./vendor/three/` and the map is removed (it exits 1 if an inline `<script>` or a bare three import is left). Then the
 build greps the bundle for anything else that would need `'unsafe-eval'` / inline script (eval, `new Function`, string
 timers, `javascript:` URLs, data: workers, inline `on*=` handlers): none. The inline `<style>` and the data: portraits are
-allowed (`style-src 'unsafe-inline'`, `img-src data:`). So the dev tree keeps its import map; only the bundle is rewritten.
+allowed (`style-src 'unsafe-inline'`, `img-src data:`), and so are the game UI's skins: `out/ui/panels.css` /
+`notebook.css` are `<link>`ed from 'self' and carry their frames as data: PNGs and the pixel face as a data: TTF
+(`font-src data:`); the portrait avatars become data: URLs (`toDataURL`). So the dev tree keeps its import map; only the
+bundle is rewritten.
 
 **Verify.** `VERIFY_PLAY=1 tools/demo-bundle.sh verify` serves the bundle under `/v3-art-demo/` on 127.0.0.1:8091 (render-host)
 with a tiny Python server that sends EXACTLY that CSP header (checked with curl first), then runs `tools/demo-smoke.mjs
@@ -414,7 +518,15 @@ walks to the night-visit point with lights lit; leaves by walking out / 'leave';
 on; a re-visit compiles nothing) · doors (4 doors incl. house-14, steps back off each doorstep) · roster (`--chars 5`:
 shipped + WIP, the panel's groups / portraits, one model per character, programs) · time (scrub, 24 h at 120 min/s:
 programs constant, no frame > 50 ms) · phases (V) + bell · ceremony (P: day → nomination → vote → execution → night)
-· controls · quality reload (state + position kept) + a reload inside a house (`?in=` brings the player back in).
+· controls · **gameui** (real mouse / keys: right-click point at a townsperson + a spot, the pie by right-hold + hover +
+release = a teal pin with its drop + pop, right-drag + dead zone = sticky + click = a crimson pin, G + the violet swatch
++ F at the cursor, click your own pin = remove, Clear my pins; J = the notebook (Seats rows, the held book on the player),
+the Notes tab + typing = the quill, keys never reach the game, saved to localStorage, Esc closes and the book goes; the
+panel's "big" toggle + J = the 3D big book, "v2 size" + right-click = the 24 px finger, both back, no reload, programs
+constant) · **touch** (a phone page, 390 x 844 @2x, isMobile + hasTouch: the HUD below the folded panel
+(`cover.top`), the toolbar's notebook on the canvas and a tap opens it, the notebook above the reader, the panel's
+notebook button folds the panel, a CDP long press = the touch pie (not before 450 ms), lift = sticky, tap the teal wedge
+= a teal pin without walking, a short tap still walks, the portrait opens the dock; no errors, no CSP violations) · quality reload (state + position kept) + a reload inside a house (`?in=` brings the player back in).
 
 1. `demo.html` boots to the town in < 6 s on the 4090, no console / page / shader errors (`tools/demo-lead.mjs` exit 0),
    boot screen gone, 60 fps reported.
@@ -476,3 +588,34 @@ programs constant, no frame > 50 ms) · phases (V) + bell · ceremony (P: day �
     framed beside the panel.
   - `tools/remote.sh node tools/demo-lead.mjs shots/demo-lead/r6/boot-night.png --wait 3000 --q tod=night` → errors [],
     60 fps, 43 programs; `--q intro=1` → errors []; `--q "at=37.6,32.8" --keys KeyD:2500` → walked into house-7.
+- **Game UI round (2026-10-17: the pixel3d UI library in the demo, §4.7)**, all on render-host (RTX 4090, headless
+  Chromium, 1280 x 720):
+  - Baseline before any change: `tools/remote.sh node tools/demo-perf.mjs --q "tod=noon&intro=0" --secs 5 --frames 60`
+    → 60 fps, frame p95 16.7 ms, CPU 7.22 ms / frame (pipeline 5.33), synced 8.49 ms, 278 calls, 43 programs.
+  - After (same command, 2 runs each, `gameui=0` = the A/B in the same tree): **on** CPU 7.40 / 7.58 ms (pipeline 5.52 /
+    5.66), frame p95 16.7 / 16.8, **281 calls, 48 programs** (constant through the day cycle, the playtest's 'time' step);
+    **off** CPU 7.24 / 7.33 (pipeline 5.34 / 5.45), 278 calls, 43 programs. GPU time per frame (timer queries, RAF stopped,
+    scratch `shots/demo-ui/gputime.mjs`): ~1.44-1.48 ms with the game UI vs ~1.24-1.35 ms with `gameui=0`. The synced
+    metric (renderAt + readPixels while the RAF loop keeps running) reads 10.5 / 11.4 vs 7.3 / 8.0 ms; with the loop
+    stopped the bursts are within noise of each other, so that gap is contention, not GPU work (the timer queries).
+    First cut with the library's `src/ui/layer.js` (full clears + 3 full uploads per frame, every pass always on): CPU
+    8.0, synced 12.3. `renderer.copyTextureToTexture` for sub-uploads made it worse (CPU 8.3-8.6: its 5 `gl.getParameter`
+    reads are synchronous round trips) → raw `texSubImage2D` per band run + byte blits of cached pieces + idle passes off.
+  - `tools/remote.sh node shots/demo-ui/check.mjs shots/demo-ui/r6` (scratch: real mouse / keys) → point (person, place),
+    pie hot wedge + teal pin, dock + violet F pin, notebook seats / notes typing (write), big book, v2 point: OK.
+    `check2.mjs` (night, talk outline + glyph, phases, inside house-8 + notebook + big book, the keys overlay) and
+    `check3.mjs` (`npcs=6`: owl / skeleton-chef / mushroom talking with bubbles) → OK; all shots looked at
+    (`shots/demo-ui/r3..r8`).
+  - `tools/remote.sh node tools/demo-play.mjs --out shots/demo-ui/play1 --skip loading,crates,houses,doors,roster,time,phases,ceremony,reload`
+    → PLAYTEST OK (43 s), 6b game UI all green, programs 48 → 48.
+  - `tools/remote.sh node tools/demo-roster.mjs --browser --shots shots/demo-ui/roster` → **browser check OK** (27 offered,
+    every swap programs 49-50, `?wip=1` 36 with 9 WIP), no ERRORS.
+  - `tools/demo-bundle.sh build` (final code) → 194 files, 6,762,652 bytes (src/ui 377,721 B in 19 reached modules, out/ui 376,267 B in
+    the 6 listed files), CSP pass rewrote 140 / 181 .js, 0 inline scripts, 0 bare three imports, CSP-safe.
+  - `VERIFY_PLAY=1 tools/demo-bundle.sh verify` → header check exact, **SMOKE OK 5/5, csp violations 0** (high / low x
+    noon / night + the tour), **PLAYTEST OK (179 s)** against the bundle under the exact CSP incl. 6b game UI (point at
+    owl, pie → teal pin + pop, notebook held → write → saved, big book + an NPC reading, v2 finger, programs 48 → 48),
+    1546 requests, 1 non-200 (the /v3-art-demo → / redirect). Smoke runs: 60 fps, frame p95 16.7-16.8 ms, high noon 48
+    programs / 287 calls. Shots: `shots/bundle-final/{smoke,play}/` (looked at: play 48-56 `ui-*`, smoke tour).
+  - `tools/remote.sh node tools/demo-roster.mjs --browser --shots shots/demo-ui/roster2` (final code) → browser check OK.
+

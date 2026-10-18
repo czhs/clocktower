@@ -49,8 +49,11 @@ const srcPrint = (text) => { if (!text) return null; let h = 2166136261 >>> 0; f
 const prevManifest = (() => { try { return JSON.parse(fs.readFileSync(OUT, 'utf8')); } catch { return null; } })();
 const prevRow = (id) => prevManifest?.characters?.find?.((c) => c.id === id) ?? null;
 
+// ids the user asked to skip (pipeline/skip.txt, one per line, # comments) never reach the demo, public or ?wip=1
+const SKIP = new Set((fs.existsSync(path.join(ROOT, 'pipeline/skip.txt')) ? fs.readFileSync(path.join(ROOT, 'pipeline/skip.txt'), 'utf8') : '')
+  .split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#')));
 const ids = fs.readdirSync(path.join(ROOT, 'characters'))
-  .filter((f) => f.endsWith('.js') && !f.startsWith('_')).map((f) => f.slice(0, -3)).filter((id) => !EXCLUDE.has(id)).sort();
+  .filter((f) => f.endsWith('.js') && !f.startsWith('_')).map((f) => f.slice(0, -3)).filter((id) => !EXCLUDE.has(id) && !SKIP.has(id)).sort();
 const idRe = (id) => new RegExp(`(^|[^\\w-])\`?${id.replace(/[-]/g, '\\-')}\`?(?![\\w-])`, 'i');
 
 // ---- (1a) docs/CHARACTER_STATUS.md
