@@ -4,13 +4,13 @@
 // scatter). The bundled trees.js is patched (build/townBake.ts) so createTree first asks globalThis.__ctTreeBake for
 // the call; this module answers from a cache of earlier outputs and records the misses:
 //   - store: IndexedDB 'ct-town-bake' (one record per vendor build + quality tier + build texel size: the leaf spacing
-//     follows the window's low-res height), gzip (CompressionStream), written after the town is up (idle), so only a
+//     follows the window's low-res height), stored as a raw Blob, written after the town is up (idle), so only a
 //     REPEAT join with the same window height replays. Entries of another vendor build are deleted on write.
 //   - the key, the binary format and the replay are bit-exact: scripts/v3/bake-town.mjs --verify compares every replayed
 //     tree with the live one (geometry, leaf instances, bounds, materials, the re-sort at the vote yaw).
 //   - never throws into the build: any cache failure = live generation (stats.error says why).
 import * as THREE from 'three';
-import { BodyWriter, decodeBake, encodeBake, treeKey, type BakeHeader, type DecodedBake, type GeoRec, type Ref, type TreeRec } from './bakeFormat';
+import { BodyWriter, decodeBake, encodeHead, treeKey, type BakeHeader, type DecodedBake, type GeoRec, type Ref, type TreeRec } from './bakeFormat';
 
 declare const __CT_VENDOR_HASH__: string | undefined;
 /** Hash of the vendor tree + the patch, compiled in by vite.config.ts (undefined in unit tests / the harness). */
@@ -36,7 +36,7 @@ export interface TreeBakeStats {
   misses: number;
   /** ms spent reading + decompressing + decoding the cached record before the build */
   readMs: number;
-  /** cached record size (gzip bytes), 0 = none */
+  /** cached record size (bytes), 0 = none */
   bytes: number;
   /** ms spent recording misses during the build */
   recordMs: number;
@@ -131,8 +131,8 @@ export class TreeRecorder {
   }
 }
 
-/** Merge the replayed record's entries the build used (kept) with the recorded misses into one encoded record. */
-export function encodeRecord(vendorHash: string, rec: TreeRecorder, prev: DecodedBake | null): Uint8Array {
+/** Merge the previous record's entries with the recorded misses into one encoded record (a Blob of the parts). */
+export function encodeRecord(vendorHash: string, rec: TreeRecorder, prev: DecodedBake | null): Blob {
   if (prev) {
     // re-home the previous entries into the new body (a window height seen before keeps its trees)
     for (const [k, e] of Object.entries(prev.header.keys)) {
@@ -143,7 +143,7 @@ export function encodeRecord(vendorHash: string, rec: TreeRecorder, prev: Decode
     }
   }
   const header: BakeHeader = { v: 1, vendorHash, generator: 'client', three: THREE.REVISION, keys: rec.keys };
-  return encodeBake(header, rec.body.bytes());
+  return new Blob([encodeHead(header) as BlobPart, ...(rec.body.chunks() as BlobPart[])]);
 }
 
 // ------------------------------------------------------------------------------------------------ IndexedDB
@@ -164,33 +164,32 @@ function req<T>(r: IDBRequest<T>): Promise<T> {
     r.onerror = () => reject(r.error ?? new Error('indexedDB request failed'));
   });
 }
-async function pipe(data: ArrayBuffer | Uint8Array, stream: CompressionStream | DecompressionStream): Promise<ArrayBuffer> {
-  return new Response(new Blob([data as BlobPart]).stream().pipeThrough(stream)).arrayBuffer();
-}
-
 export const recordKey = (vendorHash: string, quality: string, lowH: number) => `${vendorHash}|${quality}|${lowH}`;
 
 export async function readRecord(key: string): Promise<{ dec: DecodedBake; bytes: number } | null> {
   const db = await openDb();
   try {
-    const gz = (await req(db.transaction(STORE, 'readonly').objectStore(STORE).get(key))) as ArrayBuffer | undefined;
-    if (!gz) return null;
-    return { dec: decodeBake(await pipe(gz, new DecompressionStream('gzip'))), bytes: gz.byteLength };
+    const v = (await req(db.transaction(STORE, 'readonly').objectStore(STORE).get(key))) as Blob | undefined;
+    if (!(v instanceof Blob)) return null;
+    return { dec: decodeBake(await v.arrayBuffer()), bytes: v.size };
   } finally {
     db.close();
   }
 }
 
-/** Write a record; delete every record of another vendor build. Returns the gzip bytes. */
-export async function writeRecord(key: string, data: Uint8Array): Promise<number> {
-  const gz = await pipe(data, new CompressionStream('gzip'));
+/**
+ * Write a record (a Blob: the browser stores it off the main thread; no CompressionStream: gzip of ~22 MB ran on the
+ * main thread as one 0.6 s task at CPU x4, and its inflate cost ~0.2 s at every read); delete every record of another
+ * vendor build. Returns the stored bytes.
+ */
+export async function writeRecord(key: string, data: Blob): Promise<number> {
   const db = await openDb();
   try {
     const st = db.transaction(STORE, 'readwrite').objectStore(STORE);
     const vh = key.split('|')[0]!;
     for (const k of (await req(st.getAllKeys())) as string[]) if (!k.startsWith(`${vh}|`)) st.delete(k);
-    await req(st.put(gz, key));
-    return gz.byteLength;
+    await req(st.put(data, key));
+    return data.size;
   } finally {
     db.close();
   }
@@ -209,7 +208,7 @@ export interface TreeBakeSession {
 
 /** Open the cache for a build (reads the record for this quality + texel height). Never throws. */
 export async function openTreeBake(quality: string, lowH: number): Promise<TreeBakeSession | null> {
-  if (!VENDOR_HASH || typeof indexedDB === 'undefined' || typeof DecompressionStream === 'undefined') return null;
+  if (!VENDOR_HASH || typeof indexedDB === 'undefined' || typeof Blob === 'undefined') return null;
   const stats: TreeBakeStats = { hits: 0, misses: 0, readMs: 0, bytes: 0, recordMs: 0, stored: false, error: null };
   const key = recordKey(VENDOR_HASH, quality, lowH);
   const t0 = performance.now();

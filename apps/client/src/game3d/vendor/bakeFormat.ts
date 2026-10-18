@@ -53,6 +53,10 @@ export class BodyWriter {
     this.size += a.byteLength;
     return [arrType(a), off, a.length];
   }
+  /** The body as its parts (no concatenation: a Blob of them is written without one big copy). */
+  chunks(): readonly Uint8Array[] {
+    return this.parts;
+  }
   bytes(): Uint8Array {
     const out = new Uint8Array(this.size);
     let o = 0;
@@ -62,6 +66,18 @@ export class BodyWriter {
     }
     return out;
   }
+}
+
+/** The encoded head (magic, JSON, padding) for a body that follows it (encodeBake = head + body). */
+export function encodeHead(header: BakeHeader): Uint8Array {
+  const json = new TextEncoder().encode(JSON.stringify(header));
+  const head = 8 + json.byteLength;
+  const out = new Uint8Array(head + ((8 - (head % 8)) % 8));
+  const dv = new DataView(out.buffer);
+  dv.setUint32(0, MAGIC, true);
+  dv.setUint32(4, json.byteLength, true);
+  out.set(json, 8);
+  return out;
 }
 
 export function encodeBake(header: BakeHeader, body: Uint8Array): Uint8Array {
