@@ -351,9 +351,17 @@ export const v3atlas = {
     const root = document.documentElement;
     const vars = themeVars(store.tokens(look));
     for (const v of skinned?.vars ?? []) if (!(v in vars)) root.style.removeProperty(v);
-    for (const [k, v] of Object.entries(vars)) root.style.setProperty(k, v);
+    for (const [k, v] of Object.entries(vars)) if (root.style.getPropertyValue(k) !== v) root.style.setProperty(k, v);
     if (!skinned) {
-      const onResize = () => root.style.setProperty('--px', String(uiScale(window.innerHeight)));
+      // (v3 perf ui) write --px only when the scale changes: a custom property on <html> restyles the whole document,
+      // and 'resize' fires continuously while a window is dragged
+      let px = '';
+      const onResize = () => {
+        const next = String(uiScale(window.innerHeight));
+        if (next === px && root.style.getPropertyValue('--px') === next) return;
+        px = next;
+        root.style.setProperty('--px', next);
+      };
       window.addEventListener('resize', onResize);
       let link: HTMLLinkElement | null = null;
       if (panelsWanted()) {
