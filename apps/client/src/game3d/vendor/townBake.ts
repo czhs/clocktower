@@ -143,7 +143,7 @@ export function encodeRecord(vendorHash: string, rec: TreeRecorder, prev: Decode
     }
   }
   const header: BakeHeader = { v: 1, vendorHash, generator: 'client', three: THREE.REVISION, keys: rec.keys };
-  return new Blob([encodeHead(header) as BlobPart, ...(rec.body.chunks() as BlobPart[])]);
+  return new Blob([encodeHead(header) as BlobPart, ...(rec.body.chunks() as unknown as BlobPart[])]);
 }
 
 // ------------------------------------------------------------------------------------------------ IndexedDB

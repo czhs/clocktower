@@ -54,7 +54,7 @@ describe('bake format', () => {
     expect(c[1] % 8).toBe(0);
     const header: BakeHeader = { v: 1, vendorHash: 'h', generator: 't', three: '170', keys: {} };
     const bytes = encodeBake(header, w.bytes());
-    const dec = decodeBake(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+    const dec = decodeBake(bytes.slice().buffer);
     expect(dec.header.vendorHash).toBe('h');
     expect([...dec.view(a)]).toEqual([1, 2, 3]);
     expect([...dec.view(b)]).toEqual([Math.PI, -0.1]);
