@@ -230,8 +230,11 @@ v2; v3.0 is on the dev service, see "v3 handoff" below.)
   atlases are `DYNAMIC` at the edge) and Smart Tiered Cache. Brotli pass-through already works (no Compression Rule
   change needed).
 - **Next = v3.3:** the prototypes on branches `v33-tiles`, `v33-bake`, `v33-sprites`, `v33-light`, `v33-gpu` are still
-  running (agent worktrees in `.claude/worktrees/`); merge what wins. Laptop (tp64) access for the iGPU A/B is pending the
-  user's Mac setup. Everything under "Next = v3.2" in the v3.1 entry below that v3.2 did not do (town-batch laptop A/B,
+  running (agent worktrees in `.claude/worktrees/`); merge what wins. A real laptop with an Intel Arc iGPU is reachable for
+  measurements since 16:10 (access details in the gitignored CLAUDE.local.md; method in docs/perf-v3/laptop.md once its
+  baseline lands). GitHub: every v3 work branch (`v3-perf-*`, `v31-*`, `v32-early`, `v33-*`) and the release tags are
+  pushed, and `main` = the released v3-game commit (user 2026-10-18: "make sure all this v3 stuff is on the github so
+  others can work on it"). Everything under "Next = v3.2" in the v3.1 entry below that v3.2 did not do (town-batch laptop A/B,
   cheap cpu-tier cut-away, deferred C2 QA findings, KHR_parallel_shader_compile run, render-check CT_GL, runtime budget
   keys incl. `v3IdleLobbyFps` / `v3IdleNightFps` ≤ 32 and `v3WalkFps` ≥ 58) carries over.
 
