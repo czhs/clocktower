@@ -91,6 +91,13 @@ export async function createPlayer(demo) {
   let facing = 0, handle = null, loading = null, nearDoor = null, lastT = 0, moving = false, running = false;
   let path = null;          // { pts: [{x, z}], run, face, stuck }
   let emoting = null;       // clip name of a looping / held emote (released when walking)
+  // the GHOST STATE (a dead player who keeps walking, Clocktower rules; the user's bug "after ghost-emoting, walking
+  // turns me back"): the ghost emote (5 / its button) is a TOGGLE. On: the character's idle loop is its 'ghost' clip and
+  // ch.ghost = 1 (the character library's walking-ghost override, src/chars/character.js _ghostLevel), so walking, the
+  // other emotes and standing all stay ghost-shaded; off: ch.ghost = null + the normal idle. It survives a character
+  // swap / a teleport (re-applied to the new character when it can be a ghost: a 'ghost' clip; the Storyteller never
+  // ghosts, nor a character without one: the state is cleared with a toast).
+  let ghosted = false;
 
   // ------------------------------------------------------------------------------------------------ character
   const speeds = () => {
@@ -125,9 +132,41 @@ export async function createPlayer(demo) {
     engine.scene.add(h.root);
     if (prev) prev.dispose();
     handle = h; emoting = null;
+    if (ghosted && !applyGhost(true)) {
+      ghosted = false;
+      events.emit('player:ghost', { on: false, reason: 'character' });
+      if (!silent) events.emit('toast', { text: `${h.name ?? h.id} cannot be a ghost: the ghost state is cleared` });
+    }
     if (store.state.character !== id) store.set({ character: id }, 'player');
     if (!silent) events.emit('player:character', { id, handle: h });
     return h;
+  }
+  /** The character's ghost clip name, or null (no clip; the Storyteller never ghosts). */
+  const ghostClip = (h = handle) => {
+    if (!h || h.id === 'storyteller') return null;
+    const n = h.emotes ? h.emotes.ghost : 'ghost';
+    return n && h.spec.clips?.[n] ? n : null;
+  };
+  /** Put the current character into (on) / out of (off) the ghost state. Returns false when it cannot be a ghost. */
+  function applyGhost(on) {
+    if (!handle?.ch) return false;
+    const clip = on ? ghostClip() : null;
+    if (on && !clip) return false;
+    handle.ch.ghost = on ? 1 : null;
+    play(on ? clip : 'idle');
+    return true;
+  }
+  /** Ghost on / off (the ghost emote's toggle). Returns the new state, or null when this character cannot ghost. */
+  function setGhost(on) {
+    on = !!on;
+    if (on === ghosted) return ghosted;
+    if (on && !ghostClip()) return null;
+    path = null; emoting = null;
+    ghosted = on;
+    applyGhost(on);
+    events.emit('player:ghost', { on });
+    events.emit('player:emote', { clip: 'ghost', name: on ? ghostClip() : null, off: !on });
+    return ghosted;
   }
   store.on('character', ({ value, source }) => { if (source !== 'player' && value !== handle?.id) setCharacter(value).catch(() => {}); });
   const complete = () => (demo.characters ?? []).filter((c) => c.complete).map((c) => c.id);
@@ -140,6 +179,11 @@ export async function createPlayer(demo) {
   const play = (name) => (handle?.play ? handle.play(name) : handle?.ch.play(name));
   function emote(clip) {
     if (!handle) return false;
+    if (clip === 'ghost') {
+      if (ghosted) { setGhost(false); return true; }
+      if (handle.id === 'storyteller') { events.emit('toast', { text: 'The Storyteller never becomes a ghost' }); return false; }
+      if (ghostClip()) { setGhost(true); return true; }
+    }
     // game emotes: characters.js maps them to the spec's clips (handle.emotes; combat clips are never offered)
     const name = handle.emotes ? handle.emotes[clip ?? 'signature'] ?? null : clip ?? handle.spec.emote ?? null;
     if (!name || !handle.spec.clips?.[name]) {
@@ -431,6 +475,12 @@ export async function createPlayer(demo) {
     get running() { return running; },
     get path() { return path?.pts ?? null; },
     setCharacter, teleport, walkTo, goTo, spots, speeds, emote,
+    /** The ghost state (the ghost emote's toggle): get / set (setGhost(on) -> new state | null = cannot ghost). */
+    get ghost() { return ghosted; },
+    setGhost,
+    /** The ghost level the character's material shows now (rig.ghostLevel 0 | 1 | 2; 0 for a spec without spec.ghost,
+     *  whose ghost clip carries its own look): tests. */
+    get ghostLevel() { return handle?.ch?.rig?.ghostLevel ?? 0; },
     /** Test hook: click / tap at a screen point (the same code path as a real click). */
     clickAt: (x, y, run) => clickTo(x, y, run),
     /** What a screen point shows: { piece (house / tower / dais id under it) | null, ground: {x, z} on the y 0 plane | null }
@@ -496,7 +546,8 @@ export async function createPlayer(demo) {
       }
       moving = want > 0;
       if (moving) {
-        if (emoting) { play('idle'); emoting = null; }
+        // (a ghost's held / looping emote returns to the ghost loop; ch.ghost = 1 keeps the walk ghost-shaded)
+        if (emoting) { play(ghosted ? ghostClip() ?? 'idle' : 'idle'); emoting = null; }
         const step = want * dt;
         const got = collision.move(position, mv.x * step, mv.z * step);
         if (location === 'town') pushNPCs();

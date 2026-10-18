@@ -933,6 +933,59 @@ try {
         g = await gi();
         if (!g.pins.some((p) => p.color === 'teal' && p.removing) && g.pins.some((p) => p.color === 'teal')) fail('gameui: clicking your own teal pin did not remove it');
       }
+      // -- PERSON pins (the user's bug: five of their pins stacked over the Hound, no way to remove them): one pin per
+      //    townsperson (F on them again: same colour = removed, another colour = recoloured), a click / hover on the pin
+      //    (hand cursor + remove badge) removes it, the pie's "Remove my pin" on the townsperson, Clear my pins (below)
+      g = await gi();
+      const pn = visibleNpc(g);
+      if (!pn) fail('gameui: no townsperson on screen for the person-pin checks');
+      else {
+        const livePP = (x) => x.pins.filter((p) => p.kind === 'person' && !p.removing);
+        const body = px(pn.screen, -12);
+        const pp = r.personPins = { npc: pn.id };
+        await page.mouse.move(body.x, body.y); await press('KeyF'); await sleep(500);
+        g = await gi(); pp.first = livePP(g).map((p) => p.color);
+        await press('KeyF'); await sleep(400); g = await gi(); pp.sameColour = livePP(g).length;
+        await press('KeyF'); await sleep(300);
+        await page.evaluate(() => { window.__demo.demo.gameui.color = 'teal'; });
+        await press('KeyF'); await sleep(700); g = await gi(); pp.recolour = livePP(g).map((p) => p.color);
+        await shot('person-pin-on');
+        const rc = g.personPins?.find((x) => !x.removing);
+        if (rc) {
+          await page.mouse.move((rc.x + rc.w / 2) * S, (rc.y + rc.h / 2) * S); await sleep(250);
+          g = await gi(); pp.hover = g.hover; pp.cursor = g.cursor;
+          await shot('person-pin-hover');
+          await page.mouse.click((rc.x + rc.w / 2) * S, (rc.y + rc.h / 2) * S); await sleep(700);
+          g = await gi(); pp.clicked = livePP(g).length;
+          await page.mouse.move(body.x + 200, body.y + 120); await sleep(200);
+          await shot('person-pin-removed');
+        } else pp.rect = null;
+        // the pie's "Remove my pin" on the townsperson
+        await page.mouse.move(body.x, body.y); await press('KeyF'); await sleep(500);
+        pp.beforePie = livePP(await gi()).length;
+        await page.mouse.down({ button: 'right' }); await sleep(400);
+        g = await gi(); pp.pieItems = g.pie?.items ?? null;
+        const k = g.pie?.items?.indexOf('unpin') ?? -1;
+        if (k >= 0) { const n = g.pie.items.length, ang = -Math.PI / 2 + k * 2 * Math.PI / n; await page.mouse.move((g.pie.at[0] + Math.cos(ang) * 26) * S, (g.pie.at[1] + Math.sin(ang) * 26) * S, { steps: 4 }); await sleep(150); }
+        await page.mouse.up({ button: 'right' }); await sleep(600);
+        g = await gi(); pp.pieRemoved = livePP(g).length;
+        // one more for Clear my pins
+        await page.mouse.move(body.x, body.y); await press('KeyF'); await sleep(500);
+        g = await gi(); pp.beforeClear = livePP(g).length;
+        console.log(`   person pins on ${pn.id}: ${JSON.stringify(pp)}`);
+        if (pp.first.length !== 1) fail(`gameui: F on ${pn.id} did not drop one person pin (${JSON.stringify(pp.first)})`);
+        if (pp.sameColour !== 0) fail(`gameui: F again (same colour) on ${pn.id} did not remove the pin (${pp.sameColour} left)`);
+        if (pp.recolour.length !== 1 || pp.recolour[0] !== 'teal') fail(`gameui: F in another colour did not recolour the one pin (${JSON.stringify(pp.recolour)})`);
+        if (!rc) fail('gameui: no hit rect for the person pin');
+        else {
+          if (pp.hover?.kind !== 'pin' || pp.cursor !== 'pointer') fail(`gameui: hovering the person pin: ${JSON.stringify(pp.hover)} cursor ${pp.cursor}`);
+          if (pp.clicked !== 0) fail('gameui: clicking your person pin did not remove it');
+        }
+        if (k < 0) fail(`gameui: the pie on a townsperson carrying your pin has no "Remove my pin" (${JSON.stringify(pp.pieItems)})`);
+        else if (pp.pieRemoved !== 0) fail(`gameui: the pie's "Remove my pin" left ${pp.pieRemoved} person pin(s)`);
+        if (pp.beforeClear !== 1) fail('gameui: could not drop the person pin for the Clear my pins check');
+      }
+      g = await gi();
       if (g.dock?.rects?.clear) {
         await page.mouse.click((g.dock.rects.clear.x + 20) * S, (g.dock.rects.clear.y + 5) * S);
         await sleep(700);
@@ -1215,20 +1268,41 @@ try {
       if (!ev.veil || !/Night falls/.test(ev.nightCaption ?? '')) fail(`gameui2: no night veil (${ev.veil} ${ev.nightCaption})`);
       if (!ev.dawn) fail('gameui2: no dawn after night -> day');
       await setState({ seats: Array.from({ length: 15 }, () => ({ occupied: false, dead: false, ghostVote: true, nominated: false, onBlock: false })), nominee: null });
-      // -- the ghost reveal with a character that has a ghost clip
-      const ghostChar = await page.evaluate(() => (window.__demo.demo.characters ?? []).filter((c) => c.complete).map((c) => c.id).find((id) => ['clarabelle', 'owl', 'fox', 'rabbit'].includes(id)) ?? null);
+      // -- the GHOST STATE (a toggle, player.js setGhost): a character with spec.ghost + a ghost clip; 5 = on (the reveal,
+      //    the ghost label), WALKING stays ghost (rig level 1, ch.ghost = 1), another emote keeps it, 5 = off (level 0);
+      //    on again + a swap to a character that cannot ghost clears it
+      // (a character with spec.ghost: the walking-ghost override needs it; owl / fox carry the older baked ghost clip only)
+      const ghostChar = await page.evaluate(() => { const ok = (window.__demo.demo.characters ?? []).filter((c) => c.complete).map((c) => c.id); return ['clarabelle', 'cilantro', 'opal', 'requin'].find((id) => ok.includes(id)) ?? null; });
       if (ghostChar) {
         const back = (await info()).character;
         await setState({ character: ghostChar }); for (let k = 0; k < 60; k++) { if ((await info()).character === ghostChar) break; await sleep(100); }
         await sleep(700);
-        const hasGhost = await page.evaluate(() => { const h = window.__demo.demo.player.handle; return !!(h?.emotes?.ghost); });
+        const gs = () => page.evaluate(() => { const P = window.__demo.demo.player; return { on: P.ghost, level: P.ghostLevel, chGhost: P.handle?.ch?.ghost ?? null, moving: P.moving }; });
+        const hasGhost = await page.evaluate(() => { const h = window.__demo.demo.player.handle; return !!(h?.emotes?.ghost && h.spec?.ghost); });
         const g0 = (await gi()).events.ghosts;
-        await press('Digit5'); await sleep(400);
-        g = await gi(); r.ghost = { char: ghostChar, hasGhost, ghosts: [g0, g.events.ghosts], label: g.members.find((m) => m.you)?.ghostLabel };
+        await press('Digit5'); await sleep(500);
+        g = await gi();
+        r.ghost = { char: ghostChar, hasGhost, ghosts: [g0, g.events.ghosts], label: g.members.find((m) => m.you)?.ghostLabel, on: await gs() };
         await shot('ui2-ghost');
-        if (hasGhost && (!(g.events.ghosts > g0) || !r.ghost.label)) fail(`gameui2: the ghost emote showed no ghost reveal / ghost label (${JSON.stringify(r.ghost)})`);
-        await press('Digit1'); await sleep(200);
+        // walk (D held) and sample mid-walk: still a ghost
+        await page.keyboard.down('KeyD'); await sleep(450);
+        r.ghost.walking = await gs(); r.ghost.walkLabel = (await gi()).members.find((m) => m.you)?.ghostLabel;
+        await shot('ui2-ghost-walking');
+        await sleep(300); await page.keyboard.up('KeyD'); await sleep(600);
+        r.ghost.stopped = await gs();
+        await press('Digit1'); await sleep(500); r.ghost.talk = await gs();
+        await press('Digit5'); await sleep(500); r.ghost.off = await gs(); r.ghost.offLabel = (await gi()).members.find((m) => m.you)?.ghostLabel;
+        await press('Digit5'); await sleep(300);
         await setState({ character: back }); for (let k = 0; k < 60; k++) { if ((await info()).character === back) break; await sleep(100); }
+        await sleep(400); r.ghost.swapped = await gs();
+        const G = r.ghost;
+        if (hasGhost) {
+          if (!(G.ghosts[1] > G.ghosts[0]) || !G.label || !G.on.on || G.on.level !== 1) fail(`gameui2: ghost on (5): ${JSON.stringify(G)}`);
+          if (!G.walking.moving || !G.walking.on || G.walking.level !== 1 || G.walking.chGhost !== 1 || !G.walkLabel) fail(`gameui2: walking turned the ghost back (${JSON.stringify(G.walking)} label ${G.walkLabel})`);
+          if (G.stopped.level !== 1 || G.talk.level !== 1) fail(`gameui2: the ghost did not stay a ghost after walking / another emote (${JSON.stringify([G.stopped, G.talk])})`);
+          if (G.off.on || G.off.level !== 0 || G.off.chGhost !== null || G.offLabel) fail(`gameui2: ghost off (5 again): ${JSON.stringify(G.off)} label ${G.offLabel}`);
+          if (G.swapped.on) fail(`gameui2: swapping to '${back}' (no ghost clip) kept the ghost state`);
+        }
       } else note('gameui2: no ghost-clip character offered (ghost reveal not checked)');
       await sleep(500);
       const prog1 = (await info()).programs;

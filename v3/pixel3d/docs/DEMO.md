@@ -284,6 +284,13 @@ moments; the demo never imports `scenes/`). `?gameui=0` turns it off (the A/B ba
   socket (portraits atlas `icon_<id>`; for the shipped four, which have none, the roster thumb (the dock button's portrait)
   fitted into 12 px: the figure's bounding square box-filtered, alpha cut at 40 %; the initial only before the thumb loads), a pin pop over you in the pin's colour. F = a pin of the current
   colour at the cursor; left-click your own pin = remove (remove badge + tooltip on hover); the dock's Clear my pins.
+  **Person pins (pass A, the user's bug: five of their pins stacked in a fan over the Hound, no way to remove them):**
+  ONE pin of yours per townsperson: F / the Pin button / a pie swatch on someone who already carries your pin REPLACES
+  it (the same colour removes it: a toggle; another colour recolours it, dropped again). A click / tap on your person pin
+  removes it (its drawn body + 3 px all round as the hit area, last frame's rects: `info().personPins`), hovering it
+  shows the hand cursor, the remove badge and "Your pin on <name> · click to remove"; a press on a townsperson who
+  carries your pin (or on the pin) offers the pie's "Remove my pin"; Clear my pins clears person pins too. The tip and
+  the Pin button's tooltip say so ("click a pin to remove it", "their pin again: remove").
 - **Social dock** (emotes `drawDock`, bottom right of the view; G or a click on your portrait in the gold ring = the dock
   button): Point / Pin (arm, then click the town; the armed pill has Cancel), the 8 swatches (current colour), Clear my
   pins, the key hints.
@@ -330,8 +337,9 @@ moments; the demo never imports `scenes/`). `?gameui=0` turns it off (the A/B ba
 - **Action bar** (the user's request: "a clickable-UI way to do emote / notebook, not just pressing the letter";
   `src/demo/actionbar.js` art + tables, gameui.js layout / hit tests): EVERY key action of the demo is a pixel button in
   the library's look (kit `drawBox` frames raised / hover / pressed / disabled, hud / emotes / indicators glyphs + a few
-  7x7 glyphs of its own), its key as a small hint plate in the corner (the tiny face; `[` `]` `` ` `` `=` drawn there; no
-  hints on a touch screen). The bar (6 x 18 px buttons): **emotes** (Space: opens the emote palette: talk 1, vote 2,
+  7x7 glyphs of its own), its key as a small hint plate in the corner (the tiny face; `[` `]` `` ` `` `=` drawn there,
+  Space as a 5 px space-bar sign and the right button as a 4 px mouse with its right half lit: the 'SPC' / 'RMB' words
+  covered half the glyphs; no hints on a touch screen). The bar (6 x 18 px buttons): **emotes** (Space: opens the emote palette: talk 1, vote 2,
   point 3, die 4, ghost 5, signature 6 / Space; greyed when your character has no such clip, except point: the P2.8 pop),
   **point** (right-click: arms a point, then click), **pin** (F: arms a pin of the current colour, then click),
   **palette** (G: the social dock), **notebook** (J), **more** (the tray, two rows: camera Q E − = C, clock T , . N, town
@@ -347,8 +355,8 @@ moments; the demo never imports `scenes/`). `?gameui=0` turns it off (the A/B ba
   row, mouse or touch wording, naming the buttons) shows ONCE per visit (ui.js: 1.2 s after the player gets control, 9 s
   of rendered time), then stays hidden. The toolbar's first button is an always-there LIGHTBULB: a click / tap reopens
   the tip (until closed). Dismissing it (its ×, the bulb, Esc, the 9 s, "never show again") plays the tip SHRINKING and
-  FLYING into the bulb (8 drawings at 15 fps, eased, the last two dissolving), then the bulb glows and pulses 1.8 s
-  (gold frame, lit glass with rays, a 2-ring halo; lit 2 drawings of 3) so players learn where it went (`rm=1`: no fly,
+  FLYING into the bulb (8 drawings at 15 fps, eased, the last two dissolving), then the bulb glows 1.8 s (gold frame
+  and lit glass with rays throughout, a 2-ring halo pulsing on 2 drawings of 3) so players learn where it went (`rm=1`: no fly,
   the glow only). "Never show again" is saved in localStorage `hollowmere-tip:never` (every access in try / catch; no
   storage = this visit only) and stops the automatic tip on later visits (`ui.emoteTip.skipped = 'never'`); the bulb
   stays.
@@ -367,6 +375,19 @@ moments; the demo never imports `scenes/`). `?gameui=0` turns it off (the A/B ba
   (the canvas minus `cover`, below the chips, above the bottom row) get an indicators edge disc (`edgeDisc` +
   `edgeDiscPointer`: the person's portrait, or your pin / the glove in it) on that area's edge, its tail pointing the way
   (≤ 6).
+- **The ghost STATE (pass A, the user's bug: "after ghost-emoting, walking turns me back")**: in Clocktower a ghost is
+  a dead player who keeps walking, so the ghost emote (5, the palette's ghost button) is a TOGGLE (player.js
+  `setGhost(on)`, `player.ghost`, `player.ghostLevel` = the rig's displayed level): on = the character's idle loop is its
+  `ghost` clip and `ch.ghost = 1` (the character library's walking-ghost override, `src/chars/character.js
+  _ghostLevel`), so walking, standing and the other emotes (talk / point / vote / signature play, then the ghost loop
+  comes back) all stay ghost-shaded; 5 again = `ch.ghost = null` + the normal idle. The ghost reveal (wisp + burst)
+  plays when you BECOME a ghost; your label is the ghost variant for the whole state (walking too); the bar's emote
+  button and the palette's ghost button are lit (gold) while you are a ghost. The Storyteller never ghosts (the button
+  is greyed: no ghost clip; 5 = a toast). A character swap / teleport KEEPS the state when the new character has a
+  ghost clip and CLEARS it (with a toast) when it has none. Only specs with `spec.ghost` (the wave-3 shared ghost:
+  clarabelle, cilantro, mincut, opal, preservation, progress, requin, ...) stay ghost-shaded while walking; the older
+  baked-ghost clips (owl, fox, frog, toad, crow, polly) have no `spec.ghost`, so their walk looks alive (the ghost loop
+  comes back when they stop): a character-session item (§8).
 - **Point fallback (P2.8)**: a character without a `point` clip (the shipped four) shows the emotes group's point pop
   over its head (right-click point, the bar, the 3 key: `gameui.emoteFallback`, no "has no 'point' emote" toast).
 - **Labels (P3.9)**: a name label the DOM covers (the panel's band, the folded panel's top band, the open notebook) or
@@ -403,10 +424,16 @@ doubled:
 - **props**: a hanging shop sign by the red stall (12.1, 15.9), wind chimes by the boathouse bench (10.9, 23.9), a
   scarecrow in the pumpkin patch (34.8, 23.1): things the town does not have; `lights: []`. (Walk-through: not in the
   collision.)
-- **Budget** (measured, render-host, 1280 x 720): declared 15 calls (birds 3, fireflies 2, fire 2, props 8), measured +11
-  at noon on the spawn; 0 lights; +8 programs, all compiled behind the loading screen (the warm-up frames show the night
-  and the day drawings), none in play (pigeons scatter, props react, night fireflies, the day cycle);
-  CPU 0.2-0.4 ms per frame for the set (`info().updateMs`).
+- **Budget** (measured, render-host, 1280 x 720): declared 15 calls (birds 3, fireflies 2, fire 2, props 8); the props'
+  emissive GLOW batch only draws lamp flames and the demo's props have no lamp, so ambient.js hides it (one call less,
+  no light inside). Measured on the bundle, `ambient=1` vs `ambient=0` (which keeps life's own bugs) at the same views
+  (`tools/demo-perf.mjs --page dist/v3-art-demo/index.html`, pass A): spawn noon 278 → 298, the west green at night
+  (9.5, 18.5) 374 → 390, the pigeons' lane at noon 338 → 355, i.e. **+15 to +20 calls** depending on the view (the
+  birds / props / fixtures meshes cast shadows and are outlined: 3 passes each); 0 lights; +8 programs, all compiled
+  behind the loading screen (the warm-up frames show the night and the day drawings), none in play (pigeons scatter,
+  props react, night fireflies, the day cycle: the playtest's programs stay 56 → 56); CPU 0.14-0.4 ms per frame for the
+  set (`info().updateMs`). Over the ~14 target by a few calls in busy views: dropping a prop (3 calls with its shadow
+  and outline) or the birds' shadows would buy it back (not done: the gap list (P2.5) asks for both).
 - `demo.ambient.info()` → {on, tod, systems, calls, lights, over, updateMs, actors, per (each system's stats: flees,
   ff, moth, bfly ...)}; `?ambient=0` off (A/B; life keeps its own bugs).
 
@@ -455,12 +482,12 @@ ends. A click overrides the automatic fold until the condition changes. On a pho
 | L | life on / off | time |
 | H | the keys overlay (Esc closes) | ui |
 | ` (backquote) | show / hide the panel | ui |
-| [ / ], 1-6, Space | previous / next character; emotes (talk, vote, point, die, ghost, signature) | player |
+| [ / ], 1-6, Space | previous / next character; emotes (talk, vote, point, die, ghost, signature); 5 = the GHOST toggle (on: you stay a ghost, walking too; 5 again: alive) | player |
 | N | jump to the next time of day | time |
 | right-click | point at a townsperson (finger + trail + ping) or a spot; the character turns and plays `point` | ui (game UI) |
 | right-drag / right-hold | the pie: Point, 8 pin colours, Remove my pin; release on a wedge (dead zone = sticky, click a wedge) | ui (game UI) |
-| F | drop a pin of the current colour at the cursor (a townsperson: on their name) | ui (game UI) |
-| click your own pin | remove it | ui (game UI) |
+| F | drop a pin of the current colour at the cursor (a townsperson: on their name; one pin of yours per townsperson: F on them again = the same colour removes it, another colour recolours it) | ui (game UI) |
+| click / tap your own pin | remove it (a place pin, or your pin over a townsperson's name; hand cursor + remove badge + tooltip on hover) | ui (game UI) |
 | G / click your portrait (bottom right) | the social dock: Point / Pin (arm, then click), colours, Clear my pins | ui (game UI) |
 | J / the toolbar's book | the notebook (Seats / Notes); Esc closes it (and the pie / an armed dock) | ui (game UI) |
 | P | play / stop the voting ceremony | time |
@@ -555,6 +582,12 @@ under a stricter policy), so the detector works. Stills + GIF: `shots/bundle-fin
   light the room); the hearth / candle pools read, the far side is dark (`play6/07-in-house-8-night-bed.png`).
 
 ## 8. Contract requests raised by the demo (for the owners of read-only code)
+- **characters (pass A, the ghost state)**: the walking ghost needs `spec.ghost` (the wave-3 shared ghost: `ch.ghost = 1`
+  shades the walk). owl, fox, frog, toad, crow and polly carry the older baked ghost clip only, so as a ghost they walk
+  "alive" (the ghost loop returns when they stop). Port them to `spec.ghost` (CHARACTER_PLAYBOOK wave-3 banner).
+- **ui (pass A, person pins)**: `markers/draw.js drawPersonPins` could return each pin's drawn rect (the demo
+  re-derives the fan's dx / dy to hit-test person pins); `emotes drawDock`'s help lines could mention "click a pin to
+  remove it" for person pins too (today: "Click your pin: remove").
 - **core (Engine.start)**: the RAF loop computes `t = (now − t0) / 1000` with `t0 = performance.now()` taken before the
   first RAF, whose timestamp can be EARLIER → the first frame runs at a negative t. Clamp `t ≥ 0` (or take t0 from the
   first RAF timestamp). The demo runs its own loop meanwhile.
@@ -613,7 +646,9 @@ shipped + WIP, the panel's groups / portraits, one model per character, programs
 programs constant, no frame > 50 ms) · phases (V) + bell · ceremony (P: day → nomination → vote → execution → night)
 · controls · **gameui** (real mouse / keys: right-click point at a townsperson + a spot, the pie by right-hold + hover +
 release = a teal pin with its drop + pop, right-drag + dead zone = sticky + click = a crimson pin, G + the violet swatch
-+ F at the cursor, click your own pin = remove, Clear my pins; J = the notebook (Seats rows, the held book on the player),
++ F at the cursor, click your own pin = remove; PERSON pins on a townsperson: F = one pin, F again (same colour) =
+removed, another colour = recoloured (still one), hover = the hand cursor + remove badge, a click on it = removed, the
+right-hold pie on them offers "Remove my pin" and it removes it; Clear my pins (a person pin among them); J = the notebook (Seats rows, the held book on the player),
 the Notes tab + typing = the quill, keys never reach the game, saved to localStorage, Esc closes and the book goes; the
 panel's "big" toggle + J = the 3D big book, "v2 size" + right-click = the 24 px finger, both back, no reload, programs
 constant) · **touch** (a phone page, 390 x 844 @2x, isMobile + hasTouch: the HUD below the folded panel
@@ -626,8 +661,10 @@ bar: every key binding has a button, hover tooltip, the emote palette + the poin
 far place pin; no label drawn under the panel; the tip: shown at the first run and gone by itself, the bulb reopens it,
 its × flies it into the bulb + the glow, "never show again" closes + saves it; the ambient layer: 4 systems, 0 lights,
 ≤ 16 calls, butterflies by day, pigeons scatter when you walk at them, fireflies + moths at night; the events: captions,
-vote clock, execution, night veil, dawn, the ghost reveal + ghost label with a ghost-clip character; programs constant
-but for a swapped-in character's own) · **storyteller** (a `?wip=1&tod=23` page: the swap compiles ≤ 3 programs, no
+vote clock, execution, night veil, dawn; the GHOST STATE with a `spec.ghost` character (clarabelle): 5 = on (reveal,
+ghost label, rig level 1), walking (D held) stays ghost (level 1, `ch.ghost` 1, ghost label), stopped + a talk emote
+still level 1, 5 = off (level 0, `ch.ghost` null, normal label), on again + a swap to a character without a ghost clip
+clears it; programs constant but for a swapped-in character's own) · **storyteller** (a `?wip=1&tod=23` page: the swap compiles ≤ 3 programs, no
 `char-light` PointLight, the carried lantern lit, the poof, no frame > 150 ms) · quality reload (state + position kept;
 no automatic tip after "never show again", the bulb still there) + a reload inside a house (`?in=` brings the player back in).
 
@@ -722,3 +759,20 @@ no automatic tip after "never show again", the bulb still there) + a reload insi
     programs / 287 calls. Shots: `shots/bundle-final/{smoke,play}/` (looked at: play 48-56 `ui-*`, smoke tour).
   - `tools/remote.sh node tools/demo-roster.mjs --browser --shots shots/demo-ui/roster2` (final code) → browser check OK.
 
+- **Demo completion pass A (2026-10-17 evening; P1.3 lantern, P1.4 touch, P2.5 ambient, P2.6 events, P2.7 arrows,
+  P2.8 point fallback, P3.9 labels, the action bar, the lightbulb tip, + the user's ghost-state and person-pin bugs)**,
+  render-host, all on the BUNDLE unless noted:
+  - `tools/demo-roster.sh --browser` → `browser check OK`, `demo-roster.sh: roster ok: 27 offered, 8 WIP, 35 rows`,
+    `pulled render-host:pixel3d/shots/demo-roster/emit-…json -> src/demo/roster.json` (exit 0; no skipped id).
+  - `VERIFY_PLAY=1 tools/demo-bundle.sh all` → built 198 files, 6,912,983 bytes, CSP-safe; `CSP header check: exact`;
+    `SMOKE OK: 5/5`, `csp violations: 0 … over 5 runs`; `PLAYTEST OK (247 s)` (every step incl. 6b person pins, 6d
+    action bar / tip / ambient / events / ghost state, 6e Storyteller, 6c touch, 7 reload); 2048 requests, 1 non-200
+    (the /v3-art-demo → / redirect).
+  - Perf, before = the published 5ad84e13ab bundle (`dist/v3-art-demo-baseline` on the host), after = this bundle,
+    `tools/demo-perf.mjs --page <bundle>/index.html`, two alternating runs: spawn noon 281 → 296 calls, 48 → 56
+    programs, 60 fps, frame p95 16.7 ms, CPU 2.2 → 2.1-2.6 ms, synced 7.5-7.6 → 7.4-8.0 ms; west green at night
+    374 → 392 calls, 46 → 54 programs, CPU 2.0 → 2.2-2.4 ms, synced 6.7-6.9 → 7.1-7.2 ms. The +8 programs are the
+    ambient layer's (compiled in the warm-up; constant in play). Storyteller swap at 23:00 (`--hitch char:storyteller`):
+    worst frame 233 → 17 ms, programs +23 (48 → 71) → +2 (56 → 58).
+  - `tools/remote.sh node tools/demo-evidence.mjs --out shots/demo-passA/final` (new: real mouse / keys / touch on the
+    bundle) → `EVIDENCE OK`, 0 errors; the tip-into-bulb frames → `tip-to-bulb.gif` (PIL on the host). All looked at.

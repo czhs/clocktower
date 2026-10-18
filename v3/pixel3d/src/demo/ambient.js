@@ -75,6 +75,9 @@ export async function createAmbientLayer(demo) {
     autoUpdate: false, ticker: { mode: 'live', window: 5 },
   });
   amb.root.name = 'demo-ambient';
+  // (calls) the props system's emissive GLOW batch only draws lamp flames; the demo's props (sign, chimes, scarecrow) have
+  // no lamp, so the batch is empty forever: hidden = one draw call less (it holds no light: no program change)
+  if (!AMB_SPOTS.props.some((p) => p.kind === 'lamp')) amb.root.traverse((o) => { if (o.name === 'ambient-props-glow') o.visible = false; });
 
   // ---- actors: you (live, with your velocity) + the idle NPCs (standing)
   const last = new THREE.Vector3(), vel = new THREE.Vector3(), tmp = new THREE.Vector3();

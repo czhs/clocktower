@@ -178,7 +178,7 @@ export async function createGameUI(demo) {
       you.id = h.id; you.name = h.name ?? h.id; you.handle = h; you.height = h.height ?? 1.3;
       you.top = Math.min(VISUAL_TOP[h.id] ?? you.height, you.height);
       you.pos.set(P.position.x, room ? room.floorY ?? 0 : groundY(P.position.x, P.position.z), P.position.z);
-      you.face = P.facing; you.clip = h.ch?.state?.clip ?? 'idle';
+      you.face = P.facing; you.clip = h.ch?.state?.clip ?? 'idle'; you.ghost = !!P.ghost;
       members.push(you);
     }
     const list = demo.npcs?.members;
@@ -309,18 +309,36 @@ export async function createGameUI(demo) {
   }
   function dropPin(target, c = color) {
     if (!target) return false;
+    // (the user's bug: five pins stacked over the Hound) ONE pin of yours per townsperson: F / the Pin button / a pie
+    // swatch on someone who already carries your pin REPLACES it: the same colour removes it (a toggle), another
+    // colour recolours it (dropped again in the new colour)
+    if (target.member && !target.member.you) {
+      const had = personPinOf(target.member);
+      if (had) {
+        if (had.color === c) { removePin(had); return true; }
+        had.color = c; had.t0 = L.t;
+        pop('you', 'pin', c);
+        events.emit('gameui:pin', { color: c, kind: 'person', recolour: true });
+        return true;
+      }
+    }
     if (livePins().length >= MAX_PINS) { toast(`You have ${MAX_PINS} pins: remove one first`, { kind: 'error', ms: 2600 }); return false; }
-    if (target.member && !target.member.you) pins.push({ kind: 'person', slot: target.member.slot, id: target.member.id, color: c, t0: L.t, removeAt: null });
+    if (target.member && !target.member.you) pins.push({ kind: 'person', slot: target.member.slot, id: target.member.id, name: target.member.name, color: c, t0: L.t, removeAt: null });
     else if (target.ground) pins.push({ kind: 'place', p: target.ground.clone(), color: c, t0: L.t, removeAt: null });
     else return false;
     pop('you', 'pin', c);
     events.emit('gameui:pin', { color: c, kind: pins[pins.length - 1].kind });
     return true;
   }
+  /** Your live person pin on a townsperson (member), or null. */
+  const personPinOf = (m) => { for (let i = pins.length - 1; i >= 0; i--) { const p = pins[i]; if (p.kind === 'person' && p.removeAt == null && p.slot === m.slot && p.id === m.id) return p; } return null; };
   const removePin = (pin) => { if (pin && pin.removeAt == null) { pin.removeAt = L.t - pin.t0; events.emit('gameui:unpin', { color: pin.color }); return true; } return false; };
   const clearPins = () => { let n = 0; for (const p of pins) if (removePin(p)) n++; return n; };
-  // a place pin of mine under a screen point (the pin body: 18 x 26 above its spot)
+  // a pin of mine under a screen point: a person pin over a name (its drawn body + 3 px all round, last frame's rects:
+  // generous, they are small and they bob), else a place pin (the pin body: 18 x 26 above its spot)
+  const personPinRects = [];  // [{ pin, x, y, w, h }] screen texels, filled by the person-pin drawing
   const pinAt = (s) => {
+    for (let i = personPinRects.length - 1; i >= 0; i--) { const r = personPinRects[i]; if (r.pin.removeAt == null && inRect(s, r)) return r.pin; }
     for (let i = pins.length - 1; i >= 0; i--) {
       const p = pins[i];
       if (p.kind !== 'place' || p.removeAt != null) continue;
@@ -343,13 +361,18 @@ export async function createGameUI(demo) {
   /** What is under the cursor: { s (screen texel), member, ownPin, ground (Vector3) }. */
   function targetAt(clientX, clientY) {
     const s = toScreen(clientX, clientY);
-    const member = memberAt(s), ownPin = pinAt(s);
+    const ownPin = pinAt(s);
+    // a press on your person pin = on its townsperson (the pie names them; F / a swatch toggles / recolours the pin)
+    let member = memberAt(s);
+    if (!member && ownPin?.kind === 'person') { const m = npcOf(ownPin.slot); if (m && m.id === ownPin.id) member = m; }
     let ground = null;
     try {
       const g = demo.player?.pickAt?.(clientX, clientY)?.ground;
       if (g) ground = new THREE.Vector3(g.x, demo.player?.interior ? demo.player.interior.floorY ?? 0 : groundY(g.x, g.z), g.z);
     } catch { ground = null; }
-    return { s, member: member && !member.you ? member : null, onYou: member?.you ?? false, ownPin, ground };
+    // (the pie's "Remove my pin" also when the press is on a townsperson who carries your pin)
+    const own = ownPin ?? (member && !member.you ? personPinOf(member) : null);
+    return { s, member: member && !member.you ? member : null, onYou: member?.you ?? false, ownPin: own, ground };
   }
 
   // ---- the radial pie (emotes art; screen tier, at the press point)
@@ -461,7 +484,8 @@ export async function createGameUI(demo) {
     else if (value === 'day') setCaption('A new day in Hollowmere.', 'sun', 3);
   }));
   offs.push(store.on('nominee', () => { if (store.state.phase === 'vote') startVote(); }));
-  offs.push(events.on('player:emote', (e) => { if (e?.clip === 'ghost' && !e.fallback) { ghostFx = { t0: L.t }; evInfo.ghosts++; } }));
+  // the ghost reveal when you BECOME a ghost (the ghost emote is a toggle, player.js setGhost; not on the way back)
+  offs.push(events.on('player:emote', (e) => { if (e?.clip === 'ghost' && !e.fallback && !e.off) { ghostFx = { t0: L.t }; evInfo.ghosts++; } }));
   offs.push(events.on('player:character', ({ id } = {}) => {
     if ((id === 'storyteller' || prevChar === 'storyteller') && demo.player?.position) { poof = { t0: L.t, pos: demo.player.position.clone() }; evInfo.poofs++; }
     ghostFx = null;
@@ -622,8 +646,9 @@ export async function createGameUI(demo) {
         fastBlit(LL.ground, cached(`ring${k}${T.gold}`, () => IA.youRing(k, T)), f.x - 16, f.y - 8);
       }
       // the name label (indicators art), drawn once per name + token set: drawText at (cx, top) = this crop at (cx + dx, top - 1 + dy)
-      // the ghost emote (or a ghost clip): the indicators' ghost label variant (ghost ink + the little sheet ghost)
-      const ghostly = m.clip === 'ghost';
+      // a ghost (your ghost STATE: player.ghost, walking too; or a ghost clip): the indicators' ghost label variant
+      // (ghost ink + the little sheet ghost)
+      const ghostly = m.clip === 'ghost' || (m.you && m.ghost);
       const lab = ghostly
         ? piece(`labg${m.name}${T.ghost}`, 160, 12, (im) => { const g = IA.labelImage(m.name, 'ghost', T); im.blit(g, 80 - (g.w >> 1), 0); })
         : piece(`lab${m.name}${T.labelText}${T.labelLine}`, 160, 12, (im) => IA.label(im, 80, 1, m.name, 'player', T));
@@ -671,14 +696,23 @@ export async function createGameUI(demo) {
       }
     }
     if (LL.phase !== 'main') return;
-    // person pins over their names (mine), fanned
+    // person pins over their names (mine), fanned; their screen rects for the click-to-remove / hover (pinAt)
+    personPinRects.length = 0;
     for (const m of members) {
       if (m.you || !m._shown) continue;
       const list = pins.filter((p) => p.kind === 'person' && p.slot === m.slot && p.id === m.id);
       if (!list.length) continue;
-      const icon = iconOf(you.id, you.name);
-      drawPersonPins(LL, F, { cx: LL.at(m.head()).x, labelTop: m._stack + 1, t, still: reduced,
+      const icon = iconOf(you.id, you.name), cx = LL.at(m.head()).x, labelTop = m._stack + 1;
+      const hv = hover?.kind === 'pin' ? list.indexOf(hover.pin) : -1;
+      drawPersonPins(LL, F, { cx, labelTop, t, still: reduced, hover: hv,
         pins: list.map((p) => ({ color: p.color, ...icon, age: t - p.t0, removeAt: p.removeAt })) });
+      // (drawPersonPins' fan: dx / dy per index, the pin's anchor 8, 25: body x - 8 .. x + 10, y - 25 .. y + 1)
+      const n = list.length, mid = (n - 1) / 2, spread = Math.min(0.62, 2.4 / Math.max(1, n));
+      list.forEach((p, i) => {
+        const kk = i - mid, dx = n > 1 ? Math.round(kk * 18 * spread) : 0, dy = n > 1 ? Math.round(Math.abs(kk) * 1.5) : 0;
+        const x = cx + dx - LL.MARGIN, y = labelTop - 1 + dy - LL.MARGIN;
+        personPinRects.push({ pin: p, x: x - 8 - 3, y: y - 25 - 3, w: 19 + 6, h: 27 + 6 });
+      });
       m._stack -= 28;
     }
     // emote pops (stacked over the name / bubble / pins)
@@ -708,6 +742,11 @@ export async function createGameUI(demo) {
   // the hovered own pin's tooltip (emotes art) above everything anchored
   L.add((LL) => {
     if (hover?.kind !== 'pin' || hover.pin.removeAt != null) return;
+    if (hover.pin.kind === 'person') {
+      const r = personPinRects.find((x) => x.pin === hover.pin);
+      if (r) E.drawPinTip(LL.world, r.x + 11 + LL.MARGIN, r.y + LL.MARGIN, `Your pin on ${hover.pin.name ?? 'them'} · click to remove`, LL.tok, { removable: true });
+      return;
+    }
     const q = LL.at(hover.pin.p);
     E.drawPinTip(LL.world, q.x, q.y - 28, 'Your pin · click to remove', LL.tok, { removable: true });
   }, 36);
@@ -807,8 +846,8 @@ export async function createGameUI(demo) {
     fastBlit(img, shot.phase, x0 + shot.chip.w - 2, y0 + 4 + 1);
     R.topRow = { y1: y0 + 22, spans: [[x0 - 2, x0 + shot.chip.w - 2 + shot.phase.w], [x1 - toolbar.length * 17, x1]] };
     // toolbar (right of the visible area): the tip's lightbulb / notebook / control panel / keys; each button drawn
-    // once per state. The bulb is ALWAYS there; after a dismissed tip has flown into it, it glows + pulses GLOW_S s
-    // (lit 2 drawings of 3 at 7.5 fps: a gold frame, the lit glass with rays and a 2-ring halo; off on the 3rd)
+    // once per state. The bulb is ALWAYS there; after a dismissed tip has flown into it, it glows GLOW_S s (a gold
+    // frame + the lit glass with rays throughout, the 2-ring halo pulsing: on 2 drawings of 3 at 7.5 fps)
     let bx = x1;
     R.toolbar = {};
     const glowing = t >= bulbGlow && t < bulbGlow + GLOW_S;
@@ -816,7 +855,8 @@ export async function createGameUI(demo) {
       const b = toolbar[i], w = 15;
       bx -= w;
       const on = (b.k === 'notebook' && nb.isOpen) || (b.k === 'panel' && s.ui) || (b.k === 'tip' && !!tipState);
-      const lit = b.k === 'tip' && (!!tipState || (glowing && (reduced || frameAt(t - bulbGlow, 7.5, 3) !== 2)));
+      // (the glass stays lit through the whole glow; the halo ring pulses: 2 drawings of 3 at 7.5 fps)
+      const lit = b.k === 'tip' && (!!tipState || glowing);
       const st = on ? 'pressed' : hover?.kind === 'tool' && hover.k === b.k ? 'hover' : 'raised';
       const btn = cached(`tool${b.k}${st}${lit}${T.ink}`, () => {
         const im = new PixelImage(w, 15);
@@ -895,7 +935,8 @@ export async function createGameUI(demo) {
     for (let i = 0; i < AB.BAR.length; i++) {
       const b = AB.BAR[i], x = barX + i * (BT + BG);
       const on = (b.k === 'emote' && emotePal) || (b.k === 'point' && armed === 'point') || (b.k === 'pin' && armed === 'pin') || (b.k === 'dock' && dockOpen) || (b.k === 'notebook' && nb.isOpen) || (b.k === 'more' && trayOpen);
-      const state = on ? 'pressed' : hoverIs('bar', b.k) ? 'hover' : 'raised';
+      // (the emote button is lit while you are a ghost: the state shows without opening the palette)
+      const state = on ? 'pressed' : b.k === 'emote' && demo.player?.ghost ? 'lit' : hoverIs('bar', b.k) ? 'hover' : 'raised';
       const g = AB.glyph(b.glyph, T, { color });
       fastBlit(img, btnImg(`bar${b.k}${b.k === 'pin' ? color : ''}`, { state, glyph: g, hint: b.hint }), x, barY);
       R.bar.push({ k: b.k, x, y: barY, w: BT, h: BT });
@@ -912,7 +953,9 @@ export async function createGameUI(demo) {
         const x = px + 3 + i * (BT + BG), y = py + 3 + j * (BT + BG), dis = kind === 'pal' && !hasEmote(it.k);
         const id = it.k ?? it.code;
         const paused = it.code === 'KeyT' && (s.paused || !s.timeSpeed);
-        const state = dis ? 'disabled' : hoverIs(kind, id) ? 'hover' : 'raised';
+        // the ghost button is lit while you are a ghost (a toggle: player.ghost)
+        const lit = kind === 'pal' && it.k === 'ghost' && !!demo.player?.ghost;
+        const state = dis ? 'disabled' : lit ? 'lit' : hoverIs(kind, id) ? 'hover' : 'raised';
         fastBlit(img, btnImg(`${kind}${id}${paused}`, { state, glyph: AB.glyph(it.glyph, T, { paused }), hint: it.hint }), x, y);
         out.push({ k: id, code: it.code, x, y, w: BT, h: BT, off: dis, tip: it.tip, hint: it.hint });
       }));
@@ -980,7 +1023,9 @@ export async function createGameUI(demo) {
       if (it) {
         const label = it.hint ? `${it.tip} (${it.hint === 'SPC' ? 'Space' : it.hint === 'RMB' ? 'right-click' : it.hint})` : it.tip;
         const tt = cached(`tt|${label}|${T.ink}`, () => AB.tooltipImage(label, T));
-        fastBlit(img, tt, Math.max(x0, Math.min(x1 - tt.w, it.x + (it.w >> 1) - (tt.w >> 1))), it.y - 3 - tt.h);
+        // (above the whole popover for a palette / tray button: over the row above it hid those buttons)
+        const box = hover.kind === 'pal' ? R.pal : hover.kind === 'tray' ? R.tray : null;
+        fastBlit(img, tt, Math.max(x0, Math.min(x1 - tt.w, it.x + (it.w >> 1) - (tt.w >> 1))), (box ? box.y : it.y) - 3 - tt.h);
       }
     }
     // the pie (above the HUD)
@@ -1081,7 +1126,7 @@ export async function createGameUI(demo) {
   }
   function onMove(e) {
     if (e.target === canvas) cursor = { x: e.clientX, y: e.clientY };
-    else if (!rpress && !pie) { cursor = null; hover = null; return; }
+    else if (!rpress && !pie) { cursor = null; hover = null; setCursor(false); return; }
     const s = toScreen(e.clientX, e.clientY);
     if (rpress && !pie && Math.hypot(e.clientX - rpress.cx, e.clientY - rpress.cy) > (rpress.touch != null ? TOUCH_SLOP_PX : E.TIMING.RIGHT_DRAG_PX)) {
       if (rpress.touch != null) { if (e.pointerId === rpress.touch) rpress = null; }   // the finger moved first: a pan, not a press
@@ -1091,12 +1136,16 @@ export async function createGameUI(demo) {
       if (rpress?.touch != null) { if (e.pointerId !== rpress.touch) return; eat(e); }   // the finger slides over the wedges (no pan)
       pie.hot = wedgeAt(s); hover = null; return;
     }
-    if (!hasControl()) { hover = null; return; }
+    if (!hasControl()) { hover = null; setCursor(false); return; }
     const hit = screenHit(s);
-    if (hit) { hover = hit; return; }
+    if (hit) { hover = hit; setCursor(!hit.off); return; }
     const own = pinAt(s);
     hover = own ? { kind: 'pin', pin: own } : null;
+    setCursor(!!own);
   }
+  // a hand cursor over what a click uses (your pins, the buttons): your pins are discoverable as removable
+  let cursorOn = false;
+  const setCursor = (on) => { if (on !== cursorOn) { cursorOn = on; canvas.style.cursor = on ? 'pointer' : ''; } };
   function onUp(e) {
     if (consumeUp.has(e.button)) { consumeUp.delete(e.button); eat(e); }
     const finger = rpress?.touch != null && e.pointerId === rpress.touch;
@@ -1162,7 +1211,7 @@ export async function createGameUI(demo) {
       const t = L.t;
       return {
         enabled: L.enabled, screen: [W(), H()], cover, touch: touchUI, pressing: rpress ? (rpress.touch != null ? 'touch' : 'right') : null, options: { ...hud.uiOptions },
-        members: members.map((m) => { const k = talk.get(keyOf(m)); return { id: m.id, name: m.name, you: m.you, slot: m.slot, clip: m.clip, talking: !!k?.on, bubble: k?.line && t < k.bubbleUntil ? k.line : null, screen: L.atScreen(m.pos), shown: !!m._shown, ghostLabel: m.clip === 'ghost' }; }),
+        members: members.map((m) => { const k = talk.get(keyOf(m)); return { id: m.id, name: m.name, you: m.you, slot: m.slot, clip: m.clip, talking: !!k?.on, bubble: k?.line && t < k.bubbleUntil ? k.line : null, screen: L.atScreen(m.pos), shown: !!m._shown, ghostLabel: m.clip === 'ghost' || (m.you && m.ghost) }; }),
         hover: hover ? { kind: hover.kind, k: hover.k ?? null } : null,
         point: point ? { kind: point.target.kind, age: +(t - point.t0).toFixed(2), scale: hud.uiOptions.pointerScale, frameSize: framesNow().point?.size ?? 20 } : null,
         pie: pie ? { open: !pie.commit && pie.cancel == null, input: pie.input, sticky: pie.sticky, hot: pie.hot, items: pie.items.map((x) => x.key), off: [...pie.off], at: [pie.cx, pie.cy] } : null,
@@ -1180,6 +1229,9 @@ export async function createGameUI(demo) {
           flying: !!tipFly, glowing: t >= bulbGlow && t < bulbGlow + GLOW_S, never: tipNever, neverSaved: tipNeverSaved, shownCount: tipShown, dismissed: [...tipDismissed] },
         events: { ...evInfo, captions: [...evInfo.captions], caption: caption?.text ?? null, veil: !!veil, dawn: !!dawn, vote: R.vote ? { ...R.vote } : null, exec: !!exec, ghost: !!ghostFx, poof: !!poof },
         offscreen: offscreen.map((o) => ({ ...o })),
+        /** your person pins' hit rects (screen texels, generous) as drawn last frame */
+        personPins: personPinRects.map((r) => ({ x: r.x, y: r.y, w: r.w, h: r.h, color: r.pin.color, slot: r.pin.slot, removing: r.pin.removeAt != null })),
+        cursor: canvas.style.cursor || 'default',
       };
     },
     update(t, dt) {

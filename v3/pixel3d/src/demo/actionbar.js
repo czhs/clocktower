@@ -22,8 +22,8 @@ export const GAP = 2;
 export const BAR = [
   { k: 'emote', tip: 'Emotes', hint: 'SPC', glyph: 'emote' },
   { k: 'point', tip: 'Point: click a townsperson or a spot', hint: 'RMB', glyph: 'point' },
-  { k: 'pin', tip: 'Pin: click a spot or a townsperson', hint: 'F', glyph: 'pin' },
-  { k: 'dock', tip: 'Pin colours + clear my pins', hint: 'G', glyph: 'palette' },
+  { k: 'pin', tip: 'Pin: click a spot or a townsperson (their pin again: remove)', hint: 'F', glyph: 'pin' },
+  { k: 'dock', tip: 'Pin colours + clear all my pins', hint: 'G', glyph: 'palette' },
   { k: 'notebook', tip: 'Notebook', hint: 'J', glyph: 'notebook' },
   { k: 'more', tip: 'More: camera, clock, town, characters', hint: null, glyph: 'more' },
 ];
@@ -32,7 +32,7 @@ export const EMOTES = [
   { k: 'vote', code: 'Digit2', hint: '2', tip: 'Vote (raise a hand)', glyph: 'vote' },
   { k: 'point', code: 'Digit3', hint: '3', tip: 'Point', glyph: 'pointE' },
   { k: 'die', code: 'Digit4', hint: '4', tip: 'Die', glyph: 'die' },
-  { k: 'ghost', code: 'Digit5', hint: '5', tip: 'Ghost', glyph: 'ghost' },
+  { k: 'ghost', code: 'Digit5', hint: '5', tip: 'Ghost on / off', glyph: 'ghost' },
   { k: 'signature', code: 'Space', hint: 'SPC', tip: 'Signature emote (6)', glyph: 'star' },
 ];
 export const TRAY = [
@@ -73,7 +73,7 @@ const ROWS = {
   camera: ['.HM....', 'HMMMMMS', 'HMDDDMS', 'HMDhDMS', 'HMDDDMS', 'SSSSSSS', '.......'],
   slower: ['...M..M', '..M..M.', '.M..M..', 'H..H...', '.M..M..', '..M..M.', '...S..S'],
   faster: ['M..M...', '.M..M..', '..M..M.', '...H..H', '..M..M.', '.M..M..', 'S..S...'],
-  life: ['.......', 'M.....M', 'HM...MS', '.HMHMS.', '..MSS..', '...S...', '.......'],
+  life: ['..HMM..', '.HMMMS.', 'HMMMMMS', '.SSMSS.', '...M...', '...M...', '..SSS..'],   // a little tree (town life)
   prev: ['....M', '...M.', '..H..', '.H...', '..M..', '...S.', '....S'],
   next: ['M....', '.M...', '..H..', '...H.', '..M..', '.S...', 'S....'],
   palette: ['.......', '.cc.yy.', '.cc.yy.', '.......', '.tt.vv.', '.tt.vv.', '.......'],
@@ -118,8 +118,9 @@ export function glyph(k, T, { color = 'crimson', paused = false } = {}) {
 export function bulb(T, lit = false) {
   // glass with a filament (the dark V), a cap of two iron bands; lit: hot gold glass, pale filament
   const rows = lit
-    ? ['..HHH..', '.HhhHM.', 'HhhHhMS', 'HHhMHMS', '.HMhMS.', '..IIi..', '..iIi..']
-    : ['..hhh..', '.hPPPp.', 'hPDPDPp', 'hPPDPPp', '.pPDPp.', '..IIi..', '..iIi..'];
+    ? ['..HHH..', '.HhhHM.', 'HhHHHMS', 'HMhhhMS', '.HhMhS.', '..IIi..', '..iIi..']
+    // (unlit: a filament bar on two legs low in the glass; the earlier two-dot filament read as a skull's eyes)
+    : ['..hhh..', '.hPPPp.', 'hPPPPPp', 'hPDDDPp', '.pDPDp.', '..IIi..', '..iIi..'];
   const g = HA.sprite(rows, gk(T));
   const o = new PixelImage(11, 11);
   o.blit(g, 2, 2);
@@ -130,14 +131,19 @@ export function bulb(T, lit = false) {
 
 // ------------------------------------------------------------------------------------------------ key hints
 // the tiny face (kit 'tiny') has caps, digits and - , . but no [ ] ` = : drawn here in the same 3x5 grid
-const EXTRA = { '[': ['##', '#.', '#.', '#.', '##'], ']': ['##', '.#', '.#', '.#', '##'], '`': ['#.', '.#', '..', '..', '..'], '=': ['...', '###', '...', '###', '...'] };
+const EXTRA = { '[': ['##', '#.', '#.', '#.', '##'], ']': ['##', '.#', '.#', '.#', '##'], '`': ['#.', '.#', '..', '..', '..'], '=': ['...', '###', '...', '###', '...'],
+  // (pass A look round: 'SPC' / 'RMB' plates covered half the bar's glyphs) a space bar and a mouse with its right
+  // button lit, one character each
+  '\u2423': ['.....', '.....', '.....', '#...#', '#####'], '\u25d0': ['#.##', '#.##', '####', '#..#', '.##.'] };
+// plate labels drawn as one symbol (the tables keep the readable names for the tooltips)
+const SYMBOL = { SPC: '\u2423', RMB: '\u25d0' };
 const hintCache = new Map();
 /** The key hint plate: tiny gold caps on an ink plate with an iron-line ring, 7 px tall. */
 export function hintImage(label, T) {
   const key = `${label}|${T.ink}`;
   let im = hintCache.get(key);
   if (im) return im;
-  const chars = [...String(label).toUpperCase()];
+  const chars = SYMBOL[label] ? [SYMBOL[label]] : [...String(label).toUpperCase()];
   const ws = chars.map((c) => (EXTRA[c] ? EXTRA[c][0].length : textWidth(c, 'tiny')));
   const tw = ws.reduce((a, b) => a + b, 0) + Math.max(0, chars.length - 1);
   im = new PixelImage(tw + 4, 9);
@@ -170,9 +176,9 @@ export function button(T, { state = 'raised', glyph: g, hint = null, w = BTN, h 
 /** The controls tip (hud drawKeyHint tokens): mouse / touch wording; both name the action bar. */
 export function tipTokens(touch) {
   return touch
-    ? [{ s: 'Tip:', b: true }, { s: ' tap to walk · hold a finger on the town to point or pin · the buttons at the bottom do the rest' }]
+    ? [{ s: 'Tip:', b: true }, { s: ' tap to walk · hold a finger on the town to point or pin · tap your pin to remove it · the buttons at the bottom do the rest' }]
     : [{ s: 'Tip:', b: true }, { s: ' ' }, { k: 'Space' }, { s: ' emote (' }, { k: '1' }, { s: '-' }, { k: '6' }, { s: ' more) · ' },
-      { k: 'Right' }, { s: ' point, drag: pins · ' }, { k: 'J' }, { s: ' notebook · or click the buttons at the bottom' }];
+      { k: 'Right' }, { s: ' point, drag: pins (click a pin to remove it) · ' }, { k: 'J' }, { s: ' notebook · or click the buttons at the bottom' }];
 }
 
 /** A tooltip plate (kit 'tooltip' frame + body text), drawn once per text. */
