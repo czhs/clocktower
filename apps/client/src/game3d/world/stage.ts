@@ -35,6 +35,7 @@ import { createInteriorManager, TOWER_KEY, type InteriorManager } from './interi
 import { createLightReserve, dimNearAnchors, LIGHT_BUDGET, RESERVE, type BorrowedLight, type BorrowOptions, type LightAnchorFn } from './lights';
 import { createTownPark } from './park';
 import { createCanopyFade, createCanopyUniforms, patchCanopyMaterial, type CanopyPoint } from './canopy';
+import { createShadowCadence, shadowEveryFor } from './shadowCadence';
 import { dialFace, dialFaceKey, DIAL_STEPS, timerTick, towerTimer, type DialFace } from './towerClock';
 import { chooseVoteFrame, keepOuts, voteFrameKey, type VoteFrame } from './voteFrame';
 
@@ -195,11 +196,17 @@ export async function createStage(host: EngineHost, o: StageOptions): Promise<St
   // canopy fade (D1): patched before the warm-up compiles anything, driven by uniforms only
   // (`ct.debug.v3canopy=0` = off, an A/B switch for perf runs; read once per build)
   let canopyOff = false;
+  let shadowOverride: string | null = null;
   try {
     canopyOff = localStorage.getItem('ct.debug.v3canopy') === '0';
+    shadowOverride = localStorage.getItem('ct.debug.v3shadowEvery');
   } catch {
     canopyOff = false;
   }
+  // perf(stage): the sun shadow map every 2nd frame at low (world/shadowCadence.ts; forced on cuts / room switches)
+  const shadows = createShadowCadence(shadowEveryFor(tier, shadowOverride));
+  const shadowMap = engine.renderer.shadowMap;
+  const shadowIn = { ready: false, location: 'outdoors', x: 0, z: 0, viewHeight: 1 };
   const canopyU = createCanopyUniforms();
   let canopyPatched = 0;
   if (!canopyOff) for (const m of canopyMaterials(town)) if (patchCanopyMaterial(m, canopyU)) canopyPatched++;
@@ -263,6 +270,15 @@ export async function createStage(host: EngineHost, o: StageOptions): Promise<St
     rooms.update(t, dt);
     reserve.update(darkness(clock.hour), t);
     cut?.update();
+    if (shadows.every > 1) {
+      const c = engine.camera;
+      shadowIn.ready = isReady;
+      shadowIn.location = rooms.drawn();
+      shadowIn.x = c.target.x;
+      shadowIn.z = c.target.z;
+      shadowIn.viewHeight = c.viewHeight;
+      shadowMap.autoUpdate = shadows.step(shadowIn);
+    }
   });
 
   // ---- per frame (Layer3d, before renderAt)
@@ -276,8 +292,13 @@ export async function createStage(host: EngineHost, o: StageOptions): Promise<St
   // reused per-frame inputs (no object literal per frame)
   const hourIn: HourInput = { phase: 'waiting', clock: null, nominationsOpen: false, serverNow: 0, sincePhaseMs: 0 };
   const camSet = { target: new THREE.Vector3(), yaw: 0, pitch: Math.PI / 6, viewHeight: 1 };
+  // the cottages (+ the tower) and their door centres (px), once: no regex over the buildings per frame
+  const HOUSE_ID = /^house-\d+$/;
+  const doorPts = layout.buildings
+    .filter((b) => b.id === 'clocktower' || HOUSE_ID.test(b.id))
+    .map((b) => ({ id: b.id, house: HOUSE_ID.test(b.id), key: b.id === 'clocktower' ? TOWER_KEY : Number(b.id.slice(6)), x: (b.door.x + 0.5) * layout.tileSize, y: (b.door.y + 0.5) * layout.tileSize, near: { id: b.id } }));
   const houseIndexOfSeat = (seat: number): number | null => {
-    const b = layout.buildings.find((x) => x.houseIndex === seat && /^house-\d+$/.test(x.id));
+    const b = layout.buildings.find((x) => x.houseIndex === seat && HOUSE_ID.test(x.id));
     return b ? Number(b.id.slice(6)) : null;
   };
   const prefetch = (state: Scene3dState, now: number) => {
@@ -290,14 +311,16 @@ export async function createStage(host: EngineHost, o: StageOptions): Promise<St
     }
     const me = state.me;
     if (!me || me.location !== 'outdoors') return;
-    let best: { i: number; d: number } | null = null;
-    for (const b of layout.buildings) {
-      const tower = b.id === 'clocktower';
-      if (!tower && !/^house-\d+$/.test(b.id)) continue;
-      const d = Math.hypot((b.door.x + 0.5) * layout.tileSize - me.x, (b.door.y + 0.5) * layout.tileSize - me.y);
-      if (d < PREFETCH_PX && (!best || d < best.d)) best = { i: tower ? TOWER_KEY : Number(b.id.slice(6)), d };
+    let bestKey: number | null = null; // (TOWER_KEY is -1)
+    let bestD = PREFETCH_PX;
+    for (const b of doorPts) {
+      const d = Math.hypot(b.x - me.x, b.y - me.y);
+      if (d < bestD) {
+        bestD = d;
+        bestKey = b.key;
+      }
     }
-    if (best) rooms.prefetch(best.i);
+    if (bestKey !== null) rooms.prefetch(bestKey);
   };
 
   const layer: Layer3d = {
@@ -364,12 +387,12 @@ export async function createStage(host: EngineHost, o: StageOptions): Promise<St
         playerPos.set(X, heightAt(X, Z), Z);
         havePos = true;
         let bd = NEAR_DOOR_PX;
-        for (const b of layout.buildings) {
-          if (!/^house-\d+$/.test(b.id)) continue;
-          const d = Math.hypot((b.door.x + 0.5) * layout.tileSize - me.x, (b.door.y + 0.5) * layout.tileSize - me.y);
+        for (const b of doorPts) {
+          if (!b.house) continue;
+          const d = Math.hypot(b.x - me.x, b.y - me.y);
           if (d < bd) {
             bd = d;
-            nearDoor = { id: b.id };
+            nearDoor = b.near;
           }
         }
       }
@@ -476,6 +499,7 @@ export async function createStage(host: EngineHost, o: StageOptions): Promise<St
         cut: cut ? cut.info() : null,
         canopy: { patched: canopyPatched, ...canopy.debug() },
         candlesRemoved,
+        shadows: { every: shadows.every, rendered: shadows.rendered, skipped: shadows.skipped },
         timer: { available: !!towerFace, readout: towerReadout, face: towerFaceKey, ...(towerFace ? { info: towerFace.info() } : {}) },
         vote: voteLast ? { yaw: Math.round((voteLast.yaw * 180) / Math.PI), pitch: Math.round((voteLast.pitch * 180) / Math.PI), viewHeight: +voteLast.viewHeight.toFixed(3), target: [+voteLast.target.x.toFixed(3), +voteLast.target.z.toFixed(3)], key: voteKey } : { preset: voteCameraPreset() },
         warm,
@@ -487,6 +511,7 @@ export async function createStage(host: EngineHost, o: StageOptions): Promise<St
       destroyed = true;
       for (const off of offs.splice(0)) off();
       rooms.dispose();
+      shadowMap.autoUpdate = true;
       towerFace?.dispose();
       // the piece registry: a closure the vendor keeps (V8 allocation-site feedback of a piece api literal) must not
       // reach every piece of this town after the unmount (C1 leak check)

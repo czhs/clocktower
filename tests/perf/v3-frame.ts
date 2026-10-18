@@ -43,7 +43,14 @@ const argv = process.argv.slice(2).filter((a) => a !== '--');
 const arg = (n: string, d: string) => (argv.includes(`--${n}`) ? argv[argv.indexOf(`--${n}`) + 1]! : d);
 const ROOT = path.resolve(arg('root', path.resolve(HERE, '../..')));
 const PORT = Number(arg('port', '3488'));
-if (PORT < 3488 || PORT > 3489) throw new Error('v3-perf-frame owns ports 3488-3489 only');
+// v3-perf-frame owns 3488-3489; v3-perf-stage (2026-10-18) measures the town on 3465-3469
+if (!((PORT >= 3488 && PORT <= 3489) || (PORT >= 3465 && PORT <= 3469))) throw new Error('v3-frame: ports 3488-3489 (v3-perf-frame) or 3465-3469 (v3-perf-stage) only');
+// --gl swiftshader (default, CPU raster) | gpu (the host GPU via ANGLE/Vulkan: same flags as tests/e2e/playwright.config.ts CT_GL=gpu)
+const GL = arg('gl', process.env.CT_GL === 'gpu' ? 'gpu' : 'swiftshader');
+// --phase waiting (default: the 10:00 stage hour) | night (a night game view: the light pool lit)
+const PHASE = arg('phase', 'waiting');
+// --ls key=value,key2=value2: extra localStorage entries before the mount (A/B debug switches, e.g. ct.debug.v3canopy=0)
+const LS = arg('ls', '').split(',').filter(Boolean).map((kv) => [kv.slice(0, kv.indexOf('=')), kv.slice(kv.indexOf('=') + 1)] as [string, string]);
 const TIERS = arg('tiers', 'high,low').split(',') as ('high' | 'low')[];
 const [VW, VH] = arg('viewport', '1920x1080').split('x').map(Number) as [number, number];
 const WORLD = arg('world', 'v3');
@@ -274,10 +281,16 @@ async function measureTier(tier: 'high' | 'low'): Promise<Json> {
   // sourceURL: the probe's own CPU / allocation samples land in the 'probe/other' bucket, not '(native)'
   await page.addInitScript({ content: `${readFileSync(path.join(HERE, 'v3-frame-probe.js'), 'utf8')}\n//# sourceURL=v3-frame-probe.js` });
   await page.goto(`${BASE}/__v3frame.html`);
-  await page.evaluate(() => {
-    localStorage.clear();
-    localStorage.setItem('ct.debug.camera', '1');
-  });
+  await page.evaluate(
+    ([lowTier, extra]) => {
+      localStorage.clear();
+      localStorage.setItem('ct.debug.camera', '1');
+      // pin the low tier: under Graphics 'auto' a low start is promoted to high on a fast GPU (TownGame3d allowPromote)
+      if (lowTier) localStorage.setItem('ct.fxQuality', 'low');
+      for (const [k, v] of extra) localStorage.setItem(k, v);
+    },
+    [tier === 'low', LS] as const,
+  );
   const cdp = await ctx.newCDPSession(page);
   await cdp.send('Performance.enable');
   type V3F = Record<string, (...a: never[]) => unknown>;
@@ -286,7 +299,9 @@ async function measureTier(tier: 'high' | 'low'): Promise<Json> {
   out.patch = await call('patchVendor');
   log(tier, 'patched', JSON.stringify(out.patch));
   const m0 = await metrics(cdp);
-  const mount = await call<Json>('mount', { tier, world: WORLD, players: PLAYERS, w: VW, h: VH });
+  // a minimal night game view (phase night -> 23:00, the pool lit); null = the lobby (10:00)
+  const gameView = PHASE === 'night' ? { kind: 'player', phase: 'night', dayNumber: 1, players: [], you: { pid: 'me', seat: 0 }, day: null, clock: null } : null;
+  const mount = await call<Json>('mount', { tier, world: WORLD, players: PLAYERS, w: VW, h: VH, gameView });
   out.mount = mount;
   log(tier, 'mount', JSON.stringify(mount).slice(0, 400));
   if (mount.readyErr) throw new Error(`not ready (${tier}): ${mount.readyErr}`);
@@ -432,7 +447,8 @@ async function main() {
   vite.stderr?.on('data', (d) => process.stderr.write(`[vite] ${d}`));
   await waitForVite();
   log('vite up');
-  browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--enable-precise-memory-info'] });
+  const glArgs = GL === 'gpu' ? ['--use-angle=vulkan', '--enable-features=Vulkan', '--enable-gpu', '--ignore-gpu-blocklist'] : ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'];
+  browser = await chromium.launch({ args: [...glArgs, '--enable-precise-memory-info'] });
   const tiers: Json[] = [];
   for (const tier of TIERS) {
     const t0 = Date.now();
@@ -454,6 +470,9 @@ async function main() {
     players: PLAYERS,
     walk: WALK,
     secs: SECS,
+    gl: GL,
+    phase: PHASE,
+    ls: Object.fromEntries(LS),
     load: { before: loadBefore, after: loadAfter, cores: cpus().length },
     browser: browser.version(),
     headline: tiers.filter((t) => !t.error).map(headline),

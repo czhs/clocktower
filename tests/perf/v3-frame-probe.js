@@ -212,7 +212,8 @@
       const orig = EP.renderAt;
       const w = function (t) {
         P.renderAts++;
-        if (!P.engine) P.engine = this;
+        // the live engine (a tier rebuild / remount destroys the first one: its scene is null afterwards)
+        if (!P.engine || (P.engine !== this && this.scene)) P.engine = this;
         const f = P.cur;
         if (!P.on || !f) return orig.call(this, t);
         try {
@@ -354,6 +355,7 @@
     if (!e) return { error: 'engine not captured' };
     const r = e.renderer;
     const scene = e.scene;
+    if (!scene) return { error: 'engine destroyed', renderAts: P.renderAts, fallbacks: [...(P.m?.fallbacks ?? [])], v3: window.__ctCamera?.v3?.() ?? null, errors: [...P.errors] };
     const c = { nodes: 0, matrixAutoUpdate: 0, meshes: 0, instanced: 0, instances: 0, skinned: 0, casters: 0, receivers: 0, noFrustumCull: 0, colorOnly: 0, points: 0, lines: 0, sprites: 0, staticTris: 0 };
     const vis = { meshes: 0, instanced: 0, casters: 0, tris: 0 };
     const mats = new Set();
@@ -426,6 +428,43 @@
     // the heaviest visible meshes (tris per pass; drawn in colour + normal (+ shadow when casting))
     heavy.sort((a, b) => b[0] - a[0]);
     const topMeshes = heavy.slice(0, 15).map(([tr, o]) => ({ name: pieceOf(o), tris: Math.round(tr), cast: !!o.castShadow, colorOnly: o.layers.mask === 2, culled: o.frustumCulled !== false, mat: (Array.isArray(o.material) ? o.material[0] : o.material)?.type ?? null }));
+    // (v3-perf-stage) visible meshes INSIDE the view frustum, grouped by piece (first path segment) and by material:
+    // what the colour / normal passes draw, i.e. the merge / cull candidates
+    const drawGroups = { byPiece: {}, byMaterial: {} };
+    try {
+      const cam = e.camera.cam;
+      cam.updateMatrixWorld();
+      // a bounding-sphere test against the (orthographic) view: clip = P * V * centre, radius scaled per axis
+      const M = cam.projectionMatrix.clone().multiply(cam.matrixWorldInverse);
+      const me = M.elements;
+      const sx = Math.hypot(me[0], me[4], me[8]);
+      const sy = Math.hypot(me[1], me[5], me[9]);
+      const inView = (o) => {
+        if (o.isInstancedMesh || o.frustumCulled === false) return true;
+        const g = o.geometry;
+        if (!g) return false;
+        if (!g.boundingSphere) g.computeBoundingSphere();
+        const c = g.boundingSphere.center.clone().applyMatrix4(o.matrixWorld);
+        const r = g.boundingSphere.radius * o.matrixWorld.getMaxScaleOnAxis();
+        c.applyMatrix4(M);
+        return Math.abs(c.x) <= 1 + r * sx && Math.abs(c.y) <= 1 + r * sy;
+      };
+      const frustum = true;
+      for (const [tr, o] of heavy) {
+        if (!inView(o)) continue;
+        const piece = pieceOf(o).split('/')[0] || '(root)';
+        const mat = (Array.isArray(o.material) ? o.material[0] : o.material)?.name || '(unnamed)';
+        for (const [k, key] of [['byPiece', piece], ['byMaterial', mat]]) {
+          const g = (drawGroups[k][key] ??= { n: 0, casters: 0, tris: 0 });
+          g.n++;
+          if (o.castShadow) g.casters++;
+          g.tris += Math.round(tr);
+        }
+      }
+      drawGroups.frustum = !!frustum;
+    } catch (err) {
+      drawGroups.error = String(err?.message ?? err);
+    }
     for (const m of mats) matTypes[m.type] = (matTypes[m.type] ?? 0) + 1;
     const pipe = e.pipeline;
     const rtDesc = (rt) => (rt ? { w: rt.width, h: rt.height, type: rt.texture.type, depthTex: rt.depthTexture ? rt.depthTexture.type : null } : null);
@@ -451,6 +490,7 @@
       counts: c,
       visible: vis,
       topMeshes,
+      drawGroups,
       materials: mats.size,
       materialTypes: matTypes,
       geometries: geos.size,
