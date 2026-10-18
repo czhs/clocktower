@@ -13,6 +13,7 @@ describe('shadow cadence', () => {
     expect(shadowEveryFor('low', '1')).toBe(1);
     expect(shadowEveryFor('high', '3')).toBe(3);
     for (const bad of ['', '0', '9', 'x', '1.5']) expect(shadowEveryFor('low', bad)).toBe(2);
+    expect(shadowEveryFor('cpu')).toBe(1); // an unlisted tier: every frame
   });
 
   it('every = 1 renders every frame', () => {

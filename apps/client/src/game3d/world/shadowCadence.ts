@@ -35,10 +35,14 @@ export interface ShadowCadence {
   readonly skipped: number;
 }
 
-export function shadowEveryFor(tier: ShadowTier, override?: string | null): number {
+/**
+ * The cadence for a tier (any other tier name, e.g. a future software-GL 'cpu' tier, renders every frame until it is
+ * listed in SHADOW_EVERY), or the debug override (1..4).
+ */
+export function shadowEveryFor(tier: string, override?: string | null): number {
   const n = Number(override);
   if (override != null && override !== '' && Number.isInteger(n) && n >= 1 && n <= 4) return n;
-  return SHADOW_EVERY[tier] ?? 1;
+  return (SHADOW_EVERY as Readonly<Record<string, number>>)[tier] ?? 1;
 }
 
 export function createShadowCadence(every: number): ShadowCadence {
