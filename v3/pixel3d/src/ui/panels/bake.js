@@ -7,7 +7,8 @@
 // vote-hand, vote-yes. Everything else is new-style (meta.newStyle). 9-slice insets per frame: meta.nineSlice.
 import { panelKit, CURSORS, GLYPHS, V2_ICONS } from './art.js';
 import { buildCss } from './css.js';
-import { hex, ramp } from '../kit.js';
+import { chat, chatFolded, CHAT_FOLDED_H } from './screens.js';
+import { hex, ramp, PixelImage } from '../kit.js';
 
 const V2 = ['panel', 'panel-parchment', 'button', 'button-hover', 'button-primary', 'divider', ...Object.keys(V2_ICONS)];
 
@@ -20,6 +21,19 @@ export default {
     this._K = K;
     const names = [...V2, ...Object.keys(K.img).filter((n) => !V2.includes(n))];
     const out = names.map((n) => [n, K.img[n]]);
+    // UI integration r2 (whole-screen critic: no chat-specific frames): composed chat-dock samples (row 44) cut from the
+    // chat screen + the folded dock alone. 9-slices stay the generic kit (panel-plain, tab*, input*, badge-*).
+    {
+      const ctx = { t: 0 };
+      const full = new PixelImage(640, 360); chat(full, K, ctx, {});
+      out.push(['chat-dock_sample', full.crop(6, 360 - 6 - 128, 196, 128)]);          // open: tabs, scope bar, log, field
+      out.push(['chat-tabs_sample', full.crop(6, 360 - 6 - 128, 196, 22)]);           // Chat | Crier tabs + count + minimise
+      out.push(['chat-crier-line_sample', full.crop(6, 360 - 6 - 128 + 23 + 23 + 12 - 2, 196, 12)]);   // a crier log line
+      for (const [n, oo] of [['chat-folded_sample', { unread: 7 }], ['chat-folded_crier', { crier: true, text: 'Night falls on Hollowmere.', unread: 2 }], ['chat-folded_read', {}]]) {
+        const im = new PixelImage(168, CHAT_FOLDED_H); chatFolded(im, K, 0, 0, oo); out.push([n, im]);
+      }
+      const peek = new PixelImage(168, 21); chatFolded(peek, K, 0, 0, {}); out.push(['chat-peek_sample', peek.crop(0, 0, 168, 21)]);
+    }
     // palette audit (docs/UI.md §2.3): every opaque colour = a token, or a ramp tone of a token
     const allowed = new Set(Object.values(T).filter((v) => typeof v === 'string').map((v) => hex(v)));
     for (const k of ['ok', 'danger', 'warn', 'good', 'evil', 'stViolet', 'ghost', 'ghostSh', 'parchment']) for (const v of Object.values(ramp(T[k]))) allowed.add(hex(v));
@@ -67,6 +81,7 @@ export default {
         'spinner_*': 'loading spinner drawings', 'cursor-*': '16x16 cursors (hotspots meta.cursors)', 'glyph_*': '16x16 UI glyph set (meta.glyphChars)', 'toggle_*': '7x7 notebook mark toggles (toggle_<n>-off = flat textDim mark, no outline)',
         'badge-unread': 'chat unread count pill 9-slice (v2 .ct-chat-unread, danger; LABEL digits, 99+ cap)', 'badge-count': 'crier new-count pill 9-slice (v2 .ct-chat-dot, violet)',
         'checkbox-pop': 'checkbox pop drawing (on, 1 step smaller tick)',
+        'chat-*': 'chat dock samples (row 44, composed from the kit; screens.js chat / chatFolded): chat-dock_sample (open), chat-tabs_sample, chat-crier-line_sample, chat-folded_sample / _crier / _read (peek line + Chat toggle + unread pill), chat-peek_sample',
       },
       paletteAudit: this._audit,
     };

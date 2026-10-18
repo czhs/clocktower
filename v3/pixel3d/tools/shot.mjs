@@ -45,12 +45,26 @@ try {
   const canvas = await page.$('canvas');
   for (let i = 0; i < times.length; i++) {
     await page.evaluate((t) => window.__pixel.renderAt(t), times[i]);
-    const file = times.length > 1 ? out.replace(/\.png$/, `-${String(i).padStart(2, '0')}.png`) : out;
+    // frame index padded to max(2, digits) so names sort in capture order past 100 frames (module fix; < 101 frames unchanged)
+    const file = times.length > 1 ? out.replace(/\.png$/, `-${String(i).padStart(Math.max(2, String(times.length - 1).length), '0')}.png`) : out;
     fs.mkdirSync(path.dirname(file), { recursive: true });
     await canvas.screenshot({ path: file });
     console.log('wrote', file, `t=${times[i]}`);
   }
-  const info = await page.evaluate(() => window.__pixel.info && window.__pixel.info());
+  // (module fix) serialise in the page with a cycle/three.js-safe replacer: a scene that keeps objects with three.js
+  // references in engine.stats used to fail here ("property 'parent' closes the circle") after the PNG was written
+  const info = await page.evaluate(() => {
+    if (!window.__pixel.info) return null;
+    const seen = new WeakSet();
+    return JSON.parse(JSON.stringify(window.__pixel.info(), (k, v) => {
+      if (v && typeof v === 'object') {
+        if (seen.has(v)) return '[circular]';
+        if (v.isObject3D || v.isMaterial || v.isTexture || v.isBufferGeometry) return `[${v.type || 'three'}]`;
+        seen.add(v);
+      }
+      return v;
+    }));
+  });
   if (info) console.log('info:', JSON.stringify(info));
   // --bench N: render N more frames (1/60 s apart) inside the page, each followed by a 1-pixel readPixels
   // (GPU sync), and report mean / max wall ms per frame plus whether the shader-program count changed.

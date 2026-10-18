@@ -6,7 +6,7 @@
 //     ghost vote (ghost hand); Bram (vote clip) has his hand up from the start
 //   - HUD vote clock + tally (S, left under the side panel) and the phase caption in the events slot (S)
 // The scene scenes/ui-events.js shows every other event (night fall, dawn, execution, poof, banners).
-import { framesFor, drawSeats, makeVote, drawVoteWorld, drawVoteHud, drawCaption, gridK, scheduleGhostSpent } from './draw.js';
+import { framesFor, drawSeats, makeVote, drawVoteWorld, drawVoteHud, drawCaption, gridK, scheduleGhostSpent, voteAt, TIMING } from './draw.js';
 
 export const LOOP = 9.6;
 /** Screen rect of the HUD vote clock (CONTRACT-REQUEST: SLOTS.events gains { name: 'vote clock', x: 4, y: 188, w: 69, h: 90 }). */
@@ -24,7 +24,11 @@ export function drawLive(hud, L, { vote, still = false, loop = LOOP } = {}) {
   drawVoteWorld(hud, L, F, vote, { t, still });
   drawVoteHud(hud, L, F, vote, VOTE_RECT, { t, still });
   const nom = hud.bySeat(vote.nominee)?.name ?? 'the nominee';
-  drawCaption(L, F, { text: `${nom} is nominated. Raise a hand to vote.`, glyph: 'hand', k: gridK(t), durF: Math.round(loop * 30) - 8, still });
+  // UI integration r2 (whole-screen critic: one consistent moment): once the hand has passed every voter the caption
+  // tells the result (as the 'vote' state of scenes/ui-events.js does), not 'Raise a hand' over 'VOTES 4 / 3'
+  const S = voteAt(vote, t), doneF = vote.order.length * TIMING.vote.perVoterF;
+  if (!S.done) drawCaption(L, F, { text: `${nom} is nominated. Raise a hand to vote.`, glyph: 'hand', k: gridK(t), durF: doneF - 4, still });
+  else drawCaption(L, F, { text: S.passed ? `${nom} is on the block (${S.tally} votes).` : 'Not enough votes.', glyph: 'bell', k: gridK(t) - doneF, durF: Math.round(loop * 30) - doneF - 8, still });
 }
 
 let VOTE = null;

@@ -167,7 +167,10 @@ function pinOf(rows, color, T) {
   const disc = color === 'white' ? { hi: T.parchmentHi, mid: T.parchmentHi, sh: T.parchment, line: R.line, by: 'self' } : { ...parchMat(T), line: R.line, by: 'self' };
   // black (r3, critic r2): a SOLID dark body (black hi tone) in the dark UI outline, lit rim iron-hi on the upper left:
   // a light outline around a dark body read as a hollow / disabled pin next to the grey disabled wedges.
-  const body = color === 'black' ? { hi: T.ironHi, mid: R.hi, sh: R.hi, line: T.outline } : { hi: R.hi, mid: R.mid, sh: R.sh, line: R.line };
+  // UI integration r2 (whole-screen critic): that body (#5A5168) on ink (#2B2536) still vanished in the pie and the dock
+  // at 1x. Now a darker body (black mid / sh) inside an IRON line (lighter than every ink token, darker than the
+  // body's lit ironHi rim): the pin reads as a dark pin with a metal rim, not a hollow light ring.
+  const body = color === 'black' ? { hi: T.ironHi, mid: R.mid, sh: R.sh, line: T.iron } : { hi: R.hi, mid: R.mid, sh: R.sh, line: R.line };
   const img = shade(rows, { '#': body, o: disc }, { prefer: ['#'] });
   return img;
 }
@@ -292,7 +295,10 @@ function pieImage0(T, { size, items, hot, color, off, show, back, hub, icons, id
     if (d * Math.sin(Math.abs(step / 2 - off)) < 0.8) return -1;        // 1-2 px radial gap between wedges
     return i;
   };
-  const Rhot = R + 2;   // the hot wedge pops out over the back ring
+  // UI integration r2 (whole-screen critic): the popped-out hot wedge (R + 2, re-outlined outside the back disc) read
+  // as a straight-chord trapezoid poking 2-4 texels past the round rim. The hot wedge now stays inside the same annulus;
+  // hot still reads without colour: lit edge (ramp hi), icon 1 px out + up, and the caption plate names it.
+  const Rhot = R;
   const inW = (i, x, y) => { const dx = x - c, dy = y - c; return wedgeOf(dx, dy, i === hot ? Rhot : R) === i; };
   const edgeAt = (i, x, y) => inW(i, x, y) && (!inW(i, x + 1, y) || !inW(i, x - 1, y) || !inW(i, x, y + 1) || !inW(i, x, y - 1));
   // back disc + hub well + drop shadow
@@ -375,11 +381,15 @@ function pieImage0(T, { size, items, hot, color, off, show, back, hub, icons, id
       // (r3) no text labels on touch wedges: v2 PieMenu draws none, and 'Point' / 'Remove' overflowed into the hub and
       // the neighbouring wedges at 46 texels; the caption plate names the hot wedge.
       if (it.kind === 'pin' && it.color === color && !off?.has(i)) {
-        const rr = (isHot ? Rhot : R) - 3;
-        // v2 .ctp-current: a dot on the wedge's centre line at R - 4 (r3: was off-centre at +0.28 wedge, read as a speck)
-        const mx = Math.round(c + rr * Math.cos(a)), my = Math.round(c + rr * Math.sin(a));
-        const PR = PIN_RAMPS[color];   // the notch wears the current pin colour (critic r1: a gold speck read as noise)
-        img.rect(mx - 1, my - 1, 2, 2, PR.hi); img.set(mx, my, PR.mid);
+        // v2 .ctp-current. UI integration r2 (whole-screen critic: the 2x2 colour dot beside the pin read as a stray
+        // dot): the current colour is marked as a gold arc ON the wedge's outer rim (the hub's gold = "yours / chosen"),
+        // 7 rim texels centred on the wedge's centre line, so it reads as part of the pie, not as a speck.
+        const Rw = isHot ? Rhot : R;
+        for (let y = c - Rw - 1; y <= c + Rw + 1; y++) for (let x = c - Rw - 1; x <= c + Rw + 1; x++) {
+          if (!edgeAt(i, x, y) || Math.hypot(x - c, y - c) < Rw - 1.5) continue;
+          const da = Math.atan2(y - c, x - c) - a, w = Math.abs(Math.atan2(Math.sin(da), Math.cos(da))) * Rw;
+          if (w <= 3.5) img.set(x, y, w <= 1.5 ? T.goldHi : T.gold);
+        }
       }
     }
   }
@@ -454,18 +464,23 @@ export function drawCaption(img, cx, cy, R, text, T) {
 }
 
 // ------------------------------------------------------------------------------------------------ dock (social palette)
-export const DOCK = { w: 96, h: 79 };   // r2: +9 for the third key-hint row ('click your pin: remove')
+export const DOCK = { w: 96, h: 83 };   // r2: +9 for the 3rd key-hint row; UI integration r2: +4 for the 9-px key caps
 const ON = { line: 'outline', edge: 'gold', fill: 'goldLine', hi: 'goldSh', sh: null, corner: 1, shadow: false, press: 1 };
 const SWATCH_ON = { line: 'outline', edge: 'goldHi', fill: 'inkRaised', hi: null, sh: null, corner: 1, shadow: false };
 const SWATCH_HOVER = { line: 'outline', edge: 'ironHi', fill: 'inkRaised', hi: null, sh: null, corner: 1, shadow: false };
 const CLEAR_HOVER = { line: 'outline', edge: 'goldSh', fill: 'inkRaised', hi: 'ironHi', sh: 'ironSh', corner: 1, shadow: false };
-const KBD = { line: 'outline', edge: 'goldSh', fill: 'inkSunk', hi: null, sh: null, corner: 1, shadow: false };
-/** Keyboard chip (v2 <kbd>): 7 px tall, gold-shadow keyline on a sunk fill, tiny gold caps; returns its width. */
+/**
+ * Keyboard chip (v2 <kbd>): 9 px tall, gold-shadow keyline (notched corners) on a RAISED ink cap with 1 px of padding
+ * left / right and 1 row above / below the caps, tiny caps in parchment text; returns its width. UI integration r2 (whole-screen critic): the 7-px cap had
+ * the 5-row caps touching its gold keyline and gold text on it, so 'DRAG' read as 'ORAG' at 1x.
+ */
+export const KBD_H = 9;
 export function drawKbd(img, x, y, s, T) {
   const w = textWidth(s, 'tiny') + 4;
-  img.rect(x + 1, y, w - 2, 7, T.goldSh); img.rect(x, y + 1, w, 5, T.goldSh);   // 1-px notched corners
-  img.rect(x + 1, y + 1, w - 2, 5, T.inkSunk);
-  drawText(img, x + 2, y + 1, s, { font: 'tiny', color: T.gold });
+  img.rect(x + 1, y, w - 2, KBD_H, T.goldSh); img.rect(x, y + 1, w, KBD_H - 2, T.goldSh);   // 1-px notched corners
+  img.rect(x + 1, y + 1, w - 2, KBD_H - 2, T.inkRaised);
+  img.hline(x + 1, y + KBD_H - 2, w - 2, T.ironSh);                                           // cap bottom (lit from above)
+  drawText(img, x + 2, y + 2, s, { font: 'tiny', color: T.text });
   return w;
 }
 /**
@@ -522,7 +537,7 @@ export function drawDock(img, x, y, T, o = {}) {
     drawText(img, hx, hy + 1, 'Hold the town,', { color: T.textDim });
     drawText(img, hx, hy + 10, 'slide to choose', { color: T.textDim });
   } else {
-    const row = (parts) => { hx = ix + 1; for (const [k, w] of parts) { hx += drawKbd(img, hx, hy, k, T) + 2; drawText(img, hx, hy, w, { color: T.textDim }); hx += textWidth(w) + 4; } hy += 9; };
+    const row = (parts) => { hx = ix + 1; for (const [k, w] of parts) { hx += drawKbd(img, hx, hy, k, T) + 2; drawText(img, hx, hy + 1, w, { color: T.textDim }); hx += textWidth(w) + 3; } hy += KBD_H + 2; };
     row([['RIGHT', 'point'], ['DRAG', 'menu']]);
     row([['F', 'pin']]);
     drawText(img, ix + 1, hy, 'Click your pin: remove', { color: T.textDim });

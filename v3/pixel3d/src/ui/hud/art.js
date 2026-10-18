@@ -871,8 +871,13 @@ export function drawStClock(img, x, y, w, T, o = {}) {
   text(img, x + 6, y + 4, 'Town clock:', T.textDim);
   if (isSet) {
     const P = stagePal(paused ? 'paused' : stage, T), lab = stageLabel(stage, { paused, onTheBlock }).toUpperCase();
-    text(img, x + 6, y + 15, lab, P.label, LABEL);
-    text(img, x + 6 + tw(lab, LABEL) + 4, y + 12, time, urgent ? ramp(T.danger).hi : P.time, DISPLAY);
+    // UI integration r2: a long stage label ('NOMINATIONS CLOSE IN') pushed the timer under the row-1 buttons, which
+    // then covered its top rows. Measure the buttons first; when the label + timer would reach them, drop the line 4 px
+    // (below the buttons, still above row 2).
+    const btnW = 13 + buttonWidth('+1m', 4) + buttonWidth(paused ? 'Resume' : 'Pause', 4) + 7 + 6;
+    const dy = x + 6 + tw(lab, LABEL) + 4 + tw(time, DISPLAY) > x + w - 5 - btnW - 2 ? 4 : 0;
+    text(img, x + 6, y + 15 + dy, lab, P.label, LABEL);
+    text(img, x + 6 + tw(lab, LABEL) + 4, y + 12 + dy, time, urgent ? ramp(T.danger).hi : P.time, DISPLAY);
   } else text(img, x + 9 + tw('Town clock:'), y + 4, 'not set', T.textDim);
   // row-1 buttons (right)
   if (isSet) {

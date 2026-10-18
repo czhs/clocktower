@@ -7,6 +7,7 @@
 import { tokens, hex, ramp } from '../kit.js';
 import { buildBookFrames, pageFrames, DIRS, ANCHOR, CELL, PHASES, PAGE, WRITE_PATH } from './art.js';
 import { TIMING, BOOK_FPS, HOLD_SEQ, PLACE } from './draw.js';
+import { buildBigBookFrames, BIG_ANCHOR, BIG_CELL, BIG_PHASES, BIG_FPS, BIG_TIMING, BIG_HOLD_SEQ, BIG_WRITE, PLACE_BIG } from './bigbook.js';
 import { buildCss } from './css.js';
 
 export function notebookMeta(T, tod, frames) {
@@ -29,6 +30,13 @@ export function notebookMeta(T, tod, frames) {
     },
     timing: TIMING,
     holdSeq: HOLD_SEQ,
+    // variants (additive): bookStyle 'big' = the big book in front of the reader (bigbook.js), facing-independent
+    bigBook: {
+      option: "bookStyle: 'held' (default, book_*) | 'big' (bookbig_*); live via hud.uiOptions.bookStyle / setOptions(hud, {bookStyle}); mock HUD ?book=big",
+      frames: 'bookbig_<phase>_<f> / bookbigghost_<phase>_<f>: open_0..4 (pop, closed, cover standing, cover falling, spread), hold_0..3 (spread, right corner lifts, page stands, lands), close_0..2 (cover standing, closed, pop), write_0..3 (quill, ink grows)',
+      anchor: BIG_ANCHOR, cell: BIG_CELL, counts: BIG_PHASES, fps: BIG_FPS, timing: BIG_TIMING, holdSeq: BIG_HOLD_SEQ, write: BIG_WRITE, place: PLACE_BIG,
+      tier: 'A (L.world, z 18: over the scene, under labels / bubbles z 20 and the finger z 30); anchor at the reader feet (screen) + place.dy, ghosts + 0.2 m hover; one view for every facing',
+    },
     writePath: WRITE_PATH,
     place: PLACE,
     page: PAGE,
@@ -49,7 +57,8 @@ export default {
   width: 256,
   async frames({ tod }) {
     const T = tokens(tod);
-    this._f = [...buildBookFrames(T), ...buildBookFrames(T, { ghost: true }), ...pageFrames(T)];
+    this._f = [...buildBookFrames(T), ...buildBookFrames(T, { ghost: true }), ...pageFrames(T),
+      ...buildBigBookFrames(T), ...buildBigBookFrames(T, { ghost: true })];     // variants: bookStyle 'big' (appended: existing frames keep their order)
     return this._f;
   },
   meta({ tod }) { const T = tokens(tod); return notebookMeta(T, tod, this._f); },

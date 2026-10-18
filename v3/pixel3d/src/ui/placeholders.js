@@ -14,6 +14,8 @@ import { PixelImage, drawText, textWidth, wrapText, drawBox, frameAt, PIN_RAMPS,
 // 150 -> 180 (v2 'ROLE · ⌂ House · badge' for Undertaker + Ravenscroft needs 168), toasts 170 -> 150 wide (the column
 // covered the north-east seats' chat bubbles at the game camera), + voice pill, clock card, touch joystick (hud), vote
 // clock + moment banner (events). `transient: true` = shown only while that UI is up (not a permanent keep-out).
+// UI integration r2: the mock pie moved off the circle (410,214 -> 420,268, over the grass right of Dov): its caption
+// plate sat on Dov's label ring and the right third was overcrowded (whole-screen critic).
 export const SLOTS = {
   hud: [
     { name: 'role chip', x: 4, y: 4, w: 180, h: 13 },
@@ -27,7 +29,7 @@ export const SLOTS = {
     { name: 'touch joystick (phones)', x: 4, y: -4, w: 56, h: 56, transient: true },
   ],
   panels: [{ name: 'side panel (notebook / lobby / storyteller)', x: 4, y: 24, w: 132, h: 158 }],
-  emotes: [{ name: 'social dock', x: -32, y: -34, w: 96, h: 70 }, { name: 'pie menu (at the pointer)', x: 410, y: 214, w: 76, h: 76, transient: true, pointer: true }],
+  emotes: [{ name: 'social dock', x: -32, y: -34, w: 96, h: 70 }, { name: 'pie menu (at the pointer)', x: 420, y: 268, w: 76, h: 76, transient: true, pointer: true }],
   portraits: [{ name: 'dock / voice portrait button', x: -4, y: -4, w: 24, h: 24 }],
   indicators: [{ name: 'home compass pill', x: 'c', y: -4, w: 132, h: 14 }, { name: 'labels, bubbles, talking (world)', world: true }],
   markers: [{ name: 'finger, trail, ping, pins (world)', world: true }],

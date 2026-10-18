@@ -12,6 +12,18 @@ import { markersContext } from './stage.js';
 export const LOOP = 6;
 let M = null;
 
+/**
+ * Variant option (additive; docs/UI.md §6 variants): pointerScale 'new' (default: art.js finger) | 'v2' (v2size.js: the
+ * finger at the v2 cast-relative size, same frame names, frames 24x24 / anchor 12,12 / offset 16). Live:
+ * setOptions(hud, { pointerScale: 'v2' }) (= hud.setUiOptions); M.frames(L) follows it next frame. Mock HUD: ?pointer=v2.
+ * Per call: M.framesFor(L, 'v2') + drawPoint(L, F, ...).
+ */
+export function setOptions(hud, { pointerScale } = {}) {
+  hud.uiOptions ??= {};
+  if (pointerScale !== undefined) hud.uiOptions.pointerScale = pointerScale === 'v2' ? 'v2' : 'new';
+  return hud.uiOptions;
+}
+
 export function drawLive(hud, L, M, { still = false, loop = LOOP } = {}) {
   const F = M.frames(L), T = L.tok, t = L.t, c = ((t % loop) + loop) % loop;
   const ada = hud.bySeat(1), cleo = hud.bySeat(3), dov = hud.you || hud.bySeat(4), finn = hud.bySeat(6), gus = hud.bySeat(7);

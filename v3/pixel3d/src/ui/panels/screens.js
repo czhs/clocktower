@@ -546,12 +546,28 @@ export function chat(img, K, ctx, o = {}) {
   // --- folded: peek line + Chat toggle with the unread pill
   const px = 214, py = 360 - 6 - 46;
   tiny(img, px, py - 9, 'FOLDED', T.gold);
-  K.nine['panel-plain'](img, px, py, 168, 21);
-  body(img, px + 6, py + 6, 'Bram', T.gold); body(img, px + 6 + textWidth('Bram') + 4, py + 6, 'meet at the well', T.text);
-  button(img, K, px, py + 25, 44, 'Chat', 'normal');
-  countPill(img, K, px + 44 - 6, py + 21, o.unread ?? 7);
+  chatFolded(img, K, px, py, { unread: o.unread ?? 7 });
   countPill(img, K, px + 60, py + 27, 128);   // '99+' cap
   tiny(img, px + 92, py + 30, 'UNREAD 7 / 99+', T.textDim);
+}
+/**
+ * The folded chat dock alone (UI integration r2: the mock game screen draws it bottom-left, v2 .ct-chat folded):
+ * peek line (last message: who in gold + text, cut to fit) over the Chat toggle with the danger unread pill.
+ * o = { w (peek width, default 168), from, text, fromColor, unread, crier (violet CRIER chip instead of a name) }.
+ * Size = w x CHAT_FOLDED_H; returns {w, h, toggle: {x, y, w, h}}.
+ */
+export const CHAT_FOLDED_H = 41;
+export function chatFolded(img, K, x, y, o = {}) {
+  const T = K.T, w = o.w ?? 168, from = o.from ?? 'Bram', fromC = o.fromColor ?? T.gold;
+  K.nine['panel-plain'](img, x, y, w, 21);
+  let tx = x + 6;
+  if (o.crier) { K.nine['chip-violet'](img, tx - 1, y + 4, 32, 11); tiny(img, tx + 3, y + 7, 'CRIER', T.st); tx += 35; }
+  else { body(img, tx, y + 6, from, fromC); tx += textWidth(from) + 4; }
+  const room = x + w - 5 - tx;
+  body(img, tx, y + 6, wrapText(o.text ?? 'meet at the well', room, { maxLines: 1 })[0], T.text);
+  button(img, K, x, y + 25, 44, 'Chat', 'normal');
+  if (o.unread) countPill(img, K, x + 44 - 6, y + 21, o.unread);
+  return { w, h: CHAT_FOLDED_H, toggle: { x, y: y + 25, w: 44, h: 16 } };
 }
 
 // ------------------------------------------------------------------------------------------------ help + admin + status (#45)

@@ -21,6 +21,7 @@ import * as THREE from 'three';
 import { GRID_HZ } from '../kit.js';
 import { DIRS, ANCHOR, buildBookFrames } from './art.js';
 import { createPinPass } from '../markers/pinPass.js';
+import { drawBigBook, PLACE_BIG } from './bigbook.js';
 
 export const BOOK_FPS = { open: 15, hold: 10, close: 15, write: 10 };
 export const TIMING = {
@@ -121,12 +122,25 @@ export function notebookContext(hud) {
     pass,
     yaw,
     /** Register a draw callback: depth-tested (pass) when available, else on L.world at z (2D fallback). */
-    add(fn, z = 25) { return pass ? pass.add(fn) : hud.ui.add(fn, z); },
+    // variants (additive): the same callback also runs on L.world at PLACE_BIG.z through a 'bigOnly' view, where
+    // drawReader draws the readers whose style is 'big' (bigbook.js; tier A like the finger); the pass view draws the
+    // 'held' readers. Without the pass (2D fallback) one L callback draws both styles.
+    add(fn, z = 25) {
+      if (!pass) return hud.ui.add(fn, z);
+      pass.add(fn);
+      hud.ui.add((L) => fn(Object.assign(Object.create(L), { bigOnly: true })), PLACE_BIG.z);
+      return fn;
+    },
+    /** The style a reader is drawn in: opts.bookStyle, else the live option hud.uiOptions.bookStyle, else 'held'. */
+    styleOf(opts = {}) { return (opts.bookStyle ?? hud.uiOptions?.bookStyle) === 'big' ? 'big' : 'held'; },
     /**
      * Draw one reader. P = the pass view (has blitD/depthOf) or L (2D: L.world). opts: { openAt, closeAt, typing, seed,
      * still, face (override), ghost (default m.ghost) }. Returns the drawn state (or null).
      */
     drawReader(P, m, opts = {}) {
+      // opts.bookStyle 'held' (default: this function) | 'big' (bigbook.js drawBigBook, on the bigOnly / 2D view)
+      if (N.styleOf(opts) === 'big') return P.blitD && !P.bigOnly ? null : drawBigBook(P, m, opts);
+      if (P.bigOnly) return null;
       const s = bookState(P.t, opts);
       if (!s || !m) return null;
       const face = opts.face ?? faceOf(m), dir = dirOf(face, yaw()), F = bookFrames(P.tok);

@@ -317,6 +317,13 @@ Shared needs (a kit helper, a token, a font glyph, a tool option): put a `CONTRA
     hud[7] clock card (centre, y 24, 168×40, transient: under the phase caption while one shows), hud[8] touch joystick
     (x 4, y −4, 56×56, transient), events[2] vote clock (4, 188, 69×90), events[3] moment banner (centre, y 96, 300×48,
     transient; world labels under it may be covered for its ~4 s).
+  - **Mock game screen** (UI lead, 2026-10-17): `?scene=ui-hud&game=1[&tod=noon|golden|night][&moment=none]` = every group
+    live at once (as the default) + a game-event FX moment on the events loop (9.6 s): the Storyteller poofs out of the
+    circle centre (u 1.0), reappears in front of it (u 1.8), poofs out (u 6.4) and back (u 7.2) (`POOF_MOMENT`, events
+    `poof_*` + his `appear` clip, scheduled; he is driven from stage time). `hud.st.pos` stays at the centre (vote hand
+    origin); his label / pop follow `hud.st.feet()`. `game=1` also wraps every group's layer callbacks with a timer:
+    `engine.stats.ui.perf.meanMs` (ms per UI frame per group). Evidence, coverage, perf and the porting map:
+    `docs/UI_GALLERY.md`; packer for 1x captures: `shots/ui-gallery/pack.sh <dir> [N] [crop]` (ffmpeg GIF + MP4 + sheet).
   - `scenes/ui-hud.js` is also the hud group's scene (`?scene=ui-hud&groups=hud&state=…`, §6 hud): the group states live
     in `src/ui/hud/hud.js`; no separate `scenes/ui-hudgroup.js`.
 - Your slot: `src/ui/<g>/hud.js` → `export default { z?: number, async setup?(hud), draw(hud, L) }`. When it exists the
@@ -763,3 +770,73 @@ for `poof_*`, `glow_warm`, `glow_cool`).
 - 2026-10-17 notebook r6: a kit bitmap font can ship to the DOM as a generated TrueType face (rectangle contours, upm =
   8 x pixel units, ascent = cap, descent = line − cap). It renders crisp at integer `--px`, and missing glyphs fall back
   per character to the next family (`src/ui/notebook/ttf.js`).
+- 2026-10-17 lead (integration): a teleport belongs in the Character's drive (stage time). An `onUpdate` that moved
+  `st.base` ran after the Character that frame, and re-simulation fired the `appear` clip's own poof FX at the old spot
+  (`shots/ui-gallery/r1/z-fix.png`). Full screen cost with every group: +3.5–4 ms CPU per frame on render-host (bare 1.0 ms,
+  `game=1` 4.5 ms at 720p), and the screen-tier mock (emotes, panels, hud) is ~70 % of it: `docs/UI_GALLERY.md` §1.
+- 2026-10-17 lead (integration): a 288-frame 720p PIL GIF is 78 MB. ffmpeg palettegen + `diff_mode=rectangle` brings it
+  to 1.2 MB. Night frames carry the grade's film grain and stay ~10 MB, so ship the `.mp4` too (`shots/ui-gallery/pack.sh`).
+- 2026-10-17 variants (notebook + markers): **two live options, the current look stays the default.**
+  - **Options + API.** `hud.uiOptions = { bookStyle: 'held'|'big', pointerScale: 'new'|'v2' }`, set from the mock-HUD URL
+    (`?book=big&pointer=v2`, `scenes/ui-hud.js`, also in `engine.stats.ui.options`). Groups read it every frame, so a toggle
+    flips it live: `hud.setUiOptions({bookStyle: 'big'})`, or `setOptions(hud, {...})` exported by `src/ui/notebook/hud.js` /
+    `src/ui/markers/hud.js`. Per call: `N.drawReader(P, m, {bookStyle})`, `M.framesFor(L, 'v2')` passed to `drawPoint`.
+    **Demo integration:** two toggles, "Notebook: held / big" → `bookStyle`, "Pointer: new / v2 size" → `pointerScale`.
+    The demo (`src/demo`) does not use the UI library yet, so the toggles go in when it does.
+  - **Pointer v2 size: measured, not guessed** (`shots/ui-variants/measure_v2.py`, `measure_new.py`). v2 `point_<dir>_0`
+    opaque bbox incl. line: 17x11 (left/right), 14x14 (diagonals), 11x17 (up/down). The v2 cast idle-down in its 32x40
+    cell (`refs/ui/_src/cast-portraits`, 33 sprites) is 25–38 texels tall, median 31. So the v2 finger is 0.55 H long.
+    pixel3d cast at vh 12 (diff of `cast=1` vs `cast=0` captures, staffs/FX excluded): frog 35, owl 32, fox 32,
+    mushroom 35, rabbit 33, goat 40, crow 37, Storyteller 45, median 35. K = 35/31 = 1.13 gives a target of 19.2x12.4 /
+    15.8 / 12.4x19.2. Drawn at **20x13 / 16x16 / 13x20** (0.57 H; the 'new' finger is 15x11, 0.43 H). New 18x11 and 14x14
+    templates, painted by the same `paintGrid` (no upscaled pixels). Frames 24x24, `anchors.point` (12,12), `point.offset`
+    16 (v2 14 x K), `point.size` 24, so the trail starts 12 px from the fist. Trail dots, ping, pins: unchanged.
+    Atlas: **variant atlas** `out/ui/markers-v2size{,-night}.{png,json}` (`tools/uibake.sh markers:markers-v2size[-night]
+    --strict`: 41/41 v2 names, same names and order as markers.json; meta.point/anchors.point changed,
+    `newStyle.markers.v2size.measure`). It is a full drop-in for markers.*. Runtime: `src/ui/markers/v2size.js`
+    (`markerFramesV2size(T)` tags the Map with `F.point` / `F.anchors`; `draw.js put/drawPoint` read them, absent = old).
+    Evidence: `shots/ui-variants/cmp/size-v2-vs-new.png` (same texel scale) and `m1/fingers5.png` (v2 | new | v2 size,
+    8 dirs).
+    Learning: at 20 px the fist's lower-right form-shadow band is `glove.sh`, so creases in that tone vanish. The v2-size
+    creases use `ramp(parchment, {dark: .3}).sh`. A smooth round diagonal fist read as a magnifying glass, so the curled
+    fingers step down the shaded side with a crease tick at each step.
+  - **Big book** (`src/ui/notebook/bigbook.js`). A tier-A marker like the finger: drawn on `L.world` at **z 18**, over the
+    scene, under labels/bubbles (20) and the finger (30). Anchored at the reader's feet (screen) + 1 px (ghosts + 0.2 m
+    hover), so it covers legs and belly while the face, name and stack stay clear. Open spread 25x15 (+ ribbon), cell 30x22,
+    anchor (13,17) = the cover bottom under the gutter, so the spine stays put while the book flips open. Frames
+    `bookbig_<phase>_<f>` + ghost `bookbigghost_<phase>_<f>`:
+    - `open_0..4` at 15 fps: pop, closed (gold diamond), cover standing, cover falling (endpaper), spread
+    - `hold_0..3` at 10 fps, `BIG_HOLD_SEQ`: 2.4 s still, then corner lifts / page stands / lands, seeded per reader
+    - `close_0..2` at 15 fps: standing, closed, pop; skips close_0 before the cover stood
+    - `write_0..3` at 10 fps: quill with a gold shaft, the ink grows a texel per drawing
+    **Facing-independent on purpose.** The big book is a status marker for other viewers, not a held prop. It always sits
+    on the camera side, never hidden by its reader, the same spot whatever the facing (as the finger is drawn at head +
+    vector). 8 views at 25 px would change shape whenever a reader turns. The 'held' style keeps its 8 depth-tested views.
+    Same materials as the held book (palette audit 36 colours, 0 untraced, day + night). Baked into
+    `out/ui/notebook{,-night}.{png,json}` after the existing frames (271 frames; `meta.bigBook`).
+    `notebookContext().add(fn)` also runs `fn` on a `bigOnly` view of L at z 18. `drawReader` draws 'held' readers from
+    the depth pass and 'big' readers from that view.
+  - **Scenes:**
+    - `?scene=ui-notebook&state=variants` / `?scene=ui-markers&state=variants` (`src/ui/notebook/variants.js`): four
+      captioned pairs, held+new, held+v2, big+new (ghost Esme), big+v2, on a 5.5 s loop
+    - any notebook world state + `&book=big`; any markers state + `&pointer=v2`
+    - stills: `shots/ui-variants/r3/{variants,nb-variants}-{noon,night}.png` + `z-*` crops
+    - 1x GIFs: `shots/ui-variants/gifs/{big-close-noon,big-close-night,variants-left-noon,variants-right-noon,
+      variants-left-night,point-v2-noon}/anim.gif`
+- 2026-10-17 lead (integration r2): a tiny-font keycap needs 1 px of padding inside its keyline on every side and
+  light caps on a raised fill; 5-row caps touching a gold keyline in gold read as a filled bar, and the 3-wide `D`
+  (110/101/101/101/110) reads as `O`. The kit tiny `D` is now 4 wide (`###./#..#/#..#/#..#/###.`), so every LABEL
+  string with a D is 1 px wider (`shots/ui-gallery/r2/z-pie-noon.png`).
+- 2026-10-17 lead (integration r2): a pie wedge that pops out past the round back rim reads as a straight-chord
+  trapezoid at R 36 (a 40° arc has a 2.3-px sagitta): keep the hot wedge inside the same annulus and mark hot with the lit
+  edge + icon shift + caption. A 2×2 "current colour" dot inside a wedge reads as a stray speck; a short gold arc ON the
+  wedge's rim reads as part of the pie (`r2/z-pie-hot.png`).
+- 2026-10-17 lead (integration r2): a dark pin on an ink well needs a rim lighter than every ink token (iron line +
+  ironHi lit edge around a black-mid body); the black ramp hi body inside the outline token vanished at 1x.
+- 2026-10-17 lead (integration r2): a 1-px world hand drawn from the circle centre reads as a spear crossing whoever
+  stands on its line; drawing only the outer 40 % near the voter (events `HAND_SPAN`) keeps "whose turn" without the prop.
+- 2026-10-17 lead (integration r2): a fixed-layout control (hud `drawStClock`) must measure its row-1 buttons before
+  placing a variable-width label + timer: "NOMINATIONS CLOSE IN" pushed the timer under the Pause button, which painted
+  over its top rows (`r2/z-stclock.png`). The timer row drops 4 px when it would reach the buttons.
+- 2026-10-17 lead (integration r2): offscreen-arrow names follow one rule: opposite the pointer's vertical component,
+  above for sideways pointers (the 8-px extra top margin keeps an above-name in frame for every heading).

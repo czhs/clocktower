@@ -152,6 +152,8 @@ function handEnd(hud, a, b, u, centre, shorten = 0.85) {
   p.y = hud.terrain.heightAt(p.x, p.z);
   return p;
 }
+/** Fraction of the centre -> voter hand that is drawn (the outer part, ending at the voter). */
+export const HAND_SPAN = 0.4;
 /** The vote in the world: nominee ring, voter pulse + clock hand (Ag), raised / locked hands over the voters (A). */
 export function drawVoteWorld(hud, L, F, v, { t = L.t, still = false, centre = null } = {}) {
   const T = L.tok, S = voteAt(v, t);
@@ -162,7 +164,10 @@ export function drawVoteWorld(hud, L, F, v, { t = L.t, still = false, centre = n
     const vm = hud.bySeat(S.current);
     const p = L.at(ringOf(hud, vm));
     put(L.ground, F, `vote_pulse_${still ? 1 : frameAt(t, A.FPS.vote_pulse, 3, { seq: [0, 1, 2, 1] })}`, p.x, p.y, 'vote_pulse');
-    const e = L.at(handEnd(hud, S.hand.from, S.hand.to, still ? 1 : S.hand.u, c0)), c = L.at(c0);
+    // UI integration r2 (whole-screen critic: a 1-px gold line from the circle centre read as a spear / staff crossing
+    // the Storyteller): only the outer HAND_SPAN of the hand is drawn, near the voter; its hub caps the inner end.
+    const eW = handEnd(hud, S.hand.from, S.hand.to, still ? 1 : S.hand.u, c0);
+    const e = L.at(eW), c = L.at(c0.clone().lerp(eW, 1 - HAND_SPAN));
     A.drawVoteHand(L.ground, c.x, c.y, e.x, e.y, T, { night: T === TOK_NIGHT });
   }
   // the digits of the nominee and the current voter stay on top of the rings / shaft (critic: Cleo's 3 under the ring)

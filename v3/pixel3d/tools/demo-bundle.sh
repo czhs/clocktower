@@ -73,6 +73,9 @@ const walk = (d) => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => e.
 // 1. src/** runtime files
 for (const f of walk('src')) {
   if (!/\.(js|css|json)$/.test(f) || f === 'src/main.js') continue;
+  // src/ui/** is the UI asset library (its bake/render helpers import scenes/); the demo does not import it yet.
+  // When the demo adopts it, add only the runtime modules it reaches instead of this skip.
+  if (f.startsWith('src/ui/')) continue;
   add(f, f);
 }
 // 2. character specs offered by the roster

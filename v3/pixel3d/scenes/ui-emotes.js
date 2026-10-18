@@ -20,5 +20,7 @@ export default async function build(engine, params) {
   }
   await emotes.setup(hud);
   hud.ui.add((L) => emotes.draw(hud, L), emotes.z);
-  engine.stats.ui.emotes = hud.emotes;
+  // plain fields only: S.M (the markers context) holds three.js objects and made the shot's stats JSON circular
+  const { state, armMode, size, reduced, remove } = hud.emotes;
+  engine.stats.ui.emotes = { state, armMode, size, reduced, remove };
 }

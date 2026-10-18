@@ -2,6 +2,7 @@
 // group, writes <out>/<group>.png + <group>.json + <group>-sheet.png and prints v2 frame-name coverage.
 //   node tools/uibake.mjs <group>|<group>:<name> [--out shots/ui-<group>/bake] [--q "tod=night&width=512"] [--strict]
 // --strict: exit 1 if any v2 frame name is missing (drop-in check). Same request-interception server as shot.mjs.
+// Extra text outputs (bake module files()) are written next to the atlas and listed in <out>/<name>.files.
 import { chromium } from 'playwright';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -42,6 +43,11 @@ try {
   fs.writeFileSync(path.join(OUT, `${NAME}-sheet.png`), b64(r.sheet));
   fs.writeFileSync(path.join(OUT, `${NAME}.json`), JSON.stringify(r.json, null, 1) + '\n');
   console.log(`wrote ${OUT}/${NAME}.png ${r.size.join('x')} (${r.frames} frames), ${NAME}.json, ${NAME}-sheet.png`);
+  // extra text outputs of the bake module (files(env) -> {basename: text}); listed in <NAME>.files for uibake.sh
+  const extraFiles = Object.keys(r.files || {}).filter((n) => /^[A-Za-z0-9._-]+$/.test(n) && !n.startsWith('.'));
+  for (const n of extraFiles) fs.writeFileSync(path.join(OUT, n), r.files[n]);
+  fs.writeFileSync(path.join(OUT, `${NAME}.files`), extraFiles.join('\n') + (extraFiles.length ? '\n' : ''));
+  if (extraFiles.length) console.log(`extra files: ${extraFiles.join(', ')}`);
   if (r.coverage) {
     const c = r.coverage;
     if (c.error) console.log('coverage: error', c.error);

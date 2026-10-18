@@ -14,6 +14,18 @@ import { SLOTS, rect } from '../placeholders.js';
 export const LOOP = 6.5;
 let N = null;
 
+/**
+ * Variant option (additive; docs/UI.md §6 variants): bookStyle 'held' (default: the small book at the hands, 8 facings,
+ * depth-tested) | 'big' (bigbook.js: a big book unfolding in front of the reader, a tier-A marker like the finger).
+ * Live: setOptions(hud, { bookStyle: 'big' }) (= hud.setUiOptions); the next frame draws the new style. Mock HUD: ?book=big.
+ * Per call: N.drawReader(P, m, { bookStyle }) overrides it for one reader.
+ */
+export function setOptions(hud, { bookStyle } = {}) {
+  hud.uiOptions ??= {};
+  if (bookStyle !== undefined) hud.uiOptions.bookStyle = bookStyle === 'big' ? 'big' : 'held';
+  return hud.uiOptions;
+}
+
 /** The HUD moment (also used by scenes/ui-notebook.js state=live). P = the pass view (or L for the 2D fallback). */
 export function drawLive(hud, P, N, { still = false } = {}) {
   const t = P.t, nb = hud.notebook;

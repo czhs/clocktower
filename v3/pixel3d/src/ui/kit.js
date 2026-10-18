@@ -327,8 +327,9 @@ const TINY_GLYPHS = Object.fromEntries(Object.entries(TINY_SRC).map(([k, s]) => 
 // (module fix) the 3-wide M / W / N read as H / H / П at 1x ("RMB" -> "RHB", "NOMINATIONS" -> "NOHINATIONS"): 5-wide M + W,
 // 4-wide N, plus '#', ',', '·', '—', '–', "'" — the same glyphs as the hud group's LABEL face (src/ui/hud/font.js), so
 // FONTS.tiny and LABEL now render identically (FONTS.label is an alias).
+// (UI integration r2, critic) the 3-wide D (110/101/101/101/110) read as O at 1x on keycaps ('DRAG' -> 'ORAG'): 4-wide D.
 Object.assign(TINY_GLYPHS, Object.fromEntries(Object.entries({
-  m: '#...#/##.##/#.#.#/#...#/#...#', w: '#...#/#...#/#.#.#/##.##/#...#', n: '#..#/##.#/#.##/#..#/#..#',
+  d: '###./#..#/#..#/#..#/###.', m: '#...#/##.##/#.#.#/#...#/#...#', w: '#...#/#...#/#.#.#/##.##/#...#', n: '#..#/##.#/#.##/#..#/#..#',
   '#': '.#.#./#####/.#.#./#####/.#.#.', ',': '.../.../.../.#./#..', '·': './././#/.', '—': '...../...../#####/...../.....',
   '–': '..../..../####/..../....', "'": '#/#/./././.'.slice(0, 9),
 }).map(([k, r]) => [k, { rows: r.split('/'), top: 0 }])));

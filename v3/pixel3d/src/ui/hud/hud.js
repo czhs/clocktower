@@ -85,8 +85,37 @@ const chipState = (stage, leftS, totalS, { paused = false, plus = 'normal', onTh
 };
 
 // ------------------------------------------------------------------------------------------------ states
+/**
+ * UI integration r2 (whole-screen critic: the mock contradicted itself, BEDTIME over 'Raise a hand to vote', VOTES 2/3
+ * beside 'Cleo: 4 votes'): on the mock game screen (scenes/ui-hud.js ?game=1) the lead's ONE mock clock + state
+ * (hud.game.hudAt(t) -> G) drives this group's chips, toasts and hint, so every slot tells the same moment.
+ * G = { view: 'player'|'st', chip: {stage, leftS, totalS, onTheBlock, plus}, phase: {phase, day, gathered}, toasts: [...]
+ * (absolute stage times), hint: {parts, short, at} | null }.
+ */
+function gameShowcase(hud, L, T, S, G) {
+  const img = L.screen, W = img.w, t = L.t, st = G.view === 'st';
+  const rr = slot(0, L);
+  if (!st) A.drawRoleChip(img, rr.x, rr.y, T, { role: S.you.role, team: S.you.team, house: 'Ravenscroft', badge: 1, maxW: ROLE_W(rr) });
+  const c = G.chip;
+  clockChipAt(L, T, chipState(c.stage, c.leftS, c.totalS, { onTheBlock: c.onTheBlock, plus: st ? null : c.plus ?? 'normal', reduced: S.reduced }));
+  A.drawToolbar(img, W - 4, slot(2, L).y, T, st ? { host: true } : {});
+  A.drawPhaseChip(img, W - 4, slot(3, L).y, T, { ...G.phase, t });
+  if (st) {
+    // the Storyteller's clock control, where the panels group's Storyteller panel embeds it (left column)
+    A.drawStClock(img, 4, 24, 168, T, { stage: c.stage, time: A.formatCountdown(Math.max(0, c.leftS) * 1000), urgent: c.leftS <= 30, minutes: 5, onTheBlock: c.onTheBlock });
+  }
+  const to = slot(4, L);
+  drawToasts(L, T, G.toasts || [], t, { x: to.x, y: to.y, w: to.w, reduced: S.reduced });
+  if (G.hint) {
+    const hr = slot(5, L);
+    drawHintAt(L, T, hr.x + Math.floor(hr.w / 2), hr.y, hintAt(t, G.hint.at, { sticky: true, reduced: S.reduced }), G.hint, S.reduced);
+  }
+}
+
 const STATES = {
   showcase(hud, L, T, S) {
+    const G = hud.game?.hudAt?.(L.t);
+    if (G) return gameShowcase(hud, L, T, S, G);
     const night = hud.tod === 'night', t = L.t;
     const W = L.screen.w, img = L.screen;
     // role chip (you = Dov, the Undertaker)
