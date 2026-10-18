@@ -24,7 +24,8 @@ import { createFacadeEvents, createFacadeStore, NO_INPUT, type FacadeStore } fro
 export interface TownTimeOptions {
   engine: unknown;
   town: BuiltTown;
-  quality: 'high' | 'low';
+  /** The game tier ('cpu' = the vendor's 'low'). */
+  quality: 'high' | 'low' | 'cpu';
   /** Size of the town's PointLight pool (the tier budget minus the carried-light reserve). */
   lights: number;
   /** Starting hour. */
@@ -75,7 +76,7 @@ const createTime = (timeNS as unknown as { createTime(demo: unknown): unknown })
 const vendorPresetForHour = (demoApiNS as unknown as { presetForHour(h: number): string }).presetForHour;
 
 export function createTownTime(o: TownTimeOptions): TownTime {
-  const store = createFacadeStore({ timeOfDay: o.hour, quality: o.quality });
+  const store = createFacadeStore({ timeOfDay: o.hour, quality: o.quality === 'high' ? 'high' : 'low' });
   const events = createFacadeEvents();
   const params = new URLSearchParams({ folk: '0', lights: String(Math.max(1, Math.floor(o.lights))) });
   let pos: { x: number; y: number; z: number } | null = null;

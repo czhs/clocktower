@@ -72,7 +72,7 @@ describe('lifecycle', () => {
     expect(s.lc.state).toBe('fallback');
   });
 
-  it('slow at high -> rebuild at low (new Engine) -> slow again -> perf fallback', async () => {
+  it('slow at high -> rebuild at low (new Engine) -> slow again -> rebuild at cpu -> under 15 fps -> perf fallback', async () => {
     const s = setup();
     await s.lc.start();
     frames(s, PERF_WINDOW, 60);
@@ -82,8 +82,16 @@ describe('lifecycle', () => {
     expect(s.overlay.slice(-2)).toEqual([REBUILD_TEXT, 'hide']);
     expect(s.boot.marks).toBe(2);
     frames(s, PERF_WINDOW, 60);
-    expect(s.log.at(-1)).toBe('fallback perf');
-    expect(s.boot.trackers[1]!.calls).toContain('finish'); // too slow is not a crash
+    await flush();
+    expect(s.log).toEqual(['build high', 'teardown', 'build low', 'teardown', 'build cpu']);
+    expect(s.lc.tier).toBe('cpu');
+    frames(s, PERF_WINDOW, 60); // 16.7 fps: fine for the cpu tier
+    expect(s.log.at(-1)).toBe('build cpu');
+    const c = setup({ startTier: 'cpu' });
+    await c.lc.start();
+    frames(c, PERF_WINDOW, 70);
+    expect(c.log.at(-1)).toBe('fallback perf');
+    expect(c.boot.trackers[0]!.calls).toContain('finish'); // too slow is not a crash
   });
 
   it('33.3 ms (Energy Saver) never trips the sampler', async () => {
@@ -98,30 +106,30 @@ describe('lifecycle', () => {
     await off.lc.start();
     frames(off, PERF_WINDOW, 80);
     expect(off.log).toEqual(['build high']);
-    const on = setup({ flags: { fpsLimit: 15, force: true, perfFallback: true }, startTier: 'low' });
+    const on = setup({ flags: { fpsLimit: 15, force: true, perfFallback: true }, startTier: 'cpu' });
     await on.lc.start();
     frames(on, PERF_WINDOW, 80);
     expect(on.log.at(-1)).toBe('fallback perf');
   });
 
   it('waits for a safe moment: not during a vote / open nomination; at the next phase change, or once it closed', async () => {
-    const s = setup({ startTier: 'low' });
+    const s = setup({ startTier: 'cpu' });
     await s.lc.start();
     s.safe.voting = true;
     frames(s, PERF_WINDOW, 80);
     frames(s, 10, 16);
     expect(s.lc.waiting).toBe('fallback');
-    expect(s.log).toEqual(['build low']);
+    expect(s.log).toEqual(['build cpu']);
     s.safe.phase = 'night';
     s.lc.offer();
     expect(s.log.at(-1)).toBe('fallback perf');
 
-    const q = setup({ startTier: 'low' });
+    const q = setup({ startTier: 'cpu' });
     await q.lc.start();
     q.safe.nominationOpen = true;
     frames(q, PERF_WINDOW, 80);
     frames(q, 10, 16);
-    expect(q.log).toEqual(['build low']);
+    expect(q.log).toEqual(['build cpu']);
     q.safe.nominationOpen = false; // the nomination closed: nothing in progress, it runs now
     q.lc.offer();
     expect(q.log.at(-1)).toBe('fallback perf');

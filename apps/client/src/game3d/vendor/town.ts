@@ -43,7 +43,8 @@ export type TodPreset = 'noon' | 'morning' | 'golden' | 'afternoon' | 'night';
 export type BuiltTown = Awaited<ReturnType<typeof buildTown>>;
 
 export interface TownBuildOptions {
-  quality: 'high' | 'low';
+  /** The game tier; 'cpu' builds the vendor's 'low' town (the cpu levers act on the engine, vendor/cpuTier.ts). */
+  quality: 'high' | 'low' | 'cpu';
   /** Build-time time-of-day preset (the preset of the starting hour; the time facade interpolates from it). */
   tod?: TodPreset;
   /** PointLight budget of the town pool (composer lights on golden / night builds). */
@@ -52,7 +53,7 @@ export interface TownBuildOptions {
 
 export async function buildHollowmere(engine: HostedEngine, o: TownBuildOptions): Promise<BuiltTown> {
   applyCamera(engine, 'gameplay', { focus: new THREE.Vector3(PLAZA.cx, 0, PLAZA.cz) });
-  const q = new URLSearchParams({ tod: o.tod ?? 'noon', quality: o.quality, life: '1', demo: 'day', lifeOff: LIFE_OFF });
+  const q = new URLSearchParams({ tod: o.tod ?? 'noon', quality: o.quality === 'high' ? 'high' : 'low', life: '1', demo: 'day', lifeOff: LIFE_OFF });
   if (o.lights) q.set('lights', String(o.lights));
   engine.__ctGrassArea = { ...GRASS_AREA };
   try {
