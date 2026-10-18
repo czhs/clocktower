@@ -8,7 +8,7 @@
 // and the numbers stay clean. Run ON THE HOST (sandbox CT_AGENT=v3-perf-cpu*), WITHOUT an outer flock:
 //   CT_AGENT=v3-perf-cpu scripts/remote.sh sh -c 'timeout 3000 pnpm exec tsx tests/perf/v3-cpu-tier.ts --tiers low --out test-results/v3-cpu'
 //
-// Args: --port 3486 (v3-perf-cpu range 3486-3489) --tiers low[,high,cpu] --viewport 960x540 --players 14
+// Args: --port 3486 (v3-perf-cpu range 3486-3489, v31-cpu 3490-3494) --tiers low[,high,cpu] --viewport 960x540 --players 14
 //       --levers a,b,c (single-lever synced runs; default: all) --sets 'name=a+b+c;name2=...' (RAF + input + synced)
 //       --gl swiftshader|gpu --raf-secs 10 --n 6 --out <dir>
 import { spawn, type ChildProcess } from 'node:child_process';
@@ -23,7 +23,8 @@ const ROOT = path.resolve(HERE, '../..');
 const argv = process.argv.slice(2).filter((a) => a !== '--');
 const arg = (n: string, d: string) => (argv.includes(`--${n}`) ? argv[argv.indexOf(`--${n}`) + 1]! : d);
 const PORT = Number(arg('port', '3486'));
-if (PORT < 3486 || PORT > 3489) throw new Error('v3-perf-cpu owns ports 3486-3489 only');
+// v3-perf-cpu: 3486-3489; v3.1 cpu front (v31-cpu): 3490-3494
+if (PORT < 3486 || PORT > 3494) throw new Error('the cpu perf runs own ports 3486-3494 only');
 const TIERS = arg('tiers', 'low').split(',');
 const [VW, VH] = arg('viewport', '960x540').split('x').map(Number) as [number, number];
 const PLAYERS = Number(arg('players', '14'));

@@ -16,6 +16,7 @@ import { registerInternalRoutes } from './guard/internal.js';
 import { installSocketBudget, type RawSocketServer } from './guard/socketBudget.js';
 import { getHostLimits, onHostLimitsChange, type HostLimits } from './guard/hostLimits.js';
 import { staticQueryGuard } from './cost/staticQuery.js';
+import { precompressedStatic } from './precompressed.js';
 
 export interface RunningServer {
   port: number;
@@ -174,17 +175,20 @@ export async function startAppServer(config: AppConfig, log: Logger, options: Ap
     // %PUBLIC_ORIGIN% placeholder that is filled from APP_PUBLIC_ORIGIN when served (no host is
     // baked into the client build). Read once; a deploy restarts the server.
     const indexBody = readFileSync(indexHtml, 'utf8').replaceAll('%PUBLIC_ORIGIN%', config.publicOrigin);
+    const cacheControl = (filePath: string): string => {
+      if (filePath.startsWith(assetsDir)) return 'public, max-age=31536000, immutable'; // incl. the hashed ?url JSON atlases
+      if (filePath === indexHtml || filePath.endsWith('.json')) return 'no-cache';
+      return 'public, max-age=86400, stale-while-revalidate=604800';
+    };
     app.use(staticQueryGuard(root)); // (v2.3 VOICE-12) no cache-busting query strings on static files
+    // (v3.2) build-time .br / .gz siblings (apps/client/build/precompress.mjs) for clients that accept them
+    app.use(precompressedStatic(root, { cacheControl }));
     app.use(
       express.static(root, {
         index: false,
         cacheControl: false,
         setHeaders(res, filePath) {
-          let cc: string;
-          if (filePath.startsWith(assetsDir)) cc = 'public, max-age=31536000, immutable';
-          else if (filePath === indexHtml || filePath.endsWith('.json')) cc = 'no-cache';
-          else cc = 'public, max-age=86400, stale-while-revalidate=604800';
-          res.setHeader('Cache-Control', cc);
+          res.setHeader('Cache-Control', cacheControl(filePath));
         },
       }),
     );

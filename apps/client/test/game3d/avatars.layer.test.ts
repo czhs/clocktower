@@ -447,18 +447,21 @@ describe('avatar layer', () => {
   });
 
   it('a landed body is pre-compiled into a scratch render target and stays hidden until that resolves', async () => {
-    let resolveCompile: (() => void) | null = null;
+    let ready = false;
+    const resolveCompile = () => void (ready = true);
     const targets: unknown[] = [];
     let current: unknown = 'canvas';
+    const mat = new THREE.MeshBasicMaterial();
     const renderer = {
       info: { programs: [] as unknown[] },
       getRenderTarget: () => current,
       setRenderTarget: (rt: unknown) => void (current = rt),
-      compileAsync: (o: THREE.Object3D) => {
+      compile: (o: THREE.Object3D) => {
         targets.push(current);
         expect(o).toBeInstanceOf(THREE.Object3D);
-        return new Promise<void>((r) => (resolveCompile = r));
+        return new Set([mat]);
       },
+      properties: { has: () => true, get: () => ({ currentProgram: { isReady: () => ready } }) },
     };
     const eng = { ...engine, renderer };
     const L = createAvatarLayer({ engine: eng, tier: 'high', view, npcs: false });
@@ -473,8 +476,8 @@ describe('avatar layer', () => {
     expect(current).toBe('canvas'); // restored
     expect(made[0]!.body.holder.visible).toBe(false);
     expect(L.registry.anchorOf('me')).toBeNull();
-    resolveCompile!();
-    await flush();
+    resolveCompile();
+    await new Promise((r) => setTimeout(r, 30)); // the 10 ms readiness poll
     await flush();
     L.update(s, 3, 1 / 60);
     expect(made[0]!.body.holder.visible).toBe(true);

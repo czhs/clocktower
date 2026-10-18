@@ -69,6 +69,57 @@
   };
   const characterMeshes = (e) => meshes(e, (o) => o.isSkinnedMesh || /billboard|avatar|ct-av/i.test(pathOf(o)));
 
+  const unlitWhere = (e, pred) => {
+    const THREE_ = window.__v3cTHREE;
+    const swaps = [];
+    const cache = new Map();
+    e.scene.traverse((o) => {
+      if (!o.isMesh || !o.material) return;
+      const one = (m) => {
+        if (!m || !(m.isMeshLambertMaterial || m.isMeshStandardMaterial || m.isMeshPhongMaterial) || !pred(o, m)) return m;
+        let b = cache.get(m);
+        if (!b) {
+          b = new THREE_.MeshBasicMaterial({ color: m.color, map: m.map ?? null, vertexColors: m.vertexColors, alphaTest: m.alphaTest, side: m.side, transparent: m.transparent, opacity: m.opacity, depthWrite: m.depthWrite });
+          cache.set(m, b);
+        }
+        return b;
+      };
+      const old = o.material;
+      o.material = Array.isArray(old) ? old.map(one) : one(old);
+      if (o.material !== old) swaps.push([o, old]);
+    });
+    return () => {
+      for (const [o, m] of swaps) o.material = m;
+      for (const b of cache.values()) b.dispose();
+    };
+  };
+  // v3.1 (cpu): set the cpu tier's live rewrite set (engine.__ctCpuShade) and recompile every scene material (a cache
+  // key suffix per set, so three builds new programs instead of reusing the cached ones)
+  const reshade = (names) => (e) => {
+    const set = e.__ctCpuShade;
+    if (!set) throw new Error('no __ctCpuShade (not the cpu tier)');
+    const was = [...set];
+    const mats = new Set();
+    e.scene.traverse((o) => {
+      if (o.material) for (const m of Array.isArray(o.material) ? o.material : [o.material]) mats.add(m);
+    });
+    const setTo = (list) => {
+      set.clear();
+      for (const n of list) set.add(n);
+      const tag = list.join('+') || 'none';
+      for (const m of mats) {
+        if (!m.__v3cKey) m.__v3cKey = m.customProgramCacheKey;
+        const base = m.__v3cKey;
+        m.customProgramCacheKey = function () {
+          return `${base.call(this)}|shade:${tag}`;
+        };
+        m.needsUpdate = true;
+      }
+    };
+    setTo(names);
+    return () => setTo(was);
+  };
+
   const L = {
     // ---- internal render resolution (rows of the low-res target; 960x540: 270 = pixelScale 2 = today's high/low)
     res270: scaleLever(270),
@@ -198,30 +249,26 @@
       };
     },
     // diagnostic floor: every lit material -> MeshBasicMaterial with the same colour / map (no lighting at all)
-    unlit: (e) => {
-      const THREE_ = window.__v3cTHREE;
-      const swaps = [];
-      const cache = new Map();
-      e.scene.traverse((o) => {
-        if (!o.isMesh || !o.material) return;
-        const one = (m) => {
-          if (!m || !(m.isMeshLambertMaterial || m.isMeshStandardMaterial || m.isMeshPhongMaterial)) return m;
-          let b = cache.get(m);
-          if (!b) {
-            b = new THREE_.MeshBasicMaterial({ color: m.color, map: m.map ?? null, vertexColors: m.vertexColors, alphaTest: m.alphaTest, side: m.side, transparent: m.transparent, opacity: m.opacity, depthWrite: m.depthWrite });
-            cache.set(m, b);
-          }
-          return b;
-        };
-        const old = o.material;
-        o.material = Array.isArray(old) ? old.map(one) : one(old);
-        if (o.material !== old) swaps.push([o, old]);
-      });
-      return () => {
-        for (const [o, m] of swaps) o.material = m;
-        for (const b of cache.values()) b.dispose();
-      };
-    },
+    unlit: (e) => unlitWhere(e, () => true),
+    // v3.1 (cpu): the same floor per material family (where the shading cost lives)
+    unlitGround: (e) => unlitWhere(e, (o) => /ground-terrain/.test(o.name)),
+    unlitKit: (e) => unlitWhere(e, (o, m) => /^town-kit/.test(m.name || '')),
+    unlitChars: (e) => unlitWhere(e, (o) => o.isSkinnedMesh || /billboard|avatar|ct-av/i.test(pathOf(o))),
+    // v3.1 (cpu): the cpu tier's program rewrites (vendor/cpuTier.ts CPU_REWRITES) set to exactly these, recompiled
+    shadeNone: reshade([]),
+    // the v3.0 cpu tier's look (no kit swap) / the v3.1 default (vendor/cpuTier.ts CPU_SHADE_DEFAULT)
+    shadeToonKit: reshade(['flight']),
+    shadeDefault: reshade(['flight', 'kitBasic', 'groundTwin']),
+    shadeKitPat: reshade(['flight', 'kitBasic', 'kitVtx', 'kitPat']),
+    shadeKitVtx: reshade(['flight', 'kitBasic', 'kitVtx']),
+    shadeKitTwin: reshade(['flight', 'kitBasic', 'kitTwin']),
+    shadeGroundTwin: reshade(['flight', 'kitBasic', 'groundTwin']),
+    shadeTwins: reshade(['flight', 'kitBasic', 'kitTwin', 'groundTwin']),
+    // diagnostics (dead-code elimination of one family's fragment shading), on top of the v3.0 look
+    shadeKitFlat: reshade(['flight', 'xKitFlat']),
+    shadeGroundFlat: reshade(['flight', 'xGroundFlat']),
+    shadeToonMid: reshade(['flight', 'xToonMid']),
+    shadeAllFlat: reshade(['flight', 'xKitFlat', 'xGroundFlat', 'xToonMid']),
     // ---- geometry
     noGrass: (e) => hide(meshes(e, (o) => /grass/i.test(pathOf(o)))),
     noFlowers: (e) => hide(meshes(e, (o) => /flower|clover|weed/i.test(pathOf(o)))),

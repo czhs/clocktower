@@ -271,7 +271,8 @@ async function walk(page: Page, stop: () => boolean, track: { path: number }) {
 
 async function main() {
   const [pLo, pHi] = arg('ports', '3480-3484').split('-').map(Number) as [number, number];
-  if (pLo < 3480 || pHi > 3484) throw new Error('v3-perf-ui owns ports 3480-3484 only');
+  // v3-perf-ui owns 3480-3484; the v3.1 fixes front measures on its own 3486-3489
+  if (!((pLo >= 3480 && pHi <= 3484) || (pLo >= 3486 && pHi <= 3489))) throw new Error('v3-ui.ts runs on ports 3480-3484 (v3-perf-ui) or 3486-3489 (v31-fixes) only');
   const port = await pickPort(pLo, pHi);
   const server = await startServer({
     mode: 'source',

@@ -1199,6 +1199,8 @@ the order is WP0 (extraction) → WP0s (layer splits) → WP5b (layout injection
 | WP6 | v3-ui | C1 | **Committed in "v3 C1a: …"** on `v3-game` (gate `v3-gate`, 2026-10-18: `pnpm -r run typecheck`, `pnpm build`, full `pnpm test` = 159 files / 1870 tests pass, 1 file / 3 tests skipped). Done, reviewed + fixed (2026-10-17 fix round, finished 2026-10-18). As built in §5 "As built (WP6)": `ui/common/{v3skin,v3skinLobby,v3atlas,v3portrait,graphicsStatus}.ts`, v3 gating in `castPortrait.ts`, Graphics row in `SettingsDialog.tsx`, v3 branches in `ui/social/{SocialPalette,PieMenu}.tsx`, Town choice + `WorldBadge` (`ui/lobby/{LobbyFinder,CreateLobbyModal (new, lazy),ModeSettings,WaitingRoom,JoinPreview,finder}`, `lobby.css`). Fix round: the Graphics status line now reports runtime fallbacks of this session (`currentRender` store + `publishRender`, "[Try v3 again]" remounts); the create dialog is a lazy chunk (entry keeps only `WorldBadge` + short strings); no remembered town pick (`DEFAULT_WORLD` is the only pre-selection; `ct.create.world` dropped); the waiting-room badge leads the meta line (16-char names fit); `nineSlice`/`cropToDataUrl` removed (WP4 keeps its own loader); `socialArtFor`, `fetchJoinPreview`/`JoinPreviewView`, `PENDING_PORTRAITS` factored out + tested; `worldOfLobby` (view or summary shape) used at WP6 call sites; worldChoice test imports the zod schema from `packages/protocol/src/lobby` (runs under either vitest config). **Open CONTRACT-REQUESTs for C1:** (1) world-art/GameScreen: `publishRender({kind, tier, fallback})` whenever `render` changes (add `fallback?: FallbackReason` to `Render`, set it in `fallback()`), `publishRender(null)` on unmount; (2) lead/LobbyRoute: `useV3Skin(conn)` once in `InLobby`; (3) lead/LobbyRoute: `<JoiningLobby id={id} />` for the `!conn` screen and the InLobby `layout !== 'ready'` screen; (4) WP7: `v3-lobby-choice.spec.ts` lines 47/52 expect `ct.create.world` to be set: it is now always null (assert the next dialog pre-selects Classic instead), and assert `.ct-join-preview .ct-world-badge` once (3) lands. Verified (fix round): client typecheck 0 errors; `pnpm vitest run apps/client` 61 files / 805 tests pass (incl. `ui.v3art` 8 new, `ui.worldChoice` 8, `ui.graphicsStatus` 7, `ui.v3atlas` 20, `ui.v3skin` 10); `ui.worldChoice` + `ui.graphicsStatus` also pass from `apps/client` (client vite config). 2026-10-18 (continuation after the usage-limit stop): client typecheck 0 errors; WP6 unit set + `apps/server/test/lobby.world.test.ts` 10 files / 139 tests pass (root config), `ui.worldChoice` + `ui.graphicsStatus` + `ui.v3art` 23/23 from `apps/client`; e2e (own server, `E2E_PORT=3480`, chromium) `v23-settings.spec.ts` (2, incl. the v3 lobby test) + `lobby.spec.ts` (6): 8/8 pass (the v3 test's last step now closes the second create dialog with Cancel: an Escape sent right after the radio check raced the dialog's post-paint key listener and failed once); after `pnpm build`: `tests/security/web-client.test.ts` 31/31 pass (it fails 2 if run against the dist the e2e webServer builds under `NODE_ENV=test`, so always rebuild first); `budgets.mjs`: entry JS 42.7/45, entry CSS 11.5/15, `LobbyRoute` 67/72, `TownGame` 295.9/300 KiB br, all ok (lazy `CreateLobbyModal` 1.46, `v3atlas` 2.70). Not run: an in-place Classic↔3D swap e2e (needs hardware GL or `v3force`; WP7) | — |
 | WP7 | v3-qa | C2 | **Committed in "v3 C1a: …"** on `v3-game` (gate `v3-gate`, 2026-10-18: `pnpm -r run typecheck`, `pnpm build`, full `pnpm test` = 159 files / 1870 tests pass, 1 file / 3 tests skipped). **WP7a (harness + v3 e2e) done for what runs before C1** (2026-10-18, see §8 Phase 2 "As built (WP7a)"). Ran on the host (`CT_AGENT=v3-qa`): client `tsc --noEmit`, `tsc -p tests/tsconfig.json`, `tsc -p tests/v3/tsconfig.json` (all clean); `vitest run apps/client/test/game3d/harness.scenario.test.ts` 11/11; harness (`vite build -c vite.harness.config.ts` + `tests/v3/harness.config.ts`, SwiftShader, port 3460): `projection` pass (15 samples at scales 2/3/4 inside the drawn texel) and `cycles` pass (5 mounts + 2 tier rebuilds + 1 crash on the current WP0/WP3 town: every check true; the heap numbers were bucketed, `--enable-precise-memory-info` added afterwards, not re-run); the earlier WP7a run had `square-day-8` stills pass. e2e project `v3` (E2E_PORT 3485): **pass** `v3-boot`, `v3-lobby-choice` "town choice from the UI" + "each lobby renders the right town" (the user's acceptance), `v3-fallback` "leftover boot mark"; **fail** `v3-fallback` "chunk fails" (finding: the one retry never re-requests the chunk, §9.3); **pending C1** `v3-fallback` context-loss rebuild + perf sampler, `v3-lobby-choice` join preview (lead `JoiningLobby` wiring); not run: `v3-doors`, `v3-social`, `v3-vote`, `v3-life`, `v3-mixed`. Classic regression after the helper / bot edits (chromium, E2E_PORT 3486): `doors`, `chat-bubbles`, `door-boards` (15 bots) 3/3 pass. Not run: other scenario stills (full `pnpm test`: C1a gate, pass) | C1 |
 | WP8 | v3-wp8 (acting as lead) | v3.0 | **Done, committed as "v3 WP8: …" on `v3-game` (2026-10-18; gate in docs/test-results.md "v3 WP8 gate").** URL paths (§11 user decision 2026-10-18): `ui/common/appWorld.ts` (path → world, `/v2` prefix kept on every push), server `/v2` SPA route, per-world finder list, no Town choice (`CreateLobbyRequest.world` from the path); a join link for the other world moves the address bar in place (`syncWorldPath`: `JoiningLobby` from the public summary, `LobbyRoute.useLobbyLayout` on the first lobby:view = authoritative; no reload). v3 loading scene (`ui/common/{v3loading,townLoading,townLoad}`) at boot, joining and now the town build (`GameScreen` loading state in v3 lobbies → `<TownLoading renderer>`; v2 keeps "Lighting the lamps…"). **Candles removed (user 2026-10-18):** `vendor/town.ts removeDaisCandles(town)` (called once in `world/stage.ts` before the warm-up) re-indexes the dais' `dais-solid` / `dais-fx` / `dais-states-solid` meshes without the per-seat candle stakes, flames, ghost wisps + pools, night candle halos and block pennants (the vendor's own `daisdress.js` picking rules, made permanent); stones, warm night tops, cracks, nominee / vote seals, hands, sweep, braziers stay; no light / program change; `__ctCamera.stage().candlesRemoved` reports the counts (v3-vote asserts > 0). **Laptop-first (user 2026-10-18):** `isPhoneLike()` (coarse pointer AND shorter side < 600 px) shows a non-blocking note on the v3 loading scene and the `/` finder; nothing blocked, no phone work. `v3-lobby-choice.spec.ts` deleted (superseded by `v3-paths`). | — |
+| v3.1 | v31-release (acting as lead + qa-deploy) | v3.1 | **Released 2026-10-18: tag `v3.1` on `v3-game`, dev deploy** (gate in docs/test-results.md "v3.1 release gate": typecheck 7/7, tests tsconfig, build, budgets all ok incl. the new `town3dChunkBrKiB` 282.7/300, full `pnpm test` 175 files / 2016 tests, v3 e2e on the host GPU 9 specs all pass with 0 page errors, Classic doors + chat-bubbles 2/2). Merged `v31-fixes` (isReady page error, remount leak, DOM churn), `v31-stage` (town-kit `BatchedMesh` merge, `world/merge.ts`), `v31-cpu` (cpu-tier profile, opt-in toon twins, `flight` rewrite) + the C2 QA fix round (`world/hudKeep.ts` vote frame vs the real HUD, house names hidden in the vote view, softer talking rim). Release note: docs/RELEASE-v3.md "v3.1". | laptop iGPU A/B of the town batch; cheap cpu-tier cut-away (§9.2); deferred C2 findings (docs/progress.md) |
+| v3.2 | v32-release (acting as lead + qa-deploy) | v3.2 | **Released 2026-10-18: tag `v3.2` on `v3-game`** (gate in docs/test-results.md "v3.2 release gate"; deploy status in docs/progress.md "v3 handoff"). Merged `v32-early` (`3e46778`: idle 30 fps `game3d/idle.ts` + `perf.ts` idle gate, Phaser-free v3 join + home prefetch `ui/common/townPrefetch.ts`, build-time brotli `apps/client/build/precompress.mjs` + `apps/server/src/precompressed.ts`); release fix: `ui/common/prefetchAllowed.ts` split so main.tsx imports townPrefetch lazily (entry JS 45.7 → 44.2/45 KiB br); budget keys `v3JoinPhaserChunk`, `town3dShippedBrKiB`. Release note: docs/RELEASE-v3.md "v3.2". | v3.3 prototypes (`v33-tiles` / `v33-bake` / `v33-sprites` / `v33-light` / `v33-gpu`) |
 
 ### Phase 0: WP0 Foundation (`v3-lead`), checkpoint **C0**
 
@@ -1742,6 +1744,36 @@ additive clocktower hook, vendor `docs/TOWN.md` §13). Game-side wiring per item
 - (WP3) `demo/api.js createCutController`: optional extra protected points (remote avatars), or more than 3 boxes;
   today only the own player gets the hard cut-away box and every other avatar relies on the game's canopy dither
   (`world/canopy.ts`, D1), which covers crowns / soft dressing only.
+- (2026-10-18, v3.1 fixes, remount leak) `town/life/index.js build()`: define the `stats.at` accessor with a MODULE-LEVEL getter
+  (per-build data in a WeakMap keyed by `stats`, or a plain method) instead of `get: () => walkers.map(…)`. V8 shares
+  one DescriptorArray along a map transition chain and the AllocationSite boilerplate of the `stats` literal keeps
+  that chain alive with the module, so the getter closure held build()'s whole scope (engine, registry, door anchors,
+  render pipeline): one full town (≈ 80-95 MB JS heap) survived every later destroy. The game patches it at build
+  time (`apps/client/build/pixel3dImports.ts`, `town/life/index.js`). Same pattern to avoid anywhere a build
+  function adds an accessor whose closure captures the build scope: `town/life/cycle.js` `Object.defineProperty(pl,
+  'intensity', { get, set })` on pool lights (not in the game's path today: the game never calls `setTimeOfDay`).
+- (2026-10-18, v3.1 stage) Mark the town's animated kit meshes so a cross-piece merge can leave them out up front: e.g.
+  `mesh.userData.dynamic = true` (or a piece api list) on the house-3 crow, the house-11 weather vane, the props garlic
+  string and the stall lanterns (their swing groups are not named `*-pivot`), the fountain-water glass, the ground boat,
+  `house-14-water` (geometry swapped) and `house-1-bubbles` (draw range). Today `world/merge.ts` detects them on the first
+  frame they change (transform / visibility / geometry compare) and EJECTS them from the batch, which is correct but
+  keeps a dead instance per mesh. Optional, larger: the kit Builder / composer could emit the static town as one
+  `BatchedMesh` per kit layer itself (the game's `game3d/world/merge.ts` shows the bake rules: positions, normals and
+  the `aTownPart` centroid / bottom go to root space, `aTownPiece` 0-padded).
+- (2026-10-18, v3.1 cpu) `town/cutaway.js`: a cheap cut-away variant for software GL (or a build flag the game can set at its
+  `cpu` tier): no section rim (`townCutRim` = 4 extra `townCut` evaluations per pixel), and `townCut` / `townDiscard`
+  with the lift / box loops sized to the live counts at compile time (e.g. `#define`d `CUT_MAX_BOXES` /
+  `CUT_MAX_LIFTS` the patch reads, so the game can compile 1 box / 1 lift). Measured on SwiftShader
+  (docs/perf-v3/cpu.md §7): the toon arithmetic itself is cheap (the ground and kit patterns plus the whole lighting
+  block dead-code-eliminated: −9 %); a MeshBasic host WITHOUT the cut-away hooks is −48 % of a cpu frame, the same
+  host WITH them is −5 %, so the cut-away code is most of what is left of the colour pass. SwiftShader runs every
+  side of every branch, so a uniform that disables the rim / loops saves nothing; it has to be compiled out.
+- (2026-10-18, v3.1 cpu) `materials/toon.js`: optionally a supported MeshBasic-hosted toon variant (same hooks, the band from
+  `bandWeights(N·L)` per pixel, no shadow / cloud / penumbra / point-light / pass-mode code). The game does this from
+  outside today (`vendor/cpuTier.ts` "toon twin", opt-in: it captures each material's hook text by running its
+  `onBeforeCompile` on a marker shader), which is brittle and cannot serve `lightMod` / `outgoing` materials
+  (characters). Also: a `flight: false` build flag for `town/pieces/ground.js` (the `uCamFlight` branches; the game
+  compiles them out with a program-text rewrite).
 
 ### 9.3 Risks
 
@@ -2092,6 +2124,29 @@ additive clocktower hook, vendor `docs/TOWN.md` §13). Game-side wiring per item
   `vendor/{town,interiors}.ts`), WP7 v3-qa (new unit tests `voteCam.test.ts` + additions to `coords.test.ts` /
   `world.towerClock.test.ts`); all edits by the integrator under the C1 role.
 - 2026-10-18 (user, supersedes the per-lobby Town choice and settles C3/Q7): **the world comes from the URL path.** `/` (the default link) = v3: every lobby created there is `world: 'v3'` (Hollowmere; the per-player Graphics setting still picks 3D or Classic-in-v3, phones Classic under Auto). `/v2/` = v2 exactly as today (Classic town, Phaser). Same server, accounts and admin; each path's lobby list shows only its world; a join link for the other world redirects to the right path (old v2 share links keep working); the create form loses the Town choice (`CreateLobbyRequest.world` stays, set from the path). `/v3-art-demo/` keeps its route.
+- 2026-10-18 (v3.1 release, `v31-release` acting as lead): merged `v31-fixes`, `v31-stage`, `v31-cpu` (both commits:
+  `68e4806` alone drops the cut-away at the cpu tier, `3cd20d5` restores it) and cherry-picked `78caa62`
+  (docs/perf-v3/client.md). Sign-offs recorded here for the cross-owner edits the fronts made: lead
+  (`build/pixel3dImports.ts` life-stats patch, this file §9.2), v3-qa (`tests/e2e/v3-pageerrors.spec.ts`,
+  `tests/perf/v3-cycles-heap.*`, `tests/perf/v3-merge-ab.ts`, `scripts/perf/v3-merge-ab.sh`, `tests/perf/v3-ui.ts`,
+  `tests/perf/v3-cpu-*`), WP4 (`overlay/{place,labels,boards}.ts` parking), rules-storyteller (`ui/hud/{shared.tsx,logic.ts}`
+  countdown), lead (`ui/clock/ClockChip.tsx`), WP3 (`world/{merge,stage}.ts`, `vendor/{town,cpuTier}.ts`), WP2
+  (`avatars/{precompile,layer,ghostTint}.ts`).
+- 2026-10-18 (v3.1, C2 QA HIGH): **the vote frame's keep-outs are the HUD that is actually over the canvas.**
+  `world/hudKeep.ts` hit-tests a 32 CSS px grid with `elementFromPoint` (the canvas and its ancestors do not count, the
+  overlay root is pointer-events:none, toasts `.ct-toast*` / `.cth-toast*` are ignored, the pointer-events:none home
+  compass `.ct-compass` is added by its box; > 60 % covered → the old `keepOuts()` corner sizes); `TownGame3d` measures
+  it on vote entry (no call for 1 s), on a canvas resize and once more 700 ms after entry; `stage.voteCamera(…, keep)`
+  caches per canvas + keep key. `voteFrame` gained `ring` (the circle's paving, seat radius + `RING_PAD` 0.9 m: inside
+  the canvas, may pass under the HUD) and may zoom out to `MAX_ZOOM_OUT` 2.4× (was 1.8×). The gameplay hint pill is NOT
+  a keep-out (dodging it zoomed far out; it is transient). Unit tests: `world.hudKeep.test.ts`, `voteCam.test.ts`
+  measured-HUD cases (the Storyteller's 1440×900 laptop with the panel, a 1280×800 player with the chat open).
+- 2026-10-18 (v3.1, C2 QA MEDIUM): house-name callouts are hidden while `cameraMode() === 'vote'` (`overlay/boards.ts`,
+  duck-typed on WP1's `Camera3d`); the talking rim is softer (`avatars/ghostTint.ts`: `RIM_BILLBOARD` 0.12, `RIM_FLAT`
+  0.06, `RIM_BAND` 0.44 at `RIM_EDGE` 0.6). Not re-checked as a still yet (harness `square-day-8` a/b next QA round).
+- 2026-10-18 (v3.1): the town-kit batch (`world/merge.ts`) ships ON by default (`ct.debug.v3merge=0` = off) even though
+  render JS rose 0.3-0.7 ms per frame on the host: draw calls are what an integrated GPU pays for; the laptop iGPU A/B
+  decides the default for v3.2.
 
 ## 12. Review log (round 1)
 
@@ -2184,3 +2239,20 @@ sections named; corrections and rejections:
   (docs/test-results.md "v3.0 release gate"). Committed as "v3.0: release gate + docs", tagged `v3.0`, deployed to the
   DEV service only (prod stays v2.4 until the user says so). Release note: docs/RELEASE-v3.md. Next = v3.1: the remaining
   perf branches (cpu / client / server), C2 QA, the learnings plan (docs/perf-v3/learnings.md).
+- 2026-10-18 (v3.2 release, `v32-release` acting as lead): merged `v32-early` (based on `278d635`, before v3.1) into
+  v3.1 with no textual conflicts (git auto-merged `TownGame3d.ts`; `perf.ts`, `vendor/engineHost.ts`, `LobbyRoute.tsx`,
+  `main.tsx`, `apps/server/src/app.ts` changed on one side only). Semantics checked: the idle gate in `runFrameLoop` sits
+  after the normal gate (`fpsLimit` = `ct.debug.fps` or the cpu tier's 30, else `V3_MAX_FPS` 60) and measures its
+  own vsync from the frames that pass it, so at the cpu tier the idle gate sees ~33 ms deltas and lets every frame
+  through (no 15 fps double gating); `engineHost` enables it only when `ct.debug.fps` is unset; the v3.1 vote camera
+  (hudKeep re-measure, `voteCamera` keep boxes) moves the view-projection and `safeInput().voting` / `nominationOpen`
+  mark every vote frame `busy`, so a vote is never idle. Release fix: `townPrefetch.ts` statically imports `select.ts`,
+  which put 4.6 KB raw into the entry chunk (entry JS 45.7/45 KiB br, OVER); `prefetchAllowed` moved to
+  `ui/common/prefetchAllowed.ts` (re-exported from townPrefetch) and `main.tsx` imports townPrefetch dynamically inside
+  the idle callback (entry 44.2). New budget keys in `scripts/perf/budgets.mjs`: `v3JoinPhaserChunk` (TownGame chunks
+  in the static import closure of LobbyRoute + town3d, from `bundle-report.mjs`; max 0) and `town3dShippedBrKiB`
+  (`--dist apps/client/dist`: the `.br` sibling's size; a missing `.br` counts as OVER). The runtime idle-fps keys
+  (`v3IdleLobbyFps`, `v3IdleNightFps`, `v3WalkFps`) still need a measuring tool. Sign-offs for the cross-owner
+  edits of `v32-early`: lead (`main.tsx`, `TownGame3d.ts`, `perf.ts`, `vendor/engineHost.ts`, `apps/server/src/app.ts`,
+  `ui/common/townPrefetch.ts`), lobby-auth (`ui/lobby/LobbyRoute.tsx`, `apps/server/src/precompressed.ts`), qa-deploy
+  (`scripts/perf/net-static.mjs`).

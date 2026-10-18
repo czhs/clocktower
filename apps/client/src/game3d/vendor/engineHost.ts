@@ -11,7 +11,7 @@ import * as THREE from 'three';
 import { Engine } from '@pixel3d/core/Engine.js';
 import { pixelScaleFor, type ProjectionState } from '../coords';
 import type { Tier } from '../contract';
-import { runFrameLoop, V3_MAX_FPS, type FrameLoop } from '../perf';
+import { runFrameLoop, V3_IDLE_FPS, V3_MAX_FPS, type FrameLoop } from '../perf';
 import { cpuPixelScale, installCpuTier, tierFpsLimit, type CpuEngine, type CpuTier } from './cpuTier';
 
 interface PixelGlobal {
@@ -89,8 +89,9 @@ export interface EngineHost {
   /**
    * Start the RAF loop: `frame(t, dtMs)` runs before engine.renderAt(t) each frame, `after(t)` after it. The
    * first throw from any of them stops the loop for good and is passed to `onError` (crash -> Classic).
+   * `isIdle` (v3.2 idle rendering, game3d/idle.ts): while true the loop draws at most V3_IDLE_FPS.
    */
-  start(frame: (t: number, dtMs: number) => void, after?: (t: number) => void, onError?: (e: unknown) => void): void;
+  start(frame: (t: number, dtMs: number) => void, after?: (t: number) => void, onError?: (e: unknown) => void, isIdle?: () => boolean): void;
   /** Render one frame now (warm-up). */
   renderNow(t: number): void;
   /** Projection inputs of the last rendered frame (coords.ts). One object, updated in place on every call. */
@@ -258,7 +259,7 @@ export function createEngineHost(parent: HTMLElement, opts: EngineHostOptions): 
         }
       };
     },
-    start(frame, after, onError) {
+    start(frame, after, onError, isIdle) {
       if (disposed || loop) return;
       loop = runFrameLoop(
         {
@@ -267,6 +268,8 @@ export function createEngineHost(parent: HTMLElement, opts: EngineHostOptions): 
           // v3 perf(learn): no more than 60 rendered frames a second on a 120-165 Hz panel (perf.ts V3_MAX_FPS)
           // (ct.debug.fps < 0: uncapped, for perf runs that measure per-frame cost on an unthrottled browser)
           maxFps: opts.fpsLimit !== undefined && opts.fpsLimit < 0 ? 0 : V3_MAX_FPS,
+          // v3.2: 30 fps while nothing on screen changes (never with ct.debug.fps set)
+          ...(isIdle && !opts.fpsLimit ? { idleFps: V3_IDLE_FPS, isIdle } : {}),
           step(t, dtMs) {
             frame(t, dtMs);
             if (disposed) return;

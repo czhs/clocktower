@@ -2,6 +2,83 @@
 
 All commands run on **the host** via `scripts/remote.sh` unless stated otherwise.
 
+## 2026-10-18 — v3.2 release gate (`v32-release`, branch `v3-game`, the host, sandbox `v32-release`)
+
+Tree = v3.1 (`40ec348`) + merge of `v32-early` (`3e46778`; no textual conflicts) + release fix (entry chunk:
+`ui/common/prefetchAllowed.ts`, lazy townPrefetch import in `main.tsx`) + two budget keys in `scripts/perf/budgets.mjs`.
+
+| Command (`CT_AGENT=v32-release scripts/remote.sh …`, builds / tests under `flock -s ~/clocktower/v3-heavy.lock`) | Result |
+|---|---|
+| `pnpm -r run typecheck && pnpm exec tsc -p tests/tsconfig.json --noEmit` (right after the merge) | exit 0 (7/7), exit 0 |
+| `pnpm build` + `bundle-report.mjs --json` + `budgets.mjs --bundle … --dist apps/client/dist` (right after the merge) | build exit 0, precompress 130 .br / 130 .gz of 139 text files (2.8 s); **1 OVER: `entryJsBrKiB` 45.7/45** (townPrefetch → select.ts in the entry chunk, 4.6 KB raw) |
+| fix, then `pnpm --filter @ct/client run typecheck` + `pnpm build` + bundle-report + **gate** `budgets.mjs --bundle /tmp/v32-bundle.json --dist apps/client/dist --out tests/perf/results/2026-10-18-v3.2.json` | exit 0; precompress 131 .br / 131 .gz of 140; **all measured ok**: entry JS 44.2/45, entry CSS 12.3/15, LobbyRoute 66.9/72, TownGame 281.4/300, town3d 283.6/300, **`v3JoinPhaserChunk` 0/0 (new)**, **`town3dShippedBrKiB` 283.6/300 (new)**, atlases 578.5/700 KiB; runtime keys SKIP (no perf inputs) |
+| **gate** `pnpm -r run typecheck`; `tsc -p tests/tsconfig.json --noEmit`; `pnpm vitest run apps/client/test/ui.townPrefetch.test.ts apps/client/test/game3d/idle.test.ts` (after the fix and the e2e) | exit 0 (7/7); exit 0; 2 files / 19 tests pass |
+| **gate** `pnpm test` (full, after the build) | **exit 0: 178 files pass, 1 skipped; 2063 tests pass, 5 skipped** (133.9 s) |
+| **gate** v3 e2e, one spec at a time: `E2E_V3=1 E2E_PORT=3450 CT_GL=gpu CT_E2E_NO_BUILD=1 flock -s v3-heavy.lock flock browser.lock nice -n 19 timeout 1500 pnpm test:e2e --project=v3 <spec>` (host GPU) | **all pass on the first run**: `v3-paths` 4/4 (29.7 s), `v3-boot` 1/1 (12.4 s), `v3-vote` 1/1 (28.4 s), `v3-doors` 1/1 (25.5 s), `v3-social` 1/1 (10.3 s), `v3-mixed` 1/1 (12.9 s), `v3-life` 1/1 (1.1 m), `v3-fallback` 4/4 (36.4 s), `v3-pageerrors` 1/1 (2.0 m; KHR_parallel_shader_compile false → "no compile window seen"; pre-warm 39 builds / 39 compiled / 0 timed out). **Page errors: none** |
+| **gate** Classic: `E2E_PORT=3450 CT_E2E_NO_BUILD=1 … pnpm test:e2e --project=chromium tests/e2e/doors.spec.ts tests/e2e/chat-bubbles.spec.ts` | **2/2 pass** (55.0 s) |
+
+The front branch's own runs: docs/perf-v3/fullstack.md §10.4 (idle / join / compression measurements, unit tests,
+e2e on `v32-early`).
+
+### v3.2 deploy (same day; the tagged commit `v3.2` = `ceab1ce`)
+
+| Command (from the orchestrator checkout unless noted) | Result |
+|---|---|
+| `scripts/secret-scan.sh`; `git push origin v3-game`; `git tag -a v3.2 ceab1ce`; `git push origin v3.2` | scan clean (394058 lines); pre-push scan clean (2 commits); `40ec348..ceab1ce`; new tag `v3.2` |
+| `scripts/deploy-hshi-u1.sh dev ceab1ce` | **exit 0 in 18 s**: precompress 131 .br / 131 .gz of 140, healthy `version ceab1ce…`, 104 previous assets carried |
+| on the host: `curl 127.0.0.1:3001/internal/version`; `GET / /v2/ /lobby/x /v2/lobby/x`; `journalctl -u clocktower-dev`; `curl -sI -H 'Accept-Encoding: br' 127.0.0.1:3001/assets/town3d-BNrxKKg_.js` | version = ceab1ce; all four 200; journal: no error / warn / fail lines; `Content-Encoding: br`, `Content-Length: 290358`, `Vary: Accept-Encoding`, immutable |
+| browser smoke on the host GPU against 127.0.0.1:3001 (scratch Playwright spec in the sandbox `.smoke/`, not in git; `flock browser.lock`, nice 19; 6 protocol bots (Storyteller + 5) + a 1920×1080 page + a 1440×900 DPR-2 page; waiting room → start → first night → day → teleport to seats → a nomination → vote frame; network log of both pages) | first run: the scratch spec's own bug (`const URL` shadowed the URL class), fixed; second run **1/1 pass (24.5 s)**: page errors [] and console errors [] on both pages; **TownGame / Phaser requests: none**; `/assets` js / css / json responses 88 br + 4 identity per page; laptop waiting room after 5 s still: `idle {on: true, idle: true}`; both pages tier high; vote frame viewHeight 13.10 / 13.53 with 8 measured HUD boxes |
+| prod pre-check: `journalctl -u clocktower-prod --since "30 min ago" -o cat` (16:31) | two solo Storyteller lobbies, both disposed by 16:21; no lobby open |
+| `sudo -n /usr/bin/systemctl start clocktower-backup-prod.service` | exit 0, Result=success |
+| `scripts/deploy-hshi-u1.sh prod ceab1ce` | **exit 0 in 17 s**: pre-deploy backup, `prod -> releases/ceab1ce…` (previous b7803fa), healthy, old release `fd73c81` pruned, 104 previous assets carried |
+| `curl 127.0.0.1:3000/internal/version` (host); public `https://clocktower.chrisshi.com/`, `/v2/`, `/v3-art-demo/`, `/healthz`; prod / dev / tunnel units; journals | version = ceab1ce; 200 / 200 / 200 (title "Hollowmere demo") / ok; all active; prod + dev journals since the deploys: 0 error / warn / fail / crit lines |
+| edge: `curl -sI -H 'Accept-Encoding: br' https://clocktower.chrisshi.com/assets/town3d-BNrxKKg_.js` ×3; `curl -s -H 'Accept-Encoding: br' … \| wc -c` | `content-encoding: br`, `vary: Accept-Encoding`, `cache-control: public, max-age=31536000, immutable`, `content-length: 290358`; cf-cache-status **MISS, then HIT, HIT**; body **290 358 B = the build's `.br` exactly** (Cloudflare passes the origin's q11 through; v3.0/v3.1 edge q4 ≈ 336 600 B); gzip body 348 635 B |
+| edge: the same for `/assets/town-v3-Droan-y4.json` | `content-encoding: br`, 11 661 B (= the `.br`; raw 225 805), vary + immutable, cf-cache-status **DYNAMIC ×3** (the owner's `/assets/*` cache rule, fullstack.md §10.3, is not set yet) |
+
+Stills (this machine, gitignored): `tests/v3/shots/v3.2/{square-1920x1080,waiting-room-1440x900-dpr2}.png`.
+
+## 2026-10-18 — v3.1 release gate (`v31-release`, branch `v3-game`, the host, sandbox `v31-release`)
+
+Tree = v3.0 + `78caa62` (cherry-picked `docs/perf-v3/client.md`) + merges of `v31-fixes` (`8b7e642`), `v31-stage`
+(`f90a701`) and `v31-cpu` (`3cd20d5`, both commits) + "v3.1: QA fixes" (vote frame vs the real HUD, house names hidden
+in the vote view, softer talking rim). Merge conflicts: `docs/v3/INTEGRATION.md` §9.2 only (both sides kept).
+
+| Command (`CT_AGENT=v31-release scripts/remote.sh …`, builds / tests under `flock -s ~/clocktower/v3-heavy.lock`) | Result |
+|---|---|
+| `pnpm -r run typecheck`; `pnpm exec tsc -p tests/tsconfig.json --noEmit` (right after the merges) | exit 0 (7/7), exit 0 |
+| `pnpm build` + `bundle-report.mjs` + `budgets.mjs --bundle` (right after the merges) | exit 0; all measured ok; `town3d` 281.8 KiB br |
+| QA-fix iteration: `pnpm --filter @ct/client run typecheck` + `pnpm vitest run …voteCam …world.hudKeep …avatars.parts …overlay` | exit 0; 8 files / 93 tests, then voteCam + hudKeep + world.stage 3 files / 27 tests |
+| vote-frame probe: a scratch copy of `v3-vote.spec.ts` (host sandbox only, not in git) at 1920×1080 / 1280×800 / 1440×900, `CT_GL=gpu`, port 3450, both locks, 4 iterations | reproduced the QA finding (frame fit only fixed corner sizes); first hudKeep version pushed the circle off the left edge (toast class names missed, hint pill counted) → toasts ignored (`cth-toast*`), hint pill dropped, ring edge kept in frame; final stills: every seat clear of the HUD at all three sizes |
+| **gate** `pnpm -r run typecheck` | exit 0 (7/7) |
+| **gate** `pnpm exec tsc -p tests/tsconfig.json --noEmit` | exit 0 |
+| **gate** `pnpm build` | exit 0 |
+| **gate** `node scripts/perf/bundle-report.mjs --json /tmp/v31-bundle.json` + `node scripts/perf/budgets.mjs --bundle /tmp/v31-bundle.json --out tests/perf/results/2026-10-18-v3.1.json` | **all measured ok**: entry JS 44.1/45, entry CSS 12.3/15, LobbyRoute 68.5/72, TownGame 281.4/300, **town3d 282.7/300 (new key)**, atlases 578.5/700 KiB |
+| **gate** `pnpm test` (full, after the build) | **exit 0: 175 files pass, 1 skipped; 2016 tests pass, 5 skipped** (133.1 s) |
+| **gate** v3 e2e, one spec at a time: `E2E_V3=1 E2E_PORT=3450 CT_GL=gpu CT_E2E_NO_BUILD=1 flock -s v3-heavy.lock flock browser.lock nice -n 19 timeout 1500 pnpm test:e2e --project=v3 <spec>` (host GPU) | **all pass on the first run**: `v3-paths` 4/4 (29.5 s), `v3-boot` 1/1 (12.3 s), `v3-vote` 1/1 (28.3 s), `v3-doors` 1/1 (22.2 s), `v3-social` 1/1 (10.2 s), `v3-mixed` 1/1 (13.1 s), `v3-life` 1/1 (1.1 m), `v3-fallback` 4/4 (35.7 s), `v3-pageerrors` 1/1 (2.0 m; KHR_parallel_shader_compile false → "no compile window seen"; pre-warm 39 builds / 39 compiled / 0 timed out). **Page errors: none** in any run (no `pageerror` line, no `isReady`) |
+| **gate** Classic: `E2E_PORT=3450 CT_E2E_NO_BUILD=1 … pnpm test:e2e --project=chromium doors.spec chat-bubbles.spec` | **2/2 pass** (53.5 s) |
+| extra: `CT_GL=swiftshader … --project=v3 v3-boot` | 1/1 pass (1.0 m) |
+
+Front branches' own runs (from their reports, not re-run here except through the gate above): `v31-fixes` —
+`v3-pageerrors` failed on d9cc841 with 2× the `isReady` TypeError and passed 3× with the fix; harness `?mode=cycles`
+(`render-check.sh`, SwiftShader) FAIL heapGrowthUnder10MB 15.37 → 97.08 MB before, PASS 15.36 → 20.34 MB after;
+`tests/perf/v3-cycles-heap.sh --gl gpu` growth 95 → 6.55 MB, 0 engines retained; `tests/perf/v3-ui.ts` walk non-transform
+writes 11.7 → 2.4 /s, bedtime UI writes 25.9 → 9.1 /s; client unit tests 69 files / 897. `v31-stage` — world.merge 12/12,
+game3d 428/428, e2e `v3-doors` / `v3-life` / `v3-vote` 3/3 twice (port 3466); harness A/B and `v3-frame` numbers in
+docs/perf-v3/stage.md §6. `v31-cpu` — 433 game3d tests, typecheck; SwiftShader cpu-tier runs in docs/perf-v3/cpu.md §7
+(goal not reached: ~190 ms synced, 7.6-7.8 fps). C2 QA (read-only, on d9cc841): harness stills 6/6, a 10-bot playtest
+18/18 steps with 0 page / console errors.
+
+### v3.1 dev deploy (same day, after the push; the tagged commit `v3.1` = `b7803fa`)
+
+| Command (from the orchestrator checkout unless noted) | Result |
+|---|---|
+| `scripts/secret-scan.sh`; `git push origin v3-game`; `git tag -a v3.1 b7803fa`; `git push origin v3.1` | scan clean (392701 lines); pre-push scan clean (13 unpublished commits); `c67e1ea..b7803fa`; new tag `v3.1` |
+| `scripts/deploy-hshi-u1.sh dev b7803fa` | **exit 0 in 14 s**: sandboxed build, `clocktower-dev` restarted (only that unit), healthy `version b7803fae…`, 104 previous assets carried |
+| on the host: `systemctl status clocktower-dev`; `curl 127.0.0.1:3001/internal/version`; `GET / /v2/ /lobby/x /v2/lobby/x`; `journalctl -u clocktower-dev -n 50` | active (running); version = `b7803fae0359d864418ef27fc889e6c350b13e97`; all four 200 with the app (`<title>Clocktower Town</title>`); journal: no error / warn / fail lines. Prod untouched (`4be9bb4`, active) |
+| browser smoke on the host GPU against 127.0.0.1:3001 (scratch Playwright spec in the sandbox `.smoke/`, not in git; `flock browser.lock`, nice 19; 6 protocol bots (Storyteller + 5) + a 1920×1080 page + a 1440×900 DPR-2 laptop page, `ct.fxQuality=auto`): ready → start → random setup → first night → day → teleport all to seats → nominations + a nomination → vote frame on both pages | **1/1 pass (18.7 s); page errors [] and console errors [] on both pages**; both pages tier high; vote frame desktop viewHeight 13.10, laptop 13.53 with the measured HUD keep-outs (`stage().vote.key` lists 8 boxes); desktop frame p50 16.7 ms |
+
+Stills (this machine, gitignored): `tests/v3/shots/v3.1/{square-1920x1080,voting-1920x1080,voting-laptop-1440x900-dpr2}.png`.
+
 ## 2026-10-18 — v3.0 release gate (`v3-release`, branch `v3-game`, the host, sandbox `v3-release`)
 
 Tree = `116024f`: WP8 (`d66c622`) + the lead's merges of `v3-perf-stage`, `v3-perf-ui`, `v3-perf-learn`, `v3-perf-server`,

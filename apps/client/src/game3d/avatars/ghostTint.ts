@@ -39,8 +39,14 @@ export function createTintUniforms(flat = false): TintUniforms {
 export const RIM_DEFAULT = '#ffe2a0';
 /** Rim strength while talking. */
 export const RIM_K = 1;
-/** Flat lift of the whole rig while talking (× RIM_K), on top of the silhouette band. */
-export const RIM_FLAT = 0.15;
+/** Flat lift of the whole rig while talking (× RIM_K), on top of the silhouette band. (v3.1 QA C2: 0.15 -> 0.06, the
+ *  speaker washed out to flat grey; the band also got thinner and weaker: RIM_EDGE / RIM_BAND.) */
+export const RIM_FLAT = 0.06;
+/** The silhouette band: where 1 - |n.z| >= RIM_EDGE (was 0.35, most of a rounded body), adding RIM_BAND (was 0.85). */
+export const RIM_EDGE = 0.6;
+export const RIM_BAND = 0.44;
+/** The whole-sprite lift of a flat billboard while talking (was 0.3: the cream bleached the whole low-tier figure). */
+export const RIM_BILLBOARD = 0.12;
 
 /** Talking rim on (CSS hex, default RIM_DEFAULT) or off (null). Uniforms only. */
 export function setRim(u: TintUniforms, hex: string | null, k = RIM_K): void {
@@ -97,7 +103,7 @@ export const TINT_GLSL_BODY = /* glsl */ `
     if (ctBayer4(gl_FragCoord.xy) >= uCtGhost.y) discard;
   }
   if (uCtRim.w > 0.0) {
-    float ctE = uCtGhost.w > 0.5 ? 0.3 : ${RIM_FLAT.toFixed(2)} + ${(1 - RIM_FLAT).toFixed(2)} * step(0.35, 1.0 - abs(normalize(normal).z));
+    float ctE = uCtGhost.w > 0.5 ? ${RIM_BILLBOARD.toFixed(2)} : ${RIM_FLAT.toFixed(2)} + ${RIM_BAND.toFixed(2)} * step(${RIM_EDGE.toFixed(2)}, 1.0 - abs(normalize(normal).z));
     outgoingLight += uCtRim.rgb * (ctE * uCtRim.w);
   }
   if (uCtGhost.z < 0.999 && ctBayer4(gl_FragCoord.xy) >= uCtGhost.z) discard;

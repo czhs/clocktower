@@ -1,7 +1,112 @@
+# Clocktower Town v3.2
+
+Status: **on prod since 2026-10-18 16:32 PDT** (https://clocktower.chrisshi.com, tag `v3.2` = `ceab1ce` on
+`v3-game`). Gate and deploy: docs/test-results.md "v3.2 release gate" / "v3.2 deploy". Contract and decision log: docs/v3/INTEGRATION.md §11. Numbers: docs/perf-v3/fullstack.md §10.
+
+v3.2 is a perf release on top of v3.1 (branch `v32-early` merged): the town draws at half rate while nothing on screen
+changes, a v3 join no longer downloads Phaser, the 3D town is prefetched on the home page, and the origin ships
+build-time brotli.
+
+## Faster
+- **Idle rendering: 30 fps while nothing on screen changes.** The frame loop drops to 30 fps when for 3 s nobody moved
+  or talked, the camera stood still, the hour did not ease, no vote / nomination was open and there was no input or
+  state change (`game3d/idle.ts`, `perf.ts ActivityWatch`); any change draws at the full rate on the very next vsync.
+  Ambient motion (wind, water, fireflies, breathing) steps at 30 Hz meanwhile. Measured at CPU ×4, 1440×900 DPR 2,
+  15 players: main-thread work **−42 %** in a still waiting room (561 → 328 ms/s), **−44 %** on a still day square
+  (569 → 317), **−41 %** at night alone in a house (102 → 61); walking and the vote unchanged at 60 fps; GPU work
+  halves with the frame count. It composes with the other caps: the cpu tier's 30 fps and `V3_MAX_FPS` 60 are never
+  raised, and `ct.debug.fps` turns idle rendering off; `ct.debug.v3idle=0` is the A/B switch. A vote is never idle.
+- **A v3 join never downloads Phaser** (−360 KB br and −55 ms of evaluation per join, −200 ms at CPU ×4). Only the
+  renderer select.ts will pick is fetched (`ui/common/townPrefetch.ts`); Classic (Graphics = Classic, phones, the boot
+  guard, the auto-fallback memo, no WebGL2, a v2 lobby) still loads it, and an in-place fallback imports it on demand.
+  `town3d` now starts with the join ticket instead of after `lobby:view`.
+- **The 3D town is prefetched on the home page.** The v3 landing and home screens fetch LobbyRoute + `town3d` when the
+  browser is idle (not with Save-Data or a 2g / 3g connection, not where Classic would be used); a join from the home
+  page then takes `town3d` from the cache.
+- **Build-time brotli.** `pnpm build` writes `.br` (q11) and `.gz` siblings for every text asset
+  (`apps/client/build/precompress.mjs`); the server sends them to clients that accept them, with the same immutable
+  Cache-Control, `Vary: Accept-Encoding` and per-variant ETags (`apps/server/src/precompressed.ts`). `town3d` on the
+  wire: **336.6 KB (Cloudflare's q4) → 290.4 KB** (283.6 KiB; measured through Cloudflare after the prod deploy: the
+  edge passes the origin's br through and caches it; the chunk grew by the v3.1 merge since the 279.6 KB measured on
+  `v32-early`).
+- Bundles: entry JS 44.2/45 KiB br (the home prefetch module is imported lazily so select.ts stays out of the entry),
+  LobbyRoute 66.9/72, TownGame 281.4/300, `town3d` 283.6/300. New budget keys: `v3JoinPhaserChunk` = 0 (no Phaser chunk
+  in the static import closure of LobbyRoute + `town3d`) and `town3dShippedBrKiB` ≤ 300 (the shipped `.br` sibling;
+  a build without it fails the key).
+
+## Known issues (v3.2)
+- Everything in "Known issues (v3.1)" below still applies.
+- The 30 fps idle window shows ambient motion at half rate; a change that no idle rule catches is drawn at most 33 ms
+  late (never stale).
+- An old v2 share link opened at a v3 path (`/lobby/x`) starts `town3d` before `lobby:view` moves the page to `/v2/`
+  (rare; that page then loads Phaser too).
+- Cloudflare: the hashed JSON atlases are still `DYNAMIC` (not cached) at the edge until the owner adds the `/assets/*`
+  cache rule; Smart Tiered Cache is also an owner step (fullstack.md §10.3).
+
+# Clocktower Town v3.1
+
+Status: **tagged `v3.1` on `v3-game` (`b7803fa`), on prod from 2026-10-18 16:04 PDT until v3.2 replaced it.**
+Gate and commands: docs/test-results.md "v3.1 release gate". Contract and decision log: docs/v3/INTEGRATION.md §11.
+
+v3.1 is a fix and perf release on top of v3.0: three v3.0 known issues fixed, a draw-call cut for the town, the C2 QA
+round's vote-camera finding fixed, and the cpu tier profiled to its real cost.
+
+## Fixed
+- **No more `TypeError … 'isReady'` page error** (v3.0 known issue). The avatar pre-warm no longer uses three's
+  `compileAsync`, whose uncancellable poll timer could read a disposed program after a rebuild, a leave or a cast
+  change. `avatars/precompile.ts` compiles, then polls on its own and stops when the body is dropped, the layer is
+  destroyed or the 3 s pre-warm deadline passes. New e2e `v3-pageerrors` (8 bots join and leave at the high tier, a GL
+  context loss forced while an avatar compiles): it failed with the TypeError on v3.0 and passes on v3.1 (0 page errors).
+- **Remount memory leak.** One destroyed town (~80-95 MB of JS heap) stayed alive for good: the vendor life module's
+  `stats.at` getter closure held the whole build scope, and V8 kept that closure through the `stats` literal's shared
+  layout. A build-time patch (`apps/client/build/pixel3dImports.ts`, fails the build on vendor drift) moves the getter to
+  module level. Harness `?mode=cycles` (5 mounts, 2 rebuilds, an injected crash), SwiftShader: heap **15.4 → 97.1 MB
+  (FAIL) before, 15.4 → 20.3 MB (+4.7 MB, PASS) after**; on the host GPU growth 95 MB → 6.6 MB, 0 engines retained.
+- **DOM churn at bedtime and while walking** (v3.0 known issue). The countdown renders one m:ss string per shown
+  second, the clock chip ticks once a second, and culled labels / house names are parked off-canvas with one transform
+  write instead of visibility flips. 15 players, 1440×900, high: bedtime DOM UI writes **25.9 → 9.1 /s**, non-transform
+  writes **35.3 → 9.3 /s**; walk non-transform writes **11.7 → 2.4 /s**.
+- **The vote camera clears the real HUD** (C2 QA, HIGH). The voting-circle frame used to dodge fixed corner sizes only,
+  so the Storyteller panel (a third of a laptop screen), the open chat, the vote and voice cards and the "Your home" chip
+  covered seats, the nominee and the Storyteller. It now measures the HUD that is actually over the canvas on vote
+  entry and on resize (`world/hudKeep.ts`), keeps the circle's paving edge inside the canvas and may zoom out further
+  to fit (up to 2.4× the content size).
+- **No house-name pills in the vote view** (C2 QA). Foreground houses' name pills projected into the circle, over the
+  player labels, repeating a seated player's name.
+- **A softer talking outline** (C2 QA art check). The speaking avatar no longer washes out: billboard lift 0.3 → 0.12,
+  rig base lift 0.15 → 0.06, rim band 0.85 → 0.44 and thinner.
+
+## Faster
+- **Fewer draw calls for the town.** The static town-kit meshes of all buildings, props, ground and foliage are merged
+  into 7 `BatchedMesh`es (one per kit material and shadow flag) at build time, culled once per frame; animated pieces
+  leave the batch on their first change. Same-frame harness A/B at 960×540: square by day **272 → 201** draws (low),
+  **343 → 264** (high); vote **395 → 295** (low), **459 → 348** (high); at most 8 low-res texels per still differ. In the
+  live frame (14 remotes walking, 1920×1080): high **351 → 293** draws (−17 %), shadow 84.6 → 66.9; low 240 → 195 (−19 %).
+  Cost: main-thread render JS **+0.3 to +0.7 ms per frame** on the host. Switch: `ct.debug.v3merge=0` turns it off.
+- **cpu tier: profiled, not faster.** Still about 190 ms per synced frame / 7.6-7.8 fps on SwiftShader (960×540, 14
+  remotes). The cost is not the toon shading but the vendor cut-away code on every town material (SwiftShader runs
+  every branch); see docs/perf-v3/cpu.md §7. The only default change is a pixel-identical program rewrite (the ground's
+  unused intro-flight branches compiled out); the material twins are opt-in (`ct.debug.cpuShade`).
+- Bundles: `town3d` 270.4 → 282.7 KiB br (merge + precompile + hudKeep); new budget key `town3dChunkBrKiB` ≤ 300.
+  Entry JS 44.1/45, entry CSS 12.3/15, LobbyRoute 68.5/72, TownGame 281.4/300 KiB br.
+
+## Known issues (v3.1)
+- **cpu tier misses its goal** (7.6-7.8 fps against ≥ 20). Next lever: a cheap cut-away at the cpu tier (CONTRACT-REQUEST
+  in INTEGRATION.md §9.2), then character LOD.
+- **The town batch costs main-thread time** (+0.3-0.7 ms per frame on the host). It still needs an A/B on a laptop iGPU
+  at 1440×900 DPR 2; if the main thread loses there, it will default off.
+- C2 QA findings not fixed yet (docs/progress.md "v3 handoff"): a black disc over the market stall at bedtime; the own
+  avatar hidden behind the banister in Stargazer's Tower (house-0); the porch gable half-faded over the avatar after
+  leaving house 5; the block marker is weak without the pennant; a navy slab outside the clock tower room; no "rejoin
+  your game" in the finder; the clock chip still counts "Nominations close" after an execution.
+- The `v3-pageerrors` context-loss step never fires on the host GPU (no KHR_parallel_shader_compile); the
+  disposed-during-compile case is covered by unit tests only.
+- Phones: not supported in v3 (a note says so); use `/v2/`.
+
 # Clocktower Town v3.0
 
-Status: **on the dev service only** (the host, port 3001, reached through `scripts/dev.sh`). Prod
-(https://clocktower.chrisshi.com) still runs v2.4 until the user says otherwise. Gate and commands:
+Status: **on prod since 2026-10-18 13:45 PDT** (https://clocktower.chrisshi.com, `4be9bb4`), and on the dev service
+until v3.1 replaced it there. Gate and commands:
 docs/test-results.md "v3.0 release gate". Contract and decision log: docs/v3/INTEGRATION.md.
 
 v3 moves the game into the pixel3d three.js town, Hollowmere. The rules, the Storyteller tools, voice and

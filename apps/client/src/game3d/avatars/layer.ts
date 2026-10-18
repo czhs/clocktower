@@ -14,8 +14,9 @@
 //      deaths (clips.ts stepDeath: 'die' held 1.5 s when seen) -> the ghost look of the body's GhostMode;
 //      raised hands -> held 'vote'; lanterns at night borrow a pool light (lanterns.ts; living carriers and the
 //      Storyteller only, as v2); low tier: LOD > 12 m; body.update(t) only for shown bodies.
-// A landed build is pre-compiled (renderer.compileAsync into a scratch render target, so the variants match the
-// pipeline's render-target passes) and stays hidden until that resolves: no synchronous compile hitch on its first
+// A landed build is pre-compiled (renderer.compile into a scratch render target, so the variants match the
+// pipeline's render-target passes, then a guarded, cancellable readiness poll: precompile.ts) and stays hidden until
+// that resolves: no synchronous compile hitch on its first
 // draw for a player who joins mid-game. A revived 'clips' ghost leaves its slide in place (rigBody.ts), no rebuild.
 // The per-frame path reuses its containers (no per-frame Sets / Maps / closures / anchor objects).
 // Coordinates crossing the layer boundary are v2 px + LocationId (contract.ts); metres stay inside.
@@ -35,6 +36,7 @@ import { nextBuild, type BuildCandidate } from './queue';
 import { createRigBody } from './rigBody';
 import { createSpriteBody, spriteDebug } from './sprites/spriteBody';
 import { releaseSheets, sheetStats } from './sprites/bake';
+import { canPrecompile, precompile, type CompileRendererLike, type PrecompileResult } from './precompile';
 import { RIM_DEFAULT } from './ghostTint';
 import { dir8, toFacing } from '../../game/rules/input';
 import { LOW_TIER_AMBIENCE } from '../../game/fx/tier';
@@ -177,7 +179,9 @@ interface PubRecord {
 const FACE_YAW: Record<Facing, number> = { down: 0, right: Math.PI / 2, up: Math.PI, left: -Math.PI / 2 };
 
 interface RendererLike {
-  compileAsync?(o: THREE.Object3D, camera: THREE.Camera, scene?: THREE.Scene | null): Promise<unknown>;
+  /** three's compile() + properties (precompile.ts); never three's compileAsync, whose poll throws on a disposed material */
+  compile?: CompileRendererLike['compile'];
+  properties?: CompileRendererLike['properties'];
   getRenderTarget?(): THREE.WebGLRenderTarget | null;
   setRenderTarget?(rt: THREE.WebGLRenderTarget | null): void;
   info?: { programs?: unknown[] | null };
@@ -370,49 +374,45 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
   };
 
   /**
-   * Compile the new body's programs before its first draw (renderer.compileAsync, parallel where the browser has
-   * KHR_parallel_shader_compile), into a scratch render target: the pipeline draws the scene into render targets,
-   * so the variants match (linear output, no tone mapping) instead of adding canvas variants. The entry stays
-   * hidden until it resolves (at most PREWARM_MAX_MS).
+   * Compile the new body's programs before its first draw (renderer.compile, then a readiness poll that is parallel
+   * where the browser has KHR_parallel_shader_compile), into a scratch render target: the pipeline draws the scene
+   * into render targets, so the variants match (linear output, no tone mapping) instead of adding canvas variants.
+   * The entry stays hidden until it resolves (at most PREWARM_MAX_MS). The poll stops when the body is dropped, the
+   * layer is destroyed or the deadline passes, and treats a released material as done (precompile.ts: three's own
+   * compileAsync poll threw "reading 'isReady'" from a timer for a body disposed mid-compile).
    */
   const prewarm = (e: Entry, body: AvatarBody) => {
     const r = engine.renderer;
     const cam = engine.camera?.cam;
     const scene = engine.scene;
-    if (!r?.compileAsync || !r.setRenderTarget || !r.getRenderTarget || !cam || !scene) return;
+    if (!r || !canPrecompile(r) || !r.setRenderTarget || !r.getRenderTarget || !cam || !scene) return;
     warm.builds++;
     warmSeq++;
     const gen = e.gen;
     const t0 = performance.now();
-    const ps: Promise<unknown>[] = [];
+    let p: Promise<PrecompileResult> | null = null;
     const prev = r.getRenderTarget();
     try {
       warmRT ??= new THREE.WebGLRenderTarget(1, 1);
       r.setRenderTarget(warmRT);
-      for (const o of body.compileRoots?.() ?? [body.holder]) ps.push(r.compileAsync(o, cam, scene)); // compiles synchronously inside the call
+      // compiles synchronously inside the call; only the poll is asynchronous
+      p = precompile(r, body.compileRoots?.() ?? [body.holder], cam, scene, { live: () => !destroyed && e.gen === gen, maxMs: PREWARM_MAX_MS });
     } catch (err) {
       console.warn('[avatars] shader pre-warm failed', err);
     } finally {
       r.setRenderTarget(prev);
     }
-    if (!ps.length) return;
+    if (!p) return;
     e.compiling = true;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const timeout = new Promise<'timeout'>((res) => (timer = setTimeout(() => res('timeout'), PREWARM_MAX_MS)));
-    Promise.race([Promise.all(ps), timeout])
-      .then((v) => {
-        if (v === 'timeout') warm.timedOut++;
-        else warm.compiled++;
-      })
-      .catch(() => undefined)
-      .finally(() => {
-        if (timer) clearTimeout(timer);
-        warm.ms += performance.now() - t0;
-        if (e.gen === gen) {
-          e.compiling = false;
-          warmCheck.set(e, { n: programCount(), seq: warmSeq });
-        }
-      });
+    p.then((v) => {
+      if (v === 'timeout') warm.timedOut++;
+      else if (v === 'ready') warm.compiled++;
+      warm.ms += performance.now() - t0;
+      if (e.gen === gen) {
+        e.compiling = false;
+        warmCheck.set(e, { n: programCount(), seq: warmSeq });
+      }
+    }).catch(() => undefined);
   };
   const programCount = () => engine.renderer?.info?.programs?.length ?? 0;
   /**
@@ -673,6 +673,7 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
             dead: e.dead,
             ghost: e.appliedGhost,
             building: e.building,
+            compiling: e.compiling,
             failed: e.failed,
             parked: e.parked,
             frame: e.body?.frame() ?? null,

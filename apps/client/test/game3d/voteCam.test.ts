@@ -9,7 +9,7 @@ import type { NominationView, PlayerGameView } from '@ct/protocol';
 import { worldToCss, type ProjectionState } from '../../src/game3d/coords';
 import { CameraRig, cameraMode, interiorShot, steppedPose, TRANS_S, TRANS_STEPS, turnKeys, type CameraPose, type CameraShot, type RigHost } from '../../src/game3d/input/camera';
 import { voteCameraWanted } from '../../src/game3d/net/core';
-import { chooseVoteFrame, contentPoints, facingDial, keepOuts, voteFrame, VOTE_PITCH, VOTE_PITCH_PORTRAIT, VOTE_YAWS, PREFER, type Dial, type V3 } from '../../src/game3d/world/voteFrame';
+import { chooseVoteFrame, contentPoints, facingDial, keepOuts, voteFrame, VOTE_PITCH, VOTE_PITCH_PORTRAIT, VOTE_YAWS, PREFER, RING_PAD, type Box, type Dial, type V3 } from '../../src/game3d/world/voteFrame';
 
 interface PCam {
   cam: THREE.OrthographicCamera;
@@ -87,17 +87,24 @@ describe('vote camera switch (net/core voteCameraWanted + input/camera cameraMod
 });
 
 describe('the vote frame fit (world/voteFrame.ts, a port of votecam.js voteFrame)', () => {
-  const sizes = [
+  // (v3.1 QA C2) the measured HUD (world/hudKeep.ts), in CSS px: the Storyteller's laptop (1440x900, the ~560 px
+  // panel down the left, the vote card top right, the voice card bottom right, the "Your home" chip bottom centre) and a
+  // player's 1280x800 with the chat open
+  const css = (s: number, ...r: [number, number, number, number][]): Box[] => r.map(([x0, y0, x1, y1]) => ({ x0: x0 / s, y0: y0 / s, x1: x1 / s, y1: y1 / s }));
+  const sizes: { name: string; w: number; h: number; scale: number; keep?: Box[] }[] = [
     { name: '960x540 x2', w: 960, h: 540, scale: 2 },
     { name: '1920x1080 x3', w: 1920, h: 1080, scale: 3 },
     { name: '390x844 portrait x2', w: 390, h: 844, scale: 2 },
+    { name: 'Storyteller laptop 1440x900 x3, measured HUD', w: 1440, h: 900, scale: 3, keep: css(3, [0, 0, 400, 704], [0, 832, 96, 900], [1120, 0, 1440, 64], [1184, 64, 1440, 352], [1152, 736, 1440, 900], [640, 0, 960, 64]) },
+    { name: 'player 1280x800 x2, chat open, measured HUD', w: 1280, h: 800, scale: 2, keep: css(2, [0, 0, 192, 32], [0, 544, 352, 800], [960, 0, 1280, 64], [1056, 64, 1280, 384], [1024, 640, 1280, 800], [544, 736, 736, 800], [544, 0, 736, 64]) },
   ];
   for (const sz of sizes)
     it(`every seat (feet .. raised hand) and the facing dial inside the canvas and clear of the HUD: ${sz.name}`, () => {
       const lowW = Math.ceil(sz.w / sz.scale);
       const lowH = Math.ceil(sz.h / sz.scale);
-      const keep = keepOuts(lowW, lowH, sz.scale);
-      const f = chooseVoteFrame({ lowW, lowH, seats: SEATS, dials: DIALS, keep });
+      const keep = sz.keep ?? keepOuts(lowW, lowH, sz.scale);
+      const ring = { cx: 22.5, cz: 19.75, r: 6.25 };
+      const f = chooseVoteFrame({ lowW, lowH, seats: SEATS, dials: DIALS, keep, ring });
       expect(f.pitch).toBeCloseTo(lowW < lowH ? VOTE_PITCH_PORTRAIT : VOTE_PITCH, 9);
       expect(VOTE_YAWS.map((y) => (y * Math.PI) / 180)).toContainEqual(f.yaw);
       // render it with the real pixel camera and project the content (the fit is exact up to the texel snap)
@@ -117,6 +124,15 @@ describe('the vote frame fit (world/voteFrame.ts, a port of votecam.js voteFrame
           expect(c.y).toBeLessThan(sz.h + slack);
           expect(inKeep(c.x, c.y), `seat under a HUD keep-out at ${c.x},${c.y}`).toBe(false);
         }
+      // (v3.1) the circle's paving edge stays in the canvas (it may pass under the HUD)
+      for (let q = 0; q < 16; q++) {
+        const a = (q / 16) * Math.PI * 2;
+        const c = worldToCss(pr, ring.cx + Math.cos(a) * (ring.r + RING_PAD), 0, ring.cz + Math.sin(a) * (ring.r + RING_PAD));
+        expect(c.x, 'ring edge in frame').toBeGreaterThan(-slack);
+        expect(c.x).toBeLessThan(sz.w + slack);
+        expect(c.y).toBeGreaterThan(-slack);
+        expect(c.y).toBeLessThan(sz.h + slack);
+      }
       const d = f.dial!;
       expect(d).toBe(facingDial(DIALS, f.yaw, f.pitch));
       for (const dy of [-d.r, d.r]) {
@@ -126,7 +142,7 @@ describe('the vote frame fit (world/voteFrame.ts, a port of votecam.js voteFrame
         expect(inKeep(c.x, c.y), 'dial under a HUD keep-out').toBe(false);
       }
       // tighter than the old fixed shot (CAMERAS.vote viewHeight 19) on landscape screens
-      if (lowW >= lowH) expect(f.viewHeight).toBeLessThan(19);
+      if (lowW >= lowH && !sz.keep) expect(f.viewHeight).toBeLessThan(19);
     });
 
   it('the chosen yaw is the tightest candidate (a later one must win by more than PREFER)', () => {
