@@ -21,10 +21,11 @@
 import { FX_QUALITY_KEY } from '../game/fx/quality';
 import { currentLayout, currentWorld } from '../net/layout';
 import { voicePresence } from '../voice/VoiceClient';
-import type { Layer3d, Tier, TownBridge3d, TownHandle } from './contract';
+import type { Layer3d, Scene3dState, Tier, TownBridge3d, TownHandle } from './contract';
 import { createAvatarLayer, type AvatarLayer } from './avatars';
 import { createCore3d, type Core3d } from './net/core';
 import { createBusyOverlay, Lifecycle, watchContextLoss, type BuildControl } from './net/lifecycle';
+import { createIdleSignal } from './idle';
 import { createOverlayLayer, type OverlayLayer } from './overlay';
 import { readPerfFlags } from './perf';
 import { readGraphicsPref } from './select';
@@ -127,6 +128,10 @@ export function createTownGame3d(parent: HTMLElement, bridge: TownBridge3d, opts
     }),
   );
 
+  // v3.2 idle rendering: 30 fps while nothing on screen changes (game3d/idle.ts); survives rebuilds
+  const idle = createIdleSignal({ conn: bridge.conn, core, talking: () => rims.size > 0, storage: s });
+  offs.push(() => idle.destroy());
+
   /** Frames run by the loop (debug: `camera3d().frames` tells a stalled page from a stale state). */
   let frameCount = 0;
   let lastFrameAt = 0;
@@ -147,7 +152,7 @@ export function createTownGame3d(parent: HTMLElement, bridge: TownBridge3d, opts
       /** The camera: mode (follow / vote / room), focus (m), viewHeight, yaw / pitch (deg), a running transition. */
       camera3d: () => {
         const sh = core.view.shot();
-        return { mode: core.view.cameraMode(), X: +sh.X.toFixed(3), Z: +sh.Z.toFixed(3), viewHeight: +sh.viewHeight.toFixed(3), yaw: Math.round(((sh.yaw ?? 0) * 180) / Math.PI), pitch: Math.round(((sh.pitch ?? 0) * 180) / Math.PI), transitioning: core.view.transitioning, frames: frameCount, sinceFrameMs: Math.round(performance.now() - lastFrameAt), lifecycle: lifecycle.state, waiting: lifecycle.waiting, cost: { step: +cost.step.toFixed(1), render: +cost.render.toFixed(1), maxStep: +cost.maxStep.toFixed(1), maxRender: +cost.maxRender.toFixed(1) } };
+        return { mode: core.view.cameraMode(), X: +sh.X.toFixed(3), Z: +sh.Z.toFixed(3), viewHeight: +sh.viewHeight.toFixed(3), yaw: Math.round(((sh.yaw ?? 0) * 180) / Math.PI), pitch: Math.round(((sh.pitch ?? 0) * 180) / Math.PI), transitioning: core.view.transitioning, frames: frameCount, sinceFrameMs: Math.round(performance.now() - lastFrameAt), lifecycle: lifecycle.state, waiting: lifecycle.waiting, cost: { step: +cost.step.toFixed(1), render: +cost.render.toFixed(1), maxStep: +cost.maxStep.toFixed(1), maxRender: +cost.maxRender.toFixed(1) }, idle: idle.debug() };
       },
     }),
   };
@@ -287,6 +292,7 @@ export function createTownGame3d(parent: HTMLElement, bridge: TownBridge3d, opts
       // the loop: state -> layers -> render -> stats / lifecycle
       let lastDtMs = 16;
       let stepEnd = 0;
+      let lastState: Scene3dState | null = null;
       sc.running = true;
       host.start(
         (t, dtMs) => {
@@ -294,7 +300,7 @@ export function createTownGame3d(parent: HTMLElement, bridge: TownBridge3d, opts
           frameCount++;
           const t0 = performance.now();
           lastFrameAt = t0;
-          const state = core.frame(t, dtMs);
+          const state = (lastState = core.frame(t, dtMs));
           const dt = Math.min(0.1, Math.max(0, dtMs / 1000));
           for (const l of sc.layers) l.update(state, t, dt);
           stepEnd = performance.now();
@@ -306,8 +312,10 @@ export function createTownGame3d(parent: HTMLElement, bridge: TownBridge3d, opts
           if (cost.render > cost.maxRender) cost.maxRender = cost.render;
           core.afterRender(lastDtMs);
           lifecycle.frame(lastDtMs);
+          if (lastState) idle.observe(lastState, host.projection());
         },
         (e) => (isLost() ? lost() : lifecycle.crash(e)),
+        idle.isIdle,
       );
     } catch (e) {
       // a build error: the lifecycle crashes to Classic when this build is still current; the half-built scene goes.
