@@ -1,8 +1,8 @@
-// (v3 perf, net front; acting for voice) VOICE-9 revocation audits, cheaper: one shared listRooms decides which
-// audited rooms are worth a listParticipants; empty rooms cost nothing, a room with more participants than grants
-// is listed at once, every other occupied room on a 15 s -> 30 s -> 60 s back-off (docs/perf-v3/net.md).
-// The pre-existing behaviour (an intruder is found and stripped at the next run) is covered by voice.test.ts
-// and tests/security/voice-cost.test.ts; this file pins the call budget and the worst-case detection delay.
+// (v3 perf; acting for voice) VOICE-9 revocation audits, cheaper: one shared listRooms decides which audited rooms
+// are worth a listParticipants; rooms LiveKit reports empty cost nothing. Every OCCUPIED audited room is still listed
+// at every run (15 s): an earlier draft backed them off to 60 s and was reverted - revocation must stay prompt
+// (docs/perf-v3/server.md). The pre-existing behaviour is also covered by voice.test.ts and
+// tests/security/voice-cost.test.ts; this file pins the call budget and the worst-case detection delay.
 import { describe, expect, it } from 'vitest';
 import { townLayout } from '@ct/assets';
 import type { GamePhase, LocationId } from '@ct/protocol';
@@ -110,7 +110,7 @@ function setup(o: { listRooms?: boolean; lobbyId?: string; livekit?: ReturnType<
   return { host, voice, lk, join, place, connectHolders, run };
 }
 
-describe('VOICE-9 audits: gated by one listRooms, backed off (v3 perf)', () => {
+describe('VOICE-9 audits: gated by one listRooms, never backed off (v3 perf)', () => {
   it('a revoked member that stays connected is found at the next audit run (more participants than grants)', async () => {
     const t = setup();
     t.join('a', SQUARE);
@@ -144,7 +144,7 @@ describe('VOICE-9 audits: gated by one listRooms, backed off (v3 perf)', () => {
     expect(t.lk.calls).toContain(`remove ${HOUSE_ROOM} intruder`);
   });
 
-  it('an occupied room with only granted members is listed on a 15 / 30 / 60 s back-off, never more than 60 s apart', async () => {
+  it('an occupied audited room is listed at every run (15 s), however long nobody unauthorised is found', async () => {
     const t = setup();
     t.join('a', SQUARE);
     t.join('b', SQUARE2);
@@ -162,56 +162,37 @@ describe('VOICE-9 audits: gated by one listRooms, backed off (v3 perf)', () => {
       await t.run(1000);
       if (t.lk.count(`list ${SQ_ROOM}`) > before) at.push((t.host.clock.now - start) / 1000);
     }
-    // was every 15 s (40 listings in 10 min)
-    expect(at.length).toBeLessThanOrEqual(13);
-    expect(at[0]).toBeLessThanOrEqual(31); // its first listing was at the revocation's next run (before the reset)
+    expect(at.length).toBeGreaterThanOrEqual(39);
+    expect(at[0]).toBeLessThanOrEqual(15);
     const gaps = at.slice(1).map((v, i) => v - at[i]!);
-    expect(Math.max(...gaps)).toBeLessThanOrEqual(60);
+    expect(Math.max(...gaps)).toBeLessThanOrEqual(15);
   });
 
-  it('an intruder hiding behind a granted member who is not connected is found within 60 s + one interval', async () => {
-    const t = setup();
-    t.join('a', SQUARE);
-    t.join('b', SQUARE2);
-    t.join('c', SQUARE2);
-    await t.voice.whenIdle();
-    t.connectHolders(['a', 'c']); // b holds a square grant but is not connected
-    t.place('c', INSIDE);
-    await t.run(1000);
-    t.connectHolders(['a', 'c']);
-    await t.run(3 * 60_000); // long enough for the back-off to reach its 60 s cap
-    t.lk.connect(SQ_ROOM, 'c'); // c re-joins the square: participants (a, c) == grants (a, b)
-    const t0 = t.host.clock.now;
-    let foundAt = -1;
-    for (let s = 0; s < 120 && foundAt < 0; s++) {
+  for (const after of [0, 3 * 60_000]) {
+    it(`an intruder hiding behind a granted member who is not connected is found at the next run (${after / 60_000} min after the revocation)`, async () => {
+      const t = setup();
+      t.join('a', SQUARE);
+      t.join('b', SQUARE2);
+      t.join('c', SQUARE2);
+      await t.voice.whenIdle();
+      t.connectHolders(['a', 'c']); // b holds a square grant but is not connected
+      t.place('c', INSIDE);
       await t.run(1000);
-      if (t.lk.calls.includes(`remove ${SQ_ROOM} c`)) foundAt = (t.host.clock.now - t0) / 1000;
-    }
-    expect(foundAt).toBeGreaterThan(0);
-    expect(foundAt).toBeLessThanOrEqual(75);
-  });
+      t.connectHolders(['a', 'c']);
+      await t.run(after);
+      t.lk.connect(SQ_ROOM, 'c'); // c re-joins the square: participants (a, c) == grants (a, b)
+      const t0 = t.host.clock.now;
+      let foundAt = -1;
+      for (let s = 0; s < 120 && foundAt < 0; s++) {
+        await t.run(1000);
+        if (t.lk.calls.includes(`remove ${SQ_ROOM} c`)) foundAt = (t.host.clock.now - t0) / 1000;
+      }
+      expect(foundAt).toBeGreaterThan(0);
+      expect(foundAt).toBeLessThanOrEqual(15);
+    });
+  }
 
-  it('a new revocation from a backed-off room resets it to the next run', async () => {
-    const t = setup();
-    for (const p of ['a', 'b', 'c', 'd']) t.join(p, p === 'a' ? SQUARE : SQUARE2);
-    await t.voice.whenIdle();
-    t.connectHolders(['a', 'b', 'c', 'd']);
-    t.place('c', INSIDE);
-    await t.run(1000);
-    t.connectHolders(['a', 'b', 'c', 'd']);
-    await t.run(4 * 60_000);
-    t.connectHolders(['a', 'b', 'c', 'd']);
-    t.place('d', INSIDE); // revoked from the square (and removed there)
-    await t.voice.whenIdle();
-    t.lk.connect(SQ_ROOM, 'd'); // ... re-joins with its old token
-    t.lk.rooms.get(SQ_ROOM)!.delete('b'); // count (a, d) == grants (a, b): only the reset back-off finds d
-    const before = t.lk.count(`list ${SQ_ROOM}`);
-    await t.run(16_000);
-    expect(t.lk.count(`list ${SQ_ROOM}`)).toBeGreaterThan(before);
-    expect(t.lk.calls).toContain(`remove ${SQ_ROOM} d`);
-  });
-
-  it('listRooms failing (or missing) falls back to listing every due room', async () => {
+  it('listRooms failing (or missing) falls back to listing every audited room', async () => {
     for (const mode of ['fail', 'missing'] as const) {
       const t = setup({ listRooms: mode === 'fail' });
       if (mode === 'fail') t.lk.failRooms(true);
