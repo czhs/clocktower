@@ -20,7 +20,7 @@ import { overflowText, tokenGrid, tokenLabel } from '../../game/gameplay/boardTo
 import { fitName, houseOwners, labelShift, labelStyle } from '../../game/gameplay/houseNames';
 import { houseInUse } from '../../game/rules/doors';
 import { inRect, type Rect } from './anchors';
-import { newPlaceState, place, setShown, setStyle, setText, type PlaceState } from './place';
+import { cull, newPlaceState, place, setShown, setStyle, setText, type PlaceState } from './place';
 import { measureEl } from './surface';
 import type { OverlayEnv, OverlayFrame, OverlayView } from './types';
 
@@ -422,7 +422,7 @@ export function createHouseNamesView(env: OverlayEnv, boards: Pick<BoardsView, '
       at.y = ay;
       const p = f.project(at, ROOF_M, at);
       if (!p) {
-        setShown(c.el, c.st, false, stats);
+        cull(c.el, c.st, stats); // off the canvas: parked, not a visibility flip
         continue;
       }
       box.x = p.x - c.w / 2;

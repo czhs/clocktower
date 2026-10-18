@@ -3,7 +3,10 @@
 //
 //   * positions are written as `style.transform = translate3d(x, y, 0)` (CSSOM: allowed by `style-src 'self'`);
 //   * a write is skipped when the projected position moved < 0.5 CSS px since the last write;
-//   * off-screen elements are culled with `visibility` (written only when it flips);
+//   * off-screen elements are culled by PARKING them: one transform write far outside the overlay root (which
+//     clips, overflow hidden), so crossing the canvas edge while walking is a position write, not a visibility
+//     flip (v3.1: the edge flips were ~8 non-transform writes/s, against the ≤ 5/s §7 budget). An element that
+//     was never shown (or was hidden on purpose with setShown) stays hidden and gets no write;
 //   * nothing here reads layout: element sizes are measured by the callers once, on content change.
 //
 // Every write is counted in an OverlayStats (`__ctCamera.overlay()`, the `v3WalkDomMutPerSec` budget key).
@@ -82,13 +85,30 @@ export function setShown(el: StyleTarget, st: PlaceState, shown: boolean, stats:
   stats.visibility++;
 }
 
+/** Where a culled element is parked (CSS px, overlay-root local): far outside any canvas. */
+export const PARK_PX = -100000;
+export const PARK_TRANSFORM = `translate3d(${PARK_PX}px, ${PARK_PX}px, 0)`;
+
+/**
+ * Cull an element that is off the canvas: a shown element is parked outside the (clipping) overlay root with one
+ * transform write (once); a hidden or never-shown element is left alone. The next place() on screen moves it back
+ * with a transform write and no visibility write.
+ */
+export function cull(el: StyleTarget, st: PlaceState, stats: OverlayStats): void {
+  if (st.shown !== true || st.x === PARK_PX) return;
+  st.x = PARK_PX;
+  st.y = PARK_PX;
+  el.style.transform = PARK_TRANSFORM;
+  stats.transforms++;
+}
+
 /**
  * Move an element to (x, y) (overlay-root CSS px, the element's top-left). `null` (or a point outside
- * `view`) hides it. Returns true when the transform was written.
+ * `view`) culls it (cull(): parked when shown). Returns true when the transform was written.
  */
 export function place(el: StyleTarget, st: PlaceState, x: number | null, y: number, stats: OverlayStats, view?: CullRect): boolean {
   if (x === null || !Number.isFinite(x) || !Number.isFinite(y) || (view && !inView(x, y, view))) {
-    setShown(el, st, false, stats);
+    cull(el, st, stats);
     return false;
   }
   let wrote = false;

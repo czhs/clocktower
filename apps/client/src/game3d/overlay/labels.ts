@@ -20,7 +20,7 @@
 import { voicePresence } from '../../voice/VoiceClient';
 import { readTalkOutlineMode, type TalkOutlineMode } from '../../game/fx/talkingPref';
 import { glyphAt, labelBox } from './anchors';
-import { newPlaceState, place, setShown, setStyle, setText, type PlaceState } from './place';
+import { cull, newPlaceState, place, setStyle, setText, type PlaceState } from './place';
 import { labelFontPx, measureEl } from './surface';
 import type { OverlayEnv, OverlayFrame, OverlayView } from './types';
 
@@ -133,7 +133,7 @@ export function createLabelsView(env: OverlayEnv): LabelsView {
         }
       }
       if (a) content(l, a.name, a.storyteller, a.ghost, f, font, shadow);
-      else setShown(l.el, l.st, false, stats); // off the canvas: hidden, text and size kept
+      else cull(l.el, l.st, stats); // off the canvas: parked (one transform write), text and size kept
       if (fontsChanged) l.dirty = true;
       if (l.dirty) toMeasure.push(l);
     }

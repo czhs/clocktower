@@ -85,6 +85,25 @@ export const PATCHES: readonly Patch[] = [
     },
   },
   {
+    // (v3.1 fixes) a remount leak: V8 shares one DescriptorArray along a map transition chain, and the AllocationSite
+    // boilerplate of `const stats = {…}` in life build() keeps that chain's map alive for the life of the module; the
+    // `at` accessor's getter closure sat in it and held build()'s whole scope (engine, registry, door anchors, the
+    // render pipeline): one full town (~80-95 MB JS heap) stayed alive after every later destroy (harness cycles:
+    // tests/perf/v3-cycles-heap.ts). The getter is now module-level (no scope) and finds its per-build closure in a
+    // WeakMap keyed by the stats object. CONTRACT-REQUEST(pixel3d): the same in town/life/index.js.
+    file: 'town/life/index.js',
+    what: "stats 'at' getter closure -> module-level getter + WeakMap",
+    apply(code) {
+      const out = once(
+        code,
+        "  Object.defineProperty(stats, 'at', { enumerable: true, configurable: true,\n    get: () => walkers.map((w) => [w.name, ...w.at(lastTl).toArray().map((v) => +v.toFixed(2))]) });",
+        "  __ctLifeAt.set(stats, () => walkers.map((w) => [w.name, ...w.at(lastTl).toArray().map((v) => +v.toFixed(2))]));\n  Object.defineProperty(stats, 'at', { enumerable: true, configurable: true, get: __ctLifeAtGet });",
+      );
+      if (!out) return null;
+      return afterImports(out, 'const __ctLifeAt = new WeakMap(); function __ctLifeAtGet() { return __ctLifeAt.get(this)?.() ?? null; } // (clocktower town: build/pixel3dImports.ts)');
+    },
+  },
+  {
     file: 'town/pieces/ground.js',
     what: 'grass area: viewArea(engine, 3) -> engine.__ctGrassArea ?? …',
     apply(code) {

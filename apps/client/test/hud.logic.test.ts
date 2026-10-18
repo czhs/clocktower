@@ -2,7 +2,7 @@
 // and the single-key shortcut gate (apps/client/src/ui/hud/logic.ts).
 import { describe, expect, it } from 'vitest';
 import type { GameResult, NominationView } from '@ct/protocol';
-import { chooseLine, isTypingElement, ownOutcome, shortcutAllowed, voteMark } from '../src/ui/hud/logic';
+import { chooseLine, countdownSeconds, countdownText, isTypingElement, msToNextSecond, ownOutcome, shortcutAllowed, voteMark } from '../src/ui/hud/logic';
 
 const nom = (over: Partial<NominationView> = {}): NominationView => ({
   id: 'n1',
@@ -89,5 +89,28 @@ describe('shortcutAllowed', () => {
     expect(isTypingElement(null)).toBe(false);
     expect(isTypingElement({})).toBe(false);
     expect(isTypingElement({ tagName: 'INPUT' })).toBe(true);
+  });
+});
+
+// (v3.1 fixes) the countdown re-renders only when its text changes
+describe('countdown helpers', () => {
+  it('formats m:ss, rounding up, 0:00 at the end', () => {
+    expect(countdownText(10_000, 0)).toBe('0:10');
+    expect(countdownText(10_000, 1)).toBe('0:10');
+    expect(countdownText(10_000, 1000)).toBe('0:09');
+    expect(countdownText(125_000, 0)).toBe('2:05');
+    expect(countdownText(0, 5)).toBe('0:00');
+    expect(countdownSeconds(10_000, 9_001)).toBe(1);
+  });
+  it('the next timer lands just after the shown second changes', () => {
+    const endsAt = 10_000;
+    for (const now of [0, 1, 250, 999, 1000, 4321, 9_999]) {
+      const d = msToNextSecond(endsAt, now)!;
+      expect(d).toBeGreaterThan(0);
+      expect(countdownText(endsAt, now + d)).not.toBe(countdownText(endsAt, now)); // changed by then
+      expect(countdownText(endsAt, now + d - 10)).toBe(countdownText(endsAt, now)); // not much earlier
+    }
+    expect(msToNextSecond(endsAt, 10_000)).toBeNull();
+    expect(msToNextSecond(endsAt, 12_000)).toBeNull();
   });
 });

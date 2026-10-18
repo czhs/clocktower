@@ -89,6 +89,11 @@ describe('build-time vendor rewrites (build/pixel3dImports.ts)', () => {
     expect(roster).toMatch(/^import __ctRoster from '\.\/roster\.json\?ct-trim';/);
     expect(roster).not.toContain("fetch(new URL('./roster.json'");
     expect(read('town/pieces/ground.js')).toContain('const ga = engine.__ctGrassArea ?? viewArea(engine, 3);');
+    // (v3.1) the life stats 'at' getter holds no build() scope (remount leak)
+    const life = read('town/life/index.js');
+    expect(life).toContain("Object.defineProperty(stats, 'at', { enumerable: true, configurable: true, get: __ctLifeAtGet });");
+    expect(life).toMatch(/\nconst __ctLifeAt = new WeakMap\(\); function __ctLifeAtGet\(\)/);
+    expect(life).not.toContain('get: () => walkers.map(');
     // not a target: untouched
     expect(patchVendor(path.join(V, 'src/core/Engine.js'), 'x')).toBeNull();
     expect(patchVendor('/elsewhere/town/api.js', 'x')).toBeNull();

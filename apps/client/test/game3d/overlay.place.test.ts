@@ -1,7 +1,7 @@
 // v3 WP4: the §7 overlay update rule (game3d/overlay/place.ts): transform-only writes, skipped under
 // 0.5 CSS px of movement, visibility culling written only when it flips, counted for the DOM budget.
 import { describe, expect, it } from 'vitest';
-import { createRate, inView, MOVE_EPS, newPlaceState, newStats, place, setShown, setStyle, setText, type StyleTarget } from '../../src/game3d/overlay/place';
+import { createRate, cull, inView, MOVE_EPS, newPlaceState, newStats, PARK_TRANSFORM, place, setShown, setStyle, setText, type StyleTarget } from '../../src/game3d/overlay/place';
 
 /** A fake element that records every style write. */
 function fakeEl() {
@@ -70,20 +70,30 @@ describe('transform batching', () => {
     expect(el.writes.every((w) => w.startsWith('transform=translate3d(') || w === 'visibility=visible')).toBe(true);
   });
 
-  it('culls off-screen positions with visibility, written only when it flips', () => {
+  it('culls off-screen positions by parking them (one transform write, no visibility flip)', () => {
     const el = fakeEl();
     const st = newPlaceState();
     const stats = newStats();
     const view = { w: 800, h: 600, margin: 50 };
     place(el, st, 100, 100, stats, view);
-    place(el, st, -60, 100, stats, view); // off-screen: hidden
-    place(el, st, -70, 100, stats, view); // still hidden: no write
+    place(el, st, -60, 100, stats, view); // off-screen: parked
+    place(el, st, -70, 100, stats, view); // still parked: no write
     place(el, st, null, 0, stats, view); // not projectable: no write
-    expect(el.writes).toEqual(['transform=translate3d(100px, 100px, 0)', 'visibility=visible', 'visibility=hidden']);
-    place(el, st, 101, 100, stats, view); // back (moved >= 0.5 px): transform + show
-    expect(el.writes.slice(3)).toEqual(['transform=translate3d(101px, 100px, 0)', 'visibility=visible']);
-    place(el, st, 101.2, 100, stats, view); // tiny move, visible already: nothing
-    expect(el.writes).toHaveLength(5);
+    cull(el, st, stats); // no write either
+    expect(el.writes).toEqual(['transform=translate3d(100px, 100px, 0)', 'visibility=visible', `transform=${PARK_TRANSFORM}`]);
+    place(el, st, 100, 100, stats, view); // back at the very same spot: transform only
+    expect(el.writes.slice(3)).toEqual(['transform=translate3d(100px, 100px, 0)']);
+    place(el, st, 100.2, 100, stats, view); // tiny move, visible already: nothing
+    expect(el.writes).toHaveLength(4);
+    expect(stats).toEqual({ transforms: 3, visibility: 1, content: 0 });
+    // never shown / hidden on purpose: culling writes nothing, the element stays hidden
+    const el2 = fakeEl();
+    const st2 = newPlaceState();
+    place(el2, st2, -500, 0, stats, view);
+    cull(el2, st2, stats);
+    setShown(el2, st2, false, stats);
+    cull(el2, st2, stats);
+    expect(el2.writes).toEqual(['visibility=hidden']);
     expect(inView(NaN, 0, view)).toBe(false);
     expect(inView(850, 650, view)).toBe(true);
     expect(inView(851, 0, view)).toBe(false);
