@@ -13,6 +13,7 @@ import { pixelScaleFor, type ProjectionState } from '../coords';
 import type { Tier } from '../contract';
 import { runFrameLoop, V3_MAX_FPS, type FrameLoop } from '../perf';
 import { cpuPixelScale, installCpuTier, tierFpsLimit, type CpuEngine, type CpuTier } from './cpuTier';
+import { installGpuLevers, type GpuLevers } from './gpuLevers';
 
 interface PixelGlobal {
   ready: boolean;
@@ -99,6 +100,10 @@ export interface EngineHost {
   gpu(): string | null;
   /** Frame stats for __ctCamera.v3(). `cpu`: the cpu tier's lever stats (vendor/cpuTier.ts), only at that tier. */
   info(): { calls: number; tris: number; programs: number | null; pixelScale: number; lowW: number; lowH: number; cpu?: ReturnType<CpuTier['info']> };
+  /** (v3.3 gpu) the per-frame GPU / driver levers (vendor/gpuLevers.ts). */
+  levers: GpuLevers;
+  /** (v3.3 gpu) with ct.debug.v3gpu=1: add members to window.__ctGpu (perf A/B hook); a no-op otherwise. */
+  gpuDebug(extra: Record<string, unknown>): void;
   dispose(): void;
 }
 
@@ -197,6 +202,44 @@ export function createEngineHost(parent: HTMLElement, opts: EngineHostOptions): 
       cpu.beforeRender();
       return render.call(this);
     };
+  }
+  // v3.3 gpu: program-grouped opaque sort, the river reflection's refresh policy, off-screen water passes skipped
+  // (vendor/gpuLevers.ts; every lever behind a ct.debug switch)
+  const gpu = installGpuLevers(engine as unknown as Parameters<typeof installGpuLevers>[0]);
+  {
+    const pipe = engine.pipeline;
+    const render = pipe.render;
+    pipe.render = function (this: unknown) {
+      gpu.render(() => render.call(this));
+    };
+  }
+  let gpuHook: Record<string, unknown> | null = null;
+  try {
+    if (localStorage.getItem('ct.debug.v3gpu') === '1') {
+      gpuHook = {
+        engine,
+        levers: gpu,
+        set: (k: never, v: never) => gpu.set(k, v),
+        info: () => gpu.info(),
+        /** The same frame again (pipeline only, no updaters; the shadow map re-rendered); returns its draw calls. */
+        render(o: { fresh?: boolean } = {}) {
+          if (o.fresh) gpu.freshReflections();
+          const sm = engine.renderer.shadowMap;
+          const auto = sm.autoUpdate;
+          sm.autoUpdate = true;
+          engine.renderer.info.reset();
+          try {
+            engine.pipeline.render();
+          } finally {
+            sm.autoUpdate = auto;
+          }
+          return engine.renderer.info.render.calls;
+        },
+      };
+      (w as unknown as { __ctGpu?: unknown }).__ctGpu = gpuHook;
+    }
+  } catch {
+    gpuHook = null;
   }
   // the constructor's window 'resize' listener calls this.resize(): the shadow wins (dispose removes that listener)
   engine.resize = () => hostResize(engine, parent, opts.tier);
@@ -302,6 +345,10 @@ export function createEngineHost(parent: HTMLElement, opts: EngineHostOptions): 
       return proj;
     },
     gpu: () => w.__pixel?.gpu ?? null,
+    levers: gpu,
+    gpuDebug(extra) {
+      if (gpuHook) Object.assign(gpuHook, extra);
+    },
     info() {
       const i = engine.renderer.info;
       return { calls: i.render.calls, tris: i.render.triangles, programs: i.programs?.length ?? null, pixelScale: engine.pixelScale, lowW: engine.lowW, lowH: engine.lowH, ...(cpu ? { cpu: cpu.info() } : {}) };
@@ -316,6 +363,9 @@ export function createEngineHost(parent: HTMLElement, opts: EngineHostOptions): 
       window.removeEventListener('scroll', dirtyRect, { capture: true });
       removeWinListeners();
       cpu?.dispose();
+      gpu.dispose();
+      if (gpuHook && (w as unknown as { __ctGpu?: unknown }).__ctGpu === gpuHook) delete (w as unknown as { __ctGpu?: unknown }).__ctGpu;
+      gpuHook = null;
       disposeEngine(engine);
       releaseDisposeListeners(disposeRec);
       if (ownPixel) delete w.__pixel;

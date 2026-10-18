@@ -456,7 +456,7 @@ export interface TownKitMerge {
  * setLit / street-lamp writes land on the (hidden) source meshes and are mirrored each frame. Null when the design
  * castShadow snapshot is missing or disagrees with the composer's low-tier count (a vendor re-publish changed the rule).
  */
-export function mergeTownKit(engine: HostedEngine, town: BuiltTown, o: { cell?: number; mode?: 'batch' | 'merge'; renderOrder?: number; cull?: 'view' | 'three' } = {}): TownKitMerge | null {
+export function mergeTownKit(engine: HostedEngine, town: BuiltTown, o: { cell?: number; mode?: 'batch' | 'merge'; renderOrder?: number; cull?: 'view' | 'three'; ownMaterials?: boolean; batchColorFix?: boolean } = {}): TownKitMerge | null {
   const design = DESIGN_CAST.get(town as object);
   const root = town.root as THREE.Object3D | undefined;
   if (!design || !root) return null;
@@ -501,7 +501,7 @@ export function mergeTownKit(engine: HostedEngine, town: BuiltTown, o: { cell?: 
     };
     walk(g);
   }
-  const merged = mergeStatic(root, cands, { cell: o.cell, mode: o.mode, renderOrder: o.renderOrder, cull: o.cull, name: 'ct-town-merged' });
+  const merged = mergeStatic(root, cands, { cell: o.cell, mode: o.mode, renderOrder: o.renderOrder, cull: o.cull, ownMaterials: o.ownMaterials, batchColorFix: o.batchColorFix, name: 'ct-town-merged' });
   const cam = engine.camera as unknown as { target: THREE.Vector3; yaw: number; pitch: number; viewHeight: number };
   const sunDir = (engine.uniforms as { uSunDir?: { value: THREE.Vector3 } } | undefined)?.uSunDir?.value;
   const view: ShadowView = { target: cam.target, yaw: 0, pitch: 0, viewHeight: 1, aspect: 16 / 9, sunDir: sunDir ?? new THREE.Vector3(0, 1, 0) };
