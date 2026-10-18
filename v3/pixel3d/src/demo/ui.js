@@ -525,7 +525,7 @@ export function mountUI(demo) {
   }, { class: 'dui-btn icon', title: 'fold the panel' });
   const refold = () => { const a = !!autoFold(); if (a !== autoWas) { autoWas = a; override = null; paintCollapsed(); } };
   const helpBtn = btn('?', () => help(), { class: 'dui-btn icon', title: 'keys (H)' });
-  const hideBtn = btn('×', () => { set({ ui: false }); toast('Panel hidden: the backquote key ( ` ) brings it back'); }, { class: 'dui-btn icon', title: 'hide the panel (`)' });
+  const hideBtn = btn('×', () => { set({ ui: false }); toast('Panel hidden: press the backtick key (top left, under Esc) to bring it back'); }, { class: 'dui-btn icon', title: 'hide the panel (`)' });
   const body = h('div', { class: 'dui-body' }, charSec, gameSec, timeSec, townSec, renderSec, travelSec);
   // the UI library's panel skin (out/ui/panels.css, loaded by gameui.js): the ctp-panel 9-slice + ctp-skin buttons
   const skin = demo.gameui ? ' ctp-panel ctp-skin dui-skinned' : '';
@@ -617,10 +617,11 @@ export function mountUI(demo) {
     input.bind('Escape', () => { if (!helpEl.hidden) help(false); }, { desc: 'close the overlay', group: 'ui' }),
     input.bind('Backquote', () => {
       set({ ui: !store.state.ui });
-      if (!store.state.ui) toast('Panel hidden: the backquote key ( ` ) brings it back');
+      if (!store.state.ui) toast('Panel hidden: press the backtick key (top left, under Esc) to bring it back');
     }, { desc: 'show / hide the panel', group: 'ui' }),
     events.on('toast', (p) => toast(p?.text ?? p)),
-    events.on('bell', () => toast('The bell tolls')),
+    // (critic-3 P3) not while a vote / execution caption already says it (the threshold bell, the execution's tolls)
+    events.on('bell', () => { const ph = store.state.phase; if (ph !== 'vote' && ph !== 'execution' && store.state.camera !== 'vote') toast('The bell tolls'); }),
     // (the emote tip: shown once from update() when the player has control, see emoteTip below)
     // (with the game UI the events group's phase caption ribbon says it: no toast on top of it)
     store.on('phase', ({ value, source }) => { if (source !== 'ui' && !demo.gameui) toast(`Phase: ${value}`); }),

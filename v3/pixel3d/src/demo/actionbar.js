@@ -61,6 +61,8 @@ export const TRAY = [
     { code: 'KeyB', hint: 'B', tip: 'Ring the bell', glyph: 'bell' },
     { code: 'KeyV', hint: 'V', tip: 'Next phase', glyph: 'scales' },
     { code: 'KeyP', hint: 'P', tip: 'Voting ceremony', glyph: 'candle' },
+    // (seal vote) your seal in a vote (the bar also leads with this button while you sit in one)
+    { code: 'KeyX', hint: 'X', tip: 'Vote: slap your seal down / take it back', glyph: 'seal' },
     { code: 'KeyL', hint: 'L', tip: 'Town life on / off', glyph: 'life' },
     { code: 'BracketLeft', hint: '[', tip: 'Previous character', glyph: 'prev' },
     { code: 'BracketRight', hint: ']', tip: 'Next character', glyph: 'next' },
@@ -94,6 +96,8 @@ const ROWS = {
   reset: ['HS...HS', 'HS..HMS', 'HS.HMMS', 'HSHMMMS', 'HS.SMMS', 'HS..SMS', 'HS...SS'],   // back to the start (bar + triangle)
   minus1: ['.......', '.....M.', '....HM.', 'HMS..M.', '.....M.', '.....M.', '....HMS'],     // "-1" (a minute less)
   plus1: ['.M.....', '.M...M.', 'HMS.HM.', '.M...M.', '.....M.', '.....M.', '....HMS'],      // "+1" (a minute more)
+  // (seal vote) YOUR SEAL (X): a red wax seal with a gold mark (gameui leads the bar with it while you sit in a vote)
+  seal: ['..rRr..', '.rRRrr.', 'rRrHrrd', 'rrHMHrd', 'rrrSrdd', '.rrrdd.', '..ddd..'],
 };
 const glyphCache = new Map();
 const HD_OF = new WeakMap();
@@ -119,6 +123,7 @@ function glyph1x(k, T, { color = 'crimson', paused = false } = {}) {
     case 'timer': case 'reset': case 'minus1': case 'plus1':
       return art(ROWS[k], T);
     case 'palette': return art(ROWS.palette, T, { c: PIN_HEX.crimson, y: PIN_HEX.gold, t: PIN_HEX.teal, v: PIN_HEX.violet });
+    case 'seal': return lined(HA.sprite(ROWS.seal, { ...gk(T), r: '#BC3A3C', R: '#E8806A', d: '#7E2230' }), T, '#2E0E16');
     case 'react': return EJ.emojiIcon('laugh', T);
     case 'point': return lined(E.emotePoint(T), T);
     case 'pointE': return lined(E.emotePointSmall(T), T);

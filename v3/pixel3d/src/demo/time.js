@@ -47,6 +47,7 @@ import { TIME_PRESETS } from '../world/sky.js';
 import { ensureToonUniforms } from '../materials/toon.js';
 import { addFog } from '../post/fog.js';
 import { PHASES, SEAT_COUNT, presetForHour } from './api.js';
+import { downAt, pushChange, scheduleCeremony, OPEN_LEAD } from './sealvote.js';
 
 const DEG = Math.PI / 180;
 const clamp01 = (x) => (x < 0 ? 0 : x > 1 ? 1 : x);
@@ -575,7 +576,24 @@ export function createTime(demo) {
   }
 
   // ---- game state -> dais (+ seated folk)
+  // (B) the SEAL VOTE (sealvote.js): `seals` = per seat the time-sorted [t, down] changes of its wax seal (scripted
+  // voters written ahead, the player's / setVote's at engine.time); `votes` = the seats whose seal lies on the ground NOW
+  // (re-derived every update: the dais' vote hands, the seated folk)
   const votes = new Set();
+  const seals = new Map();
+  const sealDown = (i, t = engine.time) => downAt(seals.get(i), t);
+  function setSeal(i, on, at = engine.time) {
+    if (!seals.has(i)) seals.set(i, []);
+    const ch = pushChange(seals.get(i), at, !!on);
+    syncVotes(engine.time);
+    return ch;
+  }
+  function syncVotes(t) {
+    let changed = false;
+    for (let i = 0; i < SEAT_COUNT; i++) { const d = sealDown(i, t); if (d !== votes.has(i)) { changed = true; if (d) votes.add(i); else votes.delete(i); } }
+    if (changed) applySeats();
+  }
+  const clearSeals = () => { seals.clear(); votes.clear(); };
   const seatSince = new Float32Array(SEAT_COUNT).fill(-1e9);
   let vote = { from: 0, t0: 0, per: 0.55 };
   const seatOn = (st) => st.occupied || st.dead;
@@ -586,7 +604,8 @@ export function createTime(demo) {
   function applyPhase(restart = true) {
     const s = store.state;
     if (!dais) return;
-    if (s.phase === 'vote' && restart) vote = { from: nomineeOf(s) ?? 0, t0: engine.time + 0.4, per: 0.55 };
+    // (seal vote) the hand starts OPEN_LEAD s after the vote opens: the opening slaps land before it moves
+    if (s.phase === 'vote' && restart) vote = { from: nomineeOf(s) ?? 0, t0: engine.time + OPEN_LEAD, per: 0.55, open: engine.time };
     if (courtOn()) { dais.setPhase('day'); dais.setHand?.(0); return; }
     dais.setHand?.(null);
     if (s.phase === 'vote') dais.setPhase('vote', { from: vote.from, t0: vote.t0, perSeat: vote.per });
@@ -641,22 +660,31 @@ export function createTime(demo) {
   let cer = null;
   function playCeremony() {
     const K = CEREMONY;
-    votes.clear();
+    clearSeals();
+    // (seal vote) the sweep starts OPEN_LEAD s after the vote opens: the execution and the night come that much later
+    const LAG = OPEN_LEAD - 0.4;
     const seats = Array.from({ length: SEAT_COUNT }, () => ({ occupied: false, dead: false, ghostVote: true, nominated: false, onBlock: false }));
     store.set({ phase: 'day', nominee: null, seats }, 'time');
     const steps = [];
     const at = (dt, fn) => steps.push([dt, fn]);
     K.order.forEach((i, k) => at(0.2 + k * 0.32, () => store.setSeat(i, K.dead.includes(i) ? { occupied: true, dead: true, ghostVote: !!K.ghost[i] } : { occupied: true }, 'time')));
     at(K.nominate - 2, () => store.set({ phase: 'nomination', nominee: K.nominee }, 'time'));
-    at(K.vote - 2, () => { for (const v of K.voters) votes.add(v); store.set({ phase: 'vote' }, 'time'); });
-    at(K.execute - 2, () => { store.set({ phase: 'execution' }, 'time'); ringBell(); });
-    at(K.die - 2, () => store.setSeat(K.nominee, { dead: true, ghostVote: true, nominated: false }, 'time'));
+    // the vote: the phase first (applyPhase sets the sweep), then the script's seals written AHEAD (sealvote.js:
+    // the opening cascade, a late slap, a withdrawal, the ghost's vote); the player's seat is theirs (seatcast yours)
+    at(K.vote - 2, () => {
+      store.set({ phase: 'vote' }, 'time');
+      const mine = demo.passB?.seats?.yours ?? -1;
+      scheduleCeremony(seals, { from: vote.from, t0: vote.t0, per: vote.per, open: engine.time, skip: new Set(mine >= 0 ? [mine] : []) });
+      syncVotes(engine.time);
+    });
+    at(K.execute - 2 + LAG, () => { store.set({ phase: 'execution' }, 'time'); ringBell(); });
+    at(K.die - 2 + LAG, () => store.setSeat(K.nominee, { dead: true, ghostVote: true, nominated: false }, 'time'));
     // ---- (critic P2-4, ui pass) the ceremony's night is REAL night: the night phase drops the game UI's veil, and
     // while it covers the screen (its 650-ms fall, events TIMING.night.outF) the clock is scrubbed to 21:30 when it
     // shows a daytime hour (the veil lifted onto full sun with NIGHT on the chip). Pass B's vote camera goes back to
     // follow 3 s after the night phase: both happen under / after the veil.
-    at(K.night - 2, () => { votes.clear(); store.set({ phase: 'night', nominee: null }, 'time'); });
-    at(K.night - 2 + 0.75, () => { cer = null; if (hours >= 6 && hours < 20) { store.set({ timeOfDay: 21.5 }, 'ceremony'); info.ceremonyNight = 21.5; } });
+    at(K.night - 2 + LAG, () => { clearSeals(); store.set({ phase: 'night', nominee: null }, 'time'); });
+    at(K.night - 2 + LAG + 0.75, () => { cer = null; if (hours >= 6 && hours < 20) { store.set({ timeOfDay: 21.5 }, 'ceremony'); info.ceremonyNight = 21.5; } });
     // ---- (end P2-4)
     cer = { t0: engine.time, k: 0, steps };
     events.emit('ceremony', { start: true, t0: engine.time });
@@ -699,7 +727,7 @@ export function createTime(demo) {
   offs.push(
     store.on('phase', ({ source, value, prev }) => {
       if (source !== 'time') cer = null;
-      if (source !== 'time' && prev === 'vote' && value !== 'execution') votes.clear();
+      if (source !== 'time' && prev === 'vote' && value !== 'execution') clearSeals();
       applyPhase(); applySeats();
     }),
     store.on('nominee', () => { applyPhase(store.state.phase === 'vote'); applySeats(); }),
@@ -747,12 +775,15 @@ export function createTime(demo) {
     get preset() { return preset; },
     get period() { return period; },
     get votes() { return votes; },
+    /** (B) the seal vote's log (sealvote.js): { log (Map seat -> [[t, down]]), downAt(i, t), set(i, on, at) } */
+    seals: { log: seals, downAt: sealDown, set: setSeal },
     /** the dais' vote sweep of the current / last vote phase: { from (seat), t0 (engine s), per (s per seat) } */
     get sweep() { return { ...vote }; },
     get ceremony() { return cer ? { t: engine.time - cer.t0, step: cer.k, of: cer.steps.length } : null; },
     presets: CLOCK_PRESETS, schedule: SCHEDULE, info,
     ringBell, jumpTo, nextPreset, playCeremony, stopCeremony,
-    setVote(i, on) { if (on) votes.add(i); else votes.delete(i); applySeats(); },
+    /** slap (on) / take back (off) seat i's seal now (sealvote.js; the hand locks what lies there when it arrives) */
+    setVote(i, on) { setSeal(i, on); },
     /** (B) the vote court was staged / unstaged (votestage.js): park / restore the dais, re-aim the light pool */
     restage() { applyPhase(false); applySeats(); aimX = aimZ = 1e9; aimT = -1; info.court = courtOn(); },
     update(t, dt) {
@@ -799,6 +830,7 @@ export function createTime(demo) {
       lightCarry();
 
       if (!lifeOn) for (const L of lifeLights) L.light.intensity = 0;
+      syncVotes(t);
       if (cer) { const ct = t - cer.t0; while (cer && cer.k < cer.steps.length && ct >= cer.steps[cer.k][0]) cer.steps[cer.k++][1](); }
       if (folk) folk.update(t, rootOff, firstUpdate);
       firstUpdate = false;

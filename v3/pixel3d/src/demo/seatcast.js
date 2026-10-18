@@ -21,6 +21,8 @@
 import * as THREE from 'three';
 import { createCharacter } from './characters.js';
 import { loadRoster } from './roster.js';
+import { CEREMONY } from '../town/life/ceremony.js';
+import { sealVoteAt } from './sealvote.js';
 
 const N = 15;
 const SEAT_TOP = 0.235;
@@ -146,6 +148,68 @@ export async function createSeatCast(demo) {
     if (sub) spawn(r.i, sub).catch((e) => console.warn('[passB] seat swap failed:', e));
   }));
 
+  // ---- (seal vote, critic-3 P3) YOUR SEAT: while the vote camera is up on the stones (stage A) you sit in the circle
+  // like everyone else: the seat nearest to you when the camera comes up (never the nominee's, never a dead one; the
+  // ceremony's nominee / dead seats are known ahead) - its cast member steps aside (hidden), you appear on the stone
+  // (player.teleport, facing the dais) and YOUR seal is yours to slap / take back (X, or the action bar's seal button,
+  // gameui.js). Walking off the stone gives the seat back; leaving the vote camera puts you down just outside the ring.
+  let yours = -1, yoursAt = -1;
+  const P0 = new THREE.Vector3();
+  function pickYours() {
+    const p = demo.player?.position;
+    if (!p || demo.player?.interior || demo.player?.handle?.id === 'storyteller') return -1;
+    const s = store.state, cer = !!demo.time?.ceremony, nom = s.nominee ?? s.seats.findIndex((x) => x.nominated);
+    let best = -1, bd = Infinity;
+    for (let i = 0; i < N; i++) {
+      if (i === nom || s.seats[i]?.dead) continue;
+      if (cer && (i === CEREMONY.nominee || CEREMONY.dead.includes(i))) continue;
+      const q = layout.seatPos(i, N), d = Math.hypot(q.x - p.x, q.z - p.z);
+      if (d < bd) { bd = d; best = i; }
+    }
+    return best;
+  }
+  function sit(i) {
+    if (i < 0 || !demo.player?.teleport) return;
+    yours = i; yoursAt = engine.time;
+    const q = layout.seatPos(i, N);
+    demo.player.teleport(q.x, q.z, Math.atan2(C.cx - q.x, C.cz - q.z), { exact: true, location: 'town', keepCamera: true });
+    version++;
+    events.emit('seat:yours', { seat: i });
+  }
+  function stand({ move = true } = {}) {
+    if (yours < 0) return;
+    const i = yours; yours = -1;
+    if (move && demo.player?.teleport) {
+      const q = layout.seatPos(i, N), ox = q.x - C.cx, oz = q.z - C.cz, n = Math.hypot(ox, oz) || 1;
+      demo.player.teleport(q.x + (ox / n) * 1.25, q.z + (oz / n) * 1.25, Math.atan2(-ox, -oz), { location: 'town' });
+    }
+    version++;
+    events.emit('seat:yours', { seat: -1 });
+  }
+  const ringStage = () => { const st = stage(); return !st || st.onStones; };
+  offs.push(store.on('camera', ({ value, prev }) => {
+    if (value === 'vote' && prev !== 'vote' && ringStage() && params.get('yourSeat') !== '0') sit(pickYours());
+    else if (value !== 'vote' && prev === 'vote') stand();
+  }));
+  /** slap / take back YOUR seal (X, the action bar's seal button) -> { ok, why } */
+  function toggleSeal() {
+    const s = store.state, tm = demo.time;
+    if (yours < 0) return { ok: false, why: 'You have no seat in this vote' };
+    if (s.phase !== 'vote') return { ok: false, why: s.phase === 'nomination' ? 'Wait for the vote to open' : 'There is no vote right now' };
+    const V = demo.gameui?.voteOf?.();
+    const S = V ? sealVoteAt(V, engine.time, tm?.seals?.log) : null, d = S?.seats?.[yours + 1];
+    if (d && (d.yes || d.no)) return { ok: false, why: d.yes ? 'The clock hand has locked your vote' : 'The clock hand has passed you' };
+    const down = !!tm?.seals?.downAt?.(yours, engine.time);
+    tm?.setVote?.(yours, !down);
+    if (!down) demo.player?.emote?.('vote'); else demo.player?.handle?.play?.('idle');
+    events.emit('seat:seal', { seat: yours, down: !down });
+    return { ok: true, down: !down };
+  }
+  offs.push(demo.input?.bind?.('KeyX', () => {
+    const r = toggleSeal();
+    if (!r.ok) events.emit('toast', { text: r.why });
+  }, { desc: 'vote: slap your seal / take it back', group: 'town' }));
+
   // ---- state -> clips
   const seatOn = (st) => st.occupied || st.dead;
   const nomineeOf = (s) => (s.nominee ?? s.seats.findIndex((x) => x.nominated));
@@ -169,12 +233,20 @@ export async function createSeatCast(demo) {
     heightOf: (i) => (seats[i]?.h ? seats[i].h.height ?? null : null),
     /** (B) where seat i stands now: { pos (feet, world), height (as shown, x the cast scale), staged } */
     spotOf(i) {
+      // (seal vote) YOUR seat: you stand there (the player's figure on the stone)
+      if (i === yours && demo.player?.position) {
+        const p = demo.player.position, h = demo.player.handle;
+        return { pos: P0.set(p.x, SEAT_TOP, p.z).clone(), height: h?.height ?? 1.4, scale: 1, staged: false, id: h?.id ?? null, shown: true, shownAt: null, you: true };
+      }
       const r = seats[i];
       if (!r) return null;
       const sc = r.staged ? stage()?.scale ?? 1 : 1;
-      return { pos: new THREE.Vector3(r.pos.x, r.staged ? terrain(r.pos.x, r.pos.z) : SEAT_TOP, r.pos.z), height: (r.h?.height ?? 1.4) * sc, scale: sc, staged: r.staged, id: r.id, shown: r.shown, shownAt: r.shownAt ?? null };
+      return { pos: new THREE.Vector3(r.pos.x, r.staged ? terrain(r.pos.x, r.pos.z) : SEAT_TOP, r.pos.z), height: (r.h?.height ?? 1.4) * sc, scale: sc, staged: r.staged, id: r.id, shown: r.shown, shownAt: r.shownAt ?? null, face: r.face };
     },
     members,
+    /** (seal vote) your seat in the vote (0-based) or -1; toggleSeal() = X; sit(i) / stand() for tests */
+    get yours() { return yours; },
+    toggleSeal, sit, stand,
     update(t) {
       const s = store.state, ph = s.phase;
       if (ph !== prevPhase) {
@@ -193,12 +265,17 @@ export async function createSeatCast(demo) {
         prevPhase = ph;
       }
       info.nominator = nominator;
-      const nom = nomineeOf(s), sweep = demo.time?.sweep, votes = demo.time?.votes;
+      const nom = nomineeOf(s), seals = demo.time?.seals;
+      // walked off your stone: the seat goes back to its cast member
+      if (yours >= 0 && demo.player?.position) {
+        const q = layout.seatPos(yours, N), p = demo.player.position;
+        if (Math.hypot(p.x - q.x, p.z - q.z) > 0.6 && t - yoursAt > 0.5) stand({ move: false });
+      }
       let shown = 0;
       shownMembers.length = 0;
       for (const r of seats) {
         if (!r?.h) continue;
-        const st = s.seats[r.i], on = warm || seatOn(st);
+        const st = s.seats[r.i], on = warm || (seatOn(st) && r.i !== yours);
         if (on !== r.shown) { r.shown = on; r.h.root.visible = on; if (on && !warm) r.shownAt = t; }
         if (!on) continue;
         shown++;
@@ -213,11 +290,9 @@ export async function createSeatCast(demo) {
           want = fresh ? 'die' : st.ghostVote !== false ? (has(r, 'ghost') ? 'ghost' : 'idle') : has(r, 'ghost-spent') ? 'ghost-spent' : has(r, 'ghost') ? 'ghost' : 'idle';
         } else {
           r.dieAt = -1; r.wasAlive = true;
-          if (ph === 'vote' && votes?.has?.(r.i) && sweep) {
-            const off = ((r.i - sweep.from + N) % N) || N;
-            // hands go up as the vote opens (gameui's events vote: raise = 0.3 s before the first reach + a stagger)
-            if (t >= sweep.t0 - 0.3 + (off % 3) * 0.07) want = 'vote';
-          }
+          // (seal vote) the 'vote' clip plays as the voter SLAPS their seal down and holds while it lies there;
+          // taking it back releases it (the seals' log, sealvote.js: scripted voters are written ahead)
+          if (ph === 'vote' && seals?.downAt?.(r.i, t)) want = 'vote';
           if ((ph === 'nomination' || ph === 'vote') && r.i === nominator && nom >= 0 && t - nominatedAt < POINT_S + 0.4 && has(r, 'point') && want === 'idle') {
             const q = seats[nom]?.pos ?? layout.seatPos(nom, N);
             r.face = Math.atan2(q.x - r.pos.x, q.z - r.pos.z);

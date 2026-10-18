@@ -32,6 +32,7 @@
 //            trans 0..1 | null, inFrame {seats (of 15 inside the visible area, none under a keep-out), dial} }
 import * as THREE from 'three';
 import { seatPos } from '../town/layout.js';
+import { PLAQUE, plaqueW } from './votemarks.js';
 
 const DEG = Math.PI / 180;
 const PITCH = Math.PI / 6;
@@ -49,14 +50,14 @@ const LABEL_M = 0.3;                      // (staged) room above a raised hand f
 // the HUD's keep-out boxes in low-res px (gameui.js layout at 640 x 360; generous): [x0, y0, x1, y1] relative to the
 // visible area's corners
 const KEEP = {
-  tl: { w: 78, h: 140, chips: 36 },   // clock + phase chips (y 0..24; a second row on a phone) and the vote clock + tally under them (to ~136)
+  // (seal vote: no vote clock card any more) the clock + phase chips: one row (to y 24), two rows on a narrow screen
+  tl: { w: 196, h: 25, chips: 25, row2: 38 },
   tr: { w: 72, h: 22 },       // the toolbar (4 x 17 px)
-  bar: { w: 130, h: 26 },     // the action bar, centred on the visible area
+  bar: { w: 142, h: 26 },     // the action bar, centred on the visible area (7 buttons: your seal leads it in a vote)
   br: { w: 30, h: 30 },       // the dock button (your portrait)
-  tc: { x: 156, w: 150, h: 22 },   // the tower timer's chip (timer-ui.js): the top row, right of the game UI's chips
+  tc: { x: 196, w: 150, h: 23 },   // the tower timer's chip (timer-ui.js): the top row, right of the game UI's chips
   cap: { y: 24, w: 232, h: 20 },   // the phase caption ribbon (gameui: centred on the visible area, y0 + 26; up for the whole vote)
-  tally: { w: 120, h: 30 },        // (B) the vote tally plaque (votemarks.js): bottom, centred, above the action bar (staged)
-  trPlaque: { w: 132, h: 32 },     // (B) on the stones (A): the plaque under the toolbar, top right
+  // (B) the vote tally plaque (votemarks.js PLAQUE: its real size): bottom, centred, above the action bar
 };
 
 // the tower's dials: the piece's own api.dials (the pass-B town hook, docs/TOWN.md) or the clocktower.js constants
@@ -102,13 +103,14 @@ function contentPoints(yaw, heights, dials, stage = null) {
   const add = (x, y, z) => { p.set(x, y, z); pts.push([p.dot(R), p.dot(U)]); };
   for (let i = 0; i < 15; i++) {
     // (staged: + the name label and the vote mark over it, LABEL_M, so neither tucks under the HUD's corner pieces)
+    // (on the stones the names sit tight over the head or beside the figure: the raised-hand margin covers them)
     const s = spotFor(stage, i), y0 = s.y ?? SEAT_TOP, top = y0 + ((heights[i] ?? HEAD_DEFAULT) + HAND) * sc + (stage && !stage.onStones ? LABEL_M : 0);
     for (let k = 0; k < 8; k++) {
       const a = (k / 8) * Math.PI * 2, x = s.x + Math.cos(a) * BODY_R * sc, z = s.z + Math.sin(a) * BODY_R * sc;
       for (const f of [0, 0.35, 0.7, 1]) add(x, y0 + (top - y0) * f, z);
     }
-    // staged: the seat's vote candle (votemarks.js) stands 1 m x the scale in front of the feet, toward the camera
-    if (stage && !stage.onStones) add(s.x + Math.sin(yaw) * (1.0 * sc + 0.25), y0, s.z + Math.cos(yaw) * (1.0 * sc + 0.25));
+    // the seat's wax seal (votemarks.js) lies SEAL_AHEAD m x the scale in front of the feet, toward the camera
+    add(s.x + Math.sin(yaw) * (0.78 * sc + 0.35), 0, s.z + Math.cos(yaw) * (0.78 * sc + 0.35));
   }
   const dial = stage?.twin ?? facingDial(dials, yaw, pitch);
   if (dial) {
@@ -129,21 +131,22 @@ export function screenAreas(lowW, lowH, { right = 0, hud = true, staged = false,
     const cx = (vis.x0 + vis.x1) / 2;
     // (D=2) the HUD is laid out in logical px: `ui` scene texels per logical px (4/3 at 1080p 'round'); the boxes grow
     const K = ui === 1 ? KEEP : Object.fromEntries(Object.entries(KEEP).map(([k, b]) => [k, Object.fromEntries(Object.entries(b).map(([q, v]) => [q, v * ui]))]));
-    // (staged: gameui draws no vote clock card in the court - the marks + the plaque show the vote - so the top-left
-    // keep-out is the chips' row only: the crescent's west end may rise into it)
-    keep.push({ x0: 0, y0: 0, x1: K.tl.w, y1: staged ? K.tl.chips : K.tl.h });
+    // (seal vote) no vote clock card on any screen: the top-left keep-out is the chips' row (two rows on a narrow screen)
+    const narrow = lowW / ui < 400;
+    keep.push({ x0: 0, y0: 0, x1: narrow ? Math.min(K.tl.w, (vis.x1 - K.tr.w) - 2) : K.tl.w, y1: narrow ? K.tl.row2 : K.tl.h });
     keep.push({ x0: vis.x1 - K.tr.w, y0: 0, x1: vis.x1 + EDGE, y1: K.tr.h });
     keep.push({ x0: cx - K.bar.w / 2, y0: lowH - K.bar.h, x1: cx + K.bar.w / 2, y1: lowH });
     keep.push({ x0: vis.x1 - K.br.w, y0: lowH - K.br.h, x1: vis.x1 + EDGE, y1: lowH });
     keep.push({ x0: K.tc.x - 2, y0: 0, x1: K.tc.x + K.tc.w, y1: K.tc.h });
-    // the phase caption ribbon (top centre, up for the whole vote) and the vote marks' tally plaque (bottom centre)
-    // stand in every vote frame now (the stones too: stage A, the default)
+    // the phase caption ribbon (top centre: staged, up for the whole vote; on the stones the captions are short-lived
+    // - the plaque names the nominee for the whole vote - so they are no keep-out: as one the fit pushed the tower dial
+    // and the ring 8 m sideways) and the vote marks' tally plaque (bottom centre, every vote frame)
     {
-      if (staged) keep.push({ x0: cx - K.cap.w / 2, y0: K.cap.y, x1: cx + K.cap.w / 2, y1: K.cap.y + K.cap.h });
-      // staged (the court: no vote clock card): bottom centre above the bar; on the stones (A: the card stands top left)
-      // the plaque hangs UNDER the card (votemarks.js), inside the top-left column: the cheapest place for the fit
-      if (staged || lowW / ui < 400) keep.push({ x0: cx - K.tally.w / 2, y0: lowH - K.bar.h - K.tally.h, x1: cx + K.tally.w / 2, y1: lowH - K.bar.h });
-      else keep.push({ x0: vis.x1 - K.trPlaque.w, y0: K.tr.h, x1: vis.x1 + EDGE, y1: K.tr.h + K.trPlaque.h });
+      const capY = narrow ? K.tl.row2 : K.cap.y;
+      if (staged) keep.push({ x0: cx - K.cap.w / 2, y0: capY, x1: cx + K.cap.w / 2, y1: capY + K.cap.h });
+      // (critic-3 P1-2) the tally plaque's REAL box (votemarks.js PLAQUE / plaqueW) + its gap, above the action bar
+      const pw = (plaqueW((vis.x1 - vis.x0) / ui) + 6) * ui, ph = (PLAQUE.h + PLAQUE.gap + 3) * ui;
+      keep.push({ x0: cx - pw / 2, y0: lowH - K.bar.h - ph, x1: cx + pw / 2, y1: lowH - K.bar.h });
     }
   }
   return { vis, keep };
@@ -180,7 +183,11 @@ export function voteFrame({ yaw, lowW, lowH, right = 0, hud = true, heights = []
     const xs = [0], ys = [0];
     for (let d = 3; d <= sx; d += 3) xs.push(d, -d);
     for (let d = 3; d <= sy; d += 3) ys.push(d, -d);
-    search: for (const dy of ys) for (const dx of xs) if (ok(tw, dx, dy)) { best = { tw, dx, dy }; break search; }
+    // (seal vote) the smallest shift wins (nearest the centred frame first), not the first row of shifts
+    const pairs = [];
+    for (const dy of ys) for (const dx of xs) pairs.push([dx, dy, dx * dx + dy * dy]);
+    pairs.sort((p, q) => p[2] - q[2]);
+    for (const [dx, dy] of pairs) if (ok(tw, dx, dy)) { best = { tw, dx, dy }; break; }
   }
   best ??= { tw: tw0 * 1.8, dx: 0, dy: 0 };
   const { tw, dx, dy } = best;

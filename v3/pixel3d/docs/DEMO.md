@@ -541,10 +541,13 @@ seatcast.js / gameui.js / tools/demo-play-passb.mjs hand-merged onto main's D=2 
 - **THE DEFAULT IS STAGE A** (the user, 2026-10-17, after seeing the options: "I like option A the best for the voting
   layout, remember in game there won't be the side panel, so you can use the whole screen"): the cast stay on the 15
   seat stones round the dais at 1.0x, no gather / puff, the vote camera's own fit (yaw 45 at 1280 x 720) with the tower
-  dial in frame, the dais' own brass hand sweeping, the vote marks at the stones (D=2; the candle at half the court's
-  size there: the 1x drawing at 1 HD px per art px, the court's candle was taller than a seated figure), the vote clock
-  card top left, the tally plaque top right under the toolbar (the toasts start below it), no chatter bubbles in the
-  vote camera, the idle NPCs walking radially out to r 11-16 m. **While the vote camera is up the demo's control panel
+  dial in frame, the dais' own brass hand sweeping (+ the lit brass hand on the ground), the SEAL VOTE (below: seals at
+  the voters' feet, spotlights, no vote clock card; YOU sit in the circle), the tally plaque bottom centre above the
+  action bar, no chatter bubbles in the vote camera, the idle NPCs walking radially out to r 11-16 m (no names).
+  (2026-10-18, seal vote: the frame's placement search takes the SMALLEST shift first - the first row of shifts had
+  pushed the ring 8 m sideways to clear a keep-out - and on the stones the short-lived caption is no keep-out; the
+  plaque's real box is. Measured 1280 x 720: yaw 45, vh 16.5, a 1.3 m figure 49.1 px; the earlier 57.7 px frame had no
+  bottom keep-out for the plaque and let the dial sit under the chips at 1080p.) **While the vote camera is up the demo's control panel
   SLIDES OUT** past the right edge (ui.js `.dui-away`, 0.25 s in 5 steps, nothing saved; it slides back when the camera
   leaves the vote): the frame fits the WHOLE canvas (votecam / main.js / gameui / timer-ui ignore a `.dui-away` panel
   from its first frame, so the transition does not reframe). Measured (`votecam.check()`, a 1.3 m figure / the dial's
@@ -640,9 +643,8 @@ seatcast.js / gameui.js / tools/demo-play-passb.mjs hand-merged onto main's D=2 
   0.235 m, facing the dais) instead of time.js's townsfolk mannequins (`demo-time-folk`: hidden). Built at boot (all
   visible in the warm-up frames: +12 programs, all compiled behind the loading screen; ready +0.6 s), then only occupied
   seats show; hidden ones are not updated. Clips follow the store + the time module: idle; dead = `ghost` / `ghost-spent`
-  (`die` first when the seat dies in view); the vote = `vote` (held) as the vote OPENS (0.3 s before the brass hand
-  reaches the first voter, a 0.07 s stagger: in Clocktower hands go up before the hand comes round; gameui's events vote
-  raises at the same moment); nomination AND the vote's opening: the nominator (the nearest living seat before the
+  (`die` first when the seat dies in view); the vote = `vote` (held) as the voter SLAPS their seal down, released when
+  they take it back (the seal vote's log, `time.seals`: scripted voters are written ahead); nomination AND the vote's opening: the nominator (the nearest living seat before the
   nominee whose character has a point clip) turns to the nominee and points for 2.6 s (a finished point is drawn again);
   day / nomination chatter: one seat `talk`s every 2.7 s, a signature emote every 9.5 s (deterministic per time slot).
   A held clip (vote / die) is released with `play('idle')` before the next (Character clip.hold). Picking a seated
@@ -652,40 +654,74 @@ seatcast.js / gameui.js / tools/demo-play-passb.mjs hand-merged onto main's D=2 
   keeps them out; a member's `spot` is where the seat stands NOW and its `scale` the staged cast scale: gameui lifts the
   label by it). `spotOf(i)` = { pos (feet), height (as shown), scale, staged, shownAt }. Staged the seat stands on its
   vote spot (terrain height) at the cast scale (`root.scale`). `?seatCast=0` = the old mannequins.
-- **The vote marks** (`votemarks.js createVoteMarks`; the user: "whether a character is voting or not also needs to be
-  extremely obvious - and whether their vote registered" / "do this with on-theme animations / effects"). Drawn into the
-  game UI's pixel layers (`gameui.layers`, z 40; no light, no new program), stepped drawings on the 30 Hz grid, pure
-  functions of the demo clock and of the events group's vote (`gameui.voteOf(t)`: the same EV.voteAt state as the HUD,
-  so world and HUD agree). Per seat: a ring round the feet (ground tier, the figure hides its back half), a VOTE CANDLE
-  on a brass dish 1 m x scale in front of the feet (world tier), a mark: (1) waiting = no ring, an unlit pale candle;
-  (2) voting (hand up, the hand not there yet) = the candle FLARES alight (2 drawings + thrown sparks) then burns in a
-  dithered warm glow (3-drawing flicker), a flickering ember ring, the parchment hand pops up and bobs; (3) COUNTED = a
-  brass chime ring pulses out (3 rings), a red WAX SEAL stamps (lands at 2x, settles, the lock sparks), candle-gold
-  sparks fall from the seal to the candle, then a gold candle with a tall white-gold flame in a gold halo, the seal on
-  its wax + a thick gold ring; (4) passed with the hand down = the candle gutters (3 drawings), a curl of smoke rises (5
-  drawings), a burnt dark stub + a thin iron ring + an iron candle SNUFFER comes down; (5) a ghost's one vote = a pale
-  candle with a swaying blue spirit flame + a shimmering dotted pale ring; counted = a pale-blue seal, then the spirit
-  flame snuffs into a pale curl of smoke; a spent ghost = a cracked grey stub. The current voter: the events pulse ring
-  + the clock hand drawn on the ground from the court's hub to the voter. The TALLY PLAQUE (screen tier, centred above
-  the action bar: `gameui.barRect`): "VOTES CAST 5 / 7 NEEDED 2 MORE", a split-flap flip on each count. The THRESHOLD
-  (the count that reaches `needed` = ceil(alive / 2)): the tower bell swings and strikes (`time.ringBell`), a ripple of
-  gold runs round the counted seats in voting order, the plaque flips to gold "ON THE BLOCK ... ENOUGH" with corner
-  sparks. After the vote phase the marks dissolve out in 0.5 s.
-  **At D=2** (the game UI's density, docs/UI.md §2.10; `?uidensity=1` = the 1x art) every mark has its OWN HD art, not
-  2x2 blocks: the candle / dish / wax / flame / glow re-rasterised on the HD grid (rounder ellipse and teardrop flame,
-  1-px lines and light bands, a 2-px flame core, a 1-px wick, a finer glow dither, a melt pool and rounded drips), the
-  smoke curl at 2x radii, the rings (radius = the world size x k, 1-px line and bands, finer ghost dashes, 3-line chime),
-  the wax seal (round groove, bumpy rim, the gold hand EPX'd), the snuffer and the four hands (the 1x grids EPX'd +
-  re-lit with 1-px bands, like the wave-2 glove), the lock flash / sparks (1-px arms), the pulse ring and the court's
-  clock hand (2-px shaft + 1-px side, HD chevron tip + hub). Tiers: candles / hands / seals / sparks on `L.hd.world`, the
-  rings / pulse / clock hand as ground decals on the HD depth tier (`putGroundHD`: hidden under the figures), the puffs
-  through `worldLayerHD` (the events group's HD poof), the plaque through the screen tier's density view (D=2 frame +
-  faces) on `L.hd.screen`. Same on-screen size as the 1x art (4/3 of it at 1080p 'round', like every HD HUD piece).
-  **In the staged court the mark stands on the head**, in a 14-art-px slot gameui reserves between the head and the
-  name (`gameui.markSlotOf(slot)`): over the name it landed on the stepped-up label of the row above. `?voteMarks=0`
-  off; `marks.info()` = { seats {i: {kind, token, ring}}, tally, needed, passed, bell, plaque {.., hd}, hand, poofs,
-  events, hd {d, k} }, `marks.states(t)`, `marks.topOf(seat)`; the art for review: `voteStateArt(T, {hd})`. gameui's
-  own 'alert' pop on a seated voter's `vote` clip is left out while the marks run.
+- **THE SEAL VOTE (since 2026-10-18; replaces the candles / dishes / rings / raised hands / snuffers and the HUD
+  vote-dial card).** The user: "[the vote-dial card] ideally don't have this panel. also hand raising is not very clear.
+  perhaps they slap the seal onto the ground in front of the character - that would be a very clear vote. this is
+  important so that butler can be played properly"; "what are the candles? they are a little bit visually messy";
+  "when vote is locked, how about a spotlight on the character". Evidence `shots/vote-seal/` (PROGRESS.md lists it).
+  - **The model** (`sealvote.js`): per seat a time-sorted log of `[t, down]` changes of its wax seal (`time.seals` =
+    { log, downAt(i, t), set(i, on, at) }; `time.setVote(i, on)` = slap / take back NOW; `time.votes` = the seals down
+    now, re-derived every frame for the dais / folk). A seal lying at a seat when the clock hand LOCKS it (the events
+    vote's lock frame in that voter's slot) COUNTS; taking it back any time before that withdraws the vote; no seal = no
+    vote. A dead player's one ghost vote works the same (`ghostVote`). `sealVoteAt(V, t, log)` -> per seat {down, yes,
+    no, changeAt, lockAt}, tally, needed, passedAt (the lock that reached `needed` = ceil(alive / 2)), current, done:
+    pure, so gameui (captions, results, reactions), votemarks and seatcast agree frame by frame. The sweep now starts
+    `OPEN_LEAD` 1.6 s after the vote opens (the opening slaps land first; the ceremony's execution / night 1.2 s later).
+    **The ceremony's script** (written AHEAD into the log, so single-frame captures agree with live play): the eight
+    voters slap in a cascade round the ring as the vote opens, seat 14 slaps LATE (1.1 s before the hand), seat 1 TAKES
+    ITS SEAL BACK (1.6 s before the hand), the ghost (seat 3) spends its ghost vote; your seat is left to you.
+  - **Your seat** (`seatcast.js yours`): when the vote camera comes up on the stones (stage A) you SIT in the circle:
+    the seat nearest you (never the nominee's or a dead one; the ceremony's are known ahead; never the Storyteller) - its
+    cast member steps aside, you appear on the stone facing the dais (`player.teleport(.., {keepCamera})`, the feet on
+    the stone top), `spotOf(yours)` is you. **X** (also the action bar's leading SEAL button while you sit in a vote -
+    lit while your seal is down - and the tray) slaps your seal / takes it back (your 'vote' clip / idle); after the
+    hand passed you a toast says why not. Walking off the stone gives the seat back; leaving the vote camera puts you
+    1.25 m outside the ring. `?yourSeat=0` = no seat.
+  - **The marks** (`votemarks.js`, the game UI's pixel layers z 40, stepped drawings on the 30 Hz grid, every piece
+    drawn from its WORLD size at the tier's density): the **seal** lies 0.62 m in front of the voter's feet FACING THE
+    DAIS, against its own seat stone (on the near arc, where the dais lies away from the viewer, the direction blends
+    toward the viewer so no figure hides it): a red wax disc 0.54 m across, bumpy rim, lit band, impression groove, a
+    gold 4-point mark, its thickness under the near rim. **SLAP**: the voter's `vote` clip; the seal held up at the hand
+    (2 frames), the fall (2 drawings + a streak), the SLAM (squashed wide + slam dashes), a dust puff (4 drawings) and 7
+    wax drops flung out that settle round it; then it rests (UI colours: readable by day and by night). **TAKE BACK**:
+    it hops off the ground (un-stamped, drops gone), rises to the hand (2 drawings) and is gone in a small puff.
+    **LOCK** (the hand reaches a seat with a seal): a brass seal-press comes down (3 drawings), presses (the flash, the
+    seal turns GOLD, a brass chime ring, 4 sparks), lifts away; the **spotlight** drops onto the voter. **No seal when
+    the hand passes**: nothing. **Ghost vote available**: a small pale sheet-ghost token hovers at the seal's spot; used =
+    a pale seal (the same slap / take back / lock, a pale-gold seal and a pale beam); spent: nothing.
+    **The nominee**: a crimson ring round their feet through the nomination and the vote; at the THRESHOLD a crimson +
+    gold burst races out, sparks, and it becomes the BLOCK ring (crimson + a gold inner ring + 4 gold studs); the tower
+    bell strikes (`time.ringBell`, `events 'vote:threshold'`). **The current voter**: the clock hand's outer end drawn
+    on the ground in LIT brass (gold, a pale-gold light line, the chevron tip; from the dais past its treads to the
+    voter's seal on the stones, from the hub in a court). Ground pieces (resting seals, drops, rings, the hand) are
+    decals on the HD depth tier (`putGroundHD`: whoever stands nearer hides them); the falling seal, the stamp, the
+    ghost token and sparks on `L.hd.world`. After the vote phase everything dissolves out in 0.5 s.
+  - **The spotlights** (`spotlight.js createSpotlights`): NO real lights - ONE mesh + ONE ShaderMaterial for all 15
+    seats (built before the warm-up, always drawn: an off seat collapses its vertices, so the program count never
+    changes; LAYERS.COLOR_ONLY, additive, depth-tested, no depth write; one draw call). Per seat an open cone 3.4 m tall
+    (r 0.14 -> 0.62) whose lower end DROPS onto the voter in 4 steps (2 grid frames each), bright at its silhouette and
+    faint over the figure (3 bands, Bayer-dithered edges, faint where the figure stands, fading at the top), then a pool:
+    a disc on the stone top + a ring on the ground (3 bands). Warm gold (pale-blue for a ghost); gain day 0.42 / 0.38,
+    night 0.5 / 0.55. Up to 15 at once; stays while the vote stands. `?spotlights=0` = off; `marks.spotlights.info()`.
+  - **The tally**: ONE small plaque bottom centre above the action bar, snug round its text, naming the nominee for the
+    whole vote: "Clover: 3 votes · 7 needed"; from the threshold gold "Clover: 8 votes · 7 needed · ON THE BLOCK"
+    (narrow screens < 330 logical px: "Clover: ON THE BLOCK · 8 votes"); a new count lifts the number 1 px, lit (no
+    blank mid-flip drawing). The vote camera reserves its widest box (`PLAQUE`, `plaqueW`). **No vote-dial card** on
+    any screen (`gameui.voteCardRect` = null).
+  - **Captions** name the nominee: "Clover is nominated. Slap a seal to vote." (4.5 s on the stones; the whole sweep in
+    a court), "Clover is on the block!" at the threshold, "Not enough votes: Clover is safe.", "The bell tolls for
+    Clover." ("You are ..." on your own seat). The 'The bell tolls' toast is not shown in a vote / execution.
+  - **Names in the vote camera on the stones** (critic-3 P1-1, gameui.js): the ring's left / right seats carry their
+    name BESIDE the figure (outward, at the shoulders: their neighbours stand above / below them on screen), the far /
+    near arcs tight over the head; short forms ("Archivist Hoot" -> "Hoot"); every seated figure and every seal spot is a
+    keep-out for the other names (`marks.sealBoxOf(i)`); at most a half-row nudge, then the over-head slot, else the
+    name is left out (the seal, the spotlight and the figure still show the seat). The idle townsfolk have no names in
+    the vote camera; an emoji pop slides aside of another seat's name (else it is skipped).
+  - `marks.info()` = { seats {i: {kind, drawn, current, nominee, spot}}, tally, needed, passed, passedAt, bell, plaque
+    {.., text, gold, hd}, nominee {seat, block}, hand, spot {lit, gain}, poofs, events, hd }; kinds waiting / sealed /
+    withdrawn / counted / passed / ghost / ghost-sealed / ghost-withdrawn / ghost-counted / ghost-passed / spent; drawn
+    lift / fall / slam / settle / rest / unstamp / rise / gone / stamp-down / pressed / stamp-up / gold / token.
+    `marks.states(t)`, `marks.sealBoxOf(i)`, `voteStateArt(T, {hd})` (the art for review). `?voteMarks=0` off.
 - **The tower interior** (`tower-interior.js`; interior.js `register` + player.js `enterable` hooks, store location
   `'clocktower'`): walk into the great door like a cottage ("Walk in: The Clocktower", the fade, the dollhouse camera,
   the room's own collision, walk out on the exit spot back onto the doorstep); `?in=clocktower` starts inside. An 8 x
@@ -970,7 +1006,7 @@ and closes the emote palette, the default character greys none of the six, 6 pla
 palette and opens the dock, the tray closes the dock (P2-5); touch: the open dock covers no bar button (P2-5), a tapped
 tray button shows its name (P2-6); the bundle verify serves the published `v/<hash>/` layout and fails on any 404
 (P1-1)). Every gameui rect / point is in the game UI's LOGICAL px: client = `info().unit` x logical (`unitDev` on the
-phone page) · **passb** (`tools/demo-play-passb.mjs`: the vote camera's stepped transition (<= 7 distinct poses, settled < 1.5 s), every seat + the dial inside the visible area with the panel open AND hidden and the frame tighter than the old preset, 15 cast seats (no player / Storyteller id, the mannequins hidden), the panel slid out (`.dui-away`, the fit's right band 0), the staging when a court stage is chosen (`?voteStage=N`: all 15 gathered onto their vote spots, puffs drawn, the cast scale on every root; back on the stones + pitch 30 after the vote camera), the timer chip in the HUD during the vote and inside the tower and NO hour-board built, dead seats in ghost clips, >= 4 voters raise 'vote' as the vote opens, the vote marks (every state seen on its seat: waiting, raised, counted, passed, ghost-raised, ghost-counted, spent; the tally 7 / 7 counting up, the threshold ringing the tower bell, the plaque gold; the marks + the plaque on the D=2 tiers), the townsfolk's reactions ('suspicious' at the nomination, 'agree' at the vote's end), (N) the court staged = the dais parked (hand at the court, stones empty), the idle NPCs walked out of the frame (any stage), the timer by K / Y / U / I + a real click on the ST control's Resume, the dial wedge / hour-board digits / HUD chip agreeing with the state, the tower's hands hidden while it runs and back after reset, zero = done + a bell, walking INTO the tower door (held W) with no program compiled, the timer wheel turning while running and still while paused, the stair raising the feet onto the landing, walking out onto the doorstep) · quality reload (state + position kept;
+phone page) · **passb** (`tools/demo-play-passb.mjs`: the vote camera's stepped transition (<= 7 distinct poses, settled < 1.5 s), every seat + the dial inside the visible area with the panel open AND hidden and the frame tighter than the old preset, 15 cast seats (no player / Storyteller id, the mannequins hidden; on the stones YOU sit on seat 5 = 14 cast + you), the panel slid out (`.dui-away`, the fit's right band 0), the staging when a court stage is chosen (`?voteStage=N`: all 15 gathered onto their vote spots, puffs drawn, the cast scale on every root; back on the stones + pitch 30 after the vote camera), the timer chip in the HUD during the vote and inside the tower and NO hour-board built, dead seats in ghost clips, >= 4 voters in the 'vote' clip with their seal down, THE SEAL VOTE (the ghost token at seat 3 + the nominee ring in the nomination; every state seen on its seat: waiting, sealed, counted, passed, seat 1's take-back (sealed -> withdrawn -> passed), seat 14's late slap, the ghost's sealed -> counted, a spent ghost, YOUR X presses on seat 5 (down / up / down -> counted); the slap / take-back / stamp drawings seen; a spotlight on exactly the counted voters; no candle / raised-hand state; the tally counting up to "Clover: 8 votes · 7 needed · ON THE BLOCK" in the plaque's wording (never "8 / 7", never blank), the threshold ringing the bell, the plaque gold, the block ring; no vote-dial card; a caption naming the nominee; the marks + the plaque on the D=2 tiers), the townsfolk's reactions ('suspicious' at the nomination, 'agree' at the vote's end), (N) the court staged = the dais parked (hand at the court, stones empty), the idle NPCs walked out of the frame (any stage), the timer by K / Y / U / I + a real click on the ST control's Resume, the dial wedge / hour-board digits / HUD chip agreeing with the state, the tower's hands hidden while it runs and back after reset, zero = done + a bell, walking INTO the tower door (held W) with no program compiled, the timer wheel turning while running and still while paused, the stair raising the feet onto the landing, walking out onto the doorstep) · quality reload (state + position kept;
 no automatic tip after "never show again", the bulb still there; the running tower timer comes back running with the
 time it had left; the saved pin colour holds) + a reload inside a house (`?in=` brings the player back in).
 

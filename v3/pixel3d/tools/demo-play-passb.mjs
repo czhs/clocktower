@@ -34,6 +34,8 @@ export async function runPassB({ page, sleep, info, shot, fail, note, press, hol
     const d = window.__demo.demo;
     d.store.set({ ui: true, camera: 'follow', phase: 'day', nominee: null }, 'test');
     d.store.set({ seats: Array.from({ length: 15 }, (_, i) => ({ occupied: true, dead: i === 3 || i === 11, ghostVote: i === 3, nominated: false, onBlock: false })) }, 'test');
+    // (seal vote) stand by seat 5's stone: the vote camera seats YOU there (seatcast.js yours: the nearest seat)
+    d.player.goTo('seat-5');
   });
   await sleep(900);
   // the transition: poll the camera pose while it steps in
@@ -73,46 +75,92 @@ export async function runPassB({ page, sleep, info, shot, fail, note, press, hol
   // ---- the seated cast
   let s = await ev(() => window.__demo.demo.passB.seats.info());
   const player = await ev(() => window.__demo.demo.player.handle?.id);
-  r.cast = { ids: s.ids, shown: s.shown, folkHidden: s.folkHidden, members: s.members };
-  if (s.shown !== 15) fail(`passb: ${s.shown}/15 seated cast shown`);
+  const yours = await ev(() => window.__demo.demo.passB.seats.yours);
+  r.cast = { ids: s.ids, shown: s.shown, folkHidden: s.folkHidden, members: s.members, yours };
+  // (seal vote) on the stones you sit in the circle: your seat's cast member steps aside (14 shown + you)
+  const onStones = stg?.onStones !== false;
+  if (onStones && yours !== 5) fail(`passb: you were not seated on seat 5 in the vote camera (yours ${yours})`);
+  if (s.shown !== 15 - (yours >= 0 ? 1 : 0)) fail(`passb: ${s.shown}/${15 - (yours >= 0 ? 1 : 0)} seated cast shown (yours ${yours})`);
   if (s.ids.includes(player) || s.ids.includes('storyteller')) fail(`passb: the player's character / the Storyteller in a seat (${s.ids.join(',')})`);
   if (s.folkHidden !== true) fail('passb: the townsfolk mannequins still shown on the seats');
   await sleep(1900);
   s = await ev(() => window.__demo.demo.passB.seats.info());
   if (!/ghost/.test(s.clips[3] ?? '') || !/ghost/.test(s.clips[11] ?? '')) fail(`passb: dead seats not ghosts (${s.clips[3]}, ${s.clips[11]})`);
-  // the vote: voters raise a hand as the vote opens; the marks (votemarks.js) show every state through the sweep
-  // (nominee 6; voters 7 9 10 12 0 1 + the ghost 3 with its one vote; seat 11 a spent ghost; 13 alive = 7 needed)
-  const stateSeen = {}, kindsAt = [];
+  // THE SEAL VOTE (sealvote.js / votemarks.js; docs/DEMO.md §4.9 "the seal vote"): nominee 6; seals slapped before the
+  // vote opens: 7 9 10 12 0 1 + the ghost 3 (its one ghost vote); during the sweep seat 1 TAKES ITS SEAL BACK and seat
+  // 14 slaps LATE (both before the hand reaches them); YOU (seat 5) press X: slap, take back, slap again; seat 11 a spent
+  // ghost; 13 alive = 7 needed -> 7 9 10 12 14 0 3 5 = "8 votes · 7 needed · ON THE BLOCK" (the threshold on the ghost 3)
+  const stateSeen = {}, drawnSeen = {}, kindsAt = [], plaques = new Set(), lit = new Set();
   let marksInfo = null, voting = [];
+  const nomMark = await ev(() => window.__demo.demo.passB.marks?.info?.() ?? null);
+  r.nomination = { ghost3: nomMark?.seats?.[3]?.kind ?? null, nominee: nomMark?.nominee ?? null };
+  if (onStones && r.nomination.ghost3 !== 'ghost') fail(`passb: no ghost token at the ghost seat 3 in the nomination (${JSON.stringify(nomMark?.seats?.[3])})`);
+  if (onStones && r.nomination.nominee?.seat !== 6) fail(`passb: no nominee marker at seat 6 (${JSON.stringify(r.nomination.nominee)})`);
   await ev(() => { window.__voteBells = 0; window.__demo.demo.events.on('bell', () => { window.__voteBells++; }); });
   await ev(() => { const d = window.__demo.demo; for (const i of [7, 9, 10, 12, 0, 1, 3]) d.time.setVote(i, true); d.store.set({ phase: 'vote' }, 'test'); });
   const tv0 = Date.now();
   let shotCounted = false;
-  while (Date.now() - tv0 < 9600) {
+  const acts = [[900, 'x'], [1700, 'x'], [2300, 'wd1'], [2500, 'late14'], [2900, 'x']];
+  const pressed = [];
+  while (Date.now() - tv0 < 12500) {
+    for (const a of acts) if (!a.done && Date.now() - tv0 >= a[0]) {
+      a.done = true;
+      if (a[1] === 'x') { if (onStones) { await press('KeyX'); pressed.push(await ev(() => !!window.__demo.demo.time.seals.downAt(5))); } }
+      else await ev((w) => { const d = window.__demo.demo; if (w === 'wd1') d.time.setVote(1, false); else d.time.setVote(14, true); }, a[1]);
+    }
     marksInfo = await ev(() => window.__demo.demo.passB.marks?.info?.() ?? null);
     if (!marksInfo) break;
-    const kinds = Object.fromEntries(Object.entries(marksInfo.seats).map(([i, x]) => [i, x.kind]));
-    for (const [i, k] of Object.entries(kinds)) (stateSeen[k] ??= new Set()).add(+i);
+    for (const [i, x] of Object.entries(marksInfo.seats)) { (stateSeen[x.kind] ??= new Set()).add(+i); if (x.drawn) (drawnSeen[x.drawn] ??= new Set()).add(+i); }
+    for (const i of marksInfo.spot?.lit ?? []) lit.add(i);
+    if (marksInfo.plaque?.text) plaques.add(marksInfo.plaque.text);
     kindsAt.push({ ms: Date.now() - tv0, tally: marksInfo.tally, plaque: marksInfo.plaque?.text ?? null });
     if (Date.now() - tv0 > 1000 && !voting.length) { const s1 = await ev(() => window.__demo.demo.passB.seats.info()); voting = Object.entries(s1.clips).filter(([, c]) => c === 'vote').map(([i]) => +i); }
     if (!shotCounted && marksInfo.tally >= 3) { shotCounted = true; await shot('passb-vote-marks'); }
-    await sleep(120);
+    if (marksInfo.tally >= 8 && Date.now() - tv0 > 9000) break;
+    await sleep(100);
   }
   r.cast.voting = voting;
-  if (voting.length < 4) fail(`passb: only ${voting.length} seated voters raised a hand as the vote opened`);
-  r.marks = { seen: Object.fromEntries(Object.entries(stateSeen).map(([k, v]) => [k, [...v].sort((a, b) => a - b)])), tally: marksInfo?.tally, needed: marksInfo?.needed, passed: marksInfo?.passed, bell: marksInfo?.bell, bells: await ev(() => window.__voteBells), plaque: marksInfo?.plaque?.text ?? null, gold: marksInfo?.plaque?.gold ?? null, hand: marksInfo?.hand };
+  if (voting.length < 4) fail(`passb: only ${voting.length} seated voters played the 'vote' clip with their seal down`);
+  r.marks = { seen: Object.fromEntries(Object.entries(stateSeen).map(([k, v]) => [k, [...v].sort((a, b) => a - b)])), drawn: Object.fromEntries(Object.entries(drawnSeen).map(([k, v]) => [k, [...v].sort((a, b) => a - b)])),
+    tally: marksInfo?.tally, needed: marksInfo?.needed, passed: marksInfo?.passed, bell: marksInfo?.bell, bells: await ev(() => window.__voteBells), plaque: marksInfo?.plaque?.text ?? null, gold: marksInfo?.plaque?.gold ?? null, hand: marksInfo?.hand, plaques: [...plaques], lit: [...lit].sort((a, b) => a - b), yourX: pressed };
   const has = (k, seat) => stateSeen[k]?.has(seat);
-  const need = [['waiting', 13], ['raised', 1], ['counted', 7], ['counted', 0], ['passed', 8], ['passed', 14], ['ghost-raised', 3], ['ghost-counted', 3], ['spent', 11]];
+  const need = [['waiting', 13], ['sealed', 7], ['counted', 7], ['counted', 0], ['passed', 8], ['sealed', 1], ['withdrawn', 1], ['passed', 1], ['sealed', 14], ['counted', 14],
+    ['ghost-sealed', 3], ['ghost-counted', 3], ['spent', 11]];
+  if (onStones) need.push(['sealed', 5], ['withdrawn', 5], ['counted', 5]);
   const miss = need.filter(([k, s]) => !has(k, s));
   if (!marksInfo) fail('passb: no vote marks (votemarks.js)');
   else if (miss.length) fail(`passb: vote states not seen: ${miss.map(([k, s]) => `${k}@${s}`).join(', ')} (seen ${JSON.stringify(r.marks.seen)})`);
-  if (marksInfo && (marksInfo.tally !== 7 || marksInfo.needed !== 7 || !marksInfo.passed)) fail(`passb: the tally ${marksInfo.tally} / ${marksInfo.needed} passed ${marksInfo.passed} (want 7 / 7, passed)`);
+  // the animations ran: a slap (fall / slam / settle), a take-back (unstamp / rise / gone), a lock (the stamp)
+  const dr = (ks) => ks.some((k) => drawnSeen[k]?.size);
+  if (!dr(['fall', 'slam', 'settle', 'lift'])) fail(`passb: no slap animation seen (${JSON.stringify(r.marks.drawn)})`);
+  if (!dr(['unstamp', 'rise', 'gone'])) fail(`passb: no take-back animation seen (${JSON.stringify(r.marks.drawn)})`);
+  if (!dr(['stamp-down', 'pressed', 'stamp-up'])) fail(`passb: no brass stamp seen (${JSON.stringify(r.marks.drawn)})`);
+  // the old marks are gone: no candle / raised-hand states
+  const oldKinds = Object.keys(stateSeen).filter((k) => /raised|candle|snuff/.test(k));
+  if (oldKinds.length) fail(`passb: old vote-mark states still drawn: ${oldKinds.join(', ')}`);
+  // a spotlight on every counted voter (and on nobody else)
+  const counted = [...new Set([...(stateSeen.counted ?? []), ...(stateSeen['ghost-counted'] ?? [])])].sort((a, b) => a - b);
+  if (JSON.stringify(r.marks.lit) !== JSON.stringify(counted)) fail(`passb: spotlights ${JSON.stringify(r.marks.lit)} vs the counted voters ${JSON.stringify(counted)}`);
+  const want = onStones ? 8 : 7;
+  if (marksInfo && (marksInfo.tally !== want || marksInfo.needed !== 7 || !marksInfo.passed)) fail(`passb: the tally ${marksInfo.tally} / ${marksInfo.needed} passed ${marksInfo.passed} (want ${want} / 7, passed)`);
   if (marksInfo && !(marksInfo.bell >= 1 && r.marks.bells >= 1)) fail(`passb: the threshold did not ring the tower bell (marks ${marksInfo.bell}, bell events ${r.marks.bells})`);
   if (marksInfo && !(marksInfo.plaque?.gold)) fail(`passb: the tally plaque did not turn gold at the threshold (${JSON.stringify(marksInfo.plaque)})`);
-  // the plaque counted up one by one (a flip per count): the tallies seen are non-decreasing and reach 7
+  if (marksInfo && !(marksInfo.nominee?.block)) fail(`passb: the nominee's ring did not become the block ring (${JSON.stringify(marksInfo.nominee)})`);
+  // the tally's wording: "<name>: N votes · 7 needed", from the threshold "... · ON THE BLOCK"; never "8 / 7"
+  const badP = [...plaques].filter((p) => !/^[A-Za-z ]+: (\d+ votes? · 7 needed( · ON THE BLOCK)?|ON THE BLOCK · \d+ votes?)$/.test(p));
+  if (badP.length || !plaques.size) fail(`passb: tally wording ${JSON.stringify([...plaques])}`);
+  if (marksInfo && !new RegExp(`: ${want} votes · 7 needed · ON THE BLOCK$|ON THE BLOCK · ${want} votes$`).test(marksInfo.plaque?.text ?? '')) fail(`passb: the final tally reads "${marksInfo.plaque?.text}"`);
+  if (kindsAt.some((x) => x.plaque === null && x.tally > 0)) fail('passb: the tally plaque vanished mid-vote');
+  // the plaque counted up one by one: the tallies seen are non-decreasing
   const tallies = kindsAt.map((x) => x.tally);
   if (tallies.some((x, i) => i && x < tallies[i - 1])) fail(`passb: the tally went down ${JSON.stringify(tallies)}`);
   r.marks.tallies = [...new Set(tallies)];
+  // no vote-dial card; the captions name the nominee
+  const ge = await ev(() => { const g = window.__demo.demo.gameui; const i = g.info(); return { card: g.voteCardRect, vote: i.events?.vote ?? null, captions: i.events?.captions ?? [], bar: (i.bar ?? i.R?.bar ?? null) }; });
+  r.marks.captions = ge.captions.slice(-4);
+  if (ge.card || ge.vote?.card) fail(`passb: the vote-dial card is drawn (${JSON.stringify(ge.card ?? ge.vote)})`);
+  if (!ge.captions.some((c) => / (is|are) nominated/.test(c) && !/Seat \d/.test(c))) fail(`passb: no caption names the nominee (${JSON.stringify(ge.captions)})`);
+  if (onStones && !(pressed[0] === true && pressed[1] === false && pressed[2] === true)) fail(`passb: your seal did not follow X (down after each press: ${JSON.stringify(pressed)})`);
   await shot('passb-vote-threshold');
   // the marks at the game UI's density (D=2 at 1280x720: the HD art on the HD tiers, the plaque through the HD view)
   r.marks.hd = marksInfo?.hd ?? null; r.marks.plaqueHD = marksInfo?.plaque?.hd ?? null;

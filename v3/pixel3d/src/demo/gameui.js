@@ -64,6 +64,7 @@ import { installMergedBooks } from '../ui/runtime/book3d.js';   // the 3D big bo
 import { loadPortraits, goldFrame, goldFrameHD } from '../ui/portraits/atlas.js';
 import * as EV from '../ui/events/draw.js';
 import { formatClock } from './api.js';
+import { sealVoteAt } from './sealvote.js';
 import * as AB from './actionbar.js';
 import { createNotebook } from './notebook.js';
 
@@ -251,19 +252,23 @@ export async function createGameUI(demo) {
       m.top = Math.min(VISUAL_TOP[n.id] ?? m.height, m.height);
       if (n.scale && n.scale !== 1) { m.height *= n.scale; m.top *= n.scale; }     // (B) the vote staging's cast scale
       m.pos.set(n.spot.x, groundY(n.spot.x, n.spot.z), n.spot.z); m.face = n.face; m.clip = n.handle.ch?.state?.clip ?? 'idle';
-      m.lift = haloLift(n.handle, m.clip === 'ghost') * (n.scale || 1);
+      m.lift = haloLift(n.handle, !!m.clip?.startsWith?.('ghost')) * (n.scale || 1);
       members.push(m);
     }
   };
   const npcOf = (slot) => members.find((m) => !m.you && m.slot === slot) ?? null;
+  /** (seal vote) the vote camera is up with the cast on the seat stones (stage A, the default) */
+  const vcRing = () => store.state.camera === 'vote' && !!demo.passB?.votecam && !staged() && !demo.player?.interior;
+  const RING_C = new THREE.Vector3(demo.layout?.CIRCLE?.cx ?? 22.5, 0.2, demo.layout?.CIRCLE?.cz ?? 19.75);
   /** (B) the vote staging is up: the seated cast stand in the tower court (votestage.js) */
   const staged = () => { const st = demo.passB?.stage; return !!st && !st.onStones && !!st.active; };
   /** (B) art px reserved between a seated voter's head and name for its vote mark while the court is staged (else 0) */
-  const MARK_SLOT = 14;
+  // (seal vote) 0: the vote's marks lie on the ground now (seals at the feet); nothing stands between head and name
+  const MARK_SLOT = 0;
   const markSlotOf = (m) => (!m.you && m.slot >= 1000 && staged() && demo.passB?.marks && (store.state.phase === 'vote' || store.state.phase === 'nomination') ? MARK_SLOT : 0);
   /** (B) a seated cast member's label in the staged court: a titled name's last word when the full name is long */
   const courtName = (m) => {
-    if (m.you || m.slot < 1000 || !staged()) return m.name;
+    if (m.you || m.slot < 1000 || !(staged() || vcRing())) return m.name;
     const w = String(m.name).split(' ');
     return w.length > 1 && textWidth(m.name) > 40 ? w[w.length - 1] : m.name;
   };
@@ -385,7 +390,8 @@ export async function createGameUI(demo) {
   const PIN_KEY = 'ct-pin-color';
   const savedPin = lsGet(PIN_KEY);
   let colorAuto = !(savedPin && E.PIN_LABEL[savedPin]), pinSaved = null;
-  const autoColor = () => EJ.autoPinColor(demo.player?.handle?.id ?? store.state.character ?? 'you');
+  // (critic-3 P2) never black (it read as no colour on the dark HUD): black counts as taken
+  const autoColor = () => EJ.autoPinColor(demo.player?.handle?.id ?? store.state.character ?? 'you', { taken: new Set(['black']) });
   let color = colorAuto ? autoColor() : savedPin;
   /** 'auto' | a pin colour: the player's choice (save: localStorage; the test hook `gameui.color = c` does not save). */
   function setPinColor(c, { save = true } = {}) {
@@ -597,24 +603,41 @@ export async function createGameUI(demo) {
     const s = store.state, nom = s.nominee ?? s.seats.findIndex((x) => x.nominated);
     if (nom == null || nom < 0 || !daisSeats().length) { vote = null; return; }
     const sw = demo.time?.sweep ?? { from: nom, t0: engine.time, per: 0.55 };
-    const votes = demo.time?.votes ?? new Set(), N = s.seats.length, per = EV.TIMING.vote.perVoterF / GRID_HZ;
-    const order = [], reach = [], raise = {}, ghosts = [], dead = [];
+    const N = s.seats.length, per = EV.TIMING.vote.perVoterF / GRID_HZ;
+    const order = [], reach = [], ghosts = [], dead = [];
     for (let k = 1; k <= N; k++) {
       const i = (sw.from + k) % N, st = s.seats[i];
       if (!(st.occupied || st.dead)) continue;
       if (st.dead) { dead.push(i + 1); if (st.ghostVote) ghosts.push(i + 1); }
-      // (B) voters raise their hands as the vote OPENS (0.3 s before the brass hand reaches the first voter, a little
-      // stagger), not as the hand arrives: the pending "hand up" state shows for the whole sweep (seatcast.js raises
-      // the 3D 'vote' clip at the same moment; votemarks.js draws the states)
-      if (votes.has(i) && (!st.dead || st.ghostVote)) raise[i + 1] = -0.3 + (k % 3) * 0.07;
+      // (seal vote) who votes is the seals' log (sealvote.js, time.seals): a seal lying at a seat when the clock hand
+      // reaches it counts; the events vote only keeps the order + the clock (raise unused)
       order.push(i + 1); reach.push(sw.t0 + (k - 1) * sw.per);
     }
     if (!order.length) { vote = null; return; }
     const alive = order.length - dead.length;
-    vote = { v: EV.makeVote({ nominee: nom + 1, order, raise, ghosts, dead, t0: 0, needed: Math.max(1, Math.ceil(alive / 2)) }), reach, per, t0: L.t, result: false };
+    vote = { v: EV.makeVote({ nominee: nom + 1, order, raise: {}, ghosts, dead, t0: 0, needed: Math.max(1, Math.ceil(alive / 2)) }), reach, per, t0: L.t, result: false };
     evInfo.votes++;
-    setCaption(`Seat ${nom + 1} is nominated. Raise a hand to vote.`, 'hand', (reach[reach.length - 1] - L.t) + per + 0.2);
+    // (critic-3 P1-3) the caption names the nominee (their seat's character): up for the whole sweep in the staged
+    // court; on the stones (stage A) for 4.5 s (the tally plaque names the nominee for the whole vote, and a caption up
+    // for the whole sweep sat over the tower dial)
+    setCaption(`${isAre(seatName(nom))} nominated. Slap a seal to vote.`, 'hand', staged() ? (reach[reach.length - 1] - L.t) + per + 0.2 : 4.5);
   }
+  const isAre = (n) => (n === 'You' ? 'You are' : `${n} is`);
+  /** (critic-3 P1-3) the display name of the cast member on seat i (0-based): "You" on your own seat */
+  function seatName(i) {
+    if (i == null || i < 0) return 'Nobody';
+    if (demo.passB?.seats?.yours === i) return 'You';
+    const m = (demo.npcs?.members ?? []).find((n) => n && n.slot === 1000 + i);
+    return m?.handle?.name ?? m?.id ?? `Seat ${i + 1}`;
+  }
+  /** the seal vote's state now (sealvote.js), or null */
+  const sealState = (t = L.t) => (vote ? sealVoteAt({ v: vote.v, clock: voteClock(t), reach: vote.reach, per: vote.per }, t, demo.time?.seals?.log ?? new Map()) : null);
+  // (seal vote) the threshold (votemarks.js: the tally reached the votes needed): the caption switches to the block
+  offs.push(events.on('vote:threshold', ({ nominee } = {}) => {
+    if (!vote) return;
+    const left = staged() ? Math.max(1.5, (vote.reach[vote.reach.length - 1] - L.t) + vote.per + 2.5) : 3.5;
+    setCaption(`${isAre(seatName(nominee ?? vote.v.nominee - 1))} on the block!`, 'bell', left);
+  }));
   /** Real (demo) time -> the vote's clock: piecewise linear between the dais' reach times of the voters. */
   const voteClock = (t) => {
     const { reach, per } = vote, n = reach.length;
@@ -628,7 +651,7 @@ export async function createGameUI(demo) {
     if (value === 'night') { if (L.t - lastVeil > 1) nightFalls('Night falls. You are alone in your home…'); }
     else if (value === 'day' && prev === 'night') dawnBreaks('Dawn breaks over Hollowmere.');
     else if (value === 'nomination') setCaption('Nominations are open. Who will you name?', 'hand');
-    else if (value === 'execution' && nom != null) { exec = { t0: L.t, seat: nom }; evInfo.executions++; setCaption(`The bell tolls for Seat ${nom + 1}.`, 'bell', EV.TIMING.execution.captionF / GRID_HZ); }
+    else if (value === 'execution' && nom != null) { exec = { t0: L.t, seat: nom }; evInfo.executions++; setCaption(`The bell tolls for ${seatName(nom) === 'You' ? 'you' : seatName(nom)}.`, 'bell', EV.TIMING.execution.captionF / GRID_HZ); }
     else if (value === 'day') setCaption('A new day in Hollowmere.', 'sun', 3);
   }));
   offs.push(store.on('nominee', () => { if (store.state.phase === 'vote') startVote(); }));
@@ -668,7 +691,7 @@ export async function createGameUI(demo) {
    *  kept their hands down disagree, the nominee gasps when the vote put them on the block. */
   function reactToVote() {
     if (!vote || vote.reacted) return;
-    const VS = EV.voteAt(vote.v, voteClock(L.t));
+    const VS = sealState(L.t);
     if (!VS.done) return;
     vote.reacted = true;
     let ky = 0, kn = 0;
@@ -869,10 +892,25 @@ export async function createGameUI(demo) {
     byHead.length = 0;
     for (const m of members) { m._hy = LL.at(m.head()).y; byHead.push(m); }
     byHead.sort((a, b) => b._hy - a._hy);
+    // (seal vote, critic-3 P1-1) the vote camera on the stones (stage A): every seated figure's box (texels) is a
+    // keep-out for the OTHER seats' names, so no name ever sits over another seat
+    const ring = vcRing(), figs = [];
+    const mine = demo.passB?.seats?.yours ?? -1;
+    if (ring) for (const m of members) {
+      const slot = m.you ? (mine >= 0 ? 1000 + mine : -2) : m.slot;
+      if (slot < 1000) continue;
+      const f = LL.at(m.pos), h = LL.at(m.head()), bw = Math.max(4, Math.round((0.3 * (m.scale ?? 1)) / engine.camera.texelWorld));
+      figs.push({ slot: m.you ? -3 : m.slot, x0: f.x - bw, x1: f.x + bw, y0: h.y - 2, y1: f.y + 1 });
+      // (and every seat's wax seal spot, its own too: a name never covers a seal - votemarks.js sealBoxOf)
+      const sb = demo.passB?.marks?.sealBoxOf?.(slot - 1000);
+      if (sb) figs.push({ slot: -1, ...sb });
+    }
     for (const m of byHead) {
       m._shown = false;
       // whole character above the view: no label (the indicators' rule); labels near the top edge clamp inward
       if (!visible(m) || LL.at(m.pos).y < LL.MARGIN) continue;
+      // (seal vote, critic-3 P3) the idle townsfolk are not part of the vote: no names in the vote camera
+      if (ring && !m.you && m.slot < 1000) continue;
       const p = LL.at(m.head());
       // (B) in the staged court a seated voter's vote mark (hand / seal / snuffer, votemarks.js) has its own slot between
       // the head and the name (MARK_SLOT art px): over the name it landed on the stepped-up label of the row above
@@ -898,7 +936,7 @@ export async function createGameUI(demo) {
       // the name label (indicators art), drawn once per name + token set: drawText at (cx, top) = this crop at (cx + dx, top - 1 + dy)
       // a ghost (your ghost STATE: player.ghost, walking too; or a ghost clip): the indicators' ghost label variant
       // (ghost ink + the little sheet ghost)
-      const ghostly = m.clip === 'ghost' || (m.you && m.ghost);
+      const ghostly = !!m.clip?.startsWith?.('ghost') || (m.you && m.ghost);
       // (B) in the staged vote court a titled cast name shows its short form ("Archivist Hoot" -> "Hoot"): 15 names in
       // one crescent did not fit side by side
       const nm = courtName(m);
@@ -907,27 +945,49 @@ export async function createGameUI(demo) {
       // (in texels: an HD label is d / k texels per art px: 4/3 of the 1x size at 1080p 'round')
       const uS = hdOn() ? L.hd.d / L.hd.k : 1, rowT = 11 * uS;
       const lwT = Math.ceil((textWidth(nm) + 4 + (ghostly ? 7 : 0)) * uS), WW = LL.world?.w ?? engine.lowW;
-      const cxT = Math.max(LL.MARGIN + 2 + (lwT >> 1) + (ghostly ? 7 : 0), Math.min(WW - LL.MARGIN - 2 - (lwT >> 1), p.x)), lx0 = cxT - (lwT >> 1);
+      let cxT = Math.max(LL.MARGIN + 2 + (lwT >> 1) + (ghostly ? 7 : 0), Math.min(WW - LL.MARGIN - 2 - (lwT >> 1), p.x));
+      // (seal vote, critic-3 P1-1) the vote camera on the stones: a seat's name stays CLOSE to its own figure - beside
+      // it, outward, for the ring's left / right seats (their neighbours stand above / below them on screen), tight over
+      // the head for the far / near arcs; at most a half-row nudge, never over another seat (else it is left out: the
+      // seal, the spotlight and the figure still show the seat)
+      let side = 0;
+      const ringLab = ring && !m.you && m.slot >= 1000;
+      if (ringLab) {
+        const c = LL.at(RING_C), f = LL.at(m.pos), ax = f.x - c.x, ay = (f.y - c.y) / Math.max(0.3, Math.sin(engine.camera.pitch));
+        const cs = ax / Math.max(1e-3, Math.hypot(ax, ay));
+        const bw = Math.max(4, Math.round((0.3 * (m.scale ?? 1)) / engine.camera.texelWorld));
+        if (Math.abs(cs) > 0.6) { side = Math.sign(cs); cxT = side > 0 ? f.x + bw + 2 + (lwT >> 1) : f.x - bw - 2 - (lwT >> 1); top = Math.round(p.y + (f.y - p.y) * 0.28); }
+        else top = Math.round(p.y + IA.LABEL_DY + 2);
+        cxT = Math.max(LL.MARGIN + 2 + (lwT >> 1) + (ghostly ? 7 : 0), Math.min(WW - LL.MARGIN - 2 - (lwT >> 1), cxT));
+      }
+      let lx0 = cxT - (lwT >> 1);
       let steps = 0;
-      const maxSteps = staged() ? 3 : 2;
+      const maxSteps = ringLab ? 1 : staged() ? 3 : 2, stepT = ringLab ? Math.round(rowT / 2) : rowT;
       // (a 2-texel gap counts as touching: long back-row names in the court ran into each other)
-      const hits = () => placedLabels.some((r) => lx0 < r.x1 + 2 && lx0 + lwT > r.x0 - 2 && Math.abs(top - r.top) < rowT);
-      while (steps < maxSteps && hits()) { top -= rowT; steps++; }
+      const hits = () => placedLabels.some((r) => lx0 < r.x1 + 2 && lx0 + lwT > r.x0 - 2 && Math.abs(top - r.top) < rowT)
+        || (ringLab && figs.some((b) => b.slot !== m.slot && lx0 < b.x1 && lx0 + lwT > b.x0 && top < b.y1 && top + rowT - 2 > b.y0));
+      while (steps < maxSteps && hits()) { top -= stepT; steps++; }
+      // (the ring) a side name that still collides tries the tight slot over the head before it is left out
+      if (ringLab && side && hits()) {
+        side = 0; steps = 0; top = Math.round(p.y + IA.LABEL_DY + 2);
+        cxT = Math.max(LL.MARGIN + 2 + (lwT >> 1) + (ghostly ? 7 : 0), Math.min(WW - LL.MARGIN - 2 - (lwT >> 1), p.x)); lx0 = cxT - (lwT >> 1);
+        while (steps < maxSteps && hits()) { top -= stepT; steps++; }
+      }
       // in the staged court a name that still collides after the steps is left out (a narrow phone frame): unreadable
       // overprinted names were worse than a missing one (its vote mark, pops and talk glyph still show)
-      if (staged() && !m.you && hits()) {
+      if ((staged() || ringLab) && !m.you && hits()) {
         m._labelTop = Math.round(p.y + IA.LABEL_DY - slotT); m._stack = m._labelTop - 1; m._noLabel = true;
         continue;
       }
       m._noLabel = false;
       top = Math.round(top);
-      placedLabels.push({ x0: lx0, x1: lx0 + lwT, top });
+      placedLabels.push({ x0: lx0, x1: lx0 + lwT, top, h: rowT, who: m });
       if (hdOn()) {
         // (density) the label on L.hd.world (body@2 in a 2-HD-px ring; ghost: the ghost ink + the HD wisp), the talk
         // glyph and your chevron in their wave-1 HD art; the stack above it is kept in texels (bubbles / pins convert
         // with k)
         const k = L.hd.k, d = L.hd.d, q = L.hd.at(m.head());
-        const lb = labelHD(LL, m.head(), nm, ghostly ? 'ghost' : 'player', T, { x: q.x + Math.round((cxT - p.x) * k), top: Math.max(Math.round((LL.MARGIN + 2 + (m.you ? 8 : 0)) * k), q.y + (IA.LABEL_DY - slotA) * d) - steps * 11 * d });
+        const lb = labelHD(LL, m.head(), nm, ghostly ? 'ghost' : 'player', T, { x: q.x + Math.round((cxT - p.x) * k), top: ringLab ? Math.round(top * k) : Math.max(Math.round((LL.MARGIN + 2 + (m.you ? 8 : 0)) * k), q.y + (IA.LABEL_DY - slotA) * d) - steps * 11 * d });
         if (ghostly) fastBlit(L.hd.world, ghostWispHD(T), lb.x - 7 * d, lb.y + 2 * d);
         const tk = talk.get(keyOf(m));
         if (tk?.on) {
@@ -937,7 +997,7 @@ export async function createGameUI(demo) {
         const chevY = lb.top - (8 + (reduced ? 0 : frameAt(t, 2, 2))) * d;
         if (m.you) fastBlit(L.hd.world, IH.youChevronHD(T), q.x - 4 * d, chevY);
         m._labelTop = Math.floor((m.you ? lb.top - 8 * d : lb.top) / k);
-        m._stack = m._labelTop - 1;
+        m._stack = side ? Math.floor(p.y) - 2 : m._labelTop - 1;
         continue;
       }
       const lab = ghostly
@@ -952,7 +1012,7 @@ export async function createGameUI(demo) {
       }
       if (m.you) fastBlit(LL.world, cached(`chev${T.gold}`, () => IA.youChevron(T)), p.x - 4, top - 8 - (reduced ? 0 : frameAt(t, 2, 2)));
       m._labelTop = top - (m.you ? 8 : 0);
-      m._stack = m._labelTop - 1;
+      m._stack = side ? Math.floor(p.y) - 2 : m._labelTop - 1;
     }
     // speech bubbles (NPC talk lines), tail tip 1 px above the label. (B) Not while the vote court is staged: a chatter
     // bubble from the nomination covered the back row's names (the talk glyph still shows who speaks)
@@ -1057,11 +1117,22 @@ export async function createGameUI(demo) {
       // (B) a seated voter's vote mark (the hand / seal / snuffer over the name, votemarks.js) stays readable: the pop
       // stands above it
       if (m.slot >= 1000 && demo.passB?.marks?.topOf) { const mt = demo.passB.marks.topOf(m.slot - 1000); if (mt != null) top = Math.min(top, mt - 1); }
-      const x = LL.at(m.pos).x;
+      let x = LL.at(m.pos).x;
       const pf = isE ? EJ.emojiPopFrame(q.color, ps.f, LL.tok) : E.popFrame(q.kind, ps.f, LL.tok, q.color || 'gold');
       const A1 = isE ? EJ.EMOJI_POP.anchor : E.POP.anchor, AH = isE ? EMOJI_POP_HD.anchor : POP_HD.anchor;
+      // (critic-3 P3) in the vote camera's ring a pop never covers ANOTHER seat's name: it slides aside (its own
+      // width, either way), else it is skipped
+      let dxT = 0;
+      if (vcRing()) {
+        const pw = pf.w, ph = pf.h, py0 = top - 1 - A1.y;
+        const over = (dx) => placedLabels.some((r) => r.who !== m && x - A1.x + dx < r.x1 && x - A1.x + dx + pw > r.x0 && py0 < r.top + r.h && py0 + ph > r.top);
+        const ok = [0, pw, -pw].find((dx) => !over(dx));
+        if (ok === undefined) continue;
+        dxT = ok;
+      }
+      x += dxT;
       // (wave 2) the HD pop (.hd after the prepare) on L.hd.world, anchored at the same scene point
-      if (hdOn() && pf.hd) fastBlit(L.hd.world, pf.hd, L.hd.at(m.pos).x - AH.x, Math.round((top - 1 - ps.bob) * L.hd.k) - AH.y);
+      if (hdOn() && pf.hd) fastBlit(L.hd.world, pf.hd, L.hd.at(m.pos).x + Math.round(dxT * L.hd.k) - AH.x, Math.round((top - 1 - ps.bob) * L.hd.k) - AH.y);
       else fastBlit(LL.world, pf, x - A1.x, top - 1 - A1.y - ps.bob);
     }
   };
@@ -1198,7 +1269,13 @@ export async function createGameUI(demo) {
   // the palette, the tray and the social dock close each other)
   let emotePal = false, trayOpen = false, tapTip = null;
   function closePopovers() { emotePal = trayOpen = false; }
-  const BARW = AB.BAR.length * (AB.BTN + AB.GAP) - AB.GAP;
+  // (seal vote) YOUR SEAL: while you sit in the vote (seatcast.js yours) the bar leads with the seal button (X): slap
+  // your seal down / take it back; it shows LIT while your seal lies on the ground
+  const roomSeen = { room: null, t: 0 }, ROOM_LINE_S = 3.5;
+  const SEAL_BTN = { k: 'seal', tip: 'Vote: slap your seal down / take it back', hint: 'X', glyph: 'seal' };
+  const sealBtnOn = () => (demo.passB?.seats?.yours ?? -1) >= 0 && (store.state.phase === 'vote' || store.state.phase === 'nomination');
+  const barList = () => (sealBtnOn() ? [SEAL_BTN, ...AB.BAR] : AB.BAR);
+  const barW = (n) => n * (AB.BTN + AB.GAP) - AB.GAP;
   const btnImg = (key, o) => cached(`btn|${key}|${o.state}|${o.hint}|${touchUI}|${L.tok.ink}`, () => mkImg(AB.BTN + 2, AB.BTN + 2, (v) => AB.buttonInto(v, L.tok, { ...o, showHint: !touchUI })));
   /** A 1x sprite as a screen piece (through the view: blocks, or its .hd). */
   const wrap1x = (g) => (hdOn() ? mkImg(g.w, g.h, (v) => v.blit(g, 0, 0)) : g);
@@ -1255,15 +1332,17 @@ export async function createGameUI(demo) {
     // clock chip: the town clock (time + stage of the day / the ceremony) and the phase chip beside it
     const hours = Number.isFinite(demo.time?.hours) ? demo.time.hours : s.timeOfDay;
     const day = hours >= 6 && hours < 20, len = day ? 14 : 10, into = day ? hours - 6 : (hours - 20 + 24) % 24;
-    const stage = s.phase === 'day' ? (nightHours(hours) ? 'bedtime' : 'discussion') : STAGE[s.phase] ?? 'discussion';
-    const o = { stage, label: LABEL[s.phase] ?? dayWord(hours), time: formatClock(hours), frac: Math.max(0, Math.min(1, 1 - into / len)),
+    // (critic-3 P2) the clock chip is the TOWN CLOCK only: the hour word + the time in the day / night tone (the phase
+    // chip beside it names the phase; the red 'nominations' tone made the time read like a countdown)
+    const stage = nightHours(hours) ? 'bedtime' : 'discussion';
+    const o = { stage, label: dayWord(hours), time: formatClock(hours), frac: Math.max(0, Math.min(1, 1 - into / len)),
       paused: s.paused || !s.timeSpeed, plus: null, reduced };
     // a narrow screen (a phone): the chips must end left of the toolbar; first the short hour word, then the phase chip
     // on a second row under the clock chip
     const [plab, pic] = phaseChipOf(s.phase, hours);
     const tbx = x1 - toolbar.length * 17, phW = 6 + textWidth(plab.toUpperCase(), HUD_LABEL) + 4 + 7 + 6 + 1;
     const fits = (oo) => x0 + HA.clockChipWidth(oo) + 2 + phW <= tbx - 2;
-    if (!fits(o) && !LABEL[s.phase]) o.label = SHORT_WORD[o.label] ?? o.label;
+    if (!fits(o)) o.label = SHORT_WORD[o.label] ?? o.label;
     const row2 = !fits(o);
     const ck = `${o.stage}|${o.label}|${o.time}|${o.frac.toFixed(2)}|${o.paused}|${T.ink}|${dd()}`;
     if (ck !== shot.chipKey) {
@@ -1317,8 +1396,6 @@ export async function createGameUI(demo) {
     }
     // toasts (newest on top), right-aligned under the toolbar (below the phase caption ribbon while one shows)
     let ty = y0 + 24 + (caption ? 18 : 0);
-    // (B) the vote marks' tally plaque hangs under the toolbar on the stones (votemarks.js): the toasts start below it
-    { const pq = demo.passB?.marks?.plaque; if (pq && pq.x + pq.w > x1 - 170) ty = Math.max(ty, pq.y + pq.h + 6); }
     // and below a HUD client's second row (the timer chip dropped under the chips: a toast slid under it)
     if (R.row2Y) ty = Math.max(ty, R.row2Y + 4);
     const tw = Math.min(150, x1 - x0 - 8);
@@ -1343,18 +1420,14 @@ export async function createGameUI(demo) {
       // (critic P2-9) below a HUD client's second row too (the timer chip under the chips on a narrow screen): last frame's
       else EV.drawCaption(LS, EF, { text: caption.text, glyph: caption.glyph, k, durF: caption.durF, cx, y: Math.max(R.topRow.y1, R.row2Y ?? 0) + 4, still: reduced });
     }
+    // (seal vote; the user: "[the vote-dial card] ideally don't have this panel") NO vote clock card on any screen: the
+    // seals in the world, the clock hand and the ONE tally plaque (votemarks.js) show the vote; its state drives the
+    // result caption
     R.vote = null;
     if (vote) {
-      const tv = voteClock(t), rect = { x: x0, y: Math.max(R.topRow.y1, R.row2Y ?? 0) + 22, w: 69, h: 90 };
-      // (B) in the staged court the vote clock card is NOT drawn: the court's own marks + the tally plaque show the same
-      // vote (votemarks.js), and the card covered the crescent's west end (the phone; 1080p labels); its state still
-      // drives the result caption
-      const court = staged() && !!demo.passB?.marks;
-      if (court || rect.y + rect.h < img.h - 30) {
-        const S = court ? EV.voteAt(vote.v, tv) : EV.drawVoteHud(evHud, LS, EF, vote.v, rect, { t: tv, still: reduced });
-        R.vote = { ...rect, tally: S.tally, done: S.done, passed: S.passed, current: S.current, card: !court };
-        if (S.done && !vote.result) { vote.result = true; setCaption(S.passed ? `Seat ${vote.v.nominee} is on the block (${S.tally} votes).` : 'Not enough votes.', 'bell', 3.2); }
-      }
+      const S = sealState(t);
+      R.vote = { tally: S.tally, needed: S.needed, done: S.done, passed: S.passed, current: S.current, card: false };
+      if (S.done && !vote.result) { vote.result = true; if (!S.passed) setCaption(`Not enough votes: ${isAre(seatName(vote.v.nominee - 1))} safe.`, 'bell', 3.2); }
     }
     // bottom: dock button (your portrait in the gold ring) + the dock / armed pill above it
     const by = img.h - 4 - 24, bxr = x1 - 24;
@@ -1378,14 +1451,16 @@ export async function createGameUI(demo) {
     if (cover.status && cover.status.y0 < img.h - 2) leftLim = Math.max(leftLim, cover.status.x1 + 3);
     let barX, barY = img.h - 4 - BT;
     const bcx = Math.floor((bx0 + x1) / 2);
+    const BAR = barList(), BARW = barW(BAR.length);
     if (rightLim - leftLim >= BARW) barX = Math.max(leftLim, Math.min(rightLim - BARW, bcx - (BARW >> 1)));
     else { barX = bx0; barY = (cover.status ? cover.status.y0 : img.h - 4) - 3 - BT; }
     R.bar = [];
-    for (let i = 0; i < AB.BAR.length; i++) {
-      const b = AB.BAR[i], x = barX + i * (BT + BG);
+    const mySeal = sealBtnOn() && !!demo.time?.seals?.downAt?.(demo.passB.seats.yours, t);
+    for (let i = 0; i < BAR.length; i++) {
+      const b = BAR[i], x = barX + i * (BT + BG);
       const on = (b.k === 'emote' && emotePal) || (b.k === 'point' && armed === 'point') || (b.k === 'pin' && armed === 'pin') || (b.k === 'dock' && dockOpen) || (b.k === 'notebook' && nb.isOpen) || (b.k === 'more' && trayOpen);
       // (the emote button is lit while you are a ghost: the state shows without opening the palette)
-      const state = on ? 'pressed' : b.k === 'emote' && demo.player?.ghost ? 'lit' : hoverIs('bar', b.k) ? 'hover' : 'raised';
+      const state = on ? 'pressed' : (b.k === 'emote' && demo.player?.ghost) || (b.k === 'seal' && mySeal) ? 'lit' : hoverIs('bar', b.k) ? 'hover' : 'raised';
       const g = AB.glyph(b.glyph, T, { color });
       putS(btnImg(`bar${b.k}${b.k === 'pin' ? color : ''}`, { state, glyph: g, hint: b.hint }), x, barY);
       R.bar.push({ k: b.k, x, y: barY, w: BT, h: BT });
@@ -1458,9 +1533,13 @@ export async function createGameUI(demo) {
     if (tipState && t >= tipState.until) closeTip('timeout');
     // (critic P2-7) inside, the room's line stands at the TOP (under the chips / the caption): at the bottom it covered
     // the player standing at the door after walking in
-    if (room) prompt(`${room.name ?? 'Inside'} · walk out the door to leave`, false, Math.max(R.topRow.y1, R.row2Y ?? 0) + 4 + (caption ? 22 : 0));
+    // (critic-3 P3) in the clock tower the line covered the dial's back (top centre): there it shows for the first
+    // ROOM_LINE_S s after walking in, then gets out of the way
+    if (room !== roomSeen.room) { roomSeen.room = room; roomSeen.t = t; }
+    const roomLine = room && (room.id !== 'clocktower' || t - roomSeen.t < ROOM_LINE_S);
+    if (roomLine) prompt(`${room.name ?? 'Inside'} · walk out the door to leave`, false, Math.max(R.topRow.y1, R.row2Y ?? 0) + 4 + (caption ? 22 : 0));
     // (critic P3-15) no "Walk in" prompt in the vote camera (it sat among the cast's labels during the ceremony)
-    else if (d && s.camera !== 'vote' && !staged()) {
+    else if (d && !room && s.camera !== 'vote' && !staged()) {
       const house = demo.layout?.houses?.find((q) => q.id === d.id);
       if (d.id === 'clocktower' && !demo.passB?.interior) prompt('The clock tower is locked', true);   // (B) enterable with pass B's interior
       else prompt(`Walk in: ${house?.name ?? (d.id === 'clocktower' ? 'The Clocktower' : d.id)}`);
@@ -1521,7 +1600,7 @@ export async function createGameUI(demo) {
     // name 1.6 s instead. (critic P3-9) a greyed emote says why.
     const tipOf = touchUI ? (tapTip && t < tapTip.until ? tapTip : null) : keyQuiet ? null : hover;
     if (tipOf && (tipOf.kind === 'pal' || tipOf.kind === 'tray' || (tipOf.kind === 'bar' && !(tipOf.k === 'emote' && emotePal) && !(tipOf.k === 'more' && trayOpen)))) {
-      const list = tipOf.kind === 'bar' ? R.bar.map((r) => ({ ...r, ...AB.BAR.find((b) => b.k === r.k) })) : (tipOf.kind === 'pal' ? R.pal : R.tray)?.items ?? [];
+      const list = tipOf.kind === 'bar' ? R.bar.map((r) => ({ ...r, ...[SEAL_BTN, ...AB.BAR].find((b) => b.k === r.k) })) : (tipOf.kind === 'pal' ? R.pal : R.tray)?.items ?? [];
       const it = list.find((r) => r.k === tipOf.k);
       if (it) {
         const label = it.off ? emoteWhy(it.k) : it.hint ? `${it.tip} (${AB.keyWord(it.hint)})` : it.tip;
@@ -1621,6 +1700,7 @@ export async function createGameUI(demo) {
     else if (k === 'point' || k === 'pin') { emotePal = trayOpen = false; armed = armed === k ? null : k; if (k === 'pin' && livePins().length >= MAX_PINS) { armed = null; toast(`You have ${MAX_PINS} pins: remove one first`, { kind: 'error', ms: 2600 }); } }
     else if (k === 'dock') { emotePal = trayOpen = false; input.has?.('KeyG') ? input.press('KeyG') : (dockOpen = !dockOpen); }
     else if (k === 'notebook') { emotePal = trayOpen = false; input.has?.('KeyJ') ? input.press('KeyJ') : nb.toggle(); }
+    else if (k === 'seal') { emotePal = trayOpen = false; input.press('KeyX'); }
   }
   function uiClick(hit) {
     if (hit.kind === 'tip') {
@@ -1802,7 +1882,7 @@ export async function createGameUI(demo) {
         // from the canvas's top-left), unitDev = device px per logical px, density = the art density (2 | 1)
         unit: unitDev() * (canvas.getBoundingClientRect().width / Math.max(1, engine.width)), unitDev: unitDev(), density: dd(),
         hd: L.hd ? { d: L.hd.d, scale: L.hd.scale, k: +L.hd.k.toFixed(3), policy: L.hd.policy, stats: { ...L.hd.stats } } : null,
-        members: members.map((m) => { const k = talk.get(keyOf(m)); return { id: m.id, name: m.name, you: m.you, slot: m.slot, clip: m.clip, talking: !!k?.on, bubble: k?.line && t < k.bubbleUntil ? k.line : null, screen: atS(m.pos), shown: !!m._shown, ghostLabel: m.clip === 'ghost' || (m.you && m.ghost) }; }),
+        members: members.map((m) => { const k = talk.get(keyOf(m)); return { id: m.id, name: m.name, you: m.you, slot: m.slot, clip: m.clip, talking: !!k?.on, bubble: k?.line && t < k.bubbleUntil ? k.line : null, screen: atS(m.pos), shown: !!m._shown, ghostLabel: !!m.clip?.startsWith?.('ghost') || (m.you && m.ghost) }; }),
         hover: hover ? { kind: hover.kind, k: hover.k ?? null } : null,
         point: point ? { kind: point.target.kind, age: +(t - point.t0).toFixed(2), scale: hud.uiOptions.pointerScale, frameSize: framesNow().point?.size ?? 20 } : null,
         pie: pie ? { open: !pie.commit && pie.cancel == null, input: pie.input, sticky: pie.sticky, hot: pie.hot, items: pie.items.map((x) => x.key), off: [...pie.off], at: [pie.cx, pie.cy] } : null,

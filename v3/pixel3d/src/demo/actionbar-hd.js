@@ -289,6 +289,19 @@ export function glyphHD(k, T, { color = 'crimson', paused = false } = {}) {
       case 'gear': return LIB.gear(T);
       case 'help': return LIB.help(T);
       case 'bulb': return LIB.bulb(T, false);
+      case 'seal': {
+        // (seal vote) your seal: a bumpy red wax disc lit from the upper left, the impression groove, a gold 4-point mark
+        const im = new PixelImage(N, N);
+        for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+          const dx = x + 0.5 - 7, dy = y + 0.5 - 7, d = Math.hypot(dx, dy), a = Math.atan2(dy, dx);
+          if (d > 6.1 + 0.45 * Math.cos(a * 8 + 0.4)) continue;
+          const lit = -(dx * 0.7 + dy * 0.7) / 6;
+          let c = d > 4.6 && lit > 0.3 ? '#E8806A' : d > 4.6 && lit < -0.3 ? '#7E2230' : d > 3.4 && d < 4.3 ? '#7E2230' : '#BC3A3C';
+          if (Math.abs(dx) + Math.abs(dy) < 2.2 || (Math.min(Math.abs(dx), Math.abs(dy)) < 0.6 && Math.max(Math.abs(dx), Math.abs(dy)) < 3.1)) c = dx + dy < 0 ? T.goldHi : T.gold;
+          im.set(x, y, c);
+        }
+        return lined(im, '#2E0E16');
+      }
       default: return null;
     }
   });

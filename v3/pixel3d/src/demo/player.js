@@ -76,7 +76,9 @@ export async function createPlayer(demo) {
   // the feet's ground: the town terrain (ground piece heightAt), or the room's flat floor (the terrain far out at the
   // rooms' origins is not flat: the character floated 5.9 m up at x 200)
   const groundApi = demo.town?.registry?.get?.('ground')?.api;
-  const ground = { heightAt: (x, z) => (room ? (room.raw?.heightAt?.(x, z) ?? room.floorY) : typeof groundApi?.heightAt === 'function' ? groundApi.heightAt(x, z) : 0) };   // (B) raw.heightAt: the tower room's stairs / landing
+  // (seal vote) on YOUR seat stone in the vote (seatcast.js yours) the feet stand on the stone's top (0.235 m)
+  const seatLift = (x, z) => { const y = demo.passB?.seats?.yours ?? -1; if (y < 0) return 0; const q = layout.seatPos(y); return Math.hypot(x - q.x, z - q.z) < 0.5 ? 0.235 : 0; };
+  const ground = { heightAt: (x, z) => (room ? (room.raw?.heightAt?.(x, z) ?? room.floorY) : (typeof groundApi?.heightAt === 'function' ? groundApi.heightAt(x, z) : 0) + seatLift(x, z)) };   // (B) raw.heightAt: the tower room's stairs / landing
   // (B) the clock tower is enterable once pass B registered its interior (tower-interior.js); otherwise a landmark
   const enterable = (id) => id !== 'clocktower' || (!!demo.passB?.interior && !!interiors.has?.('clocktower'));
   const at = demo.params.get('at')?.split(',').map(Number);
@@ -258,7 +260,7 @@ export async function createPlayer(demo) {
     for (let i = 0; i < 15; i++) { const s = layout.seatPos(i); out[`seat-${i}`] = { x: s.x, z: s.z, face: Math.atan2(layout.CIRCLE.cx - s.x, layout.CIRCLE.cz - s.z) }; }
     return out;
   }
-  function teleport(x, z, face, { exact = false, location: loc, internal = false } = {}) {
+  function teleport(x, z, face, { exact = false, location: loc, internal = false, keepCamera = false } = {}) {
     // a teleport asked for while the screen fades (enter / leave) runs when the fade is over (the last request wins)
     if (transition && !internal) { pending = { kind: 'teleport', args: [x, z, face, { exact, location: loc }] }; return { x, z }; }
     // from inside a house, a point outside the room means the town: leave at once (no fade)
@@ -281,7 +283,8 @@ export async function createPlayer(demo) {
     // a fresh character at the new spot (the running one would read the jump as a sprint); it keeps drawing at the
     // new spot until the new one is ready (specs are cached: a few ms)
     if (handle) setCharacter(handle.id, { silent: true }).catch(() => {});
-    demo.camera?.snapTo?.(position);
+    // (seal vote) taking your seat in the vote camera must not move the camera (keepCamera)
+    if (!keepCamera) demo.camera?.snapTo?.(position);
     events.emit('player:teleport', { x: position.x, z: position.z });
     return { x: position.x, z: position.z };
   }

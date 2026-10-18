@@ -92,6 +92,10 @@ export function createTimerUI(demo) {
   };
   // v2 labels: 'Execution in' only with someone on the block (the execution phase / a seat onBlock), else 'Nominations close in'
   const onBlock = () => store.state.phase === 'execution' || store.state.seats.some((x) => x.onBlock);
+  // (critic-3 P2) the chip's wording follows the game: a countdown set in the day still reads "Nominations open in"
+  // once nominations ARE open - the stage shown is never earlier than the phase's own (day < nominations < bedtime)
+  const ORDER = ['discussion', 'nominations', 'bedtime'], PH = { day: 'discussion', nomination: 'nominations', vote: 'nominations', execution: 'nominations', night: 'bedtime' };
+  const shownStage = (s) => { const p = PH[store.state.phase] ?? s; return ORDER.indexOf(p) > ORDER.indexOf(s) ? p : s; };
   const hidden = () => document.body.classList.contains('ct-intro') || !!demo.player?.transition;
 
   // ---- the chip
@@ -101,7 +105,7 @@ export function createTimerUI(demo) {
     const due = st.mode === 'done', paused = st.mode === 'paused', running = st.mode === 'running';
     const urgent = running && st.remaining <= HA.TIMING.URGENT_MS / 1000;
     const o = {
-      stage: st.stage, label: HA.stageLabel(st.stage, { due, paused, onTheBlock: onBlock() }), time: due ? null : HA.formatCountdown(st.remaining * 1000),
+      stage: shownStage(st.stage), label: HA.stageLabel(shownStage(st.stage), { due, paused, onTheBlock: onBlock() }), time: due ? null : HA.formatCountdown(st.remaining * 1000),
       frac: due ? 0 : st.frac, paused, urgent, due, plus: null, t, reduced: params.get('rm') === '1',
     };
     const key = `${todKey}|${o.stage}|${o.label}|${o.time}|${Math.round(o.frac * 60)}|${paused}|${urgent ? HA.pulseBands(t) : -1}|${due}`;
@@ -235,7 +239,7 @@ export function createTimerUI(demo) {
   const chipO = (t) => {
     const st = timer.state, due = st.mode === 'done', paused = st.mode === 'paused', running = st.mode === 'running';
     const urgent = running && st.remaining <= HA.TIMING.URGENT_MS / 1000;
-    return { stage: st.stage, label: HA.stageLabel(st.stage, { due, paused, onTheBlock: onBlock() }), time: due ? null : HA.formatCountdown(st.remaining * 1000),
+    return { stage: shownStage(st.stage), label: HA.stageLabel(shownStage(st.stage), { due, paused, onTheBlock: onBlock() }), time: due ? null : HA.formatCountdown(st.remaining * 1000),
       frac: due ? 0 : st.frac, paused, urgent, due, plus: null, t, reduced: params.get('rm') === '1' };
   };
   const client = host && {
