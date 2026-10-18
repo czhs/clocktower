@@ -20,7 +20,7 @@ import { WaitingRoom } from './WaitingRoom';
 import { JoiningLobby } from './JoinPreview'; // (v3 WP6) the join-by-id preview: lobby name + world badge
 import { useV3Skin } from '../common/v3skinLobby'; // (v3 WP6) the v3 skin lives as long as the connection
 import { ensureLayout, selectLayoutIfLoaded } from '../../net/layout';
-import { mayUseV3 } from '../../game3d/select';
+import { warmRenderer } from '../common/townPrefetch';
 import type { WorldId } from '@ct/protocol';
 import { syncWorldPath } from '../common/appWorld';
 
@@ -39,12 +39,14 @@ const StorytellerPanel = lazyComponent(
     ) : null,
 );
 
-/** Start fetching Phaser + the town code now, in parallel with the join (GameScreen imports it too),
- * and the in-town panels' chunk (v2.4: notebook, story, social palette, clock chip, storyline).
- * (v3) The 3D town chunk is fetched once lobby:view says the lobby is a v3 world (useLobbyLayout), not
- * here: a v2 join never downloads three.js. */
+/** Start fetching the town renderer now, in parallel with the join (GameScreen imports it too), and the in-town
+ * panels' chunk (v2.4: notebook, story, social palette, clock chip, storyline).
+ * (v3.2 perf, ui/common/townPrefetch.ts) Only the renderer this page will use: the 3D town for a v3 link where
+ * select.ts picks v3 (started with the ticket, no longer after lobby:view), Phaser only for a v2 link or where
+ * Classic is chosen. useLobbyLayout corrects the guess once lobby:view names the lobby's world. A v2 join (under
+ * /v2/) never downloads three.js; a v3 join never downloads Phaser unless it falls back. */
 const warmTown = () => {
-  void import('../../game/TownGame').catch(() => undefined);
+  warmRenderer();
   void preloadTownParts();
 };
 
@@ -129,7 +131,7 @@ function useLobbyLayout(conn: RoomConnection): 'pending' | 'ready' | 'error' {
     if (selectLayoutIfLoaded(world)) return setState('ready');
     let alive = true;
     setState('pending');
-    if (world === 'v3' && mayUseV3()) void import('../../game3d/TownGame3d').catch(() => undefined); // prefetch
+    warmRenderer(world); // (v3.2) the lobby's real world: the renderer it will use (no-op when already loading)
     ensureLayout(world).then(
       () => alive && setState('ready'),
       () => alive && setState('error'),
