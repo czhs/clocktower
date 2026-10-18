@@ -223,6 +223,7 @@ export interface SplitShadowInfo {
   promotedNames: string[];
   mapStatic: number;
   mapDynamic: number;
+  ext: number;
   reasons: Record<string, number>;
   lastStaticFrame: number;
 }
@@ -238,8 +239,10 @@ export interface SplitShadows {
 
 type ShadowLike = THREE.DirectionalLightShadow & { autoUpdate: boolean; needsUpdate: boolean; updateMatrices(light: THREE.Light, vp?: number): void };
 
-const PROMOTE_HITS = 2;
-const PROMOTE_WINDOW = 240;
+/** A static caster that changed this many times within PROMOTE_MS moves to the dynamic map for good (crows, cats,
+ *  swinging signs, a door while it swings); a rare change (a dais state, a cottage fade) only re-renders the static map. */
+export const PROMOTE_HITS = 3;
+export const PROMOTE_MS = 6000;
 const RESCAN_FRAMES = 60;
 
 export function installSplitShadows(engine: HostedEngine, tier: Tier): SplitShadows {
@@ -379,8 +382,9 @@ export function installSplitShadows(engine: HostedEngine, tier: Tier): SplitShad
       c.sig.set(scratch);
       dirty ||= 'caster';
       if (!live) continue; // the warm-up's showcase states are not movement
-      c.hits.push(frame);
-      while (c.hits.length && frame - c.hits[0]! > PROMOTE_WINDOW) c.hits.shift();
+      const now = performance.now();
+      c.hits.push(now);
+      while (c.hits.length && now - c.hits[0]! > PROMOTE_MS) c.hits.shift();
       if (c.hits.length >= PROMOTE_HITS) {
         casters.delete(c.o);
         dynamic.add(c.o);
@@ -489,6 +493,7 @@ float shadowTap(vec2 st, float z)`,
       promotedNames: promotedNames.slice(),
       mapStatic: staticSize,
       mapDynamic: vendorSize,
+      ext: (engine as unknown as { shadowExtent: number }).shadowExtent,
       reasons: { ...reasons },
       lastStaticFrame,
     }),
