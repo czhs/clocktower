@@ -199,6 +199,11 @@ export function twinMaterial(m: THREE.Material): THREE.Material {
   }
   c.userData = ud;
   c.name = m.name;
+  // fields three's copy() does not know (the vendor's `defines` on a Lambert material, the canopy patch record, ...):
+  // the same objects, so the twin keys and compiles to exactly the same program
+  const src = m as unknown as Record<string, unknown>;
+  const dst = c as unknown as Record<string, unknown>;
+  for (const k of Object.keys(src)) if (!Object.prototype.hasOwnProperty.call(dst, k)) dst[k] = src[k];
   if (Object.prototype.hasOwnProperty.call(m, 'onBeforeCompile')) c.onBeforeCompile = m.onBeforeCompile;
   if (Object.prototype.hasOwnProperty.call(m, 'customProgramCacheKey')) c.customProgramCacheKey = m.customProgramCacheKey;
   c.version = m.version;

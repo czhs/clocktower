@@ -371,7 +371,9 @@ describe('twinMaterial (v3.3 gpu: own material per batch)', () => {
     ud.self = ud; // JSON.stringify would throw
     m.userData = ud;
     m.color.setRGB(0.2, 0.3, 0.4);
+    (m as unknown as { defines: Record<string, string> }).defines = { TOON_KIT: '' }; // not copied by three's copy()
     const t = twinMaterial(m) as THREE.MeshLambertMaterial;
+    expect((t as unknown as { defines: unknown }).defines).toBe((m as unknown as { defines: unknown }).defines);
     expect(t).not.toBe(m);
     expect(t.id).not.toBe(m.id);
     expect(t.onBeforeCompile).toBe(m.onBeforeCompile);

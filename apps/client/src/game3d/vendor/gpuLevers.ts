@@ -31,7 +31,8 @@ export interface GpuLeverState {
 }
 
 /** Defaults (measured: docs/perf-v3/gpu.md). */
-export const GPU_LEVER_DEFAULTS: GpuLeverState = { sort: 'program', reflect: 'smart', reflectIdleFps: 10, waterCull: true };
+// sort stays three's (the program grouping measured within noise and moves depth ties: 4 px at vote-12)
+export const GPU_LEVER_DEFAULTS: GpuLeverState = { sort: 'three', reflect: 'smart', reflectIdleFps: 10, waterCull: true };
 
 type Store = { getItem(k: string): string | null };
 
@@ -189,6 +190,8 @@ interface ReflRec {
   figs: Map<THREE.Object3D, THREE.Vector3>;
   refreshes: number;
   skipped: number;
+  /** why a still-camera refresh happened (smart): idle period, lighting step, figure; and camera-move frames */
+  why: { idle: number; light: number; figure: number; camera: number };
 }
 
 // ------------------------------------------------------------------------------------------------ install
@@ -224,7 +227,7 @@ export function installGpuLevers(engine: EngineLike, init: GpuLeverState = readG
       const refl = p.reflection;
       if (!refl || wrapped.has(refl) || typeof refl.render !== 'function') continue;
       wrapped.add(refl);
-      const rec: ReflRec = { refl, orig: refl.render.bind(refl), vendorFps: refl.fps, phase: recs.length * 0.037, lastT: -Infinity, cam: new Float64Array(23), haveCam: false, light: [], lightN: 0, figs: new Map(), refreshes: 0, skipped: 0 };
+      const rec: ReflRec = { refl, orig: refl.render.bind(refl), vendorFps: refl.fps, phase: recs.length * 0.037, lastT: -Infinity, cam: new Float64Array(23), haveCam: false, light: [], lightN: 0, figs: new Map(), refreshes: 0, skipped: 0, why: { idle: 0, light: 0, figure: 0, camera: 0 } };
       refl.render = (eng: unknown) => reflect(rec, eng);
       recs.push(rec);
     }
@@ -254,39 +257,41 @@ export function installGpuLevers(engine: EngineLike, init: GpuLeverState = readG
     return moved;
   };
 
-  /** A figure that can show in this reflection moved (or appeared / left) since the last refresh. */
-  const figuresMoved = (rec: ReflRec): boolean => {
+  /** The figure's root (into `v`) when it can show in this reflection's cropped RT rect, else null. */
+  const figureInside = (rec: ReflRec, o: THREE.Object3D): THREE.Vector3 | null => {
     const crop = rec.refl.crop;
-    if (!crop) return false; // no water on screen: nothing to show
+    if (!crop || !o.visible || !o.parent) return null;
+    const bone = (o as THREE.SkinnedMesh).skeleton?.bones?.[0];
+    if (!bone) return null;
+    v.setFromMatrixPosition(bone.matrixWorld);
     const size = engine.pipeline.size;
     const m = rec.refl.viewProj.elements;
-    let changed = false;
-    const seen = new Set<THREE.Object3D>();
+    const pad = 24; // texels: a figure is ~1.5 m wide and leans
+    // feet and head (+2.5 m) through the reflection's view-projection
+    for (let dy = 0; dy <= 2.5; dy += 2.5) {
+      const x = v.x, y = v.y + dy, z = v.z;
+      const w = m[3]! * x + m[7]! * y + m[11]! * z + m[15]! || 1;
+      const px = (((m[0]! * x + m[4]! * y + m[8]! * z + m[12]!) / w) * 0.5 + 0.5) * size.x;
+      const py = (((m[1]! * x + m[5]! * y + m[9]! * z + m[13]!) / w) * 0.5 + 0.5) * size.y;
+      if (px > crop[0]! - pad && px < crop[2]! + pad && py > crop[1]! - pad && py < crop[3]! + pad) return v;
+    }
+    return null;
+  };
+
+  /** A figure that can show in this reflection moved, entered or left since the last refresh. */
+  const figuresMoved = (rec: ReflRec): boolean => {
+    let inside = 0;
     for (const o of figures) {
-      if (!o.visible || !o.parent) continue;
-      const bone = (o as THREE.SkinnedMesh).skeleton?.bones?.[0];
-      if (!bone) continue;
-      v.setFromMatrixPosition(bone.matrixWorld);
-      // reaches the cropped RT rect? (feet and head through the reflection's view-projection, +-1.5 m sideways)
-      let inside = false;
-      for (let dy = 0; dy <= 2.5 && !inside; dy += 2.5) {
-        const x = v.x, y = v.y + dy, z = v.z;
-        const w = m[3]! * x + m[7]! * y + m[11]! * z + m[15]! || 1;
-        const px = (((m[0]! * x + m[4]! * y + m[8]! * z + m[12]!) / w) * 0.5 + 0.5) * size.x;
-        const py = (((m[1]! * x + m[5]! * y + m[9]! * z + m[13]!) / w) * 0.5 + 0.5) * size.y;
-        const pad = 24; // texels: a figure is ~1.5 m wide and leans
-        inside = px > crop[0]! - pad && px < crop[2]! + pad && py > crop[1]! - pad && py < crop[3]! + pad;
-      }
+      const p = figureInside(rec, o);
       const last = rec.figs.get(o);
-      if (!inside) {
-        if (last) changed = true; // left the reflection
+      if (!p) {
+        if (last) return true; // left the reflection (or hidden)
         continue;
       }
-      seen.add(o);
-      if (!last || last.distanceToSquared(v) > FIG_MOVE2) changed = true;
+      inside++;
+      if (!last || last.distanceToSquared(p) > FIG_MOVE2) return true;
     }
-    for (const o of rec.figs.keys()) if (!seen.has(o) && !figures.includes(o)) changed = true;
-    return changed;
+    return inside !== rec.figs.size; // a recorded figure is gone from the scene
   };
 
   const snapshot = (rec: ReflRec) => {
@@ -294,9 +299,8 @@ export function installGpuLevers(engine: EngineLike, init: GpuLeverState = readG
     rec.lightN = lightKey(engine, rec.light);
     rec.figs.clear();
     for (const o of figures) {
-      if (!o.visible || !o.parent) continue;
-      const bone = (o as THREE.SkinnedMesh).skeleton?.bones?.[0];
-      if (bone) rec.figs.set(o, new THREE.Vector3().setFromMatrixPosition(bone.matrixWorld));
+      const p = figureInside(rec, o);
+      if (p) rec.figs.set(o, p.clone());
     }
   };
 
@@ -316,6 +320,7 @@ export function installGpuLevers(engine: EngineLike, init: GpuLeverState = readG
     }
     // smart
     if (camMoved(rec) || !r.rt) {
+      rec.why.camera++;
       rec.orig(eng); // the vendor's own pan / 30 Hz logic
       snapshot(rec);
       rec.refreshes++;
@@ -323,12 +328,14 @@ export function installGpuLevers(engine: EngineLike, init: GpuLeverState = readG
     }
     const t = engine.time;
     let due = t - rec.lastT + rec.phase >= 1 / Math.max(0.1, state.reflectIdleFps);
-    if (!due) {
+    if (due) rec.why.idle++;
+    else {
       const n = lightKey(engine, lightBuf);
       due = n !== rec.lightN;
       for (let i = 0; i < n && !due; i++) due = lightBuf[i] !== rec.light[i];
+      if (due) rec.why.light++;
+      else if ((due = figuresMoved(rec))) rec.why.figure++;
     }
-    if (!due) due = figuresMoved(rec);
     if (!due) {
       rec.skipped++;
       return;
@@ -442,7 +449,7 @@ export function installGpuLevers(engine: EngineLike, init: GpuLeverState = readG
       ...state,
       frames,
       programKeys: keys.size(),
-      reflections: recs.map((r) => ({ refreshes: r.refreshes, skipped: r.skipped, vendorFps: r.vendorFps })),
+      reflections: recs.map((r) => ({ refreshes: r.refreshes, skipped: r.skipped, vendorFps: r.vendorFps, why: { ...r.why } })),
       waterBodies: bodies?.length ?? null,
       waterCulled: culledLast,
     }),
