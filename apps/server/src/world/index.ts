@@ -523,6 +523,53 @@ export function createWorldModule(host: RoomHost, opts: WorldOptions = {}): Worl
     return JSON.stringify({ ...v, players: v.players.map((p) => (p.presence === 'walking' ? { ...p, presence: 'outdoors' } : p)) });
   }
 
+  /**
+   * (v3 perf) What every viewer of ONE snapshot fan-out shares: the rounded public state of each entity, the door
+   * locks and the (public, viewer-independent) door tags, computed once instead of once per viewer. Only valid
+   * while nothing changes, i.e. inside one synchronous fan-out (GameRoom.sendSnapshots). Who sees what is still
+   * decided per viewer below, exactly as snapshotFor does; the shared objects are read-only for every consumer.
+   */
+  interface Fanout {
+    t: number;
+    states: Map<Entity, EntityState>;
+    doors: Record<string, boolean> | undefined;
+    tags: Record<string, DoorTag[]> | null | undefined;
+  }
+
+  function stateOf(o: Entity): EntityState {
+    return { id: o.id, x: Math.round(o.x * 10) / 10, y: Math.round(o.y * 10) / 10, facing: o.facing, moving: o.moving, location: o.location };
+  }
+
+  function snapshotOf(pid: string, fan: Fanout | null): WorldSnapshot {
+    const me = entities.get(pid);
+    const t = fan ? fan.t : host.now();
+    if (!me) return { t, ackSeq: 0, entities: [] };
+    let visible: (e: Entity) => boolean;
+    if (isST(pid)) visible = () => true;
+    else if (phase && NIGHT_PHASES.has(phase)) {
+      const home = homeOf(pid);
+      const loc: LocationId | null = home ? `bld:${home.id}` : null;
+      visible = (o) => o.id === pid || (loc !== null && o.location === loc);
+    } else visible = (o) => o.id === pid || o.location === me.location;
+    const list: EntityState[] = [];
+    for (const o of entities.values()) {
+      if (!visible(o)) continue;
+      if (!fan) list.push(stateOf(o));
+      else {
+        let st = fan.states.get(o);
+        if (!st) fan.states.set(o, (st = stateOf(o)));
+        list.push(st);
+      }
+    }
+    const snap: WorldSnapshot = { t, ackSeq: me.lastSeq, entities: list };
+    if (me.walk) snap.you = { mode: 'auto', goal: me.walk.goal, path: me.walk.pts.slice(0, 12).map((p) => ({ x: Math.round(p.x * 10) / 10, y: Math.round(p.y * 10) / 10 })) };
+    else if (me.frozen) snap.you = { mode: 'frozen' };
+    if (doorLocks.size) snap.doors = fan ? (fan.doors ??= Object.fromEntries(doorLocks)) : Object.fromEntries(doorLocks);
+    const tags = !fan ? doorTags() : fan.tags !== undefined ? fan.tags : (fan.tags = doorTags());
+    if (tags) snap.doorTags = tags;
+    return snap;
+  }
+
   function storyteller(): Entity | undefined {
     const st = host.storytellerPid();
     return st ? entities.get(st) : undefined;
@@ -693,26 +740,12 @@ export function createWorldModule(host: RoomHost, opts: WorldOptions = {}): Worl
     },
 
     snapshotFor(pid): WorldSnapshot {
-      const me = entities.get(pid);
-      const t = host.now();
-      if (!me) return { t, ackSeq: 0, entities: [] };
-      let visible: (e: Entity) => boolean;
-      if (isST(pid)) visible = () => true;
-      else if (phase && NIGHT_PHASES.has(phase)) {
-        const home = homeOf(pid);
-        const loc: LocationId | null = home ? `bld:${home.id}` : null;
-        visible = (o) => o.id === pid || (loc !== null && o.location === loc);
-      } else visible = (o) => o.id === pid || o.location === me.location;
-      const list: EntityState[] = [];
-      for (const o of entities.values())
-        if (visible(o)) list.push({ id: o.id, x: Math.round(o.x * 10) / 10, y: Math.round(o.y * 10) / 10, facing: o.facing, moving: o.moving, location: o.location });
-      const snap: WorldSnapshot = { t, ackSeq: me.lastSeq, entities: list };
-      if (me.walk) snap.you = { mode: 'auto', goal: me.walk.goal, path: me.walk.pts.slice(0, 12).map((p) => ({ x: Math.round(p.x * 10) / 10, y: Math.round(p.y * 10) / 10 })) };
-      else if (me.frozen) snap.you = { mode: 'frozen' };
-      if (doorLocks.size) snap.doors = Object.fromEntries(doorLocks);
-      const tags = doorTags();
-      if (tags) snap.doorTags = tags;
-      return snap;
+      return snapshotOf(pid, null);
+    },
+
+    snapshotFanout() {
+      const fan: Fanout = { t: host.now(), states: new Map(), doors: undefined, tags: undefined };
+      return (pid: string) => snapshotOf(pid, fan);
     },
 
     sendHome(pid, reason) {

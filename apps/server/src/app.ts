@@ -223,17 +223,17 @@ export async function startAppServer(config: AppConfig, log: Logger, options: Ap
     // whole private notebook (NOTEBOOK_MAX_BYTES = 20 KiB of JSON + msgpack framing). Every message
     // is still Zod-capped per field and token-bucket rate-limited per pid.
     maxPayload: 24 * 1024,
-    // (v3 perf, net front; docs/perf-v3/net.md) permessage-deflate (RFC 7692) on the game socket.
-    // 99 % of S2C frames are < 256 B (12 Hz world:snap2 deltas), so ws's default 1024 B threshold
-    // would compress nothing; with context takeover and a 64 B threshold the measured downstream of
-    // a 1 ST + 15 v3 lobby drops by ~53 % in a day walk, ~68 % with pins and ~80 % during a vote
-    // (no-context-takeover saves ~3 %: the frames are too small on their own), for ~+1.2 % of a core
-    // per 16-client lobby. Full 32 KiB window: an 8 KiB window measured 71 % instead of 80 % in a
-    // vote (the Storyteller's ~10 KB game:view no longer fits). zlib state ≈ 256 KiB deflate +
-    // ~40 KiB inflate per socket. Inflated client messages still obey maxPayload (ws enforces it
-    // while inflating) and the HOST-11 socket budget meters the inflated bytes. A client that does
-    // not offer the extension (or a proxy that strips the header) gets uncompressed frames, as before.
-    // WS_DEFLATE=off (config.ts) switches it off without a code change.
+    // (v3 perf; docs/perf-v3/net.md, docs/perf-v3/server.md) permessage-deflate (RFC 7692), OPT-IN with
+    // WS_DEFLATE=on (config.ts; default off). Measured on the host (v3, 15 Hz bots, profiler off):
+    //   1 x 16 clients: server CPU 2.8 -> 4.0 % of a core, ping p95 1.5 -> 2.7 ms;
+    //   6 x 10 clients: 7.2 -> 10.7 %, ping p50 / p95 / p99 1.0 / 2.8 / 4.4 -> 2.7 / 9.0 / 18.2 ms, anon RSS +20 MiB;
+    //   S2C wire per client: vote 2819 -> 832 B/s (-70 %), walk ~-50 %.
+    // ~2.8 KB/s per client is nothing for any player's link, while the host's CPU is the shared resource, so it is
+    // off by default. When on: threshold 64 B (99 % of frames are < 256 B, ws's 1024 B default would compress nothing),
+    // full 32 KiB window with context takeover (no-context-takeover saves ~3 %), zlib level 1; ws's concurrencyLimit
+    // is process-wide, 4 = libuv's default thread pool, so zlib never queues more work than the pool can run.
+    // Inflated client messages still obey maxPayload (ws enforces it while inflating) and the HOST-11 socket budget
+    // meters the inflated bytes. A client that does not offer the extension gets uncompressed frames.
     perMessageDeflate: config.wsDeflate && {
       threshold: 64,
       serverMaxWindowBits: 15,

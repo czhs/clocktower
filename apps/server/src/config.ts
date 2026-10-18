@@ -42,8 +42,11 @@ const Env = z.object({
   CLIENT_DIST: z.string().default(''),
   /** Optional folder of standalone static demos, each served at /<name>/ (e.g. /v3-art-demo/). */
   DEMOS_DIR: z.string().default(''),
-  /** (v3 perf, net) permessage-deflate on the game WebSocket (app.ts). 'off' = the pre-v3 uncompressed socket. */
-  WS_DEFLATE: z.enum(['on', 'off']).default('on'),
+  /**
+   * (v3 perf) permessage-deflate on the game WebSocket (app.ts). Default 'off' (measured, docs/perf-v3/server.md):
+   * -70 % downstream bytes but +45-50 % server CPU, ~+330 KiB per socket and 3x the ping tail under load.
+   */
+  WS_DEFLATE: z.enum(['on', 'off']).default('off'),
 });
 
 export type AppConfig = ReturnType<typeof loadConfig>;

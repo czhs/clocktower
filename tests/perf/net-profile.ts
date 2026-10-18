@@ -467,7 +467,9 @@ const chatLine = (i: number) => `${Array.from({ length: 4 + rand(8) }, () => WOR
 
 async function main() {
   const port = await pickPort(PORT_MIN, PORT_MAX);
-  const server = await startServer({ mode: MODE, port, env: { LOBBY_IDLE_TIMEOUT_SEC: '120' } });
+  // (v3-perf-server) --wsdeflate on|off sets the server's WS_DEFLATE (default: the server's default).
+  const wsDeflate = arg('wsdeflate', '');
+  const server = await startServer({ mode: MODE, port, env: { LOBBY_IDLE_TIMEOUT_SEC: '120', ...(wsDeflate ? { WS_DEFLATE: wsDeflate } : {}) } });
   SERVER_PORT = port;
   log('server', server.url, 'pid', server.pid, 'layout', `${LAYOUT.widthTiles}x${LAYOUT.heightTiles}`, 'load', os.loadavg().map(r1).join(' '));
   const results: unknown[] = [];

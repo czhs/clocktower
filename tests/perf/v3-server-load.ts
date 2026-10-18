@@ -364,6 +364,9 @@ async function runServer(world: 'v2' | 'v3', round: number) {
       for (const m of meters) m.reset();
       const rx0 = everyone.map((b) => b.recorder.rxBytes);
       const tx0 = everyone.map((b) => b.recorder.txBytes);
+      const rf0 = everyone.map((b) => b.recorder.rxFrames);
+      const tf0 = everyone.map((b) => b.recorder.txFrames);
+      const rtt0 = everyone.map((b) => b.ping.rtts.length);
       const tp0 = everyone.reduce((a, b) => a + (b.recorder.typeCounts['world:teleport'] ?? 0), 0);
       const la0 = loadavg();
       const us0 = ticksUS(pid);
@@ -392,6 +395,10 @@ async function runServer(world: 'v2' | 'v3', round: number) {
       const pctOf = (t: number) => r1((t / CLK / secs) * 100);
       const rx = everyone.map((b, i) => (b.recorder.rxBytes - rx0[i]!) / secs);
       const tx = everyone.map((b, i) => (b.recorder.txBytes - tx0[i]!) / secs);
+      const rf = everyone.map((b, i) => (b.recorder.rxFrames - rf0[i]!) / secs);
+      const tf = everyone.map((b, i) => (b.recorder.txFrames - tf0[i]!) / secs);
+      const rtts = everyone.flatMap((b, i) => b.ping.rtts.slice(rtt0[i]!)).sort((a, b) => a - b);
+      const q = (f: number) => (rtts.length ? r2(rtts[Math.min(rtts.length - 1, Math.floor(rtts.length * f))]!) : null);
       const sorted = [...cpuSamples].sort((a, b) => a - b);
       await sleep(1100); // let the preload write the line that closes the window
       const res = {
@@ -420,6 +427,11 @@ async function runServer(world: 'v2' | 'v3', round: number) {
         rssAnonMb: { start: anon[0] ?? null, max: anon.length ? Math.max(...anon) : null, end: anon.at(-1) ?? null },
         s2cBytesPerSecPerClient: { avg: Math.round(rx.reduce((a, b) => a + b, 0) / rx.length), max: Math.round(Math.max(...rx)), st: Math.round(rx[0]!) },
         c2sBytesPerSecPerClient: Math.round(tx.reduce((a, b) => a + b, 0) / tx.length),
+        /** (v3-perf-server) WebSocket messages per second per client, server -> client / client -> server. */
+        s2cMsgsPerSecPerClient: r1(rf.reduce((a, b) => a + b, 0) / rf.length),
+        c2sMsgsPerSecPerClient: r1(tf.reduce((a, b) => a + b, 0) / tf.length),
+        /** (v3-perf-server) ping -> pong round trip (1/s per client, loopback): queueing in the server + ws. */
+        pingRttMs: { n: rtts.length, p50: q(0.5), p95: q(0.95), p99: q(0.99), max: rtts.length ? r2(rtts.at(-1)!) : null },
         s2cKBpsTotal: r1(rx.reduce((a, b) => a + b, 0) / 1024),
         teleportsPerClientMin: r2(((everyone.reduce((a, b) => a + (b.recorder.typeCounts['world:teleport'] ?? 0), 0) - tp0) / everyone.length / secs) * 60),
         outdoorsEnd: outdoors(),
@@ -434,7 +446,7 @@ async function runServer(world: 'v2' | 'v3', round: number) {
           ]),
         ),
       };
-      log(`${label}: cpu ${res.serverCpuPct}% (p95 ${res.serverCpuP95}) elu ${res.runtime?.eluPct}% gc ${res.runtime?.gcMsPerSec} ms/s p99 ${res.runtime?.gcPauseP99Ms} ms | s2c ${res.s2cBytesPerSecPerClient.avg} B/s/client | anon ${res.rssAnonMb.end} MB | load ${la0.join('/')} -> ${la1.join('/')}`);
+      log(`${label}: cpu ${res.serverCpuPct}% (p95 ${res.serverCpuP95}) elu ${res.runtime?.eluPct}% gc ${res.runtime?.gcMsPerSec} ms/s p99 ${res.runtime?.gcPauseP99Ms} ms | s2c ${res.s2cBytesPerSecPerClient.avg} B/s/client ${res.s2cMsgsPerSecPerClient} msg/s, c2s ${res.c2sBytesPerSecPerClient} B/s ${res.c2sMsgsPerSecPerClient} msg/s | rtt p50/p95 ${res.pingRttMs.p50}/${res.pingRttMs.p95} ms | anon ${res.rssAnonMb.end} MB | load ${la0.join('/')} -> ${la1.join('/')}`);
       return res;
     };
 
