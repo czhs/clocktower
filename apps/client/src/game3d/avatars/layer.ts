@@ -41,6 +41,8 @@ import { LOW_TIER_AMBIENCE } from '../../game/fx/tier';
 
 /** v3.3 sprites prototype: localStorage['ct.debug.v3sprites'] = '1' draws rig specs as baked sprites (sprites/). */
 export function spritesEnabled(): boolean {
+  // a test build can turn it on for every client (VITE_V3SPRITES=1 at build time: the e2e "switch on" runs)
+  if ((import.meta as unknown as { env?: Record<string, string | undefined> }).env?.VITE_V3SPRITES === '1') return true;
   try {
     return globalThis.localStorage?.getItem('ct.debug.v3sprites') === '1';
   } catch {

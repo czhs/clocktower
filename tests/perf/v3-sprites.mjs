@@ -57,7 +57,7 @@ async function main() {
   let browser;
   if (arg('cdp', '')) browser = await pw.chromium.connectOverCDP(arg('cdp', ''));
   else browser = await pw.chromium.launch({ headless: true, executablePath: arg('exe', undefined), args: [...GL, '--disable-gpu-vsync', '--disable-frame-rate-limit', '--enable-precise-memory-info', '--js-flags=--expose-gc'] });
-  const ctx = browser.contexts()[0] ?? (await browser.newContext({ viewport: { width: 1400, height: 800 } }));
+  const ctx = await browser.newContext({ viewport: { width: 1400, height: 800 } });
   const page = await ctx.newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e.message).slice(0, 300)));
@@ -95,6 +95,10 @@ async function main() {
         };
         log(mode, 'cost', JSON.stringify(run[`${mode}Cost`]));
       }
+      if (ONLY.includes('fps')) {
+        run[`${mode}Fps`] = { idle: await call('fps', { walking: false, seconds: Number(arg('fpsS', '10')) }), walk: await call('fps', { walking: true, seconds: Number(arg('fpsS', '10')) }) };
+        log(mode, 'fps', JSON.stringify(run[`${mode}Fps`]));
+      }
       if (ONLY.includes('throttle')) {
         await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
         run[`${mode}CostX4`] = {
@@ -105,6 +109,26 @@ async function main() {
         log(mode, 'x4', JSON.stringify(run[`${mode}CostX4`]));
       }
       run[`${mode}Info`] = await call('info', {});
+      if (ONLY.includes('atlas') && sprites) {
+        const zlib = require('node:zlib');
+        const d = await call('atlasDump', {});
+        run.atlas = d.sheets.map((s) => {
+          const raw = Buffer.concat(s.planes.map((p) => Buffer.from(p, 'base64')));
+          const br = zlib.brotliCompressSync(raw, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 11 } }).length;
+          return { id: s.id, w: s.w, h: s.h, raw: raw.length, br };
+        });
+        log('atlas', JSON.stringify(run.atlas), 'total br', run.atlas.reduce((a, b) => a + b.br, 0));
+      }
+      if (ONLY.includes('vote')) {
+        run[`${mode}VoteCam`] = await call('voteCam', { viewHeight: 12.887, pitchDeg: 23, yawDeg: 45, maxMs: sprites ? 20000 : 1000 });
+        log(mode, 'vote camera', JSON.stringify(run[`${mode}VoteCam`]));
+        run[`${mode}VoteCost`] = await call('cost', { walking: false, frames: 60 });
+        await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
+        run[`${mode}VoteCostX4`] = await call('cost', { walking: false, frames: 60 });
+        await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+        log(mode, 'vote cost', JSON.stringify(run[`${mode}VoteCost`]), JSON.stringify(run[`${mode}VoteCostX4`]));
+        await call('mount', { tier, tod: 'noon' });
+      }
       save();
     }
     if (ONLY.includes('stills')) {

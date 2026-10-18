@@ -137,7 +137,8 @@ function step(render = true, dt = 1 / 60): { upd: number; ren: number } {
   return { upd: b - a, ren: c - b };
 }
 
-async function settle(limitMs = 300_000): Promise<Json> {
+async function settle(cfg: { limitMs?: number } = {}): Promise<Json> {
+  const limitMs = cfg.limitMs ?? 300_000;
   const r = m!;
   longTasks.length = 0;
   longOn = true;
@@ -208,6 +209,29 @@ async function cost(cfg: { frames?: number; walking: boolean; uncapped?: boolean
   return { walking: cfg.walking, uncapped: !!cfg.uncapped, updMs: mean(upd), updP95: pct(upd, 0.95), renderMs: mean(ren), renderP95: pct(ren, 0.95), frameMs: mean(wall), frameP95: pct(wall, 0.95), calls: mean(calls), tris: Math.round(mean(tris)) };
 }
 
+/** Presented fps over `seconds` of wall time, one step + render per animation frame (SwiftShader / iGPU fps). */
+async function fps(cfg: { seconds?: number; walking: boolean }): Promise<Json> {
+  const r = m!;
+  r.walking = cfg.walking;
+  for (let i = 0; i < 5; i++) {
+    step();
+    await raf();
+  }
+  const t0 = performance.now();
+  const dts: number[] = [];
+  let last = t0;
+  while (performance.now() - t0 < (cfg.seconds ?? 10) * 1000) {
+    step();
+    await raf();
+    const now = performance.now();
+    dts.push(now - last);
+    last = now;
+  }
+  r.walking = false;
+  const wall = (performance.now() - t0) / 1000;
+  return { walking: cfg.walking, fps: +(dts.length / wall).toFixed(2), frameMs: mean(dts), p95: pct(dts, 0.95), frames: dts.length };
+}
+
 /** Render one still (canvas PNG data URL) + every avatar's frame name. pin = spec -> vendor drawing (sprites). */
 async function still(cfg: { pin?: Record<string, string> | null; walking?: boolean; frames?: number; t?: number }): Promise<Json> {
   const r = m!;
@@ -231,6 +255,54 @@ async function still(cfg: { pin?: Record<string, string> | null; walking?: boole
   return { url, avatars: list };
 }
 
+/** Switch to the vote camera (viewHeight / pitch / yaw) and run frames until every sprite re-baked (or 20 s). */
+async function voteCam(cfg: { viewHeight?: number; pitchDeg?: number; yawDeg?: number; maxMs?: number }): Promise<Json> {
+  const r = m!;
+  const spr = (await import('../../apps/client/src/game3d/avatars/sprites/spriteBody')).spriteDebug;
+  const sq = (r.state.layout as unknown as { square: { cx: number; cy: number } }).square;
+  r.engine.camera.set({ target: new THREE.Vector3(sq.cx / 16, 0, sq.cy / 16), yaw: ((cfg.yawDeg ?? 0) * Math.PI) / 180, pitch: ((cfg.pitchDeg ?? 23) * Math.PI) / 180, viewHeight: cfg.viewHeight ?? 19 });
+  const rb0 = spr.rebakes;
+  longTasks.length = 0;
+  longOn = true;
+  const t0 = performance.now();
+  const fm: number[] = [];
+  let doneAt = -1;
+  while (performance.now() - t0 < (cfg.maxMs ?? 20_000)) {
+    const a = performance.now();
+    step();
+    await raf();
+    fm.push(performance.now() - a);
+    const dbg = r.layer!.debug!() as Record<string, (...a: unknown[]) => unknown>;
+    const st = dbg.sprites ? ((await (dbg.sprites() as Promise<Json>)) as { sheets: unknown[] }) : null;
+    if (spr.rebakes - rb0 >= r.ids.length && st && st.sheets.length >= 2 * r.ids.length) {
+      doneAt = performance.now() - t0;
+      break;
+    }
+  }
+  longOn = false;
+  return { rebakes: spr.rebakes - rb0, allRebakedMs: Math.round(doneAt), frames: fm.length, maxFrameMs: Math.round(Math.max(0, ...fm)), framesOver50: fm.filter((x) => x > 50).length, longTasks: { n: longTasks.length, max: Math.max(0, ...longTasks), sum: longTasks.reduce((a, b) => a + b, 0) }, texel: +r.engine.camera.texelWorld.toFixed(5) };
+}
+
+/** Read back every baked sheet (both planes) as base64, for the runner's brotli size of a cached / shipped atlas. */
+async function atlasDump(): Promise<Json> {
+  const r = m!;
+  const bake = await import('../../apps/client/src/game3d/avatars/sprites/bake');
+  const out: Json[] = [];
+  for (const id of r.ids) {
+    const sh = await bake.getSheet(r.engine as object, id, (await import('../../apps/client/src/game3d/avatars/sprites/spriteBody')).sheetCameraOf(r.engine));
+    const planes: string[] = [];
+    for (const rt of [sh.rtA, sh.rtB]) {
+      const buf = new Uint8Array(rt.width * rt.height * 4);
+      r.engine.renderer.readRenderTargetPixels(rt, 0, 0, rt.width, rt.height, buf);
+      let bin = '';
+      for (let i = 0; i < buf.length; i += 32768) bin += String.fromCharCode(...buf.subarray(i, i + 32768));
+      planes.push(btoa(bin));
+    }
+    out.push({ id, w: sh.grid.width, h: sh.grid.height, planes });
+  }
+  return { sheets: out };
+}
+
 function ghosts(cfg: { dead: boolean; ghostVote?: boolean }): Json {
   for (const p of m!.players) {
     p.alive = !cfg.dead;
@@ -247,7 +319,8 @@ function talk(cfg: { on: boolean; n?: number }): Json {
 
 function info(): Json {
   const r = m!;
+  (window as unknown as { gc?: () => void }).gc?.();
   return { heapMiB: +(heap() / 1048576).toFixed(1), memory: r.engine.renderer.info.memory, programs: r.engine.renderer.info.programs?.length };
 }
 
-(window as unknown as { __v3spr: unknown }).__v3spr = { mount, layer, settle, cost, still, ghosts, talk, info, ready: true };
+(window as unknown as { __v3spr: unknown }).__v3spr = { mount, layer, settle, cost, still, fps, voteCam, atlasDump, ghosts, talk, info, ready: true };
