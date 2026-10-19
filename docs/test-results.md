@@ -21,6 +21,18 @@ Tree = v3.3 (`72aba16`) + merge of `origin/v33-sprites-ship` (`135a111`, clean t
 | bench on the laptop iGPU (`tests/perf/v3-sprites.mjs --cdp … --tiers low --only build,cost,fps,vote,night`) | rigs → sprites GPU-inclusive frame walking 13.8 → 7.5 ms, night 15.5 → 8.5, night ghosts 12.2 → 8.2; tris 744 k → 349 k; vote re-bake 15 sheets 3.5 s, max frame 51 ms (2nd 35, p95 17), peak 50 MiB; store 44.4 MiB at 1280×720 (rig geometry 34.6 MiB) |
 | stills (host GPU, `hostbench.sh stills --only stills --scenes day-idle,vote,night-ghost --stillN 6`) | rig vs sprite pixel diff 0.144 % (day), 0.143 % (vote, after the re-bake), 0.378 % (night ghosts); `tests/v3/shots/v3.4/still-low-{day-idle,vote,night-ghost}-{rig,sprite,diff}.png` (gitignored) |
 
+### v3.4 deploy (same day; the tagged commit `v3.4` = `7f54da0`)
+
+| Command (from the orchestrator checkout unless noted) | Result |
+|---|---|
+| `scripts/secret-scan.sh`; `git push origin v3-game`; `git tag -a v3.4 7f54da0`; `git push origin v3.4`; `git push origin v3-game:main` | scan clean (403158 lines); pre-push scan clean (10 commits); `3b09f6e..7f54da0`; new tag `v3.4`; main `3b09f6e..7f54da0` (fast-forward) |
+| `scripts/deploy-hshi-u1.sh dev 7f54da0`; `curl 127.0.0.1:3001/internal/version`; dev journal (5 min) | exit 0 in 16 s; version 7f54da0; 0 error / warn / fail lines |
+| dev smoke on the host GPU with **sprites forced on** (scratch spec `test-results/smoke/dev-smoke.spec.ts` in the `v34-release` sandbox, not in git: the v3.3 smoke + `ct.debug.v3sprites=1` + `spritesNow()` / `sprites()` readouts; `flock browser.lock`, nice 19; 6 protocol bots + a 1920×1080 page + a 1440×900 DPR-2 page; waiting room → start → day → seats → nomination → vote frame) | **1/1 pass (26.2 s)**: page errors [] / console errors []; no TownGame / Phaser request; 89 br + 4 identity `/assets` responses per page; both pages 11/11 bodies swapped to sprites (store 29.5 / 20.1 MiB), vote camera re-bake 11 sheets (rebakes 11, fallbacks 0, max bake unit 9.8 ms, vendor rig build max 36 ms), sheets stored 11; stills `tests/v3/shots/v3.4/{waiting-room-1440x900-dpr2,square-1920x1080,vote-1440x900-dpr2}.png` (gitignored) |
+| prod pre-check: `journalctl -u clocktower-prod --since "30 min ago" -o cat` (20:29 PDT) | two lobbies in the window, both idle-disposed by 20:15 PDT (one member each, left): no game running |
+| `sudo -n /usr/bin/systemctl start clocktower-backup-prod.service` | exit 0, Result=success |
+| `scripts/deploy-hshi-u1.sh prod 7f54da0` | **exit 0 in 17 s** (20:30 PDT): prod → releases/7f54da0, old release `4ca13aa` pruned, 312 previous assets carried, healthy |
+| `curl 127.0.0.1:3000/internal/version` (host); public `https://clocktower.chrisshi.com/`, `/v2/`, `/v3-art-demo/`, `/healthz`; units; prod journal | version = 7f54da0; 200 / 200 / 200 ("Hollowmere demo") / 200; prod, dev, tunnel active; 0 error / warn / fail / crit lines |
+
 ## 2026-10-18 — v3.3 release gate (`v33-release`, branch `v3-game`, the host, sandbox `v33-release`)
 
 Tree = v3.2 (`ceab1ce`) + `68f5b94` (laptop.md) + merges of `v33-gpu` (`9a13ce1`, clean) and `v33-bake` (`b1ae913`;

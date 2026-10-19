@@ -215,7 +215,7 @@ v2; v3.0 is on the dev service, see "v3 handoff" below.)
 ### v3 handoff (2026-10-18 night, after the v3.4 release — RESTART FROM HERE; work PAUSED by the user after v3.4)
 
 - **v3.4 = the commit "v3.4: release gate + docs" on `v3-game`, tag `v3.4`; GitHub `main` = that commit.
-  Deploy: dev, then prod (pre-approved beta), recorded in docs/test-results.md "v3.4 deploy".** Rollback: `scripts/deploy-hshi-u1.sh prod 72aba16` (v3.3). Release note: docs/RELEASE-v3.md "v3.4".
+  PROD runs v3.4 (`7f54da0`) since 2026-10-18 20:30 PDT** (pre-approved beta deploy: dev + 6-bot host-GPU smoke with sprites forced on, 0 page / console errors; no prod game in the 30 min before; manual backup; public `/`, `/v2/`, `/v3-art-demo/` 200; journals clean; docs/test-results.md "v3.4 deploy"). Rollback: `scripts/deploy-hshi-u1.sh prod 72aba16` (v3.3). Release note: docs/RELEASE-v3.md "v3.4".
   Gate: docs/test-results.md "v3.4 release gate" / "v3.4 deploy".
 - Contents: `v33-sprites-ship` merged — **characters are baked sprites at the `low` tier** (every integrated GPU since
   v3.3), rigs at `high` / `cpu`; `ct.debug.v3sprites=1|0` (or a `VITE_V3SPRITES=1|0` build) forces either path. v3.4

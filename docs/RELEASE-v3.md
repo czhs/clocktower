@@ -1,6 +1,6 @@
 # Clocktower Town v3.4
 
-Status: **see docs/progress.md "v3 handoff" and docs/test-results.md "v3.4 deploy"** (tag `v3.4` on `v3-game`). Gate:
+Status: **on prod since 2026-10-18 20:30 PDT** (https://clocktower.chrisshi.com, tag `v3.4` = `7f54da0` on `v3-game`). Gate:
 docs/test-results.md "v3.4 release gate". Contract and decision log: docs/v3/INTEGRATION.md §11 "v3.4". Design and the
 earlier numbers: docs/perf-v3/sprites.md (branch `v33-sprites-ship`, merged here).
 
