@@ -82,10 +82,16 @@ async function main() {
     log('mounted', JSON.stringify(run.mount));
     for (const mode of ['rig', 'sprite']) {
       const sprites = mode === 'sprite';
-      await call('layer', { sprites, ids: IDS, cold: arg('warm', '0') !== '1', keepKits: arg('keepKits', '1') === '1' });
+      await call('layer', { sprites, ids: IDS, cold: arg('warm', '0') !== '1', keepKits: arg('keepKits', '1') === '1', persist: arg('persist', '1') === '1' });
       const t0 = Date.now();
       run[`${mode}Build`] = await call('settle', {});
       log(mode, 'built in', Date.now() - t0, 'ms', JSON.stringify(run[`${mode}Build`]).slice(0, 400));
+      if (sprites && arg('rejoin', '1') === '1') {
+        // a repeat join: a fresh layer (no kits) with the persistent cache of the first join
+        await call('layer', { sprites, ids: IDS, cold: false, keepKits: arg('keepKits', '1') === '1', persist: arg('persist', '1') === '1' });
+        run.spriteRejoin = await call('settle', {});
+        log('sprite rejoin', JSON.stringify(run.spriteRejoin).slice(0, 600));
+      }
       if (ONLY.includes('cost')) {
         run[`${mode}Cost`] = {
           idle: await call('cost', { walking: false, frames: FRAMES }),
@@ -130,6 +136,21 @@ async function main() {
         await call('mount', { tier, tod: 'noon' });
       }
       save();
+    }
+    if (ONLY.includes('night')) {
+      // the town light pool at night (lanterns) and the ghosts (shared / clips / tint looks), both modes
+      for (const mode of ['rig', 'sprite']) {
+        await call('mount', { tier, tod: 'night' });
+        await call('layer', { sprites: mode === 'sprite', ids: IDS, cold: false, keepKits: arg('keepKits', '1') === '1' });
+        await call('settle', {});
+        run[`${mode}Night`] = { walkUncapped: await call('cost', { walking: true, frames: FRAMES, uncapped: true }), idleUncapped: await call('cost', { walking: false, frames: FRAMES, uncapped: true }) };
+        await call('ghosts', { dead: true });
+        await call('cost', { walking: false, frames: 120 });
+        run[`${mode}NightGhosts`] = { walkUncapped: await call('cost', { walking: true, frames: FRAMES, uncapped: true }), idleUncapped: await call('cost', { walking: false, frames: FRAMES, uncapped: true }) };
+        log(mode, 'night', JSON.stringify(run[`${mode}Night`]), 'ghosts', JSON.stringify(run[`${mode}NightGhosts`]));
+        save();
+      }
+      await call('mount', { tier, tod: 'noon' });
     }
     if (ONLY.includes('stills')) {
       // same moment, same positions: rigs first (record each one's drawing), then sprites pinned to those drawings

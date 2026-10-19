@@ -42,7 +42,8 @@ import {
   persistKey,
   type Timeline,
 } from './atlas';
-import { createSheetCache, type SheetCache } from './cache';
+import type { SheetCache } from './cache';
+import { createCacheClient } from './cacheClient';
 import { clusterProxy } from './proxy';
 import { createSliceRunner, type SliceGen, type SliceRunner } from './runner';
 
@@ -55,7 +56,7 @@ export const BAKE_BUDGET_MS = 4;
 /** Kits (bake rigs) kept per engine. */
 export const KIT_MAX = 24;
 /** Tunables (debug / bench): per-frame budget, whether kits are kept between bakes. */
-export const bakeConfig = { budgetMs: BAKE_BUDGET_MS, keepKits: true };
+export const bakeConfig = { budgetMs: BAKE_BUDGET_MS, keepKits: true, persist: true };
 /** What the slice runner is doing (the longest unit's label is kept in the store stats). */
 let phase = '';
 const DT = 1 / 30;
@@ -969,7 +970,7 @@ let sharedCache: SheetCache | null = null;
 function storeOf(engine: object): Store {
   let s = stores.get(engine);
   if (!s) {
-    sharedCache ??= createSheetCache();
+    sharedCache ??= createCacheClient();
     const unit = (ms: number) => {
       const st = s!.stats;
       st.units++;
@@ -1088,7 +1089,7 @@ function* produce(engine: unknown, s: Store, specId: string, cam: SheetCamera, k
 let persistChain: Promise<unknown> = Promise.resolve();
 function persist(s: Store, renderer: THREE.WebGLRenderer, sheet: SpriteSheet, pk: string): void {
   const rts = sheetRTs.get(sheet);
-  if (!rts || typeof renderer.readRenderTargetPixelsAsync !== 'function') return;
+  if (!bakeConfig.persist || !rts || typeof renderer.readRenderTargetPixelsAsync !== 'function') return;
   persistChain = persistChain
     .then(async () => {
       if (stores.get(s.engineRef) !== s || (sheet as unknown as { _disposed?: boolean })._disposed) return;
@@ -1096,7 +1097,8 @@ function persist(s: Store, renderer: THREE.WebGLRenderer, sheet: SpriteSheet, pk
       const bufs: (Uint8Array | Float32Array | Uint16Array)[] = [planes[0]!, planes[1]!, new Uint8Array(0)];
       if (sheet.proxy) {
         const g = sheet.proxy.geo;
-        bufs.push((g.getAttribute('position') as THREE.BufferAttribute).array as Float32Array, (g.getAttribute('aBone') as THREE.BufferAttribute).array as Float32Array, g.index!.array as Uint16Array, sheet.proxy.bones.image.data as unknown as Float32Array);
+        // copies: the planes are transferred to the cache worker, the proxy arrays stay live on the GPU objects
+        bufs.push(((g.getAttribute('position') as THREE.BufferAttribute).array as Float32Array).slice(), ((g.getAttribute('aBone') as THREE.BufferAttribute).array as Float32Array).slice(), (g.index!.array as Uint16Array).slice(), (sheet.proxy.bones.image.data as unknown as Float32Array).slice());
       }
       const ok = await s.cache.put(pk, { meta: metaOf(sheet), bufs });
       if (ok) s.stats.stored++;
@@ -1222,6 +1224,17 @@ export async function sheetStats(engine: object): Promise<Record<string, unknown
   return out;
 }
 
+/** Bench: zero the per-unit maxima (measure one window, e.g. the vote camera re-bake). */
+export function resetUnitStats(engine: object): void {
+  const s = stores.get(engine);
+  if (!s) return;
+  s.stats.maxUnitMs = 0;
+  s.stats.maxUnit = '';
+  s.stats.maxPumpMs = 0;
+  s.stats.over4 = 0;
+  s.stats.units = 0;
+}
+
 export function storeStats(engine: object): Record<string, unknown> | null {
   const s = stores.get(engine);
   if (!s) return null;
@@ -1230,7 +1243,7 @@ export function storeStats(engine: object): Record<string, unknown> | null {
 
 /** Empty the persistent sheet cache (bench: a cold join). */
 export async function clearSpriteCache(): Promise<void> {
-  sharedCache ??= createSheetCache();
+  sharedCache ??= createCacheClient();
   await sharedCache.clear();
 }
 

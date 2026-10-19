@@ -89,12 +89,13 @@ async function mount(cfg: { tier?: Tier; tod?: TodPreset; w?: number; h?: number
 }
 
 /** A fresh avatar layer in rig or sprite mode with these cast specs on a ring around the square. */
-async function layer(cfg: { sprites: boolean; ids: string[]; rk?: number; keepKits?: boolean; budgetMs?: number; cold?: boolean }): Promise<Json> {
+async function layer(cfg: { sprites: boolean; ids: string[]; rk?: number; keepKits?: boolean; budgetMs?: number; cold?: boolean; persist?: boolean }): Promise<Json> {
   const r = m!;
   r.layer?.destroy();
   const bake = await import('../../apps/client/src/game3d/avatars/sprites/bake');
   if (cfg.keepKits !== undefined) bake.bakeConfig.keepKits = cfg.keepKits;
   if (cfg.budgetMs !== undefined) bake.bakeConfig.budgetMs = cfg.budgetMs;
+  if (cfg.persist !== undefined) bake.bakeConfig.persist = cfg.persist;
   if (cfg.cold) await bake.clearSpriteCache();
   try {
     if (cfg.sprites) localStorage.setItem('ct.debug.v3sprites', '1');
@@ -266,6 +267,8 @@ async function voteCam(cfg: { viewHeight?: number; pitchDeg?: number; yawDeg?: n
   const sq = (r.state.layout as unknown as { square: { cx: number; cy: number } }).square;
   r.engine.camera.set({ target: new THREE.Vector3(sq.cx / 16, 0, sq.cy / 16), yaw: ((cfg.yawDeg ?? 0) * Math.PI) / 180, pitch: ((cfg.pitchDeg ?? 23) * Math.PI) / 180, viewHeight: cfg.viewHeight ?? 19 });
   const rb0 = spr.rebakes;
+  const bake = await import('../../apps/client/src/game3d/avatars/sprites/bake');
+  bake.resetUnitStats(r.engine as object);
   longTasks.length = 0;
   longOn = true;
   const t0 = performance.now();
@@ -284,7 +287,8 @@ async function voteCam(cfg: { viewHeight?: number; pitchDeg?: number; yawDeg?: n
     }
   }
   longOn = false;
-  return { rebakes: spr.rebakes - rb0, allRebakedMs: Math.round(doneAt), frames: fm.length, maxFrameMs: Math.round(Math.max(0, ...fm)), framesOver50: fm.filter((x) => x > 50).length, longTasks: { n: longTasks.length, max: Math.max(0, ...longTasks), sum: longTasks.reduce((a, b) => a + b, 0) }, texel: +r.engine.camera.texelWorld.toFixed(5) };
+  const fs = [...fm].sort((a, b) => a - b);
+  return { store: bake.storeStats(r.engine as object), p95FrameMs: Math.round(fs[Math.floor(fs.length * 0.95)] ?? 0), secondMaxFrameMs: Math.round(fs[fs.length - 2] ?? 0), firstFrameMs: Math.round(fm[0] ?? 0), rebakes: spr.rebakes - rb0, allRebakedMs: Math.round(doneAt), frames: fm.length, maxFrameMs: Math.round(Math.max(0, ...fm)), framesOver50: fm.filter((x) => x > 50).length, longTasks: { n: longTasks.length, max: Math.max(0, ...longTasks), sum: longTasks.reduce((a, b) => a + b, 0) }, texel: +r.engine.camera.texelWorld.toFixed(5) };
 }
 
 /** The bake store and its sheets (the v3.3 ship store reads back and caches sheets itself: cache.ts). */
