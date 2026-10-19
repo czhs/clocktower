@@ -301,11 +301,52 @@ async function main() {
     out.windows = windows;
   }
 
+  if (MODES.has('ceiling')) {
+    // upper bound of ANY static cache: every town piece hidden except life / dais (what would be left live if the
+    // whole town, foliage included, came from a texture), tiles off, standing: calls / renderAt / fps at CPU x1 and x4
+    const rows: Json[] = [];
+    await cam('tilesOff');
+    const hide = (on: boolean) =>
+      page.evaluate((on) => {
+        const e = (window as unknown as { __v3f: { engine: { scene: { traverse(f: (o: { name: string; visible: boolean; parent: unknown; userData: Record<string, unknown> }) => void): void } } } }).__v3f.engine;
+        const W = window as unknown as { __ctHidden?: { visible: boolean }[] };
+        if (!on) {
+          for (const o of W.__ctHidden ?? []) o.visible = true;
+          W.__ctHidden = [];
+          return 0;
+        }
+        const out: { visible: boolean }[] = [];
+        e.scene.traverse((o) => {
+          if (/^(ground|props|foliage|clocktower|house-\d+)-placed$/.test(o.name) || /^(ground|props|foliage|clocktower|house-\d+)$/.test(String(o.userData.pieceId ?? ''))) {
+            if (o.visible) {
+              o.visible = false;
+              out.push(o);
+            }
+          }
+        });
+        W.__ctHidden = out;
+        return out.length;
+      }, on);
+    for (const rate of CPUS) {
+      await cdp.send('Emulation.setCPUThrottlingRate', { rate });
+      for (const mode of ['live', 'ceiling', 'live', 'ceiling']) {
+        const n = await hide(mode === 'ceiling');
+        await sleep(1000);
+        const split = (await call<Json>('run', { secs: SECS, minFrames: 20 })) as Json & { perFrame?: Record<string, { mean: number }>; fps?: number };
+        rows.push({ cpu: rate, mode, hidden: n, fps: split.fps, raf: split.perFrame?.raf?.mean, renderAt: split.perFrame?.renderAt?.mean, calls: split.perFrame?.calls?.mean });
+        log('ceiling', JSON.stringify(rows[rows.length - 1]));
+      }
+      await hide(false);
+    }
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+    out.ceiling = rows;
+  }
+
   if (MODES.has('synced')) {
     const synced: Json = {};
     for (const mode of ['off', 'on', 'off', 'on']) {
       await cam(mode === 'on' ? 'tilesOn' : 'tilesOff');
-      await call('synced', { n: 4 }); // bakes / warm
+      await call('synced', { n: 30 }); // bakes / warm: fills the prefetch ring (1 tile / frame), so the measured frames bake nothing
       const s = (await call<Json>('synced', { n: 10 })) as Json & { total?: unknown; perFrame?: Record<string, unknown> };
       (synced[mode] ??= [] as Json[]) && (synced[mode] as Json[]).push({ total: s.total, calls: s.perFrame?.calls, renderAt: s.perFrame?.renderAt });
       log('synced', mode, JSON.stringify(s.total));
