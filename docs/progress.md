@@ -212,7 +212,28 @@ v2; v3.0 is on the dev service, see "v3 handoff" below.)
   WP3 soft-layer fade behind thatched cottages, WP4 bubble details); pixel3d-side requests are collected in
   INTEGRATION.md §9.2.
 
-### v3 handoff (2026-10-18 night, after the v3.2 release — RESTART FROM HERE)
+### v3 handoff (2026-10-18 night, after the v3.3 release — RESTART FROM HERE)
+
+- **v3.3 = the commit "v3.3: release gate + docs" on `v3-game`, tag `v3.3`; GitHub `main` = that commit.
+  Deploy (dev → smoke → prod, pre-approved): docs/test-results.md "v3.3 deploy"** Rollback: `scripts/deploy-hshi-u1.sh prod ceab1ce` (v3.2). Release note: docs/RELEASE-v3.md "v3.3".
+  Gate: docs/test-results.md "v3.3 release gate".
+- Contents: `v33-gpu` merged (three r170 BatchedMesh fix + material twins in `world/merge.ts`, smart river reflection,
+  off-screen water passes skipped); **static merge default OFF** on every tier (`ct.debug.v3merge=1` = on);
+  **tier promotion needs measured GPU headroom** (`game3d/promote.ts`, `vendor/gpuTimer.ts`: low's GPU median ≤ 6 ms,
+  ≤ 4.5 ms on an integrated GPU; integrated + no timer = never); `v33-bake` merged and **the IndexedDB tree cache is
+  default ON** (LRU 2 records per vendor build). Laptop before / after: RELEASE-v3.md "v3.3".
+- **Next = v3.4: characters as baked sprites at `low`** from branch `v33-sprites-ship` (docs/perf-v3/sprites.md there:
+  fps ×2.5 at low on the laptop iGPU; review the branch, merge onto v3.3, re-measure on the laptop; the cpu tier keeps
+  rigs per that branch). Then the vendor asks collected in INTEGRATION.md §9.2 "(v3.3 fronts)": tree template data hook,
+  a cheaper ground piece, foliage static / animated split, cheap cut-away for the cpu tier, single-pass colour + normal
+  (MRT). And the **Intel first-visit shader compile** (≈ 14 s to the first frame, one 8-9.7 s link task:
+  laptop.md §5): fewer programs / `KHR_parallel_shader_compile` with a compile order that yields. Parked: `v33-tiles`,
+  `v33-light` (prototypes, docs on their branches). The laptop (access in the gitignored CLAUDE.local.md; method
+  docs/perf-v3/laptop.md) is the reference device for every iGPU claim.
+- Carried over from v3.2: the owner's Cloudflare `/assets/*` cache rule + Smart Tiered Cache; deferred C2 QA findings;
+  runtime budget keys (`v3IdleLobbyFps`, `v3WalkFps`, …).
+
+### v3 handoff (2026-10-18 night, after the v3.2 release — superseded by the v3.3 entry above)
 
 - **v3.2 = the commit "v3.2: release gate + docs" on `v3-game` (`ceab1ce`), tag `v3.2`. PROD runs v3.2 since
   2026-10-18 16:32 PDT** (pre-approved by the user: "the whole game is in beta"): dev deploy + 6-bot GPU smoke (0 page

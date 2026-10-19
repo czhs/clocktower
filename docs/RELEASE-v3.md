@@ -1,3 +1,67 @@
+# Clocktower Town v3.3
+
+Status: **released 2026-10-18; deploy status in docs/test-results.md "v3.3 deploy"** (tag `v3.3` on `v3-game`). Gate and deploy: docs/test-results.md "v3.3 release gate" /
+"v3.3 deploy". Contract and decision log: docs/v3/INTEGRATION.md §11 "v3.3". Numbers: docs/perf-v3/{laptop,gpu,bake}.md.
+
+v3.3 is a perf release for laptops with integrated GPUs, measured on a real one (Intel Arc iGPU, Mesa, Chrome 143;
+docs/perf-v3/laptop.md): the town no longer promotes itself to the expensive `high` tier on a GPU that cannot afford
+it, the v3.1 static merge is off (it cost integrated GPUs time), and a repeat join replays the trees from a local cache.
+
+## Faster
+- **"Auto" stays at `low` on an integrated GPU.** Until v3.2 every `auto` town that started at `low` rebuilt itself at
+  `high` after ~2.4 s whenever the median frame was under 45 ms, i.e. always at a 60 fps cap. On the laptop's Intel
+  Arc iGPU that meant a second full town build after the join and a GPU-bound `high` tier: **52-55 fps in the vote**
+  (p95 33 ms), GPU 13-14.5 ms per frame. Now the promotion needs measured headroom (`game3d/promote.ts`): after the
+  first clean sample at `low`, 90 outdoor frames are timed on the GPU (`EXT_disjoint_timer_query_webgl2` around the
+  render, `vendor/gpuTimer.ts`); only a median of ≤ 6 ms (≤ 4.5 ms for a renderer string naming an integrated GPU:
+  Intel, AMD "Radeon Graphics" APUs, mobile GPUs) and ≤ 8 ms of main thread promotes. Without a GPU timer an integrated
+  GPU is never promoted and any other GPU needs ≤ 8.5 ms frames in an uncapped window (visible only on ≥ 120 Hz
+  panels). Interiors (2-4 ms even on the iGPU) never count. AMD APUs now also start at `low`. A desktop / laptop dGPU
+  still starts at `high` directly (no probe, no rebuild). The decision is logged once (`[town3d] promotion …`) and in
+  `__ctCamera.camera3d().promotion`.
+- **Real laptop, before / after** (Intel Arc iGPU, Mesa, Chrome 143 ANGLE GL-EGL, 1440×900 DPR 2, `auto`, 14 bots,
+  v3.2 `ceab1ce` vs v3.3 in the same harness; docs/perf-v3/laptop.md §8):
+
+  | | v3.2 | v3.3 |
+  |---|---|---|
+  | tier chosen | `low` → **`high` 2.2-4.8 s after the first frame** (a second town build) | **`low`, stays** (promotion declined: GPU 8.0-10.2 ms, integrated) |
+  | waiting room, 14 walking: fps / GPU ms p50 | 53.7 / 14.5 (p95 frame 33 ms) | **59.6 / 7.9** |
+  | day walk on the square | 58.1 / 12.2 | **59.5 / 8.8** |
+  | **the vote** | **50.4** / 15.1 (p95 frame 33 ms) | **59.7** / 9.7 (p95 16.7 ms) |
+  | waiting room idle (30 fps idle cap both) GPU ms | 16.1 (high) | 10.4 |
+  | warm reload, ready ms (3 runs) | 3 532-3 770 | **2 633-2 690** |
+  | repeat join (home → lobby page load, 2 runs) | 3 403-3 416 | **2 426-2 455** (279 tree-cache hits, town build 2.5 → 1.2-1.4 s) |
+  | repeat join in the app (Leave → lobby link) | 4 886-4 902 | 3 969-4 286 |
+  | NVIDIA RTX 4070 laptop dGPU, `auto` | `high` from the first frame, vote 60 fps, GPU 4.35 ms | **`high`** from the first frame (no probe), vote 60 fps, GPU 4.38 ms |
+
+  At explicit `low` the merge-off frame is ≈ 1 ms cheaper on the iGPU GPU (vote 10.8 → 9.4 ms) for +96 draws.
+- **The v3.1 static merge is off by default** (`ct.debug.v3merge=1` turns it on). The real-laptop A/B showed it costs
+  the iGPU GPU time (+0.2-0.4 ms at `low`, +0.8-2.6 ms at `high`, −2-2.5 fps at `high`) and the desktop gains nothing.
+  The merge code keeps the v33-gpu fixes (`world/merge.ts`): three r170 re-resolved a `BatchedMesh`'s program on every
+  draw (`colorTexture` vs `_colorsTexture`) and the batches flipped programs with the plain kit meshes; with both
+  workarounds the merge is CPU-neutral (it was +7-12 % render JS), so it can be re-tried if a vendor change makes it a
+  GPU win.
+- **River reflection only when it changes** (v33-gpu, `vendor/gpuLevers.ts`, default on): with a still camera the
+  river's reflection re-renders only when a figure that can appear in it moved, the light changed, or at 10 Hz for
+  the ambient motion (was 30 Hz always): −50-70 % reflection renders while the camera rests, pixel-identical.
+  **Off-screen water passes are skipped** (fountain / bowl / well post passes whose shape is outside the frame).
+- **Repeat joins replay the trees** (v33-bake, IndexedDB `ct-town-bake`, default on, `ct.debug.v3bake=0` = off): the
+  town's `createTree` output (46 % of the town build) is recorded on the first join and replayed byte-identically on
+  the next one with the same tier and window height (leaf density follows the low-res height). Measured on the branch:
+  repeat join −0.8 s desktop, −3.3 s at CPU ×4, **−0.95 s on the laptop (3.6-3.8 → 2.74 s)**; on the release build the laptop's repeat join went 3.4 → 2.43 s (279 / 279 hits); a resize to four other window heights missed once each, stored, then hit, and never kept more than 2 records. At most 2
+  records (~15-22 MB each) per vendor build are kept, least recently used dropped; a vendor refresh invalidates every
+  record; private mode / a full quota / a hung IndexedDB (2 s) just build live.
+
+## Known issues (v3.3)
+- Everything in "Known issues (v3.2)" below still applies.
+- A first visit on an Intel / Mesa laptop still freezes ~9 s on the loading sheet compiling the town's shader programs
+  (≈ 14 s to the first frame; warm visits 3.4-4.7 s). Next: fewer program variants, parallel compile.
+- When a GPU does qualify for promotion, the switch to `high` is still a full town rebuild behind "Rebuilding town…"
+  (≈ 1-2.5 s on the measured machines; at a safe moment, never during a vote), now ~1.5 s later than before (the probe).
+- The tree cache misses once per new window height (resize → new record on the next join).
+- Characters as baked sprites (`v33-sprites-ship`), the cached static layer (`v33-tiles`) and the split shadows / deferred
+  light pool (`v33-light`) are not in this release.
+
 # Clocktower Town v3.2
 
 Status: **on prod since 2026-10-18 16:32 PDT** (https://clocktower.chrisshi.com, tag `v3.2` = `ceab1ce` on

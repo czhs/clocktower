@@ -143,3 +143,26 @@ expensive an uncached compile of the town's 55-62 programs is on a desktop GL dr
 
 Driver scripts (scratch, not in the repo) and a how-to for measuring other branches the same way were left with the
 measurement agent's handoff.
+
+## 8. v3.3 re-run (release agent, 2026-10-18)
+
+Same device, harness and phases (helper agent of `v33-release`; 1440×900 @ DPR 2, `auto`, no spoof, each build's own
+defaults: v3.2 `ceab1ce` = merge on, v3.3 = merge off + GPU-headroom promotion + tree cache). 8 s windows after ≥ 25 s
+settle. The waiting-room idle windows are 30 fps idle-capped in both builds (v3.2 idle rendering).
+
+| Intel iGPU | v3.2: tier, fps, JS p50, GPU p50 / p95, draws | v3.3 |
+|---|---|---|
+| tier timeline | `low`, then `high` 2.2-4.8 s after the first frame (every phase reload) | `low`, stays: `promotion declined (gpu-busy; gpu 8.0-10.2 ms, cpu 3.1-4.7 ms, integrated)` |
+| waiting room idle | high, 30\*, 6.2, 16.1 / 17.1, 268 | low, 30\*, 4.5, 10.4 / 11.0, 209 |
+| waiting room, 14 walking | high, 53.7, 4.8, 14.5 / 15.4, 262 | low, 59.6, 2.8, 7.9 / 9.0, 202 |
+| day walk | high, 58.1, 4.1, 12.2 / 12.6, 264 | low, 59.5, 3.0, 8.8 / 9.6, 245 |
+| vote | high, **50.4** (p95 interval 33.4), 4.8, 15.1 / 15.3, 324 | low, **59.7** (p95 16.7), 3.2, 9.7 / 10.4, 341 |
+| vote, explicit `low` | low, 59.9, 3.5, 10.8 / 11.7, 245 | low, 59.7, 3.3, 9.4 / 10.6, 341 |
+| warm reload ready ms | 3 770 / 3 572 / 3 532 | 2 690 / 2 657 / 2 633 |
+| repeat join, page load | 3 403 / 3 416 | 2 455 / 2 426 (279 / 279 tree-cache hits; town build 2 519 → 1 211-1 365 ms) |
+| repeat join in the app (Leave, lobby link) | 4 886 / 4 902 | 4 286 / 3 969 (one ≈ 2.5 s long task remains) |
+
+\* idle-capped. Tree-cache resize check (v3.3): 1280×720, 1600×1000, 1920×1200, 1024×640 each missed once (new lowH),
+stored, then replayed; IndexedDB never held more than 2 records; no bake errors. NVIDIA dGPU `auto`: `high` from the
+first frame in both builds (no probe), vote 60 fps, GPU 4.35 / 4.38 ms p50. The v3.3 "first load" ran in the same
+browser session after v3.2 (partly warm caches) and is not a cold first visit; the cold Intel first visit stays ≈ 14 s.

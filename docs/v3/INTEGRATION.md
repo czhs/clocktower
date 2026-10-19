@@ -1201,6 +1201,7 @@ the order is WP0 (extraction) → WP0s (layer splits) → WP5b (layout injection
 | WP8 | v3-wp8 (acting as lead) | v3.0 | **Done, committed as "v3 WP8: …" on `v3-game` (2026-10-18; gate in docs/test-results.md "v3 WP8 gate").** URL paths (§11 user decision 2026-10-18): `ui/common/appWorld.ts` (path → world, `/v2` prefix kept on every push), server `/v2` SPA route, per-world finder list, no Town choice (`CreateLobbyRequest.world` from the path); a join link for the other world moves the address bar in place (`syncWorldPath`: `JoiningLobby` from the public summary, `LobbyRoute.useLobbyLayout` on the first lobby:view = authoritative; no reload). v3 loading scene (`ui/common/{v3loading,townLoading,townLoad}`) at boot, joining and now the town build (`GameScreen` loading state in v3 lobbies → `<TownLoading renderer>`; v2 keeps "Lighting the lamps…"). **Candles removed (user 2026-10-18):** `vendor/town.ts removeDaisCandles(town)` (called once in `world/stage.ts` before the warm-up) re-indexes the dais' `dais-solid` / `dais-fx` / `dais-states-solid` meshes without the per-seat candle stakes, flames, ghost wisps + pools, night candle halos and block pennants (the vendor's own `daisdress.js` picking rules, made permanent); stones, warm night tops, cracks, nominee / vote seals, hands, sweep, braziers stay; no light / program change; `__ctCamera.stage().candlesRemoved` reports the counts (v3-vote asserts > 0). **Laptop-first (user 2026-10-18):** `isPhoneLike()` (coarse pointer AND shorter side < 600 px) shows a non-blocking note on the v3 loading scene and the `/` finder; nothing blocked, no phone work. `v3-lobby-choice.spec.ts` deleted (superseded by `v3-paths`). | — |
 | v3.1 | v31-release (acting as lead + qa-deploy) | v3.1 | **Released 2026-10-18: tag `v3.1` on `v3-game`, dev deploy** (gate in docs/test-results.md "v3.1 release gate": typecheck 7/7, tests tsconfig, build, budgets all ok incl. the new `town3dChunkBrKiB` 282.7/300, full `pnpm test` 175 files / 2016 tests, v3 e2e on the host GPU 9 specs all pass with 0 page errors, Classic doors + chat-bubbles 2/2). Merged `v31-fixes` (isReady page error, remount leak, DOM churn), `v31-stage` (town-kit `BatchedMesh` merge, `world/merge.ts`), `v31-cpu` (cpu-tier profile, opt-in toon twins, `flight` rewrite) + the C2 QA fix round (`world/hudKeep.ts` vote frame vs the real HUD, house names hidden in the vote view, softer talking rim). Release note: docs/RELEASE-v3.md "v3.1". | laptop iGPU A/B of the town batch; cheap cpu-tier cut-away (§9.2); deferred C2 findings (docs/progress.md) |
 | v3.2 | v32-release (acting as lead + qa-deploy) | v3.2 | **Released 2026-10-18: tag `v3.2` on `v3-game`** (gate in docs/test-results.md "v3.2 release gate"; deploy status in docs/progress.md "v3 handoff"). Merged `v32-early` (`3e46778`: idle 30 fps `game3d/idle.ts` + `perf.ts` idle gate, Phaser-free v3 join + home prefetch `ui/common/townPrefetch.ts`, build-time brotli `apps/client/build/precompress.mjs` + `apps/server/src/precompressed.ts`); release fix: `ui/common/prefetchAllowed.ts` split so main.tsx imports townPrefetch lazily (entry JS 45.7 → 44.2/45 KiB br); budget keys `v3JoinPhaserChunk`, `town3dShippedBrKiB`. Release note: docs/RELEASE-v3.md "v3.2". | v3.3 prototypes (`v33-tiles` / `v33-bake` / `v33-sprites` / `v33-light` / `v33-gpu`) |
+| v3.3 | v33-release (acting as lead + qa-deploy) | v3.3 | **Released 2026-10-18: tag `v3.3` on `v3-game`** (gate in docs/test-results.md "v3.3 release gate"; deploy status in docs/progress.md "v3 handoff"). Merged `v33-gpu` (`world/merge.ts` three r170 `BatchedMesh` `colorTexture` workaround + per-batch material twins, `vendor/gpuLevers.ts` smart river reflection + off-screen water passes skipped) and `v33-bake` (`build/townBake.ts` pinned createTree replay patch, `vendor/{bakeFormat,townBake}.ts` IndexedDB tree cache, `scripts/v3/bake-town.mjs --verify`); release changes: static merge default OFF (`ct.debug.v3merge=1` = on), GPU-headroom tier promotion (`game3d/promote.ts`, `vendor/gpuTimer.ts`, `Lifecycle.promotionCheck`, frame-loop `uncapped`; AMD APUs start at `low`: `select.ts isIntegratedGpu`), tree cache default ON with an LRU cap of 2 records per vendor build + 2 s read timeout. Not merged: `v33-sprites(-ship)` (v3.4), `v33-tiles`, `v33-light` (parked). Release note: docs/RELEASE-v3.md "v3.3". | v3.4: sprites at low from `v33-sprites-ship`; vendor asks §9.2 (v3.3) |
 
 ### Phase 0: WP0 Foundation (`v3-lead`), checkpoint **C0**
 
@@ -1775,6 +1776,27 @@ additive clocktower hook, vendor `docs/TOWN.md` §13). Game-side wiring per item
   (characters). Also: a `flight: false` build flag for `town/pieces/ground.js` (the `uCamFlight` branches; the game
   compiles them out with a program-text rewrite).
 
+- (2026-10-18, v3.3 fronts; collected by the v3.3 release, docs/perf-v3/{gpu,bake,sprites,tiles,light}.md)
+  - **Tree template data hook** (`world/trees.js`, bake.md §2 / fullstack.md §8 item 1): a `buildGeometry` / template
+    hook so the crown noise fields (≈ 0.7 KB per lump) can be cached or shipped instead of the geometry (38 KB per
+    lump); the game's replay (`build/townBake.ts`) duplicates createTree's tail and pins its source hash meanwhile.
+  - **A cheaper ground piece** (`town/pieces/ground.js`): ≈ 0.8 s desktop, the largest remaining join freeze (≈ 2.4 s
+    at CPU ×4) after the tree cache (bake.md §6).
+  - **Foliage static / animated split + a static / dynamic flag on piece meshes** (tiles.md vendor ask 4, the v3.1
+    stage request above): today the game finds animated parts by watching them move.
+  - **Cheap cut-away for the cpu tier** (repeated from the v3.1 cpu request above: compile out the rim and the loops).
+  - **Single-pass colour + normal (MRT)** (learnings.md §4.1, tiles.md ask 3, light.md item 2): halves the scene
+    passes the iGPU pays for every frame (the laptop is GPU-bound: laptop.md §3).
+  - **Fewer shader programs / parallel compile**: a first visit on an Intel / Mesa laptop spends one 8-9.7 s task
+    linking the town's 55-62 programs (laptop.md §5); fewer variants and a `KHR_parallel_shader_compile`-friendly
+    compile order (or a precompile list the game can drive) would cut the 14 s first frame.
+  - `cutaway.js cutUniforms`: back the `vec4[]` uniforms with one `Float32Array` each (gpu.md §5: three re-flattens
+    them on every material switch); one water post pass for all bodies (gpu.md §3, learnings.md §4.4).
+  - `materials/toon.js` bake hook (`uBakeBand` / `uBakeLit` first-class uniforms) and the pool-edge dither / point-light
+    loop as exported GLSL (tiles.md asks 1-2).
+  - `characters/look.js`: a supported G-buffer output mode and a public pose-sampling API (`Character.sampleDrawings()`)
+    for baked character sprites (sprites.md §4; v3.4 ships the sprites with game-side patches until then).
+
 ### 9.3 Risks
 
 | Risk | Mitigation |
@@ -2147,6 +2169,24 @@ additive clocktower hook, vendor `docs/TOWN.md` §13). Game-side wiring per item
 - 2026-10-18 (v3.1): the town-kit batch (`world/merge.ts`) ships ON by default (`ct.debug.v3merge=0` = off) even though
   render JS rose 0.3-0.7 ms per frame on the host: draw calls are what an integrated GPU pays for; the laptop iGPU A/B
   decides the default for v3.2.
+
+- 2026-10-18 (v3.3 release, `v33-release` acting as lead): **the static kit merge is off on every tier**
+  (`ct.debug.v3merge=1` = on). The real-laptop A/B (docs/perf-v3/laptop.md §4) showed the v3.1 merge costs the Intel
+  iGPU GPU time at both tiers; the v33-gpu fixes (three r170 `BatchedMesh` program re-resolve, material twins) make it
+  CPU-neutral but do not change GPU work, and the desktop gains nothing. The fixed code stays for a later retry.
+- 2026-10-18 (v3.3): **`auto` promotes `low` → `high` only with measured headroom** (`game3d/promote.ts`): GPU timer
+  median of 90 outdoor frames at `low` ≤ 6 ms (≤ 4.5 ms when the renderer string names an integrated GPU) and main
+  thread ≤ 8 ms; without `EXT_disjoint_timer_query_webgl2` an integrated GPU never promotes and others need ≤ 8.5 ms
+  frames in an uncapped window. `Lifecycle` asks `promotionCheck()` once; a late answer after a rebuild is ignored.
+  The promotion itself is still the full rebuild behind "Rebuilding town…" at a safe moment (cost noted in
+  RELEASE-v3.md); AMD "Radeon Graphics" APUs join the integrated list (start at `low`). Sign-off: lead files
+  `TownGame3d.ts`, `select.ts`, `perf.ts`, `vendor/engineHost.ts` (+ new `promote.ts`, `vendor/gpuTimer.ts`), WP1
+  `net/lifecycle.ts`.
+- 2026-10-18 (v3.3): **the IndexedDB tree cache ships ON** (`ct.debug.v3bake=0` = off): byte-identical createTree
+  replay (`scripts/v3/bake-town.mjs --verify` in `townBake.test.ts`), at most 2 records per vendor build (LRU by a
+  `<key>#used` stamp), a 2 s read timeout, writes awaited to transaction completion; any IndexedDB failure (private
+  mode, quota) = the live build. Sign-off: lead `build/{pixel3dImports,townBake}.ts`, WP3 `vendor/town.ts`,
+  `world/stage.ts`.
 
 ## 12. Review log (round 1)
 
