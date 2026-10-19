@@ -20,6 +20,18 @@ record skips avatar rig programs, `isAvatarProgram`) + `b4d9a4d` (`ct.debug.free
 | cold first visit, laptop iGPU, `low`, fresh profile, 1 ST + 2 bots, one sample each (`cold.mjs` = `measure.mjs` copy) | **v3.4 (`7f54da0`): first frame 12.83 s, longest task 8.48 s** (long tasks 10.6 s in 8); **v3.5 (`b4d9a4d`): 9.14 s, 0.72 s** (2.4 s in 10); both `low`, 48 programs |
 | failures on the way (look check) | first cut-away point inside house-9's collision (teleport ignored) → moved; a CSP-blocked injected style → adopted stylesheet; townsfolk drift / wall-clock hand sprites → freeze from boot + overlay hidden; one `pkill` matched its own shell (nothing left behind). Cleanup verified: no tunnels, host processes or tp64 Chrome left (only `~/ct-perf/chrome-9452.log`) |
 
+### v3.5 deploy (same day; the tagged commit `v3.5` = `a722b44`)
+
+| Command (from the orchestrator checkout unless noted) | Result |
+|---|---|
+| `scripts/secret-scan.sh`; `git push origin v3-game`; `git tag -a v3.5 a722b44`; `git push origin v3.5`; `git push origin v3-game:main` | scan clean (404844 lines); `e470247..a722b44`; new tag `v3.5`; main `e470247..a722b44` (fast-forward) |
+| `scripts/deploy-hshi-u1.sh dev a722b44`; `curl 127.0.0.1:3001/internal/version`; dev journal (10 min) | exit 0 in 17 s; version a722b44; 0 error / warn / fail lines |
+| dev smoke on the host GPU, sprites forced on (scratch spec `test-results/smoke/dev-smoke.spec.ts` copied from the v3.4 one into the `v35-release` sandbox, not in git; `flock browser.lock`, nice 19; 6 protocol bots + a 1920×1080 page + a 1440×900 DPR-2 page; waiting room → start → day → seats → nomination → vote frame) | **1/1 pass (26.1 s)**: page errors [] / console errors []; no TownGame / Phaser request; 90 br + 4 identity `/assets` responses per page; 16 / 19 bodies swapped to sprites, vote re-bake 12 sheets (fallbacks 0, max bake unit 10.6 ms); programs 40-43 at ready, 63 after the vote |
+| prod pre-check: `journalctl -u clocktower-prod --since "30 min ago" -o cat` (21:27 PDT) | empty (last line = the v3.4 start at 20:30): no game running |
+| `sudo -n /usr/bin/systemctl start clocktower-backup-prod.service` | exit 0, Result=success |
+| `scripts/deploy-hshi-u1.sh prod a722b44` | **exit 0 in 18 s** (21:28 PDT), 315 previous assets carried |
+| `curl 127.0.0.1:3000/internal/version` (host); public `https://clocktower.chrisshi.com/`, `/v2/`, `/v3-art-demo/`, `/healthz`; units; prod journal | version = a722b44; 200 / 200 / 200 ("Hollowmere demo") / 200; prod, dev, tunnel active; 0 error / warn / fail / crit lines. Rollback: `scripts/deploy-hshi-u1.sh prod 7f54da0` |
+
 ## 2026-10-18 — v3.4 release gate (`v34-release`, branch `v3-game`, the host, sandboxes `v34-release` / `v34-spr`)
 
 Tree = v3.3 (`72aba16`) + merge of `origin/v33-sprites-ship` (`135a111`, clean textual merge) + the v3.4 commits

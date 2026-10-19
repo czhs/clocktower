@@ -1,6 +1,6 @@
 # Clocktower Town v3.5
 
-Status: **released 2026-10-18; dev + prod deploy recorded in docs/test-results.md "v3.5 deploy"** (https://clocktower.chrisshi.com, tag `v3.5` on `v3-game`). Gate and deploy: docs/test-results.md
+Status: ****on prod since 2026-10-18 21:28 PDT** (tag `v3.5` = `a722b44`; deploy: docs/test-results.md "v3.5 deploy")** (https://clocktower.chrisshi.com, tag `v3.5` on `v3-game`). Gate and deploy: docs/test-results.md
 "v3.5 release gate" / "v3.5 deploy". Contract and decision log: docs/v3/INTEGRATION.md §11 "v3.5". Design, program
 inventory and the branch's laptop numbers: docs/perf-v3/shaders.md (branch `v35-shaders`, merged here). **Last release
 before the project pause** (resume from docs/progress.md, top "v3 handoff").
