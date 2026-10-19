@@ -262,7 +262,8 @@ r170; the getter steps aside when the field exists).
 | `CT_AGENT=v33-gpu scripts/remote.sh --no-sync sh .v33/serve.sh dist-harness 3495` (+ `dist-harness-nomin 3496`) + `ssh -N -L 3495… -L 3496…` | served |
 | `CT_AGENT=v33-gpu scripts/remote.sh sh .v33/check.sh <tests>` (client `tsc --noEmit` + vitest) | 1st: 2 fails in `world.merge.test.ts` (material identity, expected: tests updated to the twin); `gpuLevers.test.ts` 1st: 1 fail (program-key order assumption; test fixed); then tsc 0, 21/21 |
 | `… check.sh apps/client/test/game3d` (final tree) | tsc 0, **35 files / 461 tests pass** |
-| local `node measure.mjs` (scratch driver) — A/B runs `ab` (1×, 4×; 3 groups × 5 variants × 4 scenes), `refl`, `rate`, `core` (final numbers, 3 rounds), `swcpu` (SwiftShader) | ok, 0 page errors |
+| local `node measure.mjs` (scratch driver): A/B runs `ab` (1x, 4x; 3 groups x 5 variants x 4 scenes), `refl`, `rate`, `core` (final numbers, 3 rounds), `corelow` (`low`), `cull` (batch view / three / no merge), `swcpu` (SwiftShader) | ok, 0 page errors |
+| laptop run (connect-over-CDP to the shared laptop) | **not run**: queued behind 3 sessions, withdrawn (§7) |
 | `CT_AGENT=v33-gpu-t scripts/remote.sh sh .v33/tc.sh` (`pnpm -r run typecheck`) | exit 0 |
 | local `node flips.mjs` (program re-resolve census), `twin.mjs` (twin vs shared fields) | §2 |
 | pixel A/B (`--pixel`, 4 scenes at high) | first run: twin 98-197 k px (the missing `defines`) → fixed → **0 px** for every lever and for v3.1 vs final |
