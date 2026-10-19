@@ -29,6 +29,7 @@
 .ct-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 6px var(--ok); display: inline-block; }
 .ct-finder-filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
 .ct-finder-filters input { flex: 1 1 180px; }
+.ct-other-town { margin: 10px 0 0; } /* (v3 URL paths) the link to the other world's lobby list */
 .ct-lobby-list { display: flex; flex-direction: column; gap: 8px; }
 .ct-empty { padding: 24px; text-align: center; }
 .ct-lobby { display: flex; gap: 12px; justify-content: space-between; align-items: center; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel-raised); }
@@ -216,6 +217,11 @@ button.ct-ready-on { border-color: #3d6b3a; color: #bfe0b9; }
 
 .ct-mode-badge { font-size: 0.8rem; line-height: 1.2; padding: 1px 6px; border-radius: 3px; border: 1px solid var(--border); color: var(--muted); }
 .ct-mode-badge-auto { color: #c8d4f6; border-color: #4a5590; background: #232a4a66; }
+/* (v3 WP6) the lobby's town: badge in rows / the waiting room, choice in the create dialog */
+.ct-world-badge { font-family: var(--font); font-variant: normal; letter-spacing: 0; vertical-align: middle; white-space: nowrap; }
+.ct-world-badge-v3 { color: #f0d58c; border-color: #a57b36; background: #3a2c1866; }
+/* waiting room: the badge leads the meta line (first, so the line's ellipsis never reaches it) */
+.ct-waiting-meta .ct-world-badge { font-size: 0.72rem; padding: 0 5px; }
 
 .ct-mode-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
 .ct-mode-head h3 { margin-bottom: 6px; }
@@ -303,3 +309,78 @@ button.ct-ready-on { border-color: #3d6b3a; color: #bfe0b9; }
 .ct-chat-filter { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
 /* The lobby's script name in the waiting-room header opens the rulebook on it. */
 button.ct-link.ct-waiting-script { padding: 0; font-size: inherit; color: inherit; text-decoration-style: dotted; }
+
+/* (v3 WP8) The v3 app's loading scene (ui/common/v3loading.tsx; only at `/`, the v2 app keeps .ct-game-loading /
+   LoadingScreen). Colours = the kit's night tokens (v3/assets/ui/kit.json meta.tokens.night: shadow #0C0B16,
+   outline #13121F, inkSunk #1A1828, ink #221F33, inkRaised #2E2A44, iron #4E5170, ironSh #33354B, text #E2DDD3,
+   textDim #A3A3BA, gold #D9B766, goldHi #EED9A2, goldSh #94743E). Sprites: `.ct-v3s` = one frame of the events-night
+   sheet (--fx/--fy/--fw/--fh, placed at --x/--y art px), scaled by the integer --s (pixelated). */
+.ct-v3load {
+  --s: 3; position: absolute; inset: 0; z-index: 1; overflow: hidden; pointer-events: none;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: calc(var(--s) * 6px);
+  color: #e2ddd3; font-style: normal;
+  background:
+    radial-gradient(circle at 13px 17px, #e2ddd3 1px, transparent 1.5px) 0 0 / 97px 71px,
+    radial-gradient(circle at 41px 9px, #a3a3ba 1px, transparent 1.5px) 0 0 / 131px 83px,
+    radial-gradient(circle at 70px 52px, #6e7396 1px, transparent 1.5px) 0 0 / 173px 149px,
+    radial-gradient(ellipse at 50% 34%, #2e2a44 0%, transparent 58%),
+    linear-gradient(#0c0b16, #1a1828 64%, #221f33);
+}
+@media (max-width: 560px), (max-height: 600px) { .ct-v3load { --s: 2; } }
+.ct-v3load-town { position: absolute; left: 0; right: 0; bottom: 0; height: 30%; }
+.ct-v3load-town > i { position: absolute; bottom: 0; background: #1a1828; box-shadow: inset 0 calc(var(--s) * 1px) #33354b; }
+/* the clock-tower behind the dial (the dial reads as its face) and the foreground above every silhouette */
+.ct-v3load > :not(.ct-v3load-town) { position: relative; z-index: 1; }
+.ct-v3load-roof { width: 22%; height: 46%; clip-path: polygon(0 100%, 0 42%, 50% 0, 100% 42%, 100% 100%); }
+.ct-v3load-roof::after { /* two lit windows */
+  content: ''; position: absolute; left: 38%; top: 58%; width: calc(var(--s) * 3px); height: calc(var(--s) * 4px);
+  background: #d9b766; box-shadow: calc(var(--s) * 7px) 0 #94743e;
+}
+.ct-v3load-roof.r1 { left: -4%; height: 38%; }
+.ct-v3load-roof.r2 { left: 17%; height: 54%; background: #13121f; }
+.ct-v3load-roof.r3 { left: 61%; height: 50%; background: #13121f; }
+.ct-v3load-roof.r4 { left: 82%; height: 40%; }
+.ct-v3load-town > .ct-v3load-tower {
+  left: calc(50% - var(--s) * 36px); width: calc(var(--s) * 72px); height: 240%; background: #0c0b16;
+  clip-path: polygon(10% 100%, 10% 14%, 50% 0, 90% 14%, 90% 100%);
+}
+.ct-v3load-clock { position: relative; width: calc(var(--s) * 86px); height: calc(var(--s) * 86px); flex: none; }
+.ct-v3s {
+  position: absolute; left: calc(var(--x) * var(--s) * 1px); top: calc(var(--y) * var(--s) * 1px);
+  width: calc(var(--fw) * var(--s) * 1px); height: calc(var(--fh) * var(--s) * 1px);
+  background: var(--sheet) no-repeat calc(var(--fx) * var(--s) * -1px) calc(var(--fy) * var(--s) * -1px) / calc(256px * var(--s)) calc(274px * var(--s));
+  image-rendering: pixelated;
+}
+.ct-v3load-parade { display: flex; gap: calc(var(--s) * 2px); flex: none; }
+.ct-v3load-walker { display: block; position: relative; overflow: hidden; width: calc(var(--s) * 32px); height: calc(var(--s) * 40px); }
+.ct-v3load-walker > i {
+  position: absolute; left: 0; top: 0; width: calc(var(--s) * 160px); height: 100%;
+  background: var(--cast) no-repeat calc(var(--fx) * var(--s) * -1px) calc(var(--fy) * var(--s) * -1px) / calc(648px * var(--s)) calc(452px * var(--s));
+  image-rendering: pixelated; transform: translateX(calc(var(--s) * -32px)); /* walk1 (reduced motion: stands) */
+}
+.ct-v3load-walker:nth-child(2n) > i { animation-delay: -0.27s; }
+.ct-v3load-caption {
+  display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: min(calc(var(--s) * 110px), 90vw); max-width: 90vw;
+  padding: calc(var(--s) * 4px) calc(var(--s) * 8px); background: #221f33;
+  border: calc(var(--s) * 1px) solid #13121f; box-shadow: inset 0 0 0 calc(var(--s) * 1px) #4e5170, 0 calc(var(--s) * 2px) 0 #0c0b16;
+}
+.ct-v3load-title { font-family: var(--font-display); font-size: 1.5rem; line-height: 1.1; color: #d9b766; letter-spacing: 0.02em; }
+.ct-v3load-label { font-style: italic; color: #e2ddd3; text-align: center; overflow-wrap: anywhere; }
+/* (WP8) laptop-first note on phones: small, non-blocking (finder + loading scene) */
+.ct-phone-note { margin: 0 0 8px; padding: 6px 10px; font-size: 0.85rem; color: var(--muted, #a3a3ba); border-left: 3px solid #d9b766; background: rgba(34, 31, 51, 0.6); }
+.ct-v3load .ct-v3load-note { max-width: 90vw; margin: 0; text-align: center; color: #a3a3ba; }
+.ct-v3load-detail { font-size: 0.85rem; color: #a3a3ba; text-align: center; overflow-wrap: anywhere; }
+.ct-v3load-bar {
+  display: block; width: 100%; height: calc(var(--s) * 4px); margin-top: calc(var(--s) * 2px);
+  background: #1a1828; box-shadow: 0 0 0 calc(var(--s) * 1px) #13121f, inset 0 calc(var(--s) * 1px) #33354b;
+}
+.ct-v3load-bar > i { display: block; height: 100%; background: linear-gradient(#eed9a2 0 25%, #d9b766 25% 75%, #94743e 75%); }
+@media (prefers-reduced-motion: no-preference) {
+  .ct-v3load-walker > i { animation: ct-v3walk 0.54s steps(4) infinite; }
+  .ct-v3load-candle { animation: ct-v3flicker 0.4s steps(3) infinite; }
+  .ct-v3load-next { animation: ct-v3pulse 1.2s steps(2) infinite; }
+  .ct-v3load-bar > i { transition: width 0.25s steps(4); }
+}
+@keyframes ct-v3walk { to { transform: translateX(calc(var(--s) * -160px)); } }
+@keyframes ct-v3flicker { to { background-position-x: calc((var(--fx) + 24) * var(--s) * -1px); } }
+@keyframes ct-v3pulse { 50% { opacity: 0.45; } }

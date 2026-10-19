@@ -1,9 +1,13 @@
 import type { ComponentChildren } from 'preact';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { PIN_COLORS, type ChatFilterMode, type LobbyRoomView, type PinColor } from '@ct/protocol';
+import { PIN_COLORS, type ChatFilterMode, type LobbyRoomView, type PinColor, type WorldId } from '@ct/protocol';
 import { getAmbientVolume, getSfxVolume, setAmbientVolume, setSfxVolume } from '../../game/audio';
 import type { FxQualityPref } from '../../game/fx/quality';
 import type { TalkOutlineMode } from '../../game/fx/talkingPref';
+// (v3 WP6) the Graphics (renderer) setting: three-free decision table + in-place swap signal
+import { chooseRendererHere, clearAutoFallback, notifyGraphicsChange, type GraphicsPref } from '../../game3d/select';
+import { currentRender, graphicsStatus } from './graphicsStatus';
+import { resetBootGuard } from '../../game3d/bootGuard';
 import { PIN_HEX } from '../../game/social/logic';
 import { socialMode } from '../../game/social/state';
 import type { RoomConnection } from '../../net/room';
@@ -13,7 +17,7 @@ import { isPttMouseButton, mouseCode, pttLabel } from '../../voice/ptt';
 import type { VoiceClient, VoiceClientState } from '../../voice/VoiceClient';
 import { DeviceSettings } from '../voice/DeviceSettings';
 import { ReportDialog } from '../lobby/moderation';
-import { goTo } from '../lobby/finder';
+import { goTo, worldOfLobby } from '../lobby/finder';
 import { openHelp } from './HowToPlay';
 import {
   migratePrefs,
@@ -198,6 +202,7 @@ export function SettingsDialog({ conn, start, onClose, onLeave, leaveLabel }: Se
     if (k === 'sfxVolume') return setSfxVolume(v as number);
     writePref(safeStorage(), k, v);
     if (k === 'pinColor') socialMode.set((m) => ({ ...m, color: v as PinColor }));
+    if (k === 'graphics') notifyGraphicsChange(); // (v3) a mounted town swaps renderer in place
   };
 
   const resetAll = () => {
@@ -215,6 +220,7 @@ export function SettingsDialog({ conn, start, onClose, onLeave, leaveLabel }: Se
     setPrefs(d);
     setConfirmReset(false);
     setResetDone(true);
+    notifyGraphicsChange(); // (v3) back to 'auto'
   };
 
   const ctx: Ctx = { prefs, set, conn, onLeave, close: onClose, binding, reporting };
@@ -430,9 +436,62 @@ function osReducedMotion(): boolean {
   }
 }
 
+// (v3 WP6) The renderer setting. Row 1 of game3d/select.ts: a v2 lobby always draws the classic town.
+const GRAPHICS_OPTIONS = [
+  ['auto', 'Auto'],
+  ['v3', 'v3 3D'],
+  ['classic', 'Classic 2D'],
+] as const;
+
+function RendererRow({ ctx }: { ctx: Ctx }) {
+  const lobby = useStore(ctx.conn?.lobbyView ?? storedLobby);
+  const world: WorldId | null = lobby ? worldOfLobby(lobby) : null;
+  const now = useStore(currentRender); // what the mounted town really draws (a runtime fallback shows here)
+  const [, bump] = useState(0);
+  // re-read on every render: the pref, the memo and the boot guard can change from here or from the town
+  const choice = world ? chooseRendererHere(world) : null;
+  const st = graphicsStatus(world, choice, now);
+  const act = () => {
+    if (st.action === 'auto-fallback') clearAutoFallback();
+    else if (st.action === 'boot-guard') resetBootGuard();
+    // ('retry': nothing to clear) GameScreen re-evaluates chooseRenderer and swaps / remounts in place
+    notifyGraphicsChange();
+    bump((n) => n + 1);
+  };
+  return (
+    <Row
+      label="Town graphics"
+      help={
+        <>
+          <span role="status" aria-live="polite" class="ct-set-graphics-status">
+            {st.text}
+          </span>{' '}
+          {st.action && (
+            <button type="button" class="ct-link" onClick={act}>
+              {st.action === 'boot-guard' ? 'Try v3' : 'Try v3 again'}
+            </button>
+          )}
+          {world === 'v3' && !st.action && <span class="ct-small"> Auto picks 3D where it runs well.</span>}
+        </>
+      }
+    >
+      <Seg<GraphicsPref>
+        label="Graphics"
+        value={ctx.prefs.graphics}
+        options={GRAPHICS_OPTIONS}
+        onChange={(x) => {
+          ctx.set('graphics', x);
+          bump((n) => n + 1);
+        }}
+      />
+    </Row>
+  );
+}
+
 function GraphicsSection({ ctx }: { ctx: Ctx }) {
   return (
     <>
+      <RendererRow ctx={ctx} />
       <Row label="Quality" help="Lower it if the town feels sluggish. Auto starts high and steps down by itself.">
         <Seg<FxQualityPref> label="Graphics quality" value={ctx.prefs.fxQuality} options={[['auto', 'Auto'], ['low', 'Low'], ['medium', 'Medium'], ['high', 'High']] as const} onChange={(x) => ctx.set('fxQuality', x)} />
       </Row>

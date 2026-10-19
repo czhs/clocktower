@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { CHAT_MAX, type AccountView, type AnnouncementView, type ChatMessage, type LocationId, type MemberRole } from '@ct/protocol';
-import { townLayout } from '@ct/assets';
+import { currentLayout } from '../../net/layout'; // (v3) the lobby's layout
 import { shallowEqual, useStore, useStoreSelector } from '../../net/store';
 import { localPlayer } from '../../net/localPlayer';
 import type { RoomConnection } from '../../net/room';
@@ -49,9 +49,9 @@ const SCOPE_LABEL: Record<ChatMessage['scope'], string> = {
   system: 'Town',
 };
 
-const BUILDINGS = new Map(townLayout.buildings.map((b) => [b.id, b]));
-const buildingName = (id: string) => BUILDINGS.get(id)?.name ?? null;
-const houseIndexOf = (id: string) => BUILDINGS.get(id)?.houseIndex ?? null;
+const buildingOf = (id: string) => currentLayout().buildings.find((b) => b.id === id);
+const buildingName = (id: string) => buildingOf(id)?.name ?? null;
+const houseIndexOf = (id: string) => buildingOf(id)?.houseIndex ?? null;
 
 const narrow = () => typeof matchMedia === 'function' && matchMedia('(max-width: 640px)').matches;
 const coarse = () => typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;

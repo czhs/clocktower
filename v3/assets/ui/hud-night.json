@@ -1,0 +1,1907 @@
+{
+ "image": "hud-night.png",
+ "width": 512,
+ "height": 861,
+ "frames": {
+  "ctc-dial_discussion_0": {
+   "x": 1,
+   "y": 1,
+   "w": 15,
+   "h": 15
+  },
+  "ctc-dial_discussion_1": {
+   "x": 17,
+   "y": 1,
+   "w": 15,
+   "h": 15
+  },
+  "ctc-dial_discussion_2": {
+   "x": 33,
+   "y": 1,
+   "w": 15,
+   "h": 15
+  },
+  "ctc-dial_discussion_3": {
+   "x": 49,
+   "y": 1,
+   "w": 15,
+   "h": 15
+  },
+  "ctc-dial_discussion_4": {
+   "x": 65,
+   "y": 1,
+   "w": 15,
+   "h": 15
+  },
+  "ctc-dial_discussion_5": {
+   "x": 81,
+   "y": 1,
+   "w": 15,
+   "h": 15
+  },
+  "ctc-dial_discussion_6": {
+   "x": 97,
+   "y": 1,
+   "w": 15,
+   "h": 15
+  },
+  "ctc-dial_discussion_7": {
+   "x": 113,
+   "y": 1,
+   "w": 15,
+   "h": 15
+  },
+  "ctc-dial_discussion_8": {
+   "x": 129,
+   "y": 1,
+   "w": 15,
+   "h": 15
+  },
+  "ctc-dial_nominations_0": {
+   "x": 145,
+   "y": 1,
+   "w": 15,
+   "h": 15
+  },
+  "ctc-dial_nominations_1": {
+   "x": 161,
+   "y": 1,
+   "w": 15,
+   "h": 15
+  },
+  "ctc-dial_nominations_2": {
+   "x": 177,
+   "y": 1,
+   "w": 15,
+   "h": 15
+  },
+  "ctc-dial_nominations_3": {
+   "x": 193,
+   "y": 1,
+   "w": 15,
+   "h": 15
+  },
+  "ctc-dial_nominations_4": {
+   "x": 209,
+   "y": 1,
+   "w": 15,
+   "h": 15
+  },
+  "ctc-dial_nominations_5": {
+   "x": 225,
+   "y": 1,
+   "w": 15,
+   "h": 15
+  },
+  "ctc-dial_nominations_6": {
+   "x": 241,
+   "y": 1,
+   "w": 15,
+   "h": 15
+  },
+  "ctc-dial_nominations_7": {
+   "x": 257,
+   "y": 1,
+   "w": 15,
+   "h": 15
+  },
+  "ctc-dial_nominations_8": {
+   "x": 273,
+   "y": 1,
+   "w": 15,
+   "h": 15
+  },
+  "ctc-dial_bedtime_0": {
+   "x": 289,
+   "y": 1,
+   "w": 15,
+   "h": 15
+  },
+  "ctc-dial_bedtime_1": {
+   "x": 305,
+   "y": 1,
+   "w": 15,
+   "h": 15
+  },
+  "ctc-dial_bedtime_2": {
+   "x": 321,
+   "y": 1,
+   "w": 15,
+   "h": 15
+  },
+  "ctc-dial_bedtime_3": {
+   "x": 337,
+   "y": 1,
+   "w": 15,
+   "h": 15
+  },
+  "ctc-dial_bedtime_4": {
+   "x": 353,
+   "y": 1,
+   "w": 15,
+   "h": 15
+  },
+  "ctc-dial_bedtime_5": {
+   "x": 369,
+   "y": 1,
+   "w": 15,
+   "h": 15
+  },
+  "ctc-dial_bedtime_6": {
+   "x": 385,
+   "y": 1,
+   "w": 15,
+   "h": 15
+  },
+  "ctc-dial_bedtime_7": {
+   "x": 401,
+   "y": 1,
+   "w": 15,
+   "h": 15
+  },
+  "ctc-dial_bedtime_8": {
+   "x": 417,
+   "y": 1,
+   "w": 15,
+   "h": 15
+  },
+  "ctc-dial_paused_discussion_0": {
+   "x": 433,
+   "y": 1,
+   "w": 15,
+   "h": 15
+  },
+  "ctc-dial_paused_discussion_1": {
+   "x": 449,
+   "y": 1,
+   "w": 15,
+   "h": 15
+  },
+  "ctc-dial_paused_discussion_2": {
+   "x": 465,
+   "y": 1,
+   "w": 15,
+   "h": 15
+  },
+  "ctc-dial_paused_discussion_3": {
+   "x": 481,
+   "y": 1,
+   "w": 15,
+   "h": 15
+  },
+  "ctc-dial_paused_discussion_4": {
+   "x": 1,
+   "y": 17,
+   "w": 15,
+   "h": 15
+  },
+  "ctc-dial_paused_discussion_5": {
+   "x": 17,
+   "y": 17,
+   "w": 15,
+   "h": 15
+  },
+  "ctc-dial_paused_discussion_6": {
+   "x": 33,
+   "y": 17,
+   "w": 15,
+   "h": 15
+  },
+  "ctc-dial_paused_discussion_7": {
+   "x": 49,
+   "y": 17,
+   "w": 15,
+   "h": 15
+  },
+  "ctc-dial_paused_discussion_8": {
+   "x": 65,
+   "y": 17,
+   "w": 15,
+   "h": 15
+  },
+  "ctc-dial_paused_nominations_0": {
+   "x": 81,
+   "y": 17,
+   "w": 15,
+   "h": 15
+  },
+  "ctc-dial_paused_nominations_1": {
+   "x": 97,
+   "y": 17,
+   "w": 15,
+   "h": 15
+  },
+  "ctc-dial_paused_nominations_2": {
+   "x": 113,
+   "y": 17,
+   "w": 15,
+   "h": 15
+  },
+  "ctc-dial_paused_nominations_3": {
+   "x": 129,
+   "y": 17,
+   "w": 15,
+   "h": 15
+  },
+  "ctc-dial_paused_nominations_4": {
+   "x": 145,
+   "y": 17,
+   "w": 15,
+   "h": 15
+  },
+  "ctc-dial_paused_nominations_5": {
+   "x": 161,
+   "y": 17,
+   "w": 15,
+   "h": 15
+  },
+  "ctc-dial_paused_nominations_6": {
+   "x": 177,
+   "y": 17,
+   "w": 15,
+   "h": 15
+  },
+  "ctc-dial_paused_nominations_7": {
+   "x": 193,
+   "y": 17,
+   "w": 15,
+   "h": 15
+  },
+  "ctc-dial_paused_nominations_8": {
+   "x": 209,
+   "y": 17,
+   "w": 15,
+   "h": 15
+  },
+  "ctc-dial_paused_bedtime_0": {
+   "x": 225,
+   "y": 17,
+   "w": 15,
+   "h": 15
+  },
+  "ctc-dial_paused_bedtime_1": {
+   "x": 241,
+   "y": 17,
+   "w": 15,
+   "h": 15
+  },
+  "ctc-dial_paused_bedtime_2": {
+   "x": 257,
+   "y": 17,
+   "w": 15,
+   "h": 15
+  },
+  "ctc-dial_paused_bedtime_3": {
+   "x": 273,
+   "y": 17,
+   "w": 15,
+   "h": 15
+  },
+  "ctc-dial_paused_bedtime_4": {
+   "x": 289,
+   "y": 17,
+   "w": 15,
+   "h": 15
+  },
+  "ctc-dial_paused_bedtime_5": {
+   "x": 305,
+   "y": 17,
+   "w": 15,
+   "h": 15
+  },
+  "ctc-dial_paused_bedtime_6": {
+   "x": 321,
+   "y": 17,
+   "w": 15,
+   "h": 15
+  },
+  "ctc-dial_paused_bedtime_7": {
+   "x": 337,
+   "y": 17,
+   "w": 15,
+   "h": 15
+  },
+  "ctc-dial_paused_bedtime_8": {
+   "x": 353,
+   "y": 17,
+   "w": 15,
+   "h": 15
+  },
+  "ctc-chip_discussion": {
+   "x": 369,
+   "y": 17,
+   "w": 24,
+   "h": 15
+  },
+  "ctc-chip_nominations": {
+   "x": 394,
+   "y": 17,
+   "w": 24,
+   "h": 15
+  },
+  "ctc-chip_bedtime": {
+   "x": 419,
+   "y": 17,
+   "w": 24,
+   "h": 15
+  },
+  "ctc-chip_paused": {
+   "x": 444,
+   "y": 17,
+   "w": 24,
+   "h": 15
+  },
+  "ctc-chip_urgent": {
+   "x": 469,
+   "y": 17,
+   "w": 24,
+   "h": 15
+  },
+  "ctc-urgent_glow_1": {
+   "x": 1,
+   "y": 33,
+   "w": 28,
+   "h": 19
+  },
+  "ctc-urgent_glow_2": {
+   "x": 30,
+   "y": 33,
+   "w": 28,
+   "h": 19
+  },
+  "ctc-plus": {
+   "x": 59,
+   "y": 33,
+   "w": 33,
+   "h": 11
+  },
+  "ctc-plus_on": {
+   "x": 93,
+   "y": 33,
+   "w": 33,
+   "h": 11
+  },
+  "ctc-plus_disabled": {
+   "x": 127,
+   "y": 33,
+   "w": 33,
+   "h": 11
+  },
+  "ctc-chip_sample_discussion": {
+   "x": 161,
+   "y": 33,
+   "w": 167,
+   "h": 15
+  },
+  "ctc-chip_sample_nominations": {
+   "x": 329,
+   "y": 33,
+   "w": 133,
+   "h": 15
+  },
+  "ctc-chip_sample_urgent": {
+   "x": 1,
+   "y": 53,
+   "w": 139,
+   "h": 19
+  },
+  "ctc-chip_sample_bedtime": {
+   "x": 141,
+   "y": 53,
+   "w": 84,
+   "h": 15
+  },
+  "ctc-chip_sample_paused": {
+   "x": 226,
+   "y": 53,
+   "w": 76,
+   "h": 15
+  },
+  "ctc-chip_sample_due": {
+   "x": 303,
+   "y": 53,
+   "w": 94,
+   "h": 15
+  },
+  "ctc-tray_sample": {
+   "x": 1,
+   "y": 73,
+   "w": 152,
+   "h": 22
+  },
+  "ctc-vote_sample": {
+   "x": 154,
+   "y": 73,
+   "w": 140,
+   "h": 41
+  },
+  "ctc-vote_sample_yes": {
+   "x": 295,
+   "y": 73,
+   "w": 140,
+   "h": 41
+  },
+  "ctc-vote_sample_passing": {
+   "x": 1,
+   "y": 115,
+   "w": 140,
+   "h": 41
+  },
+  "ctc-vote_sample_no": {
+   "x": 142,
+   "y": 115,
+   "w": 140,
+   "h": 41
+  },
+  "ctc-vote_sample_closed": {
+   "x": 283,
+   "y": 115,
+   "w": 140,
+   "h": 41
+  },
+  "ctc-result_ok": {
+   "x": 424,
+   "y": 115,
+   "w": 75,
+   "h": 16
+  },
+  "ctc-result_no": {
+   "x": 1,
+   "y": 157,
+   "w": 69,
+   "h": 16
+  },
+  "ctc-result_asking": {
+   "x": 71,
+   "y": 157,
+   "w": 129,
+   "h": 16
+  },
+  "ctc-note": {
+   "x": 201,
+   "y": 157,
+   "w": 144,
+   "h": 16
+  },
+  "ctc-stctl_sample": {
+   "x": 346,
+   "y": 157,
+   "w": 160,
+   "h": 59
+  },
+  "ctc-stctl_sample_paused": {
+   "x": 1,
+   "y": 217,
+   "w": 160,
+   "h": 59
+  },
+  "ctc-stctl_sample_unset": {
+   "x": 162,
+   "y": 217,
+   "w": 160,
+   "h": 59
+  },
+  "cth-card-closed_sample": {
+   "x": 323,
+   "y": 217,
+   "w": 135,
+   "h": 13
+  },
+  "cth-card-closed_sample_evil": {
+   "x": 1,
+   "y": 277,
+   "w": 86,
+   "h": 13
+  },
+  "cth-card-closed_sample_dead": {
+   "x": 88,
+   "y": 277,
+   "w": 166,
+   "h": 13
+  },
+  "cth-card-closed_sample_long": {
+   "x": 255,
+   "y": 277,
+   "w": 171,
+   "h": 13
+  },
+  "cth-card-head_9s": {
+   "x": 427,
+   "y": 277,
+   "w": 24,
+   "h": 13
+  },
+  "cth-card-head_9s_hover": {
+   "x": 452,
+   "y": 277,
+   "w": 24,
+   "h": 13
+  },
+  "cth-badge_1": {
+   "x": 477,
+   "y": 277,
+   "w": 9,
+   "h": 9
+  },
+  "cth-badge_2": {
+   "x": 487,
+   "y": 277,
+   "w": 9,
+   "h": 9
+  },
+  "cth-badge_3": {
+   "x": 497,
+   "y": 277,
+   "w": 9,
+   "h": 9
+  },
+  "cth-badge_4": {
+   "x": 1,
+   "y": 291,
+   "w": 9,
+   "h": 9
+  },
+  "cth-badge_5": {
+   "x": 11,
+   "y": 291,
+   "w": 9,
+   "h": 9
+  },
+  "cth-badge_6": {
+   "x": 21,
+   "y": 291,
+   "w": 9,
+   "h": 9
+  },
+  "cth-badge_7": {
+   "x": 31,
+   "y": 291,
+   "w": 9,
+   "h": 9
+  },
+  "cth-badge_8": {
+   "x": 41,
+   "y": 291,
+   "w": 9,
+   "h": 9
+  },
+  "cth-badge_9": {
+   "x": 51,
+   "y": 291,
+   "w": 9,
+   "h": 9
+  },
+  "cth-house_sample": {
+   "x": 61,
+   "y": 291,
+   "w": 66,
+   "h": 9
+  },
+  "cth-house_bare_sample": {
+   "x": 128,
+   "y": 291,
+   "w": 62,
+   "h": 7
+  },
+  "cth-chip_ok_sample": {
+   "x": 191,
+   "y": 291,
+   "w": 28,
+   "h": 11
+  },
+  "cth-chip_ok_9s": {
+   "x": 220,
+   "y": 291,
+   "w": 16,
+   "h": 11
+  },
+  "cth-chip_sample": {
+   "x": 237,
+   "y": 291,
+   "w": 35,
+   "h": 11
+  },
+  "cth-chip_9s": {
+   "x": 273,
+   "y": 291,
+   "w": 16,
+   "h": 11
+  },
+  "cth-chip_dead_sample": {
+   "x": 290,
+   "y": 291,
+   "w": 29,
+   "h": 11
+  },
+  "cth-chip_dead_9s": {
+   "x": 320,
+   "y": 291,
+   "w": 16,
+   "h": 11
+  },
+  "cth-rolecard_sample": {
+   "x": 1,
+   "y": 303,
+   "w": 178,
+   "h": 157
+  },
+  "cth-rolecard_sample_evil": {
+   "x": 180,
+   "y": 303,
+   "w": 178,
+   "h": 122
+  },
+  "ct-tb-glyph_notebook": {
+   "x": 359,
+   "y": 303,
+   "w": 9,
+   "h": 9
+  },
+  "ct-tb-glyph_settings": {
+   "x": 369,
+   "y": 303,
+   "w": 9,
+   "h": 9
+  },
+  "ct-tb-glyph_help": {
+   "x": 379,
+   "y": 303,
+   "w": 7,
+   "h": 9
+  },
+  "ct-tb-glyph_leave": {
+   "x": 387,
+   "y": 303,
+   "w": 7,
+   "h": 7
+  },
+  "ct-tb-glyph_abort": {
+   "x": 395,
+   "y": 303,
+   "w": 7,
+   "h": 7
+  },
+  "ct-tb-btn_9s": {
+   "x": 403,
+   "y": 303,
+   "w": 15,
+   "h": 15
+  },
+  "ct-tb-btn_9s_hover": {
+   "x": 419,
+   "y": 303,
+   "w": 15,
+   "h": 15
+  },
+  "ct-tb-btn_9s_pressed": {
+   "x": 435,
+   "y": 303,
+   "w": 15,
+   "h": 15
+  },
+  "ct-toolbar_sample": {
+   "x": 1,
+   "y": 461,
+   "w": 94,
+   "h": 15
+  },
+  "ct-toolbar_sample_host": {
+   "x": 96,
+   "y": 461,
+   "w": 161,
+   "h": 15
+  },
+  "cth-phase-icon_sun": {
+   "x": 258,
+   "y": 461,
+   "w": 7,
+   "h": 7
+  },
+  "cth-phase-icon_moon": {
+   "x": 266,
+   "y": 461,
+   "w": 7,
+   "h": 7
+  },
+  "cth-phase-icon_bell": {
+   "x": 274,
+   "y": 461,
+   "w": 7,
+   "h": 7
+  },
+  "cth-phase-icon_dawn": {
+   "x": 282,
+   "y": 461,
+   "w": 7,
+   "h": 7
+  },
+  "cth-phase-icon_ring": {
+   "x": 290,
+   "y": 461,
+   "w": 7,
+   "h": 7
+  },
+  "cth-phase-icon_star": {
+   "x": 298,
+   "y": 461,
+   "w": 7,
+   "h": 7
+  },
+  "cth-phase-icon_candle": {
+   "x": 306,
+   "y": 461,
+   "w": 5,
+   "h": 7
+  },
+  "cth-phase_sample_day": {
+   "x": 312,
+   "y": 461,
+   "w": 42,
+   "h": 11
+  },
+  "cth-phase_sample_day_gathered": {
+   "x": 355,
+   "y": 461,
+   "w": 42,
+   "h": 11
+  },
+  "cth-phase_sample_first_night": {
+   "x": 398,
+   "y": 461,
+   "w": 66,
+   "h": 11
+  },
+  "cth-phase_sample_night": {
+   "x": 465,
+   "y": 461,
+   "w": 43,
+   "h": 11
+  },
+  "cth-phase_sample_bedtime": {
+   "x": 1,
+   "y": 477,
+   "w": 60,
+   "h": 11
+  },
+  "cth-phase_sample_dawn": {
+   "x": 62,
+   "y": 477,
+   "w": 42,
+   "h": 11
+  },
+  "cth-phase_sample_finished": {
+   "x": 105,
+   "y": 477,
+   "w": 59,
+   "h": 11
+  },
+  "cth-phase_sample_setup": {
+   "x": 165,
+   "y": 477,
+   "w": 62,
+   "h": 11
+  },
+  "cth-phase_sample_countdown": {
+   "x": 228,
+   "y": 477,
+   "w": 79,
+   "h": 11
+  },
+  "cth-phase_sample_visit": {
+   "x": 308,
+   "y": 477,
+   "w": 51,
+   "h": 11
+  },
+  "cth-toast_info_9s": {
+   "x": 360,
+   "y": 477,
+   "w": 24,
+   "h": 15
+  },
+  "cth-toast_info_sample": {
+   "x": 1,
+   "y": 493,
+   "w": 170,
+   "h": 15
+  },
+  "cth-toast_death_9s": {
+   "x": 172,
+   "y": 493,
+   "w": 24,
+   "h": 15
+  },
+  "cth-toast_death_sample": {
+   "x": 197,
+   "y": 493,
+   "w": 170,
+   "h": 15
+  },
+  "cth-toast_execution_9s": {
+   "x": 368,
+   "y": 493,
+   "w": 24,
+   "h": 15
+  },
+  "cth-toast_execution_sample": {
+   "x": 1,
+   "y": 509,
+   "w": 170,
+   "h": 15
+  },
+  "cth-toast_error_9s": {
+   "x": 172,
+   "y": 509,
+   "w": 24,
+   "h": 15
+  },
+  "cth-toast_error_sample": {
+   "x": 197,
+   "y": 509,
+   "w": 170,
+   "h": 24
+  },
+  "cth-toast_game_over_9s": {
+   "x": 368,
+   "y": 509,
+   "w": 24,
+   "h": 15
+  },
+  "cth-toast_game_over_sample": {
+   "x": 1,
+   "y": 534,
+   "w": 170,
+   "h": 15
+  },
+  "cth-toast_vote_9s": {
+   "x": 172,
+   "y": 534,
+   "w": 24,
+   "h": 15
+  },
+  "cth-toast_vote_sample": {
+   "x": 197,
+   "y": 534,
+   "w": 170,
+   "h": 24
+  },
+  "cth-toast_vote_sample_down": {
+   "x": 1,
+   "y": 559,
+   "w": 170,
+   "h": 24
+  },
+  "cth-block_9s": {
+   "x": 172,
+   "y": 559,
+   "w": 24,
+   "h": 15
+  },
+  "cth-block_sample": {
+   "x": 197,
+   "y": 559,
+   "w": 120,
+   "h": 15
+  },
+  "cth-toast-x": {
+   "x": 318,
+   "y": 559,
+   "w": 5,
+   "h": 5
+  },
+  "cth-hint_default_9s": {
+   "x": 324,
+   "y": 559,
+   "w": 16,
+   "h": 13
+  },
+  "cth-hint_default_sample": {
+   "x": 341,
+   "y": 559,
+   "w": 167,
+   "h": 13
+  },
+  "cth-hint_ok_9s": {
+   "x": 1,
+   "y": 584,
+   "w": 16,
+   "h": 13
+  },
+  "cth-hint_ok_sample": {
+   "x": 18,
+   "y": 584,
+   "w": 167,
+   "h": 13
+  },
+  "cth-hint_auto_9s": {
+   "x": 186,
+   "y": 584,
+   "w": 16,
+   "h": 13
+  },
+  "cth-hint_auto_sample": {
+   "x": 203,
+   "y": 584,
+   "w": 167,
+   "h": 13
+  },
+  "cth-hint_frozen_9s": {
+   "x": 371,
+   "y": 584,
+   "w": 16,
+   "h": 13
+  },
+  "cth-hint_frozen_sample": {
+   "x": 1,
+   "y": 598,
+   "w": 167,
+   "h": 13
+  },
+  "cth-hint_private_9s": {
+   "x": 169,
+   "y": 598,
+   "w": 16,
+   "h": 13
+  },
+  "cth-hint_private_sample": {
+   "x": 186,
+   "y": 598,
+   "w": 167,
+   "h": 13
+  },
+  "cth-hint_vote_9s": {
+   "x": 354,
+   "y": 598,
+   "w": 16,
+   "h": 13
+  },
+  "cth-hint_vote_sample": {
+   "x": 1,
+   "y": 612,
+   "w": 167,
+   "h": 13
+  },
+  "cth-hint_night_9s": {
+   "x": 169,
+   "y": 612,
+   "w": 16,
+   "h": 13
+  },
+  "cth-hint_night_sample": {
+   "x": 186,
+   "y": 612,
+   "w": 167,
+   "h": 13
+  },
+  "cth-hint_dead_9s": {
+   "x": 354,
+   "y": 612,
+   "w": 16,
+   "h": 13
+  },
+  "cth-hint_dead_sample": {
+   "x": 1,
+   "y": 626,
+   "w": 167,
+   "h": 13
+  },
+  "cth-hint_pill_default_9s": {
+   "x": 169,
+   "y": 626,
+   "w": 16,
+   "h": 11
+  },
+  "cth-hint_pill_ok_9s": {
+   "x": 186,
+   "y": 626,
+   "w": 16,
+   "h": 11
+  },
+  "cth-hint_pill_auto_9s": {
+   "x": 203,
+   "y": 626,
+   "w": 16,
+   "h": 11
+  },
+  "cth-hint_pill_frozen_9s": {
+   "x": 220,
+   "y": 626,
+   "w": 16,
+   "h": 11
+  },
+  "cth-hint_pill_private_9s": {
+   "x": 237,
+   "y": 626,
+   "w": 16,
+   "h": 11
+  },
+  "cth-hint_pill_vote_9s": {
+   "x": 254,
+   "y": 626,
+   "w": 16,
+   "h": 11
+  },
+  "cth-hint_pill_night_9s": {
+   "x": 271,
+   "y": 626,
+   "w": 16,
+   "h": 11
+  },
+  "cth-hint_pill_dead_9s": {
+   "x": 288,
+   "y": 626,
+   "w": 16,
+   "h": 11
+  },
+  "cth-hint_pill_seat": {
+   "x": 305,
+   "y": 626,
+   "w": 44,
+   "h": 11
+  },
+  "cth-hint_pill_walk-home": {
+   "x": 350,
+   "y": 626,
+   "w": 77,
+   "h": 11
+  },
+  "cth-hint_pill_not-your-house": {
+   "x": 428,
+   "y": 626,
+   "w": 81,
+   "h": 11
+  },
+  "cth-hint_pill_vote": {
+   "x": 1,
+   "y": 640,
+   "w": 46,
+   "h": 11
+  },
+  "cth-hint_pill_paused": {
+   "x": 48,
+   "y": 640,
+   "w": 47,
+   "h": 11
+  },
+  "cth-hint_pill_private": {
+   "x": 96,
+   "y": 640,
+   "w": 64,
+   "h": 11
+  },
+  "cth-hint_pill_hand-up": {
+   "x": 161,
+   "y": 640,
+   "w": 50,
+   "h": 11
+  },
+  "cth-hint_mid_sample": {
+   "x": 212,
+   "y": 640,
+   "w": 106,
+   "h": 12
+  },
+  "ct-game-prompt_9s": {
+   "x": 319,
+   "y": 640,
+   "w": 16,
+   "h": 16
+  },
+  "ct-game-prompt_sample": {
+   "x": 336,
+   "y": 640,
+   "w": 96,
+   "h": 16
+  },
+  "ct-game-prompt_key_sample": {
+   "x": 1,
+   "y": 657,
+   "w": 109,
+   "h": 16
+  },
+  "ct-game-prompt_locked_sample": {
+   "x": 111,
+   "y": 657,
+   "w": 186,
+   "h": 16
+  },
+  "ct-hint_sample": {
+   "x": 1,
+   "y": 674,
+   "w": 269,
+   "h": 29
+  },
+  "ct-hint_sample_touch": {
+   "x": 1,
+   "y": 704,
+   "w": 260,
+   "h": 18
+  },
+  "kbd_w": {
+   "x": 262,
+   "y": 704,
+   "w": 11,
+   "h": 9
+  },
+  "kbd_a": {
+   "x": 274,
+   "y": 704,
+   "w": 9,
+   "h": 9
+  },
+  "kbd_s": {
+   "x": 284,
+   "y": 704,
+   "w": 9,
+   "h": 9
+  },
+  "kbd_d": {
+   "x": 294,
+   "y": 704,
+   "w": 10,
+   "h": 9
+  },
+  "kbd_e": {
+   "x": 305,
+   "y": 704,
+   "w": 9,
+   "h": 9
+  },
+  "kbd_enter": {
+   "x": 315,
+   "y": 704,
+   "w": 26,
+   "h": 9
+  },
+  "kbd_help": {
+   "x": 342,
+   "y": 704,
+   "w": 9,
+   "h": 9
+  },
+  "ct-countdown_sample": {
+   "x": 352,
+   "y": 704,
+   "w": 15,
+   "h": 5
+  },
+  "ct-countdown-low_0": {
+   "x": 368,
+   "y": 704,
+   "w": 15,
+   "h": 5
+  },
+  "ct-countdown-low_1": {
+   "x": 384,
+   "y": 704,
+   "w": 15,
+   "h": 5
+  },
+  "ct-countdown_display": {
+   "x": 400,
+   "y": 704,
+   "w": 23,
+   "h": 7
+  },
+  "ctv-dot-ok": {
+   "x": 424,
+   "y": 704,
+   "w": 9,
+   "h": 9
+  },
+  "ctv-dot-live": {
+   "x": 434,
+   "y": 704,
+   "w": 9,
+   "h": 9
+  },
+  "ctv-dot-wait_0": {
+   "x": 444,
+   "y": 704,
+   "w": 9,
+   "h": 9
+  },
+  "ctv-dot-wait_1": {
+   "x": 454,
+   "y": 704,
+   "w": 9,
+   "h": 9
+  },
+  "ctv-dot-bad": {
+   "x": 464,
+   "y": 704,
+   "w": 9,
+   "h": 9
+  },
+  "ctv-dot": {
+   "x": 474,
+   "y": 704,
+   "w": 9,
+   "h": 9
+  },
+  "ctv-wave_0": {
+   "x": 484,
+   "y": 704,
+   "w": 7,
+   "h": 7
+  },
+  "ctv-wave_1": {
+   "x": 492,
+   "y": 704,
+   "w": 7,
+   "h": 7
+  },
+  "ctv-wave_2": {
+   "x": 500,
+   "y": 704,
+   "w": 7,
+   "h": 7
+  },
+  "ctv-wave_3": {
+   "x": 1,
+   "y": 723,
+   "w": 7,
+   "h": 7
+  },
+  "ctv-micicon": {
+   "x": 9,
+   "y": 723,
+   "w": 5,
+   "h": 7
+  },
+  "ctv-micicon_off": {
+   "x": 15,
+   "y": 723,
+   "w": 5,
+   "h": 7
+  },
+  "ctv-mic-idle": {
+   "x": 21,
+   "y": 723,
+   "w": 28,
+   "h": 11
+  },
+  "ctv-mic-live": {
+   "x": 50,
+   "y": 723,
+   "w": 40,
+   "h": 11
+  },
+  "ctv-mic-muted": {
+   "x": 91,
+   "y": 723,
+   "w": 41,
+   "h": 11
+  },
+  "ctv-pill_sample": {
+   "x": 133,
+   "y": 723,
+   "w": 122,
+   "h": 15
+  },
+  "ctv-pill_sample_muted": {
+   "x": 256,
+   "y": 723,
+   "w": 82,
+   "h": 15
+  },
+  "ct-touch-stick": {
+   "x": 339,
+   "y": 723,
+   "w": 64,
+   "h": 64
+  },
+  "ct-touch-stick_active": {
+   "x": 404,
+   "y": 723,
+   "w": 64,
+   "h": 64
+  },
+  "ct-touch-knob": {
+   "x": 469,
+   "y": 723,
+   "w": 28,
+   "h": 28
+  },
+  "ct-touch-use": {
+   "x": 1,
+   "y": 788,
+   "w": 55,
+   "h": 24
+  },
+  "ct-touch-use_pressed": {
+   "x": 57,
+   "y": 788,
+   "w": 55,
+   "h": 24
+  },
+  "ct-touch-use_locked": {
+   "x": 113,
+   "y": 788,
+   "w": 53,
+   "h": 24
+  },
+  "ct-spinner_0": {
+   "x": 167,
+   "y": 788,
+   "w": 9,
+   "h": 9
+  },
+  "ct-spinner_1": {
+   "x": 177,
+   "y": 788,
+   "w": 9,
+   "h": 9
+  },
+  "ct-spinner_2": {
+   "x": 187,
+   "y": 788,
+   "w": 9,
+   "h": 9
+  },
+  "ct-spinner_3": {
+   "x": 197,
+   "y": 788,
+   "w": 9,
+   "h": 9
+  },
+  "ct-spinner_4": {
+   "x": 207,
+   "y": 788,
+   "w": 9,
+   "h": 9
+  },
+  "ct-spinner_5": {
+   "x": 217,
+   "y": 788,
+   "w": 9,
+   "h": 9
+  },
+  "ct-spinner_6": {
+   "x": 227,
+   "y": 788,
+   "w": 9,
+   "h": 9
+  },
+  "ct-spinner_7": {
+   "x": 237,
+   "y": 788,
+   "w": 9,
+   "h": 9
+  },
+  "ct-conn_sample": {
+   "x": 247,
+   "y": 788,
+   "w": 242,
+   "h": 16
+  },
+  "ct-conn-lost_sample": {
+   "x": 1,
+   "y": 813,
+   "w": 193,
+   "h": 20
+  },
+  "ct-game-loading_sample": {
+   "x": 195,
+   "y": 813,
+   "w": 116,
+   "h": 18
+  },
+  "ct-game-failed_sample": {
+   "x": 312,
+   "y": 813,
+   "w": 120,
+   "h": 37
+  },
+  "glyph-house": {
+   "x": 433,
+   "y": 813,
+   "w": 7,
+   "h": 7
+  },
+  "glyph-ghost": {
+   "x": 441,
+   "y": 813,
+   "w": 7,
+   "h": 7
+  },
+  "glyph-skull": {
+   "x": 449,
+   "y": 813,
+   "w": 6,
+   "h": 6
+  },
+  "glyph-lock": {
+   "x": 456,
+   "y": 813,
+   "w": 7,
+   "h": 7
+  },
+  "glyph-door": {
+   "x": 464,
+   "y": 813,
+   "w": 9,
+   "h": 9
+  },
+  "glyph-close": {
+   "x": 474,
+   "y": 813,
+   "w": 5,
+   "h": 5
+  },
+  "glyph-pause": {
+   "x": 480,
+   "y": 813,
+   "w": 5,
+   "h": 5
+  },
+  "glyph-play": {
+   "x": 486,
+   "y": 813,
+   "w": 4,
+   "h": 5
+  },
+  "glyph-minus": {
+   "x": 491,
+   "y": 813,
+   "w": 5,
+   "h": 1
+  },
+  "glyph-plus": {
+   "x": 497,
+   "y": 813,
+   "w": 5,
+   "h": 5
+  },
+  "glyph-caret-up": {
+   "x": 503,
+   "y": 813,
+   "w": 5,
+   "h": 3
+  },
+  "glyph-caret-down": {
+   "x": 1,
+   "y": 851,
+   "w": 5,
+   "h": 3
+  },
+  "glyph-scales": {
+   "x": 7,
+   "y": 851,
+   "w": 9,
+   "h": 9
+  },
+  "glyph-hand": {
+   "x": 17,
+   "y": 851,
+   "w": 7,
+   "h": 7
+  },
+  "glyph-snow": {
+   "x": 25,
+   "y": 851,
+   "w": 7,
+   "h": 7
+  }
+ },
+ "meta": {
+  "fps": {
+   "ct-spinner": 10,
+   "ctv-wave": 7.5,
+   "ctv-dot-wait": 2,
+   "ct-countdown-low": 2,
+   "ctc-urgent_glow": "bands 0,1,2,1,0 over 1.6 s (art.pulseBands)"
+  },
+  "timing": {
+   "URGENT_MS": 30000,
+   "PULSE_MS": 1600,
+   "RESULT_MS": 2800,
+   "NOTE_MS": 4500,
+   "ASK_MS": 4000,
+   "PROPOSAL_WINDOW_MS": 30000,
+   "HINT_MS": 6000,
+   "HINT_ANIM_MS": 6600,
+   "LOW_S": 10,
+   "LOW_PULSE_MS": 1000,
+   "WAIT_PULSE_MS": 1000,
+   "VISIT_PULSE_MS": 2400,
+   "TOAST_ERROR_MS": 9000,
+   "toastMs": "error 9000; else clamp(3500 + 60 * text.length, 6000, 14000)",
+   "SPINNER_FPS": 10,
+   "WAVE_FPS": 7.5
+  },
+  "nineSlice": {
+   "ctc-chip_discussion": {
+    "l": 3,
+    "t": 3,
+    "r": 3,
+    "b": 3,
+    "dashed": false
+   },
+   "ctc-chip_nominations": {
+    "l": 3,
+    "t": 3,
+    "r": 3,
+    "b": 3,
+    "dashed": false
+   },
+   "ctc-chip_bedtime": {
+    "l": 3,
+    "t": 3,
+    "r": 3,
+    "b": 3,
+    "dashed": false
+   },
+   "ctc-chip_paused": {
+    "l": 3,
+    "t": 3,
+    "r": 3,
+    "b": 3,
+    "dashed": true
+   },
+   "ctc-chip_urgent": {
+    "l": 3,
+    "t": 3,
+    "r": 3,
+    "b": 3,
+    "dashed": false
+   },
+   "cth-toast_info_9s": {
+    "l": 3,
+    "t": 2,
+    "r": 2,
+    "b": 3,
+    "shadow": 1,
+    "note": "left 3 = outline + the 2-px kind rule; text at x 7, y 3, line 9; x at w-9"
+   },
+   "cth-toast_death_9s": {
+    "l": 3,
+    "t": 2,
+    "r": 2,
+    "b": 3,
+    "shadow": 1,
+    "note": "left 3 = outline + the 2-px kind rule; text at x 7, y 3, line 9; x at w-9"
+   },
+   "cth-toast_execution_9s": {
+    "l": 3,
+    "t": 2,
+    "r": 2,
+    "b": 3,
+    "shadow": 1,
+    "note": "left 3 = outline + the 2-px kind rule; text at x 7, y 3, line 9; x at w-9"
+   },
+   "cth-toast_error_9s": {
+    "l": 3,
+    "t": 2,
+    "r": 2,
+    "b": 3,
+    "shadow": 1,
+    "note": "left 3 = outline + the 2-px kind rule; text at x 7, y 3, line 9; x at w-9"
+   },
+   "cth-toast_game_over_9s": {
+    "l": 3,
+    "t": 2,
+    "r": 2,
+    "b": 3,
+    "shadow": 1,
+    "note": "left 3 = outline + the 2-px kind rule; text at x 7, y 3, line 9; x at w-9"
+   },
+   "cth-toast_vote_9s": {
+    "l": 3,
+    "t": 3,
+    "r": 3,
+    "b": 4,
+    "shadow": 1,
+    "note": "round (corner 2); ⚖ glyph-scales at (5, 2); text right-aligned, column x 17 .. w-14"
+   },
+   "cth-block_9s": {
+    "l": 3,
+    "t": 3,
+    "r": 3,
+    "b": 4,
+    "shadow": 1,
+    "note": "round (corner 2), width fits the text: 17 + text + 7"
+   },
+   "cth-hint_default_9s": {
+    "l": 3,
+    "t": 3,
+    "r": 3,
+    "b": 3,
+    "note": "13 tall, padding 7"
+   },
+   "cth-hint_ok_9s": {
+    "l": 3,
+    "t": 3,
+    "r": 3,
+    "b": 3,
+    "note": "13 tall, padding 7"
+   },
+   "cth-hint_auto_9s": {
+    "l": 3,
+    "t": 3,
+    "r": 3,
+    "b": 3,
+    "note": "13 tall, padding 7"
+   },
+   "cth-hint_frozen_9s": {
+    "l": 3,
+    "t": 3,
+    "r": 3,
+    "b": 3,
+    "note": "13 tall, padding 7"
+   },
+   "cth-hint_private_9s": {
+    "l": 3,
+    "t": 3,
+    "r": 3,
+    "b": 3,
+    "note": "13 tall, padding 7"
+   },
+   "cth-hint_vote_9s": {
+    "l": 3,
+    "t": 3,
+    "r": 3,
+    "b": 3,
+    "note": "13 tall, padding 7"
+   },
+   "cth-hint_night_9s": {
+    "l": 3,
+    "t": 3,
+    "r": 3,
+    "b": 3,
+    "note": "13 tall, padding 7"
+   },
+   "cth-hint_dead_9s": {
+    "l": 3,
+    "t": 3,
+    "r": 3,
+    "b": 3,
+    "note": "13 tall, padding 7"
+   },
+   "cth-hint_pill_default_9s": {
+    "l": 3,
+    "t": 2,
+    "r": 3,
+    "b": 3,
+    "note": "11 tall, padding 4, short label (cth-hint_pill_<short>)"
+   },
+   "cth-hint_pill_ok_9s": {
+    "l": 3,
+    "t": 2,
+    "r": 3,
+    "b": 3,
+    "note": "11 tall, padding 4, short label (cth-hint_pill_<short>)"
+   },
+   "cth-hint_pill_auto_9s": {
+    "l": 3,
+    "t": 2,
+    "r": 3,
+    "b": 3,
+    "note": "11 tall, padding 4, short label (cth-hint_pill_<short>)"
+   },
+   "cth-hint_pill_frozen_9s": {
+    "l": 3,
+    "t": 2,
+    "r": 3,
+    "b": 3,
+    "note": "11 tall, padding 4, short label (cth-hint_pill_<short>)"
+   },
+   "cth-hint_pill_private_9s": {
+    "l": 3,
+    "t": 2,
+    "r": 3,
+    "b": 3,
+    "note": "11 tall, padding 4, short label (cth-hint_pill_<short>)"
+   },
+   "cth-hint_pill_vote_9s": {
+    "l": 3,
+    "t": 2,
+    "r": 3,
+    "b": 3,
+    "note": "11 tall, padding 4, short label (cth-hint_pill_<short>)"
+   },
+   "cth-hint_pill_night_9s": {
+    "l": 3,
+    "t": 2,
+    "r": 3,
+    "b": 3,
+    "note": "11 tall, padding 4, short label (cth-hint_pill_<short>)"
+   },
+   "cth-hint_pill_dead_9s": {
+    "l": 3,
+    "t": 2,
+    "r": 3,
+    "b": 3,
+    "note": "11 tall, padding 4, short label (cth-hint_pill_<short>)"
+   },
+   "ct-game-prompt_9s": {
+    "l": 2,
+    "t": 3,
+    "r": 2,
+    "b": 3,
+    "shadow": 1,
+    "note": "15 tall + 1 shadow row; text at x 7, y 4"
+   },
+   "cth-card-head_9s": {
+    "l": 3,
+    "t": 3,
+    "r": 3,
+    "b": 3,
+    "note": "closed role chip, 13 tall"
+   },
+   "cth-card-head_9s_hover": {
+    "l": 3,
+    "t": 3,
+    "r": 3,
+    "b": 3
+   },
+   "cth-chip_ok_9s": {
+    "l": 3,
+    "t": 3,
+    "r": 3,
+    "b": 3,
+    "note": "11 tall, text at x 5, y 3"
+   },
+   "cth-chip_9s": {
+    "l": 3,
+    "t": 3,
+    "r": 3,
+    "b": 3,
+    "note": "11 tall, text at x 5, y 3"
+   },
+   "cth-chip_dead_9s": {
+    "l": 3,
+    "t": 3,
+    "r": 3,
+    "b": 3,
+    "note": "11 tall, text at x 5, y 3"
+   },
+   "ct-tb-btn_9s": {
+    "l": 3,
+    "t": 3,
+    "r": 3,
+    "b": 3
+   },
+   "ct-tb-btn_9s_hover": {
+    "l": 3,
+    "t": 3,
+    "r": 3,
+    "b": 3
+   },
+   "ct-tb-btn_9s_pressed": {
+    "l": 3,
+    "t": 3,
+    "r": 3,
+    "b": 3,
+    "note": "content 1 px down/right"
+   }
+  },
+  "samples": "frames named *_sample* carry v2 example text: references only; the *_9s frames are the DOM border-image skins",
+  "dial": {
+   "size": 15,
+   "frames": "ctc-dial_<stage>_<k>, k = 0..8 = frac k/8 (time left); ctc-dial_paused_<stage>_<k>; draw any frac with art.dial()",
+   "medallion": "set into the chip left end: chip box starts at the dial centre (x + 7)"
+  },
+  "stages": {
+   "discussion": {
+    "stage": "discussion",
+    "edge": "#94743E",
+    "wedge": "#94743E",
+    "hi": "#EED9A2",
+    "sh": "#94743E",
+    "line": "#4A3A26",
+    "time": "#D9B766",
+    "label": "#E2DDD3"
+   },
+   "nominations": {
+    "stage": "nominations",
+    "edge": "#D9584A",
+    "wedge": "#D9584A",
+    "hi": "#f8775b",
+    "sh": "#ac3949",
+    "line": "#6b1e35",
+    "time": "#E36E5E",
+    "label": "#E2DDD3"
+   },
+   "bedtime": {
+    "stage": "bedtime",
+    "edge": "#6c93cf",
+    "wedge": "#8DB8E6",
+    "hi": "#b4d4f4",
+    "sh": "#6c93cf",
+    "line": "#4c6594",
+    "time": "#8DB8E6",
+    "label": "#E2DDD3"
+   },
+   "paused": {
+    "stage": "paused",
+    "edge": "#4E5170",
+    "wedge": "#6E7396",
+    "hi": "#6E7396",
+    "sh": "#33354B",
+    "line": "#13121F",
+    "time": "#A3A3BA",
+    "label": "#A3A3BA",
+    "dashed": true
+   }
+  },
+  "v2Class": {
+   "ctc-chip_*": ".ctc-chip.ctc-<tone> (+ .ctc-urgent)",
+   "ctc-dial_*": ".ctc-dial (MiniDial svg)",
+   "ctc-plus*": ".ctc-plus (+ .on / [aria-disabled])",
+   "ctc-tray*": ".ctc-tray",
+   "ctc-vote*": ".ctc-vote (+ .passing) / .ctc-yes.on / .ctc-no.on / .ctc-drain",
+   "ctc-result*": ".ctc-result (.ok / .no)",
+   "ctc-note": ".ctc-note",
+   "ctc-stctl*": ".ctc-stctl (StClock.tsx)",
+   "cth-card-closed*": ".cth-card.cth-card-closed .cth-card-head",
+   "cth-badge_<n>": ".cth-badge",
+   "cth-house*": ".cth-chip.cth-house",
+   "cth-chip*": ".cth-chip (.ok / .dead)",
+   "cth-rolecard*": ".cth-card (expanded)",
+   "ct-tb-*": ".ct-toolbar button / .ct-tb-glyph",
+   "cth-phase*": ".cth-phase / .cth-phase-icon",
+   "cth-toast*": ".cth-toast(-death|-execution|-error|-game_over), .cth-toast-x",
+   "cth-toast_vote*": ".cth-vote-pill (vote result)",
+   "cth-block*": ".cth-block (on the block)",
+   "cth-card-head*": ".cth-card-closed .cth-card-head (9-slice)",
+   "cth-hint_pill_*": ".cth-hint.pill (short label: hints.tsx short)",
+   "cth-hint*": ".cth-hint (.ok .auto .frozen .private .vote .night .dead, .pill)",
+   "ct-game-prompt*": ".ct-game-prompt (.locked, kbd)",
+   "ct-hint*": ".ct-hint (first-run keys)",
+   "kbd_*": "kbd",
+   "ct-countdown*": ".ct-countdown(-low)",
+   "ctv-*": "voice.css .ctv-dot-*, .ctv-wave, .ctv-mic-*, .ctv-pill",
+   "ct-touch-*": ".ct-touch-stick/-knob/-use",
+   "ct-spinner_*": ".ct-spinner",
+   "ct-conn*": ".ct-conn(-lost)",
+   "ct-game-loading*": ".ct-game-loading(.ct-game-failed)",
+   "glyph-*": "inline text glyphs (⌂ 👻 ☠ 🔒 ✕ ❚❚ ▶ − + ▲ ▼ ⚖ ✋ ❄)"
+  },
+  "text": {
+   "body": "kit body (out/ui/kit.json meta.bitmapFont.body)",
+   "display": "out/ui/hud-font.json meta.bitmapFont.display",
+   "label": "out/ui/hud-font.json meta.bitmapFont.label"
+  },
+  "towerClock": {
+   "tier": "W",
+   "module": "src/ui/hud/tower.js createTowerClock(engine, {center, normal, up, radius}).set({stage, frac, paused, idle})",
+   "wedge": "sector r = 0.86 dial radius from 12 clockwise, unlit stage colour, Bayer stipple 8/16 (paused 4/16)",
+   "hand": "iron box to the wedge end; pause bars; brass hub"
+  },
+  "newStyle": {
+   "note": "every frame is new-style (v2 had no HUD atlas); names = v2 CSS classes",
+   "display": "titling small caps (font atlas hud-font)",
+   "medallion": "mini dial as a brass medallion set into the chip",
+   "italic": "pixel shear for v2 italic text (ability, locked prompt, loading)"
+  },
+  "paletteAudit": {
+   "colours": 41,
+   "untraced": [],
+   "where": {}
+  },
+  "tokenSet": "night",
+  "bakedBy": "pixel3d tools/uibake",
+  "tod": "noon"
+ }
+}

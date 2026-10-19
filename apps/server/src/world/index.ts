@@ -47,7 +47,6 @@ import {
   CIRCLE_SEATED_PX,
   DEFAULT_ST_SETTINGS,
   homeBuilding,
-  isBlockedPx,
   locationAt,
   MOVE_TOLERANCE,
   PLAYER_SPEED,
@@ -71,7 +70,7 @@ import {
   type WorldTeleport,
 } from '@ct/protocol';
 import type { RoomEvent, RoomHost, WorldModule } from '../rooms/modules.js';
-import { findPath, nearestFree, type Pt } from './path.js';
+import { blockedPx as isBlockedPx, findPath, nearestFree, type Pt } from './path.js';
 
 /**
  * Max seconds of travel the client may lead its last accepted position by. Moves arrive in bursts
@@ -95,6 +94,20 @@ const SLACK_PX = 3;
 export const DOOR_RANGE_PX = 22;
 /** Sweep step for collision checks along a move segment (px). */
 const SWEEP_STEP = 2;
+/**
+ * (v3 perf) The Storyteller's stage view (presence dots, door locks) is re-checked at most every this many
+ * ms instead of on every 24 Hz tick, and a change re-projects ONLY the Storyteller's game:view
+ * (`host.markGameDirtyFor`). Before, every presence flip (a player starting / stopping, each door of a
+ * server-driven walk) re-projected and stringified all viewers and sent the ST a full ~10 KB view: up to
+ * ~9 views/s (~90 KB/s to the ST) while the town walks home. Players' views never contain the stage.
+ */
+export const STAGE_CHECK_MS = 250;
+/**
+ * (v3 perf) A change that is ONLY players flipping between 'walking' and 'outdoors' (start / stop: with 15 players
+ * that is several per second all day long, measured 4.4 ST views/s) refreshes the stage at most this often.
+ * Everything else (home / seated / inside / escorted / frozen / doors / the ST's own place) within STAGE_CHECK_MS.
+ */
+export const STAGE_WALKING_MS = 1000;
 
 interface Entity {
   id: string;
@@ -156,6 +169,10 @@ export function createWorldModule(host: RoomHost, opts: WorldOptions = {}): Worl
   let escort = false;
   const doorLocks = new Map<string, boolean>();
   let lastStageKey = '';
+  /** The stage key with 'walking' / 'outdoors' merged (see STAGE_WALKING_MS). */
+  let lastStageCoarse = '';
+  let stageCheckAcc = 0;
+  let stageSentAt = -Infinity;
   /** Storyteller settings that affect the world (door tags). */
   let settings: StSettings = { ...DEFAULT_ST_SETTINGS };
   /** Publicly dead players (alive_changed carries the PUBLIC status): ghost door tags. */
@@ -501,6 +518,58 @@ export function createWorldModule(host: RoomHost, opts: WorldOptions = {}): Worl
     return { presence: e.moving ? 'walking' : 'outdoors', building: null };
   }
 
+  /** Stage key in which a player only starting / stopping (walking <-> outdoors) is no change. */
+  function stageCoarseKey(v: StageView): string {
+    return JSON.stringify({ ...v, players: v.players.map((p) => (p.presence === 'walking' ? { ...p, presence: 'outdoors' } : p)) });
+  }
+
+  /**
+   * (v3 perf) What every viewer of ONE snapshot fan-out shares: the rounded public state of each entity, the door
+   * locks and the (public, viewer-independent) door tags, computed once instead of once per viewer. Only valid
+   * while nothing changes, i.e. inside one synchronous fan-out (GameRoom.sendSnapshots). Who sees what is still
+   * decided per viewer below, exactly as snapshotFor does; the shared objects are read-only for every consumer.
+   */
+  interface Fanout {
+    t: number;
+    states: Map<Entity, EntityState>;
+    doors: Record<string, boolean> | undefined;
+    tags: Record<string, DoorTag[]> | null | undefined;
+  }
+
+  function stateOf(o: Entity): EntityState {
+    return { id: o.id, x: Math.round(o.x * 10) / 10, y: Math.round(o.y * 10) / 10, facing: o.facing, moving: o.moving, location: o.location };
+  }
+
+  function snapshotOf(pid: string, fan: Fanout | null): WorldSnapshot {
+    const me = entities.get(pid);
+    const t = fan ? fan.t : host.now();
+    if (!me) return { t, ackSeq: 0, entities: [] };
+    let visible: (e: Entity) => boolean;
+    if (isST(pid)) visible = () => true;
+    else if (phase && NIGHT_PHASES.has(phase)) {
+      const home = homeOf(pid);
+      const loc: LocationId | null = home ? `bld:${home.id}` : null;
+      visible = (o) => o.id === pid || (loc !== null && o.location === loc);
+    } else visible = (o) => o.id === pid || o.location === me.location;
+    const list: EntityState[] = [];
+    for (const o of entities.values()) {
+      if (!visible(o)) continue;
+      if (!fan) list.push(stateOf(o));
+      else {
+        let st = fan.states.get(o);
+        if (!st) fan.states.set(o, (st = stateOf(o)));
+        list.push(st);
+      }
+    }
+    const snap: WorldSnapshot = { t, ackSeq: me.lastSeq, entities: list };
+    if (me.walk) snap.you = { mode: 'auto', goal: me.walk.goal, path: me.walk.pts.slice(0, 12).map((p) => ({ x: Math.round(p.x * 10) / 10, y: Math.round(p.y * 10) / 10 })) };
+    else if (me.frozen) snap.you = { mode: 'frozen' };
+    if (doorLocks.size) snap.doors = fan ? (fan.doors ??= Object.fromEntries(doorLocks)) : Object.fromEntries(doorLocks);
+    const tags = !fan ? doorTags() : fan.tags !== undefined ? fan.tags : (fan.tags = doorTags());
+    if (tags) snap.doorTags = tags;
+    return snap;
+  }
+
   function storyteller(): Entity | undefined {
     const st = host.storytellerPid();
     return st ? entities.get(st) : undefined;
@@ -671,26 +740,12 @@ export function createWorldModule(host: RoomHost, opts: WorldOptions = {}): Worl
     },
 
     snapshotFor(pid): WorldSnapshot {
-      const me = entities.get(pid);
-      const t = host.now();
-      if (!me) return { t, ackSeq: 0, entities: [] };
-      let visible: (e: Entity) => boolean;
-      if (isST(pid)) visible = () => true;
-      else if (phase && NIGHT_PHASES.has(phase)) {
-        const home = homeOf(pid);
-        const loc: LocationId | null = home ? `bld:${home.id}` : null;
-        visible = (o) => o.id === pid || (loc !== null && o.location === loc);
-      } else visible = (o) => o.id === pid || o.location === me.location;
-      const list: EntityState[] = [];
-      for (const o of entities.values())
-        if (visible(o)) list.push({ id: o.id, x: Math.round(o.x * 10) / 10, y: Math.round(o.y * 10) / 10, facing: o.facing, moving: o.moving, location: o.location });
-      const snap: WorldSnapshot = { t, ackSeq: me.lastSeq, entities: list };
-      if (me.walk) snap.you = { mode: 'auto', goal: me.walk.goal, path: me.walk.pts.slice(0, 12).map((p) => ({ x: Math.round(p.x * 10) / 10, y: Math.round(p.y * 10) / 10 })) };
-      else if (me.frozen) snap.you = { mode: 'frozen' };
-      if (doorLocks.size) snap.doors = Object.fromEntries(doorLocks);
-      const tags = doorTags();
-      if (tags) snap.doorTags = tags;
-      return snap;
+      return snapshotOf(pid, null);
+    },
+
+    snapshotFanout() {
+      const fan: Fanout = { t: host.now(), states: new Map(), doors: undefined, tags: undefined };
+      return (pid: string) => snapshotOf(pid, fan);
     },
 
     sendHome(pid, reason) {
@@ -741,12 +796,22 @@ export function createWorldModule(host: RoomHost, opts: WorldOptions = {}): Worl
           host.send(e.id, 'world:teleport', { x: e.x, y: e.y, location: e.location, reason: 'correction', seq });
         } else if (e.droppedSeq && e.droppedSeq <= e.lastSeq) e.droppedSeq = 0;
       for (const e of entities.values()) if (e.walk) stepWalk(e, dt);
-      // Presence changes refresh the Storyteller's stage view.
-      if (seatOverride.size) {
-        const key = JSON.stringify(api.stageView());
-        if (key !== lastStageKey) {
+      // Presence changes refresh the Storyteller's stage view (coalesced: STAGE_CHECK_MS).
+      stageCheckAcc += Math.max(0, dtMs);
+      if (seatOverride.size && (stageCheckAcc >= STAGE_CHECK_MS || lastStageKey === '')) {
+        stageCheckAcc = 0;
+        const view = api.stageView();
+        const key = JSON.stringify(view);
+        const now = host.now();
+        if (key !== lastStageKey && (lastStageKey === '' || stageCoarseKey(view) !== lastStageCoarse || now - stageSentAt >= STAGE_WALKING_MS)) {
           lastStageKey = key;
-          host.markGameDirty();
+          lastStageCoarse = stageCoarseKey(view);
+          stageSentAt = now;
+          // Only the Storyteller's view carries the stage (game viewFor); no Storyteller = nobody to tell
+          // (a Storyteller who takes the seat later gets a full view on joining).
+          const st = host.storytellerPid();
+          if (!host.markGameDirtyFor) host.markGameDirty();
+          else if (st) host.markGameDirtyFor(st);
         }
       }
     },

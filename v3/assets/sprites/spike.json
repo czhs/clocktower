@@ -1,0 +1,101 @@
+{
+ "name": "spike",
+ "image": "spike.png",
+ "cell": [
+  74,
+  62
+ ],
+ "anchor": [
+  37,
+  56
+ ],
+ "ppm": 36.0,
+ "yaw": 0.0,
+ "pitch": 30.0,
+ "tod": "noon",
+ "dirs": [
+  "S",
+  "SE",
+  "E",
+  "NE",
+  "N",
+  "NW",
+  "W",
+  "SW"
+ ],
+ "fps": 30,
+ "clips": {
+  "idle": {
+   "fps": 30,
+   "loop": true,
+   "frames": 2,
+   "holds": [
+    20,
+    20
+   ],
+   "row": 0,
+   "period": 40,
+   "grid_frames": [
+    0,
+    20
+   ]
+  },
+  "walk": {
+   "fps": 30,
+   "loop": true,
+   "frames": 8,
+   "holds": [
+    4,
+    4,
+    8,
+    4,
+    4,
+    4,
+    8,
+    4
+   ],
+   "row": 8,
+   "period": 40,
+   "grid_frames": [
+    0,
+    4,
+    8,
+    16,
+    20,
+    24,
+    28,
+    36
+   ]
+  },
+  "attack": {
+   "fps": 30,
+   "loop": false,
+   "frames": 4,
+   "holds": [
+    6,
+    2,
+    8,
+    8
+   ],
+   "row": 16,
+   "period": null,
+   "grid_frames": [
+    0,
+    6,
+    8,
+    16
+   ]
+  }
+ },
+ "runtime": "spike",
+ "shadow": {
+  "image": "spike-shadow.png",
+  "anchor": [
+   37,
+   56
+  ],
+  "rx": 8.06,
+  "ry": 4.03
+ },
+ "warnings": []
+}

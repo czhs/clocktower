@@ -5,7 +5,7 @@
 // Reads the own control state from world snapshots (`you`) and the predicted position from the
 // localPlayer store; re-renders only when a derived value changes. Player-only data.
 import { useEffect, useMemo, useState } from 'preact/hooks';
-import { townLayout } from '@ct/assets';
+import { currentLayout } from '../../net/layout'; // (v3) the lobby's layout
 import { circleSpots, CIRCLE_SEATED_PX, type BuildingDef, type PlayerGameView, type SelfControl } from '@ct/protocol';
 import { localPlayer, type LocalPlayerState } from '../../net/localPlayer';
 import type { RoomConnection } from '../../net/room';
@@ -40,7 +40,7 @@ function useLocalDerived<T extends string | number | boolean>(fn: (lp: LocalPlay
 const HINT_MS = 6000;
 
 export function homeOf(seat: number): BuildingDef | null {
-  return townLayout.buildings.find((b) => b.houseIndex === seat) ?? null;
+  return currentLayout().buildings.find((b) => b.houseIndex === seat) ?? null;
 }
 
 export function MoveHint({ view, conn }: { view: PlayerGameView; conn: RoomConnection }) {
@@ -49,7 +49,7 @@ export function MoveHint({ view, conn }: { view: PlayerGameView; conn: RoomConne
   const home = useMemo(() => homeOf(seat), [seat]);
   const seatsKey = view.players.map((p) => p.seat).join(',');
   const spot = useMemo(
-    () => (view.gathering ? (circleSpots(townLayout, view.players.map((p) => p.seat)).find((s) => s.seat === seat) ?? null) : null),
+    () => (view.gathering ? (circleSpots(currentLayout(), view.players.map((p) => p.seat)).find((s) => s.seat === seat) ?? null) : null),
     [seatsKey, seat, view.gathering],
   );
   // 'home' | 'otherhouse' | 'inside' | 'seated' | 'outdoors'
@@ -57,7 +57,7 @@ export function MoveHint({ view, conn }: { view: PlayerGameView; conn: RoomConne
     (lp) => {
       if (home && lp.location === `bld:${home.id}`) return 'home';
       if (lp.location !== 'outdoors') {
-        const b = townLayout.buildings.find((x) => `bld:${x.id}` === lp.location);
+        const b = currentLayout().buildings.find((x) => `bld:${x.id}` === lp.location);
         return b && b.houseIndex !== null ? 'otherhouse' : 'inside';
       }
       if (spot && Math.hypot(lp.x - spot.x, lp.y - spot.y) <= CIRCLE_SEATED_PX) return 'seated';

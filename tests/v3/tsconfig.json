@@ -1,0 +1,5 @@
+{
+  "//": "v3 WP7 (v3-qa): typecheck of the harness driver + configs (tests/tsconfig.json does not include tests/v3). Run: pnpm exec tsc -p tests/v3/tsconfig.json",
+  "extends": "../tsconfig.json",
+  "include": ["**/*.ts", "../../apps/client/vite.harness.config.ts"]
+}

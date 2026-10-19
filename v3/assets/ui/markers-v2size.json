@@ -1,0 +1,547 @@
+{
+ "image": "markers-v2size.png",
+ "width": 256,
+ "height": 129,
+ "frames": {
+  "pin_gold": {
+   "x": 1,
+   "y": 1,
+   "w": 18,
+   "h": 26
+  },
+  "pin_crimson": {
+   "x": 20,
+   "y": 1,
+   "w": 18,
+   "h": 26
+  },
+  "pin_violet": {
+   "x": 39,
+   "y": 1,
+   "w": 18,
+   "h": 26
+  },
+  "pin_teal": {
+   "x": 58,
+   "y": 1,
+   "w": 18,
+   "h": 26
+  },
+  "pin_green": {
+   "x": 77,
+   "y": 1,
+   "w": 18,
+   "h": 26
+  },
+  "pin_orange": {
+   "x": 96,
+   "y": 1,
+   "w": 18,
+   "h": 26
+  },
+  "pin_white": {
+   "x": 115,
+   "y": 1,
+   "w": 18,
+   "h": 26
+  },
+  "pin_black": {
+   "x": 134,
+   "y": 1,
+   "w": 18,
+   "h": 26
+  },
+  "pin_shadow": {
+   "x": 153,
+   "y": 1,
+   "w": 12,
+   "h": 5
+  },
+  "pin_drop_0": {
+   "x": 166,
+   "y": 1,
+   "w": 26,
+   "h": 16
+  },
+  "pin_drop_1": {
+   "x": 193,
+   "y": 1,
+   "w": 26,
+   "h": 16
+  },
+  "pin_drop_2": {
+   "x": 220,
+   "y": 1,
+   "w": 26,
+   "h": 16
+  },
+  "pin_drop_3": {
+   "x": 1,
+   "y": 28,
+   "w": 26,
+   "h": 16
+  },
+  "point_right_0": {
+   "x": 28,
+   "y": 28,
+   "w": 24,
+   "h": 24
+  },
+  "point_right_1": {
+   "x": 53,
+   "y": 28,
+   "w": 24,
+   "h": 24
+  },
+  "point_right_2": {
+   "x": 78,
+   "y": 28,
+   "w": 24,
+   "h": 24
+  },
+  "point_down-right_0": {
+   "x": 103,
+   "y": 28,
+   "w": 24,
+   "h": 24
+  },
+  "point_down-right_1": {
+   "x": 128,
+   "y": 28,
+   "w": 24,
+   "h": 24
+  },
+  "point_down-right_2": {
+   "x": 153,
+   "y": 28,
+   "w": 24,
+   "h": 24
+  },
+  "point_down_0": {
+   "x": 178,
+   "y": 28,
+   "w": 24,
+   "h": 24
+  },
+  "point_down_1": {
+   "x": 203,
+   "y": 28,
+   "w": 24,
+   "h": 24
+  },
+  "point_down_2": {
+   "x": 228,
+   "y": 28,
+   "w": 24,
+   "h": 24
+  },
+  "point_down-left_0": {
+   "x": 1,
+   "y": 53,
+   "w": 24,
+   "h": 24
+  },
+  "point_down-left_1": {
+   "x": 26,
+   "y": 53,
+   "w": 24,
+   "h": 24
+  },
+  "point_down-left_2": {
+   "x": 51,
+   "y": 53,
+   "w": 24,
+   "h": 24
+  },
+  "point_left_0": {
+   "x": 76,
+   "y": 53,
+   "w": 24,
+   "h": 24
+  },
+  "point_left_1": {
+   "x": 101,
+   "y": 53,
+   "w": 24,
+   "h": 24
+  },
+  "point_left_2": {
+   "x": 126,
+   "y": 53,
+   "w": 24,
+   "h": 24
+  },
+  "point_up-left_0": {
+   "x": 151,
+   "y": 53,
+   "w": 24,
+   "h": 24
+  },
+  "point_up-left_1": {
+   "x": 176,
+   "y": 53,
+   "w": 24,
+   "h": 24
+  },
+  "point_up-left_2": {
+   "x": 201,
+   "y": 53,
+   "w": 24,
+   "h": 24
+  },
+  "point_up_0": {
+   "x": 226,
+   "y": 53,
+   "w": 24,
+   "h": 24
+  },
+  "point_up_1": {
+   "x": 1,
+   "y": 78,
+   "w": 24,
+   "h": 24
+  },
+  "point_up_2": {
+   "x": 26,
+   "y": 78,
+   "w": 24,
+   "h": 24
+  },
+  "point_up-right_0": {
+   "x": 51,
+   "y": 78,
+   "w": 24,
+   "h": 24
+  },
+  "point_up-right_1": {
+   "x": 76,
+   "y": 78,
+   "w": 24,
+   "h": 24
+  },
+  "point_up-right_2": {
+   "x": 101,
+   "y": 78,
+   "w": 24,
+   "h": 24
+  },
+  "ping_0": {
+   "x": 126,
+   "y": 78,
+   "w": 28,
+   "h": 14
+  },
+  "ping_1": {
+   "x": 155,
+   "y": 78,
+   "w": 28,
+   "h": 14
+  },
+  "ping_2": {
+   "x": 184,
+   "y": 78,
+   "w": 28,
+   "h": 14
+  },
+  "ping_3": {
+   "x": 213,
+   "y": 78,
+   "w": 28,
+   "h": 14
+  },
+  "pin_remove": {
+   "x": 242,
+   "y": 78,
+   "w": 9,
+   "h": 9
+  },
+  "trail_0": {
+   "x": 252,
+   "y": 78,
+   "w": 3,
+   "h": 3
+  },
+  "trail_1": {
+   "x": 1,
+   "y": 103,
+   "w": 3,
+   "h": 3
+  },
+  "ping_mark": {
+   "x": 5,
+   "y": 103,
+   "w": 9,
+   "h": 6
+  },
+  "pick_0": {
+   "x": 15,
+   "y": 103,
+   "w": 25,
+   "h": 25
+  },
+  "pick_1": {
+   "x": 41,
+   "y": 103,
+   "w": 25,
+   "h": 25
+  },
+  "pick_2": {
+   "x": 67,
+   "y": 103,
+   "w": 25,
+   "h": 25
+  }
+ },
+ "meta": {
+  "iconSize": 12,
+  "pinColors": [
+   "gold",
+   "crimson",
+   "violet",
+   "teal",
+   "green",
+   "orange",
+   "white",
+   "black"
+  ],
+  "pinColorHex": {
+   "gold": "#e6b632",
+   "crimson": "#c42c3c",
+   "violet": "#8a52cc",
+   "teal": "#22a6b4",
+   "green": "#5cb23a",
+   "orange": "#e8701e",
+   "white": "#ece6da",
+   "black": "#2c2636"
+  },
+  "pinIcon": {
+   "x": 9,
+   "y": 9,
+   "r": 6,
+   "left": 3,
+   "top": 3
+  },
+  "anchors": {
+   "pin": {
+    "x": 8,
+    "y": 25
+   },
+   "pin_shadow": {
+    "x": 6,
+    "y": 2
+   },
+   "pin_drop": {
+    "x": 13,
+    "y": 12
+   },
+   "point": {
+    "x": 12,
+    "y": 12
+   },
+   "ping": {
+    "x": 14,
+    "y": 7
+   },
+   "pin_remove": {
+    "x": 4,
+    "y": 4
+   },
+   "trail": {
+    "x": 1,
+    "y": 1
+   },
+   "ping_mark": {
+    "x": 4,
+    "y": 5
+   },
+   "pick": {
+    "x": 12,
+    "y": 12
+   }
+  },
+  "fps": {
+   "pin_drop": 15,
+   "point": 7.5,
+   "ping": 10,
+   "pick": 7.5
+  },
+  "point": {
+   "dirs": [
+    "right",
+    "down-right",
+    "down",
+    "down-left",
+    "left",
+    "up-left",
+    "up",
+    "up-right"
+   ],
+   "frames": 3,
+   "sequence": [
+    0,
+    1,
+    2,
+    1
+   ],
+   "vectors": {
+    "right": [
+     1,
+     0
+    ],
+    "down-right": [
+     0.7071,
+     0.7071
+    ],
+    "down": [
+     0,
+     1
+    ],
+    "down-left": [
+     -0.7071,
+     0.7071
+    ],
+    "left": [
+     -1,
+     0
+    ],
+    "up-left": [
+     -0.7071,
+     -0.7071
+    ],
+    "up": [
+     0,
+     -1
+    ],
+    "up-right": [
+     0.7071,
+     -0.7071
+    ]
+   },
+   "size": 24,
+   "offset": 16
+  },
+  "place": {
+   "pin": "Place-pin: draw pin_shadow (anchors.pin_shadow) on the spot, then pin_<color> with anchors.pin on the spot, then icon_<castId> at (pinIcon.left, pinIcon.top) inside the pin frame, on the INNER disc only (radius 5: leave the 1-px socket ring of the frame visible). Depth-sort place pins with characters/props by the spot (pixel3d: depth-tested pass, src/ui/markers/pinPass.js). Person-pin: same without the shadow, tip 1 px above the target's name label box, 1 px bob at 2 fps, fanned (never rotated). Play pin_drop_0..3 once at the spot when a pin lands (fps.pin_drop, held 2 grid frames each), under the pin body.",
+   "point": "Pick the dir whose vector is closest to (target - emoter). Draw point_<dir>_<f> with anchors.point at emoterHead + vector * point.offset (pixel3d emoterHead = feet + 0.72 x height; v2 feet - 26 px), looping point.sequence at fps.point for EMOTE_POINT_MS. Loop ping_0..3 at the pointed spot (anchors.ping) at fps.ping, under characters; for a person target at their feet. Trail dots (trail_0/1) every 6 px from the fingertip to the aim point, drawn BELOW name labels and chat bubbles; the finger above them.",
+   "icon": "icon_<castId> is a round 12x12 portrait (transparent outside the disc), baked by the portraits group (out/ui/portraits.json). Also usable as a UI avatar; emote_point (emotes group) is the palette button icon."
+  },
+  "newStyle": {
+   "markers": {
+    "tod": "noon",
+    "v2fps": {
+     "pin_drop": 14,
+     "point": 8,
+     "ping": 10
+    },
+    "timing": {
+     "EMOTE_POINT_MS": 3500,
+     "DROP_MS": 460,
+     "POP_MS": 170,
+     "SETTLE_MS": 900,
+     "DROP_PX": 16,
+     "LAND_K": 0.68,
+     "TRAIL_GAP": 6,
+     "OUT_FRAMES": 6,
+     "POP_FRAMES": 5
+    },
+    "tiers": {
+     "pin": "place: W-billboard (depth-tested pin pass, order 301: over L.ground decals, under every L.world texel) / person: A (L.world)",
+     "pin_shadow": "with the place pin (depth-tested, under its body)",
+     "pin_drop": "with the place pin (under its body); person pins: A",
+     "point": "A (z 30)",
+     "ping": "Ag (L.ground)",
+     "trail": "A below labels/bubbles (z 15)",
+     "pin_remove": "with its pin",
+     "ping_mark": "A",
+     "pick": "A"
+    },
+    "pinMid": {
+     "gold": "#e6b632",
+     "crimson": "#c42c3c",
+     "violet": "#8a52cc",
+     "teal": "#22a6b4",
+     "green": "#5cb23a",
+     "orange": "#e8701e",
+     "white": "#DCD3C4",
+     "black": "#2c2636"
+    },
+    "pinMidNote": "baked body mid per colour; equal to pinColorHex except white (#DCD3C4: v2 #ece6da was brighter than the cream rim/text tokens, so the ramp keeps the cream highlight on top)",
+    "pinIconInner": "icons go on the 12x12 disc minus its 1-px edge (radius 5); the edge is the socket ring (upper-left parchmentSh, lower-right parchmentHi; white pin: its own line/shade) that separates any icon from any pin colour",
+    "extras": {
+     "pin_remove": "9x9 remove badge (v2 art.ts BADGE), anchor = centre; shown on hover/tap of your own pin, centre at pin frame (15,2)",
+     "trail_0": "trail dot (bright), every 6 px from the fingertip to the aim point, marching 1 px per 7.5 fps step",
+     "trail_1": "trail dot (dim), the first dot next to the hand",
+     "ping_mark": "chevron over a pointed PLACE, tip 4 px above the spot, 1 px bob at 2 fps",
+     "pick_0": "Storyteller pick crosshair (v2 gameplay stagePick), frames 0..2, sequence [0,1,2,1] at 7.5 fps; label right-below"
+    },
+    "emoterHead": "feet + 0.72 x character height (v2: feet - 26 px)",
+    "personAim": "target feet + 0.4 x height (v2: feet - 14 px)",
+    "personPin": "tip 1 px above the name label box (label top = head anchor - 11); fan dx = k * 18 * min(.62, 2.4/n), dy = |k| * 1.5, never rotated",
+    "pointerScale": "v2",
+    "v2size": {
+     "note": "pointerScale v2: the finger at the size the v2 finger had relative to the v2 cast, scaled to the pixel3d cast at the game camera (K = pixel3d cast median height / v2 cast median height). Redrawn at that size (no upscaled pixels). Draw at emoterHead + vector * point.offset with anchors.point; the trail starts point.size / 2 from the anchor.",
+     "measure": {
+      "v2Finger": {
+       "right": [
+        17,
+        11
+       ],
+       "diagonal": [
+        14,
+        14
+       ],
+       "down": [
+        11,
+        17
+       ]
+      },
+      "v2CastH": {
+       "min": 25,
+       "median": 31,
+       "max": 38,
+       "n": 33
+      },
+      "newCastH": {
+       "min": 32,
+       "median": 35,
+       "max": 45,
+       "n": 8,
+       "camera": "vh 12, yaw 0, pitch 30 deg"
+      },
+      "K": 1.1290322580645162,
+      "target": {
+       "right": [
+        19.2,
+        12.4
+       ],
+       "diagonal": [
+        15.8,
+        15.8
+       ],
+       "down": [
+        12.4,
+        19.2
+       ]
+      },
+      "drawn": {
+       "right": [
+        20,
+        13
+       ],
+       "diagonal": [
+        16,
+        16
+       ],
+       "down": [
+        13,
+        20
+       ]
+      }
+     }
+    }
+   }
+  },
+  "bakedBy": "pixel3d tools/uibake",
+  "tod": "noon"
+ }
+}

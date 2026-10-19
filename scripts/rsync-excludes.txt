@@ -19,3 +19,5 @@ apps/client/landing-staging/
 packages/assets/ai/
 packages/assets/eggs/
 pnpm-lock.yaml.remote*
+# agent worktrees inside an orchestrator checkout (other branches; never build / scan them in a sandbox)
+.claude/worktrees/

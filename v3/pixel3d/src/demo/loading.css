@@ -1,0 +1,74 @@
+/* Hollowmere loading screen + cinematic overlay (owner: intro; src/demo/loading.js, src/demo/intro.js).
+   Dark slate + cream pixel art. Every animated layer uses transform / opacity with steps() timing, so it runs on the
+   compositor (keeps ticking while a town piece blocks the main thread) and moves in whole pixels. No external fonts. */
+#demo-loading {
+  position: fixed; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(ellipse at 50% 40%, #1a1f33 0%, #10131f 55%, #0b0d16 100%);
+  transition: opacity .7s steps(7);
+  --px: 3px;
+}
+#demo-loading.ldg-out { opacity: 0; pointer-events: none; }
+#demo-loading canvas { image-rendering: pixelated; image-rendering: crisp-edges; display: block; }
+#demo-loading .ldg-fallback { color: #a69c86; font: 14px monospace; letter-spacing: .1em; }
+.ldg-wrap { display: flex; flex-direction: column; align-items: center; gap: calc(var(--px) * 4); max-width: calc(100vw - 32px); }
+.ldg-scene { position: relative; overflow: hidden; flex: none;
+  box-shadow: 0 0 0 var(--px) #0a0c12, 0 0 0 calc(var(--px) * 2) #2d3346, calc(var(--px) * 3) calc(var(--px) * 3) 0 calc(var(--px) * 2) rgba(0,0,0,.45); }
+.ldg-layer { position: absolute; inset: 0; width: 100%; height: 100%; }
+.ldg-abs { position: absolute; }
+
+/* belfry lantern: an irregular stepped flicker */
+.ldg-lantern { animation: ldg-flicker 2.3s steps(1, end) infinite; }
+@keyframes ldg-flicker {
+  0% { opacity: .9 } 9% { opacity: .55 } 14% { opacity: 1 } 31% { opacity: .75 } 38% { opacity: .95 }
+  52% { opacity: .5 } 57% { opacity: .85 } 71% { opacity: 1 } 83% { opacity: .65 } 90% { opacity: .9 }
+}
+.ldg-twinkle { animation: ldg-twinkle 1.7s steps(1, end) infinite; }
+.ldg-twinkle.b { animation-duration: 2.9s; animation-delay: -.8s; }
+@keyframes ldg-twinkle { 0% { opacity: 1 } 40% { opacity: .15 } 55% { opacity: .8 } 80% { opacity: 0 } }
+
+/* clock hands: 12-frame strips; steps(12) jumps exactly one frame (1/12 of the strip) per tick */
+.ldg-handwin { overflow: hidden; }
+.ldg-strip { position: absolute; left: 0; top: 0; }
+.ldg-min .ldg-strip { animation: ldg-tick 6s steps(12) infinite; }
+.ldg-hour .ldg-strip { animation: ldg-tick 72s steps(12) infinite; }
+@keyframes ldg-tick { from { transform: translateX(0) } to { transform: translateX(-100%) } }
+
+/* mist: twice the scene width, slides one scene width in 200 steps = 1 scene pixel per step */
+.ldg-mist { animation: ldg-mist 24s steps(200) infinite; }
+@keyframes ldg-mist { from { transform: translateX(0) } to { transform: translateX(-50%) } }
+
+.ldg-title { flex: none; }
+.ldg-bar { position: relative; flex: none; background: #0a0c12;
+  box-shadow: 0 0 0 var(--px) #474f66, 0 0 0 calc(var(--px) * 2) #0a0c12; }
+.ldg-fill { position: absolute; inset: var(--px); transform-origin: 0 50%; transform: scaleX(0);
+  background: linear-gradient(#ffe6a8 0 33%, #e4ae52 33% 75%, #8a5f22 75%); transition: transform .3s steps(4); }
+.ldg-label, .ldg-tip { min-height: calc(var(--px) * 8); display: flex; justify-content: center; }
+.ldg-tip { opacity: .95; }
+
+/* ------------------------------------------------------------------------------------------- the cinematic overlay */
+/* letterbox bars (8vh); the title card sits in the lower third on a dark plate (the tower and the square stay clear),
+   the prompt and the skip hint live inside the bottom bar */
+#demo-intro { position: fixed; inset: 0; z-index: 25; pointer-events: none; --px: 3px; --bar: 8vh; }
+#demo-intro canvas { image-rendering: pixelated; image-rendering: crisp-edges; display: block; }
+#demo-intro .itr-bar { position: absolute; left: 0; right: 0; height: var(--bar); background: #0b0d16; transition: transform .8s steps(8); }
+#demo-intro .itr-bar.top { top: 0; }
+#demo-intro .itr-bar.bot { bottom: 0; }
+#demo-intro.itr-open .itr-bar.top { transform: translateY(-100%); }
+#demo-intro.itr-open .itr-bar.bot { transform: translateY(100%); }
+#demo-intro .itr-card { position: absolute; left: 50%; bottom: calc(var(--bar) + 4vh); transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: calc(var(--px) * 3);
+  padding: calc(var(--px) * 4) calc(var(--px) * 8); background: rgba(11, 13, 22, 0.72);
+  box-shadow: 0 0 0 var(--px) #0a0c12, inset 0 0 0 var(--px) #2d3346;
+  opacity: 0; transition: opacity .9s steps(6); }
+#demo-intro.itr-title .itr-card { opacity: 1; }
+#demo-intro .itr-prompt, #demo-intro .itr-skip { position: absolute; bottom: 0; height: var(--bar); display: flex; align-items: center; }
+#demo-intro .itr-prompt { left: 0; right: 0; justify-content: center; opacity: 0; }
+#demo-intro.itr-wait .itr-prompt { opacity: 1; animation: itr-blink 1.1s steps(1, end) infinite; }
+@keyframes itr-blink { 0% { opacity: 1 } 70% { opacity: .3 } }
+#demo-intro .itr-skip { right: 16px; opacity: .8; transition: opacity .4s steps(3); }
+#demo-intro.itr-wait .itr-skip, #demo-intro.itr-open .itr-skip { opacity: 0; }
+#demo-intro.itr-open .itr-prompt { animation: none; opacity: 0; }
+#demo-intro.itr-out .itr-card { opacity: 0; transition: opacity .5s steps(5); }
+/* the control panel / status line stay hidden while the intro runs */
+body.ct-intro #demo-ui { visibility: hidden; }
+body.ct-intro #demo-ui * { pointer-events: none !important; }

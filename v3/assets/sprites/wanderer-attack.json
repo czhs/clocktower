@@ -1,0 +1,62 @@
+{
+ "name": "wanderer",
+ "image": "wanderer-attack.png",
+ "cell": [
+  82,
+  62
+ ],
+ "anchor": [
+  41,
+  52
+ ],
+ "ppm": 36.0,
+ "yaw": 0.0,
+ "pitch": 30.0,
+ "tod": "noon",
+ "dirs": [
+  "S",
+  "SE",
+  "E",
+  "NE",
+  "N",
+  "NW",
+  "W",
+  "SW"
+ ],
+ "fps": 30,
+ "clips": {
+  "attack": {
+   "fps": 30,
+   "loop": false,
+   "frames": 5,
+   "holds": [
+    7,
+    1,
+    8,
+    6,
+    1
+   ],
+   "row": 0,
+   "period": null,
+   "grid_frames": [
+    0,
+    7,
+    8,
+    16,
+    22
+   ],
+   "frames_by": "pose ids"
+  }
+ },
+ "runtime": "character",
+ "shadow": {
+  "image": "wanderer-attack-shadow.png",
+  "anchor": [
+   41,
+   52
+  ],
+  "rx": 8.8,
+  "ry": 4.4
+ },
+ "warnings": []
+}

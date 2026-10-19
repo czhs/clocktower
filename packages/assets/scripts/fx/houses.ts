@@ -4,6 +4,7 @@
 //                 follows the 2:1 shear on side-wall doors)
 //   unlit_<id>    every warm window pane (and the door lamp) of that cottage turned dark and cold
 // Placement rects are in sprite coords and in WORLD px (meta.houses[id]).
+import type { BuildingDef } from '@ct/protocol';
 import { townLayout, TS } from '../../src/layout.js';
 import { drawBuildings, type BuildingSprite } from '../buildings.js';
 import { col, dpick, hash, Img, vnoise } from '../lib/img.js';
@@ -175,38 +176,47 @@ export function houseOverlays(): { frames: [string, Img][]; houses: Record<strin
   townLayout.buildings.forEach((b, n) => {
     const s = sprites.get(b.id);
     if (!s) return;
-    const left = b.footprint.x * TS;
-    const bottom = (b.footprint.y + b.footprint.h) * TS;
-    const top = bottom - s.img.h;
-    const meta: HouseMeta = {};
-    if (s.door && s.leaf) {
-      const name = `boarded_${b.id}`;
-      frames.push([name, boardUp(s.leaf, 7 + n)]);
-      const d = s.door;
-      meta.boarded = { frame: name, x: d.x, y: d.y, w: d.w, h: d.h, wx: left + d.x, wy: top + d.y };
-      // lowest leaf pixel = the threshold
-      let by = 0;
-      let bx = d.x + d.w / 2;
-      for (let j = 0; j < d.h; j++) for (let i = 0; i < d.w; i++) if (s.leaf.alpha(i, j) > 0 && j >= by) [by, bx] = [j, d.x + i];
-      const side = b.door.x * TS + 8 < left + s.img.w / 2 ? -1 : 1;
-      meta.doorglow = { x: Math.round(left + (d.w >= 10 ? d.x + d.w / 2 : bx)), y: top + d.y + by + 2 };
-      // board: on the hinge side (the lamp hangs on the latch side), a step in front of the wall
-      const hingeSide = d.hinge === 'left' ? -1 : 1;
-      meta.board =
-        d.w >= 10
-          ? { x: left + d.x + d.w / 2 + hingeSide * 18, y: bottom + 14 }
-          : { x: left + d.x + d.w / 2 + side * 10, y: top + d.y + by + 12 };
-    }
-    if (s.chimney) meta.smoke = { x: left + s.chimney.x, y: top + s.chimney.y };
-    const u = unlitOverlay(s);
-    if (u) {
-      const name = `unlit_${b.id}`;
-      frames.push([name, u.img]);
-      meta.unlit = { frame: name, x: u.x, y: u.y, w: u.img.w, h: u.img.h, wx: left + u.x, wy: top + u.y };
-    }
-    houses[b.id] = meta;
+    const h = houseMetaFor(b, s, n, b.footprint.x * TS, (b.footprint.y + b.footprint.h) * TS);
+    frames.push(...h.frames);
+    houses[b.id] = h.meta;
   });
   return { frames, houses };
+}
+
+/**
+ * One cottage's overlays + anchors for a sprite whose bottom-left is at world px (left, bottom). `name` = the
+ * frame-name suffix (the building id; the v3 world's extra sprites use their own, scripts/v3/classic.ts).
+ */
+export function houseMetaFor(b: BuildingDef, s: BuildingSprite, n: number, left: number, bottom: number, name: string = b.id): { frames: [string, Img][]; meta: HouseMeta } {
+  const frames: [string, Img][] = [];
+  const top = bottom - s.img.h;
+  const meta: HouseMeta = {};
+  if (s.door && s.leaf) {
+    const frame = `boarded_${name}`;
+    frames.push([frame, boardUp(s.leaf, 7 + n)]);
+    const d = s.door;
+    meta.boarded = { frame, x: d.x, y: d.y, w: d.w, h: d.h, wx: left + d.x, wy: top + d.y };
+    // lowest leaf pixel = the threshold
+    let by = 0;
+    let bx = d.x + d.w / 2;
+    for (let j = 0; j < d.h; j++) for (let i = 0; i < d.w; i++) if (s.leaf.alpha(i, j) > 0 && j >= by) [by, bx] = [j, d.x + i];
+    const side = b.door.x * TS + 8 < left + s.img.w / 2 ? -1 : 1;
+    meta.doorglow = { x: Math.round(left + (d.w >= 10 ? d.x + d.w / 2 : bx)), y: top + d.y + by + 2 };
+    // board: on the hinge side (the lamp hangs on the latch side), a step in front of the wall
+    const hingeSide = d.hinge === 'left' ? -1 : 1;
+    meta.board =
+      d.w >= 10
+        ? { x: left + d.x + d.w / 2 + hingeSide * 18, y: bottom + 14 }
+        : { x: left + d.x + d.w / 2 + side * 10, y: top + d.y + by + 12 };
+  }
+  if (s.chimney) meta.smoke = { x: left + s.chimney.x, y: top + s.chimney.y };
+  const u = unlitOverlay(s);
+  if (u) {
+    const frame = `unlit_${name}`;
+    frames.push([frame, u.img]);
+    meta.unlit = { frame, x: u.x, y: u.y, w: u.img.w, h: u.img.h, wx: left + u.x, wy: top + u.y };
+  }
+  return { frames, meta };
 }
 
 export { drawBuildings };

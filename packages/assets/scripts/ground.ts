@@ -8,7 +8,8 @@
 // wall hangings. The result is sliced into 16x16 tiles and de-duplicated into a Tiled tileset
 // (terrain.png) + ground layer indices.
 import type { BuildingDef } from '@ct/protocol';
-import { G, PROP_DEFS, townLayout, townMap, TOWN_W, TS } from '../src/layout.js';
+// (v3 WP5b) the world to paint: v2 by default, the v3 world in the CT_ASSETS_WORLD=v3 pass (scripts/lib/world.ts)
+import { G, PROP_DEFS, townLayout, townMap, TOWN_W, TS } from './lib/world.js';
 import { LX, LY } from './lib/draw.js';
 import { bayer, dpick, fbm, hash, Img, mix, type Color, type RGBA, vnoise } from './lib/img.js';
 

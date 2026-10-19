@@ -16,6 +16,7 @@ import { registerInternalRoutes } from './guard/internal.js';
 import { installSocketBudget, type RawSocketServer } from './guard/socketBudget.js';
 import { getHostLimits, onHostLimitsChange, type HostLimits } from './guard/hostLimits.js';
 import { staticQueryGuard } from './cost/staticQuery.js';
+import { precompressedStatic } from './precompressed.js';
 
 export interface RunningServer {
   port: number;
@@ -174,17 +175,20 @@ export async function startAppServer(config: AppConfig, log: Logger, options: Ap
     // %PUBLIC_ORIGIN% placeholder that is filled from APP_PUBLIC_ORIGIN when served (no host is
     // baked into the client build). Read once; a deploy restarts the server.
     const indexBody = readFileSync(indexHtml, 'utf8').replaceAll('%PUBLIC_ORIGIN%', config.publicOrigin);
+    const cacheControl = (filePath: string): string => {
+      if (filePath.startsWith(assetsDir)) return 'public, max-age=31536000, immutable'; // incl. the hashed ?url JSON atlases
+      if (filePath === indexHtml || filePath.endsWith('.json')) return 'no-cache';
+      return 'public, max-age=86400, stale-while-revalidate=604800';
+    };
     app.use(staticQueryGuard(root)); // (v2.3 VOICE-12) no cache-busting query strings on static files
+    // (v3.2) build-time .br / .gz siblings (apps/client/build/precompress.mjs) for clients that accept them
+    app.use(precompressedStatic(root, { cacheControl }));
     app.use(
       express.static(root, {
         index: false,
         cacheControl: false,
         setHeaders(res, filePath) {
-          let cc: string;
-          if (filePath.startsWith(assetsDir)) cc = 'public, max-age=31536000, immutable';
-          else if (filePath === indexHtml || filePath.endsWith('.json')) cc = 'no-cache';
-          else cc = 'public, max-age=86400, stale-while-revalidate=604800';
-          res.setHeader('Cache-Control', cc);
+          res.setHeader('Cache-Control', cacheControl(filePath));
         },
       }),
     );
@@ -223,6 +227,23 @@ export async function startAppServer(config: AppConfig, log: Logger, options: Ap
     // whole private notebook (NOTEBOOK_MAX_BYTES = 20 KiB of JSON + msgpack framing). Every message
     // is still Zod-capped per field and token-bucket rate-limited per pid.
     maxPayload: 24 * 1024,
+    // (v3 perf; docs/perf-v3/net.md, docs/perf-v3/server.md) permessage-deflate (RFC 7692), OPT-IN with
+    // WS_DEFLATE=on (config.ts; default off). Measured on the host (v3, 15 Hz bots, profiler off):
+    //   1 x 16 clients: server CPU 2.8 -> 4.0 % of a core, ping p95 1.5 -> 2.7 ms;
+    //   6 x 10 clients: 7.2 -> 10.7 %, ping p50 / p95 / p99 1.0 / 2.8 / 4.4 -> 2.7 / 9.0 / 18.2 ms, anon RSS +20 MiB;
+    //   S2C wire per client: vote 2819 -> 832 B/s (-70 %), walk ~-50 %.
+    // ~2.8 KB/s per client is nothing for any player's link, while the host's CPU is the shared resource, so it is
+    // off by default. When on: threshold 64 B (99 % of frames are < 256 B, ws's 1024 B default would compress nothing),
+    // full 32 KiB window with context takeover (no-context-takeover saves ~3 %), zlib level 1; ws's concurrencyLimit
+    // is process-wide, 4 = libuv's default thread pool, so zlib never queues more work than the pool can run.
+    // Inflated client messages still obey maxPayload (ws enforces it while inflating) and the HOST-11 socket budget
+    // meters the inflated bytes. A client that does not offer the extension gets uncompressed frames.
+    perMessageDeflate: config.wsDeflate && {
+      threshold: 64,
+      serverMaxWindowBits: 15,
+      zlibDeflateOptions: { level: 1, memLevel: 8 },
+      concurrencyLimit: 4,
+    },
     // (No verifyClient pre-check: rejecting at the HTTP upgrade breaks colyseus.js's reconnect
     // retry after a network drop. Seat reservations are still enforced by the transport, and the
     // rate-limited logger below absorbs the log noise from junk upgrades — SR-4.)

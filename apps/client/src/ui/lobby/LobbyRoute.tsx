@@ -14,9 +14,15 @@ import { ChatPanel } from '../chat';
 import { lazyComponent, whenIdle } from '../common/lazy';
 import { preloadTownParts } from '../common/lazyTown';
 import { navigate } from '../common/route';
-import { LoadingScreen, lobbyErrorCopy, StatusScreen } from '../common/StatusScreen';
+import { lobbyErrorCopy, StatusScreen } from '../common/StatusScreen';
 import { errorText } from './finder';
 import { WaitingRoom } from './WaitingRoom';
+import { JoiningLobby } from './JoinPreview'; // (v3 WP6) the join-by-id preview: lobby name + world badge
+import { useV3Skin } from '../common/v3skinLobby'; // (v3 WP6) the v3 skin lives as long as the connection
+import { ensureLayout, selectLayoutIfLoaded } from '../../net/layout';
+import { warmRenderer } from '../common/townPrefetch';
+import type { WorldId } from '@ct/protocol';
+import { syncWorldPath } from '../common/appWorld';
 
 // A tab older than the last deploys may find this chunk gone: say so (the seat is kept) instead of
 // silently showing a Storyteller no controls. Reloading restores the seat via the reconnect token.
@@ -33,10 +39,14 @@ const StorytellerPanel = lazyComponent(
     ) : null,
 );
 
-/** Start fetching Phaser + the town code now, in parallel with the join (GameScreen imports it too),
- * and the in-town panels' chunk (v2.4: notebook, story, social palette, clock chip, storyline). */
+/** Start fetching the town renderer now, in parallel with the join (GameScreen imports it too), and the in-town
+ * panels' chunk (v2.4: notebook, story, social palette, clock chip, storyline).
+ * (v3.2 perf, ui/common/townPrefetch.ts) Only the renderer this page will use: the 3D town for a v3 link where
+ * select.ts picks v3 (started with the ticket, no longer after lobby:view), Phaser only for a v2 link or where
+ * Classic is chosen. useLobbyLayout corrects the guess once lobby:view names the lobby's world. A v2 join (under
+ * /v2/) never downloads three.js; a v3 join never downloads Phaser unless it falls back. */
 const warmTown = () => {
-  void import('../../game/TownGame').catch(() => undefined);
+  warmRenderer();
   void preloadTownParts();
 };
 
@@ -101,11 +111,60 @@ export function LobbyRoute({ id, intent, account }: { id: string; intent: 'playe
             : [{ ...retry, primary: true }, home];
     return <StatusScreen icon={copy.icon} title={copy.title} message={copy.message} actions={actions} />;
   }
-  if (!conn) return <LoadingScreen text="Joining lobby…" />;
-  return <InLobby conn={conn} account={account} />;
+  if (!conn) return <JoiningLobby id={id} />;
+  return <InLobby id={id} conn={conn} account={account} />;
 }
 
-function InLobby({ conn, account }: { conn: RoomConnection; account: AccountView }) {
+/**
+ * (v3 WP0) The lobby's world is known from its first lobby:view: load that world's layout before the town
+ * mounts (net/layout.ts: every consumer reads currentLayout() synchronously). v2 is immediate.
+ */
+function useLobbyLayout(conn: RoomConnection): 'pending' | 'ready' | 'error' {
+  const world = useStoreSelector(conn.lobbyView, (l): WorldId | null => (l ? (l.world ?? l.lobby.world ?? 'v2') : null));
+  const [state, setState] = useState<'pending' | 'ready' | 'error'>(() => (world && selectLayoutIfLoaded(world) ? 'ready' : 'pending'));
+  useEffect(() => {
+    if (!world) return;
+    // (v3 WP8 URL paths) a join link for the other world (an old v2 share link at /lobby/x, a v3 link under /v2/):
+    // the address bar moves to the lobby's own app in place (history.replaceState, no reload; the join goes on).
+    // JoiningLobby does it earlier from the public summary when that answers first; this is the authoritative check.
+    syncWorldPath(world);
+    if (selectLayoutIfLoaded(world)) return setState('ready');
+    let alive = true;
+    setState('pending');
+    warmRenderer(world); // (v3.2) the lobby's real world: the renderer it will use (no-op when already loading)
+    ensureLayout(world).then(
+      () => alive && setState('ready'),
+      () => alive && setState('error'),
+    );
+    return () => {
+      alive = false;
+    };
+  }, [world]);
+  return state;
+}
+
+function InLobby({ id, conn, account }: { id: string; conn: RoomConnection; account: AccountView }) {
+  const layout = useLobbyLayout(conn);
+  // (v3 WP6 CONTRACT-REQUEST, lead) one skin ref for the whole connection: a renderer swap / fallback / rejoin
+  // never flashes the v2 look (WaitingRoom / SocialPalette keep their own, now harmless, refs)
+  useV3Skin(conn);
+  if (layout === 'error')
+    return (
+      <StatusScreen
+        icon="⚠"
+        title="This town could not be loaded"
+        message="The lobby uses a town this page cannot load (the server may have just been updated). Your seat is kept."
+        actions={[
+          { label: 'Try again', primary: true, onClick: () => location.reload() },
+          { label: 'Back to lobbies', onClick: () => navigate({ name: 'home' }) },
+        ]}
+      />
+    );
+  if (layout !== 'ready') return <JoiningLobby id={id} />;
+  return <InLobbyTown conn={conn} account={account} />;
+}
+
+function InLobbyTown({ conn, account }: { conn: RoomConnection; account: AccountView }) {
   // (selectors: this shell re-renders only when the waiting sheet comes or goes, not on every view)
   const hasGame = useStoreSelector(conn.gameView, (g) => !!g);
   const lobbyWaiting = useStoreSelector(conn.lobbyView, (l) => !l || l.lobby.phase === 'waiting');

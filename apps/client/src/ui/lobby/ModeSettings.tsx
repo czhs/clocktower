@@ -2,7 +2,7 @@
 // Storyteller)", the automatic timings steppers, and the finder's mode badge. Used by the create
 // dialog (LobbyFinder), the waiting room and the lobby rows. Pure helpers live in ui/clock/logic.ts.
 import { useEffect, useRef, useState } from 'preact/hooks';
-import type { AutoTimings, LobbySummary, StorytellerMode } from '@ct/protocol';
+import type { AutoTimings, LobbySummary, StorytellerMode, WorldId } from '@ct/protocol';
 import { canStep, formatTiming, MODE_COPY, modeOf, stepTiming, TIMING_FIELDS, timingsSummary, type TimingKey } from '../clock/logic';
 
 /** Two big, plain choices with one line each (radio semantics). */
@@ -85,6 +85,25 @@ export function ModeBadge({ lobby }: { lobby: LobbySummary }) {
   return (
     <span class={`ct-mode-badge ct-mode-badge-${m}`} title={MODE_COPY[m].line}>
       {MODE_COPY[m].badge}
+    </span>
+  );
+}
+
+// ------------------------------------------------------------------------------------ (v3 WP6) the town
+
+/** (v3) The lobby's town as a badge (fixed at creation; docs/v3/INTEGRATION.md §9.1 user decision). Short
+ * strings only: the create dialog's long copy lives in the lazy ./CreateLobbyModal.tsx. */
+export const WORLD_BADGE: Record<WorldId, { badge: string; title: string }> = {
+  v2: { badge: 'Classic town', title: 'The original town (v2)' },
+  v3: { badge: 'Hollowmere', title: 'The new 3D town (v3)' },
+};
+
+/** Small badge: which town the lobby uses (lobby rows, waiting room). */
+export function WorldBadge({ world }: { world: WorldId | undefined }) {
+  const w = world ?? 'v2';
+  return (
+    <span class={`ct-mode-badge ct-world-badge ct-world-badge-${w}`} title={WORLD_BADGE[w].title} data-world={w}>
+      {WORLD_BADGE[w].badge}
     </span>
   );
 }

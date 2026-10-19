@@ -1,0 +1,29 @@
+{
+  "comment": "User allow-list for the public demo roster (read by tools/demo-roster.mjs, never by the page). The public demo offers ONLY finished characters: shipped in docs/CHARACTER_STATUS.md, or a final independent critic verdict that ships recorded in characters/<id>.md (score >= the CHARACTER_PLAYBOOK ship bar, no blocking zeros). Put a characters/<id>.js id in 'allow' to offer it publicly anyway (the user's call, e.g. \"allow\": [\"mushroom\", \"frog\"]); then re-run tools/remote.sh node tools/demo-roster.mjs --browser. It must still load, idle and walk. Work in progress stays reachable with demo.html?wip=1.",
+  "allow": [
+    "owl",
+    "skeleton-chef",
+    "mushroom",
+    "chonk",
+    "cilantro",
+    "clarabelle",
+    "rabbit",
+    "fox",
+    "honk",
+    "moth",
+    "goat",
+    "mincut",
+    "crow",
+    "mole",
+    "opal",
+    "polly",
+    "preservation",
+    "progress",
+    "requin",
+    "frog",
+    "snail",
+    "toad",
+    "green-hood"
+  ],
+  "userDecision": "2026-10-16: user chose 'All cast that work': offer every character that loads, idles and walks, without WIP badges, except the one cast member the user skipped (see pipeline/skip.txt). Add new working cast members here too."
+}

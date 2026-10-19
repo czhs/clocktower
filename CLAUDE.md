@@ -26,7 +26,9 @@ multiple passwordless lobbies, LiveKit proximity/private voice). Authoritative s
 - Ports on the host: **3000 = production (Cloudflare Tunnel), 3001 = dev service** — never bind these in tests.
   Ad-hoc test servers: lead 3300-3309, rules 3310-3319, world-art 3320-3329, lobby-auth 3330-3339,
   voice 3340-3349, qa-deploy 3350-3399; 3400-3449 = random ports picked by `tests/support/server.ts`
-  `pickPort()` (never hardcode a port there). Always bind 127.0.0.1.
+  `pickPort()` (never hardcode a port there); **3450-3499 = v3 agents** (v3-lead 3450-3453 ad hoc + 3454 = `lobby.world.test.ts`, v3-core
+  3455-3459, v3-qa harness 3460, v3-avatars 3461-3464, v3-stage 3465-3469, v3-overlay 3470-3474,
+  v3-world 3475-3479, v3-ui 3480-3484, v3-qa 3485-3499; docs/v3/INTEGRATION.md §8). Always bind 127.0.0.1.
 - Runtime (since 2026-10-15): services are SYSTEM units `clocktower-{prod,dev,tunnel}.service` running as the
   unprivileged `clocktower` user from `/srv/clocktower` (sandboxed; see docs/security.md). Deploy only via
   `scripts/deploy-hshi-u1.sh`; the admin may only restart/stop these units via a narrow sudoers rule.
@@ -50,6 +52,15 @@ multiple passwordless lobbies, LiveKit proximity/private voice). Authoritative s
 | lobby-auth | `packages/db/**`, `apps/server/src/{services.ts,auth,directory,rooms/GameRoom.ts,rooms/*.ts except modules.ts,admin}/**`, `apps/client/src/ui/{auth,lobby,admin}/**`, `apps/client/src/ui/chat/**` |
 | voice | `packages/voice/**`, `apps/server/src/voice/**`, `apps/client/src/voice/**`, `apps/client/src/ui/voice/**`; may extend `packages/protocol/src/voice.ts` additively |
 | qa-deploy | `tests/**`, `scripts/**` (except remote.sh/remote-prepare.sh/pull.sh: lead), `docs/deployment.md`, `docs/test-results.md`, `deploy/**` |
+| v3-lead (WP0) | `apps/client/src/game3d/{TownGame3d,select,bootGuard,bootMark,perf,contract,coords}.ts`, `game3d/pixel3d.d.ts`, `game3d/vendor/engineHost.ts`, `apps/client/build/pixel3dImports.ts`, `apps/client/src/game/rules/**`, `apps/client/src/net/layout.ts`, `docs/v3/INTEGRATION.md` |
+| v3-core (WP0s, WP1) | `apps/client/src/game3d/{net,input,debug}/**`; `game/gameplay/{core,phaserView}.ts`, `game/social/{controller,phaserView}.ts` (splits, acting for world-art) |
+| v3-avatars (WP2) | `apps/client/src/game3d/avatars/**`, `game3d/vendor/characters.ts` |
+| v3-stage (WP3) | `apps/client/src/game3d/world/**`, `game3d/vendor/{town,interiors,time}.ts` |
+| v3-overlay (WP4) | `apps/client/src/game3d/overlay/**` |
+| v3-world (WP5a/b) | `scripts/v3/export-hollowmere.mjs`, `packages/assets/src/hollowmere/**`, `packages/assets/test/hollowmere*.test.ts` (acting for world-art) |
+| v3-ui (WP6) | `apps/client/src/ui/common/{v3atlas.ts,theme-v3.css}` + the v3 branches named in INTEGRATION.md §8 |
+| v3-qa (WP7) | `scripts/v3/**` (except export-hollowmere.mjs), `tests/v3/**`, `tests/e2e/v3-*.spec.ts`, `apps/client/src/game3d/harness/**`, `apps/client/{v3-harness.html,vite.harness.config.ts}` |
+| nobody (vendor) | `v3/**` is READ-ONLY: `v3/pixel3d/**` and `v3/assets/**` are re-published by the pixel3d session; work around in `game3d/vendor/` or add a CONTRACT-REQUEST to INTEGRATION.md §9.2 |
 
 Package-local unit tests live in `<package>/test/*.test.ts` and are owned by the package owner.
 Need a change in someone else's file? Describe it in your final report (or a `// CONTRACT-REQUEST:`

@@ -1,6 +1,6 @@
 // Playwright E2E (qa-deploy). Runs ON the build host (scripts/remote.sh pnpm test:e2e).
 //
-// By default the config builds the app and starts a throwaway server on 127.0.0.1:3398 with a temp
+// By default the config builds the app and starts a throwaway server on 127.0.0.1:3398 (or $E2E_PORT) with a temp
 // SQLite DB and random secrets (webServer below). To run against an existing deployment instead:
 //   E2E_BASE_URL=http://127.0.0.1:3001 pnpm test:e2e      # dev service (on the host)
 //   E2E_PUBLIC=1 E2E_RESOLVE_IP=$(dig +short @1.1.1.1 clocktower.chrisshi.com A | head -1) pnpm test:e2e
@@ -14,7 +14,8 @@ import { fileURLToPath } from 'node:url';
 import { defineConfig, devices } from '@playwright/test';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const PORT = 3398;
+// E2E_PORT: v3 agents run e2e in parallel on their own ports (3450-3499, docs/v3/INTEGRATION.md §8 / D4).
+const PORT = Number(process.env.E2E_PORT ?? 3398);
 // Public-endpoint run (only when E2E_PUBLIC=1): runs ONLY public.spec.ts against E2E_BASE_URL
 // (default https://clocktower.chrisshi.com). E2E_RESOLVE_IP pins the hostname for Chromium
 // (--host-resolver-rules), for hosts whose local resolver is stale.
@@ -22,6 +23,8 @@ const PUBLIC = process.env.E2E_PUBLIC === '1';
 const external = process.env.E2E_BASE_URL ?? (PUBLIC ? (process.env.CT_PUBLIC_URL ?? 'https://clocktower.chrisshi.com') : undefined);
 const pinnedHost = external ? new URL(external).hostname : '';
 const resolveArgs = process.env.E2E_RESOLVE_IP ? [`--host-resolver-rules=MAP ${pinnedHost} ${process.env.E2E_RESOLVE_IP}`] : [];
+// (v3 WP7) the 3D town specs: file names starting with `v3-` (not classic-in-v3 / v23-*: those stay in chromium)
+const V3_SPECS = /(^|[\\/])v3-[^\\/]*\.spec\.ts$/;
 const baseURL = external ?? `http://127.0.0.1:${PORT}`;
 const dataDir = external ? '' : mkdtempSync(path.join(os.tmpdir(), 'ct-e2e-'));
 
@@ -43,7 +46,30 @@ export default defineConfig({
     screenshot: 'only-on-failure',
     video: 'off',
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'], launchOptions: { args: resolveArgs } } }],
+  projects: [
+    // (project testIgnore replaces the top-level one: keep public.spec.ts out here too)
+    { name: 'chromium', testIgnore: [V3_SPECS, ...(PUBLIC ? [] : [/public\.spec\.ts/])], use: { ...devices['Desktop Chrome'], launchOptions: { args: resolveArgs } } },
+    // (v3 WP7, docs/v3/INTEGRATION.md §6.2) the 3D town specs (tests/e2e/v3-*.spec.ts): host GPU by default (CT_GL below), low tier,
+    // 960x540, 15 fps (helpers.ts v3InitScript: ct.debug.v3force / fps / fxQuality / camera in every v3 context).
+    // Run on the host ONLY through scripts/v3/e2e.sh (host-wide lock, nice 19, E2E_PORT from the v3-qa range), which sets
+    // E2E_V3=1: without it the project does not exist, so a plain `pnpm test:e2e` (the Classic suite) never starts the
+    // SwiftShader 3D specs by accident.
+    ...(process.env.E2E_V3 === '1' ? [{
+      name: 'v3',
+      testMatch: PUBLIC ? /^$/ : V3_SPECS,
+      timeout: 300_000,
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport: { width: 960, height: 540 },
+        deviceScaleFactor: 1,
+        // GL backend (user 2026-10-18: the host GPU may be used): CT_GL=gpu (default) = the host RTX 3060 via ANGLE/Vulkan
+        // (same flags as tutorial.config.ts GPU_ARGS); CT_GL=swiftshader = CPU raster (the pre-2026-10-18 rule).
+        launchOptions: { args: [...(process.env.CT_GL === 'swiftshader'
+          ? ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist']
+          : ['--use-angle=vulkan', '--enable-features=Vulkan', '--enable-gpu', '--ignore-gpu-blocklist']), ...resolveArgs] },
+      },
+    }] : []),
+  ],
   webServer: external
     ? undefined
     : {

@@ -4,7 +4,7 @@
 // The rules engine only advises: buttons are disabled only when the payload would be invalid.
 import type { ComponentChildren } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
-import { townLayout } from '@ct/assets';
+import { currentLayout } from '../../net/layout'; // (v3) the lobby's layout
 import {
   CHARACTER_INFO,
   FORCE_PHASES,
@@ -105,7 +105,7 @@ const FORCE_LABEL: Record<ForcePhase, string> = {
 };
 
 function buildingById(id: string | null): BuildingDef | undefined {
-  return id ? townLayout.buildings.find((b) => b.id === id) : undefined;
+  return id ? currentLayout().buildings.find((b) => b.id === id) : undefined;
 }
 
 function buildingLabel(b: BuildingDef, players: PublicPlayerView[]): string {
@@ -120,7 +120,7 @@ function buildingLabel(b: BuildingDef, players: PublicPlayerView[]): string {
 function sortedBuildings(players: PublicPlayerView[]): BuildingDef[] {
   const rank = (b: BuildingDef) =>
     b.houseIndex === null ? -1 : players.some((p) => p.seat === b.houseIndex) ? b.houseIndex : 100 + b.houseIndex;
-  return [...townLayout.buildings].sort((a, b) => rank(a) - rank(b));
+  return [...currentLayout().buildings].sort((a, b) => rank(a) - rank(b));
 }
 
 function describeTarget(t: StageTarget): string {

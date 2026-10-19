@@ -1,4 +1,4 @@
-import { townLayout } from '@ct/assets';
+import { currentLayout } from '../../net/layout'; // (v3) the lobby's layout
 import type { LocationId } from '@ct/protocol';
 import { ambientMix, surfaceAt, type Surface } from './areas';
 import { LOOP_IDS, type ClipId } from './catalog';
@@ -177,8 +177,8 @@ export class SoundDirector {
   }
 
   private nearDoor(location: LocationId, x: number, y: number): boolean {
-    const ts = townLayout.tileSize;
-    for (const b of townLayout.buildings) {
+    const ts = currentLayout().tileSize;
+    for (const b of currentLayout().buildings) {
       const p = location === 'outdoors' ? b.door : location === `bld:${b.id}` ? b.interiorDoor : null;
       if (p && Math.hypot((p.x + 0.5) * ts - x, (p.y + 0.5) * ts - y) <= DOOR_PX) return true;
     }

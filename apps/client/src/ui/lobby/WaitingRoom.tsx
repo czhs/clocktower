@@ -10,6 +10,7 @@ import {
   type MemberView,
   type ScriptId,
   type StorytellerMode,
+  type WorldId,
   WORD_LOBBY_ID_RE,
 } from '@ct/protocol';
 import { useStore } from '../../net/store';
@@ -18,9 +19,10 @@ import { helpSeen, openHelp } from '../common/HowToPlay';
 import { openRulebook } from '../rulebook';
 import { CastPortrait } from '../common/castPortrait';
 import { CharacterPicker, characterOf, takenBy } from './CharacterPicker';
-import { copyText, SCRIPT_LABEL, shareUrl } from './finder';
+import { copyText, SCRIPT_LABEL, shareUrl, worldOfLobby } from './finder';
 import { MODE_COPY, modeOf, timingsOf, timingsSummary } from '../clock/logic';
-import { AutoTimingsEditor, useTimingsDraft } from './ModeSettings';
+import { AutoTimingsEditor, useTimingsDraft, WorldBadge } from './ModeSettings';
+import { useV3Skin } from '../common/v3skinLobby'; // (v3 WP6) a v3 lobby wears the v3 DOM skin
 import { StPrepareButton } from '../storyteller/prepareSlot'; // (v2.2) the Storyteller's tools before the game
 import { AutoStorylineSetting } from '../common/lazyTown'; // (v2.2) automatic games: storyline (v2.4: lazy chunk)
 import { ChatFilterSetting, MemberModTools, MutedBadge, RemovedList } from './moderation'; // (v2.3 OPS-6)
@@ -36,6 +38,7 @@ const narrow = () => typeof matchMedia === 'function' && matchMedia('(max-width:
 export function WaitingRoom({ conn, onLeave }: { conn: RoomConnection; account: AccountView; onLeave: () => void }) {
   const view = useStore(conn.lobbyView);
   const status = useStore(conn.status);
+  useV3Skin(conn);
   const [notice, setNotice] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(narrow);
   const [pickOpen, setPickOpen] = useState(false);
@@ -97,8 +100,10 @@ export function WaitingRoom({ conn, onLeave }: { conn: RoomConnection; account: 
           <span class="ct-sr-only">{collapsed ? 'Show lobby details' : 'Hide lobby details'}</span>
         </button>
         <div class="ct-waiting-title">
-          <h2>{view.lobby.name}</h2>
-          <div class="muted ct-small">
+          <h2 class="ct-waiting-name">{view.lobby.name}</h2>
+          {/* (v3 WP6) the town badge leads the meta line, so the name keeps the whole title width */}
+          <div class="muted ct-small ct-waiting-meta">
+            <WorldBadge world={worldOfLobby(view)} />{' '}
             {players.length}/{view.lobby.maxPlayers} players · {readyCount} ready
             {!collapsed && (
               <>
@@ -130,7 +135,7 @@ export function WaitingRoom({ conn, onLeave }: { conn: RoomConnection; account: 
             Be the Storyteller
           </button>
         )}
-        {players.length < MIN_PLAYERS && <InviteButton lobbyId={view.lobby.id} lobbyName={view.lobby.name} />}
+        {players.length < MIN_PLAYERS && <InviteButton lobbyId={view.lobby.id} lobbyName={view.lobby.name} world={worldOfLobby(view)} />}
         {notReady.length > 0 && players.length >= MIN_PLAYERS && (isSt || isHost || me?.ready) ? (
           <p class="ct-waiting-status muted ct-small" aria-live="polite">
             Waiting for {listNames(notReady.map((m) => m.displayName))} to press Ready
@@ -166,7 +171,7 @@ export function WaitingRoom({ conn, onLeave }: { conn: RoomConnection; account: 
       {!collapsed && (
         <div class="ct-waiting-body" id="ct-waiting-body">
           {view.lobby.description && <p class="ct-waiting-desc">{view.lobby.description}</p>}
-          <ShareLink lobbyId={view.lobby.id} />
+          <ShareLink lobbyId={view.lobby.id} world={worldOfLobby(view)} />
 
           <GameMode view={view} conn={conn} isHost={admin} st={st} auto={auto} />
           {!auto &&
@@ -288,8 +293,8 @@ function ReadyButton({ conn, ready, lastOne }: { conn: RoomConnection; ready: bo
   );
 }
 
-function ShareLink({ lobbyId }: { lobbyId: string }) {
-  const url = shareUrl(lobbyId);
+function ShareLink({ lobbyId, world }: { lobbyId: string; world: WorldId }) {
+  const url = shareUrl(lobbyId, world); // (v3 URL paths) inside the lobby's own app: /lobby/x or /v2/lobby/x
   const [copied, setCopied] = useState(false);
   return (
     <>
@@ -568,7 +573,7 @@ function LobbyCharacter({
  * link itself sits in the details, which start collapsed on phones). Phones get the system share
  * sheet (Messages, WhatsApp, …); elsewhere, or if sharing is unavailable, the link is copied.
  */
-function InviteButton({ lobbyId, lobbyName }: { lobbyId: string; lobbyName: string }) {
+function InviteButton({ lobbyId, lobbyName, world }: { lobbyId: string; lobbyName: string; world: WorldId }) {
   const [done, setDone] = useState<string | null>(null);
   useEffect(() => {
     if (!done) return;
@@ -576,7 +581,7 @@ function InviteButton({ lobbyId, lobbyName }: { lobbyId: string; lobbyName: stri
     return () => clearTimeout(t);
   }, [done]);
   const invite = async () => {
-    const url = shareUrl(lobbyId);
+    const url = shareUrl(lobbyId, world);
     const nav = navigator as Navigator & { share?: (d: { title?: string; text?: string; url?: string }) => Promise<void> };
     const coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
     if (coarse && typeof nav.share === 'function') {

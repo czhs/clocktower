@@ -11,6 +11,8 @@ import {
   type PublicPlayerView,
   type ScriptId,
 } from '@ct/protocol';
+import { appPath } from '../common/appWorld';
+import { countdownSeconds, countdownText, msToNextSecond } from './logic';
 
 /**
  * The script the current lobby is running. Provided once near the top of the Storyteller panel and
@@ -39,27 +41,34 @@ export function phaseTitle(phase: GamePhase, day: number): string {
   return PHASE_LABEL[phase];
 }
 
-/** Re-render periodically while a countdown is active. */
-export function useNow(active: boolean, everyMs = 250): number {
-  const [now, setNow] = useState(Date.now());
+/**
+ * A countdown's "m:ss" text that re-renders only when the shown second changes (v3.1: the old 250 ms interval
+ * re-rendered 4x/s and the split number text nodes were rewritten each time, ~5 DOM writes/s per countdown).
+ * The timer lands just after each whole second before `endsAt`; an equal string is a Preact setState no-op.
+ */
+export function useCountdownText(endsAt: number | null): { text: string; seconds: number } | null {
+  const [, setText] = useState('');
   useEffect(() => {
-    if (!active) return;
-    setNow(Date.now());
-    const t = setInterval(() => setNow(Date.now()), everyMs);
-    return () => clearInterval(t);
-  }, [active, everyMs]);
-  return now;
+    if (endsAt === null) return;
+    let t: ReturnType<typeof setTimeout> | undefined;
+    const tick = () => {
+      const now = Date.now();
+      setText(countdownText(endsAt, now));
+      const d = msToNextSecond(endsAt, now);
+      if (d !== null) t = setTimeout(tick, d);
+    };
+    tick();
+    return () => clearTimeout(t);
+  }, [endsAt]);
+  if (endsAt === null) return null;
+  const now = Date.now();
+  return { text: countdownText(endsAt, now), seconds: countdownSeconds(endsAt, now) };
 }
 
 export function Countdown({ endsAt }: { endsAt: number | null }) {
-  const now = useNow(endsAt !== null);
-  if (endsAt === null) return null;
-  const s = Math.max(0, Math.ceil((endsAt - now) / 1000));
-  return (
-    <span class={`ct-countdown${s <= 10 ? ' ct-countdown-low' : ''}`}>
-      {Math.floor(s / 60)}:{String(s % 60).padStart(2, '0')}
-    </span>
-  );
+  const c = useCountdownText(endsAt);
+  if (!c) return null;
+  return <span class={`ct-countdown${c.seconds <= 10 ? ' ct-countdown-low' : ''}`}>{c.text}</span>;
 }
 
 export function charName(c: CharacterId): string {
@@ -196,7 +205,7 @@ export function VoteClock({ nom, players, size = 150 }: { nom: NominationView; p
 }
 
 export function goHome() {
-  history.pushState({ name: 'home' }, '', '/');
+  history.pushState({ name: 'home' }, '', appPath('/')); // (v3 URL paths) stay in this app (/ or /v2/)
   window.dispatchEvent(new CustomEvent('ct:navigate', { detail: { name: 'home' } }));
 }
 

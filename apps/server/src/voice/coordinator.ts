@@ -182,6 +182,26 @@ interface MemberVoice {
   disconnectedAt: number | null;
 }
 
+/**
+ * (v3 perf) One `listRooms` shared by every lobby's coordinator whose audit runs within the same second
+ * (they all use the same RoomServiceClient): room name -> participant count (undefined = unknown).
+ * Kept at most AUDIT_ROOMS_MAX_AGE_MS so it never delays a detection by more than that; failures are not cached.
+ */
+const AUDIT_ROOMS_MAX_AGE_MS = 1_000;
+const roomCounts = new WeakMap<VoiceRoomService, { at: number; p: Promise<Map<string, number | undefined>> }>();
+function sharedRoomCounts(rs: VoiceRoomService, now: number, maxAgeMs: number): Promise<Map<string, number | undefined>> | null {
+  if (!rs.listRooms) return null;
+  const hit = roomCounts.get(rs);
+  if (hit && now - hit.at >= 0 && now - hit.at < maxAgeMs) return hit.p;
+  const p = rs.listRooms().then((list) => new Map(list.map((r) => [r.name, r.numParticipants] as const)));
+  const entry = { at: now, p };
+  roomCounts.set(rs, entry);
+  p.catch(() => {
+    if (roomCounts.get(rs) === entry) roomCounts.delete(rs);
+  });
+  return p;
+}
+
 interface Removal {
   room: string;
   pid: string;
@@ -394,31 +414,74 @@ export function createVoiceCoordinator(host: RoomHost, deps: VoiceDeps): VoiceCo
     removeFromRoom(room, identity, true);
   };
 
+  const auditRoom = (rs: VoiceRoomService, room: string) => {
+    auditing.add(room);
+    track(
+      rs
+        .listParticipants(room)
+        .then((list) => {
+          for (const p of list) {
+            if (!authorizedFor(p.identity, room)) {
+              evict(room, p.identity);
+              // A connected intruder receives LiveKit refresh tokens and may re-join: keep watching.
+              audits.set(room, Math.max(audits.get(room) ?? 0, host.now() + tune.auditWindowMs));
+            }
+          }
+        })
+        .catch(() => undefined)
+        .finally(() => auditing.delete(room)),
+    );
+  };
+
+  /**
+   * VOICE-9: every audited room is checked at EVERY run (auditIntervalMs), exactly as before v3 — a revoked
+   * member who keeps or re-uses its token is found at the next run. (v3 perf) What changed is only how a room
+   * nobody is in is recognised: one listRooms (shared by the lobbies auditing in the same second, ≤ 1 s old)
+   * replaces a listParticipants per audited room, and a room LiveKit reports empty or gone is not listed (it has
+   * nobody to evict; the original process reconciler already trusted numParticipants the same way). Before:
+   * ≈ 390 listParticipants / min for one busy 16-member lobby, almost all of them for empty epoch rooms
+   * (docs/perf-v3/net.md, docs/perf-v3/server.md). Without listRooms, or when it fails, every audited room is
+   * listed, as before. (An earlier draft also backed occupied rooms off to 60 s: reverted, revocation must stay
+   * prompt.)
+   */
   const runAudits = (now: number) => {
-    if (!deps.roomService) return;
+    const rs = deps.roomService;
+    if (!rs) return;
+    const live: string[] = [];
     for (const [room, until] of audits) {
       if (now > until) {
         audits.delete(room);
         continue;
       }
-      if (auditing.has(room)) continue;
-      auditing.add(room);
-      track(
-        deps.roomService
-          .listParticipants(room)
-          .then((list) => {
-            for (const p of list) {
-              if (!authorizedFor(p.identity, room)) {
-                evict(room, p.identity);
-                // A connected intruder receives LiveKit refresh tokens and may re-join: keep watching.
-                audits.set(room, Math.max(audits.get(room) ?? 0, host.now() + tune.auditWindowMs));
-              }
-            }
-          })
-          .catch(() => undefined)
-          .finally(() => auditing.delete(room)),
-      );
+      if (!auditing.has(room)) live.push(room);
     }
+    if (!live.length) return;
+    const counts = sharedRoomCounts(rs, now, Math.min(AUDIT_ROOMS_MAX_AGE_MS, tune.auditIntervalMs / 3));
+    if (!counts) {
+      for (const room of live) auditRoom(rs, room);
+      return;
+    }
+    for (const room of live) auditing.add(room); // no second listing of these while listRooms is in flight
+    track(
+      counts
+        .then(
+          (byName) => {
+            for (const room of live) {
+              auditing.delete(room);
+              if (disposed) continue;
+              // 0 / absent = nobody there: nothing to find this run (the next run asks again)
+              if (byName.get(room) !== 0 && byName.has(room)) auditRoom(rs, room);
+            }
+          },
+          () => {
+            for (const room of live) {
+              auditing.delete(room);
+              if (!disposed) auditRoom(rs, room);
+            }
+          },
+        )
+        .catch(() => undefined),
+    );
   };
 
   // -- grants -----------------------------------------------------------------------------

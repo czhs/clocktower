@@ -20,6 +20,9 @@ import { HomeScreen } from './ui/lobby/HomeScreen';
 import { lazyComponent, whenIdle } from './ui/common/lazy';
 import { LoadingScreen, StatusScreen } from './ui/common/StatusScreen';
 import { navigate, parseRoute, type Route } from './ui/common/route';
+import { appWorld } from './ui/common/appWorld';
+import { prefetchAllowed } from './ui/common/prefetchAllowed';
+import { V3Loading } from './ui/common/v3loading';
 import { installUiSounds } from './game/audio';
 
 // LEAD-OWNED shell: session bootstrap + tiny path router (ui/common/route.ts).
@@ -43,9 +46,19 @@ const loadFailed = (what: string) => (
   </div>
 );
 
+// (v3 URL paths + WP8) `/` is the v3 app: its boot and join screens are the Hollowmere loading scene
+// (ui/common/v3loading.tsx); the v2 app at /v2/ keeps the plain line. The later steps (layout, town chunk, pieces,
+// warm-up) continue the same scene with real progress (ui/lobby/JoinPreview.tsx, ui/common/townLoading.tsx).
+const booting = (v2Text: string, joining: boolean) =>
+  appWorld() === 'v3' ? (
+    <V3Loading frac={joining ? 0.06 : 0.03} label={joining ? 'Finding the lobby…' : 'Opening the town gates…'} parade={joining} />
+  ) : (
+    <LoadingScreen text={v2Text} />
+  );
+
 const LobbyRoute = lazyComponent(
   () => import('./ui/lobby/LobbyRoute').then((m) => m.LobbyRoute),
-  (failed) => (failed ? loadFailed('lobby') : <LoadingScreen text="Joining lobby…" />),
+  (failed) => (failed ? loadFailed('lobby') : booting('Joining lobby…', true)),
   { reloadOnFail: true },
 );
 const AdminScreen = lazyComponent(
@@ -91,11 +104,23 @@ function App() {
       window.removeEventListener('ct:navigate', onNav);
     };
   }, []);
-  // Signed in on the home screen: fetch the lobby chunk while the user picks a lobby.
+  // Signed in on the home screen: fetch the lobby chunk while the user picks a lobby. (v3.2 perf) In the v3 app the
+  // landing (signed out) and home screens also prefetch the lobby chunk and the 3D town when idle, unless this page
+  // would draw Classic or the connection is slow / Save-Data (ui/common/townPrefetch.ts).
   const home = !!account && route.name === 'home';
+  const landing = account === null || home;
   useEffect(() => {
     if (home) return whenIdle(() => void LobbyRoute.preload());
   }, [home]);
+  useEffect(() => {
+    if (!landing || appWorld() !== 'v3') return;
+    return whenIdle(() => {
+      if (!prefetchAllowed()) return;
+      void LobbyRoute.preload();
+      // (dynamic: townPrefetch pulls select.ts, which stays out of the entry chunk)
+      void import('./ui/common/townPrefetch').then((m) => m.prefetchTown3dForHome()).catch(() => undefined);
+    }, 4000);
+  }, [landing]);
 
   if (account === undefined)
     return unreachable > 0 ? (
@@ -110,7 +135,7 @@ function App() {
         actions={[{ label: 'Try now', primary: true, onClick: checkSession }]}
       />
     ) : (
-      <LoadingScreen text="Loading…" />
+      booting('Loading…', false)
     );
   if (account === null) return <AuthScreen onSignedIn={setAccount} />;
   if (route.name === 'lobby') return <LobbyRoute key={route.id} id={route.id} intent={route.intent} account={account} />;

@@ -2,6 +2,7 @@
 // together) without Colyseus. Captures every message sent per pid for secrecy assertions.
 import type { S2CMessages, S2CType, ScriptId } from '@ct/protocol';
 import { DEFAULT_COSMETICS } from '@ct/protocol';
+import { townLayout } from '@ct/assets';
 import type { GameModule, Logger, RoomEvent, RoomHost, RoomMember, VoiceModule, WorldModule } from '../../src/rooms/modules.js';
 
 export interface FakeHost extends RoomHost {
@@ -31,6 +32,7 @@ export function createFakeHost(lobbyId = 'lobbyA'): FakeHost {
     lobbyId,
     env: 'test',
     log: quiet,
+    layout: () => townLayout, // (v3) fake hosts are v2 lobbies
     now: () => clock.now,
     script: () => script.id,
     clock,

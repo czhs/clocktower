@@ -1,15 +1,18 @@
-import { townLayout, townMap } from '@ct/assets';
-import type { LocationId } from '@ct/protocol';
+import { townMap, type TownMap } from '@ct/assets';
+import { currentLayout, currentWorld } from '../../net/layout'; // (v3) the lobby's layout
+import type { LocationId, WorldId } from '@ct/protocol';
 import type { LoopId } from './catalog';
 
 // Static acoustic map of the town, derived ONLY from the shipped map data (ground codes, props,
 // buildings). Ambience is computed from this + the local player's own position/location + the
 // PUBLIC phase. Nothing here may ever depend on other entities, the Storyteller or private game
 // data (night-leak rule, docs/world-audit.md §4).
-
-const TS = townMap.tileSize;
-const W = townMap.width;
-const H = townMap.height;
+//
+// (v3 WP5a, v3-world for world-art) The map is the CURRENT lobby world's: v2 = `townMap`, v3 = Hollowmere's
+// `townMapV3` from '@ct/assets/hollowmere' (the lazy chunk net/layout.ts loads before GameScreen mounts; fetched
+// here through the same dynamic import, so it is never in a static chunk). Everything derived from a map (ground
+// lookups, distance fields, fountains) is cached per world. While a v3 map is still loading (a few ms after
+// ensureLayout), the outdoor ambience is silent and footsteps default to cobble.
 
 export type Surface = 'cobble' | 'grass' | 'wood' | 'gravel';
 
@@ -28,11 +31,74 @@ const SURFACE: Record<string, Surface> = {
   ':': 'grass', // dirt lane (soft)
 };
 
+let v3Map: TownMap | null = null;
+let v3Load: Promise<void> | null = null;
+
+/** Load `world`'s map data (v3: the Hollowmere chunk). Resolves at once for v2 or when already loaded. */
+export function loadAreaMap(world: WorldId | undefined): Promise<void> {
+  if (world !== 'v3' || v3Map) return Promise.resolve();
+  v3Load ??= import('@ct/assets/hollowmere').then(
+    (m) => {
+      v3Map = m.townMapV3;
+    },
+    (e: unknown) => {
+      v3Load = null; // a chunk-load failure may be retried
+      throw e;
+    },
+  );
+  return v3Load;
+}
+
+interface Fields {
+  water: Float32Array;
+  grave: Float32Array;
+  forest: Float32Array;
+  square: Float32Array;
+}
+/** Everything derived from one world's map (built on first use, then cached). */
+interface Area {
+  map: TownMap;
+  TS: number;
+  W: number;
+  H: number;
+  fields: Fields | null;
+  fountains: { x: number; y: number }[];
+}
+const areas = new Map<WorldId, Area>();
+
+/** The current world's derived map, or null while a v3 map is still loading. */
+function area(): Area | null {
+  const world = currentWorld();
+  const cached = areas.get(world);
+  if (cached) return cached;
+  let map: TownMap | null = townMap;
+  if (world === 'v3') {
+    map = v3Map;
+    if (!map) {
+      void loadAreaMap('v3').catch(() => {});
+      return null;
+    }
+  }
+  const TS = map.tileSize;
+  const a: Area = {
+    map,
+    TS,
+    W: map.width,
+    H: map.height,
+    fields: null,
+    fountains: map.objects.filter((o) => o.kind === 'fountain').map((o) => ({ x: (o.x + 1.5) * TS, y: (o.y + 0.5) * TS })),
+  };
+  areas.set(world, a);
+  return a;
+}
+
 /** Ground code under a pixel position (feet). */
 export function groundAt(x: number, y: number): string {
-  const tx = Math.floor(x / TS);
-  const ty = Math.floor((y - 1) / TS);
-  return townMap.ground[ty]?.[tx] ?? ' ';
+  const a = area();
+  if (!a) return ' ';
+  const tx = Math.floor(x / a.TS);
+  const ty = Math.floor((y - 1) / a.TS);
+  return a.map.ground[ty]?.[tx] ?? ' ';
 }
 
 /** Footstep surface under a pixel position. */
@@ -42,7 +108,7 @@ export function surfaceAt(x: number, y: number): Surface {
 
 // --- distance fields (tiles) ---------------------------------------------------------------
 
-function field(isSource: (tx: number, ty: number) => boolean): Float32Array {
+function field(W: number, H: number, isSource: (tx: number, ty: number) => boolean): Float32Array {
   const d = new Float32Array(W * H).fill(1e6);
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (isSource(x, y)) d[y * W + x] = 0;
   const D = Math.SQRT2;
@@ -72,40 +138,34 @@ function field(isSource: (tx: number, ty: number) => boolean): Float32Array {
   return d;
 }
 
-const ground = (tx: number, ty: number) => townMap.ground[ty]?.[tx] ?? ' ';
-const tb = townLayout.townBounds;
-const inTown = (tx: number, ty: number) => tx >= tb.x && ty >= tb.y && tx < tb.x + tb.w && ty < tb.y + tb.h;
-
-interface Fields {
-  water: Float32Array;
-  grave: Float32Array;
-  forest: Float32Array;
-  square: Float32Array;
-}
-let fields: Fields | null = null;
-function F(): Fields {
-  if (fields) return fields;
-  const graves = new Set(townMap.objects.filter((o) => /^grave[0-9]$/.test(o.kind)).map((o) => o.y * W + o.x));
-  fields = {
-    water: field((x, y) => inTown(x, y) && ground(x, y) === '~'),
-    grave: field((x, y) => graves.has(y * W + x)),
-    forest: field((x, y) => inTown(x, y) && (ground(x, y) === ',' || ground(x, y) === 'T')),
-    square: field((x, y) => inTown(x, y) && (ground(x, y) === 'o' || ground(x, y) === 'O')),
+function F(a: Area): Fields {
+  if (a.fields) return a.fields;
+  const { map, W, H } = a;
+  const ground = (tx: number, ty: number) => map.ground[ty]?.[tx] ?? ' ';
+  const tb = currentLayout().townBounds;
+  const inTown = (tx: number, ty: number) => tx >= tb.x && ty >= tb.y && tx < tb.x + tb.w && ty < tb.y + tb.h;
+  const graves = new Set(map.objects.filter((o) => /^grave[0-9]$/.test(o.kind)).map((o) => o.y * W + o.x));
+  a.fields = {
+    water: field(W, H, (x, y) => inTown(x, y) && ground(x, y) === '~'),
+    grave: field(W, H, (x, y) => graves.has(y * W + x)),
+    forest: field(W, H, (x, y) => inTown(x, y) && (ground(x, y) === ',' || ground(x, y) === 'T')),
+    square: field(W, H, (x, y) => inTown(x, y) && (ground(x, y) === 'o' || ground(x, y) === 'O')),
   };
-  return fields;
+  return a.fields;
 }
 
-function at(f: Float32Array, x: number, y: number): number {
-  const tx = Math.max(0, Math.min(W - 1, Math.floor(x / TS)));
-  const ty = Math.max(0, Math.min(H - 1, Math.floor((y - 1) / TS)));
-  return f[ty * W + tx]!;
+function at(a: Area, f: Float32Array, x: number, y: number): number {
+  const tx = Math.max(0, Math.min(a.W - 1, Math.floor(x / a.TS)));
+  const ty = Math.max(0, Math.min(a.H - 1, Math.floor((y - 1) / a.TS)));
+  return f[ty * a.W + tx]!;
 }
 
-const fountains = townMap.objects.filter((o) => o.kind === 'fountain').map((o) => ({ x: (o.x + 1.5) * TS, y: (o.y + 0.5) * TS }));
-const tavern = townLayout.buildings.find((b) => b.kind === 'tavern');
-const tavernDoor = tavern ? { x: (tavern.door.x + 0.5) * TS, y: (tavern.door.y + 0.5) * TS } : null;
+const tavernDoor = (TS: number) => {
+  const tavern = currentLayout().buildings.find((b) => b.kind === 'tavern');
+  return tavern ? { x: (tavern.door.x + 0.5) * TS, y: (tavern.door.y + 0.5) * TS } : null;
+};
 
-function distPts(pts: { x: number; y: number }[], x: number, y: number): number {
+function distPts(TS: number, pts: { x: number; y: number }[], x: number, y: number): number {
   let best = Infinity;
   for (const p of pts) best = Math.min(best, Math.hypot(p.x - x, p.y - y) / TS);
   return best;
@@ -166,7 +226,7 @@ export function ambientMix(location: LocationId, x: number, y: number, phase: st
   const m = silent();
   if (location !== 'outdoors') {
     const id = location.slice(4);
-    const b = townLayout.buildings.find((bb) => bb.id === id);
+    const b = currentLayout().buildings.find((bb) => bb.id === id);
     const kind = b?.kind ?? 'house';
     if (kind === 'tavern') {
       m.tavern = { level: 0.85 * day + 0.1, lowpass: 9000 };
@@ -183,13 +243,17 @@ export function ambientMix(location: LocationId, x: number, y: number, phase: st
     }
     return { loops: m, calls: { owlsPerMin: 1.2 * night, lowpass: 1400 } };
   }
-  const f = F();
-  const water = at(f.water, x, y);
-  const grave = at(f.grave, x, y);
-  const forest = at(f.forest, x, y);
-  const square = at(f.square, x, y);
-  const fountain = distPts(fountains, x, y);
-  const door = tavernDoor ? Math.hypot(tavernDoor.x - x, tavernDoor.y - y) / TS : Infinity;
+  const a = area();
+  if (!a) return { loops: m, calls: { owlsPerMin: 0 } }; // v3 map still loading: silent for a moment
+  const { TS } = a;
+  const f = F(a);
+  const water = at(a, f.water, x, y);
+  const grave = at(a, f.grave, x, y);
+  const forest = at(a, f.forest, x, y);
+  const square = at(a, f.square, x, y);
+  const fountain = distPts(TS, a.fountains, x, y);
+  const td = tavernDoor(TS);
+  const door = td ? Math.hypot(td.x - x, td.y - y) / TS : Infinity;
   const inSquare = near(square, 0, 4);
   const woods = near(forest, 1, 8);
 

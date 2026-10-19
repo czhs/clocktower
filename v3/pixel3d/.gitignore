@@ -1,0 +1,5 @@
+node_modules/
+shots/tmp/
+.DS_Store
+refs/
+.publish.local

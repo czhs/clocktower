@@ -1,0 +1,248 @@
+{
+ "name": "chonk",
+ "image": "chonk.png",
+ "cell": [
+  94,
+  88
+ ],
+ "anchor": [
+  47,
+  67
+ ],
+ "ppm": 36.0,
+ "yaw": 0.0,
+ "pitch": 30.0,
+ "tod": "noon",
+ "dirs": [
+  "S",
+  "SE",
+  "E",
+  "NE",
+  "N",
+  "NW",
+  "W",
+  "SW"
+ ],
+ "bodyPlan": "bird",
+ "height_m": 1.5,
+ "fps": 30,
+ "clips": {
+  "idle": {
+   "fps": 30,
+   "loop": true,
+   "frames": 3,
+   "holds": [
+    6,
+    18,
+    48
+   ],
+   "row": 0,
+   "period": 72,
+   "grid_frames": [
+    30,
+    36,
+    54
+   ],
+   "frames_by": "pose ids"
+  },
+  "walk": {
+   "fps": 30,
+   "loop": true,
+   "frames": 4,
+   "holds": [
+    2,
+    2,
+    2,
+    2
+   ],
+   "row": 8,
+   "period": 8,
+   "grid_frames": [
+    4,
+    6,
+    8,
+    10
+   ],
+   "frames_by": "pose ids"
+  },
+  "run": {
+   "fps": 30,
+   "loop": true,
+   "frames": 3,
+   "holds": [
+    2,
+    2,
+    2
+   ],
+   "row": 16,
+   "period": 6,
+   "grid_frames": [
+    10,
+    12,
+    14
+   ],
+   "frames_by": "pose ids"
+  },
+  "talk": {
+   "fps": 30,
+   "loop": true,
+   "frames": 4,
+   "holds": [
+    6,
+    6,
+    6,
+    6
+   ],
+   "row": 24,
+   "period": 24,
+   "grid_frames": [
+    6,
+    12,
+    18,
+    24
+   ],
+   "frames_by": "pose ids"
+  },
+  "vote": {
+   "fps": 30,
+   "loop": false,
+   "frames": 2,
+   "holds": [
+    3,
+    28
+   ],
+   "row": 32,
+   "period": null,
+   "grid_frames": [
+    0,
+    3
+   ],
+   "frames_by": "pose ids",
+   "holdLast": true
+  },
+  "die": {
+   "fps": 30,
+   "loop": false,
+   "frames": 5,
+   "holds": [
+    8,
+    5,
+    4,
+    7,
+    37
+   ],
+   "row": 40,
+   "period": null,
+   "grid_frames": [
+    0,
+    8,
+    13,
+    17,
+    24
+   ],
+   "frames_by": "pose ids",
+   "holdLast": true
+  },
+  "plop": {
+   "fps": 30,
+   "loop": false,
+   "frames": 8,
+   "holds": [
+    4,
+    10,
+    4,
+    4,
+    4,
+    10,
+    4,
+    1
+   ],
+   "row": 48,
+   "period": null,
+   "grid_frames": [
+    0,
+    4,
+    14,
+    18,
+    22,
+    26,
+    36,
+    40
+   ],
+   "frames_by": "pose ids"
+  },
+  "point": {
+   "fps": 30,
+   "loop": false,
+   "frames": 5,
+   "holds": [
+    4,
+    26,
+    32,
+    10,
+    12
+   ],
+   "row": 56,
+   "period": null,
+   "grid_frames": [
+    0,
+    4,
+    30,
+    62,
+    72
+   ],
+   "frames_by": "pose ids"
+  },
+  "ghost": {
+   "fps": 30,
+   "loop": true,
+   "frames": 4,
+   "holds": [
+    18,
+    18,
+    18,
+    18
+   ],
+   "row": 64,
+   "period": 72,
+   "grid_frames": [
+    18,
+    36,
+    54,
+    72
+   ],
+   "frames_by": "pose ids"
+  },
+  "ghost-spent": {
+   "fps": 30,
+   "loop": true,
+   "frames": 4,
+   "holds": [
+    18,
+    18,
+    18,
+    18
+   ],
+   "row": 72,
+   "period": 72,
+   "grid_frames": [
+    18,
+    36,
+    54,
+    72
+   ],
+   "frames_by": "pose ids"
+  }
+ },
+ "runtime": "character",
+ "shadow": {
+  "image": "chonk-shadow.png",
+  "anchor": [
+   47,
+   67
+  ],
+  "rx": 8.64,
+  "ry": 4.32
+ },
+ "warnings": []
+}

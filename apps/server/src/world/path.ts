@@ -3,7 +3,58 @@
 // the feet body box (a tile is walkable iff a body standing on its centre is clear), then
 // string-pulled with the same swept-box test the movement validator uses, so every leg of the result
 // is a straight segment the server itself would accept.
-import { isBlockedPx, locationAt, tileCenterPx, type LocationId, type TownLayout } from '@ct/protocol';
+import { BODY_H, BODY_HALF_W, locationAt, tileCenterPx, type LocationId, type TownLayout } from '@ct/protocol';
+
+/**
+ * (v3 perf) Allocation-free twin of `@ct/protocol` `isBlockedPx`: the same four feet-box corners, the same
+ * tiles, the same "outside the map = blocked" rule, bit for bit (the same float expressions), so every
+ * server decision is unchanged. The protocol version builds an array of four arrays per call; this one sits
+ * in every movement sweep (2 px steps) and in path planning (1 px samples x 5), where the allocations were
+ * most of the cost (docs/perf-v3/server.md). `apps/server/test/world.blockedPx.test.ts` checks the
+ * equivalence on both layouts. CONTRACT-REQUEST(lead): adopt this body in protocol `isBlockedPx`.
+ */
+export function blockedPx(layout: TownLayout, x: number, y: number): boolean {
+  const ts = layout.tileSize;
+  const W = layout.widthTiles;
+  const tx0 = Math.floor((x - BODY_HALF_W) / ts);
+  const tx1 = Math.floor((x + BODY_HALF_W) / ts);
+  const ty0 = Math.floor((y - BODY_H) / ts);
+  const ty1 = Math.floor((y - 1) / ts);
+  if (tx0 < 0 || ty0 < 0 || tx1 >= W || ty1 >= layout.heightTiles) return true;
+  const c = layout.collision;
+  return c[ty0 * W + tx0] === 1 || c[ty0 * W + tx1] === 1 || c[ty1 * W + tx0] === 1 || c[ty1 * W + tx1] === 1;
+}
+const isBlockedPx = blockedPx;
+
+/** Any tile of the inclusive tile rectangle [tx0..tx1] x [ty0..ty1] blocked (outside the map = blocked). */
+function rectBlocked(layout: TownLayout, tx0: number, tx1: number, ty0: number, ty1: number): boolean {
+  const W = layout.widthTiles;
+  if (tx0 < 0 || ty0 < 0 || tx1 >= W || ty1 >= layout.heightTiles) return true;
+  const c = layout.collision;
+  for (let ty = ty0; ty <= ty1; ty++) for (let tx = tx0, i = ty * W + tx0; tx <= tx1; tx++, i++) if (c[i] === 1) return true;
+  return false;
+}
+
+/**
+ * (v3 perf) `blockedPx(x-1, y) || blockedPx(x+1, y) || blockedPx(x, y-1) || blockedPx(x, y+1)` (the 1 px planning
+ * margin of segmentSafe) as two tile rectangles instead of four body boxes (16 tile reads -> typically 4-6).
+ * Exact: the boxes at x-1 and x+1 share their rows and their column spans overlap (the box is 10 px wide), so
+ * together they cover exactly the columns floor(((x-1)-5)/ts) .. floor(((x+1)+5)/ts) (the same float expressions
+ * as blockedPx, so the same tiles); likewise the boxes at y-1 and y+1 cover the rows floor(((y-1)-6)/ts) ..
+ * floor(((y+1)-1)/ts) of their shared columns; and one of the four boxes is outside the map iff its rectangle
+ * reaches outside. `apps/server/test/world.blockedPx.test.ts` checks it against the four calls on both layouts.
+ */
+export function marginBlockedPx(layout: TownLayout, x: number, y: number): boolean {
+  const ts = layout.tileSize;
+  const yl = y - 1;
+  const yh = y + 1;
+  const xl = x - 1;
+  const xh = x + 1;
+  return (
+    rectBlocked(layout, Math.floor((xl - BODY_HALF_W) / ts), Math.floor((xh + BODY_HALF_W) / ts), Math.floor((y - BODY_H) / ts), Math.floor((y - 1) / ts)) ||
+    rectBlocked(layout, Math.floor((x - BODY_HALF_W) / ts), Math.floor((x + BODY_HALF_W) / ts), Math.floor((yl - BODY_H) / ts), Math.floor((yh - 1) / ts))
+  );
+}
 
 export interface Pt {
   x: number;
@@ -63,7 +114,7 @@ export function segmentSafe(layout: TownLayout, ax: number, ay: number, bx: numb
     const t = i / n;
     const x = ax + (bx - ax) * t;
     const y = ay + (by - ay) * t;
-    if (isBlockedPx(layout, x - 1, y) || isBlockedPx(layout, x + 1, y) || isBlockedPx(layout, x, y - 1) || isBlockedPx(layout, x, y + 1)) {
+    if (marginBlockedPx(layout, x, y)) {
       // The margin may touch a wall right at a start/end point that is itself legal (doorsteps):
       // only the exact point is required there.
       if ((i === 0 || i === n) && !isBlockedPx(layout, x, y)) continue;
@@ -155,26 +206,28 @@ export function findPath(layout: TownLayout, from: Pt, to: Pt, location: Locatio
     const dy = Math.abs(Math.floor(i / W) - gy);
     return Math.max(dx, dy) + (Math.SQRT2 - 1) * Math.min(dx, dy);
   };
-  const gScore = new Map<number, number>();
-  const came = new Map<number, number>();
+  // (v3 perf) Typed arrays instead of Map / Set (same visiting order, same result).
+  const N = W * layout.heightTiles;
+  const gScore = new Float64Array(N).fill(Infinity);
+  const came = new Int32Array(N).fill(-1);
+  const closed = new Uint8Array(N);
   const heap = new Heap();
   for (const s of starts) {
-    gScore.set(s, 0);
+    gScore[s] = 0;
     heap.push(s, h(s));
   }
   let found = -1;
-  const closed = new Set<number>();
   while (heap.size) {
     const cur = heap.pop();
-    if (closed.has(cur)) continue;
-    closed.add(cur);
+    if (closed[cur]) continue;
+    closed[cur] = 1;
     if (goals.has(cur)) {
       found = cur;
       break;
     }
     const cx = cur % W;
     const cy = Math.floor(cur / W);
-    const gc = gScore.get(cur)!;
+    const gc = gScore[cur]!;
     for (let dy = -1; dy <= 1; dy++)
       for (let dx = -1; dx <= 1; dx++) {
         if (!dx && !dy) continue;
@@ -186,16 +239,16 @@ export function findPath(layout: TownLayout, from: Pt, to: Pt, location: Locatio
         // No corner cutting: a diagonal needs both orthogonal neighbours free.
         if (dx && dy && (!g.free[cy * W + nx] || !g.free[ny * W + cx])) continue;
         const ng = gc + (dx && dy ? Math.SQRT2 : 1);
-        if (ng < (gScore.get(ni) ?? Infinity)) {
-          gScore.set(ni, ng);
-          came.set(ni, cur);
+        if (ng < gScore[ni]!) {
+          gScore[ni] = ng;
+          came[ni] = cur;
           heap.push(ni, ng + h(ni));
         }
       }
   }
   if (found < 0) return null;
   const tiles: number[] = [];
-  for (let k: number | undefined = found; k !== undefined; k = came.get(k)) tiles.push(k);
+  for (let k = found; k !== -1; k = came[k]!) tiles.push(k);
   tiles.reverse();
   const raw: Pt[] = [from, ...tiles.map((i) => tileCenterPx(layout, { x: i % W, y: Math.floor(i / W) })), to];
   // String pulling: from each anchor jump to the farthest point still in straight view.

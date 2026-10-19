@@ -87,6 +87,12 @@ export const SCRIPTS = SCRIPT_IDS; // (multi-script) ids live in ./characters/ty
 
 // ------------------------------------------------------------------------------ world.ts
 
+export const WORLDS = ['v2', 'v3'] as const;
+
+export function stoneOfSeatIndex(k: number, n: number, stones: number): number {
+  return Math.round((k * stones) / Math.max(1, n)) % stones;
+}
+
 export function tileIndex(layout: TownLayout, tx: number, ty: number): number {
   return ty * layout.widthTiles + tx;
 }
@@ -100,14 +106,14 @@ export const BODY_HALF_W = 5;
 export const BODY_H = 6;
 
 export function isBlockedPx(layout: TownLayout, x: number, y: number): boolean {
+  // the body box's four corners (top-left, top-right, bottom-left, bottom-right); no arrays: this runs per sweep
+  // step of every move check and per frame for the 3D town's townsfolk (v3 perf)
   const ts = layout.tileSize;
-  const pts: [number, number][] = [
-    [x - BODY_HALF_W, y - BODY_H],
-    [x + BODY_HALF_W, y - BODY_H],
-    [x - BODY_HALF_W, y - 1],
-    [x + BODY_HALF_W, y - 1],
-  ];
-  return pts.some(([px, py]) => isBlockedTile(layout, Math.floor(px / ts), Math.floor(py / ts)));
+  const tx0 = Math.floor((x - BODY_HALF_W) / ts);
+  const tx1 = Math.floor((x + BODY_HALF_W) / ts);
+  const ty0 = Math.floor((y - BODY_H) / ts);
+  const ty1 = Math.floor((y - 1) / ts);
+  return isBlockedTile(layout, tx0, ty0) || isBlockedTile(layout, tx1, ty0) || isBlockedTile(layout, tx0, ty1) || isBlockedTile(layout, tx1, ty1);
 }
 
 function inRect(r: TileRect, tx: number, ty: number): boolean {
@@ -117,7 +123,8 @@ function inRect(r: TileRect, tx: number, ty: number): boolean {
 export function locationAt(layout: TownLayout, x: number, y: number): LocationId {
   const tx = Math.floor(x / layout.tileSize);
   const ty = Math.floor(y / layout.tileSize);
-  for (const b of layout.buildings) if (inRect(b.interior, tx, ty)) return `bld:${b.id}`;
+  const bs = layout.buildings;
+  for (let i = 0; i < bs.length; i++) if (inRect(bs[i]!.interior, tx, ty)) return `bld:${bs[i]!.id}`;
   return 'outdoors';
 }
 
@@ -171,7 +178,9 @@ export function circleSpots(layout: TownLayout, seats: readonly number[]): Circl
   sorted.forEach((seat, i) => {
     // Default: an open north arc leaves a landmark behind the gathering. A layout may instead give
     // the arc (v2 square: a full ring around the fountain). Vote order always runs clockwise.
-    const th = arc.full ? arc.start + (arc.sweep * i) / Math.max(1, n) : arc.start + (arc.sweep * i) / Math.max(1, n - 1);
+    // (v3 world) fixed stones: seat i of n sits on stone round(i·stones/n), the 3D dais' own spots
+    const stones = layout.circle?.stones;
+    const th = stones ? arc.start + (2 * Math.PI * stoneOfSeatIndex(i, n, stones)) / stones : arc.full ? arc.start + (arc.sweep * i) / Math.max(1, n) : arc.start + (arc.sweep * i) / Math.max(1, n - 1);
     const ix = Math.round(c.x + Math.sin(th) * rx);
     const iy = Math.round(c.y - Math.cos(th) * ry);
     let best = { x: ix, y: iy };

@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import {
   ACCESSORIES,
   circleCentre,
@@ -10,6 +10,7 @@ import {
   GHOST_STYLES,
   HAIR_COLORS,
   HAIR_STYLES,
+  homeBuilding,
   inSquare,
   isBlockedPx,
   isBlockedTile,
@@ -21,10 +22,30 @@ import {
   type TilePoint,
   type TileRect,
 } from '@ct/protocol';
-import { G, MAP_H, MAP_W, PROP_DEFS, TOWN_H, TOWN_W, townLayout as L, townMap } from '../src/index.js';
+import type { TownLayout } from '@ct/protocol';
+import { G, MAP_H, MAP_W, PROP_DEFS, TOWN_H, TOWN_W, townLayout, townMap as townMapV2, type PropDef, type TownMap } from '../src/index.js';
+import { PROP_DEFS_V3, townLayoutV3, townMapV3 } from '../src/hollowmere/layoutV3.js';
 
 const GEN = join(dirname(fileURLToPath(import.meta.url)), '..', 'generated');
 const inRect = (r: TileRect, p: TilePoint) => p.x >= r.x && p.y >= r.y && p.x < r.x + r.w && p.y < r.y + r.h;
+
+// (v3 WP5a) Every structural check below runs for both worlds: 'v2' (the classic handcrafted town) and 'v3'
+// (Hollowmere, exported from the pixel3d town; its own data checks live in hollowmere.test.ts). Checks that encode a
+// v2 design rule (45 x 37, door-by-facing) branch on `world`.
+interface World {
+  world: 'v2' | 'v3';
+  L: TownLayout;
+  townMap: TownMap;
+  defs: Record<string, PropDef & { walkable?: boolean }>;
+  size: { town: [number, number]; map: [number, number] };
+}
+const WORLDS: World[] = [
+  { world: 'v2', L: townLayout, townMap: townMapV2, defs: PROP_DEFS, size: { town: [TOWN_W, TOWN_H], map: [MAP_W, MAP_H] } },
+  { world: 'v3', L: townLayoutV3, townMap: townMapV3, defs: PROP_DEFS_V3, size: { town: [45, 43], map: [125, 43] } },
+];
+// the layout under test (set by each world's describe block before its tests run)
+let L: TownLayout = townLayout;
+let townMap: TownMap = townMapV2;
 const walkable = (p: TilePoint) => {
   const c = tileCenterPx(L, p);
   return !isBlockedTile(L, p.x, p.y) && !isBlockedPx(L, c.x, c.y);
@@ -54,29 +75,35 @@ function reachable(from: TilePoint): Set<string> {
 // the middle, 15 cottages in a ring around it (each one seat's home and anyone's private room by day)
 // and the clock tower as a NON-enterable landmark. Everything below is derived from the layout data
 // (townLayout / townMap), so moving a cottage keeps these checks meaningful.
-describe('handcrafted town layout (v2 one-screen town)', () => {
+describe.each(WORLDS)('handcrafted town layout ($world one-screen town)', (W) => {
+  beforeAll(() => {
+    L = W.L;
+    townMap = W.townMap;
+  });
   const styleOf = (id: string) => townMap.styles[id]!;
 
-  it('has the contract dimensions: a 45x37 town plus an interiors band, and exactly 15 cottages', () => {
+  it('has the contract dimensions: the town plus an interiors band, and exactly 15 cottages', () => {
     expect(L.tileSize).toBe(16);
     expect(L.collision.length).toBe(L.widthTiles * L.heightTiles);
-    expect(L.townBounds).toEqual({ x: 0, y: 0, w: TOWN_W, h: TOWN_H });
-    expect([TOWN_W, TOWN_H]).toEqual([45, 37]);
-    expect([L.widthTiles, L.heightTiles]).toEqual([MAP_W, MAP_H]);
-    expect(L.buildings).toHaveLength(15);
+    expect(L.townBounds).toEqual({ x: 0, y: 0, w: W.size.town[0], h: W.size.town[1] });
+    if (W.world === 'v2') expect([TOWN_W, TOWN_H]).toEqual([45, 37]);
+    expect([L.widthTiles, L.heightTiles]).toEqual(W.size.map);
+    // v3: + the enterable clock tower (nobody's home, vendor pass B); v2: the 15 cottages only
+    expect(L.buildings).toHaveLength(W.world === 'v3' ? 16 : 15);
+    expect(L.buildings.filter((b) => b.kind === 'house')).toHaveLength(15);
     for (let i = 0; i < 15; i++) {
       const b = L.buildings.find((x) => x.id === `house-${i}`)!;
       expect(b.kind).toBe('house');
       expect(b.houseIndex).toBe(i);
     }
     const ids = L.buildings.map((b) => b.id);
-    for (const gone of ['tavern', 'chapel', 'shop', 'clocktower']) expect(ids).not.toContain(gone);
+    for (const gone of ['tavern', 'chapel', 'shop', ...(W.world === 'v3' ? [] : ['clocktower'])]) expect(ids).not.toContain(gone);
     expect(new Set(ids).size).toBe(ids.length);
     expect(townMap.ground.length).toBe(L.heightTiles);
     for (const row of townMap.ground) expect(row.length).toBe(L.widthTiles);
   });
 
-  it('the clock tower is a solid landmark, never an enterable building', () => {
+  it.runIf(W.world === 'v2')('v2: the clock tower is a solid landmark, never an enterable building', () => {
     const tower = townMap.landmarks.find((b) => b.id === 'clocktower')!;
     expect(tower).toBeDefined();
     expect(L.buildings.some((b) => b.id === tower.id || b.kind === 'clocktower')).toBe(false);
@@ -86,6 +113,19 @@ describe('handcrafted town layout (v2 one-screen town)', () => {
     expect(tower.interior.w * tower.interior.h).toBe(0);
     // no cottage door is the tower's "door" tile (nothing to walk into)
     for (const b of L.buildings) expect(b.door).not.toEqual(tower.door);
+  });
+
+  it.runIf(W.world === 'v3')('v3: the clock tower is an enterable building (vendor pass B), solid outside, nobody\'s home', () => {
+    expect(townMap.landmarks).toEqual([]);
+    const tower = L.buildings.find((b) => b.id === 'clocktower')!;
+    expect([tower.kind, tower.houseIndex, tower.bed]).toEqual(['clocktower', null, undefined]);
+    for (let y = tower.footprint.y; y < tower.footprint.y + tower.footprint.h; y++)
+      for (let x = tower.footprint.x; x < tower.footprint.x + tower.footprint.w; x++) expect(isBlockedTile(L, x, y), `tower ${x},${y}`).toBe(true);
+    expect(walkable(tower.door)).toBe(true);
+    const c = tileCenterPx(L, tower.interiorDoor);
+    expect(locationAt(L, c.x, c.y)).toBe('bld:clocktower');
+    // homes are the cottages only: no seat ever lives in the tower
+    for (let seat = 0; seat < 15; seat++) expect(homeBuilding(L, seat)?.id).toBe(`house-${seat}`);
   });
 
   it('the square and the voting circle sit in the middle of town and contain the spawns', () => {
@@ -107,7 +147,12 @@ describe('handcrafted town layout (v2 one-screen town)', () => {
     for (const b of L.buildings) {
       const f = b.footprint;
       const facing = styleOf(b.id).facing;
-      if (facing === 'south') {
+      if (W.world === 'v3') {
+        // v3: turned / moved cottages; the door tile lies on the outward side of the door normal (exact door
+        // geometry: hollowmere.test.ts)
+        const [nx, ny] = b.doorNormal!;
+        expect((b.door.x + 0.5 - (f.x + f.w / 2)) * nx + (b.door.y + 0.5 - (f.y + f.h / 2)) * ny, b.id).toBeGreaterThan(0);
+      } else if (facing === 'south') {
         expect(b.door.y, b.id).toBe(f.y + f.h);
         expect(b.door.x >= f.x && b.door.x < f.x + f.w, b.id).toBe(true);
       } else {
@@ -144,8 +189,9 @@ describe('handcrafted town layout (v2 one-screen town)', () => {
     const bad: string[] = [];
     for (const o of townMap.objects) {
       if (o.kind === 'building') continue;
-      const c = PROP_DEFS[o.kind]!.col;
-      if (!c) continue;
+      const d = W.defs[o.kind]!;
+      const c = d.col;
+      if (!c || d.walkable) continue; // v3 walk-through dressing (barrels, crates, pumpkins) never blocks
       for (let j = 0; j < c.h; j++)
         for (let i = 0; i < c.w; i++) {
           const x = o.x + c.x + i;
@@ -183,7 +229,8 @@ describe('handcrafted town layout (v2 one-screen town)', () => {
         expect(isBlockedTile(L, r.x + r.w - 1, y)).toBe(true);
       }
       const reach = reachable(b.interiorDoor);
-      for (const p of [b.bed!, b.visitPoint!]) {
+      // cottages have both; the v3 clock tower (nobody's home) only a visit point
+      for (const p of b.kind === 'house' ? [b.bed!, b.visitPoint!] : [b.visitPoint!]) {
         expect(inRect(r, p)).toBe(true);
         expect(walkable(p), `${b.id} bed/visit`).toBe(true);
         expect(reach.has(`${p.x},${p.y}`), `${b.id} bed/visit reachable`).toBe(true);
@@ -199,7 +246,7 @@ describe('handcrafted town layout (v2 one-screen town)', () => {
 
   it('places a lamp at every streetlight and only known object kinds', () => {
     for (const p of L.streetlights) expect(townMap.objects.some((o) => o.kind === 'lamp' && o.x === p.x && o.y === p.y)).toBe(true);
-    for (const o of townMap.objects) if (o.kind !== 'building') expect(PROP_DEFS[o.kind], o.kind).toBeDefined();
+    for (const o of townMap.objects) if (o.kind !== 'building') expect(W.defs[o.kind], o.kind).toBeDefined();
     expect(townMap.objects.filter((o) => o.kind === 'building').length).toBe(L.buildings.length + townMap.landmarks.length);
   });
 
@@ -210,6 +257,10 @@ describe('handcrafted town layout (v2 one-screen town)', () => {
 });
 
 describe.runIf(existsSync(join(GEN, 'characters.json')))('generated assets', () => {
+  beforeAll(() => {
+    L = townLayout;
+    townMap = townMapV2;
+  });
   const read = (n: string) => JSON.parse(readFileSync(join(GEN, n), 'utf8'));
 
   it('has a character layer sheet for every cosmetic enum value', () => {

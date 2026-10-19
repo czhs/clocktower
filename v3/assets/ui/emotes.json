@@ -1,0 +1,1983 @@
+{
+ "image": "emotes.png",
+ "width": 512,
+ "height": 809,
+ "frames": {
+  "emote_point": {
+   "x": 1,
+   "y": 1,
+   "w": 14,
+   "h": 14
+  },
+  "emote_point_9": {
+   "x": 16,
+   "y": 1,
+   "w": 9,
+   "h": 9
+  },
+  "emote_point_11": {
+   "x": 26,
+   "y": 1,
+   "w": 11,
+   "h": 11
+  },
+  "emote_pin_gold": {
+   "x": 38,
+   "y": 1,
+   "w": 9,
+   "h": 12
+  },
+  "emote_pin_crimson": {
+   "x": 48,
+   "y": 1,
+   "w": 9,
+   "h": 12
+  },
+  "emote_pin_violet": {
+   "x": 58,
+   "y": 1,
+   "w": 9,
+   "h": 12
+  },
+  "emote_pin_teal": {
+   "x": 68,
+   "y": 1,
+   "w": 9,
+   "h": 12
+  },
+  "emote_pin_green": {
+   "x": 78,
+   "y": 1,
+   "w": 9,
+   "h": 12
+  },
+  "emote_pin_orange": {
+   "x": 88,
+   "y": 1,
+   "w": 9,
+   "h": 12
+  },
+  "emote_pin_white": {
+   "x": 98,
+   "y": 1,
+   "w": 9,
+   "h": 12
+  },
+  "emote_pin_black": {
+   "x": 108,
+   "y": 1,
+   "w": 9,
+   "h": 12
+  },
+  "emote_pin_s_gold": {
+   "x": 118,
+   "y": 1,
+   "w": 7,
+   "h": 9
+  },
+  "emote_pin_s_crimson": {
+   "x": 126,
+   "y": 1,
+   "w": 7,
+   "h": 9
+  },
+  "emote_pin_s_violet": {
+   "x": 134,
+   "y": 1,
+   "w": 7,
+   "h": 9
+  },
+  "emote_pin_s_teal": {
+   "x": 142,
+   "y": 1,
+   "w": 7,
+   "h": 9
+  },
+  "emote_pin_s_green": {
+   "x": 150,
+   "y": 1,
+   "w": 7,
+   "h": 9
+  },
+  "emote_pin_s_orange": {
+   "x": 158,
+   "y": 1,
+   "w": 7,
+   "h": 9
+  },
+  "emote_pin_s_white": {
+   "x": 166,
+   "y": 1,
+   "w": 7,
+   "h": 9
+  },
+  "emote_pin_s_black": {
+   "x": 174,
+   "y": 1,
+   "w": 7,
+   "h": 9
+  },
+  "emote_remove": {
+   "x": 182,
+   "y": 1,
+   "w": 9,
+   "h": 9
+  },
+  "emote_clear": {
+   "x": 192,
+   "y": 1,
+   "w": 9,
+   "h": 9
+  },
+  "emote_alert": {
+   "x": 202,
+   "y": 1,
+   "w": 4,
+   "h": 9
+  },
+  "emote_question": {
+   "x": 207,
+   "y": 1,
+   "w": 7,
+   "h": 9
+  },
+  "emote_pop_point_0": {
+   "x": 215,
+   "y": 1,
+   "w": 15,
+   "h": 20
+  },
+  "emote_pop_point_1": {
+   "x": 231,
+   "y": 1,
+   "w": 15,
+   "h": 20
+  },
+  "emote_pop_point_2": {
+   "x": 247,
+   "y": 1,
+   "w": 15,
+   "h": 20
+  },
+  "emote_pop_point_3": {
+   "x": 263,
+   "y": 1,
+   "w": 15,
+   "h": 20
+  },
+  "emote_pop_point_4": {
+   "x": 279,
+   "y": 1,
+   "w": 15,
+   "h": 20
+  },
+  "emote_pop_pin_gold_0": {
+   "x": 295,
+   "y": 1,
+   "w": 15,
+   "h": 20
+  },
+  "emote_pop_pin_gold_1": {
+   "x": 311,
+   "y": 1,
+   "w": 15,
+   "h": 20
+  },
+  "emote_pop_pin_gold_2": {
+   "x": 327,
+   "y": 1,
+   "w": 15,
+   "h": 20
+  },
+  "emote_pop_pin_gold_3": {
+   "x": 343,
+   "y": 1,
+   "w": 15,
+   "h": 20
+  },
+  "emote_pop_pin_gold_4": {
+   "x": 359,
+   "y": 1,
+   "w": 15,
+   "h": 20
+  },
+  "emote_pop_pin_crimson_0": {
+   "x": 375,
+   "y": 1,
+   "w": 15,
+   "h": 20
+  },
+  "emote_pop_pin_crimson_1": {
+   "x": 391,
+   "y": 1,
+   "w": 15,
+   "h": 20
+  },
+  "emote_pop_pin_crimson_2": {
+   "x": 407,
+   "y": 1,
+   "w": 15,
+   "h": 20
+  },
+  "emote_pop_pin_crimson_3": {
+   "x": 423,
+   "y": 1,
+   "w": 15,
+   "h": 20
+  },
+  "emote_pop_pin_crimson_4": {
+   "x": 439,
+   "y": 1,
+   "w": 15,
+   "h": 20
+  },
+  "emote_pop_pin_violet_0": {
+   "x": 455,
+   "y": 1,
+   "w": 15,
+   "h": 20
+  },
+  "emote_pop_pin_violet_1": {
+   "x": 471,
+   "y": 1,
+   "w": 15,
+   "h": 20
+  },
+  "emote_pop_pin_violet_2": {
+   "x": 487,
+   "y": 1,
+   "w": 15,
+   "h": 20
+  },
+  "emote_pop_pin_violet_3": {
+   "x": 1,
+   "y": 22,
+   "w": 15,
+   "h": 20
+  },
+  "emote_pop_pin_violet_4": {
+   "x": 17,
+   "y": 22,
+   "w": 15,
+   "h": 20
+  },
+  "emote_pop_pin_teal_0": {
+   "x": 33,
+   "y": 22,
+   "w": 15,
+   "h": 20
+  },
+  "emote_pop_pin_teal_1": {
+   "x": 49,
+   "y": 22,
+   "w": 15,
+   "h": 20
+  },
+  "emote_pop_pin_teal_2": {
+   "x": 65,
+   "y": 22,
+   "w": 15,
+   "h": 20
+  },
+  "emote_pop_pin_teal_3": {
+   "x": 81,
+   "y": 22,
+   "w": 15,
+   "h": 20
+  },
+  "emote_pop_pin_teal_4": {
+   "x": 97,
+   "y": 22,
+   "w": 15,
+   "h": 20
+  },
+  "emote_pop_pin_green_0": {
+   "x": 113,
+   "y": 22,
+   "w": 15,
+   "h": 20
+  },
+  "emote_pop_pin_green_1": {
+   "x": 129,
+   "y": 22,
+   "w": 15,
+   "h": 20
+  },
+  "emote_pop_pin_green_2": {
+   "x": 145,
+   "y": 22,
+   "w": 15,
+   "h": 20
+  },
+  "emote_pop_pin_green_3": {
+   "x": 161,
+   "y": 22,
+   "w": 15,
+   "h": 20
+  },
+  "emote_pop_pin_green_4": {
+   "x": 177,
+   "y": 22,
+   "w": 15,
+   "h": 20
+  },
+  "emote_pop_pin_orange_0": {
+   "x": 193,
+   "y": 22,
+   "w": 15,
+   "h": 20
+  },
+  "emote_pop_pin_orange_1": {
+   "x": 209,
+   "y": 22,
+   "w": 15,
+   "h": 20
+  },
+  "emote_pop_pin_orange_2": {
+   "x": 225,
+   "y": 22,
+   "w": 15,
+   "h": 20
+  },
+  "emote_pop_pin_orange_3": {
+   "x": 241,
+   "y": 22,
+   "w": 15,
+   "h": 20
+  },
+  "emote_pop_pin_orange_4": {
+   "x": 257,
+   "y": 22,
+   "w": 15,
+   "h": 20
+  },
+  "emote_pop_pin_white_0": {
+   "x": 273,
+   "y": 22,
+   "w": 15,
+   "h": 20
+  },
+  "emote_pop_pin_white_1": {
+   "x": 289,
+   "y": 22,
+   "w": 15,
+   "h": 20
+  },
+  "emote_pop_pin_white_2": {
+   "x": 305,
+   "y": 22,
+   "w": 15,
+   "h": 20
+  },
+  "emote_pop_pin_white_3": {
+   "x": 321,
+   "y": 22,
+   "w": 15,
+   "h": 20
+  },
+  "emote_pop_pin_white_4": {
+   "x": 337,
+   "y": 22,
+   "w": 15,
+   "h": 20
+  },
+  "emote_pop_pin_black_0": {
+   "x": 353,
+   "y": 22,
+   "w": 15,
+   "h": 20
+  },
+  "emote_pop_pin_black_1": {
+   "x": 369,
+   "y": 22,
+   "w": 15,
+   "h": 20
+  },
+  "emote_pop_pin_black_2": {
+   "x": 385,
+   "y": 22,
+   "w": 15,
+   "h": 20
+  },
+  "emote_pop_pin_black_3": {
+   "x": 401,
+   "y": 22,
+   "w": 15,
+   "h": 20
+  },
+  "emote_pop_pin_black_4": {
+   "x": 417,
+   "y": 22,
+   "w": 15,
+   "h": 20
+  },
+  "emote_pop_alert_0": {
+   "x": 433,
+   "y": 22,
+   "w": 15,
+   "h": 20
+  },
+  "emote_pop_alert_1": {
+   "x": 449,
+   "y": 22,
+   "w": 15,
+   "h": 20
+  },
+  "emote_pop_alert_2": {
+   "x": 465,
+   "y": 22,
+   "w": 15,
+   "h": 20
+  },
+  "emote_pop_alert_3": {
+   "x": 481,
+   "y": 22,
+   "w": 15,
+   "h": 20
+  },
+  "emote_pop_alert_4": {
+   "x": 1,
+   "y": 43,
+   "w": 15,
+   "h": 20
+  },
+  "emote_pop_question_0": {
+   "x": 17,
+   "y": 43,
+   "w": 15,
+   "h": 20
+  },
+  "emote_pop_question_1": {
+   "x": 33,
+   "y": 43,
+   "w": 15,
+   "h": 20
+  },
+  "emote_pop_question_2": {
+   "x": 49,
+   "y": 43,
+   "w": 15,
+   "h": 20
+  },
+  "emote_pop_question_3": {
+   "x": 65,
+   "y": 43,
+   "w": 15,
+   "h": 20
+  },
+  "emote_pop_question_4": {
+   "x": 81,
+   "y": 43,
+   "w": 15,
+   "h": 20
+  },
+  "emote_pie_mouse9_base": {
+   "x": 97,
+   "y": 43,
+   "w": 79,
+   "h": 80
+  },
+  "emote_pie_mouse9_open_0": {
+   "x": 177,
+   "y": 43,
+   "w": 79,
+   "h": 80
+  },
+  "emote_pie_mouse9_open_1": {
+   "x": 257,
+   "y": 43,
+   "w": 79,
+   "h": 80
+  },
+  "emote_pie_mouse9_open_2": {
+   "x": 337,
+   "y": 43,
+   "w": 79,
+   "h": 80
+  },
+  "emote_pie_mouse9_hot_0": {
+   "x": 417,
+   "y": 43,
+   "w": 23,
+   "h": 25
+  },
+  "emote_pie_mouse9_hot_1": {
+   "x": 441,
+   "y": 43,
+   "w": 26,
+   "h": 27
+  },
+  "emote_pie_mouse9_hot_2": {
+   "x": 468,
+   "y": 43,
+   "w": 26,
+   "h": 22
+  },
+  "emote_pie_mouse9_hot_3": {
+   "x": 1,
+   "y": 124,
+   "w": 27,
+   "h": 24
+  },
+  "emote_pie_mouse9_hot_4": {
+   "x": 29,
+   "y": 124,
+   "w": 22,
+   "h": 26
+  },
+  "emote_pie_mouse9_hot_5": {
+   "x": 52,
+   "y": 124,
+   "w": 22,
+   "h": 26
+  },
+  "emote_pie_mouse9_hot_6": {
+   "x": 75,
+   "y": 124,
+   "w": 27,
+   "h": 24
+  },
+  "emote_pie_mouse9_hot_7": {
+   "x": 103,
+   "y": 124,
+   "w": 26,
+   "h": 22
+  },
+  "emote_pie_mouse9_hot_8": {
+   "x": 130,
+   "y": 124,
+   "w": 26,
+   "h": 27
+  },
+  "emote_pie_mouse9_off_0": {
+   "x": 157,
+   "y": 124,
+   "w": 23,
+   "h": 25
+  },
+  "emote_pie_mouse9_off_1": {
+   "x": 181,
+   "y": 124,
+   "w": 26,
+   "h": 27
+  },
+  "emote_pie_mouse9_off_2": {
+   "x": 208,
+   "y": 124,
+   "w": 26,
+   "h": 22
+  },
+  "emote_pie_mouse9_off_3": {
+   "x": 235,
+   "y": 124,
+   "w": 27,
+   "h": 24
+  },
+  "emote_pie_mouse9_off_4": {
+   "x": 263,
+   "y": 124,
+   "w": 22,
+   "h": 26
+  },
+  "emote_pie_mouse9_off_5": {
+   "x": 286,
+   "y": 124,
+   "w": 22,
+   "h": 26
+  },
+  "emote_pie_mouse9_off_6": {
+   "x": 309,
+   "y": 124,
+   "w": 27,
+   "h": 24
+  },
+  "emote_pie_mouse9_off_7": {
+   "x": 337,
+   "y": 124,
+   "w": 26,
+   "h": 22
+  },
+  "emote_pie_mouse9_off_8": {
+   "x": 364,
+   "y": 124,
+   "w": 26,
+   "h": 27
+  },
+  "emote_pie_mouse10_base": {
+   "x": 391,
+   "y": 124,
+   "w": 79,
+   "h": 80
+  },
+  "emote_pie_mouse10_open_0": {
+   "x": 1,
+   "y": 205,
+   "w": 79,
+   "h": 80
+  },
+  "emote_pie_mouse10_open_1": {
+   "x": 81,
+   "y": 205,
+   "w": 79,
+   "h": 80
+  },
+  "emote_pie_mouse10_open_2": {
+   "x": 161,
+   "y": 205,
+   "w": 79,
+   "h": 80
+  },
+  "emote_pie_mouse10_hot_0": {
+   "x": 241,
+   "y": 205,
+   "w": 21,
+   "h": 25
+  },
+  "emote_pie_mouse10_hot_1": {
+   "x": 263,
+   "y": 205,
+   "w": 24,
+   "h": 26
+  },
+  "emote_pie_mouse10_hot_2": {
+   "x": 288,
+   "y": 205,
+   "w": 25,
+   "h": 20
+  },
+  "emote_pie_mouse10_hot_3": {
+   "x": 314,
+   "y": 205,
+   "w": 25,
+   "h": 20
+  },
+  "emote_pie_mouse10_hot_4": {
+   "x": 340,
+   "y": 205,
+   "w": 24,
+   "h": 26
+  },
+  "emote_pie_mouse10_hot_5": {
+   "x": 365,
+   "y": 205,
+   "w": 21,
+   "h": 25
+  },
+  "emote_pie_mouse10_hot_6": {
+   "x": 387,
+   "y": 205,
+   "w": 24,
+   "h": 26
+  },
+  "emote_pie_mouse10_hot_7": {
+   "x": 412,
+   "y": 205,
+   "w": 25,
+   "h": 20
+  },
+  "emote_pie_mouse10_hot_8": {
+   "x": 438,
+   "y": 205,
+   "w": 25,
+   "h": 20
+  },
+  "emote_pie_mouse10_hot_9": {
+   "x": 464,
+   "y": 205,
+   "w": 24,
+   "h": 26
+  },
+  "emote_pie_mouse10_off_0": {
+   "x": 489,
+   "y": 205,
+   "w": 21,
+   "h": 25
+  },
+  "emote_pie_mouse10_off_1": {
+   "x": 1,
+   "y": 286,
+   "w": 24,
+   "h": 26
+  },
+  "emote_pie_mouse10_off_2": {
+   "x": 26,
+   "y": 286,
+   "w": 25,
+   "h": 20
+  },
+  "emote_pie_mouse10_off_3": {
+   "x": 52,
+   "y": 286,
+   "w": 25,
+   "h": 20
+  },
+  "emote_pie_mouse10_off_4": {
+   "x": 78,
+   "y": 286,
+   "w": 24,
+   "h": 26
+  },
+  "emote_pie_mouse10_off_5": {
+   "x": 103,
+   "y": 286,
+   "w": 21,
+   "h": 25
+  },
+  "emote_pie_mouse10_off_6": {
+   "x": 125,
+   "y": 286,
+   "w": 24,
+   "h": 26
+  },
+  "emote_pie_mouse10_off_7": {
+   "x": 150,
+   "y": 286,
+   "w": 25,
+   "h": 20
+  },
+  "emote_pie_mouse10_off_8": {
+   "x": 176,
+   "y": 286,
+   "w": 25,
+   "h": 20
+  },
+  "emote_pie_mouse10_off_9": {
+   "x": 202,
+   "y": 286,
+   "w": 24,
+   "h": 26
+  },
+  "emote_pie_touch9_base": {
+   "x": 227,
+   "y": 286,
+   "w": 99,
+   "h": 100
+  },
+  "emote_pie_touch9_open_0": {
+   "x": 327,
+   "y": 286,
+   "w": 99,
+   "h": 100
+  },
+  "emote_pie_touch9_open_1": {
+   "x": 1,
+   "y": 387,
+   "w": 99,
+   "h": 100
+  },
+  "emote_pie_touch9_open_2": {
+   "x": 101,
+   "y": 387,
+   "w": 99,
+   "h": 100
+  },
+  "emote_pie_touch9_hot_0": {
+   "x": 201,
+   "y": 387,
+   "w": 29,
+   "h": 31
+  },
+  "emote_pie_touch9_hot_1": {
+   "x": 231,
+   "y": 387,
+   "w": 33,
+   "h": 33
+  },
+  "emote_pie_touch9_hot_2": {
+   "x": 265,
+   "y": 387,
+   "w": 32,
+   "h": 30
+  },
+  "emote_pie_touch9_hot_3": {
+   "x": 298,
+   "y": 387,
+   "w": 34,
+   "h": 31
+  },
+  "emote_pie_touch9_hot_4": {
+   "x": 333,
+   "y": 387,
+   "w": 28,
+   "h": 32
+  },
+  "emote_pie_touch9_hot_5": {
+   "x": 362,
+   "y": 387,
+   "w": 28,
+   "h": 32
+  },
+  "emote_pie_touch9_hot_6": {
+   "x": 391,
+   "y": 387,
+   "w": 34,
+   "h": 31
+  },
+  "emote_pie_touch9_hot_7": {
+   "x": 426,
+   "y": 387,
+   "w": 32,
+   "h": 30
+  },
+  "emote_pie_touch9_hot_8": {
+   "x": 459,
+   "y": 387,
+   "w": 33,
+   "h": 33
+  },
+  "emote_pie_touch9_off_0": {
+   "x": 1,
+   "y": 488,
+   "w": 29,
+   "h": 31
+  },
+  "emote_pie_touch9_off_1": {
+   "x": 31,
+   "y": 488,
+   "w": 33,
+   "h": 33
+  },
+  "emote_pie_touch9_off_2": {
+   "x": 65,
+   "y": 488,
+   "w": 32,
+   "h": 30
+  },
+  "emote_pie_touch9_off_3": {
+   "x": 98,
+   "y": 488,
+   "w": 34,
+   "h": 31
+  },
+  "emote_pie_touch9_off_4": {
+   "x": 133,
+   "y": 488,
+   "w": 28,
+   "h": 32
+  },
+  "emote_pie_touch9_off_5": {
+   "x": 162,
+   "y": 488,
+   "w": 28,
+   "h": 32
+  },
+  "emote_pie_touch9_off_6": {
+   "x": 191,
+   "y": 488,
+   "w": 34,
+   "h": 31
+  },
+  "emote_pie_touch9_off_7": {
+   "x": 226,
+   "y": 488,
+   "w": 32,
+   "h": 30
+  },
+  "emote_pie_touch9_off_8": {
+   "x": 259,
+   "y": 488,
+   "w": 33,
+   "h": 33
+  },
+  "emote_pie_touch10_base": {
+   "x": 293,
+   "y": 488,
+   "w": 99,
+   "h": 100
+  },
+  "emote_pie_touch10_open_0": {
+   "x": 393,
+   "y": 488,
+   "w": 99,
+   "h": 100
+  },
+  "emote_pie_touch10_open_1": {
+   "x": 1,
+   "y": 589,
+   "w": 99,
+   "h": 100
+  },
+  "emote_pie_touch10_open_2": {
+   "x": 101,
+   "y": 589,
+   "w": 99,
+   "h": 100
+  },
+  "emote_pie_touch10_hot_0": {
+   "x": 201,
+   "y": 589,
+   "w": 27,
+   "h": 31
+  },
+  "emote_pie_touch10_hot_1": {
+   "x": 229,
+   "y": 589,
+   "w": 31,
+   "h": 33
+  },
+  "emote_pie_touch10_hot_2": {
+   "x": 261,
+   "y": 589,
+   "w": 32,
+   "h": 25
+  },
+  "emote_pie_touch10_hot_3": {
+   "x": 294,
+   "y": 589,
+   "w": 32,
+   "h": 25
+  },
+  "emote_pie_touch10_hot_4": {
+   "x": 327,
+   "y": 589,
+   "w": 31,
+   "h": 33
+  },
+  "emote_pie_touch10_hot_5": {
+   "x": 359,
+   "y": 589,
+   "w": 27,
+   "h": 31
+  },
+  "emote_pie_touch10_hot_6": {
+   "x": 387,
+   "y": 589,
+   "w": 31,
+   "h": 33
+  },
+  "emote_pie_touch10_hot_7": {
+   "x": 419,
+   "y": 589,
+   "w": 32,
+   "h": 25
+  },
+  "emote_pie_touch10_hot_8": {
+   "x": 452,
+   "y": 589,
+   "w": 32,
+   "h": 25
+  },
+  "emote_pie_touch10_hot_9": {
+   "x": 1,
+   "y": 690,
+   "w": 31,
+   "h": 33
+  },
+  "emote_pie_touch10_off_0": {
+   "x": 33,
+   "y": 690,
+   "w": 27,
+   "h": 31
+  },
+  "emote_pie_touch10_off_1": {
+   "x": 61,
+   "y": 690,
+   "w": 31,
+   "h": 33
+  },
+  "emote_pie_touch10_off_2": {
+   "x": 93,
+   "y": 690,
+   "w": 32,
+   "h": 25
+  },
+  "emote_pie_touch10_off_3": {
+   "x": 126,
+   "y": 690,
+   "w": 32,
+   "h": 25
+  },
+  "emote_pie_touch10_off_4": {
+   "x": 159,
+   "y": 690,
+   "w": 31,
+   "h": 33
+  },
+  "emote_pie_touch10_off_5": {
+   "x": 191,
+   "y": 690,
+   "w": 27,
+   "h": 31
+  },
+  "emote_pie_touch10_off_6": {
+   "x": 219,
+   "y": 690,
+   "w": 31,
+   "h": 33
+  },
+  "emote_pie_touch10_off_7": {
+   "x": 251,
+   "y": 690,
+   "w": 32,
+   "h": 25
+  },
+  "emote_pie_touch10_off_8": {
+   "x": 284,
+   "y": 690,
+   "w": 32,
+   "h": 25
+  },
+  "emote_pie_touch10_off_9": {
+   "x": 317,
+   "y": 690,
+   "w": 31,
+   "h": 33
+  },
+  "emote_pie_hub_idle_0": {
+   "x": 349,
+   "y": 690,
+   "w": 19,
+   "h": 19
+  },
+  "emote_pie_hub_idle_1": {
+   "x": 369,
+   "y": 690,
+   "w": 19,
+   "h": 19
+  },
+  "emote_pie_hub_idle_2": {
+   "x": 389,
+   "y": 690,
+   "w": 19,
+   "h": 19
+  },
+  "emote_pie_hub_idle_3": {
+   "x": 409,
+   "y": 690,
+   "w": 19,
+   "h": 19
+  },
+  "emote_pie_press": {
+   "x": 429,
+   "y": 690,
+   "w": 7,
+   "h": 7
+  },
+  "emote_pie_notch_gold": {
+   "x": 437,
+   "y": 690,
+   "w": 2,
+   "h": 2
+  },
+  "emote_pie_notch_crimson": {
+   "x": 440,
+   "y": 690,
+   "w": 2,
+   "h": 2
+  },
+  "emote_pie_notch_violet": {
+   "x": 443,
+   "y": 690,
+   "w": 2,
+   "h": 2
+  },
+  "emote_pie_notch_teal": {
+   "x": 446,
+   "y": 690,
+   "w": 2,
+   "h": 2
+  },
+  "emote_pie_notch_green": {
+   "x": 449,
+   "y": 690,
+   "w": 2,
+   "h": 2
+  },
+  "emote_pie_notch_orange": {
+   "x": 452,
+   "y": 690,
+   "w": 2,
+   "h": 2
+  },
+  "emote_pie_notch_white": {
+   "x": 455,
+   "y": 690,
+   "w": 2,
+   "h": 2
+  },
+  "emote_pie_notch_black": {
+   "x": 458,
+   "y": 690,
+   "w": 2,
+   "h": 2
+  },
+  "emote_dock_btn": {
+   "x": 461,
+   "y": 690,
+   "w": 26,
+   "h": 26
+  },
+  "emote_dock_btn_hover": {
+   "x": 1,
+   "y": 724,
+   "w": 26,
+   "h": 26
+  },
+  "emote_dock_btn_open": {
+   "x": 28,
+   "y": 724,
+   "w": 26,
+   "h": 26
+  },
+  "emote_dock_dot_gold": {
+   "x": 55,
+   "y": 724,
+   "w": 7,
+   "h": 7
+  },
+  "emote_dock_dot_crimson": {
+   "x": 63,
+   "y": 724,
+   "w": 7,
+   "h": 7
+  },
+  "emote_dock_dot_violet": {
+   "x": 71,
+   "y": 724,
+   "w": 7,
+   "h": 7
+  },
+  "emote_dock_dot_teal": {
+   "x": 79,
+   "y": 724,
+   "w": 7,
+   "h": 7
+  },
+  "emote_dock_dot_green": {
+   "x": 87,
+   "y": 724,
+   "w": 7,
+   "h": 7
+  },
+  "emote_dock_dot_orange": {
+   "x": 95,
+   "y": 724,
+   "w": 7,
+   "h": 7
+  },
+  "emote_dock_dot_white": {
+   "x": 103,
+   "y": 724,
+   "w": 7,
+   "h": 7
+  },
+  "emote_dock_dot_black": {
+   "x": 111,
+   "y": 724,
+   "w": 7,
+   "h": 7
+  },
+  "emote_swatch_on": {
+   "x": 119,
+   "y": 724,
+   "w": 11,
+   "h": 16
+  },
+  "emote_swatch_hover": {
+   "x": 131,
+   "y": 724,
+   "w": 11,
+   "h": 16
+  },
+  "emote_kbd": {
+   "x": 143,
+   "y": 724,
+   "w": 23,
+   "h": 7
+  },
+  "emote_kbd_drag": {
+   "x": 167,
+   "y": 724,
+   "w": 20,
+   "h": 7
+  },
+  "emote_kbd_f": {
+   "x": 188,
+   "y": 724,
+   "w": 7,
+   "h": 7
+  },
+  "emote_dock_panel": {
+   "x": 196,
+   "y": 724,
+   "w": 96,
+   "h": 84
+  }
+ },
+ "meta": {
+  "anchors": {
+   "emote_pop_point_0": {
+    "x": 7,
+    "y": 18
+   },
+   "emote_pop_point_1": {
+    "x": 7,
+    "y": 18
+   },
+   "emote_pop_point_2": {
+    "x": 7,
+    "y": 18
+   },
+   "emote_pop_point_3": {
+    "x": 7,
+    "y": 18
+   },
+   "emote_pop_point_4": {
+    "x": 7,
+    "y": 18
+   },
+   "emote_pop_pin_gold_0": {
+    "x": 7,
+    "y": 18
+   },
+   "emote_pop_pin_gold_1": {
+    "x": 7,
+    "y": 18
+   },
+   "emote_pop_pin_gold_2": {
+    "x": 7,
+    "y": 18
+   },
+   "emote_pop_pin_gold_3": {
+    "x": 7,
+    "y": 18
+   },
+   "emote_pop_pin_gold_4": {
+    "x": 7,
+    "y": 18
+   },
+   "emote_pop_pin_crimson_0": {
+    "x": 7,
+    "y": 18
+   },
+   "emote_pop_pin_crimson_1": {
+    "x": 7,
+    "y": 18
+   },
+   "emote_pop_pin_crimson_2": {
+    "x": 7,
+    "y": 18
+   },
+   "emote_pop_pin_crimson_3": {
+    "x": 7,
+    "y": 18
+   },
+   "emote_pop_pin_crimson_4": {
+    "x": 7,
+    "y": 18
+   },
+   "emote_pop_pin_violet_0": {
+    "x": 7,
+    "y": 18
+   },
+   "emote_pop_pin_violet_1": {
+    "x": 7,
+    "y": 18
+   },
+   "emote_pop_pin_violet_2": {
+    "x": 7,
+    "y": 18
+   },
+   "emote_pop_pin_violet_3": {
+    "x": 7,
+    "y": 18
+   },
+   "emote_pop_pin_violet_4": {
+    "x": 7,
+    "y": 18
+   },
+   "emote_pop_pin_teal_0": {
+    "x": 7,
+    "y": 18
+   },
+   "emote_pop_pin_teal_1": {
+    "x": 7,
+    "y": 18
+   },
+   "emote_pop_pin_teal_2": {
+    "x": 7,
+    "y": 18
+   },
+   "emote_pop_pin_teal_3": {
+    "x": 7,
+    "y": 18
+   },
+   "emote_pop_pin_teal_4": {
+    "x": 7,
+    "y": 18
+   },
+   "emote_pop_pin_green_0": {
+    "x": 7,
+    "y": 18
+   },
+   "emote_pop_pin_green_1": {
+    "x": 7,
+    "y": 18
+   },
+   "emote_pop_pin_green_2": {
+    "x": 7,
+    "y": 18
+   },
+   "emote_pop_pin_green_3": {
+    "x": 7,
+    "y": 18
+   },
+   "emote_pop_pin_green_4": {
+    "x": 7,
+    "y": 18
+   },
+   "emote_pop_pin_orange_0": {
+    "x": 7,
+    "y": 18
+   },
+   "emote_pop_pin_orange_1": {
+    "x": 7,
+    "y": 18
+   },
+   "emote_pop_pin_orange_2": {
+    "x": 7,
+    "y": 18
+   },
+   "emote_pop_pin_orange_3": {
+    "x": 7,
+    "y": 18
+   },
+   "emote_pop_pin_orange_4": {
+    "x": 7,
+    "y": 18
+   },
+   "emote_pop_pin_white_0": {
+    "x": 7,
+    "y": 18
+   },
+   "emote_pop_pin_white_1": {
+    "x": 7,
+    "y": 18
+   },
+   "emote_pop_pin_white_2": {
+    "x": 7,
+    "y": 18
+   },
+   "emote_pop_pin_white_3": {
+    "x": 7,
+    "y": 18
+   },
+   "emote_pop_pin_white_4": {
+    "x": 7,
+    "y": 18
+   },
+   "emote_pop_pin_black_0": {
+    "x": 7,
+    "y": 18
+   },
+   "emote_pop_pin_black_1": {
+    "x": 7,
+    "y": 18
+   },
+   "emote_pop_pin_black_2": {
+    "x": 7,
+    "y": 18
+   },
+   "emote_pop_pin_black_3": {
+    "x": 7,
+    "y": 18
+   },
+   "emote_pop_pin_black_4": {
+    "x": 7,
+    "y": 18
+   },
+   "emote_pop_alert_0": {
+    "x": 7,
+    "y": 18
+   },
+   "emote_pop_alert_1": {
+    "x": 7,
+    "y": 18
+   },
+   "emote_pop_alert_2": {
+    "x": 7,
+    "y": 18
+   },
+   "emote_pop_alert_3": {
+    "x": 7,
+    "y": 18
+   },
+   "emote_pop_alert_4": {
+    "x": 7,
+    "y": 18
+   },
+   "emote_pop_question_0": {
+    "x": 7,
+    "y": 18
+   },
+   "emote_pop_question_1": {
+    "x": 7,
+    "y": 18
+   },
+   "emote_pop_question_2": {
+    "x": 7,
+    "y": 18
+   },
+   "emote_pop_question_3": {
+    "x": 7,
+    "y": 18
+   },
+   "emote_pop_question_4": {
+    "x": 7,
+    "y": 18
+   },
+   "emote_pin_gold": {
+    "x": 4,
+    "y": 11
+   },
+   "emote_pin_s_gold": {
+    "x": 3,
+    "y": 8
+   },
+   "emote_pin_crimson": {
+    "x": 4,
+    "y": 11
+   },
+   "emote_pin_s_crimson": {
+    "x": 3,
+    "y": 8
+   },
+   "emote_pin_violet": {
+    "x": 4,
+    "y": 11
+   },
+   "emote_pin_s_violet": {
+    "x": 3,
+    "y": 8
+   },
+   "emote_pin_teal": {
+    "x": 4,
+    "y": 11
+   },
+   "emote_pin_s_teal": {
+    "x": 3,
+    "y": 8
+   },
+   "emote_pin_green": {
+    "x": 4,
+    "y": 11
+   },
+   "emote_pin_s_green": {
+    "x": 3,
+    "y": 8
+   },
+   "emote_pin_orange": {
+    "x": 4,
+    "y": 11
+   },
+   "emote_pin_s_orange": {
+    "x": 3,
+    "y": 8
+   },
+   "emote_pin_white": {
+    "x": 4,
+    "y": 11
+   },
+   "emote_pin_s_white": {
+    "x": 3,
+    "y": 8
+   },
+   "emote_pin_black": {
+    "x": 4,
+    "y": 11
+   },
+   "emote_pin_s_black": {
+    "x": 3,
+    "y": 8
+   }
+  },
+  "fps": {
+   "emote_pop": 15,
+   "emote_pie_open": 30,
+   "emote_pie_close": 15,
+   "emote_pie_hub_idle": 7.5
+  },
+  "emotePop": {
+   "kinds": [
+    "point",
+    "pin",
+    "alert",
+    "question"
+   ],
+   "frames": {
+    "pop": [
+     0
+    ],
+    "hold": [
+     1
+    ],
+    "dissolve": [
+     2,
+     3,
+     4
+    ]
+   },
+   "ms": 3500,
+   "bob": {
+    "px": 1,
+    "fps": 2
+   },
+   "names": "emote_pop_<point|alert|question>_<f>, emote_pop_pin_<color>_<f> (the dropped pin colour)",
+   "place": "tail tip 1 px above the label stack top: hud.indicators.stackTop(m) (visual top, ghost lift, You chevron); a shared stack allocator (labels < bubble < pins < pop) is pending (lead)"
+  },
+  "pie": {
+   "geometry": {
+    "mouse": {
+     "R": 36,
+     "r0": 12,
+     "dead": 10,
+     "rm": 25
+    },
+    "touch": {
+     "R": 46,
+     "r0": 16,
+     "dead": 14,
+     "rm": 32
+    }
+   },
+   "v2": {
+    "radius": {
+     "mouse": 84,
+     "touch": 104
+    },
+    "dead": {
+     "mouse": 20,
+     "touch": 28
+    }
+   },
+   "scale": "texels at x2 (1280x720): R = round(cssRadius / 2) - 6; dead zone = css / 2",
+   "mouse9": {
+    "centre": {
+     "x": 39,
+     "y": 39
+    },
+    "wedges": [
+     "point",
+     "pin:gold",
+     "pin:crimson",
+     "pin:violet",
+     "pin:teal",
+     "pin:green",
+     "pin:orange",
+     "pin:white",
+     "pin:black"
+    ],
+    "offsets": {
+     "emote_pie_mouse9_hot_0": {
+      "x": -11,
+      "y": -36
+     },
+     "emote_pie_mouse9_hot_1": {
+      "x": 5,
+      "y": -33
+     },
+     "emote_pie_mouse9_hot_2": {
+      "x": 11,
+      "y": -16
+     },
+     "emote_pie_mouse9_hot_3": {
+      "x": 9,
+      "y": 3
+     },
+     "emote_pie_mouse9_hot_4": {
+      "x": 1,
+      "y": 10
+     },
+     "emote_pie_mouse9_hot_5": {
+      "x": -22,
+      "y": 10
+     },
+     "emote_pie_mouse9_hot_6": {
+      "x": -35,
+      "y": 3
+     },
+     "emote_pie_mouse9_hot_7": {
+      "x": -36,
+      "y": -16
+     },
+     "emote_pie_mouse9_hot_8": {
+      "x": -30,
+      "y": -33
+     },
+     "emote_pie_mouse9_off_0": {
+      "x": -11,
+      "y": -36
+     },
+     "emote_pie_mouse9_off_1": {
+      "x": 5,
+      "y": -33
+     },
+     "emote_pie_mouse9_off_2": {
+      "x": 11,
+      "y": -16
+     },
+     "emote_pie_mouse9_off_3": {
+      "x": 9,
+      "y": 3
+     },
+     "emote_pie_mouse9_off_4": {
+      "x": 1,
+      "y": 10
+     },
+     "emote_pie_mouse9_off_5": {
+      "x": -22,
+      "y": 10
+     },
+     "emote_pie_mouse9_off_6": {
+      "x": -35,
+      "y": 3
+     },
+     "emote_pie_mouse9_off_7": {
+      "x": -36,
+      "y": -16
+     },
+     "emote_pie_mouse9_off_8": {
+      "x": -30,
+      "y": -33
+     }
+    }
+   },
+   "mouse10": {
+    "centre": {
+     "x": 39,
+     "y": 39
+    },
+    "wedges": [
+     "point",
+     "pin:gold",
+     "pin:crimson",
+     "pin:violet",
+     "pin:teal",
+     "unpin",
+     "pin:green",
+     "pin:orange",
+     "pin:white",
+     "pin:black"
+    ],
+    "offsets": {
+     "emote_pie_mouse10_hot_0": {
+      "x": -10,
+      "y": -36
+     },
+     "emote_pie_mouse10_hot_1": {
+      "x": 5,
+      "y": -33
+     },
+     "emote_pie_mouse10_hot_2": {
+      "x": 11,
+      "y": -20
+     },
+     "emote_pie_mouse10_hot_3": {
+      "x": 11,
+      "y": 1
+     },
+     "emote_pie_mouse10_hot_4": {
+      "x": 5,
+      "y": 8
+     },
+     "emote_pie_mouse10_hot_5": {
+      "x": -10,
+      "y": 12
+     },
+     "emote_pie_mouse10_hot_6": {
+      "x": -28,
+      "y": 8
+     },
+     "emote_pie_mouse10_hot_7": {
+      "x": -35,
+      "y": 1
+     },
+     "emote_pie_mouse10_hot_8": {
+      "x": -35,
+      "y": -20
+     },
+     "emote_pie_mouse10_hot_9": {
+      "x": -28,
+      "y": -33
+     },
+     "emote_pie_mouse10_off_0": {
+      "x": -10,
+      "y": -36
+     },
+     "emote_pie_mouse10_off_1": {
+      "x": 5,
+      "y": -33
+     },
+     "emote_pie_mouse10_off_2": {
+      "x": 11,
+      "y": -20
+     },
+     "emote_pie_mouse10_off_3": {
+      "x": 11,
+      "y": 1
+     },
+     "emote_pie_mouse10_off_4": {
+      "x": 5,
+      "y": 8
+     },
+     "emote_pie_mouse10_off_5": {
+      "x": -10,
+      "y": 12
+     },
+     "emote_pie_mouse10_off_6": {
+      "x": -28,
+      "y": 8
+     },
+     "emote_pie_mouse10_off_7": {
+      "x": -35,
+      "y": 1
+     },
+     "emote_pie_mouse10_off_8": {
+      "x": -35,
+      "y": -20
+     },
+     "emote_pie_mouse10_off_9": {
+      "x": -28,
+      "y": -33
+     }
+    }
+   },
+   "touch9": {
+    "centre": {
+     "x": 49,
+     "y": 49
+    },
+    "wedges": [
+     "point",
+     "pin:gold",
+     "pin:crimson",
+     "pin:violet",
+     "pin:teal",
+     "pin:green",
+     "pin:orange",
+     "pin:white",
+     "pin:black"
+    ],
+    "offsets": {
+     "emote_pie_touch9_hot_0": {
+      "x": -14,
+      "y": -46
+     },
+     "emote_pie_touch9_hot_1": {
+      "x": 7,
+      "y": -42
+     },
+     "emote_pie_touch9_hot_2": {
+      "x": 15,
+      "y": -22
+     },
+     "emote_pie_touch9_hot_3": {
+      "x": 12,
+      "y": 4
+     },
+     "emote_pie_touch9_hot_4": {
+      "x": 1,
+      "y": 14
+     },
+     "emote_pie_touch9_hot_5": {
+      "x": -28,
+      "y": 14
+     },
+     "emote_pie_touch9_hot_6": {
+      "x": -45,
+      "y": 4
+     },
+     "emote_pie_touch9_hot_7": {
+      "x": -46,
+      "y": -22
+     },
+     "emote_pie_touch9_hot_8": {
+      "x": -39,
+      "y": -42
+     },
+     "emote_pie_touch9_off_0": {
+      "x": -14,
+      "y": -46
+     },
+     "emote_pie_touch9_off_1": {
+      "x": 7,
+      "y": -42
+     },
+     "emote_pie_touch9_off_2": {
+      "x": 15,
+      "y": -22
+     },
+     "emote_pie_touch9_off_3": {
+      "x": 12,
+      "y": 4
+     },
+     "emote_pie_touch9_off_4": {
+      "x": 1,
+      "y": 14
+     },
+     "emote_pie_touch9_off_5": {
+      "x": -28,
+      "y": 14
+     },
+     "emote_pie_touch9_off_6": {
+      "x": -45,
+      "y": 4
+     },
+     "emote_pie_touch9_off_7": {
+      "x": -46,
+      "y": -22
+     },
+     "emote_pie_touch9_off_8": {
+      "x": -39,
+      "y": -42
+     }
+    }
+   },
+   "touch10": {
+    "centre": {
+     "x": 49,
+     "y": 49
+    },
+    "wedges": [
+     "point",
+     "pin:gold",
+     "pin:crimson",
+     "pin:violet",
+     "pin:teal",
+     "unpin",
+     "pin:green",
+     "pin:orange",
+     "pin:white",
+     "pin:black"
+    ],
+    "offsets": {
+     "emote_pie_touch10_hot_0": {
+      "x": -13,
+      "y": -46
+     },
+     "emote_pie_touch10_hot_1": {
+      "x": 6,
+      "y": -43
+     },
+     "emote_pie_touch10_hot_2": {
+      "x": 14,
+      "y": -25
+     },
+     "emote_pie_touch10_hot_3": {
+      "x": 14,
+      "y": 1
+     },
+     "emote_pie_touch10_hot_4": {
+      "x": 6,
+      "y": 11
+     },
+     "emote_pie_touch10_hot_5": {
+      "x": -13,
+      "y": 16
+     },
+     "emote_pie_touch10_hot_6": {
+      "x": -36,
+      "y": 11
+     },
+     "emote_pie_touch10_hot_7": {
+      "x": -45,
+      "y": 1
+     },
+     "emote_pie_touch10_hot_8": {
+      "x": -45,
+      "y": -25
+     },
+     "emote_pie_touch10_hot_9": {
+      "x": -36,
+      "y": -43
+     },
+     "emote_pie_touch10_off_0": {
+      "x": -13,
+      "y": -46
+     },
+     "emote_pie_touch10_off_1": {
+      "x": 6,
+      "y": -43
+     },
+     "emote_pie_touch10_off_2": {
+      "x": 14,
+      "y": -25
+     },
+     "emote_pie_touch10_off_3": {
+      "x": 14,
+      "y": 1
+     },
+     "emote_pie_touch10_off_4": {
+      "x": 6,
+      "y": 11
+     },
+     "emote_pie_touch10_off_5": {
+      "x": -13,
+      "y": 16
+     },
+     "emote_pie_touch10_off_6": {
+      "x": -36,
+      "y": 11
+     },
+     "emote_pie_touch10_off_7": {
+      "x": -45,
+      "y": 1
+     },
+     "emote_pie_touch10_off_8": {
+      "x": -45,
+      "y": -25
+     },
+     "emote_pie_touch10_off_9": {
+      "x": -36,
+      "y": -43
+     }
+    }
+   },
+   "hubIdleOffset": {
+    "x": -9,
+    "y": -9
+   },
+   "open": "grid frame 0: open_0 (pop), 1..2: open_1/open_2, >= 3: base; wedges fan in from Point (0, 1, n-1, 2, n-2, ...)",
+   "commit": "15 fps: 0 others 50 % dissolved (hub + chosen hot wedge solid), 1 the chosen wedge alone (its back sector, no hub well), 2 / 3 that at 50 / 75 %, gone",
+   "cancel": "3-step Bayer dissolve at 15 fps",
+   "hot": "emote_pie_<k>_hot_<i> overlay (pops out 2 px over the back ring, icon 1 px out/up); pin wedges in the pin ramp, Point in gold, Remove in danger",
+   "notch": "emote_pie_notch_<color> at radius R-3, on the wedge centre line (v2 .ctp-current): the current pin colour"
+  },
+  "timing": {
+   "RIGHT_HOLD_MS": 250,
+   "LONG_PRESS_MS": 450,
+   "PIE_STICKY_MS": 8000,
+   "RIGHT_DRAG_PX": 6,
+   "PIE_OPEN_FRAMES": 4,
+   "PIE_COMMIT_FRAMES": 8,
+   "PIE_CANCEL_FRAMES": 6,
+   "DOCK_OPEN_FRAMES": 2,
+   "DOCK_CLOSE_FRAMES": 6,
+   "EMOTE_POP_MS": 3500,
+   "MAX_PINS_PER_MEMBER": 6
+  },
+  "newStyle": {
+   "emote_point_9": "9x9 Point glyph (art bottom-aligned)",
+   "emote_point_11": "11x11 Point glyph (emote pop)",
+   "emote_kbd*": "key chips RIGHT / DRAG / F (dock hints)",
+   "emote_pin_<c>": "mini map pins 9x12 (tip anchor)",
+   "emote_pin_s_<c>": "mini pins 7x9",
+   "emote_remove": "Remove wedge glyph",
+   "emote_clear": "clear my pins glyph",
+   "emote_alert": "pop '!'",
+   "emote_question": "pop '?'",
+   "emote_pop_<kind>_<f>": "in-world emote pop above a character",
+   "emote_pie_*": "radial pie menu (screen tier)",
+   "emote_dock_*": "social dock parts"
+  },
+  "paletteAudit": {
+   "colours": 56,
+   "untraced": []
+  },
+  "skipped": [
+   "nick_face (user decision)"
+  ],
+  "bakedBy": "pixel3d tools/uibake",
+  "tod": "noon"
+ }
+}

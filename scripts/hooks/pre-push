@@ -8,6 +8,7 @@ set -uo pipefail
 [[ ${CT_SKIP_SECRET_SCAN:-} == 1 ]] && { echo "pre-push: secret scan SKIPPED (CT_SKIP_SECRET_SCAN=1)" >&2; exit 0; }
 
 ROOT=$(git rev-parse --show-toplevel) || exit 1
+ERRF="$(git rev-parse --absolute-git-dir)/ct-scan.err" # .git is a file in linked worktrees
 ZERO=0000000000000000000000000000000000000000
 remote="${1:-origin}"
 STATUS=0
@@ -32,14 +33,14 @@ while read -r lref lsha rref rsha; do
         # scanned on their own in this loop). Scan from the merged-in side instead: that covers this
         # side's commits; git log shows no diff for the merge commit itself (its conflict resolutions
         # went through the staged scan at commit time).
-        bash "$ROOT/scripts/secret-scan.sh" --range "${c}^2..${c}" >/dev/null 2>"$ROOT/.git/ct-scan.err" || { cat "$ROOT/.git/ct-scan.err" >&2; STATUS=1; }
+        bash "$ROOT/scripts/secret-scan.sh" --range "${c}^2..${c}" >/dev/null 2>"$ERRF" || { cat "$ERRF" >&2; STATUS=1; }
       elif git rev-parse --verify --quiet "${c}^" >/dev/null; then
-        bash "$ROOT/scripts/secret-scan.sh" --range "${c}^..${c}" >/dev/null 2>"$ROOT/.git/ct-scan.err" || { cat "$ROOT/.git/ct-scan.err" >&2; STATUS=1; }
+        bash "$ROOT/scripts/secret-scan.sh" --range "${c}^..${c}" >/dev/null 2>"$ERRF" || { cat "$ERRF" >&2; STATUS=1; }
       else
         bash "$ROOT/scripts/secret-scan.sh" --history || STATUS=1 # root commit: scan everything
       fi
     done <<< "$new"
-    rm -f "$ROOT/.git/ct-scan.err"
+    rm -f "$ERRF"
     [[ $STATUS -eq 0 ]] && echo "secret-scan: clean ($(echo "$new" | wc -l | tr -d ' ') unpublished commit(s))" >&2
   fi
 done

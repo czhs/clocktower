@@ -2,6 +2,269 @@
 
 All commands run on **the host** via `scripts/remote.sh` unless stated otherwise.
 
+## 2026-10-18 — v3.5 release gate (`v35-release`, branch `v3-game`, the host, sandboxes `v35-release` / `v35-spr`)
+
+Tree = v3.4 (`e470247`) + merge of `origin/v35-shaders` (`8741a84`, clean textual merge: the v3.4 sprite path and the
+shader work touch different code; sprite programs already use the guarded parallel precompile) + `c5d53f3` (shader-source
+record skips avatar rig programs, `isAvatarProgram`) + `b4d9a4d` (`ct.debug.freeze` / `window.__ctFreezeT` look-check hook).
+
+| Command (`CT_AGENT=v35-release scripts/remote.sh …`, builds / tests under `flock -s ~/clocktower/v3-heavy.lock`, e2e also `flock ~/clocktower/browser.lock`, nice 19) | Result |
+|---|---|
+| while writing: `pnpm --filter @ct/client run typecheck` | exit 0 |
+| **gate** `pnpm -r run typecheck`; `npx tsc -p tests/tsconfig.json --noEmit`; `pnpm build`; `node scripts/perf/bundle-report.mjs --json /tmp/ct-bundle-v35.json`; `node scripts/perf/budgets.mjs --bundle /tmp/ct-bundle-v35.json` (then again with `--dist apps/client/dist --out tests/perf/results/2026-10-18-v3.5.json`) (on `b4d9a4d`) | exit 0; **all measured ok**: entry JS 44.2/45, entry CSS 12.3/15, LobbyRoute 66.9/72, TownGame 281.3/300, **town3d 295.8/300** (v3.4: 293.4), `v3JoinPhaserChunk` 0/0, atlases 578.5/700 KiB |
+| **gate** `pnpm test` (full, after the build) | **exit 0: 186 files pass, 1 skipped; 2174 tests pass, 5 skipped** (134 s; new: `cutLoops`, `shaderCache` incl. the avatar-skip case, `world.shaderWarm`) |
+| **gate** v3 e2e, one spec at a time (`E2E_V3=1 E2E_PORT=3450 CT_GL=gpu CT_E2E_NO_BUILD=1 … timeout 1500 pnpm test:e2e --project=v3 tests/e2e/<spec>`; host GPU = `high` → rigs) | **all pass**: `v3-paths` 4/4 (29.5 s), `v3-boot` 1/1 (12.7 s), `v3-vote` 1/1 (29.8 s), `v3-doors` 1/1 (22.8 s), `v3-social` 1/1 (10.3 s), `v3-mixed` 1/1 (13.0 s), `v3-life` 1/1 (1.1 m), `v3-fallback` 4/4 (39.8 s), `v3-pageerrors` 1/1 (2.0 m) |
+| **gate** Classic: `--project=chromium tests/e2e/doors.spec.ts`, `tests/e2e/chat-bubbles.spec.ts` | **2/2 pass** (30.6 s, 25.2 s) |
+| **gate** sprites forced on: sandbox `v35-spr` built with `VITE_V3SPRITES=1 pnpm build`, `E2E_PORT=3451`: `v3-boot`, `v3-vote` | **2/2 pass** (12.5 s, 29.5 s) |
+| **look check** of the cut-away rewrite (sub-agent `v35-look`; scratch tree `git archive b4d9a4d`, sandboxes `v35-look` / `v35-base` (tag v3.4), game driver `.prof/game.ts` on 3452 / 3453 + `tp point` / `vclock pause` / `raw` commands; tp64 on AC, `chrome.sh 9452 intel glegl` = `ANGLE (Intel, Mesa Intel(R) Arc(tm) Graphics (MTL), OpenGL ES 3.2)`, 1440×900 DPR 2; `ct.debug.freeze=1` + `__ctFreezeT=60000` from boot, player teleported before each reload, overlay canvas / DOM hidden, CDP canvas screenshot 2880×1800; `ct.debug.v3cutloop=0` vs `1`) | **diff ~0**: square `low` 0 px (two pairs; noise pairs 0); own-player cut-away at house-9 `low` 0 px (pair b) / 36 px (pair a: the fox's feet, the same 36 px between two loads with the SAME flag = pose noise, max delta 97), `high` (spoofed) 0 px (noise pair 108 px, the feet); vote (8 hands, vote clock paused) 0 px in three pairs. **`v3cutloop` ships default ON.** Captures (gitignored scratch): `look35/res/*.png` + diffs |
+| cold first visit, laptop iGPU, `low`, fresh profile, 1 ST + 2 bots, one sample each (`cold.mjs` = `measure.mjs` copy) | **v3.4 (`7f54da0`): first frame 12.83 s, longest task 8.48 s** (long tasks 10.6 s in 8); **v3.5 (`b4d9a4d`): 9.14 s, 0.72 s** (2.4 s in 10); both `low`, 48 programs |
+| failures on the way (look check) | first cut-away point inside house-9's collision (teleport ignored) → moved; a CSP-blocked injected style → adopted stylesheet; townsfolk drift / wall-clock hand sprites → freeze from boot + overlay hidden; one `pkill` matched its own shell (nothing left behind). Cleanup verified: no tunnels, host processes or tp64 Chrome left (only `~/ct-perf/chrome-9452.log`) |
+
+### v3.5 deploy (same day; the tagged commit `v3.5` = `a722b44`)
+
+| Command (from the orchestrator checkout unless noted) | Result |
+|---|---|
+| `scripts/secret-scan.sh`; `git push origin v3-game`; `git tag -a v3.5 a722b44`; `git push origin v3.5`; `git push origin v3-game:main` | scan clean (404844 lines); `e470247..a722b44`; new tag `v3.5`; main `e470247..a722b44` (fast-forward) |
+| `scripts/deploy-hshi-u1.sh dev a722b44`; `curl 127.0.0.1:3001/internal/version`; dev journal (10 min) | exit 0 in 17 s; version a722b44; 0 error / warn / fail lines |
+| dev smoke on the host GPU, sprites forced on (scratch spec `test-results/smoke/dev-smoke.spec.ts` copied from the v3.4 one into the `v35-release` sandbox, not in git; `flock browser.lock`, nice 19; 6 protocol bots + a 1920×1080 page + a 1440×900 DPR-2 page; waiting room → start → day → seats → nomination → vote frame) | **1/1 pass (26.1 s)**: page errors [] / console errors []; no TownGame / Phaser request; 90 br + 4 identity `/assets` responses per page; 16 / 19 bodies swapped to sprites, vote re-bake 12 sheets (fallbacks 0, max bake unit 10.6 ms); programs 40-43 at ready, 63 after the vote |
+| prod pre-check: `journalctl -u clocktower-prod --since "30 min ago" -o cat` (21:27 PDT) | empty (last line = the v3.4 start at 20:30): no game running |
+| `sudo -n /usr/bin/systemctl start clocktower-backup-prod.service` | exit 0, Result=success |
+| `scripts/deploy-hshi-u1.sh prod a722b44` | **exit 0 in 18 s** (21:28 PDT), 315 previous assets carried |
+| `curl 127.0.0.1:3000/internal/version` (host); public `https://clocktower.chrisshi.com/`, `/v2/`, `/v3-art-demo/`, `/healthz`; units; prod journal | version = a722b44; 200 / 200 / 200 ("Hollowmere demo") / 200; prod, dev, tunnel active; 0 error / warn / fail / crit lines. Rollback: `scripts/deploy-hshi-u1.sh prod 7f54da0` |
+
+## 2026-10-18 — v3.4 release gate (`v34-release`, branch `v3-game`, the host, sandboxes `v34-release` / `v34-spr`)
+
+Tree = v3.3 (`72aba16`) + merge of `origin/v33-sprites-ship` (`135a111`, clean textual merge) + the v3.4 commits
+(tier gate, rig-first upgrade, memory trims, cache-key fix, kit warm-up, lazy chunk, vote hold; RELEASE-v3.md "v3.4").
+
+| Command (`CT_AGENT=v34-release scripts/remote.sh …`, builds / tests under `flock -s ~/clocktower/v3-heavy.lock`, e2e also `flock ~/clocktower/browser.lock`, nice 19) | Result |
+|---|---|
+| while writing: `pnpm --filter @ct/client exec tsc --noEmit -p .` (many times), `pnpm vitest run apps/client/test/game3d` (40 files) and the touched files | exit 0; 556 tests pass (new: `core.lifecycle` mayPromote case, `avatars.sprites` spec cache-key case) |
+| first `pnpm build` + `budgets.mjs --bundle` | **2 over**: `town3dChunkBrKiB` / `town3dShippedBrKiB` 307.9 / 300 (the sprite code) → sprite path moved to a lazy chunk (`avatars/sprites/index.ts`, 18.5 KiB br) → 293.3 |
+| first full e2e pass (build `e6a7ca1`) | `v3-mixed` **failed**: the 3D avatar texture key was `v3-sprite:<spec>` (contract §6.1 `v3:<spec>`) → sprite bodies keep `v3:<spec>` + `AvatarBody.sprite`; `v3-doors` failed once (keyboard walker stuck at the door, 332 s; passed on the earlier build), rest pass |
+| **gate** `pnpm -r run typecheck`; `pnpm exec tsc -p tests/tsconfig.json --noEmit`; `pnpm build`; `node scripts/perf/budgets.mjs` (plain); `node scripts/perf/bundle-report.mjs --json /tmp/v34-bundle.json`; `node scripts/perf/budgets.mjs --bundle /tmp/v34-bundle.json --dist apps/client/dist --out tests/perf/results/2026-10-18-v3.4.json` (on `27e2f82`) | exit 0 ×6; plain run all SKIP (no inputs); with the bundle report **all measured ok**: entry JS 44.2/45, entry CSS 12.3/15, LobbyRoute 66.9/72, TownGame 281.3/300, **town3d 293.4/300** (v3.3: 290.0), `v3JoinPhaserChunk` 0/0, `town3dShippedBrKiB` 293.4/300, atlases 578.5/700 KiB |
+| **gate** `pnpm test` (full, after the build) | **exit 0: 183 files pass, 1 skipped; 2151 tests pass, 5 skipped** (132.5 s) |
+| **gate** v3 e2e, one spec at a time on the default build (`27e2f82`): `E2E_V3=1 E2E_PORT=3450 CT_GL=gpu CT_E2E_NO_BUILD=1 flock -s v3-heavy.lock flock browser.lock nice -n 19 timeout 1500 pnpm test:e2e --project=v3 <spec>` (host GPU = `high` → rigs) | **all pass**: `v3-paths` 4/4 (29.0 s), `v3-boot` 1/1 (12.1 s), `v3-vote` 1/1 (28.5 s), `v3-doors` 1/1 (22.6 s), `v3-social` 1/1 (10.0 s), `v3-mixed` 1/1 (12.9 s), `v3-life` 1/1 (1.1 m), `v3-fallback` 4/4 (37.6 s), `v3-pageerrors` 1/1 (2.0 m) |
+| **gate** Classic: same env, `--project=chromium tests/e2e/doors.spec.ts`, `tests/e2e/chat-bubbles.spec.ts` | **2/2 pass** (30.3 s, 24.9 s) |
+| **gate** sprites forced on: sandbox `v34-spr` built with `VITE_V3SPRITES=1 pnpm build`, same e2e env: `v3-boot`, `v3-vote`, `v3-social`, `v3-mixed`, `v3-pageerrors` | **all pass**: 12.1 s, 28.3 s, 10.1 s, 12.8 s, 2.0 m (pageerrors: no page errors; programs 42 → 66 after the churn = the sheet programs; pre-warm 39 builds / 39 compiled / 0 timed out) |
+| laptop v3.3 vs v3.4 (scratch drivers = copy of the laptop-perf HOWTO drivers + `kit/{measure.mjs,probe.js,session.sh,sum34.py}`: per load ready → every avatar has a body → every body a sprite, sprite / rig GPU estimate, store stats; host sandboxes `v34-lp33` (tag v3.3) / `v34-lp34` (v3.4 tree), game server on 3452, Vite dev 3451 for the bench, SSH tunnels; tp64 on AC, `gpu.lock` via chrome.sh, ANGLE GL-EGL, 1440×900 DPR 2, auto, 14 bots): `session.sh 9434 intel glegl intel` (v3.3 cold → v3.4 → v3.3 warm + bench), `… intel2` / `intel3` / `intel4` / `intel5` (v3.4 only, after each fix), `PLAN=plan-dgpu.json session.sh 9434 nvidia glegl nvidia` | RELEASE-v3.md "v3.4" table. Findings that changed code: (1) the persistent sheet cache **never hit after a reload** (random geometry uuids in the key) → fixed, repeat joins 17/17 hits; (2) with cached sprites shown during the GPU probe the iGPU measured 4.5-4.6 ms (= the 4.5 ms integrated promotion bar) → sprites wait for the tier decision; probe back to 7.4-9.4 ms (declined, as v3.3); (3) vote window worst frame 83-117 ms (kits built at the vote / interim vote key / unit allocations) → kit warm-up, re-bake hold 1.2 s, allocations in their own units, store held during votes → 67 ms; dGPU: `high` with rigs on both builds (no sprite chunk). No page errors in any run (only the known `/api/lp-origin-blank` 404 of the driver) |
+| bench on the laptop iGPU (`tests/perf/v3-sprites.mjs --cdp … --tiers low --only build,cost,fps,vote,night`) | rigs → sprites GPU-inclusive frame walking 13.8 → 7.5 ms, night 15.5 → 8.5, night ghosts 12.2 → 8.2; tris 744 k → 349 k; vote re-bake 15 sheets 3.5 s, max frame 51 ms (2nd 35, p95 17), peak 50 MiB; store 44.4 MiB at 1280×720 (rig geometry 34.6 MiB) |
+| stills (host GPU, `hostbench.sh stills --only stills --scenes day-idle,vote,night-ghost --stillN 6`) | rig vs sprite pixel diff 0.144 % (day), 0.143 % (vote, after the re-bake), 0.378 % (night ghosts); `tests/v3/shots/v3.4/still-low-{day-idle,vote,night-ghost}-{rig,sprite,diff}.png` (gitignored) |
+
+### v3.4 deploy (same day; the tagged commit `v3.4` = `7f54da0`)
+
+| Command (from the orchestrator checkout unless noted) | Result |
+|---|---|
+| `scripts/secret-scan.sh`; `git push origin v3-game`; `git tag -a v3.4 7f54da0`; `git push origin v3.4`; `git push origin v3-game:main` | scan clean (403158 lines); pre-push scan clean (10 commits); `3b09f6e..7f54da0`; new tag `v3.4`; main `3b09f6e..7f54da0` (fast-forward) |
+| `scripts/deploy-hshi-u1.sh dev 7f54da0`; `curl 127.0.0.1:3001/internal/version`; dev journal (5 min) | exit 0 in 16 s; version 7f54da0; 0 error / warn / fail lines |
+| dev smoke on the host GPU with **sprites forced on** (scratch spec `test-results/smoke/dev-smoke.spec.ts` in the `v34-release` sandbox, not in git: the v3.3 smoke + `ct.debug.v3sprites=1` + `spritesNow()` / `sprites()` readouts; `flock browser.lock`, nice 19; 6 protocol bots + a 1920×1080 page + a 1440×900 DPR-2 page; waiting room → start → day → seats → nomination → vote frame) | **1/1 pass (26.2 s)**: page errors [] / console errors []; no TownGame / Phaser request; 89 br + 4 identity `/assets` responses per page; both pages 11/11 bodies swapped to sprites (store 29.5 / 20.1 MiB), vote camera re-bake 11 sheets (rebakes 11, fallbacks 0, max bake unit 9.8 ms, vendor rig build max 36 ms), sheets stored 11; stills `tests/v3/shots/v3.4/{waiting-room-1440x900-dpr2,square-1920x1080,vote-1440x900-dpr2}.png` (gitignored) |
+| prod pre-check: `journalctl -u clocktower-prod --since "30 min ago" -o cat` (20:29 PDT) | two lobbies in the window, both idle-disposed by 20:15 PDT (one member each, left): no game running |
+| `sudo -n /usr/bin/systemctl start clocktower-backup-prod.service` | exit 0, Result=success |
+| `scripts/deploy-hshi-u1.sh prod 7f54da0` | **exit 0 in 17 s** (20:30 PDT): prod → releases/7f54da0, old release `4ca13aa` pruned, 312 previous assets carried, healthy |
+| `curl 127.0.0.1:3000/internal/version` (host); public `https://clocktower.chrisshi.com/`, `/v2/`, `/v3-art-demo/`, `/healthz`; units; prod journal | version = 7f54da0; 200 / 200 / 200 ("Hollowmere demo") / 200; prod, dev, tunnel active; 0 error / warn / fail / crit lines |
+
+## 2026-10-18 — v3.3 release gate (`v33-release`, branch `v3-game`, the host, sandbox `v33-release`)
+
+Tree = v3.2 (`ceab1ce`) + `68f5b94` (laptop.md) + merges of `v33-gpu` (`9a13ce1`, clean) and `v33-bake` (`b1ae913`;
+conflicts in `vendor/town.ts` imports / build hooks and `world/stage.ts` imports, both sides kept) + `978263a` (merge
+default off, GPU-headroom promotion, tree cache default on with the LRU cap).
+
+| Command (`CT_AGENT=v33-release scripts/remote.sh …`, builds / tests under `flock -s ~/clocktower/v3-heavy.lock`) | Result |
+|---|---|
+| `pnpm --filter @ct/client run typecheck` + `pnpm vitest run …/promote.test.ts …/core.lifecycle.test.ts …/townBake.test.ts …/select.test.ts …/frameGate.test.ts` (while writing) | exit 0; 5 files / 79 tests pass (incl. the new `promote.test.ts`, 2 new lifecycle cases, the LRU / default-on cases, `bake-town.mjs --verify` bit-exact) |
+| **gate** `pnpm -r run typecheck`; `pnpm exec tsc -p tests/tsconfig.json --noEmit`; `pnpm build`; `node scripts/perf/budgets.mjs` (plain, then `bundle-report.mjs --json /tmp/v33-bundle.json` + `budgets.mjs --bundle … --dist apps/client/dist --out tests/perf/results/2026-10-18-v3.3.json`) | exit 0 (7/7); exit 0; exit 0; plain run all SKIP (no inputs: first call used `bundle-report --json` without a path, which printed text: rerun) → **all measured ok**: entry JS 44.1/45, entry CSS 12.3/15, LobbyRoute 66.9/72, TownGame 281.6/300, **town3d 290.0/300** (v3.2: 283.6; +6.4 = gpu levers + tree cache + promotion probe), `v3JoinPhaserChunk` 0/0, `town3dShippedBrKiB` 290/300, atlases 578.5/700 KiB |
+| **gate** `pnpm test` (full, after the build) | **exit 0: 181 files pass, 1 skipped; 2106 tests pass, 5 skipped** (133.3 s) |
+| **gate** v3 e2e, one spec at a time: `E2E_V3=1 E2E_PORT=3450 CT_GL=gpu CT_E2E_NO_BUILD=1 flock -s v3-heavy.lock flock browser.lock nice -n 19 timeout 1500 pnpm test:e2e --project=v3 <spec>` (host GPU) | **all pass on the first run**: `v3-paths` 4/4 (29.4 s), `v3-boot` 1/1 (12.3 s), `v3-vote` 1/1 (29.4 s), `v3-doors` 1/1 (22.2 s), `v3-social` 1/1 (10.3 s), `v3-mixed` 1/1 (12.8 s), `v3-life` 1/1 (1.1 m), `v3-fallback` 4/4 (35.3 s), `v3-pageerrors` 1/1 (2.0 m; KHR_parallel_shader_compile false; pre-warm 39 builds / 39 compiled / 0 timed out). **Page errors: none** |
+| **gate** Classic: `E2E_PORT=3450 CT_E2E_NO_BUILD=1 … pnpm test:e2e --project=chromium tests/e2e/doors.spec.ts tests/e2e/chat-bubbles.spec.ts` | **2/2 pass** (53.5 s) |
+| candidate on dev: `scripts/deploy-hshi-u1.sh dev 978263a`; `curl 127.0.0.1:3001/internal/version`; dev journal | exit 0 in 17 s; version 978263a; journal 0 error / warn / fail lines |
+| dev smoke on the host GPU (scratch spec `test-results/smoke/dev-smoke.spec.ts` in the sandbox, not in git; `flock browser.lock`, nice 19; 6 protocol bots + a 1920×1080 page + a 1440×900 DPR-2 page; waiting room → start → day → seats → nomination → vote frame) | **1/1 pass (24.6 s)**: page errors [] / console errors [] on both pages; no TownGame / Phaser request; 89 br + 4 identity `/assets` responses per page; both pages tier high (RTX 3060, no probe); `merge: null` (off); tree cache `misses 280, stored true, bytes 21.4-21.9 MB, recordMs 21, error null`; stills `tests/v3/shots/v3.3/{vote-1440x900-dpr2,square-1920x1080}.png` (gitignored) |
+| laptop before / after (helper agent; scratch drivers `scratchpad/laptop` = copy of the laptop-perf HOWTO drivers + `measure2.mjs` / `run2.sh` / `summarize2.mjs`; host sandboxes `v33-rel-v32` (ceab1ce) and `v33-rel-v33` (978263a), server on 3453 via SSH tunnels; tp64 on AC, `gpu.lock` held by chrome.sh, ANGLE GL-EGL): `./run.sh 9241 nvidia glegl v32-nvidia=rel-nvidia.json`; `./run2.sh 9241 intel glegl v32-intel=rel-intel.json@v33-rel-v32 v33-intel=rel-intel-v33.json@v33-rel-v33`; `./run2.sh 9241 nvidia glegl v33-nvidia=rel-nvidia.json@v33-rel-v33` | first `./run.sh 9241 intel glegl v32-intel=…` **failed** at warm reload 2: reloading 3 s after ready tripped the app's boot guard (Classic) — driver waits raised to 12 s, rerun ok. Results (RELEASE-v3.md "v3.3", laptop.md §8): iGPU auto v3.2 `low`→`high` at 2.2-4.8 s, vote 50.4 fps / GPU 15.1 ms; **v3.3 stays `low`** (`promotion declined (gpu-busy; gpu 8.0-10.2 ms …, integrated)` on every load), vote 59.7 fps / GPU 9.7 ms; warm ready 3.5-3.8 → 2.6-2.7 s; repeat join 3.4 → 2.43 s (279 hits); resize check 1280×720 / 1600×1000 / 1920×1200 / 1024×640: miss → stored → hits each, never > 2 records, no bake errors; NVIDIA auto = `high` from the first frame on both, vote 60 fps; no console errors |
+
+### v3.3 deploy (same day; the tagged commit `v3.3` = `72aba16`)
+
+| Command (from the orchestrator checkout unless noted) | Result |
+|---|---|
+| `scripts/secret-scan.sh`; `git push origin v3-game`; `git tag -a v3.3 72aba16`; `git push origin v3.3`; `git push origin v3-game:main` | scan clean (397316 lines); pre-push scan clean (4 commits); `68f5b94..72aba16`; new tag `v3.3`; main `de3a754..72aba16` (fast-forward) |
+| `scripts/deploy-hshi-u1.sh dev 72aba16`; `curl 127.0.0.1:3001/internal/version`; dev journal | exit 0; version 72aba16; 0 error / warn / fail lines |
+| dev smoke again on 72aba16 (same scratch spec, host GPU, 6 bots + 2 pages) | **1/1 pass (25.3 s)**: page errors [] / console errors []; no Phaser request; tier high on both pages, merge off, tree cache stored (280 misses, no error); stills re-taken (`tests/v3/shots/v3.3/`) |
+| prod pre-check: `journalctl -u clocktower-prod --since "30 min ago" -o cat` (18:25 PDT) | empty: no lobby / game in the last 30 min |
+| `sudo -n /usr/bin/systemctl start clocktower-backup-prod.service` | exit 0, Result=success |
+| `scripts/deploy-hshi-u1.sh prod 72aba16` | **exit 0 in 17 s** (18:26 PDT): prod → releases/72aba16, old release `689b3f6` pruned, 312 previous assets carried, healthy |
+| `curl 127.0.0.1:3000/internal/version` (host); public `https://clocktower.chrisshi.com/`, `/v2/`, `/v3-art-demo/`, `/healthz`; units; prod journal | version = 72aba16; 200 / 200 / 200 ("Hollowmere demo") / 200; prod, dev, tunnel active; 0 error / warn / fail / crit lines |
+
+## 2026-10-18 — v3.2 release gate (`v32-release`, branch `v3-game`, the host, sandbox `v32-release`)
+
+Tree = v3.1 (`40ec348`) + merge of `v32-early` (`3e46778`; no textual conflicts) + release fix (entry chunk:
+`ui/common/prefetchAllowed.ts`, lazy townPrefetch import in `main.tsx`) + two budget keys in `scripts/perf/budgets.mjs`.
+
+| Command (`CT_AGENT=v32-release scripts/remote.sh …`, builds / tests under `flock -s ~/clocktower/v3-heavy.lock`) | Result |
+|---|---|
+| `pnpm -r run typecheck && pnpm exec tsc -p tests/tsconfig.json --noEmit` (right after the merge) | exit 0 (7/7), exit 0 |
+| `pnpm build` + `bundle-report.mjs --json` + `budgets.mjs --bundle … --dist apps/client/dist` (right after the merge) | build exit 0, precompress 130 .br / 130 .gz of 139 text files (2.8 s); **1 OVER: `entryJsBrKiB` 45.7/45** (townPrefetch → select.ts in the entry chunk, 4.6 KB raw) |
+| fix, then `pnpm --filter @ct/client run typecheck` + `pnpm build` + bundle-report + **gate** `budgets.mjs --bundle /tmp/v32-bundle.json --dist apps/client/dist --out tests/perf/results/2026-10-18-v3.2.json` | exit 0; precompress 131 .br / 131 .gz of 140; **all measured ok**: entry JS 44.2/45, entry CSS 12.3/15, LobbyRoute 66.9/72, TownGame 281.4/300, town3d 283.6/300, **`v3JoinPhaserChunk` 0/0 (new)**, **`town3dShippedBrKiB` 283.6/300 (new)**, atlases 578.5/700 KiB; runtime keys SKIP (no perf inputs) |
+| **gate** `pnpm -r run typecheck`; `tsc -p tests/tsconfig.json --noEmit`; `pnpm vitest run apps/client/test/ui.townPrefetch.test.ts apps/client/test/game3d/idle.test.ts` (after the fix and the e2e) | exit 0 (7/7); exit 0; 2 files / 19 tests pass |
+| **gate** `pnpm test` (full, after the build) | **exit 0: 178 files pass, 1 skipped; 2063 tests pass, 5 skipped** (133.9 s) |
+| **gate** v3 e2e, one spec at a time: `E2E_V3=1 E2E_PORT=3450 CT_GL=gpu CT_E2E_NO_BUILD=1 flock -s v3-heavy.lock flock browser.lock nice -n 19 timeout 1500 pnpm test:e2e --project=v3 <spec>` (host GPU) | **all pass on the first run**: `v3-paths` 4/4 (29.7 s), `v3-boot` 1/1 (12.4 s), `v3-vote` 1/1 (28.4 s), `v3-doors` 1/1 (25.5 s), `v3-social` 1/1 (10.3 s), `v3-mixed` 1/1 (12.9 s), `v3-life` 1/1 (1.1 m), `v3-fallback` 4/4 (36.4 s), `v3-pageerrors` 1/1 (2.0 m; KHR_parallel_shader_compile false → "no compile window seen"; pre-warm 39 builds / 39 compiled / 0 timed out). **Page errors: none** |
+| **gate** Classic: `E2E_PORT=3450 CT_E2E_NO_BUILD=1 … pnpm test:e2e --project=chromium tests/e2e/doors.spec.ts tests/e2e/chat-bubbles.spec.ts` | **2/2 pass** (55.0 s) |
+
+The front branch's own runs: docs/perf-v3/fullstack.md §10.4 (idle / join / compression measurements, unit tests,
+e2e on `v32-early`).
+
+### v3.2 deploy (same day; the tagged commit `v3.2` = `ceab1ce`)
+
+| Command (from the orchestrator checkout unless noted) | Result |
+|---|---|
+| `scripts/secret-scan.sh`; `git push origin v3-game`; `git tag -a v3.2 ceab1ce`; `git push origin v3.2` | scan clean (394058 lines); pre-push scan clean (2 commits); `40ec348..ceab1ce`; new tag `v3.2` |
+| `scripts/deploy-hshi-u1.sh dev ceab1ce` | **exit 0 in 18 s**: precompress 131 .br / 131 .gz of 140, healthy `version ceab1ce…`, 104 previous assets carried |
+| on the host: `curl 127.0.0.1:3001/internal/version`; `GET / /v2/ /lobby/x /v2/lobby/x`; `journalctl -u clocktower-dev`; `curl -sI -H 'Accept-Encoding: br' 127.0.0.1:3001/assets/town3d-BNrxKKg_.js` | version = ceab1ce; all four 200; journal: no error / warn / fail lines; `Content-Encoding: br`, `Content-Length: 290358`, `Vary: Accept-Encoding`, immutable |
+| browser smoke on the host GPU against 127.0.0.1:3001 (scratch Playwright spec in the sandbox `.smoke/`, not in git; `flock browser.lock`, nice 19; 6 protocol bots (Storyteller + 5) + a 1920×1080 page + a 1440×900 DPR-2 page; waiting room → start → first night → day → teleport to seats → a nomination → vote frame; network log of both pages) | first run: the scratch spec's own bug (`const URL` shadowed the URL class), fixed; second run **1/1 pass (24.5 s)**: page errors [] and console errors [] on both pages; **TownGame / Phaser requests: none**; `/assets` js / css / json responses 88 br + 4 identity per page; laptop waiting room after 5 s still: `idle {on: true, idle: true}`; both pages tier high; vote frame viewHeight 13.10 / 13.53 with 8 measured HUD boxes |
+| prod pre-check: `journalctl -u clocktower-prod --since "30 min ago" -o cat` (16:31) | two solo Storyteller lobbies, both disposed by 16:21; no lobby open |
+| `sudo -n /usr/bin/systemctl start clocktower-backup-prod.service` | exit 0, Result=success |
+| `scripts/deploy-hshi-u1.sh prod ceab1ce` | **exit 0 in 17 s**: pre-deploy backup, `prod -> releases/ceab1ce…` (previous b7803fa), healthy, old release `fd73c81` pruned, 104 previous assets carried |
+| `curl 127.0.0.1:3000/internal/version` (host); public `https://clocktower.chrisshi.com/`, `/v2/`, `/v3-art-demo/`, `/healthz`; prod / dev / tunnel units; journals | version = ceab1ce; 200 / 200 / 200 (title "Hollowmere demo") / ok; all active; prod + dev journals since the deploys: 0 error / warn / fail / crit lines |
+| edge: `curl -sI -H 'Accept-Encoding: br' https://clocktower.chrisshi.com/assets/town3d-BNrxKKg_.js` ×3; `curl -s -H 'Accept-Encoding: br' … \| wc -c` | `content-encoding: br`, `vary: Accept-Encoding`, `cache-control: public, max-age=31536000, immutable`, `content-length: 290358`; cf-cache-status **MISS, then HIT, HIT**; body **290 358 B = the build's `.br` exactly** (Cloudflare passes the origin's q11 through; v3.0/v3.1 edge q4 ≈ 336 600 B); gzip body 348 635 B |
+| edge: the same for `/assets/town-v3-Droan-y4.json` | `content-encoding: br`, 11 661 B (= the `.br`; raw 225 805), vary + immutable, cf-cache-status **DYNAMIC ×3** (the owner's `/assets/*` cache rule, fullstack.md §10.3, is not set yet) |
+
+Stills (this machine, gitignored): `tests/v3/shots/v3.2/{square-1920x1080,waiting-room-1440x900-dpr2}.png`.
+
+## 2026-10-18 — v3.1 release gate (`v31-release`, branch `v3-game`, the host, sandbox `v31-release`)
+
+Tree = v3.0 + `78caa62` (cherry-picked `docs/perf-v3/client.md`) + merges of `v31-fixes` (`8b7e642`), `v31-stage`
+(`f90a701`) and `v31-cpu` (`3cd20d5`, both commits) + "v3.1: QA fixes" (vote frame vs the real HUD, house names hidden
+in the vote view, softer talking rim). Merge conflicts: `docs/v3/INTEGRATION.md` §9.2 only (both sides kept).
+
+| Command (`CT_AGENT=v31-release scripts/remote.sh …`, builds / tests under `flock -s ~/clocktower/v3-heavy.lock`) | Result |
+|---|---|
+| `pnpm -r run typecheck`; `pnpm exec tsc -p tests/tsconfig.json --noEmit` (right after the merges) | exit 0 (7/7), exit 0 |
+| `pnpm build` + `bundle-report.mjs` + `budgets.mjs --bundle` (right after the merges) | exit 0; all measured ok; `town3d` 281.8 KiB br |
+| QA-fix iteration: `pnpm --filter @ct/client run typecheck` + `pnpm vitest run …voteCam …world.hudKeep …avatars.parts …overlay` | exit 0; 8 files / 93 tests, then voteCam + hudKeep + world.stage 3 files / 27 tests |
+| vote-frame probe: a scratch copy of `v3-vote.spec.ts` (host sandbox only, not in git) at 1920×1080 / 1280×800 / 1440×900, `CT_GL=gpu`, port 3450, both locks, 4 iterations | reproduced the QA finding (frame fit only fixed corner sizes); first hudKeep version pushed the circle off the left edge (toast class names missed, hint pill counted) → toasts ignored (`cth-toast*`), hint pill dropped, ring edge kept in frame; final stills: every seat clear of the HUD at all three sizes |
+| **gate** `pnpm -r run typecheck` | exit 0 (7/7) |
+| **gate** `pnpm exec tsc -p tests/tsconfig.json --noEmit` | exit 0 |
+| **gate** `pnpm build` | exit 0 |
+| **gate** `node scripts/perf/bundle-report.mjs --json /tmp/v31-bundle.json` + `node scripts/perf/budgets.mjs --bundle /tmp/v31-bundle.json --out tests/perf/results/2026-10-18-v3.1.json` | **all measured ok**: entry JS 44.1/45, entry CSS 12.3/15, LobbyRoute 68.5/72, TownGame 281.4/300, **town3d 282.7/300 (new key)**, atlases 578.5/700 KiB |
+| **gate** `pnpm test` (full, after the build) | **exit 0: 175 files pass, 1 skipped; 2016 tests pass, 5 skipped** (133.1 s) |
+| **gate** v3 e2e, one spec at a time: `E2E_V3=1 E2E_PORT=3450 CT_GL=gpu CT_E2E_NO_BUILD=1 flock -s v3-heavy.lock flock browser.lock nice -n 19 timeout 1500 pnpm test:e2e --project=v3 <spec>` (host GPU) | **all pass on the first run**: `v3-paths` 4/4 (29.5 s), `v3-boot` 1/1 (12.3 s), `v3-vote` 1/1 (28.3 s), `v3-doors` 1/1 (22.2 s), `v3-social` 1/1 (10.2 s), `v3-mixed` 1/1 (13.1 s), `v3-life` 1/1 (1.1 m), `v3-fallback` 4/4 (35.7 s), `v3-pageerrors` 1/1 (2.0 m; KHR_parallel_shader_compile false → "no compile window seen"; pre-warm 39 builds / 39 compiled / 0 timed out). **Page errors: none** in any run (no `pageerror` line, no `isReady`) |
+| **gate** Classic: `E2E_PORT=3450 CT_E2E_NO_BUILD=1 … pnpm test:e2e --project=chromium doors.spec chat-bubbles.spec` | **2/2 pass** (53.5 s) |
+| extra: `CT_GL=swiftshader … --project=v3 v3-boot` | 1/1 pass (1.0 m) |
+
+Front branches' own runs (from their reports, not re-run here except through the gate above): `v31-fixes` —
+`v3-pageerrors` failed on d9cc841 with 2× the `isReady` TypeError and passed 3× with the fix; harness `?mode=cycles`
+(`render-check.sh`, SwiftShader) FAIL heapGrowthUnder10MB 15.37 → 97.08 MB before, PASS 15.36 → 20.34 MB after;
+`tests/perf/v3-cycles-heap.sh --gl gpu` growth 95 → 6.55 MB, 0 engines retained; `tests/perf/v3-ui.ts` walk non-transform
+writes 11.7 → 2.4 /s, bedtime UI writes 25.9 → 9.1 /s; client unit tests 69 files / 897. `v31-stage` — world.merge 12/12,
+game3d 428/428, e2e `v3-doors` / `v3-life` / `v3-vote` 3/3 twice (port 3466); harness A/B and `v3-frame` numbers in
+docs/perf-v3/stage.md §6. `v31-cpu` — 433 game3d tests, typecheck; SwiftShader cpu-tier runs in docs/perf-v3/cpu.md §7
+(goal not reached: ~190 ms synced, 7.6-7.8 fps). C2 QA (read-only, on d9cc841): harness stills 6/6, a 10-bot playtest
+18/18 steps with 0 page / console errors.
+
+### v3.1 dev deploy (same day, after the push; the tagged commit `v3.1` = `b7803fa`)
+
+| Command (from the orchestrator checkout unless noted) | Result |
+|---|---|
+| `scripts/secret-scan.sh`; `git push origin v3-game`; `git tag -a v3.1 b7803fa`; `git push origin v3.1` | scan clean (392701 lines); pre-push scan clean (13 unpublished commits); `c67e1ea..b7803fa`; new tag `v3.1` |
+| `scripts/deploy-hshi-u1.sh dev b7803fa` | **exit 0 in 14 s**: sandboxed build, `clocktower-dev` restarted (only that unit), healthy `version b7803fae…`, 104 previous assets carried |
+| on the host: `systemctl status clocktower-dev`; `curl 127.0.0.1:3001/internal/version`; `GET / /v2/ /lobby/x /v2/lobby/x`; `journalctl -u clocktower-dev -n 50` | active (running); version = `b7803fae0359d864418ef27fc889e6c350b13e97`; all four 200 with the app (`<title>Clocktower Town</title>`); journal: no error / warn / fail lines. Prod untouched (`4be9bb4`, active) |
+| browser smoke on the host GPU against 127.0.0.1:3001 (scratch Playwright spec in the sandbox `.smoke/`, not in git; `flock browser.lock`, nice 19; 6 protocol bots (Storyteller + 5) + a 1920×1080 page + a 1440×900 DPR-2 laptop page, `ct.fxQuality=auto`): ready → start → random setup → first night → day → teleport all to seats → nominations + a nomination → vote frame on both pages | **1/1 pass (18.7 s); page errors [] and console errors [] on both pages**; both pages tier high; vote frame desktop viewHeight 13.10, laptop 13.53 with the measured HUD keep-outs (`stage().vote.key` lists 8 boxes); desktop frame p50 16.7 ms |
+
+Stills (this machine, gitignored): `tests/v3/shots/v3.1/{square-1920x1080,voting-1920x1080,voting-laptop-1440x900-dpr2}.png`.
+
+## 2026-10-18 — v3.0 release gate (`v3-release`, branch `v3-game`, the host, sandbox `v3-release`)
+
+Tree = `116024f`: WP8 (`d66c622`) + the lead's merges of `v3-perf-stage`, `v3-perf-ui`, `v3-perf-learn`, `v3-perf-server`,
+`v3-perf-cpu` (hand-resolved conflicts in `world/stage.ts`, `voice/reconciler.ts`, `vendor/engineHost.ts`) + the
+cherry-picked `v3-perf-client` `68f9ef4`. First test of these merges together. No fixes were needed.
+
+| Command (`CT_AGENT=v3-release scripts/remote.sh …`, under `flock -s ~/clocktower/v3-heavy.lock`) | Result |
+|---|---|
+| `pnpm -r run typecheck && pnpm exec tsc -p tests/tsconfig.json --noEmit` | exit 0: 7/7 projects clean, tests tsconfig clean |
+| `pnpm build` | exit 0 (8.5 s client). `town3d` 1066.5 kB / 336.2 kB gzip (WP8: 1177.8 / 381.0), entry `index` 143.3 / 51.8 kB gzip, `TownGame` 1283.2 / 359.4 kB gzip |
+| `node scripts/perf/bundle-report.mjs --json /tmp/v3rel-bundle.json` + `node scripts/perf/budgets.mjs --bundle /tmp/v3rel-bundle.json` | **all measured budgets ok**: entry JS 43.9/45, entry CSS 12.3/15, LobbyRoute 68.3/72, TownGame 281.1/300 KiB br, town atlases 578.5/700 KiB (runtime keys SKIP: no perf inputs) |
+| `pnpm test` (full, after the build) | **exit 0: 172 files pass, 1 skipped; 1978 tests pass, 5 skipped** (133.1 s). Includes the merge-sensitive files `apps/server/test/voice.reconciler.test.ts` 2/2, `lifecycle.leaks.test.ts`, `apps/client/test/game3d/frameGate.test.ts` 7/7, `cpuTier.test.ts` 7/7, `bootPerf.test.ts` 17/17, `town.tier.test.ts` 15/15, `perf.hotpath.test.ts` 2/2 |
+| v3 e2e, one spec at a time: `E2E_V3=1 E2E_PORT=3450 CT_GL=gpu CT_E2E_NO_BUILD=1 flock -s v3-heavy.lock flock browser.lock nice -n 19 pnpm test:e2e --project=v3 <spec>` (host RTX 3060) | **all pass on the first run**: `v3-paths` 4/4 (29.4 s), `v3-boot` 1/1 (12.2 s), `v3-vote` 1/1 (28.2 s), `v3-doors` 1/1 (23.3 s; no flake this time), `v3-social` 1/1 (10.1 s), `v3-mixed` 1/1 (13.0 s), `v3-life` 1/1 (1.1 min), `v3-fallback` 4/4 (38.2 s) |
+| Classic regression: `E2E_PORT=3450 CT_E2E_NO_BUILD=1 … pnpm test:e2e --project=chromium doors.spec chat-bubbles.spec` (bot lobbies = v2) | **2/2 pass** (53.3 s) |
+
+Engine merge check (by reading, `vendor/engineHost.ts`): `fpsLimit: tierFpsLimit(tier, ct.debug.fps)` (cpu tier → 30,
+`ct.debug.fps > 0` wins) and `maxFps: V3_MAX_FPS` (0 when `ct.debug.fps < 0`); `runFrameLoop` gates on `fpsLimit` when > 0,
+else `maxFps`, so the cpu cap and the 60 fps cap both hold. The dev deploy of the tagged `v3.0` commit and its browser smoke are recorded in the follow-up commit ("v3.0 dev deploy" below).
+
+### v3.0 dev deploy (same day, after the push; the tagged commit `v3.0` = `4be9bb4`)
+
+| Command (from the orchestrator checkout unless noted) | Result |
+|---|---|
+| `scripts/secret-scan.sh`; `git push origin v3-game`; `git tag -a v3.0 4be9bb4`; `git push origin v3.0` | scan clean (388716 lines); pre-push scan clean (23 unpublished commits); `d66c622..4be9bb4`; new tag `v3.0` |
+| `scripts/deploy-hshi-u1.sh dev 4be9bb4` | **exit 0 in 14 s**: sandboxed build, `clocktower-dev` restarted (only that unit), `healthy: {"ok":true,"env":"development","version":"4be9bb4c2420689667d775adca53803c71efa6e3"}`; carry-assets kept 20 files of the previous dev release |
+| on the host: `systemctl status clocktower-dev`; `curl 127.0.0.1:3001/healthz` and `/internal/version`; `GET / /v2/ /lobby/x /v2/lobby/x /v3-art-demo/`; `journalctl -u clocktower-dev -n 50` | active (running); `{"ok":true}` / version `4be9bb4…`; every path 200 `text/html` (the SPA shell); journal: shutdown, database ready, listening on 127.0.0.1:3001 with the new version, no errors. `/v3-art-demo/` on dev is the SPA shell, as before the deploy: `dev.env` has no `DEMOS_DIR` (prod has it; prod untouched, still `4ca13aa`, its `/v3-art-demo/` still serves the Hollowmere demo) |
+| browser smoke on the host GPU against 127.0.0.1:3001 (scratch Playwright spec in the sandbox `.smoke/`, not in git; `flock browser.lock`; 1 page + 6 protocol bots, `ct.fxQuality=auto`, 1920×1080) | **1/1 pass (18.2 s)**: the v3 loading scene, the 3D town ready at tier `high` on the RTX 3060 (296 calls, 850k tris at ready; frame p50 1.6 ms), a game started, everyone teleported to the circle, a nomination → the vote framing (472 calls, 1.47M tris, p50 16.7 ms = the 60 fps cap), `/v2/` lobby finder. **2 page errors**: `TypeError: Cannot read properties of undefined (reading 'isReady')` = three.js `compileAsync`'s poll timer (`currentProgram.isReady()`) after an avatar body's material lost its program (avatars `prewarm`); the entry shows after `PREWARM_MAX_MS` anyway; not seen in the e2e (low tier); v3.1 item |
+
+Stills (this machine, gitignored): `tests/v3/shots/v3.0/dev/{loading,town-square-players,voting-circle,v2-lobby-list}.png`.
+
+## 2026-10-18 — v3 WP8 gate (`v3-wp8`, branch `v3-game`, the host, sandbox `v3-wp8`, capped remote.sh)
+
+Tree = "v3 C1" (`0cfd0b8`) + WP8: URL paths finished (`LobbyRoute` path move), the v3 loading scene wired into
+`GameScreen`, the voting-circle candle stakes removed (`vendor/town.ts removeDaisCandles`), the laptop-first phone
+note, `v3-lobby-choice.spec.ts` + `createLobbyViaUI` deleted, `.claude/worktrees/` added to `scripts/rsync-excludes.txt`.
+
+| Command (`CT_AGENT=v3-wp8 scripts/remote.sh …`, builds / tests under `flock -s ~/clocktower/v3-heavy.lock`) | Result |
+|---|---|
+| `pnpm -r run typecheck` + `pnpm vitest run apps/client/test/game3d/world.stage.test.ts apps/client/test/ui.v3loading.test.ts apps/client/test/game3d/world.dais.test.ts` (first pass; one TS2532 in `removeDaisCandles` fixed first) | typecheck 7/7 clean; 3 files / 30 tests pass |
+| `pnpm -r run typecheck` (gate) | exit 0 (7/7) |
+| `pnpm build` | exit 0 (`town3d` 1177.8 kB / 381.0 kB gzip; entry `index` 143.3 kB / 51.8 kB gzip) |
+| `pnpm test` (full, after the build) | 166 files pass, **1 file / 2 tests fail = `tests/security/repo-hygiene.test.ts` REPO-03** (CGNAT + home-path scans) — environmental: the orchestrator checkout's `.claude/worktrees/` (perf agents' worktrees, gitignored) had been rsynced into the sandbox; 1946 tests pass, 5 skipped (168 files, 136 s) |
+| `rm -rf ~/clocktower/work/v3-wp8/.claude/worktrees` (sandbox only; `.claude/worktrees/` now in `scripts/rsync-excludes.txt`), then `pnpm vitest run tests/security/repo-hygiene.test.ts tests/security/web-client.test.ts` | 2 files / 48 tests pass |
+| `node scripts/perf/bundle-report.mjs --json /tmp/wp8-bundle.json` + `node scripts/perf/budgets.mjs --bundle /tmp/wp8-bundle.json` | all measured budgets ok: entry JS 44.0/45, entry CSS 12.3/15, LobbyRoute 68.3/72, TownGame 281.3/300 KiB br, town atlases 578.5/700 KiB (runtime keys SKIP) |
+| e2e `E2E_V3=1 E2E_PORT=3451 CT_GL=gpu CT_E2E_NO_BUILD=1 flock -s v3-heavy.lock flock browser.lock nice -n 19 pnpm test:e2e --project=v3 v3-paths` (host GPU) | **4/4 pass** (53.8 s): `/` vs `/v2/` lobbies + lists, share-link moves without reload, the v3 loading scene incl. the GameScreen town build, the no-WebGL scene |
+| same, `v3-vote` (1920×1080; asserts `stage().candlesRemoved` > 0 for all three dais meshes) | **1/1 pass** twice (31.3 s before the teleport/still change, 34.4 s after) |
+| same, `v3-boot` | 1/1 pass (19.2 s) |
+| same, `v3-social` | 1/1 pass (16.3 s) |
+| same, `v3-doors` | **1/1 FAIL** (5.6 min): the keyboard walker stuck at (548.5, 267.9) px on the way to house-5 (client prediction stopped advancing; no server rejection, no teleport) |
+| rerun (after `v3-lobby-choice` / `createLobbyViaUI` deletion; same dist): `v3-doors` | **1/1 pass** (33.1 s): the first failure did not reproduce = flaky walker (not a WP8 change: WP8 touches no movement / collision code) |
+| rerun: `v3-paths` | **4/4 pass** (45.8 s) |
+| `pnpm exec tsc -p tests/tsconfig.json` | exit 0 |
+| `E2E_PORT=3451 CT_E2E_NO_BUILD=1 … pnpm test:e2e --project=chromium doors.spec chat-bubbles.spec` (Classic regression; bot lobbies are v2 and move to `/v2/lobby/x`) | **2/2 pass** (1.6 min) |
+
+Release stills (this machine, gitignored): `tests/v3/shots/v3.0/vote-circle-no-candles.png`,
+`vote-circle-seals.png` (1920×1080, host GPU, from `v3-vote`), `tests/v3/shots/v3.0/loading-join.png`,
+`loading-town-build.png` (1280×800, from `v3-paths`). Not run: `v3-life`, `v3-mixed`, `v3-fallback`, the rest of the
+Classic suite (C2).
+
+## 2026-10-18 — v3 checkpoint C1a gate (`v3-gate`, branch `v3-game`, the host, sandbox `v3-gate`, capped remote.sh)
+
+Tree = "v3 C1 WIP" (`4998ca5`) + the finished phase-1 packages (WP1-WP6, reviewed and fixed; WP1 / WP2 / WP4 not
+wired into `TownGame3d.ts` yet), lead decisions D1-D4, WP7a harness + v3 e2e specs, perf recon tooling. Contract and
+per-package detail: `docs/v3/INTEGRATION.md` §8 Status.
+
+| Command (gate, one run under `flock ~/clocktower/v3-heavy.lock`) | Result |
+|---|---|
+| `pnpm -r run typecheck` | ✅ |
+| `pnpm build` | ✅ |
+| `pnpm test` (after the build, so `tests/security/web-client.test.ts` reads the production `dist`) | ✅ 159 files passed, 1 skipped; 1870 tests passed, 3 skipped (132 s) |
+| `pnpm vitest run tests/security/repo-hygiene.test.ts` after the doc edits (no lock) | ✅ 17/17 |
+| `bash scripts/secret-scan.sh --staged` (editing machine, before the commit) | ✅ clean (144 files) |
+
+Package agents' runs that this checkpoint relies on (all via `CT_AGENT=v3-<name> scripts/remote.sh`, SwiftShader /
+CPU only, heavy + browser locks for browsers):
+
+| Package / agent | Command | Result |
+|---|---|---|
+| WP2 fix (`v3-avatars`) | client `tsc --noEmit`; `vitest run test/game3d` | ✅; 27 files / 370 tests |
+| WP2 fix | DEV smoke `avatars/dev/avatarSmoke.mjs` (`SMOKE_PORT=3462`) | run A ❌ (rim probe moved the camera: one extra program; brianbi rim hidden by a roof) → probe fixed; runs B and C ✅ 47/47 (low: programs 63 constant, build of 38 bodies ≈ 319 s; high: programs 42 constant, late joiners pre-warmed) |
+| WP3 fix (`v3-stage`) | `vitest run apps/client/test/game3d/world packages/assets/test/hollowmere.test.ts`; `vitest run packages/assets apps/client/test` | ✅ 9 files / 104; ✅ 70 files / 967 (3 skipped) |
+| WP3 fix | `scripts/v3/stage-smoke.mjs` (port 3465, low tier, canopy on) | ✅ 27/27 (programs 41 constant; prefetched interior switch 1 ms; cold ST teleport 144 ms) |
+| WP4 D2 + fix (`v3-overlay`) | `vitest run apps/client/test/game3d/overlay`; `vitest run apps/client/test/game3d`; client tsc | ✅ 5 files / 53; ✅ 25 files / 335; ✅ |
+| WP5b verify (`v3-world`) | e2e `--project=chromium classic-in-v3 doors.spec` (`E2E_PORT=3475`) | ✅ 4/4 (2.2 min; all 15 cottages through their v3 doors, v2 → v3 in one page, Q7 phone shots) |
+| WP5b fix | `classicV3.test.ts`; `pnpm -r run typecheck`; `tsc -p tests/tsconfig.json` | ✅ 18/18; first run ❌ (duplicate `npcs` key in a TownScene debug hook, fixed) then ✅; ✅ |
+| WP6 fix (`v3-ui`) | WP6 unit set + `lobby.world.test.ts` | ✅ 10 files / 139 |
+| WP6 fix | e2e `v23-settings` + `lobby` (`E2E_PORT=3480`) | first run ❌ 1/8 (second create dialog not closed by an Escape sent right after the radio check: post-paint key-listener race; test now uses Cancel) → ✅ 8/8 |
+| WP6 fix | `pnpm build`; `tests/security/web-client.test.ts`; `budgets.mjs` | ✅; ✅ 31/31 (❌ 2 when run against the dist the e2e webServer builds under `NODE_ENV=test`); ✅ entry JS 42.7/45, entry CSS 11.5/15, LobbyRoute 67/72, TownGame 295.9/300 KiB br |
+| WP7a (`v3-qa`) | `harness.scenario.test.ts`; tsc over client, `tests/`, `tests/v3/` | ✅ 11/11; ✅ |
+| WP7a | harness `projection`, `cycles` (port 3460) | ✅ (15 samples at scales 2/3/4); ✅ 5 mounts + 2 tier rebuilds + 1 crash (heap figures bucketed: re-run with `--enable-precise-memory-info` pending) |
+| WP7a | `E2E_V3=1 … --project=v3 v3-boot v3-fallback v3-lobby-choice` (`E2E_PORT=3485`) | ✅ `v3-boot`, `v3-lobby-choice` "town choice from the UI" + "each lobby renders the right town", `v3-fallback` "leftover boot mark"; ❌ `v3-fallback` "chunk fails" (real bug: the one retry never re-requests the chunk, INTEGRATION.md §9.3); ❌ pending C1: context-loss rebuild, perf sampler fallback, join preview |
+| WP7a | `--project=chromium doors.spec chat-bubbles door-boards` (`E2E_PORT=3486`) | ✅ 3/3 |
+| D3 (`v3-radial`) | `social.radial` + `social.controller` + `social.logic` unit | ✅ 3 files / 83 (`social.radial` 45); mutation check: 17/45 fail with the gate disabled, as intended |
+| D3 | `pnpm -r build` then `v2-social.spec.ts` ×3 (`E2E_PORT=3456`) | first version ❌ (slide-to-pin committed Point; discarded); final ✅ 2/2 three times |
+| perf recon (`v3-perf-*`) | measurement tooling only (`docs/perf-v3/recon-*.md` list each run) | frame / load / classic / net recon ran; the `chars` and `server` runs were cut off by the usage limit (tools committed, results partial) |
+
 ## 2026-10-16 — v2.4 release gate (lead, hshi-u1, sandbox `lead`, capped remote.sh)
 
 Tree = v2.3 (`28a9d6e`) + v2.4 P1 (client runtime), P2 (load path), P3 (server CPU) + lead fixes
@@ -418,3 +681,43 @@ and the v2.2 release notes; each feature agent ran typecheck + its unit tests + 
 | `pnpm exec tsc -p tests/tsconfig.json --noEmit` | ✅ |
 
 Feature/security agents' own runs are listed in their reports (private audit notes) and summarised in docs/security-v2.3.md.
+
+## 2026-10-18 — v3 C1 gate (`v3-integrate`, acting as lead + qa-deploy; hshi-u1, `flock -s v3-heavy.lock`)
+
+Gate runs (`CT_AGENT=v3-integrate scripts/remote.sh …`):
+
+| Command | Result |
+|---|---|
+| `pnpm -r run typecheck` | ✅ 7/7 |
+| `pnpm build` | ✅ exit 0 (`town3d` 1176 kB / 380 kB gzip, `TownGame` 1283 kB / 359 kB gzip) |
+| `--no-sync pnpm test` (after the build) | ✅ 167 files / 1944 tests pass, 1 file / 5 tests skipped (132.7 s) |
+| `--no-sync node scripts/perf/bundle-report.mjs --json …` + `node scripts/perf/budgets.mjs --bundle …` | ✅ all measured ok: entry JS 43.8/45, entry CSS 12.3/15, LobbyRoute 68.4/72, TownGame 281.2/300 KiB br, atlases 578.5/700 KiB (runtime keys SKIP: no perf inputs) |
+
+C1 continuation (integrator, same day; host GPU, `E2E_V3=1 E2E_PORT=3450 CT_GL=gpu`, both locks, one spec file at a time):
+
+| Command | Result |
+|---|---|
+| `pnpm -r run typecheck` | ✅ 7 projects |
+| e2e `--project=v3` `v3-doors` (webServer build) | ✅ 1/1 (40.6 s) |
+| e2e `v3-social`, `v3-boot`, `v3-vote`, `v3-mixed`, `v3-life` (`CT_E2E_NO_BUILD=1`) | ✅ each 1/1 |
+| e2e `v3-lobby-choice` | ❌ 3/3 — by design: the WP8 WIP removed the Town radiogroup and the `/` join preview; superseded by `v3-paths` (delete with WP8) |
+| e2e `v3-fallback` (1st) | ❌ 3/4 — "chunk fails" (1 request, expected ≥ 2): the fresh-URL retry can never work (sub-chunks import `town3d-*.js` by plain URL) → retry dropped in `GameScreen.tsx`, spec now asserts one request + Classic in place |
+| client typecheck + `tsc -p tests/tsconfig.json --noEmit` | ✅ |
+| e2e `v3-fallback` (rebuilt dist) | ❌ 3/4 — "WebGL context loss": first loss went to Classic (three `getProgramInfoLog()` null → `.trim()` between `loseContext()` and the event; read from trace.zip) → `TownGame3d.ts` counts a throw on a lost context as that Engine's one loss |
+| client typecheck (after the fix) | ✅ |
+| e2e `v3-fallback` (rebuilt dist) | ✅ 4/4 (35.9 s) |
+| e2e `v3-fallback -g 'context loss' --repeat-each=3` | ✅ 3/3 |
+| final dist, one file at a time: `v3-doors`, `v3-social`, `v3-boot`, `v3-vote`, `v3-mixed`, `v3-life` | ✅ 21.6 s / 8.5 s / 10.5 s / 23.6 s / 11.3 s / 1.1 m |
+| Classic e2e `--project=chromium doors.spec.ts chat-bubbles.spec.ts` (`E2E_PORT=3451`) | ✅ 2/2 |
+| `pnpm vitest run apps/client/test/game3d` | ✅ 28 files / 389 tests |
+
+C1 review fix round (same day):
+
+| Command | Result |
+|---|---|
+| `pnpm vitest run …voteCam.test.ts …paths.v2.test.ts …voice.test.ts …voice.audit.test.ts …world.stage.test.ts` | ✅ 5 files / 55 tests (voteCam 12 incl. the new failed-build test) |
+| `--no-sync pnpm -r run typecheck` | ✅ 7/7 |
+| `--no-sync pnpm vitest run tests/security/voice-cost.test.ts` | ✅ 35/35 |
+
+Not run in C1: `v3-paths` (WP8), `hd-cast` v3 branch, harness stills, an e2e for the room-build camera fix (unit test
+only), runtime perf budgets.

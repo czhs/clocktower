@@ -1,0 +1,362 @@
+/* Hollowmere demo control panel (owner: ui; docs/DEMO.md §4.4). Loaded by src/demo/ui.js (a <link> it adds itself).
+   Dark slate + cream, small caps, hard 1 px edges and offset shadows (no blur, no big radii) to sit with the pixel art.
+   Everything is scoped under #demo-ui .dui-*; no external fonts. */
+#demo-ui {
+  --dui-bg: rgba(22, 25, 35, 0.92);
+  --dui-bg2: #232838;
+  --dui-bg3: #2d3346;
+  --dui-edge: #0a0c12;
+  --dui-line: #474f66;
+  --dui-hi: #5a6380;
+  --dui-text: #efe6cf;
+  --dui-dim: #a69c86;
+  --dui-faint: #6f6a5e;
+  --dui-amber: #e4ae52;
+  --dui-amber-d: #8a5f22;
+  --dui-blood: #b8483e;
+  --dui-ghost: #93b8d8;
+  --dui-moss: #86a85c;
+  --dui-serif: "Palatino Linotype", Palatino, "Book Antiqua", "URW Palladio L", Georgia, serif;
+  --dui-mono: ui-monospace, "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+  color: var(--dui-text);
+}
+#demo-ui .dui-panel *, #demo-ui .dui-help * { box-sizing: border-box; }
+
+/* ---------------------------------------------------------------- panel shell */
+#demo-ui > .dui-panel {
+  position: absolute; top: 8px; right: 8px; width: 316px; max-width: calc((100vw - 16px) / var(--uizoom, 1));
+  max-height: calc((100vh - 16px) / var(--uizoom, 1)); display: flex; flex-direction: column;
+  font: 12px/1.3 var(--dui-serif); user-select: none; -webkit-user-select: none;
+}
+/* the vote camera: the panel slides out past the right edge (ui.js paintAway) and back after */
+#demo-ui > .dui-panel { transition: transform 0.25s steps(5, end); }
+#demo-ui > .dui-panel.dui-away { transform: translateX(calc(100% + 24px)); pointer-events: none; }
+/* the plain look (?gameui=0); with the game UI the panel wears the library skin (end of this file) */
+#demo-ui > .dui-panel:not(.dui-skinned) {
+  background: var(--dui-bg); border: 1px solid var(--dui-edge);
+  box-shadow: inset 0 0 0 1px var(--dui-line), 3px 3px 0 rgba(0, 0, 0, 0.45);
+}
+.dui-head {
+  display: flex; align-items: center; gap: 6px; padding: 6px 6px 6px 10px; cursor: default;
+  border-bottom: 1px solid var(--dui-edge); box-shadow: 0 1px 0 var(--dui-line);
+  background: linear-gradient(#2a3042, #1f2433);
+}
+.dui-title { flex: 1; font: 600 15px/1 var(--dui-serif); font-variant: small-caps; letter-spacing: 0.08em; color: var(--dui-text); }
+.dui-title small { font-size: 11px; color: var(--dui-dim); letter-spacing: 0.04em; margin-left: 6px; font-weight: 400; }
+.dui-body { overflow-y: auto; overflow-x: hidden; padding: 2px 0 6px; scrollbar-width: thin; scrollbar-color: var(--dui-line) transparent; }
+.dui-body::-webkit-scrollbar { width: 6px; }
+.dui-body::-webkit-scrollbar-thumb { background: var(--dui-line); }
+.dui-panel.collapsed .dui-body { display: none; }
+.dui-panel.collapsed .dui-head { border-bottom: 0; box-shadow: none; }
+
+/* ---------------------------------------------------------------- sections */
+.dui-sec { border-bottom: 1px solid #1a1e2a; }
+.dui-sec > summary {
+  list-style: none; cursor: pointer; padding: 6px 10px 5px; display: flex; align-items: baseline; gap: 6px;
+  font: 600 12.5px/1 var(--dui-serif); font-variant: small-caps; letter-spacing: 0.12em; color: var(--dui-amber);
+}
+.dui-sec > summary::-webkit-details-marker { display: none; }
+.dui-sec > summary::before { content: "\25B8"; font-size: 10px; color: var(--dui-faint); width: 9px; }
+.dui-sec[open] > summary::before { content: "\25BE"; }
+.dui-sec > summary:hover { color: #f3c674; }
+.dui-sec > summary .dui-aside { margin-left: auto; font: 11px var(--dui-mono); letter-spacing: 0; color: var(--dui-dim); font-variant: normal; font-weight: 400; }
+.dui-sec-body { padding: 2px 10px 8px; display: grid; gap: 6px; }
+
+.dui-row { display: flex; align-items: center; gap: 6px; min-height: 22px; }
+.dui-lbl { width: 64px; flex: none; font-variant: small-caps; letter-spacing: 0.05em; color: var(--dui-dim); font-size: 12px; }
+.dui-grow { flex: 1; min-width: 0; }
+.dui-stack { display: grid; gap: 3px; }
+.dui-stack > .dui-lbl { width: auto; }
+.dui-stack > .dui-seg > .dui-btn { font-size: 11.5px; letter-spacing: 0.02em; }
+.dui-note { color: var(--dui-faint); font-size: 11px; font-style: italic; }
+.dui-mono { font-family: var(--dui-mono); font-size: 11px; }
+
+/* ---------------------------------------------------------------- buttons */
+.dui-btn {
+  appearance: none; -webkit-appearance: none; margin: 0; cursor: pointer;
+  font: 12px/1 var(--dui-serif); font-variant: small-caps; letter-spacing: 0.04em; color: var(--dui-text);
+  background: var(--dui-bg3); border: 1px solid var(--dui-edge); border-radius: 0;
+  box-shadow: inset 1px 1px 0 var(--dui-hi), inset -1px -1px 0 #1b1f2c;
+  padding: 4px 7px 5px; min-height: 22px; white-space: nowrap;
+}
+.dui-btn:hover { background: #384058; }
+.dui-btn:active { box-shadow: inset 1px 1px 0 #1b1f2c; transform: translateY(1px); }
+.dui-btn:focus-visible, .dui-cell:focus-visible, .dui-char:focus-visible, .dui-select:focus-visible { outline: 1px solid var(--dui-amber); outline-offset: 1px; }
+.dui-btn[aria-pressed="true"] {
+  background: var(--dui-amber); color: #241a0c; font-weight: 600;
+  box-shadow: inset 1px 1px 0 #f6d391, inset -1px -1px 0 var(--dui-amber-d);
+}
+.dui-btn.icon { padding: 3px 0 4px; width: 24px; text-align: center; font-family: var(--dui-mono); font-variant: normal; }
+.dui-btn.warn { color: #f2c1b5; }
+.dui-btn.wide { flex: 1; }
+.dui-btn:disabled { opacity: 0.45; cursor: default; }
+.dui-seg { display: flex; flex: 1; min-width: 0; }
+.dui-seg > .dui-btn { flex: 1; padding-left: 2px; padding-right: 2px; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.dui-seg > .dui-btn + .dui-btn { margin-left: -1px; }
+.dui-btns { display: flex; gap: 4px; flex-wrap: wrap; }
+
+.dui-select {
+  appearance: none; -webkit-appearance: none; border-radius: 0; cursor: pointer;
+  font: 12px/1.2 var(--dui-serif); color: var(--dui-text); background: #171a25 linear-gradient(transparent, transparent);
+  border: 1px solid var(--dui-edge); box-shadow: inset 0 0 0 1px var(--dui-line); padding: 3px 18px 4px 6px; min-height: 22px;
+  background-image: linear-gradient(45deg, transparent 50%, var(--dui-dim) 50%), linear-gradient(135deg, var(--dui-dim) 50%, transparent 50%);
+  background-position: calc(100% - 10px) 50%, calc(100% - 6px) 50%; background-size: 4px 4px; background-repeat: no-repeat;
+}
+.dui-select option { background: #171a25; color: var(--dui-text); }
+
+/* ---------------------------------------------------------------- character roster */
+.dui-chars { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; max-height: 300px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--dui-line) transparent; }
+.dui-char {
+  appearance: none; display: flex; align-items: center; gap: 6px; padding: 3px 5px 3px 3px; cursor: pointer; text-align: left;
+  background: #1b1f2c; border: 1px solid var(--dui-edge); box-shadow: inset 0 0 0 1px #2c3244; color: var(--dui-text); border-radius: 0;
+  font: 12px/1.15 var(--dui-serif); min-width: 0;
+}
+.dui-char:hover { background: #262b3c; }
+.dui-char[aria-pressed="true"] { box-shadow: inset 0 0 0 1px var(--dui-amber); background: #2b2a2a; }
+.dui-char.loading .dui-mono-tile { animation: dui-pulse 0.6s steps(2) infinite; }
+.dui-mono-tile {
+  flex: none; width: 26px; height: 26px; display: grid; place-items: center; overflow: hidden;
+  font: 700 14px/1 var(--dui-serif); color: #f6ecd3; text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.55);
+  border: 1px solid var(--dui-edge); box-shadow: inset 1px 1px 0 rgba(255, 255, 255, 0.22), inset -1px -1px 0 rgba(0, 0, 0, 0.3);
+  image-rendering: pixelated;
+}
+.dui-mono-tile img { width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; }
+.dui-char-name { display: block; font-variant: small-caps; letter-spacing: 0.03em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dui-char-sub { display: block; font-size: 10px; color: var(--dui-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dui-char[aria-pressed="true"] .dui-char-sub { color: var(--dui-amber); }
+.dui-char-text { min-width: 0; }
+/* roster group headers (shipped first, then work in progress) */
+.dui-char-grp { grid-column: 1 / -1; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--dui-faint); padding: 4px 2px 1px; border-bottom: 1px solid var(--dui-line); }
+.dui-char-grp:first-child { padding-top: 0; }
+.dui-char[data-status="wip"] .dui-char-name { color: #cdbf9f; }
+.dui-btn:disabled { opacity: 0.4; cursor: default; }
+@keyframes dui-pulse { 50% { opacity: 0.35; } }
+
+/* ---------------------------------------------------------------- time */
+.dui-clock { display: flex; align-items: flex-end; gap: 8px; }
+.dui-clock-big { font: 600 30px/0.9 var(--dui-mono); letter-spacing: 0.02em; color: #f6ecd3; text-shadow: 2px 2px 0 #000; }
+.dui-clock-side { display: grid; gap: 2px; padding-bottom: 1px; }
+.dui-clock-preset { font: 600 13px/1 var(--dui-serif); font-variant: small-caps; letter-spacing: 0.1em; color: var(--dui-amber); }
+.dui-clock-speed { font: 11px/1 var(--dui-mono); color: var(--dui-dim); }
+.dui-clock-side .paused { color: var(--dui-blood); }
+.dui-clock-glyph { margin-left: auto; width: 30px; height: 30px; image-rendering: pixelated; }
+
+.dui-range { position: relative; height: 22px; }
+.dui-range input[type=range] { position: absolute; inset: 0; width: 100%; height: 22px; margin: 0; background: transparent; cursor: pointer; -webkit-appearance: none; appearance: none; }
+.dui-range .dui-track {
+  position: absolute; left: 0; right: 0; top: 7px; height: 8px; border: 1px solid var(--dui-edge);
+  background: linear-gradient(90deg, #121a3a 0%, #1b2347 18%, #b9707a 25.5%, #e8c58e 30%, #8fb7d9 40%, #a8cbe6 52%, #8fb7d9 66%, #f0b860 77%, #d0704a 82%, #4b2d5a 86%, #1b2347 92%, #121a3a 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+.dui-range input[type=range]::-webkit-slider-runnable-track { height: 22px; background: transparent; }
+.dui-range input[type=range]::-moz-range-track { height: 22px; background: transparent; }
+.dui-range input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 8px; height: 18px; margin-top: 2px; background: var(--dui-text);
+  border: 1px solid var(--dui-edge); box-shadow: inset -1px -1px 0 #b3a681, 1px 1px 0 #000; border-radius: 0;
+}
+.dui-range input[type=range]::-moz-range-thumb { width: 8px; height: 18px; background: var(--dui-text); border: 1px solid var(--dui-edge); border-radius: 0; }
+.dui-ticks { display: flex; justify-content: space-between; font: 9px/1 var(--dui-mono); color: var(--dui-faint); margin-top: -3px; padding: 0 1px; }
+
+/* ---------------------------------------------------------------- seats */
+.dui-seats { display: grid; grid-template-columns: 58px repeat(15, minmax(0, 1fr)); gap: 2px 1px; align-items: center; }
+.dui-seats .dui-sl { font-variant: small-caps; letter-spacing: 0.03em; color: var(--dui-dim); font-size: 11px; white-space: nowrap; }
+.dui-seats .dui-sn { font: 9px/1 var(--dui-mono); color: var(--dui-faint); text-align: center; }
+.dui-cell {
+  appearance: none; display: block; padding: 0; margin: 0 auto; width: 13px; height: 13px; cursor: pointer; border-radius: 0;
+  background: #151823; border: 1px solid var(--dui-edge); box-shadow: inset 0 0 0 1px #2a3042;
+}
+.dui-cell:hover { box-shadow: inset 0 0 0 1px var(--dui-hi); }
+.dui-cell[aria-pressed="true"] { box-shadow: inset 1px 1px 0 rgba(255, 255, 255, 0.35), inset -1px -1px 0 rgba(0, 0, 0, 0.35); }
+.dui-cell.k-occupied[aria-pressed="true"] { background: var(--dui-text); }
+.dui-cell.k-dead[aria-pressed="true"] { background: var(--dui-blood); }
+.dui-cell.k-ghostVote[aria-pressed="true"] { background: var(--dui-ghost); }
+.dui-cell.k-nominated[aria-pressed="true"] { background: var(--dui-amber); }
+.dui-cell.k-onBlock[aria-pressed="true"] { background: #7c5bb0; }
+.dui-cell.k-nominee { border-radius: 50%; }
+.dui-cell.k-nominee[aria-pressed="true"] { background: var(--dui-amber); box-shadow: 0 0 0 1px #f6d391; }
+.dui-cell.off { opacity: 0.35; }
+.dui-legend { display: flex; flex-wrap: wrap; gap: 2px 8px; font-size: 10px; color: var(--dui-faint); }
+
+/* ---------------------------------------------------------------- render readout */
+.dui-perf { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--dui-edge); border: 1px solid var(--dui-edge); }
+.dui-perf > div { background: #171a25; padding: 3px 5px 4px; }
+.dui-perf b { display: block; font: 600 13px/1.1 var(--dui-mono); color: #f6ecd3; }
+.dui-perf span { font-size: 10px; font-variant: small-caps; letter-spacing: 0.05em; color: var(--dui-faint); }
+.dui-perf b.bad { color: var(--dui-blood); }
+.dui-perf b.ok { color: var(--dui-moss); }
+
+/* ---------------------------------------------------------------- status line, toasts */
+#demo-ui > .dui-status {
+  position: absolute; left: 8px; bottom: 8px; pointer-events: none; padding: 4px 8px 5px; max-width: calc((100vw - 340px * var(--uizoom, 1)) / var(--uizoom, 1));
+  background: rgba(14, 16, 24, 0.78); border: 1px solid var(--dui-edge); box-shadow: inset 0 0 0 1px #2f3547;
+  font: 11px/1.35 var(--dui-mono); color: var(--dui-text); white-space: pre; overflow: hidden; text-overflow: ellipsis;
+}
+#demo-ui > .dui-status.dui-away { visibility: hidden; }   /* (vote-fix5) hidden in the vote camera */
+.dui-status .dim { color: var(--dui-dim); }
+.dui-status .amb { color: var(--dui-amber); }
+#demo-ui > .dui-toasts {
+  position: absolute; left: 50%; bottom: 54px; transform: translateX(-50%); pointer-events: none;
+  display: flex; flex-direction: column-reverse; align-items: center; gap: 4px;
+}
+.dui-toast {
+  padding: 5px 12px 6px; background: rgba(22, 25, 35, 0.94); border: 1px solid var(--dui-edge);
+  box-shadow: inset 0 0 0 1px var(--dui-amber-d), 2px 2px 0 rgba(0, 0, 0, 0.5);
+  font: 13px/1.2 var(--dui-serif); font-variant: small-caps; letter-spacing: 0.06em; color: var(--dui-text);
+  transition: opacity 0.35s, transform 0.35s; animation: dui-in 0.18s steps(3);
+}
+.dui-toast.out { opacity: 0; transform: translateY(4px); }
+@keyframes dui-in { from { opacity: 0; transform: translateY(6px); } }
+#demo-ui > .dui-hint {
+  position: absolute; top: 8px; right: 8px; pointer-events: none; padding: 3px 8px 4px; font: 11px var(--dui-serif);
+  font-variant: small-caps; letter-spacing: 0.05em; color: var(--dui-dim); background: rgba(14, 16, 24, 0.6); border: 1px solid var(--dui-edge);
+}
+
+/* ---------------------------------------------------------------- help overlay */
+#demo-ui > .dui-help {
+  position: absolute; inset: 0; display: grid; place-items: center; background: rgba(6, 7, 12, 0.55); z-index: 5;
+}
+.dui-help[hidden] { display: none !important; }
+.dui-help-card {
+  width: min(640px, calc((100vw - 32px) / var(--uizoom, 1))); max-height: calc((100vh - 32px) / var(--uizoom, 1)); overflow: auto; padding: 14px 18px 16px;
+  font: 12px/1.35 var(--dui-serif);
+}
+.dui-help-card:not(.dui-skinned) { background: var(--dui-bg); border: 1px solid var(--dui-edge); box-shadow: inset 0 0 0 1px var(--dui-line), 4px 4px 0 rgba(0, 0, 0, 0.5); }
+.dui-help-card h2 { margin: 0 0 10px; font: 600 18px/1 var(--dui-serif); font-variant: small-caps; letter-spacing: 0.1em; color: var(--dui-text); display: flex; align-items: baseline; }
+.dui-help-card h2 small { margin-left: auto; font-size: 11px; color: var(--dui-faint); letter-spacing: 0.03em; font-weight: 400; }
+.dui-help-cols { columns: 2 250px; column-gap: 22px; }
+.dui-help-grp { break-inside: avoid; margin-bottom: 10px; }
+.dui-help-grp h3 { margin: 0 0 4px; font: 600 12px/1 var(--dui-serif); font-variant: small-caps; letter-spacing: 0.14em; color: var(--dui-amber); border-bottom: 1px solid #2c3244; padding-bottom: 3px; }
+.dui-help-row { display: flex; gap: 8px; align-items: baseline; padding: 1px 0; }
+.dui-kbd {
+  flex: none; width: 92px; display: flex; gap: 3px; flex-wrap: wrap;
+}
+.dui-kbd kbd {
+  font: 10.5px/1 var(--dui-mono); color: #f6ecd3; background: #2a3042; border: 1px solid var(--dui-edge);
+  box-shadow: inset 0 -1px 0 #1b1f2c, inset 0 1px 0 var(--dui-hi); padding: 2px 4px 3px; min-width: 16px; text-align: center;
+}
+.dui-help-row > span:last-child { color: var(--dui-dim); }
+
+/* small / short screens (laptops at 125 %, 1280x600 ...) */
+@media (max-height: 640px) {
+  .dui-clock-big { font-size: 24px; }
+  .dui-sec > summary { padding-top: 5px; padding-bottom: 4px; }
+  .dui-sec-body { gap: 5px; padding-bottom: 6px; }
+}
+@media (max-width: 720px) {
+  /* (critic P2-11) never over the dock button (the portrait, bottom right of the canvas: ~30 CSS px + margins) */
+  #demo-ui > .dui-status { max-width: calc(100vw - 90px); bottom: 8px; }
+  #demo-ui > .dui-panel { max-height: calc(100vh - 64px); }
+}
+
+/* ================================================================ the pixel3d UI library skin (gameui.js)
+   out/ui/panels.css + out/ui/notebook.css load BEFORE this sheet. The panel frame is the ctp-panel 9-slice, buttons /
+   selects / sliders / inputs / kbd the ctp-skin 9-slices, all at the integer UI scale --px (= the render's pixel scale,
+   set on :root by gameui.js). Text stays the DOM serif (porting rule: vector text, pixel frames). The seat cells and
+   the roster tiles keep their own compact look (a 6-px 9-slice border would not fit a 13-px cell). */
+#demo-ui > .dui-panel.dui-skinned { color: #EEE3C8; }
+#demo-ui .dui-skinned .dui-head { background: none; border-bottom: 0; box-shadow: 0 1px 0 #3F3849; padding: 0 2px 4px 4px; }
+#demo-ui .dui-skinned .dui-title { color: #E3BD62; text-shadow: 1px 1px 0 #120E19; }
+#demo-ui .dui-skinned .dui-sec { border-bottom: 1px solid #3F3849; }
+#demo-ui .dui-skinned .dui-sec > summary { color: #E3BD62; padding-left: 2px; padding-right: 2px; }
+#demo-ui .dui-skinned .dui-sec-body { padding-left: 2px; padding-right: 2px; }
+#demo-ui .dui-skinned .dui-body { margin-right: -4px; padding-right: 4px; }
+#demo-ui .dui-skinned .dui-btn { padding: 0 4px; min-height: 22px; line-height: 1; box-shadow: none; transform: none; color: #EEE3C8; }
+#demo-ui .dui-skinned .dui-btn.icon { width: 26px; padding: 0; }
+#demo-ui .dui-skinned .dui-btn[aria-pressed="true"] { color: #F7E0A0; font-weight: 600; }
+#demo-ui .dui-skinned .dui-btn.warn { color: #E36E5E; }
+#demo-ui .dui-skinned .dui-seg > .dui-btn + .dui-btn { margin-left: 1px; }
+#demo-ui .dui-skinned .dui-select { min-height: 24px; box-shadow: none; color: #EEE3C8; }
+#demo-ui .dui-skinned .dui-range .dui-track { border: 2px solid #1A1524; box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.18); }
+#demo-ui .dui-skinned .dui-perf { background: #1A1524; border-color: #1A1524; }
+#demo-ui .dui-skinned .dui-perf > div { background: #211C2B; }
+/* seat cells: back to the compact cell (the button 9-slice is 6 px per side at --px 2) */
+#demo-ui .dui-skinned .dui-cell { border: 1px solid #1A1524; border-image: none; padding: 0; background: #211C2B; box-shadow: inset 0 0 0 1px #3F3849; width: 13px; height: 13px; min-height: 0; }
+#demo-ui .dui-skinned .dui-cell:hover { box-shadow: inset 0 0 0 1px #857A90; }
+#demo-ui .dui-skinned .dui-cell[aria-pressed="true"] { box-shadow: inset 1px 1px 0 rgba(255, 255, 255, 0.35), inset -1px -1px 0 rgba(0, 0, 0, 0.35); }
+#demo-ui .dui-skinned .dui-cell.k-occupied[aria-pressed="true"] { background: #EEE3C8; }
+#demo-ui .dui-skinned .dui-cell.k-dead[aria-pressed="true"] { background: #D9584A; }
+#demo-ui .dui-skinned .dui-cell.k-ghostVote[aria-pressed="true"] { background: #CFE6EE; }
+#demo-ui .dui-skinned .dui-cell.k-nominated[aria-pressed="true"] { background: #E3BD62; }
+#demo-ui .dui-skinned .dui-cell.k-onBlock[aria-pressed="true"] { background: #8A5ACF; }
+#demo-ui .dui-skinned .dui-cell.k-nominee[aria-pressed="true"] { background: #E3BD62; box-shadow: 0 0 0 1px #F7E0A0; }
+/* roster tiles: list rows of the kit (inkRaised fill, iron keyline, gold when selected) */
+#demo-ui .dui-skinned .dui-char { border: 2px solid #1A1524; border-image: none; padding: 2px 4px 2px 2px; background: #3A3247; box-shadow: inset 0 0 0 1px #5E566C; color: #EEE3C8; }
+#demo-ui .dui-skinned .dui-char:hover { background: #423A50; box-shadow: inset 0 0 0 1px #857A90; }
+#demo-ui .dui-skinned .dui-char[aria-pressed="true"] { background: #2B2536; box-shadow: inset 0 0 0 1px #E3BD62; }
+#demo-ui .dui-skinned .dui-char .dui-mono-tile { border: 1px solid #1A1524; }
+#demo-ui .dui-mono-tile img.atlas { width: 24px; height: 24px; object-fit: none; }
+#demo-ui .dui-skinned .dui-help-card, #demo-ui .dui-help-card.dui-skinned { color: #EEE3C8; }
+#demo-ui .dui-help-card.dui-skinned .dui-kbd kbd { box-shadow: none; background: none; color: #EEE3C8; padding: 0 2px; }
+
+/* ---------------------------------------------------------------- the notebook (notebook.js; notebook.css page) */
+#demo-ui > .dnb {
+  position: absolute; left: 8px; top: 8px; width: calc(140px * var(--px)); max-width: calc(100vw - 16px);
+  max-height: calc(100vh - 56px); display: flex; flex-direction: column; gap: 4px; box-sizing: border-box;
+  color: #EEE3C8; font: 12px/1.3 var(--dui-serif); z-index: 2;
+}
+#demo-ui > .dnb[hidden], #demo-ui .dnb-page[hidden] { display: none !important; }
+.dnb-head { display: flex; align-items: center; gap: 4px; min-height: 26px; }
+.dnb-title { font: 600 15px/1 var(--dui-serif); font-variant: small-caps; letter-spacing: 0.08em; color: #E3BD62; text-shadow: 1px 1px 0 #120E19; }
+.dnb-status { font: 10px/1 var(--dui-mono); color: #B9AEBF; white-space: nowrap; padding: 1px 3px; }
+.dnb-status.ctn-status-saved { color: #96C77E; }
+#demo-ui .dnb .ctn-tabs { margin-left: auto; }
+#demo-ui .dnb .dnb-close { width: 26px; min-height: 26px; padding: 0; display: grid; place-items: center; }
+.dnb-close .ctp-glyph-close { width: calc(16px * var(--px) / 2); height: calc(16px * var(--px) / 2); }
+.dnb-page { min-height: 0; display: flex; flex-direction: column; gap: 3px; }
+.dnb-rows { display: grid; gap: 2px; overflow-y: auto; max-height: calc(100vh - 140px); }
+#demo-ui .dnb .dnb-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-rows: auto auto; column-gap: 4px; align-items: center; min-height: 0; }
+.dnb-row .dnb-pic { grid-row: 1 / 3; width: calc(24px * var(--px) / 2 + 6px); height: calc(24px * var(--px) / 2 + 6px); box-sizing: content-box; display: grid; place-items: center; font: 700 13px/1 var(--dui-serif); color: #EEE3C8; overflow: hidden; }
+.dnb-row .dnb-pic img { width: 24px; height: 24px; image-rendering: pixelated; }
+/* (vote-fix5, critic-4 P3) a long name wraps to a second line at a word ("Sir Croaksworth you" was cut to "Sir Croaksw…") */
+.dnb-name { font-variant: small-caps; letter-spacing: 0.03em; white-space: normal; overflow: hidden; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
+.dnb-name small { color: #E3BD62; }
+.dnb-row.you .dnb-name { color: #F7E0A0; }
+.dnb-marks { display: flex; gap: 1px; }
+#demo-ui .dnb .dnb-mark { width: 22px; min-height: 22px; padding: 0; font: 600 12px/1 var(--dui-mono); color: #B9AEBF; }
+#demo-ui .dnb .dnb-mark[aria-pressed="true"].m-trust { color: #96C77E; }
+#demo-ui .dnb .dnb-mark[aria-pressed="true"].m-unsure { color: #E8A24A; }
+#demo-ui .dnb .dnb-mark[aria-pressed="true"].m-suspect { color: #E36E5E; }
+#demo-ui .dnb .dnb-note { grid-column: 2 / 4; min-width: 0; font: 11px/1.1 var(--dui-serif); color: #EEE3C8; padding: 0 3px; height: calc(13px * var(--px)); box-sizing: border-box; }
+#demo-ui .dnb .dnb-note::placeholder { color: #857A90; }
+.dnb-foot { margin: 2px 0 0; font-size: 10px; font-style: italic; color: #857A90; }
+#demo-ui .dnb .ctn-text { width: 100%; }
+/* (density, docs/DEMO.md §4.7 "Density") the notebook's own text in the D=2 pixel face (src/ui/hd/css.js 'CT Pixel Body
+   HD', built at runtime from body@2): 16 px = one glyph px per CSS px at every scale (crisp; cap 12 px), no synthetic
+   small caps / italics / letter-spacing (they smear a pixel face). The page itself: .ctn-pixelfont-hd (hd/css.js). */
+#demo-ui .dnb.dnb-hd .dnb-status, #demo-ui .dnb.dnb-hd .dnb-name, #demo-ui .dnb.dnb-hd .dnb-mark, #demo-ui .dnb.dnb-hd .dnb-note,
+#demo-ui .dnb.dnb-hd .dnb-foot, #demo-ui .dnb.dnb-hd .dnb-pic {
+  font-family: 'CT Pixel Body HD', var(--dui-serif), system-ui, sans-serif; font-size: 16px; line-height: 18px; font-weight: 400;
+  font-style: normal; font-variant: normal; letter-spacing: 0; -webkit-font-smoothing: none; font-kerning: none; font-variant-ligatures: none;
+}
+#demo-ui .dnb.dnb-hd .dnb-status { padding: 0 3px; }
+#demo-ui .dnb.dnb-hd .dnb-foot { color: #9C91A8; }
+#demo-ui .dnb.dnb-hd .dnb-note { line-height: 16px; }
+/* (critic P2-5) ONE scale for the whole HD notebook: every size follows --hdpx (1 at 720p, 2 at 1080p 'round'), the
+   integer scale the page's own HD face already uses (16 x --hdpx). Before, at 1080p the Notes page was 32-px text in a
+   420-px box (~4 words a line) while the header / Seats rows stayed 16-px 1x-size, and the x was clipped. Now the box
+   grows with the face (300 x --hdpx: the same words per line at both sizes, room for "Sir Croaksworth" at 720p), the
+   header, names, marks, notes and the avatar boxes scale with it, and the avatar boxes show the 48-px HD portrait 1:1
+   at --hdpx 2 (gameui.js hands the notebook the HD avatar there). */
+#demo-ui > .dnb.dnb-hd { width: calc(300px * var(--hdpx, 1)); }
+#demo-ui .dnb.dnb-hd .dnb-status, #demo-ui .dnb.dnb-hd .dnb-name, #demo-ui .dnb.dnb-hd .dnb-mark, #demo-ui .dnb.dnb-hd .dnb-note,
+#demo-ui .dnb.dnb-hd .dnb-foot, #demo-ui .dnb.dnb-hd .dnb-pic { font-size: calc(16px * var(--hdpx, 1)); line-height: calc(18px * var(--hdpx, 1)); }
+#demo-ui .dnb.dnb-hd .dnb-note { line-height: calc(16px * var(--hdpx, 1)); height: calc(26px * var(--hdpx, 1)); }
+#demo-ui .dnb.dnb-hd .dnb-title { font: 400 calc(16px * var(--hdpx, 1)) / 1 'CT Pixel Body HD', var(--dui-serif), serif; font-variant: normal; letter-spacing: 0; -webkit-font-smoothing: none; }
+#demo-ui .dnb.dnb-hd .dnb-head { min-height: calc(26px * var(--hdpx, 1)); }
+#demo-ui .dnb.dnb-hd .dnb-close { width: calc(26px * var(--hdpx, 1)); min-height: calc(26px * var(--hdpx, 1)); flex: none; }
+#demo-ui .dnb.dnb-hd .dnb-mark { width: calc(22px * var(--hdpx, 1)); min-height: calc(22px * var(--hdpx, 1)); }
+#demo-ui .dnb.dnb-hd .dnb-row .dnb-pic { width: calc(24px * var(--hdpx, 1) + 6px); height: calc(24px * var(--hdpx, 1) + 6px); }
+#demo-ui .dnb.dnb-hd .dnb-row .dnb-pic img { width: calc(24px * var(--hdpx, 1)); height: calc(24px * var(--hdpx, 1)); }
+
+/* (emoji) the Game UI section's "Pin colour" row: AUTO + 8 square colour dots (hard edges, a dark 1-px ring); the
+   colour AUTO resolves to carries a gold underline (as the dock's picker) */
+#demo-ui .dui-pinseg > .dui-btn { display: flex; align-items: center; justify-content: center; }
+#demo-ui .dui-pindot { display: inline-block; width: 8px; height: 8px; box-shadow: 0 0 0 1px #14121c; }
+#demo-ui .dui-pinauto .dui-pindot { box-shadow: 0 0 0 1px #14121c, 0 4px 0 -1px #e6b632; }
+
+/* a phone (narrow, the panel auto-folds below 700 px): the notebook spans the top and stays under 40 % of the height
+   (notebook.js fit() sizes the Notes page to it), so the reader and the book in their hands stay in view below it */
+@media (max-width: 699px) {
+  #demo-ui > .dnb { right: 8px; width: auto; max-height: 40vh; overflow: hidden; }
+  #demo-ui .dnb .dnb-rows { max-height: calc(40vh - 64px); }
+}

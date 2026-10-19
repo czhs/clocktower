@@ -1,0 +1,255 @@
+{
+ "name": "polly",
+ "image": "polly.png",
+ "cell": [
+  58,
+  76
+ ],
+ "anchor": [
+  29,
+  60
+ ],
+ "ppm": 36.0,
+ "yaw": 0.0,
+ "pitch": 30.0,
+ "tod": "noon",
+ "dirs": [
+  "S",
+  "SE",
+  "E",
+  "NE",
+  "N",
+  "NW",
+  "W",
+  "SW"
+ ],
+ "bodyPlan": "uprightAnimal",
+ "height_m": 1.36,
+ "fps": 30,
+ "clips": {
+  "idle": {
+   "fps": 30,
+   "loop": true,
+   "frames": 5,
+   "holds": [
+    12,
+    20,
+    6,
+    3,
+    31
+   ],
+   "row": 0,
+   "period": 72,
+   "grid_frames": [
+    24,
+    36,
+    56,
+    62,
+    65
+   ],
+   "frames_by": "pose ids"
+  },
+  "walk": {
+   "fps": 30,
+   "loop": true,
+   "frames": 4,
+   "holds": [
+    2,
+    2,
+    2,
+    2
+   ],
+   "row": 8,
+   "period": 8,
+   "grid_frames": [
+    3,
+    5,
+    7,
+    9
+   ],
+   "frames_by": "pose ids",
+   "speed": 5.372000000000001
+  },
+  "run": {
+   "fps": 30,
+   "loop": true,
+   "frames": 4,
+   "holds": [
+    2,
+    2,
+    2,
+    2
+   ],
+   "row": 16,
+   "period": 8,
+   "grid_frames": [
+    9,
+    11,
+    13,
+    15
+   ],
+   "frames_by": "pose ids"
+  },
+  "talk": {
+   "fps": 30,
+   "loop": true,
+   "frames": 4,
+   "holds": [
+    6,
+    6,
+    6,
+    6
+   ],
+   "row": 24,
+   "period": 24,
+   "grid_frames": [
+    6,
+    12,
+    18,
+    24
+   ],
+   "frames_by": "pose ids"
+  },
+  "vote": {
+   "fps": 30,
+   "loop": false,
+   "frames": 2,
+   "holds": [
+    3,
+    37
+   ],
+   "row": 32,
+   "period": null,
+   "grid_frames": [
+    0,
+    3
+   ],
+   "frames_by": "pose ids",
+   "holdLast": true
+  },
+  "point": {
+   "fps": 30,
+   "loop": false,
+   "frames": 7,
+   "holds": [
+    4,
+    6,
+    30,
+    6,
+    54,
+    6,
+    2
+   ],
+   "row": 40,
+   "period": null,
+   "grid_frames": [
+    0,
+    4,
+    10,
+    40,
+    46,
+    100,
+    106
+   ],
+   "frames_by": "pose ids"
+  },
+  "die": {
+   "fps": 30,
+   "loop": false,
+   "frames": 5,
+   "holds": [
+    6,
+    6,
+    4,
+    4,
+    40
+   ],
+   "row": 48,
+   "period": null,
+   "grid_frames": [
+    0,
+    6,
+    12,
+    16,
+    20
+   ],
+   "frames_by": "pose ids",
+   "holdLast": true
+  },
+  "squawk": {
+   "fps": 30,
+   "loop": false,
+   "frames": 6,
+   "holds": [
+    6,
+    8,
+    6,
+    6,
+    6,
+    4
+   ],
+   "row": 56,
+   "period": null,
+   "grid_frames": [
+    0,
+    6,
+    14,
+    20,
+    26,
+    32
+   ],
+   "frames_by": "pose ids"
+  },
+  "ghost": {
+   "fps": 30,
+   "loop": true,
+   "frames": 4,
+   "holds": [
+    16,
+    16,
+    16,
+    16
+   ],
+   "row": 64,
+   "period": 64,
+   "grid_frames": [
+    16,
+    32,
+    48,
+    64
+   ],
+   "frames_by": "pose ids"
+  },
+  "ghost-spent": {
+   "fps": 30,
+   "loop": true,
+   "frames": 4,
+   "holds": [
+    16,
+    16,
+    16,
+    16
+   ],
+   "row": 72,
+   "period": 64,
+   "grid_frames": [
+    16,
+    32,
+    48,
+    64
+   ],
+   "frames_by": "pose ids"
+  }
+ },
+ "runtime": "character",
+ "shadow": {
+  "image": "polly-shadow.png",
+  "anchor": [
+   29,
+   60
+  ],
+  "rx": 7.83,
+  "ry": 3.92
+ },
+ "warnings": []
+}

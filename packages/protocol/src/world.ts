@@ -38,6 +38,12 @@ export interface BuildingDef {
   bed?: TilePoint;
   /** Houses: where the Storyteller stands during a night visit. */
   visitPoint?: TilePoint;
+  /**
+   * (additive, v3 world) Unit vector pointing OUT of the building through its door, in tile axes
+   * (x right, y down). Rotated v3 houses set it; the client's "inward" door rule is its negation.
+   * Absent (v2): inward follows from where the door tile lies relative to the footprint.
+   */
+  doorNormal?: [number, number];
 }
 
 export interface TownLayout {
@@ -59,7 +65,28 @@ export interface TownLayout {
    * (additive, gameplay) Optional nomination-circle ring in PIXELS (feet positions). When absent
    * the ring is derived from `square` (circleCentre / circleRadii).
    */
-  circle?: { cx: number; cy: number; rx: number; ry: number; startDeg?: number; sweepDeg?: number };
+  circle?: {
+    cx: number;
+    cy: number;
+    rx: number;
+    ry: number;
+    startDeg?: number;
+    sweepDeg?: number;
+    /**
+     * (additive, v3 world) Fixed seat stones on the ring (the 3D dais has 15). When set, seat k of n
+     * (ascending order) sits at stone round(k·stones/n) % stones, angle start + 2π·stone/stones.
+     */
+    stones?: number;
+  };
+}
+
+/** (additive, v3) Which town a lobby uses: 'v2' = the classic layout, 'v3' = Hollowmere (pixel3d). Fixed at lobby creation. */
+export const WORLDS = ['v2', 'v3'] as const;
+export type WorldId = (typeof WORLDS)[number];
+
+/** Seat stone (0..stones-1) of the k-th seat (ascending) of n, the rule circleSpots uses when circle.stones is set. */
+export function stoneOfSeatIndex(k: number, n: number, stones: number): number {
+  return Math.round((k * stones) / Math.max(1, n)) % stones;
 }
 
 /** 'outdoors' or the id of the building whose interior contains the point. */
@@ -79,14 +106,14 @@ export const BODY_HALF_W = 5;
 export const BODY_H = 6;
 
 export function isBlockedPx(layout: TownLayout, x: number, y: number): boolean {
+  // the body box's four corners (top-left, top-right, bottom-left, bottom-right); no arrays: this runs per sweep
+  // step of every move check and per frame for the 3D town's townsfolk (v3 perf)
   const ts = layout.tileSize;
-  const pts: [number, number][] = [
-    [x - BODY_HALF_W, y - BODY_H],
-    [x + BODY_HALF_W, y - BODY_H],
-    [x - BODY_HALF_W, y - 1],
-    [x + BODY_HALF_W, y - 1],
-  ];
-  return pts.some(([px, py]) => isBlockedTile(layout, Math.floor(px / ts), Math.floor(py / ts)));
+  const tx0 = Math.floor((x - BODY_HALF_W) / ts);
+  const tx1 = Math.floor((x + BODY_HALF_W) / ts);
+  const ty0 = Math.floor((y - BODY_H) / ts);
+  const ty1 = Math.floor((y - 1) / ts);
+  return isBlockedTile(layout, tx0, ty0) || isBlockedTile(layout, tx1, ty0) || isBlockedTile(layout, tx0, ty1) || isBlockedTile(layout, tx1, ty1);
 }
 
 function inRect(r: TileRect, tx: number, ty: number): boolean {
@@ -96,7 +123,8 @@ function inRect(r: TileRect, tx: number, ty: number): boolean {
 export function locationAt(layout: TownLayout, x: number, y: number): LocationId {
   const tx = Math.floor(x / layout.tileSize);
   const ty = Math.floor(y / layout.tileSize);
-  for (const b of layout.buildings) if (inRect(b.interior, tx, ty)) return `bld:${b.id}`;
+  const bs = layout.buildings;
+  for (let i = 0; i < bs.length; i++) if (inRect(bs[i]!.interior, tx, ty)) return `bld:${bs[i]!.id}`;
   return 'outdoors';
 }
 
@@ -243,7 +271,9 @@ export function circleSpots(layout: TownLayout, seats: readonly number[]): Circl
   sorted.forEach((seat, i) => {
     // Default: an open north arc leaves a landmark behind the gathering. A layout may instead give
     // the arc (v2 square: a full ring around the fountain). Vote order always runs clockwise.
-    const th = arc.full ? arc.start + (arc.sweep * i) / Math.max(1, n) : arc.start + (arc.sweep * i) / Math.max(1, n - 1);
+    // (v3 world) fixed stones: seat i of n sits on stone round(i·stones/n), the 3D dais' own spots
+    const stones = layout.circle?.stones;
+    const th = stones ? arc.start + (2 * Math.PI * stoneOfSeatIndex(i, n, stones)) / stones : arc.full ? arc.start + (arc.sweep * i) / Math.max(1, n) : arc.start + (arc.sweep * i) / Math.max(1, n - 1);
     const ix = Math.round(c.x + Math.sin(th) * rx);
     const iy = Math.round(c.y - Math.cos(th) * ry);
     let best = { x: ix, y: iy };

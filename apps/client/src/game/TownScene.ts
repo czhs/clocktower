@@ -16,16 +16,19 @@
 //              (from the server's public door tags); at night every cottage looks the same
 //   ambience   chimney smoke, flickering lamps, fireflies, a few plain townsfolk by day —
 //              all derived from time + the PUBLIC phase only (never from other entities)
+//   worlds     (v3 WP5b) the lobby's world picks the town: 'v2' = the classic map (generated/town.json),
+//              'v3' = Hollowmere as Classic draws it (generated/town-v3.json + terrain-v3 / objects-v3 /
+//              square-props-v3, packages/assets/scripts/v3/). Every layout-derived value (L, TS, TOWN,
+//              PLAZA, SQUARE_VIEW, FX_HOUSES, NPC homes) is per scene instance, set in init() from
+//              currentLayout(): one page can leave a v2 lobby and join a v3 lobby.
 import * as Phaser from 'phaser';
-import { castById, PLAYABLE, PLAZA, townLayout, townMap } from '@ct/assets';
+import { PLAZA as PLAZA_V2 } from '@ct/assets';
 import objectsAtlas from '@ct/assets/generated/objects.json';
 import castJson from '@ct/assets/generated/cast.json';
 import { castGhostsUrl, castHdUrl, castUrl, decorUrl, lightsUrl, objectsUrl, squarePropsUrl, terrainUrl, townJsonUrl } from '@ct/assets/runtime';
+import { objectsV3JsonUrl, objectsV3Url, squarePropsV3JsonUrl, terrainV3Url, townV3JsonUrl } from '@ct/assets/runtime-v3';
 import {
-  isBlockedPx,
   locationAt,
-  PLAYER_SPEED,
-  STORYTELLER_MAX_SPEED_MULT,
   tileCenterPx,
   type BuildingDef,
   type Facing,
@@ -34,9 +37,13 @@ import {
   type LocationId,
   type PlayerGameView,
   type StorytellerGameView,
+  type TilePoint,
+  type TownLayout,
+  type WorldId,
   type WorldSnapshot,
   type WorldTeleport,
 } from '@ct/protocol';
+import { currentLayout, currentWorld } from '../net/layout';
 import { localPlayer, remoteEntities } from '../net/localPlayer';
 import type { RoomConnection } from '../net/room';
 import { playCue, type Cue } from './audio';
@@ -52,25 +59,26 @@ import { reducedMotion } from './fx/motion';
 import { createTalkingLayer, type TalkingLayer } from './fx/talking';
 import { createBoardTokenLayer, type BoardTokenLayer } from './gameplay/boardTokens';
 import { createHouseNameLayer, houseOwners, type HouseLabelInput, type HouseNameLayer } from './gameplay/houseNames';
+// (v3 WP0) renderer-free rules shared with the 3D town (game3d/)
+import { dir8, fromFacing, isTyping, keyDir, keyVector, toFacing, type Dir8 } from './rules/input';
+import { autoEnterDoor, doorInward, doorLocked as doorLockedRule, doorPrompt, DOOR_OPEN_RANGE, houseInUse as houseInUseRule, lockText as lockTextRule, tapTarget as tapTargetRule, type DoorRuleCtx } from './rules/doors';
+import { castIdentity } from './rules/cast';
+import { integrateStep, interpolate, INTERP_DELAY_MS, LOCAL_PUBLISH_MS, MOVE_HZ, moveSpeed, poseChanged, pushSample, remoteDir, REMOTE_STALE_MS, routeStep, ST_JUMP_PX, wirePx, type Sample } from './rules/movement';
 
-const L = townLayout;
-const TS = L.tileSize;
-const TOWN = { x: L.townBounds.x * TS, y: L.townBounds.y * TS, w: L.townBounds.w * TS, h: L.townBounds.h * TS };
-const MOVE_HZ = 15;
-const INTERP_DELAY_MS = 110;
-/** Within this distance of a door tile, pushing toward the door enters (px). */
-const DOOR_TRIGGER = 11;
-/**
- * (v2.2.1, Isaac's doors.spec) A STRAIGHT push (within ~25° of the door's inward direction) also
- * enters from up to this far, so an approach 10 px off-centre still goes in; still inside the server's
- * DOOR_RANGE_PX (22). Diagonal walks past a doorway keep the tight DOOR_TRIGGER (no accidental entry).
- */
-const DOOR_TRIGGER_STRAIGHT = 20;
-/** Doors swing open for you within this distance (px). */
-const DOOR_OPEN_RANGE = 34;
+// (v3 WP5b) L / TS / TOWN / PLAZA / SQUARE_VIEW / FX_HOUSES are TownScene fields (the lobby's world).
+// MOVE_HZ, INTERP_DELAY_MS, the door trigger distances and DOOR_OPEN_RANGE live in ./rules (v3 WP0).
+type Plaza = { cx: number; cy: number; rx: number; ry: number };
 /** The square's preset view (world px): the whole circle plus the clock tower's face above it. */
-const SQUARE_VIEW = { x: PLAZA.cx - 200, y: 56, w: 400, h: PLAZA.cy + PLAZA.ry + 18 - 56 };
-const LOCKED: ReadonlySet<string> = new Set(['first_night', 'night', 'dawn']);
+const squareViewOf = (p: Plaza) => ({ x: p.cx - 200, y: 56, w: 400, h: p.cy + p.ry + 18 - 56 });
+/**
+ * The v2 square view (TownGame sizes its canvas before a scene exists). The v3 plaza equals the v2 PLAZA, so the same view
+ * holds in a v3 lobby; packages/assets/test/classicV3.test.ts fails if a re-publish moves it (then pass the lobby's view in).
+ */
+const SQUARE_VIEW_V2 = squareViewOf(PLAZA_V2);
+/** Townsfolk home tiles of the v2 town (a v3 map carries its own: town-v3.json `npcHomes`). */
+/** (v3) Townsfolk keep out of the plaza ellipse scaled by this (the voting circle and its rim). */
+export const NPC_PLAZA_CLEAR = 1.1;
+const NPC_HOMES_V2: Record<string, TilePoint> = { 'npc-sweeper': { x: 16, y: 12 }, 'npc-vendor': { x: 10, y: 17 }, 'npc-elder': { x: 10, y: 21 }, 'npc-porter': { x: 22, y: 34 } };
 const NIGHT: ReadonlySet<string> = new Set(['first_night', 'night']);
 /** Phases with daytime life on the square (townsfolk, boards). */
 const DAYLIKE: ReadonlySet<string> = new Set(['waiting', 'setup', 'day', 'finished']);
@@ -107,20 +115,7 @@ interface CastHdManifest {
   walkFps: number;
 }
 const CAST_HD = Object.values(import.meta.glob('../../../../packages/assets/generated/cast-hd.json', { eager: true, import: 'default' }) as Record<string, CastHdManifest>)[0];
-type Dir8 = 'down' | 'down-right' | 'right' | 'up-right' | 'up' | 'up-left' | 'left' | 'down-left';
-const DIR8: readonly Dir8[] = ['right', 'down-right', 'down', 'down-left', 'left', 'up-left', 'up', 'up-right'];
-const fromFacing = (f: Facing): Dir8 => f;
-/** 8-way direction of a vector (screen coords). */
-function dir8(vx: number, vy: number): Dir8 {
-  const a = Math.atan2(vy, vx);
-  const k = ((Math.round(a / (Math.PI / 4)) % 8) + 8) % 8;
-  return DIR8[k]!;
-}
-/** Server facing (4-way) for an 8-way direction. */
-function toFacing(d: Dir8, vx: number, vy: number): Facing {
-  if (d === 'left' || d === 'right' || d === 'up' || d === 'down') return d;
-  return Math.abs(vx) > Math.abs(vy) + 0.01 ? (vx < 0 ? 'left' : 'right') : vy < 0 ? 'up' : 'down';
-}
+// Dir8 / dir8 / toFacing / fromFacing: ./rules/input (v3 WP0).
 
 // ---------------------------------------------------------------------------------------
 // Square props / ambient FX (generated/square-props.*, drawn by the fx art agent). Optional:
@@ -135,7 +130,7 @@ const FX_JSON = Object.values(import.meta.glob('../../../../packages/assets/gene
         fps?: Record<string, number>;
         anchors?: Record<string, { x: number; y: number }>;
         /** Per cottage: exact overlays for an empty house + world points for board / door glow / smoke. */
-        houses?: Record<string, { boarded?: Ov; unlit?: Ov; doorglow?: { x: number; y: number }; board?: { x: number; y: number }; smoke?: { x: number; y: number } }>;
+        houses?: Record<string, HouseFx>;
       };
     }
   | undefined;
@@ -147,8 +142,12 @@ interface Ov {
   h: number;
   wx: number;
   wy: number;
+  /** (v3) texture of the frame when not the square-props sheet ('fx'): 'objects-v3'. */
+  atlas?: string;
 }
-const FX_HOUSES = FX_JSON?.meta?.houses ?? {};
+type HouseFx = { boarded?: Ov; unlit?: Ov; doorglow?: { x: number; y: number }; board?: { x: number; y: number }; smoke?: { x: number; y: number } };
+/** The v2 town's per-cottage overlays (a v3 lobby loads square-props-v3.json instead). */
+const FX_HOUSES_V2: Record<string, HouseFx> = FX_JSON?.meta?.houses ?? {};
 
 export interface InsideInfo {
   buildingId: string;
@@ -195,8 +194,6 @@ const LIGHT_TINT: Record<string, number> = { warm: 0xffb868, cool: 0x8a9ad0, fir
 const LABEL_FONT = '"Alegreya Sans", "Segoe UI", system-ui, sans-serif';
 /** Lamp / window / hearth flicker is stepped at 12 Hz (the light layer is re-stamped only on change). */
 const FLICKER_MS = 1000 / 12;
-/** localPlayer store notifications (HUD subscribers) at most this often; get() is always current. */
-const LOCAL_PUBLISH_MS = 100;
 
 interface LightSrc {
   x: number;
@@ -220,13 +217,6 @@ interface AreaLight {
   k: number;
   /** Flicker phase seed. */
   seed: number;
-}
-interface Sample {
-  t: number;
-  x: number;
-  y: number;
-  facing: Facing;
-  moving: boolean;
 }
 interface DoorObj {
   b: BuildingDef;
@@ -390,7 +380,15 @@ export class TownScene extends Phaser.Scene {
   private lightRT!: Phaser.GameObjects.RenderTexture;
   private mask!: Phaser.GameObjects.Graphics;
   private ambient = { r: 0xd0, g: 0xc8, b: 0xdc };
-  private area = { ...TOWN };
+  private area = { x: 0, y: 0, w: 0, h: 0 };
+  // (v3 WP5b) the lobby's world and everything derived from its layout / map (set in init / create)
+  private world: WorldId = 'v2';
+  private L!: TownLayout;
+  private TS = 16;
+  private TOWN = { x: 0, y: 0, w: 0, h: 0 };
+  private PLAZA: Plaza = PLAZA_V2;
+  private SQUARE_VIEW = SQUARE_VIEW_V2;
+  private FX_HOUSES: Record<string, HouseFx> = FX_HOUSES_V2;
   private view = { x: 0, y: 0, init: false };
   private doors: DoorObj[] = [];
   private enterCooldownUntil = 0;
@@ -406,7 +404,13 @@ export class TownScene extends Phaser.Scene {
   /** Per-frame scratch for the townsfolk step (no allocations in stepAmbience). */
   private npcBrianbis: NpcPoint[] = [];
   private npcDelta: NpcPoint = { x: 0, y: 0 };
-  private npcClear = (from: NpcPoint, to: NpcPoint) => locationAt(L, to.x, to.y) === 'outdoors' && segmentClear(L, from.x, from.y, to.x, to.y);
+  /**
+   * Where a townsfolk may stand: outdoors, and in a v3 world never on the voting circle (user request "no NPCs in the
+   * voting circle", INTEGRATION.md §9.1: the plaza ellipse x 1.1 stays clear). v2 unchanged.
+   */
+  private npcSpot = (x: number, y: number) =>
+    locationAt(this.L, x, y) === 'outdoors' && (this.world !== 'v3' || Math.hypot((x - this.PLAZA.cx) / this.PLAZA.rx, (y - this.PLAZA.cy) / this.PLAZA.ry) > NPC_PLAZA_CLEAR);
+  private npcClear = (from: NpcPoint, to: NpcPoint) => this.npcSpot(to.x, to.y) && segmentClear(this.L, from.x, from.y, to.x, to.y);
   private pigeons: { s: Phaser.GameObjects.Sprite; home: { x: number; y: number }; away: number; ph: number }[] = [];
   private doorGlows: { img: Phaser.GameObjects.Image; d: DoorObj }[] = [];
   private lastPromptKey = '';
@@ -432,6 +436,16 @@ export class TownScene extends Phaser.Scene {
     this.tier = tier ?? new TierState(performance.now(), undefined, false);
   }
 
+  /** (v3 WP5b) The lobby's world: the layout (server data) and the art to draw it with. */
+  init() {
+    this.world = currentWorld();
+    this.L = currentLayout();
+    this.TS = this.L.tileSize;
+    const tb = this.L.townBounds;
+    this.TOWN = { x: tb.x * this.TS, y: tb.y * this.TS, w: tb.w * this.TS, h: tb.h * this.TS };
+    this.area = { ...this.TOWN };
+  }
+
   textRes() {
     return Math.max(1, Math.ceil(this.cameras.main.zoom * (window.devicePixelRatio || 1)));
   }
@@ -445,13 +459,20 @@ export class TownScene extends Phaser.Scene {
   }
 
   preload() {
-    this.load.image('terrain', terrainUrl);
+    const v3 = this.world === 'v3';
+    this.load.image('terrain', v3 ? terrainV3Url : terrainUrl);
     this.load.image('decor', decorUrl);
     this.load.image('objects', objectsUrl);
+    if (v3) {
+      // the v3-only sprites + the v3 per-house overlay anchors (scripts/v3/classic.ts)
+      this.load.image('objects-v3', objectsV3Url);
+      this.load.json('objects-v3-frames', objectsV3JsonUrl);
+      this.load.json('fx-houses-v3', squarePropsV3JsonUrl);
+    }
     this.load.image('cast', castUrl);
     // (v2.4 perf P2) not here: cast-ghosts (first death) and cast-hd (an hd character in the lobby)
     this.load.spritesheet('lights', lightsUrl, { frameWidth: 128, frameHeight: 128 });
-    this.load.tilemapTiledJSON('town', townJsonUrl);
+    this.load.tilemapTiledJSON('town', v3 ? townV3JsonUrl : townJsonUrl);
     if (FX_PNG && FX_JSON) this.load.image('fx', FX_PNG);
   }
 
@@ -461,15 +482,25 @@ export class TownScene extends Phaser.Scene {
     this.cameras.main.setRoundPixels(true);
     // --- map
     const map = this.make.tilemap({ key: 'town' });
+    this.applyMapWorld(map);
     const ground: Phaser.GameObjects.GameObject[] = [
       map.createLayer('ground', map.addTilesetImage('terrain', 'terrain')!, 0, 0)!.setDepth(0),
       map.createLayer('decor', map.addTilesetImage('decor', 'decor')!, 0, 0)!.setDepth(1),
     ];
     const atlas = this.textures.get('objects');
     for (const [name, r] of Object.entries((objectsAtlas as unknown as { frames: Record<string, { x: number; y: number; w: number; h: number }> }).frames)) atlas.add(name, 0, r.x, r.y, r.w, r.h);
+    const extra = this.world === 'v3' ? (this.cache.json.get('objects-v3-frames') as { frames?: Record<string, { x: number; y: number; w: number; h: number }> } | undefined) : undefined;
+    if (extra?.frames && this.textures.exists('objects-v3')) {
+      const t = this.textures.get('objects-v3');
+      for (const [name, r] of Object.entries(extra.frames)) t.add(name, 0, r.x, r.y, r.w, r.h);
+    }
     this.defineCast();
     this.defineFx();
     const buildingDepth = new Map<string, number>();
+    /** (v3) drawn sprite footprints (tiles) where they differ from the layout's placed AABB. */
+    const drawnFp = new Map<string, BuildingDef['footprint']>();
+    /** Prop anchor tiles by kind, in map order (pigeons by the fountain, the cat on a bench). */
+    const propTiles = new Map<string, { x: number; y: number }[]>();
     for (const o of map.getObjectLayer('objects')?.objects ?? []) {
       const type = (o.type as string) || ((o as unknown as { class?: string }).class ?? '');
       if (type === 'light') {
@@ -479,8 +510,13 @@ export class TownScene extends Phaser.Scene {
       if (type === 'door') continue; // handled below (needs the building depth)
       const frame = String(prop(o, 'frame'));
       const depth = Number(prop(o, 'depth') ?? o.y! + o.height!);
+      if (type === 'prop' || type === 'flat') {
+        const list = propTiles.get(o.name) ?? [];
+        list.push({ x: Math.round(o.x! / this.TS), y: Math.round((o.y! + o.height!) / this.TS) - 1 });
+        propTiles.set(o.name, list);
+      }
       const img = this.add
-        .image(o.x!, o.y!, 'objects', frame)
+        .image(o.x!, o.y!, String(prop(o, 'atlas') || 'objects'), frame)
         .setOrigin(0, 0)
         .setDepth(type === 'flat' ? 2 : 10 + depth);
       if (type === 'flat') ground.push(img);
@@ -496,6 +532,14 @@ export class TownScene extends Phaser.Scene {
           }
         }
         buildingDepth.set(id, 10 + depth);
+        const fp = prop(o, 'footprint');
+        if (typeof fp === 'string' && fp) {
+          try {
+            drawnFp.set(id, JSON.parse(fp) as BuildingDef['footprint']);
+          } catch {
+            // ignore malformed
+          }
+        }
         const ch = prop(o, 'chimney');
         if (typeof ch === 'string' && ch) {
           try {
@@ -507,15 +551,15 @@ export class TownScene extends Phaser.Scene {
         }
       }
     }
-    this.setupDoors(map, buildingDepth);
+    this.setupDoors(map, buildingDepth, drawnFp);
     this.bakeGround(map.widthInPixels, map.heightInPixels, ground);
     // --- lighting (world-space multiply layer over the current area) + letterbox mask
-    this.lightRT = this.add.renderTexture(0, 0, Math.max(TOWN.w, 400), Math.max(TOWN.h, 400)).setOrigin(0, 0).setDepth(5000).setBlendMode(Phaser.BlendModes.MULTIPLY);
+    this.lightRT = this.add.renderTexture(0, 0, Math.max(this.TOWN.w, 400), Math.max(this.TOWN.h, 400)).setOrigin(0, 0).setDepth(5000).setBlendMode(Phaser.BlendModes.MULTIPLY);
     this.mask = this.add.graphics().setDepth(5300);
-    this.setupAmbience();
+    this.setupAmbience(propTiles);
     // --- (v2.2) door-board character tokens + house name callouts (before the first refreshBoards)
     const tokenEnv = { cssZoom: () => this.cssZoom(), textRes: () => this.textRes(), lowTier: () => this.tier.tier === 'low' };
-    this.boardTokens = createBoardTokenLayer(this, tokenEnv);
+    this.boardTokens = createBoardTokenLayer(this, { ...tokenEnv, houses: this.FX_HOUSES });
     this.houseNames = createHouseNameLayer(this, { ...tokenEnv, night: () => NIGHT.has(this.phase) || this.phase === 'dawn' });
     this.offs.push(() => {
       this.boardTokens?.destroy();
@@ -681,6 +725,8 @@ export class TownScene extends Phaser.Scene {
           return { x: r.left + (x - cam.worldView.x) * z, y: r.top + (y - cam.worldView.y) * z };
         },
         view: () => ({ ...this.cameras.main.worldView, zoom: this.cssZoom() }),
+        /** (v3 WP5b) Which town this Classic scene draws: the lobby world and its map size (tiles). */
+        town: () => ({ world: this.world, widthTiles: this.L.widthTiles, heightTiles: this.L.heightTiles, mapWidth: this.TOWN.w, plaza: { ...this.PLAZA } }),
         me: () => ({ ...this.me }),
         /** One drawn avatar (texture / frame / size), or null while hidden. */
         avatar: (pid: string) => {
@@ -863,36 +909,76 @@ export class TownScene extends Phaser.Scene {
   private hasFx(frame: string) {
     return !!FX_JSON?.frames[frame] && this.textures.exists('fx');
   }
+  /** An overlay's frame exists (square-props sheet, or (v3) its own atlas). */
+  private hasOv(ov: Ov) {
+    if (!ov.atlas) return this.hasFx(ov.frame);
+    return this.textures.exists(ov.atlas) && this.textures.get(ov.atlas).has(ov.frame);
+  }
+
+  /**
+   * (v3 WP5b) The art's world (town-v3.json map properties): the square / plaza, NPC homes and the per-house
+   * overlays. A v2 map has none of these properties and keeps the v2 values.
+   */
+  private applyMapWorld(map: Phaser.Tilemaps.Tilemap) {
+    const mp = (name: string): unknown => {
+      const p = map.properties as unknown;
+      if (Array.isArray(p)) return (p as { name: string; value: unknown }[]).find((x) => x.name === name)?.value;
+      return undefined;
+    };
+    const artWorld = String(mp('world') ?? 'v2');
+    if (artWorld !== this.world) throw new Error(`town art is the ${artWorld} world, the lobby is ${this.world}`);
+    if (map.width !== this.L.widthTiles || map.height !== this.L.heightTiles) throw new Error(`town map ${map.width}x${map.height} != layout ${this.L.widthTiles}x${this.L.heightTiles}`);
+    const json = <T>(name: string): T | null => {
+      const v = mp(name);
+      if (typeof v !== 'string' || !v) return null;
+      try {
+        return JSON.parse(v) as T;
+      } catch {
+        return null;
+      }
+    };
+    const plaza = json<Plaza>('plaza');
+    if (plaza) {
+      this.PLAZA = plaza;
+      this.SQUARE_VIEW = squareViewOf(plaza);
+    }
+    this.npcHomes = json<Record<string, TilePoint>>('npcHomes') ?? NPC_HOMES_V2;
+    if (this.world === 'v3') this.FX_HOUSES = (this.cache.json.get('fx-houses-v3') as { meta?: { houses?: Record<string, HouseFx> } } | undefined)?.meta?.houses ?? {};
+  }
+  private npcHomes: Record<string, TilePoint> = NPC_HOMES_V2;
 
   // ---------------------------------------------------------------------------------------
   // doors
 
-  private setupDoors(map: Phaser.Tilemaps.Tilemap, buildingDepth: Map<string, number>) {
+  private setupDoors(map: Phaser.Tilemaps.Tilemap, buildingDepth: Map<string, number>, drawnFp: Map<string, BuildingDef['footprint']>) {
     const art = new Map<string, Phaser.Types.Tilemaps.TiledObject>();
     for (const o of map.getObjectLayer('objects')?.objects ?? []) {
       const type = (o.type as string) || ((o as unknown as { class?: string }).class ?? '');
       if (type === 'door') art.set(String(prop(o, 'building') ?? o.name), o);
     }
-    for (const b of L.buildings) {
-      const at = tileCenterPx(L, b.door);
-      const f = b.footprint;
-      const inward = b.door.y >= f.y + f.h ? { x: 0, y: -1 } : b.door.x >= f.x + f.w ? { x: -1, y: 0 } : b.door.x < f.x ? { x: 1, y: 0 } : { x: 0, y: -1 };
+    for (const server of this.L.buildings) {
+      // (v3) taps, boards and the boarded planks follow the drawn sprite; doors / rules use the server data
+      const fp = drawnFp.get(server.id);
+      const b: BuildingDef = fp ? { ...server, footprint: fp } : server;
+      const at = tileCenterPx(this.L, b.door);
+      const inward = doorInward(b); // doorNormal (v3) or the v2 footprint rule (rules/doors.ts)
       const d: DoorObj = { b, at, inward, open: 0 };
       const o = art.get(b.id);
       const leaf = o ? String(prop(o, 'leaf') ?? '') : '';
       const hole = o ? String(prop(o, 'hole') ?? '') : '';
-      if (o && leaf && hole && this.textures.get('objects').has(leaf) && this.textures.get('objects').has(hole)) {
+      const tex = o ? String(prop(o, 'atlas') || 'objects') : 'objects';
+      if (o && leaf && hole && this.textures.exists(tex) && this.textures.get(tex).has(leaf) && this.textures.get(tex).has(hole)) {
         const depth = (buildingDepth.get(b.id) ?? 10 + at.y) + 0.02;
         const hinge = String(prop(o, 'hinge') ?? 'left');
-        d.hole = this.add.image(o.x!, o.y!, 'objects', hole).setOrigin(0, 0).setDepth(depth).setVisible(false);
+        d.hole = this.add.image(o.x!, o.y!, tex, hole).setOrigin(0, 0).setDepth(depth).setVisible(false);
         d.leaf = this.add
-          .image(hinge === 'right' ? o.x! + o.width! : o.x!, o.y!, 'objects', leaf)
+          .image(hinge === 'right' ? o.x! + o.width! : o.x!, o.y!, tex, leaf)
           .setOrigin(hinge === 'right' ? 1 : 0, 0)
           .setDepth(depth + 0.01)
           .setVisible(false);
       }
       this.doors.push(d);
-      const g = FX_HOUSES[b.id]?.doorglow;
+      const g = this.FX_HOUSES[b.id]?.doorglow;
       if (g && this.hasFx('doorglow')) {
         const img = this.add.image(g.x, g.y, 'fx', 'doorglow').setDepth(9).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0);
         this.doorGlows.push({ img, d });
@@ -918,24 +1004,19 @@ export class TownScene extends Phaser.Scene {
 
   /** A cottage is "in use" when it has a resident (game running) — empty cottages stay boarded. */
   private houseInUse(b: BuildingDef): boolean {
-    const g = this.gview;
-    if (!g) return true; // waiting room: every cottage is a room
-    return g.players.some((p) => p.seat === b.houseIndex);
+    return houseInUseRule(this.gview, b);
+  }
+
+  private doorRuleCtx(): DoorRuleCtx {
+    return { layout: this.L, amStoryteller: this.amStoryteller(), phase: this.phase, mySeat: this.mySeat(), override: (id) => this.gameplay?.doorOverride(id) };
   }
 
   private doorLocked(b: BuildingDef, exit: boolean): boolean {
-    if (this.amStoryteller()) return false;
-    const o = this.gameplay?.doorOverride(b.id);
-    if (o !== null && o !== undefined) return o;
-    if (!LOCKED.has(this.phase)) return false;
-    const seat = this.mySeat();
-    const home = seat === null ? null : L.buildings.find((x) => x.houseIndex === seat)?.id;
-    return exit ? b.id === home : b.id !== home;
+    return doorLockedRule(this.doorRuleCtx(), b, exit);
   }
 
   private lockText(b: BuildingDef, exit: boolean): string {
-    if (LOCKED.has(this.phase) && this.gameplay?.doorOverride(b.id) == null) return exit ? 'You stay home until morning' : 'Locked for the night';
-    return `${b.name} is locked by the Storyteller`;
+    return lockTextRule(this.doorRuleCtx(), b, exit);
   }
 
   private enter(b: BuildingDef) {
@@ -979,20 +1060,13 @@ export class TownScene extends Phaser.Scene {
 
   /** Walking into a doorway enters — only while pushing toward the door (brushing past does not). */
   private checkAutoEnter(vx: number, vy: number) {
-    if (this.me.location !== 'outdoors' || (vx === 0 && vy === 0)) return;
-    const len = Math.hypot(vx, vy);
-    for (const d of this.doors) {
-      const dist = Math.hypot(this.me.x - d.at.x, this.me.y - d.at.y);
-      if (dist > DOOR_TRIGGER_STRAIGHT) continue;
-      const toward = (vx * d.inward.x + vy * d.inward.y) / len;
-      if (toward < (dist > DOOR_TRIGGER ? 0.9 : 0.6)) continue;
-      if (!this.houseInUse(d.b) && !this.amStoryteller()) {
-        this.flashPrompt('Nobody lives here', true);
-        return;
-      }
-      this.enter(d.b);
+    const d = autoEnterDoor(this.me, vx, vy, this.doors);
+    if (!d) return;
+    if (!this.houseInUse(d.b) && !this.amStoryteller()) {
+      this.flashPrompt('Nobody lives here', true);
       return;
     }
+    this.enter(d.b);
   }
 
   /** Name labels at the current zoom (also for avatars created after the last fitCamera: inside a room the zoom is ~2x the outdoor one). */
@@ -1004,7 +1078,7 @@ export class TownScene extends Phaser.Scene {
   private exitGate = new ExitGate();
   private tryWalkOut(vx: number, vy: number) {
     const b = this.currentBuilding();
-    if (!b || !this.ready || !pushesOut(L, b, this.me, vx, vy)) return this.exitGate.reset();
+    if (!b || !this.ready || !pushesOut(this.L, b, this.me, vx, vy)) return this.exitGate.reset();
     if (this.exitGate.try(performance.now())) this.leave();
   }
 
@@ -1035,9 +1109,9 @@ export class TownScene extends Phaser.Scene {
     if (this.me.location !== 'outdoors') {
       // inside: walk to the tapped spot in the room (the doorway = walk there and out)
       const b = this.currentBuilding();
-      const t = b ? interiorTapTarget(L, b, w.x, w.y) : null;
+      const t = b ? interiorTapTarget(this.L, b, w.x, w.y) : null;
       if (b && t && this.gameplay?.wantsLocalInput()) {
-        const pts = interiorRoute(L, b, { x: this.me.x, y: this.me.y }, t);
+        const pts = interiorRoute(this.L, b, { x: this.me.x, y: this.me.y }, t);
         if (pts) this.route = { pts, enter: t.exit ? b.id : null };
       }
       return;
@@ -1051,18 +1125,13 @@ export class TownScene extends Phaser.Scene {
 
   /** What a tap at a world point means: a cottage (its sprite or doorstep) or a spot on the ground. */
   private tapTarget(x: number, y: number): { x: number; y: number; enter: string | null } {
-    for (const d of this.doors) {
-      const f = d.b.footprint;
-      const inSprite = x >= f.x * TS && x < (f.x + f.w) * TS && y >= (f.y - 1) * TS && y < (f.y + f.h) * TS;
-      if (inSprite || Math.hypot(x - d.at.x, y - d.at.y) < 14) return { x: d.at.x, y: d.at.y, enter: d.b.id };
-    }
-    return { x, y, enter: null };
+    return tapTargetRule(this.L, this.doors, x, y);
   }
 
   private goTo(t: { x: number; y: number; enter: string | null }) {
     if (!this.gameplay?.wantsLocalInput()) return;
     const goal = t.enter ? t : { ...t, y: t.y + 6 };
-    const pts = findPath(L, { x: this.me.x, y: this.me.y }, { x: goal.x, y: goal.y }, 'outdoors');
+    const pts = findPath(this.L, { x: this.me.x, y: this.me.y }, { x: goal.x, y: goal.y }, 'outdoors');
     if (!pts) return;
     this.route = { pts, enter: t.enter };
   }
@@ -1071,28 +1140,16 @@ export class TownScene extends Phaser.Scene {
   // appearances
 
   private castKey(pid: string): { key: string; name: string; st: boolean; lantern: boolean; ghost: boolean } {
-    const m = this.lobby?.members.find((x) => x.pid === pid);
-    const st = m?.role === 'storyteller' || (this.gview?.kind === 'storyteller' && pid === this.myPid);
-    const name = m?.displayName ?? '…';
-    if (st) return { key: 'storyteller', name, st: true, lantern: true, ghost: false };
-    const picked = castById(m?.cosmetics.preset ?? null);
-    let id: string;
-    if (picked && (picked.kind === 'villager' || picked.kind === 'mascot')) id = picked.id;
-    else {
-      // Unknown / legacy: a stable stand-in until the server assigns a character.
-      let h = 0;
-      for (const c of pid) h = (h * 31 + c.charCodeAt(0)) >>> 0;
-      id = PLAYABLE[h % PLAYABLE.length]!.id;
-    }
-    const pub = this.gview?.players.find((p) => p.pid === pid);
-    const dead = pub ? !pub.alive : false;
+    const c = castIdentity(pid, this.lobby, this.gview, this.myPid);
+    if (c.st) return { key: 'storyteller', name: c.name, st: true, lantern: true, ghost: false };
+    const id = c.id;
     let key = id;
-    if (dead) {
-      const g = pub!.ghostVoteAvailable ? `${id}/ghost` : `${id}/ghost-spent`;
+    if (c.dead) {
+      const g = c.ghostVoteAvailable ? `${id}/ghost` : `${id}/ghost-spent`;
       key = hasCastSheet(g) ? g : hasCastSheet(`${id}/ghost`) ? `${id}/ghost` : id;
     }
     if (!hasCastSheet(key)) key = Object.keys(CAST.sheets)[0]!;
-    return { key, name, st: false, lantern: !!castById(id)?.lantern, ghost: dead };
+    return { key, name: c.name, st: false, lantern: c.lantern, ghost: c.dead };
   }
 
   private refreshAppearances() {
@@ -1193,7 +1250,7 @@ export class TownScene extends Phaser.Scene {
         a.location = e.location;
       }
       const lastS = a.samples[a.samples.length - 1];
-      if (lastS && a.isST && Math.hypot(lastS.x - e.x, lastS.y - e.y) > 48) {
+      if (lastS && a.isST && Math.hypot(lastS.x - e.x, lastS.y - e.y) > ST_JUMP_PX) {
         // a Storyteller jump (teleport): poof out, poof in, no sliding across the square
         if (a.location === this.me.location) {
           this.poof(lastS.x, lastS.y);
@@ -1201,8 +1258,7 @@ export class TownScene extends Phaser.Scene {
         }
         a.samples = [];
       }
-      a.samples.push({ t: now, x: e.x, y: e.y, facing: e.facing, moving: e.moving });
-      if (a.samples.length > 12) a.samples.splice(0, a.samples.length - 12);
+      pushSample(a.samples, { t: now, x: e.x, y: e.y, facing: e.facing, moving: e.moving });
     }
     for (const [pid, a] of this.avatars)
       if (!seen.has(pid)) {
@@ -1251,7 +1307,7 @@ export class TownScene extends Phaser.Scene {
   private currentBuilding(): BuildingDef | undefined {
     if (this.me.location === 'outdoors') return undefined;
     const id = this.me.location.slice(4);
-    return L.buildings.find((b) => b.id === id);
+    return this.L.buildings.find((b) => b.id === id);
   }
 
   private onLocationChange(prev: LocationId) {
@@ -1344,35 +1400,35 @@ export class TownScene extends Phaser.Scene {
   /** (v2.2) Owner name callouts: one per lived-in house, from public seats only (see houseNames.ts). */
   private refreshHouseNames() {
     if (!this.houseNames) return;
-    const owners = houseOwners(L, this.gview?.players ?? null, this.lobby?.members ?? null);
+    const owners = houseOwners(this.L, this.gview?.players ?? null, this.lobby?.members ?? null);
     const inputs: HouseLabelInput[] = [];
     for (const d of this.doors) {
       const owner = owners[d.b.id];
       if (!owner) continue;
       // tail tip just above the doorway (the art's exact door rect when there is one)
-      const door = FX_HOUSES[d.b.id]?.boarded;
+      const door = this.FX_HOUSES[d.b.id]?.boarded;
       const x = door ? door.wx + door.w / 2 : d.at.x;
-      const y = door ? door.wy - 1 : d.at.y - TS - 22;
-      inputs.push({ id: d.b.id, x: Math.round(x), y: Math.round(y), houseW: d.b.footprint.w * TS, owner, mine: owner.pid === this.myPid, avoid: this.boardTokens?.rectOf(d.b.id) ?? null });
+      const y = door ? door.wy - 1 : d.at.y - this.TS - 22;
+      inputs.push({ id: d.b.id, x: Math.round(x), y: Math.round(y), houseW: d.b.footprint.w * this.TS, owner, mine: owner.pid === this.myPid, avoid: this.boardTokens?.rectOf(d.b.id) ?? null });
     }
     this.houseNames.update(inputs);
     this.houseNames.setVisible(this.me.location === 'outdoors');
   }
 
   private makeBoarded(d: DoorObj): Phaser.GameObjects.GameObject {
-    const meta = FX_HOUSES[d.b.id];
-    if (meta?.boarded && this.hasFx(meta.boarded.frame)) {
+    const meta = this.FX_HOUSES[d.b.id];
+    if (meta?.boarded && this.hasOv(meta.boarded)) {
       // exact planks over this cottage's door + its windows unlit (an empty house, day and night alike)
-      const c = this.add.container(0, 0).setDepth(10 + (d.b.footprint.y + d.b.footprint.h) * TS + 0.05);
-      if (meta.unlit && this.hasFx(meta.unlit.frame)) c.add(this.add.image(meta.unlit.wx, meta.unlit.wy, 'fx', meta.unlit.frame).setOrigin(0, 0));
-      c.add(this.add.image(meta.boarded.wx, meta.boarded.wy, 'fx', meta.boarded.frame).setOrigin(0, 0));
+      const c = this.add.container(0, 0).setDepth(10 + (d.b.footprint.y + d.b.footprint.h) * this.TS + 0.05);
+      if (meta.unlit && this.hasOv(meta.unlit)) c.add(this.add.image(meta.unlit.wx, meta.unlit.wy, meta.unlit.atlas ?? 'fx', meta.unlit.frame).setOrigin(0, 0));
+      c.add(this.add.image(meta.boarded.wx, meta.boarded.wy, meta.boarded.atlas ?? 'fx', meta.boarded.frame).setOrigin(0, 0));
       c.setVisible(this.me.location === 'outdoors');
       return c;
     }
-    const depth = 10 + d.at.y - TS + 0.5;
+    const depth = 10 + d.at.y - this.TS + 0.5;
     const south = d.inward.y < 0;
     const x = south ? d.at.x : d.at.x + d.inward.x * 9;
-    const y = d.at.y - TS - 2;
+    const y = d.at.y - this.TS - 2;
     if (this.hasFx('boarded')) return this.add.image(Math.round(x), Math.round(y + 2), 'fx', 'boarded').setOrigin(0.5, 1).setDepth(depth).setVisible(this.me.location === 'outdoors');
     const g = this.add.graphics().setDepth(depth).setVisible(this.me.location === 'outdoors');
     g.fillStyle(0x3a2616, 1);
@@ -1390,7 +1446,7 @@ export class TownScene extends Phaser.Scene {
     const objs: Phaser.GameObjects.GameObject[] = [];
     const south = d.inward.y < 0;
     // the board stands beside the door: right of a south door, toward the square for side doors
-    const spot = FX_HOUSES[d.b.id]?.board;
+    const spot = this.FX_HOUSES[d.b.id]?.board;
     const bx = spot ? spot.x : south ? d.at.x + 13 : d.at.x - d.inward.x * 2;
     const by = spot ? spot.y : south ? d.at.y - 2 : d.at.y - 18;
     const depth = 10 + by + 1;
@@ -1398,8 +1454,8 @@ export class TownScene extends Phaser.Scene {
     const bf = FX_JSON?.frames.board;
     if (view?.shown.length && this.boardTokens) {
       // occupied: the board grows to hold its tokens (kept clear of the doorway)
-      const dr = FX_HOUSES[d.b.id]?.boarded;
-      const door = dr ? { l: dr.wx, r: dr.wx + dr.w, t: dr.wy, b: dr.wy + dr.h } : { l: d.at.x - 6, r: d.at.x + 6, t: d.at.y - TS - 20, b: d.at.y - TS };
+      const dr = this.FX_HOUSES[d.b.id]?.boarded;
+      const door = dr ? { l: dr.wx, r: dr.wx + dr.w, t: dr.wy, b: dr.wy + dr.h } : { l: d.at.x - 6, r: d.at.x + 6, t: d.at.y - this.TS - 20, b: d.at.y - this.TS };
       objs.push(...this.boardTokens.build(d.b.id, bx, by, depth, view, door));
     } else if (this.hasFx('board') && bf) objs.push(this.add.image(Math.round(bx), Math.round(by), 'fx', 'board').setOrigin(anchor.x / bf.w, anchor.y / bf.h).setDepth(depth));
     return objs;
@@ -1408,44 +1464,40 @@ export class TownScene extends Phaser.Scene {
   // ---------------------------------------------------------------------------------------
   // ambience (time + public phase only)
 
-  private setupAmbience() {
+  private setupAmbience(propTiles: Map<string, { x: number; y: number }[]>) {
     // Fireflies: a handful of soft glowing dots over the grass, night only (also at bedtime/dawn).
     const glowKey = this.hasFx('firefly_0') ? null : this.makeDotTexture();
     for (let i = 0; i < 14; i++) {
-      const x = TOWN.x + 24 + ((i * 97) % (TOWN.w - 48));
-      const y = TOWN.y + 40 + ((i * 61) % (TOWN.h - 80));
+      const x = this.TOWN.x + 24 + ((i * 97) % (this.TOWN.w - 48));
+      const y = this.TOWN.y + 40 + ((i * 61) % (this.TOWN.h - 80));
       const img = glowKey ? this.add.image(x, y, glowKey) : this.add.image(x, y, 'fx', 'firefly_0');
       img.setDepth(4050).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0);
       this.fireflies.push({ img, x, y, ph: i * 1.7, sp: 0.6 + (i % 5) * 0.12 });
     }
     // Townsfolk: plain background people wandering near a fixed home spot (npcRoaming.ts); they
     // shy away from a visible Brianbi but can never be chased out of their home radius.
-    const T = (x: number, y: number) => ({ x: x * TS + 8, y: y * TS + 14 });
-    const homes: Record<string, NpcPoint> = {
-      'npc-sweeper': T(16, 12),
-      'npc-vendor': T(10, 17),
-      'npc-elder': T(10, 21),
-      'npc-porter': T(22, 34),
-    };
+    const T = (x: number, y: number) => ({ x: x * this.TS + 8, y: y * this.TS + 14 });
+    const homes: Record<string, NpcPoint> = {};
+    for (const [id, t] of Object.entries(this.npcHomes)) homes[id] = T(t.x, t.y);
     // pigeons by the fountain and a cat asleep on the east bench (cosmetic, local only)
-    const fountain = townMap.objects.find((o) => o.kind === 'fountain');
+    const fountain = propTiles.get('fountain')?.[0];
     if (fountain && this.hasFx('pigeon_0')) {
       if (!this.anims.exists('fx#peck')) this.anims.create({ key: 'fx#peck', frames: ['pigeon_0', 'pigeon_1', 'pigeon_2', 'pigeon_1'].map((frame) => ({ key: 'fx', frame })), frameRate: 4, repeat: -1 });
       if (this.hasFx('pigeon_fly_0') && !this.anims.exists('fx#flap')) this.anims.create({ key: 'fx#flap', frames: ['pigeon_fly_0', 'pigeon_fly_1'].map((frame) => ({ key: 'fx', frame })), frameRate: 10, repeat: -1 });
       [[-10, 20], [6, 24], [30, 18]].forEach(([dx, dy], i) => {
-        const home = { x: fountain.x * TS + dx!, y: fountain.y * TS + dy! };
+        const home = { x: fountain.x * this.TS + dx!, y: fountain.y * this.TS + dy! };
         const s = this.add.sprite(home.x, home.y, 'fx', 'pigeon_0').setDepth(10 + home.y);
         s.play({ key: 'fx#peck', startFrame: i % 3 });
         this.pigeons.push({ s, home, away: 0, ph: i * 2.1 });
       });
     }
     if (this.hasFx('cat_sleep')) {
-      const bench = townMap.objects.filter((o) => o.kind === 'bench').sort((a, b) => b.x - a.x)[0];
-      if (bench) this.add.image(bench.x * TS + 22, bench.y * TS + 6, 'fx', 'cat_sleep').setOrigin(0.5, 1).setDepth(10 + bench.y * TS + 17);
+      const bench = [...(propTiles.get('bench') ?? [])].sort((a, b) => b.x - a.x)[0];
+      if (bench) this.add.image(bench.x * this.TS + 22, bench.y * this.TS + 6, 'fx', 'cat_sleep').setOrigin(0.5, 1).setDepth(10 + bench.y * this.TS + 17);
     }
     for (const [id, home] of Object.entries(homes)) {
       if (!CAST.sheets[id]) continue;
-      const p = nearestFree(L, home, 40, (x, y) => locationAt(L, x, y) === 'outdoors');
+      const p = nearestFree(this.L, home, 40, this.npcSpot);
       if (!p) continue;
       const sprite = this.add.sprite(p.x, p.y, 'cast').setOrigin(CAST.anchor.x / CAST.frameWidth, CAST.anchor.y / CAST.frameHeight).setAlpha(0.96);
       this.npcs.push({ id, sprite, ...createNpcRoamer(p, this.npcs.length), dir: 'down' });
@@ -1620,7 +1672,7 @@ export class TownScene extends Phaser.Scene {
   private fitCamera() {
     const cam = this.cameras.main;
     const b = this.currentBuilding();
-    const a = b ? roomArea(L, b) : { ...TOWN };
+    const a = b ? roomArea(this.L, b) : { ...this.TOWN };
     this.area = a;
     const w = this.scale.width;
     const h = this.scale.height;
@@ -1633,7 +1685,7 @@ export class TownScene extends Phaser.Scene {
       cam.centerOn(a.x + a.w / 2, a.y + a.h / 2 + reserve / 2 / zoom);
     } else {
       // outdoors: the zoom of the square's preset view (whole circle + the clock tower's face)
-      cam.setZoom(outdoorZoom(w, h));
+      cam.setZoom(outdoorZoom(w, h, this.SQUARE_VIEW));
       this.view.init = false;
       this.updateCamera(0);
     }
@@ -1729,10 +1781,10 @@ export class TownScene extends Phaser.Scene {
     const vw = cam.width / cam.zoom;
     const vh = cam.height / cam.zoom;
     // in the square: snap to the preset view (circle + clock); near the edge: follow
-    let tx = SQUARE_VIEW.x + SQUARE_VIEW.w / 2;
-    let ty = SQUARE_VIEW.y + SQUARE_VIEW.h / 2;
+    let tx = this.SQUARE_VIEW.x + this.SQUARE_VIEW.w / 2;
+    let ty = this.SQUARE_VIEW.y + this.SQUARE_VIEW.h / 2;
     if (this.ready) {
-      const inSquare = Math.hypot((this.me.x - PLAZA.cx) / PLAZA.rx, (this.me.y - 8 - PLAZA.cy) / PLAZA.ry) <= 1.08;
+      const inSquare = Math.hypot((this.me.x - this.PLAZA.cx) / this.PLAZA.rx, (this.me.y - 8 - this.PLAZA.cy) / this.PLAZA.ry) <= 1.08;
       if (!inSquare) {
         // lean toward the player just enough to keep them comfortably on screen
         const lean = 0.85;
@@ -1741,8 +1793,8 @@ export class TownScene extends Phaser.Scene {
       }
     }
     const clamp = (c: number, lo: number, size: number, view: number) => (size <= view ? lo + size / 2 : Phaser.Math.Clamp(c, lo + view / 2, lo + size - view / 2));
-    tx = clamp(tx, TOWN.x, TOWN.w, vw);
-    ty = clamp(ty, TOWN.y, TOWN.h, vh);
+    tx = clamp(tx, this.TOWN.x, this.TOWN.w, vw);
+    ty = clamp(ty, this.TOWN.y, this.TOWN.h, vh);
     if (!this.view.init || dt === 0) {
       this.view = { x: tx, y: ty, init: true };
     } else {
@@ -1767,21 +1819,13 @@ export class TownScene extends Phaser.Scene {
       this.publishLocal(false);
       return;
     }
-    let vx = 0;
-    let vy = 0;
-    if (this.keys.has('left')) vx -= 1;
-    if (this.keys.has('right')) vx += 1;
-    if (this.keys.has('up')) vy -= 1;
-    if (this.keys.has('down')) vy += 1;
+    let { vx, vy } = keyVector(this.keys);
     let following = false;
     if (vx === 0 && vy === 0 && this.route) {
-      const next = this.route.pts[0];
-      // A door at the end of the route waits out the anti-bounce cooldown (a tap right after
-      // leaving would otherwise be dropped silently; Isaac's doors.spec), then goes through.
-      if (!next && this.route.enter && performance.now() < this.enterCooldownUntil) {
-        // hold position until the cooldown ends
-      } else if (!next) {
-        const enter = this.route.enter;
+      // A door at the end of the route waits out the anti-bounce cooldown (rules/movement routeStep).
+      const r = routeStep(this.route, this.me, performance.now() < this.enterCooldownUntil);
+      if (r.kind === 'arrived') {
+        const enter = r.enter;
         this.route = null;
         if (enter && this.currentBuilding()?.id === enter) {
           // inside: a tap on the doorway walked us to the door spot; now out
@@ -1794,16 +1838,10 @@ export class TownScene extends Phaser.Scene {
             this.enter(d0.b);
           }
         }
-      } else {
-        const dx = next.x - this.me.x;
-        const dy = next.y - this.me.y;
-        const dd = Math.hypot(dx, dy);
-        if (dd < 2) this.route.pts.shift();
-        else {
-          vx = dx / dd;
-          vy = dy / dd;
-          following = true;
-        }
+      } else if (r.kind === 'follow') {
+        vx = r.vx;
+        vy = r.vy;
+        following = true;
       }
     }
     const len = Math.hypot(vx, vy);
@@ -1811,36 +1849,29 @@ export class TownScene extends Phaser.Scene {
     if (len > 0) {
       vx /= len;
       vy /= len;
-      const mult = this.amStoryteller() && this.gview?.kind === 'storyteller' ? Math.min(STORYTELLER_MAX_SPEED_MULT, Math.max(1, this.gview.travelSpeedMult)) : 1;
-      let step = PLAYER_SPEED * mult * dt;
+      let step = moveSpeed(this.amStoryteller() && this.gview?.kind === 'storyteller' ? this.gview.travelSpeedMult : null) * dt;
       if (following) {
         const next = this.route?.pts[0];
         if (next) step = Math.min(step, Math.hypot(next.x - this.me.x, next.y - this.me.y));
       }
-      const nx = this.me.x + vx * step;
-      const ny = this.me.y + vy * step;
-      const x0 = this.me.x;
-      const y0 = this.me.y;
-      if (!isBlockedPx(L, nx, this.me.y) && locationAt(L, nx, this.me.y) === this.me.location) this.me.x = nx;
-      if (!isBlockedPx(L, this.me.x, ny) && locationAt(L, this.me.x, ny) === this.me.location) this.me.y = ny;
+      moving = integrateStep(this.L, this.me, vx, vy, step).moved;
       this.myDir = dir8(vx, vy);
       this.me.facing = toFacing(this.myDir, vx, vy);
-      moving = Math.hypot(this.me.x - x0, this.me.y - y0) > 0.01;
       if (following && !moving) this.route = null; // blocked: give up quietly
       if (!following) this.checkAutoEnter(vx, vy);
     }
     if (this.me.location !== 'outdoors') this.tryWalkOut(following ? 0 : vx, following ? 0 : vy);
     this.me.moving = moving;
     this.myAvatar!.setPose(this.me.x, this.me.y, this.myDir, moving);
-    const changed = Math.abs(this.me.x - this.lastSent.x) > 0.05 || Math.abs(this.me.y - this.lastSent.y) > 0.05 || moving !== this.lastSent.moving || this.me.facing !== this.lastSent.facing;
+    const changed = poseChanged({ x: this.me.x, y: this.me.y, moving, facing: this.me.facing }, this.lastSent);
     if (changed && now - this.lastSentAt >= 1000 / MOVE_HZ) this.sendMove(now, moving);
     this.publishLocal(false);
   }
 
   private sendMove(now: number, moving: boolean) {
     this.seq++;
-    const x = Math.round(this.me.x * 100) / 100;
-    const y = Math.round(this.me.y * 100) / 100;
+    const x = wirePx(this.me.x);
+    const y = wirePx(this.me.y);
     this.bridge.conn.send('move', { seq: this.seq, x, y, facing: this.me.facing, moving });
     this.lastSent = { x: this.me.x, y: this.me.y, moving, facing: this.me.facing };
     this.lastSentAt = now;
@@ -1875,33 +1906,12 @@ export class TownScene extends Phaser.Scene {
     const renderAt = nowMs - INTERP_DELAY_MS;
     for (const a of this.avatars.values()) {
       const s = a.samples;
-      if (!s.length) continue;
-      let x = s[s.length - 1]!.x;
-      let y = s[s.length - 1]!.y;
-      let ref = s[s.length - 1]!;
-      for (let i = s.length - 1; i > 0; i--) {
-        const s0 = s[i - 1]!;
-        const s1 = s[i]!;
-        if (s0.t <= renderAt && renderAt <= s1.t) {
-          const k = s1.t === s0.t ? 1 : (renderAt - s0.t) / (s1.t - s0.t);
-          x = s0.x + (s1.x - s0.x) * k;
-          y = s0.y + (s1.y - s0.y) * k;
-          ref = s1;
-          break;
-        }
-        if (i === 1 && renderAt < s0.t) {
-          x = s0.x;
-          y = s0.y;
-          ref = s0;
-        }
-      }
-      const stale = nowMs - s[s.length - 1]!.t > 600;
+      const at = interpolate(s, renderAt);
+      if (!at) continue;
+      const { x, y, ref } = at;
+      const stale = nowMs - s[s.length - 1]!.t > REMOTE_STALE_MS;
       const moving = ref.moving && !stale;
-      let d = a.dir;
-      const mx = x - a.last.x;
-      const my = y - a.last.y;
-      if (moving && Math.hypot(mx, my) > 0.25) d = dir8(mx, my);
-      else if (!moving && (d === 'left' || d === 'right' || d === 'up' || d === 'down') && d !== ref.facing) d = fromFacing(ref.facing);
+      const d = remoteDir(a.dir, moving, x - a.last.x, y - a.last.y, ref.facing);
       a.setPose(x, y, d, moving);
       a.setVisible(a.location === this.me.location);
       const e = remoteEntities.get(a.pid);
@@ -1918,16 +1928,16 @@ export class TownScene extends Phaser.Scene {
     let text: string | null = null;
     let locked = false;
     if (this.ready && this.me.location === 'outdoors' && !this.route) {
-      for (const d of this.doors) {
-        if (Math.hypot(this.me.x - d.at.x, this.me.y - d.at.y) > 20) continue;
-        if (!this.houseInUse(d.b) && !this.amStoryteller()) {
-          text = 'Nobody lives here';
-          locked = true;
-        } else if (this.doorLocked(d.b, false)) {
-          text = this.lockText(d.b, false);
-          locked = true;
-        } else text = `Walk in: ${this.houseTitle(d.b)}`;
-        break;
+      const p = doorPrompt(this.me, this.doors, {
+        amStoryteller: this.amStoryteller(),
+        inUse: (b) => this.houseInUse(b),
+        locked: (b) => this.doorLocked(b, false),
+        lockText: (b) => this.lockText(b, false),
+        title: (b) => this.houseTitle(b),
+      });
+      if (p) {
+        text = p.text;
+        locked = p.locked;
       }
     }
     const key = text ? `${text}|${locked}` : '';
@@ -2045,7 +2055,7 @@ export class TownScene extends Phaser.Scene {
     const dark: { x: number; y: number; w: number; h: number }[] = [];
     if (!inside && this.gview)
       for (const d of this.doors) {
-        const u = FX_HOUSES[d.b.id]?.unlit;
+        const u = this.FX_HOUSES[d.b.id]?.unlit;
         if (u && !this.houseInUse(d.b)) dark.push({ x: u.wx - 2, y: u.wy - 2, w: u.w + 4, h: u.h + 4 });
       }
     const unlit = (x: number, y: number) => dark.some((r) => x >= r.x && y >= r.y && x < r.x + r.w && y < r.y + r.h);
@@ -2088,42 +2098,13 @@ function prop(o: Phaser.Types.Tilemaps.TiledObject, name: string): unknown {
   return undefined;
 }
 
-function keyDir(code: string): 'up' | 'down' | 'left' | 'right' | null {
-  switch (code) {
-    case 'KeyW':
-    case 'ArrowUp':
-      return 'up';
-    case 'KeyS':
-    case 'ArrowDown':
-      return 'down';
-    case 'KeyA':
-    case 'ArrowLeft':
-      return 'left';
-    case 'KeyD':
-    case 'ArrowRight':
-      return 'right';
-    default:
-      return null;
-  }
-}
-
-function isTyping(e: KeyboardEvent): boolean {
-  if (e.ctrlKey || e.metaKey || e.altKey) return true;
-  const el = (e.target as HTMLElement | null) ?? (document.activeElement as HTMLElement | null);
-  const a = document.activeElement as HTMLElement | null;
-  for (const n of [el, a]) {
-    if (!n) continue;
-    const tag = n.tagName;
-    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || n.isContentEditable) return true;
-  }
-  return false;
-}
-
 /** The outdoor camera zoom for a w x h canvas: the square's preset view (circle + clock face) fits. */
-export function outdoorZoom(w: number, h: number): number {
-  return Math.max(0.2, Math.min(w / SQUARE_VIEW.w, h / SQUARE_VIEW.h));
+export function outdoorZoom(w: number, h: number, view: { w: number; h: number } = SQUARE_VIEW_V2): number {
+  return Math.max(0.2, Math.min(w / view.w, h / view.h));
 }
 
-/** Spawn-free helper used before the first server position arrives. */
-export const squareCenter = () => tileCenterPx(L, L.playerSpawn);
-void townMap;
+/** Spawn-free helper used before the first server position arrives (the current lobby's layout). */
+export const squareCenter = () => {
+  const L = currentLayout();
+  return tileCenterPx(L, L.playerSpawn);
+};

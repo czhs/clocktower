@@ -442,4 +442,12 @@ function upscale(src: Img, f: number): Img {
   return o;
 }
 
+// 8. (v3 WP5b) Classic 2D art for the v3 world (terrain-v3.*, town-v3.json, square-props-v3.json). Its own
+// process: scripts/ground.ts paints the world that scripts/lib/world.ts picks at import time (scripts/v3/classic.ts).
+{
+  const { spawnSync } = await import('node:child_process');
+  const v3 = spawnSync(process.execPath, [...process.execArgv, join(here, 'v3', 'classic.ts'), ...(review ? ['--review'] : [])], { stdio: 'inherit', env: { ...process.env, CT_ASSETS_WORLD: 'v3' } });
+  if (v3.status !== 0) throw new Error(`v3 classic pass failed (exit ${v3.status})`);
+}
+
 log('done');

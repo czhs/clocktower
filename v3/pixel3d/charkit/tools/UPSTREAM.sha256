@@ -1,0 +1,8 @@
+# sha256 of the upstream pixel3d files the charkit overlay patches/mirrors (tools/export-charkit.sh warns on drift)
+7a4db56e2e8692dac1369ae77caf9ede05fd9a17fa2f91e021a6488acff9dfb8  tools/shot.mjs
+84ff33897ed563c612d201304ff98a96d0c1b13d6642f6732bae996c0a7da0d8  tools/charpack.sh
+8e669188151465ff026200ae6c6d0cba15e5ae980541e634fcdabba30f3332ff  tools/remote.sh
+d14c913ed34a23b20cef7fec20b61660021e07d0bbf8eb8dfd1af8c2d55ff04f  tools/shot.sh
+a457bc528027c37ec4ca0f2dd54f22b967b120525897c913d9d5f7baa7769d55  tools/pull.sh
+529f373c3b9e498eecc5e77ff480fd28c7d4bc614872feedd2dd30839400ad49  tools/clean.sh
+c454ddf3a2c0a9b87520830cd49b72e398828bfd8452d1747e72aa449cfd1466  package.json

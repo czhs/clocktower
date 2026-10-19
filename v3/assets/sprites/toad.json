@@ -1,0 +1,252 @@
+{
+ "name": "toad",
+ "image": "toad.png",
+ "cell": [
+  54,
+  71
+ ],
+ "anchor": [
+  27,
+  57
+ ],
+ "ppm": 36.0,
+ "yaw": 0.0,
+ "pitch": 30.0,
+ "tod": "noon",
+ "dirs": [
+  "S",
+  "SE",
+  "E",
+  "NE",
+  "N",
+  "NW",
+  "W",
+  "SW"
+ ],
+ "bodyPlan": "uprightAnimal",
+ "height_m": 1.05,
+ "fps": 30,
+ "clips": {
+  "idle": {
+   "fps": 30,
+   "loop": true,
+   "frames": 6,
+   "holds": [
+    6,
+    16,
+    4,
+    10,
+    6,
+    30
+   ],
+   "row": 0,
+   "period": 72,
+   "grid_frames": [
+    30,
+    36,
+    52,
+    56,
+    66,
+    72
+   ],
+   "frames_by": "pose ids"
+  },
+  "walk": {
+   "fps": 30,
+   "loop": true,
+   "frames": 4,
+   "holds": [
+    2,
+    2,
+    2,
+    3
+   ],
+   "row": 8,
+   "period": 9,
+   "grid_frames": [
+    3,
+    5,
+    7,
+    9
+   ],
+   "frames_by": "pose ids"
+  },
+  "run": {
+   "fps": 30,
+   "loop": true,
+   "frames": 4,
+   "holds": [
+    2,
+    2,
+    2,
+    2
+   ],
+   "row": 16,
+   "period": 8,
+   "grid_frames": [
+    9,
+    11,
+    13,
+    15
+   ],
+   "frames_by": "pose ids"
+  },
+  "talk": {
+   "fps": 30,
+   "loop": true,
+   "frames": 4,
+   "holds": [
+    6,
+    6,
+    6,
+    6
+   ],
+   "row": 24,
+   "period": 24,
+   "grid_frames": [
+    6,
+    12,
+    18,
+    24
+   ],
+   "frames_by": "pose ids"
+  },
+  "vote": {
+   "fps": 30,
+   "loop": false,
+   "frames": 2,
+   "holds": [
+    3,
+    28
+   ],
+   "row": 32,
+   "period": null,
+   "grid_frames": [
+    0,
+    3
+   ],
+   "frames_by": "pose ids",
+   "holdLast": true
+  },
+  "die": {
+   "fps": 30,
+   "loop": false,
+   "frames": 6,
+   "holds": [
+    6,
+    6,
+    5,
+    3,
+    4,
+    37
+   ],
+   "row": 40,
+   "period": null,
+   "grid_frames": [
+    0,
+    6,
+    12,
+    17,
+    20,
+    24
+   ],
+   "frames_by": "pose ids",
+   "holdLast": true
+  },
+  "excuse": {
+   "fps": 30,
+   "loop": false,
+   "frames": 5,
+   "holds": [
+    5,
+    10,
+    12,
+    6,
+    1
+   ],
+   "row": 48,
+   "period": null,
+   "grid_frames": [
+    0,
+    5,
+    15,
+    27,
+    33
+   ],
+   "frames_by": "pose ids"
+  },
+  "point": {
+   "fps": 30,
+   "loop": false,
+   "frames": 5,
+   "holds": [
+    4,
+    12,
+    8,
+    60,
+    1
+   ],
+   "row": 56,
+   "period": null,
+   "grid_frames": [
+    0,
+    4,
+    16,
+    24,
+    84
+   ],
+   "frames_by": "pose ids"
+  },
+  "ghost": {
+   "fps": 30,
+   "loop": true,
+   "frames": 4,
+   "holds": [
+    18,
+    18,
+    18,
+    18
+   ],
+   "row": 64,
+   "period": 72,
+   "grid_frames": [
+    18,
+    36,
+    54,
+    72
+   ],
+   "frames_by": "pose ids"
+  },
+  "ghost-spent": {
+   "fps": 30,
+   "loop": true,
+   "frames": 4,
+   "holds": [
+    18,
+    18,
+    18,
+    18
+   ],
+   "row": 72,
+   "period": 72,
+   "grid_frames": [
+    18,
+    36,
+    54,
+    72
+   ],
+   "frames_by": "pose ids"
+  }
+ },
+ "runtime": "character",
+ "shadow": {
+  "image": "toad-shadow.png",
+  "anchor": [
+   27,
+   57
+  ],
+  "rx": 6.05,
+  "ry": 3.02
+ },
+ "warnings": []
+}

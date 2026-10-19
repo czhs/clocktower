@@ -1,5 +1,6 @@
 import { SCRIPT_INFO } from '@ct/protocol';
-import type { DirectoryEvent, LobbySummary, ScriptId } from '@ct/protocol';
+import type { CreateLobbyRequest, DirectoryEvent, LobbySummary, ScriptId, StorytellerMode, WorldId } from '@ct/protocol';
+import { appPath, appWorld, pathInWorld } from '../common/appWorld';
 
 // Pure lobby-finder logic (sorting/filtering happens client-side over the public summaries).
 
@@ -15,6 +16,38 @@ export interface FinderFilters {
 }
 
 export const DEFAULT_FILTERS: FinderFilters = { search: '', status: 'waiting', size: 'any', minPlayers: 0, script: 'any' };
+
+// ------------------------------------------------------------------------------------ (v3 WP6) the town
+
+/** The world a lobby summary or room view uses (`view.world`, else `view.lobby.world`; absent = 'v2', every
+ * lobby created before v3). The one copy of this rule for the client. */
+export const worldOfLobby = (l: { world?: WorldId; lobby?: { world?: WorldId } } | null | undefined): WorldId => l?.world ?? l?.lobby?.world ?? 'v2';
+
+/** The lobbies of one world (each app lists only its own: `/` = v3, `/v2/` = v2; docs/v3 §11 URL paths). Pure. */
+export function lobbiesOfWorld(lobbies: Iterable<LobbySummary>, world: WorldId): LobbySummary[] {
+  return [...lobbies].filter((l) => worldOfLobby(l) === world);
+}
+
+/** The create dialog's fields → the POST /api/lobbies body (pure; `world` is always sent: the page's app world). */
+export function createLobbyBody(f: {
+  name: string;
+  maxPlayers: number;
+  script: ScriptId;
+  description: string;
+  takeStoryteller: boolean;
+  mode: StorytellerMode;
+  world: WorldId;
+}): Partial<CreateLobbyRequest> & { name: string; maxPlayers: number } {
+  return {
+    name: f.name,
+    maxPlayers: f.maxPlayers,
+    script: f.script,
+    description: f.description.trim(),
+    takeStoryteller: f.mode === 'human' && f.takeStoryteller,
+    ...(f.mode === 'auto' ? { storytellerMode: 'auto' as const } : {}),
+    world: f.world,
+  };
+}
 
 const SIZE_RANGES: Record<Exclude<FinderFilters['size'], 'any'>, [number, number]> = {
   small: [5, 8],
@@ -81,8 +114,9 @@ export const SCRIPT_LABEL: Record<ScriptId, string> = {
   custom: SCRIPT_INFO.custom.name,
 };
 
-export function shareUrl(lobbyId: string): string {
-  return `${location.origin}/lobby/${encodeURIComponent(lobbyId)}`;
+/** The share link of a lobby: inside its world's app (`/lobby/x` = v3, `/v2/lobby/x` = v2; default = this page's). */
+export function shareUrl(lobbyId: string, world: WorldId = appWorld()): string {
+  return `${location.origin}${pathInWorld(world, `/lobby/${encodeURIComponent(lobbyId)}`)}`;
 }
 
 /** Copies text; falls back to execCommand for insecure contexts. */
@@ -112,10 +146,10 @@ export async function copyText(text: string): Promise<boolean> {
   return ok;
 }
 
-/** Same mechanism as main.tsx `navigate` (avoids importing main.tsx, which renders on import). */
+/** Same mechanism as main.tsx `navigate` (avoids importing main.tsx, which renders on import); stays in this app. */
 export function goTo(path: '/' | '/admin') {
   const route = path === '/admin' ? { name: 'admin' } : { name: 'home' };
-  history.pushState(route, '', path);
+  history.pushState(route, '', appPath(path));
   window.dispatchEvent(new CustomEvent('ct:navigate', { detail: route }));
 }
 

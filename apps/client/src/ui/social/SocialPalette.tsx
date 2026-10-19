@@ -13,11 +13,11 @@ import { NICK_FACE_CHARACTER, PIN_COLORS, type PinColor } from '@ct/protocol';
 import type { RoomConnection } from '../../net/room';
 import { useStore, useStoreSelector } from '../../net/store';
 import { CastPortrait } from '../common/castPortrait';
-import { SOCIAL_SHEET } from '../../game/social/art';
 import { isPinColor, PIN_HEX, savePinColor } from '../../game/social/logic';
 import { socialActions, socialHover, socialInfo, socialMode, socialRadial } from '../../game/social/state';
 import './social.css';
-import { PieMenu } from './PieMenu';
+import { PieMenu, SpriteIcon, useSocialArt, type SpriteFrame } from './PieMenu';
+import { useV3Skin } from '../common/v3skinLobby';
 
 const OPEN_KEY = 'ct.social.dockOpen';
 
@@ -46,29 +46,18 @@ function writeFlag(k: string, v: string) {
   }
 }
 
-/** One frame of the social art sheet as a crisp CSS sprite (null when the art or frame is missing). */
-function SheetIcon({ frame, scale = 1, class: cls }: { frame: string; scale?: number; class?: string }) {
-  const f = SOCIAL_SHEET?.json.frames[frame];
-  if (!SOCIAL_SHEET || !f) return null;
-  const W = SOCIAL_SHEET.json.width ?? Math.max(...Object.values(SOCIAL_SHEET.json.frames).map((r) => r.x + r.w));
-  const H = SOCIAL_SHEET.json.height ?? Math.max(...Object.values(SOCIAL_SHEET.json.frames).map((r) => r.y + r.h));
-  return (
-    <span
-      class={`cts-sheet${cls ? ` ${cls}` : ''}`}
-      aria-hidden="true"
-      style={{
-        width: `${f.w * scale}px`,
-        height: `${f.h * scale}px`,
-        backgroundImage: `url(${SOCIAL_SHEET.url})`,
-        backgroundPosition: `${-f.x * scale}px ${-f.y * scale}px`,
-        backgroundSize: `${W * scale}px ${H * scale}px`,
-      }}
-    />
-  );
+type Art = (name: string) => SpriteFrame | null;
+/** One frame of the social art (v2 sheet, or the v3 atlases in a v3 lobby) as a crisp CSS sprite. */
+function SheetIcon({ art, frame, scale = 1, class: cls }: { art: Art; frame: string; scale?: number; class?: string }) {
+  return <SpriteIcon frame={art(frame)} scale={scale} class={`cts-sheet${cls ? ` ${cls}` : ''}`} />;
 }
-const hasFrame = (f: string) => !!SOCIAL_SHEET?.json.frames[f];
 
 export function SocialPalette(props: { conn: RoomConnection; touch: boolean }) {
+  // (v3 WP6) the lobby's v3 DOM skin while the town is up (ref-counted with the waiting room's). This mount alone
+  // drops the skin whenever GameScreen leaves 'ready' after game start (in-place renderer swap, perf / error
+  // fallback, mid-game reload before the town is ready): CONTRACT-REQUEST(lead): call useV3Skin(conn) once in
+  // LobbyRoute `InLobby` (lives exactly as long as the connection); this mount then becomes a harmless extra ref.
+  useV3Skin(props.conn);
   return (
     <>
       <Dock conn={props.conn} touch={props.touch} />
@@ -84,6 +73,8 @@ function Dock({ conn, touch }: { conn: RoomConnection; touch: boolean }) {
   const stView = useStoreSelector(conn.gameView, (g) => g?.kind === 'storyteller');
   const mode = useStore(socialMode);
   const info = useStore(socialInfo);
+  const art = useSocialArt();
+  const has = (f: string) => art(f) !== null;
   const [open, setOpen] = useState(() => readFlag(OPEN_KEY) === '1');
   const [hint, setHint] = useState(() => readFlag(HINT_KEY) !== '1');
   const meM = lobby?.members.find((m) => m.pid === lobby.youPid);
@@ -105,7 +96,7 @@ function Dock({ conn, touch }: { conn: RoomConnection; touch: boolean }) {
         el = v;
         if (v && typeof ResizeObserver === 'function') {
           ro = new ResizeObserver(measure);
-          ro.observe(v);
+          ro.observe(v, { box: 'border-box' });
         }
       }
       if (!v) return setPlace(null);
@@ -115,7 +106,12 @@ function Dock({ conn, touch }: { conn: RoomConnection; touch: boolean }) {
       setPlace((p) => (p && p.right === next.right && p.bottom === next.bottom ? p : next));
     };
     measure();
-    const t = setInterval(measure, 1500); // the voice panel may mount / unmount later
+    // the voice panel may mount / unmount later: poll only its identity (no layout read); its size changes come from
+    // the ResizeObserver and the viewport from 'resize' ((v3 perf ui) was a getBoundingClientRect every 1.5 s, a
+    // forced style + layout flush in the middle of the 3D town's frames)
+    const t = setInterval(() => {
+      if (document.querySelector('.ctv') !== el) measure();
+    }, 1500);
     window.addEventListener('resize', measure);
     return () => {
       clearInterval(t);
@@ -166,14 +162,14 @@ function Dock({ conn, touch }: { conn: RoomConnection; touch: boolean }) {
         <div class="cts-panel" role="group" aria-label="Point and pins">
           <div class="cts-acts">
             <button type="button" class={`cts-act${mode.mode === 'point' ? ' on' : ''}`} aria-pressed={mode.mode === 'point'} onClick={() => arm('point')} title={touch ? 'Then tap what to point at' : 'Or right-click anything (Q points at the cursor)'}>
-              {hasFrame('emote_point') ? <SheetIcon frame="emote_point" scale={touch ? 2 : 1} /> : <span aria-hidden="true">👉</span>} Point
+              {has('emote_point') ? <SheetIcon art={art} frame="emote_point" scale={touch ? 2 : 1} /> : <span aria-hidden="true">👉</span>} Point
             </button>
             <button type="button" class={`cts-act${mode.mode === 'pin' ? ' on' : ''}`} aria-pressed={mode.mode === 'pin'} onClick={() => arm('pin')} title={touch ? 'Then tap a person or a spot' : 'Or press F over a person or a spot'}>
-              <PinGlyph color={color} /> Pin
+              <PinGlyph art={art} color={color} /> Pin
             </button>
             {nick && (
               <button type="button" class="cts-act cts-nick" onClick={() => socialActions.get()?.nickFace?.()} title="Nick face: your head becomes a 😝 for a few seconds">
-                {hasFrame('nick_face') ? <SheetIcon frame="nick_face" scale={touch ? 2 : 1} /> : <span aria-hidden="true">😝</span>} Face
+                {has('nick_face') ? <SheetIcon art={art} frame="nick_face" scale={touch ? 2 : 1} /> : <span aria-hidden="true">😝</span>} Face
               </button>
             )}
           </div>
@@ -186,11 +182,11 @@ function Dock({ conn, touch }: { conn: RoomConnection; touch: boolean }) {
                 aria-checked={c === color}
                 aria-label={PIN_HEX[c].label}
                 title={PIN_HEX[c].label}
-                class={`cts-swatch${c === color ? ' on' : ''}${hasFrame(`pin_${c}`) ? ' art' : ''}`}
-                style={hasFrame(`pin_${c}`) ? undefined : { background: PIN_HEX[c].fill, borderColor: PIN_HEX[c].dark }}
+                class={`cts-swatch${c === color ? ' on' : ''}${has(`pin_${c}`) ? ' art' : ''}`}
+                style={has(`pin_${c}`) ? undefined : { background: PIN_HEX[c].fill, borderColor: PIN_HEX[c].dark }}
                 onClick={() => pick(c)}
               >
-                <SheetIcon frame={`pin_${c}`} />
+                <SheetIcon art={art} frame={`pin_${c}`} />
               </button>
             ))}
           </div>
@@ -226,8 +222,8 @@ function Dock({ conn, touch }: { conn: RoomConnection; touch: boolean }) {
         style={{ borderColor: hex.fill, boxShadow: `0 0 0 2px ${hex.dark}, 0 3px 10px #000a` }}
         onClick={toggle}
       >
-        {character && hasFrame(`icon_${character}`) ? (
-          <SheetIcon frame={`icon_${character}`} scale={touch ? 3 : 2} />
+        {character && has(`icon_${character}`) ? (
+          <SheetIcon art={art} frame={`icon_${character}`} scale={touch ? 3 : 2} />
         ) : character ? (
           <CastPortrait id={character} size={touch ? 30 : 24} crop="bust" />
         ) : (
@@ -255,8 +251,8 @@ function Dock({ conn, touch }: { conn: RoomConnection; touch: boolean }) {
   );
 }
 
-function PinGlyph({ color, big }: { color: PinColor; big?: boolean }) {
-  if (hasFrame(`pin_${color}`)) return <SheetIcon frame={`pin_${color}`} scale={1} class={big ? 'big' : undefined} />;
+function PinGlyph({ art, color, big }: { art: Art; color: PinColor; big?: boolean }) {
+  if (art(`pin_${color}`)) return <SheetIcon art={art} frame={`pin_${color}`} scale={1} class={big ? 'big' : undefined} />;
   const hex = PIN_HEX[color];
   return <span class={`cts-pin-dot${big ? ' big' : ''}`} style={{ background: hex.fill, borderColor: hex.dark }} aria-hidden="true" />;
 }
@@ -267,6 +263,8 @@ const R_DY = 56;
 function Radial() {
   const r = useStore(socialRadial);
   const mode = useStore(socialMode);
+  const art = useSocialArt();
+  const has = (f: string) => art(f) !== null;
   if (!r) return null;
   // keep both buttons on screen
   const vw = typeof window !== 'undefined' ? window.innerWidth : 400;
@@ -282,11 +280,11 @@ function Radial() {
     <div class="cts-radial" style={{ left: `${x}px`, top: `${y}px` }} role="menu" aria-label="Point or pin">
       <span class="cts-radial-dot" style={{ left: `${r.sx - x}px`, top: `${r.sy - y}px` }} aria-hidden="true" />
       <button type="button" role="menuitem" data-social-act="point" class={`cts-rbtn${r.hot === 'point' ? ' hot' : ''}`} style={{ left: `${-R_DX}px`, top: `${-R_DY}px` }} onClick={() => go('point')} aria-label={r.target.pid ? 'Point at them' : 'Point here'}>
-        {hasFrame('emote_point') ? <SheetIcon frame="emote_point" scale={2} /> : <span aria-hidden="true">👉</span>}
+        {has('emote_point') ? <SheetIcon art={art} frame="emote_point" scale={2} /> : <span aria-hidden="true">👉</span>}
         <small>Point</small>
       </button>
       <button type="button" role="menuitem" data-social-act="pin" class={`cts-rbtn${r.hot === 'pin' ? ' hot' : ''}`} style={{ left: `${R_DX}px`, top: `${-R_DY}px` }} onClick={() => go('pin')} aria-label={r.target.pid ? 'Pin them' : 'Drop a pin here'}>
-        <PinGlyph color={mode.color} big />
+        <PinGlyph art={art} color={mode.color} big />
         <small>Pin</small>
       </button>
     </div>

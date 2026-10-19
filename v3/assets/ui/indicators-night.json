@@ -1,0 +1,714 @@
+{
+ "image": "indicators-night.png",
+ "width": 256,
+ "height": 271,
+ "frames": {
+  "label_player": {
+   "x": 1,
+   "y": 1,
+   "w": 16,
+   "h": 10
+  },
+  "label_storyteller": {
+   "x": 18,
+   "y": 1,
+   "w": 67,
+   "h": 10
+  },
+  "label_ghost": {
+   "x": 86,
+   "y": 1,
+   "w": 28,
+   "h": 10
+  },
+  "label_ghost_wisp": {
+   "x": 115,
+   "y": 1,
+   "w": 7,
+   "h": 7
+  },
+  "talk_0": {
+   "x": 123,
+   "y": 1,
+   "w": 9,
+   "h": 9
+  },
+  "talk_1": {
+   "x": 133,
+   "y": 1,
+   "w": 9,
+   "h": 9
+  },
+  "talk_2": {
+   "x": 143,
+   "y": 1,
+   "w": 9,
+   "h": 9
+  },
+  "talk_3": {
+   "x": 153,
+   "y": 1,
+   "w": 9,
+   "h": 9
+  },
+  "talk_self_0": {
+   "x": 163,
+   "y": 1,
+   "w": 9,
+   "h": 9
+  },
+  "talk_self_1": {
+   "x": 173,
+   "y": 1,
+   "w": 9,
+   "h": 9
+  },
+  "talk_self_2": {
+   "x": 183,
+   "y": 1,
+   "w": 9,
+   "h": 9
+  },
+  "talk_self_3": {
+   "x": 193,
+   "y": 1,
+   "w": 9,
+   "h": 9
+  },
+  "talk_self_idle": {
+   "x": 203,
+   "y": 1,
+   "w": 9,
+   "h": 9
+  },
+  "talk_muted": {
+   "x": 213,
+   "y": 1,
+   "w": 9,
+   "h": 9
+  },
+  "talk_ring_0": {
+   "x": 1,
+   "y": 12,
+   "w": 47,
+   "h": 20
+  },
+  "talk_ring_1": {
+   "x": 49,
+   "y": 12,
+   "w": 47,
+   "h": 20
+  },
+  "talk_ring_2": {
+   "x": 97,
+   "y": 12,
+   "w": 47,
+   "h": 20
+  },
+  "talk_ring_self_0": {
+   "x": 145,
+   "y": 12,
+   "w": 47,
+   "h": 20
+  },
+  "talk_ring_self_1": {
+   "x": 193,
+   "y": 12,
+   "w": 47,
+   "h": 20
+  },
+  "talk_ring_self_2": {
+   "x": 1,
+   "y": 33,
+   "w": 47,
+   "h": 20
+  },
+  "bubble_nine": {
+   "x": 49,
+   "y": 33,
+   "w": 12,
+   "h": 13
+  },
+  "bubble_tail": {
+   "x": 62,
+   "y": 33,
+   "w": 7,
+   "h": 5
+  },
+  "bubble_sample_1": {
+   "x": 70,
+   "y": 33,
+   "w": 76,
+   "h": 17
+  },
+  "bubble_sample_4": {
+   "x": 147,
+   "y": 33,
+   "w": 98,
+   "h": 44
+  },
+  "bubble_sample_lifted": {
+   "x": 1,
+   "y": 78,
+   "w": 93,
+   "h": 17
+  },
+  "bubble_pop": {
+   "x": 95,
+   "y": 78,
+   "w": 76,
+   "h": 17
+  },
+  "you_chevron": {
+   "x": 172,
+   "y": 78,
+   "w": 9,
+   "h": 6
+  },
+  "you_ring_0": {
+   "x": 182,
+   "y": 78,
+   "w": 33,
+   "h": 17
+  },
+  "you_ring_1": {
+   "x": 216,
+   "y": 78,
+   "w": 33,
+   "h": 17
+  },
+  "you_ring_2": {
+   "x": 1,
+   "y": 96,
+   "w": 33,
+   "h": 17
+  },
+  "you_ring_3": {
+   "x": 35,
+   "y": 96,
+   "w": 33,
+   "h": 17
+  },
+  "you_seat_0": {
+   "x": 69,
+   "y": 96,
+   "w": 17,
+   "h": 18
+  },
+  "you_seat_1": {
+   "x": 87,
+   "y": 96,
+   "w": 17,
+   "h": 18
+  },
+  "guide_right": {
+   "x": 105,
+   "y": 96,
+   "w": 15,
+   "h": 10
+  },
+  "guide_down-right": {
+   "x": 121,
+   "y": 96,
+   "w": 14,
+   "h": 14
+  },
+  "guide_down": {
+   "x": 136,
+   "y": 96,
+   "w": 12,
+   "h": 11
+  },
+  "guide_down-left": {
+   "x": 149,
+   "y": 96,
+   "w": 14,
+   "h": 14
+  },
+  "guide_left": {
+   "x": 164,
+   "y": 96,
+   "w": 15,
+   "h": 10
+  },
+  "guide_up-left": {
+   "x": 180,
+   "y": 96,
+   "w": 14,
+   "h": 14
+  },
+  "guide_up": {
+   "x": 195,
+   "y": 96,
+   "w": 12,
+   "h": 11
+  },
+  "guide_up-right": {
+   "x": 208,
+   "y": 96,
+   "w": 14,
+   "h": 14
+  },
+  "guide_dot": {
+   "x": 223,
+   "y": 96,
+   "w": 4,
+   "h": 4
+  },
+  "guide_dot_lit": {
+   "x": 228,
+   "y": 96,
+   "w": 4,
+   "h": 4
+  },
+  "door_ring_0": {
+   "x": 1,
+   "y": 115,
+   "w": 31,
+   "h": 15
+  },
+  "door_ring_1": {
+   "x": 33,
+   "y": 115,
+   "w": 31,
+   "h": 15
+  },
+  "door_ring_2": {
+   "x": 65,
+   "y": 115,
+   "w": 31,
+   "h": 15
+  },
+  "door_ring_3": {
+   "x": 97,
+   "y": 115,
+   "w": 31,
+   "h": 15
+  },
+  "door_chevron": {
+   "x": 129,
+   "y": 115,
+   "w": 11,
+   "h": 7
+  },
+  "compass_right": {
+   "x": 141,
+   "y": 115,
+   "w": 15,
+   "h": 15
+  },
+  "compass_down-right": {
+   "x": 157,
+   "y": 115,
+   "w": 15,
+   "h": 15
+  },
+  "compass_down": {
+   "x": 173,
+   "y": 115,
+   "w": 15,
+   "h": 15
+  },
+  "compass_down-left": {
+   "x": 189,
+   "y": 115,
+   "w": 15,
+   "h": 15
+  },
+  "compass_left": {
+   "x": 205,
+   "y": 115,
+   "w": 15,
+   "h": 15
+  },
+  "compass_up-left": {
+   "x": 221,
+   "y": 115,
+   "w": 15,
+   "h": 15
+  },
+  "compass_up": {
+   "x": 237,
+   "y": 115,
+   "w": 15,
+   "h": 15
+  },
+  "compass_up-right": {
+   "x": 1,
+   "y": 131,
+   "w": 15,
+   "h": 15
+  },
+  "compass_pill_sample": {
+   "x": 17,
+   "y": 131,
+   "w": 133,
+   "h": 16
+  },
+  "callout_player": {
+   "x": 151,
+   "y": 131,
+   "w": 42,
+   "h": 15
+  },
+  "callout_mine": {
+   "x": 194,
+   "y": 131,
+   "w": 22,
+   "h": 15
+  },
+  "callout_ghost": {
+   "x": 217,
+   "y": 131,
+   "w": 29,
+   "h": 15
+  },
+  "token_ring": {
+   "x": 1,
+   "y": 148,
+   "w": 16,
+   "h": 17
+  },
+  "token_ring_ghost": {
+   "x": 18,
+   "y": 148,
+   "w": 16,
+   "h": 17
+  },
+  "token_sample": {
+   "x": 35,
+   "y": 148,
+   "w": 16,
+   "h": 17
+  },
+  "token_sample_ghost": {
+   "x": 52,
+   "y": 148,
+   "w": 16,
+   "h": 17
+  },
+  "token_plus_2": {
+   "x": 69,
+   "y": 148,
+   "w": 14,
+   "h": 11
+  },
+  "token_plus_9": {
+   "x": 84,
+   "y": 148,
+   "w": 14,
+   "h": 11
+  },
+  "offscreen_right": {
+   "x": 99,
+   "y": 148,
+   "w": 46,
+   "h": 46
+  },
+  "offscreen_down-right": {
+   "x": 146,
+   "y": 148,
+   "w": 46,
+   "h": 46
+  },
+  "offscreen_down": {
+   "x": 193,
+   "y": 148,
+   "w": 46,
+   "h": 46
+  },
+  "offscreen_down-left": {
+   "x": 1,
+   "y": 195,
+   "w": 46,
+   "h": 46
+  },
+  "offscreen_left": {
+   "x": 48,
+   "y": 195,
+   "w": 46,
+   "h": 46
+  },
+  "offscreen_up-left": {
+   "x": 95,
+   "y": 195,
+   "w": 46,
+   "h": 46
+  },
+  "offscreen_up": {
+   "x": 142,
+   "y": 195,
+   "w": 46,
+   "h": 46
+  },
+  "offscreen_up-right": {
+   "x": 189,
+   "y": 195,
+   "w": 46,
+   "h": 46
+  },
+  "offscreen_disc": {
+   "x": 1,
+   "y": 242,
+   "w": 28,
+   "h": 28
+  },
+  "offscreen_disc_ghost": {
+   "x": 30,
+   "y": 242,
+   "w": 28,
+   "h": 28
+  },
+  "offscreen_sample": {
+   "x": 59,
+   "y": 242,
+   "w": 18,
+   "h": 18
+  }
+ },
+ "meta": {
+  "anchors": {
+   "label": "text centred on the head anchor x; cap top = head.y - 11 (outline box 10 px, 1 px above the anchor)",
+   "talk_": {
+    "x": 0,
+    "y": 1,
+    "note": "left edge 1 px right of the label box, y = label cap top - 1"
+   },
+   "talk_ring_": {
+    "x": 23,
+    "y": 8,
+    "note": "feet; only the front ~60 % of each ellipse (beside + below the feet)"
+   },
+   "talk_ring_self_": {
+    "x": 23,
+    "y": 8
+   },
+   "label_ghost_wisp": {
+    "x": 6,
+    "y": -1,
+    "note": "right edge 6 px left of the label box left edge (shares its outline column), y = cap top + 1"
+   },
+   "bubble_tail": {
+    "x": 2,
+    "y": 4,
+    "note": "tip; rows 0..1 overlap the box edge + line rows"
+   },
+   "you_chevron": {
+    "x": 4,
+    "y": 5,
+    "note": "tip; 1 px above the label box, bob 1 px at 2 fps"
+   },
+   "you_ring_": {
+    "x": 16,
+    "y": 8
+   },
+   "you_seat_": {
+    "x": "w/2",
+    "y": "h",
+    "note": "over the own seat spot (+1.25 m)"
+   },
+   "guide_": {
+    "x": "w>>1",
+    "y": "h>>1",
+    "note": "centre, 0.85 m (+0.12 m bob) from the feet toward the target, on L.ground; 8 SCREEN headings (projected ground direction); stepped 18 px sideways when it would hide behind the body"
+   },
+   "guide_dot": {
+    "x": 2,
+    "y": 2,
+    "note": "3 trail dots beyond the tip along the screen heading, 6 px apart; the lit one marches at 2.5 fps; stop 0.3 m short of the target"
+   },
+   "door_ring_": {
+    "x": 15,
+    "y": 7
+   },
+   "door_chevron": {
+    "x": 5,
+    "y": 6
+   },
+   "compass_": {
+    "x": 7,
+    "y": 7
+   },
+   "callout_": {
+    "x": "floor((w-1)/2)",
+    "y": "h-1",
+    "note": "tail tip"
+   },
+   "token_": {
+    "x": 8,
+    "y": 9,
+    "note": "disc centre; pin head at (7..8, 0..1); 12x12 icon at (2, 3) clipped to r 5"
+   },
+   "offscreen_": {
+    "x": "w>>1",
+    "y": "h>>1",
+    "note": "disc centre; the tail tip reaches 7 px past the disc ring (pad 9); avatar at (11, 11)"
+   },
+   "offscreen_disc": {
+    "x": 14,
+    "y": 14,
+    "note": "24x24 avatar_<id> at (2, 2) clipped to r 12 (18x18 with a 12x12 icon)"
+   }
+  },
+  "fps": {
+   "talk": 4.286,
+   "talk_holdGridFrames": 7,
+   "talk_ring": 7.5,
+   "you_ring": 2.5,
+   "door_ring": 2.5,
+   "bob": 2,
+   "guide_dot": 2.5,
+   "sequences": {
+    "talk": [
+     "talk_0",
+     "talk_1",
+     "talk_2",
+     "talk_3"
+    ],
+    "you_ring": [
+     "you_ring_0",
+     "you_ring_1",
+     "you_ring_2",
+     "you_ring_3"
+    ],
+    "door_ring": [
+     "door_ring_0",
+     "door_ring_1",
+     "door_ring_2",
+     "door_ring_3"
+    ],
+    "talk_ring": [
+     "talk_ring_0",
+     "talk_ring_1",
+     "talk_ring_2"
+    ]
+   }
+  },
+  "label": {
+   "font": "body (out/ui/kit.json meta.bitmapFont)",
+   "outline": "labelLine, 8-neighbour 1 px",
+   "maxW": 72,
+   "colors": {
+    "player": "#E4E0D6",
+    "storyteller": "#E2C473",
+    "ghost": "#BFDCEB"
+   },
+   "line": "#141325",
+   "ghostLiftM": 0.14
+  },
+  "bubble": {
+   "frame": "kit FRAMES.bubble (nine: l3 t3 r3 b4 incl. 1-px shadow)",
+   "textW": 92,
+   "padX": 5,
+   "textTop": 3,
+   "lineAdvance": 9,
+   "size": "w = max line width + 10, h = 9 * lines + 5 (+ 2 tail rows + 1 shadow row)",
+   "text": "#E2DDD3",
+   "appear": "2-grid-frame pop (bubble_pop: same text, box 2 px in per side + 1 px lower top), then a 3-step Bayer dissolve with 6-grid-frame holds over the last 600 ms (v2 fadeOutMs)",
+   "stacking": "v2 stackBubbles (gap 2 px); r2: a lifted bubble KEEPS its tail over the speaker + a 1-px dotted connector (bubbleEdge dot + outline px, even rows) down to 1 px above the label, drawn under all bubbles; a lift change shows 1 halfway drawing for 2 grid frames"
+  },
+  "talkOutline": "post pass src/ui/indicators/talkOutline.js (order 290): 1-px 4-neighbour ring around the talker's FLAG_CHAR texels in talk / self + a second 1-px ring 1 texel further out in the line colour; selfIdle = glyph only (no outline)",
+  "colors": {
+   "talk": "#FFE7A3",
+   "talkLine": "#4A3A26",
+   "self": "#FF9A8F",
+   "selfLine": "#6b1e35",
+   "selfIdleGlyph": "#d27987",
+   "ghostLabelLine": "#3d5574"
+  },
+  "headTop": {
+   "note": "labels anchor at feet + visual top + 0.1 m; spec.height except these ids (m)",
+   "storyteller": 1.55
+  },
+  "v2": {
+   "SPEECH": {
+    "maxChars": 80,
+    "lineChars": 28,
+    "maxLines": 4,
+    "minMs": 5000,
+    "maxMs": 7000,
+    "perCharMs": 25,
+    "fadeInMs": 140,
+    "fadeOutMs": 600,
+    "maxBubbles": 6,
+    "maxBubblesLow": 4,
+    "staleMs": 15000
+   },
+   "WAVE": [
+    [
+     2,
+     4,
+     3
+    ],
+    [
+     3,
+     2,
+     4
+    ],
+    [
+     4,
+     3,
+     2
+    ],
+    [
+     3,
+     4,
+     3
+    ]
+   ],
+   "PULSE_MS": 900,
+   "labelColors": {
+    "player": "#efe6cf",
+    "storyteller": "#e8c76a",
+    "ghost": "#cfe6ee",
+    "stroke": "#0b0812"
+   },
+   "talking": {
+    "COLOR_TALK": "#ffe7a3",
+    "COLOR_SELF": "#ff8f8a"
+   },
+   "bubble": {
+    "panel": "#211f2c",
+    "edge": "#8a7448",
+    "hi": "#343042",
+    "shadow": "#0b0812",
+    "text": "#e4d8ba"
+   },
+   "tokens": {
+    "TOKEN_TEX": 22,
+    "TOKEN_MIN": 11,
+    "TOKEN_MAX": 20,
+    "maxIcons": 4,
+    "overflow": "+N (≤ +99)"
+   },
+   "houseNames": {
+    "mine": "#f2cf7a",
+    "ghost": "#b9d3dc",
+    "other": "#e4d8ba",
+    "nightAlpha": 0.8
+   }
+  },
+  "newStyle": {
+   "label_": "v2 TownScene Avatar.label (Phaser Text, Alegreya Sans 700)",
+   "talk_": "v2 fx/talking.ts 3-bar glyph (7x7 at 0.85 alpha) → 9x9 plate; talk_self_* rose on air, talk_self_idle, talk_muted (new)",
+   "talk_ring_": "new: ground voice ripple for renderers without the outline pass",
+   "bubble_": "v2 social/bubbles.ts drawBox (graphics) → kit bubble frame + stepped tail",
+   "you_": "v2 gameplay own-seat \"You\" marker; you_ring_* + you_chevron new (\"you are here\")",
+   "guide_": "v2 gameplay hints arrow() (gold triangle, any angle) → 8 authored ground-decal headings + marching trail dots",
+   "door_": "v2 bedtime door ellipse + bobbing chevron",
+   "compass_": "v2 ui/common/help.css .ct-compass pill",
+   "callout_": "v2 gameplay/houseNames.ts label + tail",
+   "token_": "v2 gameplay/boardTokens.ts canvas tokens + \"+N\"",
+   "offscreen_": "new: offscreen-player edge discs with an attached tail pointer (docs/UI.md row 21)",
+   "label_ghost_wisp": "new: wisp glyph left of a ghost name (variant not colour-only)"
+  },
+  "tokenSet": "night",
+  "paletteAudit": {
+   "framesChecked": 77,
+   "offPalette": {},
+   "ok": true
+  },
+  "bakedBy": "pixel3d tools/uibake",
+  "tod": "noon"
+ }
+}

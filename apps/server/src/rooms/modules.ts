@@ -24,6 +24,7 @@ import type {
   StSelfTarget,
   StSettings,
   StorytellerGameView,
+  TownLayout,
   WorldSnapshot,
 } from '@ct/protocol';
 
@@ -65,6 +66,11 @@ export interface RoomHost {
   /** 'development' | 'production' — used for LiveKit room namespacing. */
   readonly env: string;
   readonly log: Logger;
+  /**
+   * (v3) The lobby's town layout, fixed at creation from its world ('v2' classic | 'v3' Hollowmere,
+   * apps/server/src/rooms/worldLayout.ts). Modules read it when they are created.
+   */
+  layout(): TownLayout;
   now(): number;
   /** The script this lobby runs (LobbySettings.script); selects the character pool. */
   script(): ScriptId;
@@ -77,6 +83,12 @@ export interface RoomHost {
   emit(event: RoomEvent): void;
   /** Ask the room to re-send per-client game views at the end of this tick. */
   markGameDirty(): void;
+  /**
+   * (v3 perf) Re-project only this member's game view at the end of this tick (re-sent if it changed), for a
+   * change that only that member's view can show (the Storyteller's stage). Optional: callers fall back to
+   * markGameDirty().
+   */
+  markGameDirtyFor?(pid: string): void;
   /** Ask the room to re-send the lobby view (and directory summary) at the end of this tick. */
   markLobbyDirty(): void;
   readonly game: GameModule;
@@ -133,6 +145,12 @@ export interface WorldModule {
   positionOf(pid: string): { x: number; y: number } | null;
   /** Visibility-filtered snapshot for this viewer (night: own home only; ST sees all). */
   snapshotFor(pid: string): WorldSnapshot;
+  /**
+   * (v3 perf) For one synchronous snapshot fan-out: a snapshotFor twin whose viewers share the viewer-independent
+   * work (rounded entity states, door locks, door tags). Each call still returns exactly snapshotFor(pid); the
+   * returned function must not outlive the fan-out (state changes are not seen). Optional (test doubles).
+   */
+  snapshotFanout?(): (pid: string) => WorldSnapshot;
   /** Storyteller fast-travel / forced relocation (e.g. 'visit_home'). */
   sendHome(pid: string, reason: 'bedtime' | 'night'): void;
   teleportToBuilding(pid: string, buildingId: string, reason: 'storyteller' | 'door'): void;

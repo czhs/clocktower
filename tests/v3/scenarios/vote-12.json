@@ -1,0 +1,294 @@
+{
+ "name": "vote-12",
+ "world": "v3",
+ "viewport": [
+  960,
+  540
+ ],
+ "tier": "low",
+ "members": [
+  {
+   "pid": "me",
+   "name": "You",
+   "cast": "frog",
+   "seat": 0
+  },
+  {
+   "pid": "p1",
+   "name": "Agnes",
+   "cast": "mushroom",
+   "seat": 1
+  },
+  {
+   "pid": "p2",
+   "name": "Bart",
+   "cast": "fox",
+   "seat": 2
+  },
+  {
+   "pid": "p3",
+   "name": "Cordelia",
+   "cast": "owl",
+   "seat": 3
+  },
+  {
+   "pid": "p4",
+   "name": "Desmond",
+   "cast": "crow",
+   "seat": 4
+  },
+  {
+   "pid": "p5",
+   "name": "Eloise",
+   "cast": "nicksong",
+   "seat": 5
+  },
+  {
+   "pid": "p6",
+   "name": "Fennick",
+   "cast": "brianbi",
+   "seat": 6
+  },
+  {
+   "pid": "p7",
+   "name": "Griselda",
+   "cast": "polly",
+   "seat": 7
+  },
+  {
+   "pid": "p8",
+   "name": "Hob",
+   "cast": "moth",
+   "seat": 8
+  },
+  {
+   "pid": "p9",
+   "name": "Ivy",
+   "cast": "goat",
+   "seat": 9
+  },
+  {
+   "pid": "p10",
+   "name": "Jasper",
+   "cast": "skeleton-chef",
+   "seat": 10
+  },
+  {
+   "pid": "p11",
+   "name": "Kit",
+   "cast": "rabbit",
+   "seat": 11
+  },
+  {
+   "pid": "st",
+   "name": "The Storyteller",
+   "cast": "storyteller",
+   "role": "storyteller",
+   "seat": null
+  }
+ ],
+ "spawn": {
+  "x": 360.0,
+  "y": 416.0
+ },
+ "steps": [
+  {
+   "at": 0,
+   "snapshot": {
+    "entities": [
+     {
+      "id": "p1",
+      "x": 400.7,
+      "y": 407.4,
+      "location": "outdoors",
+      "facing": "up"
+     },
+     {
+      "id": "p2",
+      "x": 434.3,
+      "y": 382.9,
+      "location": "outdoors",
+      "facing": "up"
+     },
+     {
+      "id": "p3",
+      "x": 459.5,
+      "y": 305.5,
+      "location": "outdoors",
+      "facing": "up"
+     },
+     {
+      "id": "p4",
+      "x": 446.6,
+      "y": 266.0,
+      "location": "outdoors",
+      "facing": "up"
+     },
+     {
+      "id": "p5",
+      "x": 418.8,
+      "y": 235.1,
+      "location": "outdoors",
+      "facing": "up"
+     },
+     {
+      "id": "p6",
+      "x": 339.2,
+      "y": 218.2,
+      "location": "outdoors",
+      "facing": "up"
+     },
+     {
+      "id": "p7",
+      "x": 301.2,
+      "y": 235.1,
+      "location": "outdoors",
+      "facing": "up"
+     },
+     {
+      "id": "p8",
+      "x": 273.4,
+      "y": 266.0,
+      "location": "outdoors",
+      "facing": "up"
+     },
+     {
+      "id": "p9",
+      "x": 260.5,
+      "y": 305.5,
+      "location": "outdoors",
+      "facing": "up"
+     },
+     {
+      "id": "p10",
+      "x": 264.9,
+      "y": 346.9,
+      "location": "outdoors",
+      "facing": "up"
+     },
+     {
+      "id": "p11",
+      "x": 319.3,
+      "y": 407.4,
+      "location": "outdoors",
+      "facing": "up"
+     },
+     {
+      "id": "st",
+      "x": 360,
+      "y": 376,
+      "location": "outdoors"
+     }
+    ]
+   }
+  },
+  {
+   "at": 0,
+   "game": {
+    "phase": "day",
+    "dayNumber": 2,
+    "nominationsOpen": true
+   }
+  },
+  {
+   "at": 1500,
+   "game": {
+    "phase": "day",
+    "dayNumber": 2,
+    "nominationsOpen": true,
+    "nomination": {
+     "nominator": 3,
+     "nominee": 7,
+     "status": "voting",
+     "votes": {},
+     "current": 8,
+     "hands": [
+      8,
+      10,
+      11
+     ],
+     "stepMs": 1500
+    }
+   }
+  },
+  {
+   "at": 3000,
+   "game": {
+    "phase": "day",
+    "dayNumber": 2,
+    "nominationsOpen": true,
+    "nomination": {
+     "nominator": 3,
+     "nominee": 7,
+     "status": "voting",
+     "votes": {
+      "8": true
+     },
+     "current": 9,
+     "hands": [
+      10,
+      11
+     ],
+     "stepMs": 1500
+    }
+   }
+  },
+  {
+   "at": 4500,
+   "game": {
+    "phase": "day",
+    "dayNumber": 2,
+    "nominationsOpen": true,
+    "nomination": {
+     "nominator": 3,
+     "nominee": 7,
+     "status": "voting",
+     "votes": {
+      "8": true,
+      "9": false
+     },
+     "current": 10,
+     "hands": [
+      10,
+      11
+     ],
+     "stepMs": 1500
+    }
+   }
+  },
+  {
+   "at": 6000,
+   "game": {
+    "phase": "day",
+    "dayNumber": 2,
+    "nominationsOpen": true,
+    "nomination": {
+     "nominator": 3,
+     "nominee": 7,
+     "status": "voting",
+     "votes": {
+      "8": true,
+      "9": false,
+      "10": true
+     },
+     "current": 11,
+     "hands": [
+      11
+     ],
+     "stepMs": 1500
+    }
+   }
+  }
+ ],
+ "shots": [
+  {
+   "at": 2000,
+   "name": "vote-12-open"
+  },
+  {
+   "at": 6500,
+   "name": "vote-12-mid"
+  }
+ ],
+ "duration": 8000
+}

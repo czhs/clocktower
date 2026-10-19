@@ -1,0 +1,110 @@
+{
+ "name": "mannequin",
+ "image": "mannequin-iso.png",
+ "cell": [
+  36,
+  55
+ ],
+ "anchor": [
+  18,
+  47
+ ],
+ "ppm": 36.0,
+ "yaw": 45.0,
+ "pitch": 30.0,
+ "tod": "noon",
+ "dirs": [
+  "S",
+  "SE",
+  "E",
+  "NE",
+  "N",
+  "NW",
+  "W",
+  "SW"
+ ],
+ "fps": 30,
+ "clips": {
+  "idle": {
+   "fps": 30,
+   "loop": true,
+   "frames": 4,
+   "holds": [
+    6,
+    36,
+    6,
+    36
+   ],
+   "row": 0,
+   "period": 84,
+   "grid_frames": [
+    36,
+    42,
+    78,
+    84
+   ],
+   "frames_by": "pose ids"
+  },
+  "walk": {
+   "fps": 30,
+   "loop": true,
+   "frames": 8,
+   "holds": [
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2
+   ],
+   "row": 8,
+   "period": 16,
+   "grid_frames": [
+    2,
+    4,
+    6,
+    8,
+    10,
+    12,
+    14,
+    16
+   ],
+   "frames_by": "pose ids"
+  },
+  "run": {
+   "fps": 30,
+   "loop": true,
+   "frames": 5,
+   "holds": [
+    2,
+    2,
+    1,
+    2,
+    2
+   ],
+   "row": 16,
+   "period": 9,
+   "grid_frames": [
+    1,
+    3,
+    5,
+    6,
+    8
+   ],
+   "frames_by": "pose ids"
+  }
+ },
+ "runtime": "character",
+ "shadow": {
+  "image": "mannequin-iso-shadow.png",
+  "anchor": [
+   18,
+   47
+  ],
+  "rx": 8.06,
+  "ry": 4.03
+ },
+ "warnings": []
+}

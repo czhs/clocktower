@@ -1,0 +1,852 @@
+{
+ "image": "cast-portraits.png",
+ "frameWidth": 32,
+ "frameHeight": 40,
+ "dir": "down",
+ "sheets": {
+  "frog": {
+   "x": 1,
+   "y": 1,
+   "frames": 5
+  },
+  "mushroom": {
+   "x": 162,
+   "y": 1,
+   "frames": 5
+  },
+  "fox": {
+   "x": 323,
+   "y": 1,
+   "frames": 5
+  },
+  "owl": {
+   "x": 484,
+   "y": 1,
+   "frames": 5
+  },
+  "crow": {
+   "x": 1,
+   "y": 42,
+   "frames": 5
+  },
+  "moth": {
+   "x": 162,
+   "y": 42,
+   "frames": 5
+  },
+  "goat": {
+   "x": 323,
+   "y": 42,
+   "frames": 5
+  },
+  "skeleton-chef": {
+   "x": 484,
+   "y": 42,
+   "frames": 5
+  },
+  "rabbit": {
+   "x": 1,
+   "y": 83,
+   "frames": 5
+  },
+  "mole": {
+   "x": 162,
+   "y": 83,
+   "frames": 5
+  },
+  "snail": {
+   "x": 323,
+   "y": 83,
+   "frames": 5
+  },
+  "toad": {
+   "x": 484,
+   "y": 83,
+   "frames": 5
+  },
+  "green-hood": {
+   "x": 1,
+   "y": 124,
+   "frames": 5
+  },
+  "honk": {
+   "x": 162,
+   "y": 124,
+   "frames": 5
+  },
+  "chonk": {
+   "x": 323,
+   "y": 124,
+   "frames": 5
+  },
+  "polly": {
+   "x": 484,
+   "y": 124,
+   "frames": 5
+  },
+  "clarabelle": {
+   "x": 1,
+   "y": 165,
+   "frames": 5
+  },
+  "requin": {
+   "x": 162,
+   "y": 165,
+   "frames": 5
+  },
+  "progress": {
+   "x": 323,
+   "y": 165,
+   "frames": 5
+  },
+  "preservation": {
+   "x": 484,
+   "y": 165,
+   "frames": 5
+  },
+  "opal": {
+   "x": 1,
+   "y": 206,
+   "frames": 5
+  },
+  "cilantro": {
+   "x": 162,
+   "y": 206,
+   "frames": 5
+  },
+  "mincut": {
+   "x": 323,
+   "y": 206,
+   "frames": 5
+  },
+  "maxflow": {
+   "x": 484,
+   "y": 206,
+   "frames": 5
+  },
+  "theo-rem": {
+   "x": 1,
+   "y": 247,
+   "frames": 5
+  },
+  "greenting": {
+   "x": 162,
+   "y": 247,
+   "frames": 5
+  },
+  "storyteller": {
+   "x": 323,
+   "y": 247,
+   "frames": 1
+  },
+  "npc-sweeper": {
+   "x": 356,
+   "y": 247,
+   "frames": 1
+  },
+  "npc-vendor": {
+   "x": 389,
+   "y": 247,
+   "frames": 1
+  },
+  "npc-elder": {
+   "x": 422,
+   "y": 247,
+   "frames": 1
+  },
+  "npc-porter": {
+   "x": 455,
+   "y": 247,
+   "frames": 1
+  },
+  "frog/ghost": {
+   "x": 488,
+   "y": 247,
+   "frames": 1
+  },
+  "frog/ghost-spent": {
+   "x": 521,
+   "y": 247,
+   "frames": 1
+  },
+  "mushroom/ghost": {
+   "x": 554,
+   "y": 247,
+   "frames": 1
+  },
+  "mushroom/ghost-spent": {
+   "x": 587,
+   "y": 247,
+   "frames": 1
+  },
+  "fox/ghost": {
+   "x": 1,
+   "y": 288,
+   "frames": 1
+  },
+  "fox/ghost-spent": {
+   "x": 34,
+   "y": 288,
+   "frames": 1
+  },
+  "owl/ghost": {
+   "x": 67,
+   "y": 288,
+   "frames": 1
+  },
+  "owl/ghost-spent": {
+   "x": 100,
+   "y": 288,
+   "frames": 1
+  },
+  "crow/ghost": {
+   "x": 133,
+   "y": 288,
+   "frames": 1
+  },
+  "crow/ghost-spent": {
+   "x": 166,
+   "y": 288,
+   "frames": 1
+  },
+  "moth/ghost": {
+   "x": 199,
+   "y": 288,
+   "frames": 1
+  },
+  "moth/ghost-spent": {
+   "x": 232,
+   "y": 288,
+   "frames": 1
+  },
+  "goat/ghost": {
+   "x": 265,
+   "y": 288,
+   "frames": 1
+  },
+  "goat/ghost-spent": {
+   "x": 298,
+   "y": 288,
+   "frames": 1
+  },
+  "skeleton-chef/ghost": {
+   "x": 331,
+   "y": 288,
+   "frames": 1
+  },
+  "skeleton-chef/ghost-spent": {
+   "x": 364,
+   "y": 288,
+   "frames": 1
+  },
+  "rabbit/ghost": {
+   "x": 397,
+   "y": 288,
+   "frames": 1
+  },
+  "rabbit/ghost-spent": {
+   "x": 430,
+   "y": 288,
+   "frames": 1
+  },
+  "mole/ghost": {
+   "x": 463,
+   "y": 288,
+   "frames": 1
+  },
+  "mole/ghost-spent": {
+   "x": 496,
+   "y": 288,
+   "frames": 1
+  },
+  "snail/ghost": {
+   "x": 529,
+   "y": 288,
+   "frames": 1
+  },
+  "snail/ghost-spent": {
+   "x": 562,
+   "y": 288,
+   "frames": 1
+  },
+  "toad/ghost": {
+   "x": 595,
+   "y": 288,
+   "frames": 1
+  },
+  "toad/ghost-spent": {
+   "x": 1,
+   "y": 329,
+   "frames": 1
+  },
+  "green-hood/ghost": {
+   "x": 34,
+   "y": 329,
+   "frames": 1
+  },
+  "green-hood/ghost-spent": {
+   "x": 67,
+   "y": 329,
+   "frames": 1
+  },
+  "honk/ghost": {
+   "x": 100,
+   "y": 329,
+   "frames": 1
+  },
+  "honk/ghost-spent": {
+   "x": 133,
+   "y": 329,
+   "frames": 1
+  },
+  "chonk/ghost": {
+   "x": 166,
+   "y": 329,
+   "frames": 1
+  },
+  "chonk/ghost-spent": {
+   "x": 199,
+   "y": 329,
+   "frames": 1
+  },
+  "polly/ghost": {
+   "x": 232,
+   "y": 329,
+   "frames": 1
+  },
+  "polly/ghost-spent": {
+   "x": 265,
+   "y": 329,
+   "frames": 1
+  },
+  "clarabelle/ghost": {
+   "x": 298,
+   "y": 329,
+   "frames": 1
+  },
+  "clarabelle/ghost-spent": {
+   "x": 331,
+   "y": 329,
+   "frames": 1
+  },
+  "requin/ghost": {
+   "x": 364,
+   "y": 329,
+   "frames": 1
+  },
+  "requin/ghost-spent": {
+   "x": 397,
+   "y": 329,
+   "frames": 1
+  },
+  "progress/ghost": {
+   "x": 430,
+   "y": 329,
+   "frames": 1
+  },
+  "progress/ghost-spent": {
+   "x": 463,
+   "y": 329,
+   "frames": 1
+  },
+  "preservation/ghost": {
+   "x": 496,
+   "y": 329,
+   "frames": 1
+  },
+  "preservation/ghost-spent": {
+   "x": 529,
+   "y": 329,
+   "frames": 1
+  },
+  "opal/ghost": {
+   "x": 562,
+   "y": 329,
+   "frames": 1
+  },
+  "opal/ghost-spent": {
+   "x": 595,
+   "y": 329,
+   "frames": 1
+  },
+  "cilantro/ghost": {
+   "x": 1,
+   "y": 370,
+   "frames": 1
+  },
+  "cilantro/ghost-spent": {
+   "x": 34,
+   "y": 370,
+   "frames": 1
+  },
+  "mincut/ghost": {
+   "x": 67,
+   "y": 370,
+   "frames": 1
+  },
+  "mincut/ghost-spent": {
+   "x": 100,
+   "y": 370,
+   "frames": 1
+  },
+  "maxflow/ghost": {
+   "x": 133,
+   "y": 370,
+   "frames": 1
+  },
+  "maxflow/ghost-spent": {
+   "x": 166,
+   "y": 370,
+   "frames": 1
+  },
+  "theo-rem/ghost": {
+   "x": 199,
+   "y": 370,
+   "frames": 1
+  },
+  "theo-rem/ghost-spent": {
+   "x": 232,
+   "y": 370,
+   "frames": 1
+  },
+  "greenting/ghost": {
+   "x": 265,
+   "y": 370,
+   "frames": 1
+  },
+  "greenting/ghost-spent": {
+   "x": 298,
+   "y": 370,
+   "frames": 1
+  },
+  "frog/dead": {
+   "x": 331,
+   "y": 370,
+   "frames": 1
+  },
+  "mushroom/dead": {
+   "x": 364,
+   "y": 370,
+   "frames": 1
+  },
+  "fox/dead": {
+   "x": 397,
+   "y": 370,
+   "frames": 1
+  },
+  "owl/dead": {
+   "x": 430,
+   "y": 370,
+   "frames": 1
+  },
+  "crow/dead": {
+   "x": 463,
+   "y": 370,
+   "frames": 1
+  },
+  "moth/dead": {
+   "x": 496,
+   "y": 370,
+   "frames": 1
+  },
+  "goat/dead": {
+   "x": 529,
+   "y": 370,
+   "frames": 1
+  },
+  "skeleton-chef/dead": {
+   "x": 562,
+   "y": 370,
+   "frames": 1
+  },
+  "rabbit/dead": {
+   "x": 595,
+   "y": 370,
+   "frames": 1
+  },
+  "mole/dead": {
+   "x": 1,
+   "y": 411,
+   "frames": 1
+  },
+  "snail/dead": {
+   "x": 34,
+   "y": 411,
+   "frames": 1
+  },
+  "toad/dead": {
+   "x": 67,
+   "y": 411,
+   "frames": 1
+  },
+  "green-hood/dead": {
+   "x": 100,
+   "y": 411,
+   "frames": 1
+  },
+  "honk/dead": {
+   "x": 133,
+   "y": 411,
+   "frames": 1
+  },
+  "chonk/dead": {
+   "x": 166,
+   "y": 411,
+   "frames": 1
+  },
+  "polly/dead": {
+   "x": 199,
+   "y": 411,
+   "frames": 1
+  },
+  "clarabelle/dead": {
+   "x": 232,
+   "y": 411,
+   "frames": 1
+  },
+  "requin/dead": {
+   "x": 265,
+   "y": 411,
+   "frames": 1
+  },
+  "progress/dead": {
+   "x": 298,
+   "y": 411,
+   "frames": 1
+  },
+  "preservation/dead": {
+   "x": 331,
+   "y": 411,
+   "frames": 1
+  },
+  "opal/dead": {
+   "x": 364,
+   "y": 411,
+   "frames": 1
+  },
+  "cilantro/dead": {
+   "x": 397,
+   "y": 411,
+   "frames": 1
+  },
+  "mincut/dead": {
+   "x": 430,
+   "y": 411,
+   "frames": 1
+  },
+  "maxflow/dead": {
+   "x": 463,
+   "y": 411,
+   "frames": 1
+  },
+  "theo-rem/dead": {
+   "x": 496,
+   "y": 411,
+   "frames": 1
+  },
+  "greenting/dead": {
+   "x": 529,
+   "y": 411,
+   "frames": 1
+  }
+ },
+ "meta": {
+  "overflow": {
+   "chonk": {
+    "l": 7,
+    "t": 0,
+    "r": 7
+   },
+   "cilantro": {
+    "l": 0,
+    "t": 16,
+    "r": 0
+   },
+   "maxflow": {
+    "l": 2,
+    "t": 0,
+    "r": 1
+   },
+   "storyteller": {
+    "l": 2,
+    "t": 0,
+    "r": 2
+   },
+   "chonk/ghost": {
+    "l": 3,
+    "t": 0,
+    "r": 3
+   },
+   "maxflow/ghost": {
+    "l": 1,
+    "t": 0,
+    "r": 0
+   }
+  },
+  "shifts": {
+   "fox": [
+    1,
+    0
+   ],
+   "mole": [
+    3,
+    0
+   ],
+   "requin": [
+    -1,
+    0
+   ],
+   "mincut": [
+    -1,
+    0
+   ],
+   "maxflow": [
+    -5,
+    0
+   ],
+   "storyteller": [
+    -5,
+    0
+   ],
+   "frog/ghost": [
+    1,
+    12
+   ],
+   "frog/ghost-spent": [
+    0,
+    12
+   ],
+   "mushroom/ghost": [
+    0,
+    6
+   ],
+   "mushroom/ghost-spent": [
+    0,
+    4
+   ],
+   "fox/ghost": [
+    1,
+    1
+   ],
+   "fox/ghost-spent": [
+    1,
+    -3
+   ],
+   "owl/ghost": [
+    0,
+    1
+   ],
+   "crow/ghost": [
+    0,
+    3
+   ],
+   "crow/ghost-spent": [
+    0,
+    3
+   ],
+   "moth/ghost": [
+    0,
+    2
+   ],
+   "moth/ghost-spent": [
+    0,
+    1
+   ],
+   "goat/ghost": [
+    0,
+    8
+   ],
+   "goat/ghost-spent": [
+    0,
+    6
+   ],
+   "skeleton-chef/ghost": [
+    0,
+    5
+   ],
+   "skeleton-chef/ghost-spent": [
+    0,
+    2
+   ],
+   "rabbit/ghost": [
+    0,
+    4
+   ],
+   "rabbit/ghost-spent": [
+    0,
+    4
+   ],
+   "mole/ghost": [
+    2,
+    4
+   ],
+   "mole/ghost-spent": [
+    2,
+    2
+   ],
+   "snail/ghost": [
+    0,
+    -2
+   ],
+   "snail/ghost-spent": [
+    0,
+    -2
+   ],
+   "toad/ghost": [
+    0,
+    10
+   ],
+   "toad/ghost-spent": [
+    0,
+    8
+   ],
+   "green-hood/ghost": [
+    0,
+    3
+   ],
+   "green-hood/ghost-spent": [
+    0,
+    2
+   ],
+   "honk/ghost": [
+    0,
+    4
+   ],
+   "honk/ghost-spent": [
+    0,
+    4
+   ],
+   "chonk/ghost": [
+    0,
+    6
+   ],
+   "chonk/ghost-spent": [
+    0,
+    2
+   ],
+   "polly/ghost": [
+    0,
+    3
+   ],
+   "polly/ghost-spent": [
+    0,
+    2
+   ],
+   "clarabelle/ghost": [
+    0,
+    4
+   ],
+   "clarabelle/ghost-spent": [
+    0,
+    3
+   ],
+   "requin/ghost": [
+    -2,
+    5
+   ],
+   "requin/ghost-spent": [
+    0,
+    2
+   ],
+   "progress/ghost": [
+    0,
+    4
+   ],
+   "progress/ghost-spent": [
+    0,
+    2
+   ],
+   "preservation/ghost": [
+    0,
+    4
+   ],
+   "preservation/ghost-spent": [
+    0,
+    2
+   ],
+   "opal/ghost": [
+    0,
+    4
+   ],
+   "opal/ghost-spent": [
+    0,
+    3
+   ],
+   "cilantro/ghost": [
+    0,
+    7
+   ],
+   "cilantro/ghost-spent": [
+    0,
+    5
+   ],
+   "mincut/ghost": [
+    0,
+    4
+   ],
+   "mincut/ghost-spent": [
+    0,
+    3
+   ],
+   "maxflow/ghost": [
+    -4,
+    6
+   ],
+   "maxflow/ghost-spent": [
+    -3,
+    3
+   ],
+   "theo-rem/ghost": [
+    0,
+    4
+   ],
+   "theo-rem/ghost-spent": [
+    0,
+    3
+   ],
+   "greenting/ghost": [
+    0,
+    3
+   ],
+   "greenting/ghost-spent": [
+    0,
+    3
+   ],
+   "mole/dead": [
+    2,
+    0
+   ],
+   "maxflow/dead": [
+    -1,
+    0
+   ]
+  },
+  "bakedBy": "pixel3d tools/uibake",
+  "tod": "noon",
+  "anchor": {
+   "x": 16,
+   "y": 39,
+   "note": "feet: pixel-edge x 16, ground under row 38 (v2 cells)"
+  },
+  "frames": [
+   "idle",
+   "walk1",
+   "walk2",
+   "walk3",
+   "walk4"
+  ],
+  "walkFps": 15,
+  "walkNote": "one game-speed cycle (CAST_PORTING §8): 4 drawings, each held 2 grid frames (15 fps). The v2 consumer (apps/client/src/ui/common/castPortrait.ts) ignores this and steps WALK [1,2,3,4] every 140 ms (7.1 fps) = this cycle at half speed: port it to 67 ms (or read walkFps). Drawn in place facing down (no twist/roll), feet on the idle ground row.",
+  "walkStepMsV2": 140,
+  "walkStepMs": 67,
+  "skipped": [
+   "nicksong",
+   "brianbi"
+  ],
+  "newStyle": {
+   "<id>/dead": "players: idle portrait on the warm memorial ramp (parchment stone); 1 frame",
+   "ghostFamily": "every <id>/ghost on one 5-step ghost ramp + one 2D gold halo 1 px above the head; <id>/ghost-spent on the spent ramp, no halo; solid bottom on row 36 (hover 2 px)",
+   "render": "pixel3d characters/*, ortho yaw 0 pitch 30, 26 texels/m, noon key light from the upper left, no outline (FLAG_CHAR inner lines only) + 1-px own-colour rim line added in 2D"
+  }
+ }
+}

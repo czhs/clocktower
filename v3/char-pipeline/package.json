@@ -1,0 +1,10 @@
+{
+  "name": "charkit",
+  "private": true,
+  "type": "module",
+  "description": "Character pixel-animation kit: author t3ssel8r-style 3D pixel-art characters in code, render and check them headless (three.js + Playwright)",
+  "dependencies": {
+    "three": "0.170.0",
+    "playwright": "1.63.0"
+  }
+}

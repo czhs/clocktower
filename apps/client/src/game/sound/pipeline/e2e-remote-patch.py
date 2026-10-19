@@ -9,6 +9,6 @@ s = s.replace("      game?.destroy();\n", "      game?.destroy();\n      detachS
 assert s.count('attachSound') == 2 and 'detachSound();' in s, 'patch failed'
 open(p, 'w').write(s)
 c = 'tests/e2e/playwright.config.ts'
-t = open(c).read().replace('const PORT = 3398;', 'const PORT = 3391;')
+t = open(c).read().replace('process.env.E2E_PORT ?? 3398', 'process.env.E2E_PORT ?? 3391')
 open(c, 'w').write(t)
 print('patched')
