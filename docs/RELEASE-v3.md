@@ -1,6 +1,6 @@
 # Clocktower Town v3.3
 
-Status: **released 2026-10-18; deploy status in docs/test-results.md "v3.3 deploy"** (tag `v3.3` on `v3-game`). Gate and deploy: docs/test-results.md "v3.3 release gate" /
+Status: **on prod since 2026-10-18 18:26 PDT** (https://clocktower.chrisshi.com, tag `v3.3` = `72aba16` on `v3-game`). Gate and deploy: docs/test-results.md "v3.3 release gate" /
 "v3.3 deploy". Contract and decision log: docs/v3/INTEGRATION.md §11 "v3.3". Numbers: docs/perf-v3/{laptop,gpu,bake}.md.
 
 v3.3 is a perf release for laptops with integrated GPUs, measured on a real one (Intel Arc iGPU, Mesa, Chrome 143;

@@ -215,7 +215,7 @@ v2; v3.0 is on the dev service, see "v3 handoff" below.)
 ### v3 handoff (2026-10-18 night, after the v3.3 release — RESTART FROM HERE)
 
 - **v3.3 = the commit "v3.3: release gate + docs" on `v3-game`, tag `v3.3`; GitHub `main` = that commit.
-  Deploy (dev → smoke → prod, pre-approved): docs/test-results.md "v3.3 deploy"** Rollback: `scripts/deploy-hshi-u1.sh prod ceab1ce` (v3.2). Release note: docs/RELEASE-v3.md "v3.3".
+  PROD runs v3.3 (`72aba16`) since 2026-10-18 18:26 PDT** (pre-approved beta deploy: dev + 6-bot GPU smoke with 0 page errors, no prod lobby in the 30 min before, manual backup, public `/`, `/v2/`, `/v3-art-demo/` 200, journals clean; docs/test-results.md "v3.3 deploy"). Rollback: `scripts/deploy-hshi-u1.sh prod ceab1ce` (v3.2). Release note: docs/RELEASE-v3.md "v3.3".
   Gate: docs/test-results.md "v3.3 release gate".
 - Contents: `v33-gpu` merged (three r170 BatchedMesh fix + material twins in `world/merge.ts`, smart river reflection,
   off-screen water passes skipped); **static merge default OFF** on every tier (`ct.debug.v3merge=1` = on);

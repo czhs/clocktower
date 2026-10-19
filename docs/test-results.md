@@ -19,6 +19,18 @@ default off, GPU-headroom promotion, tree cache default on with the LRU cap).
 | dev smoke on the host GPU (scratch spec `test-results/smoke/dev-smoke.spec.ts` in the sandbox, not in git; `flock browser.lock`, nice 19; 6 protocol bots + a 1920×1080 page + a 1440×900 DPR-2 page; waiting room → start → day → seats → nomination → vote frame) | **1/1 pass (24.6 s)**: page errors [] / console errors [] on both pages; no TownGame / Phaser request; 89 br + 4 identity `/assets` responses per page; both pages tier high (RTX 3060, no probe); `merge: null` (off); tree cache `misses 280, stored true, bytes 21.4-21.9 MB, recordMs 21, error null`; stills `tests/v3/shots/v3.3/{vote-1440x900-dpr2,square-1920x1080}.png` (gitignored) |
 | laptop before / after (helper agent; scratch drivers `scratchpad/laptop` = copy of the laptop-perf HOWTO drivers + `measure2.mjs` / `run2.sh` / `summarize2.mjs`; host sandboxes `v33-rel-v32` (ceab1ce) and `v33-rel-v33` (978263a), server on 3453 via SSH tunnels; tp64 on AC, `gpu.lock` held by chrome.sh, ANGLE GL-EGL): `./run.sh 9241 nvidia glegl v32-nvidia=rel-nvidia.json`; `./run2.sh 9241 intel glegl v32-intel=rel-intel.json@v33-rel-v32 v33-intel=rel-intel-v33.json@v33-rel-v33`; `./run2.sh 9241 nvidia glegl v33-nvidia=rel-nvidia.json@v33-rel-v33` | first `./run.sh 9241 intel glegl v32-intel=…` **failed** at warm reload 2: reloading 3 s after ready tripped the app's boot guard (Classic) — driver waits raised to 12 s, rerun ok. Results (RELEASE-v3.md "v3.3", laptop.md §8): iGPU auto v3.2 `low`→`high` at 2.2-4.8 s, vote 50.4 fps / GPU 15.1 ms; **v3.3 stays `low`** (`promotion declined (gpu-busy; gpu 8.0-10.2 ms …, integrated)` on every load), vote 59.7 fps / GPU 9.7 ms; warm ready 3.5-3.8 → 2.6-2.7 s; repeat join 3.4 → 2.43 s (279 hits); resize check 1280×720 / 1600×1000 / 1920×1200 / 1024×640: miss → stored → hits each, never > 2 records, no bake errors; NVIDIA auto = `high` from the first frame on both, vote 60 fps; no console errors |
 
+### v3.3 deploy (same day; the tagged commit `v3.3` = `72aba16`)
+
+| Command (from the orchestrator checkout unless noted) | Result |
+|---|---|
+| `scripts/secret-scan.sh`; `git push origin v3-game`; `git tag -a v3.3 72aba16`; `git push origin v3.3`; `git push origin v3-game:main` | scan clean (397316 lines); pre-push scan clean (4 commits); `68f5b94..72aba16`; new tag `v3.3`; main `de3a754..72aba16` (fast-forward) |
+| `scripts/deploy-hshi-u1.sh dev 72aba16`; `curl 127.0.0.1:3001/internal/version`; dev journal | exit 0; version 72aba16; 0 error / warn / fail lines |
+| dev smoke again on 72aba16 (same scratch spec, host GPU, 6 bots + 2 pages) | **1/1 pass (25.3 s)**: page errors [] / console errors []; no Phaser request; tier high on both pages, merge off, tree cache stored (280 misses, no error); stills re-taken (`tests/v3/shots/v3.3/`) |
+| prod pre-check: `journalctl -u clocktower-prod --since "30 min ago" -o cat` (18:25 PDT) | empty: no lobby / game in the last 30 min |
+| `sudo -n /usr/bin/systemctl start clocktower-backup-prod.service` | exit 0, Result=success |
+| `scripts/deploy-hshi-u1.sh prod 72aba16` | **exit 0 in 17 s** (18:26 PDT): prod → releases/72aba16, old release `689b3f6` pruned, 312 previous assets carried, healthy |
+| `curl 127.0.0.1:3000/internal/version` (host); public `https://clocktower.chrisshi.com/`, `/v2/`, `/v3-art-demo/`, `/healthz`; units; prod journal | version = 72aba16; 200 / 200 / 200 ("Hollowmere demo") / 200; prod, dev, tunnel active; 0 error / warn / fail / crit lines |
+
 ## 2026-10-18 — v3.2 release gate (`v32-release`, branch `v3-game`, the host, sandbox `v32-release`)
 
 Tree = v3.1 (`40ec348`) + merge of `v32-early` (`3e46778`; no textual conflicts) + release fix (entry chunk:
