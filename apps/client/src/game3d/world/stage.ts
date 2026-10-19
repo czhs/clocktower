@@ -39,6 +39,8 @@ import { createShadowCadence, shadowEveryFor } from './shadowCadence';
 import { dialFace, dialFaceKey, DIAL_STEPS, timerTick, towerTimer, type DialFace } from './towerClock';
 import { keepKey } from './hudKeep';
 import { chooseVoteFrame, keepOuts, voteFrameKey, type Box, type VoteFrame } from './voteFrame';
+import { prewarmSettled } from '../shaderCache';
+import { parallelEarly, parallelWarm, parallelWarmEnabled, type ParallelWarmResult, type WarmPipeline, type WarmRenderer } from './shaderWarm';
 
 export interface StageOptions {
   layout: TownLayout;
@@ -493,7 +495,26 @@ export async function createStage(host: EngineHost, o: StageOptions): Promise<St
     debug: () => stage.debug(),
   };
 
-  let warm: { town: [number, number]; room: number | null; programs: number } | null = null;
+  let warm: { town: [number, number]; room: number | null; programs: number; parallel: ParallelWarmResult | null } | null = null;
+  // (v3.5 shaders) parallel program issue (world/shaderWarm.ts): started once, awaited by warmUp
+  let parallelP: Promise<ParallelWarmResult | null> | null = null;
+  const startParallel = (): Promise<ParallelWarmResult | null> =>
+    (parallelP ??= !parallelWarmEnabled()
+      ? Promise.resolve(null)
+      : (async () => {
+          await prewarmSettled(); // a running shader prewarm first (shaderCache.ts): then these are cache hits
+          if (destroyed) return null;
+          engine.camera.update();
+          return parallelWarm(engine.renderer as unknown as WarmRenderer, engine.pipeline as unknown as WarmPipeline, engine.scene, engine.camera.cam, { live: () => !destroyed }).then((r) => {
+            (window as unknown as { __ctShaders?: unknown }).__ctShaders = r;
+            try {
+              performance.mark('ct3d:par-ready');
+            } catch {
+              /* no user timing */
+            }
+            return r;
+          });
+        })());
   const stage: Stage = {
     town,
     heightAt,
@@ -502,6 +523,10 @@ export async function createStage(host: EngineHost, o: StageOptions): Promise<St
     async warmUp(renderNow) {
       // the tower's countdown face once (kit solid + glass: the town's programs; this proves it), then the hands again
       towerFace?.show({ mode: 'running', stage: 'nominations', q: DIAL_STEPS / 2, flashOn: false, night: false }, 'warm');
+      // (v3.5) the first view's programs were issued at once (startParallel, at the end of createStage): the driver
+      // links them in parallel / off the main thread; wait for them here so the frames below do not block on links
+      const parallel = await startParallel();
+      if (destroyed) return;
       // two real frames (every updater runs: the facade's first look, the dais, the pool aim) ...
       renderNow(0);
       renderNow(1 / 60);
@@ -524,7 +549,7 @@ export async function createStage(host: EngineHost, o: StageOptions): Promise<St
         roomP = warmViews(engine, [{ target: it.camera.target, viewHeight: it.camera.viewHeight }])[1];
         it.group.removeFromParent();
       }
-      warm = { town: townP, room: roomP, programs: engine.renderer.info.programs?.length ?? 0 };
+      warm = { town: townP, room: roomP, programs: engine.renderer.info.programs?.length ?? 0, parallel };
       isReady = true;
       time.ready();
     },
@@ -606,5 +631,7 @@ export async function createStage(host: EngineHost, o: StageOptions): Promise<St
       gate.restore();
     },
   };
+  // (v3.5) issue the town's programs now: they compile while the caller builds the avatars (warmUp awaits them)
+  if (parallelEarly()) void startParallel();
   return stage;
 }

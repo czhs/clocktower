@@ -30,12 +30,41 @@ import { createOverlayLayer, type OverlayLayer } from './overlay';
 import { readPerfFlags } from './perf';
 import { decidePromotion, PromotionProbe, type PromoteDecision } from './promote';
 import { readGraphicsPref } from './select';
+import { prewarm, prewarmSettled, record, shaderCacheEnabled, type PrewarmResult, type ShaderRecorder } from './shaderCache';
 import { layoutProxies, type HouseProxy } from './input/pick';
 import { createEngineHost, type EngineHost } from './vendor/engineHost';
 import { lifeStats } from './vendor/town';
 import { hudKeepOuts } from './world/hudKeep';
 import { createStage, type Stage } from './world/stage';
 import type { Box } from './world/voteFrame';
+
+/** (v3.5) User-timing marks of the 3D boot (`ct3d:<name>`, read by perf runs; no-op where unsupported). */
+function perfMark(name: string): void {
+  try {
+    performance.mark(`ct3d:${name}`);
+  } catch {
+    /* no user timing */
+  }
+}
+
+/** (v3.5 shaders) when the recorded programs are written (ms after the first frame): early, then a fuller record. */
+const SHADER_SAVE_MS = [15_000, 90_000] as const;
+/**
+ * (v3.5 shaders) the build a shader record belongs to: this chunk's URL (content-hashed in production), so a deploy that
+ * changes any town code (vendor, patches, materials) never replays the previous build's sources.
+ */
+const SHADER_BUILD = (() => {
+  try {
+    return new URL(import.meta.url).pathname;
+  } catch {
+    return 'town3d';
+  }
+})();
+
+/** (v3.5 shaders) the home page (ui/common/townPrefetch.ts, once this chunk is prefetched): compile the last record early. */
+export function prewarmTownShaders(tier: string): Promise<PrewarmResult> {
+  return prewarm(tier, { build: SHADER_BUILD });
+}
 
 /** Extra layers in update order (after the stage, the avatars and the overlay). Empty; kept as an extension point. */
 export type LayerFactory = (svc: Layer3dServices) => Layer3d;
@@ -245,8 +274,23 @@ export function createTownGame3d(parent: HTMLElement, bridge: TownBridge3d, opts
   }
 
   const build = async (tier: Tier, ctl: BuildControl): Promise<void> => {
+    // (v3.5 shaders) compile last visit's programs of this tier in a hidden context while the town loads + builds
+    // (shaderCache.ts: a cold browser shader cache then hits during the warm-up), and record this visit's programs
+    const shCache = shaderCacheEnabled();
+    if (shCache) void prewarm(tier, { build: SHADER_BUILD, live: () => ctl.isCurrent() && !destroyed }).then((r) => ((window as unknown as { __ctShPrewarm?: unknown }).__ctShPrewarm = r));
+    perfMark('engine');
     const host = createEngineHost(parent, { tier, fpsLimit });
     const sc: Scene3d = { host, stage: null, avatars: null, overlay: null, layers: [], offs: [], running: false };
+    let shRec: ShaderRecorder | null = null;
+    if (shCache) {
+      try {
+        const rec = record(host.engine.renderer.getContext() as WebGL2RenderingContext, tier, SHADER_BUILD);
+        shRec = rec;
+        sc.offs.push(() => rec.stop());
+      } catch {
+        shRec = null;
+      }
+    }
     const cancelled = () => {
       if (ctl.isCurrent() && !destroyed) return false;
       disposeScene(sc);
@@ -274,8 +318,15 @@ export function createTownGame3d(parent: HTMLElement, bridge: TownBridge3d, opts
       // WP3 stage: town (strict) -> runtime opts -> boards / light gates / carried-light reserve -> time facade
       const g0 = bridge.conn.gameView.get();
       const phase0 = g0?.phase ?? (bridge.conn.lobbyView.get()?.lobby.phase === 'finished' ? 'finished' : 'waiting');
+      perfMark('stage');
       const st = await createStage(host, { layout, tier, initial: { phase: phase0, game: g0 }, driveInteriorCamera: false });
+      perfMark('stage-built');
       sc.stage = st;
+      if (cancelled()) return;
+      // (v3.5 shaders) a running prewarm keeps the browser's GPU thread busy: any GL call that waits for it (the avatars'
+      // first program read-back, the town's program issue) would freeze the page until it is done (3.9 s measured).
+      // Wait here instead, idle (the loading sheet animates); the town's programs are then cache hits.
+      await prewarmSettled();
       if (cancelled()) return;
       // WP2 avatars: after net/ (they read Scene3dState), before overlay/ (it reads their registry)
       // v3.4: sprite bakes (low tier) wait while a promotion to 'high' (rigs) may still come, at most SPRITE_GATE_MAX_MS
@@ -301,7 +352,16 @@ export function createTownGame3d(parent: HTMLElement, bridge: TownBridge3d, opts
       }
       if (cancelled()) return;
       // WP3 shader warm-up behind the loading state (two frames, every dais state, the whole town, one room; 'ready')
+      perfMark('warm');
       await st.warmUp((t) => host.renderNow(t));
+      perfMark('warm-done');
+      if (shRec) {
+        // save once the first minute's programs (avatars, the vote / night dais) are in; then stop recording
+        const rec = shRec;
+        const t1 = setTimeout(() => void rec.save(), SHADER_SAVE_MS[0]);
+        const t2 = setTimeout(() => void rec.save().finally(() => rec.stop()), SHADER_SAVE_MS[1]);
+        sc.offs.push(() => (clearTimeout(t1), clearTimeout(t2)));
+      }
       if (cancelled()) return;
       // the core reads this scene from now on: camera, picks (the drawn cottages + layout boxes for the rest, e.g. the
       // clock tower), room floors, the vote frame, __ctCamera.v3().ready

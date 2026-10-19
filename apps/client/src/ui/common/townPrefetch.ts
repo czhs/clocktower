@@ -53,5 +53,16 @@ export function warmRenderer(world: WorldId | undefined = appWorld()): void {
 /** The v3 app's home / landing page, when the browser is idle: prefetch the 3D town if this page would use it. */
 export function prefetchTown3dForHome(): void {
   if (appWorld() !== 'v3' || !prefetchAllowed() || classicHere('v3')) return;
-  void loadTown3d();
+  const town = loadTown3d();
+  // (v3.5 shaders) compile last visit's town programs in a hidden context, so a join after a browser shader-cache loss
+  // (browser / driver update, eviction) does not pay the iGPU's multi-second compile again (game3d/shaderCache.ts)
+  let tier: string;
+  try {
+    tier = chooseRendererHere('v3').tier;
+  } catch {
+    return;
+  }
+  void town
+    .then((m) => (m as { prewarmTownShaders?: (tier: string) => Promise<unknown> } | undefined)?.prewarmTownShaders?.(tier))
+    .catch(() => undefined);
 }
