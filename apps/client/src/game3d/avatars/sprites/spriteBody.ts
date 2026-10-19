@@ -263,7 +263,8 @@ export async function createSpriteBody(engine: unknown, specId: string, o: Sprit
 
   const body: AvatarBody = {
     kind: 'rig',
-    texture: `v3-sprite:${specId}`,
+    texture: `v3:${specId}`, // the §6.1 key (the e2e checks it); `sprite` tells a sprite from a rig
+    sprite: true,
     specId,
     get heightM() {
       return sheet.heightM;

@@ -437,7 +437,7 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
         e.body = r.body;
         e.tint = r.tint;
         // a rig of a real spec while sprites are on: upgraded once its sheet is baked (layer.update -> pumpUpgrades)
-        e.upgrade = sprites && r.body.kind === 'rig' && r.body.specId && !r.body.texture.startsWith('v3-sprite:') ? 0 : 3;
+        e.upgrade = sprites && r.body.kind === 'rig' && r.body.specId && !r.body.sprite ? 0 : 3;
         e.placed = null;
         e.appliedGhost = null;
         e.rim = '';
@@ -560,7 +560,7 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
       let want: string | null = null;
       for (const e of entries.values()) {
         if (e.upgrade === 1 || e.upgrade === 2) open = true;
-        else if (!want && e.body?.specId && e.body.texture.startsWith('v3-sprite:') && !M.hasKit(engine as object, e.body.specId)) want = e.body.specId;
+        else if (!want && e.body?.specId && e.body.sprite && !M.hasKit(engine as object, e.body.specId)) want = e.body.specId;
       }
       if (!open && want) {
         kitWarm = true;
@@ -911,7 +911,7 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
           let rigBytes = 0;
           for (const e of entries.values()) {
             if (!e.body) continue;
-            if (e.body.texture.startsWith('v3-sprite:')) spr++;
+            if (e.body.sprite) spr++;
             else if (e.body.kind === 'rig') {
               rigs++;
               rigBytes += geometryBytesOf(e.body.holder);

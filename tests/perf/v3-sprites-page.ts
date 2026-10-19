@@ -177,7 +177,11 @@ async function settle(cfg: { limitMs?: number } = {}): Promise<Json> {
     heapDeltaMiB: +((heap() - h0) / 1048576).toFixed(1),
     geometries: mem.geometries,
     textures: mem.textures,
-    kinds: list.reduce<Record<string, number>>((acc, e) => ((acc[String(e.texture).split(':')[0]!] = (acc[String(e.texture).split(':')[0]!] ?? 0) + 1), acc), {}),
+    kinds: list.reduce<Record<string, number>>((acc, e) => {
+      const k = (e.look as { sprite?: boolean } | null)?.sprite ? 'v3-sprite' : String(e.texture).split(':')[0]!;
+      acc[k] = (acc[k] ?? 0) + 1;
+      return acc;
+    }, {}),
     failed: list.filter((e) => e.failed).map((e) => e.cast),
     sprites: spr,
   };
@@ -299,8 +303,8 @@ function camKey(): string {
 function allOnKey(): boolean {
   const dbg = m!.layer!.debug!() as Record<string, (...a: unknown[]) => unknown>;
   const k = camKey();
-  const list = dbg.avatars3d!() as { look: { sheet?: string } | null; texture: string | null }[];
-  return list.every((e) => !String(e.texture).startsWith('v3-sprite:') || String(e.look?.sheet ?? '').endsWith(k));
+  const list = dbg.avatars3d!() as { look: { sprite?: boolean; sheet?: string } | null; texture: string | null }[];
+  return list.every((e) => !e.look?.sprite || String(e.look?.sheet ?? '').endsWith(k));
 }
 
 /** v3.4: the avatar memory estimate (sprite store + rig bodies) and three's counters, after a GC when exposed. */

@@ -19,6 +19,8 @@ export interface AvatarBody {
   readonly texture: string;
   /** Built spec id (rigs), null for billboards. */
   readonly specId: string | null;
+  /** v3.4: a baked sprite body (avatars/sprites/), not a live rig; its `texture` is still 'v3:<specId>' (§6.1). */
+  readonly sprite?: boolean;
   /** Figure height (m, vertical, living, without hover) and an approximate width (m). */
   readonly heightM: number;
   readonly widthM: number;
