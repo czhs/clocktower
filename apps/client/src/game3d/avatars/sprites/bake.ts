@@ -21,7 +21,7 @@
 //     hash of the vendor sources + spec, the spec, texel, pitch, yaw and the clip set: a repeat join or a repeat
 //     camera key builds no rig at all. Quota errors / private mode: the cache disables itself, bakes go on.
 import * as THREE from 'three';
-import { createDriver, setGhostLevel, socketOf, spawnCharacter, suppressSpecLights, type CharacterHandle } from '../../vendor/characters';
+import { createDriver, setGhostLevel, socketOf, spawnCharacter, spawnStats, suppressSpecLights, type CharacterHandle } from '../../vendor/characters';
 import { loadSpecObject, paletteOf, specSource, vendorSource } from '../../vendor/spriteLook';
 import { canPrecompile, precompile } from '../precompile';
 import { DIE_HOLD_S } from '../clips';
@@ -760,8 +760,9 @@ function kitBytes(kit: Kit): number {
 }
 
 /** Pass-through copy of a finished plane into a target WITHOUT a depth buffer (per renderer). */
-const copyRigs = new WeakMap<object, { scene: THREE.Scene; mat: THREE.ShaderMaterial; cam: THREE.Camera }>();
-function copyPlane(renderer: THREE.WebGLRenderer, src: THREE.WebGLRenderTarget): THREE.WebGLRenderTarget {
+type CopyRig = { scene: THREE.Scene; mat: THREE.ShaderMaterial; cam: THREE.Camera; quad: THREE.Mesh; compiled: boolean };
+const copyRigs = new WeakMap<object, CopyRig>();
+function copyRigOf(renderer: THREE.WebGLRenderer): CopyRig {
   let c = copyRigs.get(renderer);
   if (!c) {
     const mat = new THREE.ShaderMaterial({
@@ -776,9 +777,31 @@ function copyPlane(renderer: THREE.WebGLRenderer, src: THREE.WebGLRenderTarget):
     q.frustumCulled = false;
     const scene = new THREE.Scene();
     scene.add(q);
-    c = { scene, mat, cam: new THREE.OrthographicCamera() };
+    c = { scene, mat, cam: new THREE.OrthographicCamera(), quad: q, compiled: false };
     copyRigs.set(renderer, c);
   }
+  return c;
+}
+/** The copy program, compiled in parallel (KHR_parallel_shader_compile) before its first use: a 36 ms unit otherwise. */
+function* compileCopy(renderer: THREE.WebGLRenderer, like: THREE.WebGLRenderTarget): SliceGen<void> {
+  const c = copyRigOf(renderer);
+  if (c.compiled) return;
+  c.compiled = true;
+  if (!canPrecompile(renderer)) return;
+  const prevRT = renderer.getRenderTarget();
+  let p: Promise<unknown> | null = null;
+  try {
+    renderer.setRenderTarget(like);
+    c.mat.uniforms.tSrc!.value = like.texture;
+    p = precompile(renderer as unknown as Parameters<typeof precompile>[0], [c.quad], c.cam, c.scene, { live: () => true, maxMs: 5000 });
+  } finally {
+    c.mat.uniforms.tSrc!.value = null;
+    renderer.setRenderTarget(prevRT);
+  }
+  if (p) yield p;
+}
+function copyPlane(renderer: THREE.WebGLRenderer, src: THREE.WebGLRenderTarget): THREE.WebGLRenderTarget {
+  const c = copyRigOf(renderer);
   const dst = new THREE.WebGLRenderTarget(src.width, src.height, { type: THREE.UnsignedByteType, format: THREE.RGBAFormat, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, generateMipmaps: false, depthBuffer: false });
   dst.texture.colorSpace = THREE.NoColorSpace;
   const prev = { rt: renderer.getRenderTarget(), auto: renderer.autoClear, sm: renderer.shadowMap.autoUpdate, smN: renderer.shadowMap.needsUpdate };
@@ -953,6 +976,8 @@ function* renderSheet(engine: unknown, kit: Kit, cam: SheetCamera, key: string):
     }
     // v3.4: the shown planes need no depth buffer: copy each into a depth-less target (one unit per plane)
     if (bakeConfig.depthless) {
+      phase = 'copy-compile';
+      yield* compileCopy(renderer, rts[0]!);
       phase = 'copy';
       const copies: THREE.WebGLRenderTarget[] = [];
       try {
@@ -1128,7 +1153,7 @@ interface Store {
   vendorHash: Map<string, Promise<string>>;
   lastPump: number;
   watchdog: ReturnType<typeof setInterval> | null;
-  stats: { bakes: number; cacheHits: number; cacheMisses: number; stored: number; storeFails: number; maxUnitMs: number; maxUnit: string; maxPumpMs: number; kitsBuilt: number; units: number; over4: number };
+  stats: { bakes: number; cacheHits: number; cacheMisses: number; stored: number; storeFails: number; maxUnitMs: number; maxUnit: string; maxPumpMs: number; kitsBuilt: number; units: number; over4: number; slow: Record<string, number> };
 }
 
 const stores = new WeakMap<object, Store>();
@@ -1144,6 +1169,10 @@ function storeOf(engine: object): Store {
       const st = s!.stats;
       st.units++;
       if (ms > 4) st.over4++;
+      if (ms > 8) {
+        const k = phase || '?';
+        st.slow[k] = Math.max(st.slow[k] ?? 0, +ms.toFixed(1));
+      }
       if (ms > st.maxUnitMs) {
         st.maxUnitMs = +ms.toFixed(1);
         st.maxUnit = phase;
@@ -1159,7 +1188,7 @@ function storeOf(engine: object): Store {
       vendorHash: new Map(),
       lastPump: 0,
       watchdog: null,
-      stats: { bakes: 0, cacheHits: 0, cacheMisses: 0, stored: 0, storeFails: 0, maxUnitMs: 0, maxUnit: '', maxPumpMs: 0, kitsBuilt: 0, units: 0, over4: 0 },
+      stats: { bakes: 0, cacheHits: 0, cacheMisses: 0, stored: 0, storeFails: 0, maxUnitMs: 0, maxUnit: '', maxPumpMs: 0, kitsBuilt: 0, units: 0, over4: 0, slow: {} },
     };
     stores.set(engine, s);
     const st = s;
@@ -1413,12 +1442,13 @@ export function resetUnitStats(engine: object): void {
   s.stats.maxPumpMs = 0;
   s.stats.over4 = 0;
   s.stats.units = 0;
+  s.stats.slow = {};
 }
 
 export function storeStats(engine: object): Record<string, unknown> | null {
   const s = stores.get(engine);
   if (!s) return null;
-  return { ...s.stats, pending: s.runner.pending(), kits: s.kits.size, sheets: s.done.size, cache: s.cache.stats(), gpu: gpuStats(engine) };
+  return { ...s.stats, slow: { ...s.stats.slow }, spawn: { ...spawnStats }, pending: s.runner.pending(), kits: s.kits.size, sheets: s.done.size, cache: s.cache.stats(), gpu: gpuStats(engine) };
 }
 
 /** GPU memory estimate of the sprite store (MiB): sheet planes, kits' geometry while uploaded, shadow proxies. */

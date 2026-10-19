@@ -81,18 +81,28 @@ export function extrasOf(h: CharacterHandle): readonly THREE.Object3D[] {
   return extras.get(h) ?? [];
 }
 
+/** Debug: rig builds and the synchronous part of the vendor's createCharacter (ms). */
+export const spawnStats = { n: 0, last: 0, max: 0 };
+
 export async function spawnCharacter(engine: unknown, id: string, o: SpawnOptions): Promise<CharacterHandle> {
   // FX points / smear groups go straight into engine.scene (fx.js / smear.js): diff the scene's children around the
   // build (one build in flight at a time, so nothing else of ours lands in between)
   const scene = (engine as { scene?: THREE.Scene | null }).scene ?? null;
   const before = scene ? new Set(scene.children) : null;
-  const h = await createCharacter(engine, id, {
+  await loadSpec(id); // the import first: `ms` below is then (almost only) the synchronous rig build
+  const t0 = performance.now();
+  const hp = createCharacter(engine, id, {
     position: new THREE.Vector3(o.x, o.heightAt(o.x, o.z), o.z),
     face: o.face ?? 0,
     ground: { heightAt: (x, z) => o.heightAt(x, z) },
     fx: !o.lite,
     smears: !o.lite,
   });
+  const h = await hp;
+  const syncMs = performance.now() - t0; // the import is cached: the rest is the synchronous build
+  spawnStats.n++;
+  spawnStats.last = +syncMs.toFixed(1);
+  spawnStats.max = Math.max(spawnStats.max, spawnStats.last);
   if (scene && before) extras.set(h, scene.children.filter((c) => !before.has(c) && c !== h.root && !c.name.startsWith('avatar')));
   return h;
 }

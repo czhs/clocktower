@@ -107,6 +107,15 @@ async function main() {
         await call('layer', { sprites, ids: IDS, cold: false, keepKits: arg('keepKits', '1') === '1', persist: arg('persist', '1') === '1' });
         run.spriteRejoin = await call('settle', {});
         run.spriteRejoinUpgrade = await call('settleSprites', {});
+        if (ONLY.includes('rejoinvote')) {
+          // v3.4: the first vote after a repeat join (sheets from IndexedDB, no kits yet: the re-bake builds them)
+          run.spriteRejoinVote = await call('voteCam', { viewHeight: 12.887, pitchDeg: 23, yawDeg: 45, maxMs: 30000 });
+          log('sprite rejoin vote camera', JSON.stringify(run.spriteRejoinVote));
+          await call('mount', { tier, tod: 'noon' });
+          await call('layer', { sprites, ids: IDS, cold: false });
+          await call('settle', {});
+          await call('settleSprites', {});
+        }
         log('sprite rejoin', JSON.stringify(run.spriteRejoin).slice(0, 600), JSON.stringify(run.spriteRejoinUpgrade).slice(0, 400));
       }
       if (ONLY.includes('cost')) {

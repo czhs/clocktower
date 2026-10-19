@@ -48,8 +48,9 @@ import { LOW_TIER_AMBIENCE } from '../../game/fx/tier';
  * every client (VITE_V3SPRITES=1 | 0 at build time: the e2e runs of both paths).
  * v3.4: a new avatar shows its RIG first unless its sheet is already at hand (a finished sheet or the IndexedDB cache:
  * peekSheet); the sheet then bakes in the background (BAKE_BUDGET_MS per frame) and the body is swapped to a sprite
- * once the sheet and the sprite's programs are ready (`upgrade`), so a cold join is as fast as with rigs. Bakes wait
- * for `spriteGate` (TownGame3d: no low -> high promotion pending, which would rebuild with rigs anyway).
+ * once the sheet and the sprite's programs are ready (`upgrade`), so a cold join is as fast as with rigs. Bakes AND
+ * cached sheets wait for `spriteGate` (TownGame3d: no low -> high promotion pending: 'high' draws rigs, so the GPU probe
+ * must time rigs, and a promoted town rebuilds anyway).
  */
 export function spritesDefault(tier: Tier, flag: string | null | undefined, buildFlag?: string | null): boolean {
   if (buildFlag === '1' || buildFlag === '0') return buildFlag === '1';
@@ -100,7 +101,7 @@ export interface AvatarServices {
   self?: boolean;
   /** Cosmetic townsfolk (default true). */
   npcs?: boolean;
-  /** v3.4: sprite bakes may start (default: always). Cached sheets are used either way. */
+  /** v3.4: sprites (bakes and cached sheets) may be used (default: always). */
   spriteGate?: () => boolean;
 }
 
@@ -365,6 +366,9 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
       for (const a of attempts) {
         try {
           if (a.kind === 'sprite') {
+            // not before the gate: the promotion probe must time the rigs ('high' would draw rigs; sprites at low cost
+            // ~half the GPU time and would let an integrated GPU pass the 4.5 ms bar)
+            if (!gateOpen()) throw new Error(NOT_READY);
             const sheet = await peekSheet(engine as object, a.spec, sheetCameraOf(engine));
             if (!sheet) throw new Error(NOT_READY);
             const body = await createSpriteBody(engine, a.spec, { x: at.X, z: at.Z, face, heightAt: groundAt, tint: a.tint, prio: e.self ? 10 : 0, lantern: e.carriesLantern, sheet });
