@@ -9,7 +9,53 @@ User idea: the outdoor camera's yaw and pitch are fixed (only texel-snapped pans
 poses, so the static town could be rendered once and reused, like the pre-rendered backgrounds with depth of classic
 isometric games.
 
-__RESULTS__
+## 0. Results in one screen
+
+- **Pixel parity: yes.** A/B stills render the same engine time live and from the tiles, in one page, and diff them per
+  pixel:
+
+  | still | GPU `high` 1920×1080 | SwiftShader `cpu` 960×540 |
+  |---|---|---|
+  | day (spawn, 10:00) | 0.035 % differ (729 px, 9 over 32 levels) | 0.054 % (max diff 2 levels) |
+  | cut-away active (own player at a cottage door) | 0.016 % | 0.012 % |
+  | vote pose (yaw 45°, pitch 23°) | 0.05 % | 0.066 % |
+
+  The remaining pixels are mostly parts that had not moved yet in the still (before auto-demotion caught them) and
+  float noise. Dusk and night are identical by construction: the cache is off while a pool light is lit. That was not
+  diffed separately.
+- **Speed: small on GPUs, real on software GL, and far from the ceiling.** Only 56 meshes are cacheable today (§1.4).
+  They are about 20 of the ≈ 115 in-view draws per pass. The canopy-faded foliage and soft dressing, the wind sprites,
+  the dais, the 15 rigs, water and the shadow pass stay live.
+
+  | host, 14 remotes on the square | live | tiles | Δ |
+  |---|---|---|---|
+  | GPU `high`, draw calls / frame (standing) | 363 | 323 | −11 % |
+  | GPU `high`, renderAt JS, CPU ×1 / ×4 (standing) | 4.25 / 15.4 ms | 4.44 / 16.0 ms | +0.2 / +0.7 ms (worse) |
+  | GPU `low`, draw calls / frame (standing) | 257 | 217 | −16 % |
+  | GPU `low`, renderAt JS, CPU ×1 / ×4 (standing) | 3.63 / 11.90 ms | 3.60 / 11.88 ms | ±0 |
+  | SwiftShader `cpu` 960×540, synced frame p50 (raster included) | 196 ms | 156 ms | **−20 %** |
+  | SwiftShader `cpu`, draw calls | 113 | 93 | −18 % |
+
+  Ceiling: the **whole** town hidden (foliage included), i.e. what a cache that also held the canopy and the sprites
+  could reach at best:
+
+  | ceiling | live | whole town hidden |
+  |---|---|---|
+  | GPU `high`, calls | 362 | 111 |
+  | GPU `high`, renderAt ×1 / ×4 | 4.2 / 14.5 ms | 2.7 / 9.0 ms |
+  | SwiftShader `cpu`, RAF fps | 5.9 | 9.5 |
+
+- **iGPU laptop (the most important number):** see §2.5.
+- **Recommendation: do not ship (not even behind a tier) in this form.** Keep the code behind the debug switch as the
+  measured prototype.
+  - On GPU tiers it saves 36-40 draws but no CPU time. The per-frame bookkeeping, the composite and the cut-window
+    twins eat the issue savings.
+  - Only the cpu tier gains (−20 % synced). It is still far below its 20 fps goal, and the toon / grass work left
+    there is vendor work (cpu.md §4).
+  - The idea pays only when the canopy layer (kit soft + foliage cores) is cacheable too. That needs canopy windows
+    (§3) and a static / animated split of the foliage piece (vendor), and would take the GPU numbers toward the
+    ceiling row (−35 % renderAt).
+
 
 ## 1. Design
 
@@ -165,7 +211,143 @@ That left 56 static meshes of 72 candidates (3 materials patched: kit solid, kit
   missing), and the steady pose bakes over 3-4 frames.
 - **Interiors**: the town is parked, so the cache is off.
 
-__NUMBERS__
+## 2. Measurements
+
+### 2.1 Method
+
+Tool: `tests/perf/v3-tiles.ts` (new, ports 3470-3474).
+
+- It runs on the host, with the Vite DEV build and the real `createTownGame3d` over the fake connection of
+  `tests/perf/v3-frame-probe.js`: the own player + 14 remotes walking circles on the square, 10:00.
+- The town is mounted with `ct.debug.v3tiles=ab`. Live and tiles are then switched at run time **in the same page**,
+  alternating off / on / off / on in 6 s RAF windows. Standing and walking (the camera pans into new tiles). CPU ×1
+  and ×4 via the CDP throttle.
+- The page also runs `synced` frames: back-to-back `renderAt` + a 1-px `readPixels`, so raster is included. That is
+  the SwiftShader number.
+- `ceiling` hides the town pieces.
+- GPU = the host's discrete GPU over ANGLE / Vulkan (`--gl gpu`). Software = SwiftShader at the `cpu` tier.
+- Host load before the runs: 0.2-3.0.
+
+Caveat: the GPU RAF windows are capped at 60 fps, so the comparable numbers are per-frame JS and draw calls. GPU time
+was not measured on the host.
+
+### 2.2 GPU tiers (host)
+
+| tier, window | calls live → tiles | renderAt ×1 live → tiles | renderAt ×4 live → tiles | fps ×4 |
+|---|---|---|---|---|
+| high, standing | 363 → 323 | 4.25 → 4.44 ms | 15.4 → 16.0 ms | 51 → 50 |
+| high, walking | 353 → 326 | 4.58 → 4.73 ms | 15.6 → 16.5 ms | 50 → 48 |
+| low, standing | 257 → 217 | 3.63 → 3.60 ms | 11.90 → 11.88 ms | 60 → 60 |
+| low, walking | 242 → 214 | 3.54 → 3.48 ms | 11.89 → 11.84 ms | 60 → 60 |
+
+Per-pass calls at high (standing, the shadow pass is inside "colour"):
+
+| pass | live | tiles |
+|---|---|---|
+| colour (incl. 97 shadow) | 232 | 212 |
+| normal | 122 | 102 |
+
+The tile layer's own JS (`tick`) is 0.06-0.25 ms at ×1 and 0.2-0.8 ms at ×4. It was 1.4 ms before the light key moved
+off the frame (§1.5). The relight bug it exposed: the key included the cache's own rect uniforms.
+
+Synced GPU frames (1-px read-back, raster included) are in the noise: high 9.4-11.4 → 9.9 ms, low 5.5 → 4.8-5.3 ms.
+
+### 2.3 SwiftShader (`cpu` tier, 960×540)
+
+| | live | tiles |
+|---|---|---|
+| synced p50, run 2 (warm ring, shadow code compiled out of the composite) | 196.4 / 194.6 ms | **156.9 / 155.5 ms** |
+| synced p50, run 1 (bakes inside the window; composite with the masked shadow branch) | 230.6 / 230.5 ms | 240.2 / 243.3 ms |
+| RAF fps, run 1 | 4.1-5.2 | 3.7-3.9 |
+
+Run 1 taught two things:
+
+- SwiftShader runs both sides of a uniform branch. The unused shadow code cost more than it saved, so the cpu-tier
+  composite now compiles it out (`CT_NO_SHADOW`).
+- Bakes inside a short window dominate it.
+
+The RAF windows of run 2 were not re-measured: the lock time went to the laptop.
+
+### 2.4 Memory, bakes, hitches
+
+| | high 1920×1080 | low | cpu 960×540 |
+|---|---|---|---|
+| ring (9×6 / 8×5 / 6×4 tiles of 128²) | 43.9 MB | 34.1 MB | 24.4 MB |
+| one tile bake (4 renders), CPU ×1 / ×4 | ≤ 7.9 / ≤ 32 ms | ≤ 7.3 / ≤ 32 ms | ≤ 19 ms |
+| bakes while walking (6 s window) | 6 | 5 | 14-29 |
+| first enable / zoom / vote pose | live frame + 6 tiles per frame until the view is full (3-4 frames) | | |
+| lighting step | 1 stale tile re-baked per frame (≈ 40 frames for a full view); no relight happened in any window at 10:00 | | |
+
+A bake is a hitch of one tile (≤ 8 ms at ×1) at most once per frame, and only while new ground scrolls in. With the
+toroidal ring and the 1-tile prefetch, walking never forced a live fallback after the first frame.
+
+### 2.5 iGPU laptop
+
+__IGPU__
+
+### 2.6 e2e (switch OFF = the default)
+
+Host GPU (`CT_GL=gpu`, `E2E_V3=1`, port 3471, separate sandbox):
+
+| run | v3-boot | v3-doors | v3-vote | v3-life |
+|---|---|---|---|---|
+| switch OFF (default build) | pass | pass | **fail** | pass |
+| tiles ON by default (build with `VITE_CT_V3TILES=1`, the e2e-only build-time default added to `stage.ts`) | pass | pass | pass | pass |
+
+- The OFF failure of v3-vote is the known intermittent page error
+  `Cannot read properties of undefined (reading 'isReady')` (ui.md §, fullstack.md: v31-fixes' avatar `isReady`). It
+  comes from the avatar layer, which this branch does not touch. With the switch off, `installTiles` is never called,
+  and the only diff on the path is reading one more localStorage key.
+- The same spec passed in the ON run, 3 minutes later.
+- In the ON run the cache's activity was not asserted (the specs do not read `__ctCamera.tiles()`). Day scenes at the
+  GPU tiers are where it is active.
+
+## 7. Commands run (all from the worktree root; host via `scripts/remote.sh`, `CT_AGENT=v33-tiles` unless noted)
+
+Small untracked wrappers in `.tiles/` hold the locks (shell strings with `$HOME` are refused by the local worktree
+guard):
+
+- `check.sh`: client `tsc` + vitest under the shared heavy lock.
+- `run.sh`: `tests/perf/v3-tiles.ts` under the exclusive heavy lock + the browser lock, `timeout 900`.
+- `build.sh`.
+- `e2e.sh`: `E2E_V3=1 E2E_PORT=3471 CT_GL=gpu pnpm test:e2e --project=v3 …` under both locks.
+- `batch.sh`.
+- `sum.py`.
+
+| command | result |
+|---|---|
+| `scripts/remote.sh sh .tiles/check.sh apps/client/test/game3d/tiles.math.test.ts …boundary.test.ts …world.stage.test.ts` | 1st: 3 tsc errors (`InterleavedBufferAttribute.version`, uniform typing), tests 28 / 28; after fixes tsc clean, 14 + 8 tests pass (several re-runs) |
+| `scripts/remote.sh sh .tiles/run.sh --gl gpu --tier high --modes stills --out test-results/t1` | 0 px diff: every static mesh was demoted on the first frame (snapshot in `Float32Array` vs float64 matrices). Fixed. |
+| same, `t3` | day 0.043 %, **cut 0.58 %**: cut windows drawn after the dynamic pass hid grass tufts. Fixed: windows first, then inside the main render. |
+| `t5` (glass + rect-in-main-pass) | **14 %**: the rect clip was a shared-material uniform and clipped the live dais / doors. Fixed: a material twin per static material. |
+| `t6` | cut 8 %: the twin lost the toon `defines` (`Material.copy` keeps none). Fixed. |
+| `t7` | day 0.035 %, cut 0.016 %, vote 0.05 % |
+| `--modes windows,synced --out test-results/g-high` | walking re-baked about 1 tile / frame: a relight every other frame (the light key included `uCtRects`). Fixed (`relightWhy` debug field). |
+| `g-high2`, `g-low`, `g-high-ceil` (GPU) / `ss-cpu`, `ss-cpu2` (SwiftShader `cpu`, 960×540) | §2 |
+| `CT_AGENT=v33-tiles-e2e scripts/remote.sh sh .tiles/e2e.sh v3-boot v3-doors v3-vote v3-life` | 3 pass, v3-vote fail (known `isReady` page error) |
+| `CT_AGENT=v33-tiles-e2e scripts/remote.sh env TILES=1 sh .tiles/e2e.sh …` | 4 / 4 pass |
+| laptop: `run.sh 9472 intel glegl tiles=plan-tiles.json` (driver from the laptop-perf HOWTO, port 3472, the host game driver from this sandbox's production build) | failed at once: `measure.mjs` set localStorage on `about:blank`. Patched locally (navigate first), re-run in §2.5. |
+
+
+
+## 3. What would make it pay (plan for the rest)
+
+1. **Canopy windows: cache the kit `soft` layer and the foliage cores.**
+   - Per frame, one live rect per canopy slot (`uCtCan`: an avatar's capsule window, about 1.5 × 3 m), but only when a
+     cached canopy mesh's cell bounds overlap that window.
+   - The same machinery as the cut windows: the composite discards inside, and static meshes there draw live with the
+     clipped twin.
+   - Avatars on the open square open no window.
+   - Gain: about 11 more meshes in view at the square, and the heavy tree cores elsewhere.
+2. **Split the foliage piece into static cores / trunks and animated sprites** (vendor). The 3 fps leaf and grass
+   sprites are the only real animation there; their cores never move.
+3. **Deferred pool lights** (from v33-light, §4), so the cache also runs at dusk and night.
+4. **Cheaper per-frame side:**
+   - cached cell bounds for the cut test;
+   - no full `isVisible` walk for the 56 meshes (dirty flags);
+   - the composite and the cut twins only in frames with live rects.
+5. Then re-measure on the iGPU laptop. Only there could the saved fragment work (static surfaces shaded once instead
+   of every frame) show up as GPU ms.
 
 ## 4. Interface for v33-light (and what tiles leave to it)
 
