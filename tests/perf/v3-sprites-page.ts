@@ -274,21 +274,68 @@ async function voteCam(cfg: { viewHeight?: number; pitchDeg?: number; yawDeg?: n
   const t0 = performance.now();
   const fm: number[] = [];
   let doneAt = -1;
+  let peakMiB = 0;
   while (performance.now() - t0 < (cfg.maxMs ?? 20_000)) {
     const a = performance.now();
     step();
     await raf();
     fm.push(performance.now() - a);
-    const dbg = r.layer!.debug!() as Record<string, (...a: unknown[]) => unknown>;
-    const st = dbg.sprites ? ((await (dbg.sprites() as Promise<Json>)) as { sheets: unknown[] }) : null;
-    if (spr.rebakes - rb0 >= r.ids.length && st && st.sheets.length >= 2 * r.ids.length) {
+    peakMiB = Math.max(peakMiB, bake.gpuStats(r.engine as object)?.totalMiB ?? 0);
+    // v3.4: every sprite body shows a sheet of the current camera key (keepOld 0 frees the old sheets)
+    if (spr.rebakes - rb0 >= r.ids.length && allOnKey()) {
       doneAt = performance.now() - t0;
       break;
     }
   }
   longOn = false;
   const fs = [...fm].sort((a, b) => a - b);
-  return { store: bake.storeStats(r.engine as object), p95FrameMs: Math.round(fs[Math.floor(fs.length * 0.95)] ?? 0), secondMaxFrameMs: Math.round(fs[fs.length - 2] ?? 0), firstFrameMs: Math.round(fm[0] ?? 0), rebakes: spr.rebakes - rb0, allRebakedMs: Math.round(doneAt), frames: fm.length, maxFrameMs: Math.round(Math.max(0, ...fm)), framesOver50: fm.filter((x) => x > 50).length, longTasks: { n: longTasks.length, max: Math.max(0, ...longTasks), sum: longTasks.reduce((a, b) => a + b, 0) }, texel: +r.engine.camera.texelWorld.toFixed(5) };
+  return { peakMiB, store: bake.storeStats(r.engine as object), p95FrameMs: Math.round(fs[Math.floor(fs.length * 0.95)] ?? 0), secondMaxFrameMs: Math.round(fs[fs.length - 2] ?? 0), firstFrameMs: Math.round(fm[0] ?? 0), rebakes: spr.rebakes - rb0, allRebakedMs: Math.round(doneAt), frames: fm.length, maxFrameMs: Math.round(Math.max(0, ...fm)), framesOver50: fm.filter((x) => x > 50).length, longTasks: { n: longTasks.length, max: Math.max(0, ...longTasks), sum: longTasks.reduce((a, b) => a + b, 0) }, texel: +r.engine.camera.texelWorld.toFixed(5) };
+}
+
+function camKey(): string {
+  const c = m!.engine.camera;
+  return `|${c.texelWorld.toFixed(6)}|${c.pitch.toFixed(4)}|${c.yaw.toFixed(4)}`;
+}
+function allOnKey(): boolean {
+  const dbg = m!.layer!.debug!() as Record<string, (...a: unknown[]) => unknown>;
+  const k = camKey();
+  const list = dbg.avatars3d!() as { look: { sheet?: string } | null; texture: string | null }[];
+  return list.every((e) => !String(e.texture).startsWith('v3-sprite:') || String(e.look?.sheet ?? '').endsWith(k));
+}
+
+/** v3.4: the avatar memory estimate (sprite store + rig bodies) and three's counters, after a GC when exposed. */
+function memory(): Json {
+  const r = m!;
+  (window as unknown as { gc?: () => void }).gc?.();
+  const dbg = r.layer!.debug!() as Record<string, (...a: unknown[]) => unknown>;
+  return { heapMiB: +(heap() / 1048576).toFixed(1), info: r.engine.renderer.info.memory, now: dbg.spritesNow ? dbg.spritesNow() : null };
+}
+
+/**
+ * v3.4: frames until every body that can be a sprite is one (rig first, background bake, swap), from now. Reports the
+ * wall time, frame maxima while the bakes run, long tasks and the upgrade counters.
+ */
+async function settleSprites(cfg: { limitMs?: number; walking?: boolean } = {}): Promise<Json> {
+  const r = m!;
+  r.walking = !!cfg.walking;
+  longTasks.length = 0;
+  longOn = true;
+  const t0 = performance.now();
+  const fm: number[] = [];
+  const dbg = r.layer!.debug!() as Record<string, (...a: unknown[]) => unknown>;
+  let now = dbg.spritesNow ? (dbg.spritesNow() as Json) : null;
+  while (now && !now.ready && performance.now() - t0 < (cfg.limitMs ?? 120_000)) {
+    const a = performance.now();
+    step();
+    await raf();
+    fm.push(performance.now() - a);
+    now = dbg.spritesNow() as Json;
+  }
+  longOn = false;
+  r.walking = false;
+  const fs = [...fm].sort((a, b) => a - b);
+  const bake = await import('../../apps/client/src/game3d/avatars/sprites/bake');
+  return { wallMs: Math.round(performance.now() - t0), frames: fm.length, maxFrameMs: Math.round(fs[fs.length - 1] ?? 0), secondMaxFrameMs: Math.round(fs[fs.length - 2] ?? 0), p95FrameMs: Math.round(fs[Math.floor(fs.length * 0.95)] ?? 0), framesOver50: fm.filter((x) => x > 50).length, longTasks: { n: longTasks.length, max: Math.max(0, ...longTasks), sum: longTasks.reduce((a, b) => a + b, 0) }, now, store: bake.storeStats(r.engine as object) };
 }
 
 /** The bake store and its sheets (the v3.3 ship store reads back and caches sheets itself: cache.ts). */
@@ -331,4 +378,4 @@ function info(): Json {
   return { heapMiB: +(heap() / 1048576).toFixed(1), memory: r.engine.renderer.info.memory, programs: r.engine.renderer.info.programs?.length };
 }
 
-(window as unknown as { __v3spr: unknown }).__v3spr = { mount, layer, settle, cost, still, fps, voteCam, atlasDump, clearCache, ghosts, hands, talk, info, ready: true };
+(window as unknown as { __v3spr: unknown }).__v3spr = { mount, layer, settle, settleSprites, memory, cost, still, fps, voteCam, atlasDump, clearCache, ghosts, hands, talk, info, ready: true };

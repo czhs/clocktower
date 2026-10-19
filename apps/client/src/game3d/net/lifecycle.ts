@@ -108,6 +108,8 @@ export class Lifecycle {
   private pending: Pending | null = null;
   private demoted = false;
   private promoted = false;
+  /** the promotionCheck() promise is pending */
+  private checking = false;
   private readonly boot: BootGuardIo;
   private readonly now: () => number;
   private readonly visible: () => boolean;
@@ -130,6 +132,18 @@ export class Lifecycle {
   get tier(): Tier {
     return this.cur;
   }
+  /**
+   * v3.4: a low -> high promotion may still happen at this tier (auto, at 'low', no demotion, the sampler on, the
+   * check not yet answered no) or one is scheduled. The sprite bakes at 'low' wait for this to turn false: a promoted
+   * town rebuilds with rigs, so baking first would be wasted work (and would skew the GPU probe).
+   */
+  get mayPromote(): boolean {
+    if (this.st === 'destroyed' || this.st === 'fallback') return false;
+    if (this.pending?.kind === 'rebuild' && this.pending.tier === 'high') return true;
+    if (this.cur !== 'low' || !this.d.allowPromote || this.demoted || !samplerEnabled(this.d.flags)) return false;
+    return !this.promoted || this.checking;
+  }
+
   /** A pending rebuild / swap waiting for a safe moment (debug). */
   get waiting(): string | null {
     return this.pending ? (this.pending.kind === 'fallback' ? 'fallback' : `rebuild:${this.pending.tier}`) : null;
@@ -256,12 +270,16 @@ export class Lifecycle {
       } catch {
         return;
       }
+      this.checking = true;
       void p.then(
         (ok) => {
+          this.checking = false;
           // still the same build, at low, running, nothing else pending / no demotion meanwhile
           if (ok && g === this.gen && this.st === 'running' && this.cur === 'low' && !this.demoted && !this.pending) this.schedule({ kind: 'rebuild', tier: 'high', why: 'promote' });
         },
-        () => undefined,
+        () => {
+          this.checking = false;
+        },
       );
     }
   }

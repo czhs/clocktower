@@ -56,6 +56,8 @@ export interface TownGame3dOptions {
 export const SELF_READY_MS = 5000;
 /** The build-only pump (before the frame loop runs) steps the core + avatars this often (ms). */
 const PUMP_MS = 50;
+/** v3.4: the sprite bakes start at the latest this long after the avatar layer is built, promotion decided or not. */
+export const SPRITE_GATE_MAX_MS = 20_000;
 /** The vote frame re-measures the HUD once this long after vote entry (ms). */
 const VOTE_KEEP_SETTLE_MS = 700;
 /** The talking rim colours (game/fx/talking.ts COLOR_SELF / COLOR_TALK). */
@@ -276,7 +278,10 @@ export function createTownGame3d(parent: HTMLElement, bridge: TownBridge3d, opts
       sc.stage = st;
       if (cancelled()) return;
       // WP2 avatars: after net/ (they read Scene3dState), before overlay/ (it reads their registry)
-      const avatars = createAvatarLayer({ engine: host.engine, tier, heightAt: st.heightAt, floorAt: st.floorAt, view: core.view, lights: st });
+      // v3.4: sprite bakes (low tier) wait while a promotion to 'high' (rigs) may still come, at most SPRITE_GATE_MAX_MS
+      const gateFrom = performance.now();
+      const spriteGate = () => !lifecycle.mayPromote || performance.now() - gateFrom > SPRITE_GATE_MAX_MS;
+      const avatars = createAvatarLayer({ engine: host.engine, tier, heightAt: st.heightAt, floorAt: st.floorAt, view: core.view, lights: st, spriteGate });
       sc.avatars = avatars;
       // the own avatar's first build, fed by a build-only pump (no render) until it lands or SELF_READY_MS pass
       let pt = 0;

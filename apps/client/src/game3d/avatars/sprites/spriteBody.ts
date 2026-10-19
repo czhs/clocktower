@@ -58,6 +58,8 @@ export interface SpriteBodyOptions {
   prio?: number;
   /** A lantern carrier: a spec without a lantern of its own gets the rig body's small lantern prop at the hand. */
   lantern?: boolean;
+  /** v3.4: a sheet already in hand (peekSheet / a background bake): no bake is requested. */
+  sheet?: SpriteSheet;
 }
 
 interface PixelCam {
@@ -89,8 +91,10 @@ const UP = new THREE.Vector3(0, 1, 0);
 export async function createSpriteBody(engine: unknown, specId: string, o: SpriteBodyOptions): Promise<AvatarBody> {
   const E = engine as EngineLike;
   const caps: SpecCaps = await loadSpecCaps(specId);
-  let sheet = await getSheet(engine as object, specId, sheetCameraOf(engine), o.prio ?? 0);
+  let sheet = o.sheet ?? (await getSheet(engine as object, specId, sheetCameraOf(engine), o.prio ?? 0));
+  if ((sheet as unknown as { _disposed?: boolean })._disposed) throw new Error('sprite sheet already released');
   sheet.refs++;
+  sheet.everRef = true;
   const ghostMode: GhostMode = ghostModeOf(caps);
 
   const S = createSpriteUniforms(sheet);
@@ -224,6 +228,7 @@ export async function createSpriteBody(engine: unknown, specId: string, o: Sprit
     const old = sheet;
     sheet = next;
     sheet.refs++;
+    sheet.everRef = true;
     S.uSprA.value = next.texA;
     S.uSprB.value = next.texB;
     S.uSprHi.value = next.palette.hi;

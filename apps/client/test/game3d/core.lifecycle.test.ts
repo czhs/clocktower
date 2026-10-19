@@ -185,6 +185,37 @@ describe('lifecycle', () => {
     expect(s.log).toEqual(['build low', 'teardown', 'build low']);
   });
 
+  it('v3.4: mayPromote (the sprite bakes wait for it) is true until the probe said no, while a promotion is scheduled, never at high / without auto / with the sampler off', async () => {
+    let answer: (ok: boolean) => void = () => undefined;
+    const s = setup({ startTier: 'low', allowPromote: true, promotionCheck: () => new Promise<boolean>((r) => (answer = r)) });
+    await s.lc.start();
+    expect(s.lc.mayPromote).toBe(true); // the sample window runs
+    frames(s, PERF_WINDOW, 16);
+    await flush();
+    expect(s.lc.mayPromote).toBe(true); // probing
+    answer(false);
+    await flush();
+    expect(s.lc.mayPromote).toBe(false); // no headroom: bake sprites now
+
+    const y = setup({ startTier: 'low', allowPromote: true, promotionCheck: () => Promise.resolve(true) });
+    await y.lc.start();
+    y.safe.voting = true; // the promotion waits for a safe moment
+    frames(y, PERF_WINDOW, 16);
+    await flush();
+    expect(y.lc.waiting).toBe('rebuild:high');
+    expect(y.lc.mayPromote).toBe(true);
+
+    const noAuto = setup({ startTier: 'low', allowPromote: false });
+    await noAuto.lc.start();
+    expect(noAuto.lc.mayPromote).toBe(false);
+    const high = setup({ startTier: 'high', allowPromote: true });
+    await high.lc.start();
+    expect(high.lc.mayPromote).toBe(false);
+    const off = setup({ startTier: 'low', allowPromote: true, flags: { fpsLimit: 30, force: false, perfFallback: false } });
+    await off.lc.start();
+    expect(off.lc.mayPromote).toBe(false); // the sampler never judges: no promotion can come
+  });
+
   it('context loss: the first rebuilds at once (even during a vote), the second within 10 min -> Classic', async () => {
     const s = setup();
     await s.lc.start();

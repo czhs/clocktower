@@ -34,8 +34,8 @@ import { createNpcFolk, DAYLIKE, npcHomesFor, type Npc, type NpcFolk } from './n
 import { fallbackView, pxToMetres } from './project';
 import { nextBuild, type BuildCandidate } from './queue';
 import { createRigBody } from './rigBody';
-import { createSpriteBody, spriteDebug } from './sprites/spriteBody';
-import { pumpBakes, releaseSheets, sheetStats, storeStats } from './sprites/bake';
+import { createSpriteBody, sheetCameraOf, spriteDebug } from './sprites/spriteBody';
+import { getSheet, gpuStats, peekSheet, pumpBakes, releaseSheet, releaseSheets, sheetStats, storeStats, subtreeGeometryBytes, type SpriteSheet } from './sprites/bake';
 import { canPrecompile, precompile, type CompileRendererLike, type PrecompileResult } from './precompile';
 import { RIM_DEFAULT } from './ghostTint';
 import { dir8, toFacing } from '../../game/rules/input';
@@ -46,6 +46,10 @@ import { LOW_TIER_AMBIENCE } from '../../game/fx/tier';
  * bake + sprite programs compile for seconds there, a cold join took 118 s on SwiftShader; docs/perf-v3/sprites.md §5).
  * localStorage['ct.debug.v3sprites'] = '1' | '0' forces sprites on / off at any tier; a test build can force it for
  * every client (VITE_V3SPRITES=1 | 0 at build time: the e2e runs of both paths).
+ * v3.4: a new avatar shows its RIG first unless its sheet is already at hand (a finished sheet or the IndexedDB cache:
+ * peekSheet); the sheet then bakes in the background (BAKE_BUDGET_MS per frame) and the body is swapped to a sprite
+ * once the sheet and the sprite's programs are ready (`upgrade`), so a cold join is as fast as with rigs. Bakes wait
+ * for `spriteGate` (TownGame3d: no low -> high promotion pending, which would rebuild with rigs anyway).
  */
 export function spritesDefault(tier: Tier, flag: string | null | undefined, buildFlag?: string | null): boolean {
   if (buildFlag === '1' || buildFlag === '0') return buildFlag === '1';
@@ -96,6 +100,8 @@ export interface AvatarServices {
   self?: boolean;
   /** Cosmetic townsfolk (default true). */
   npcs?: boolean;
+  /** v3.4: sprite bakes may start (default: always). Cached sheets are used either way. */
+  spriteGate?: () => boolean;
 }
 
 /** contract.ts AvatarRegistry + `isShown` (WP4's CONTRACT-REQUEST; overlay/types.ts `avatarShown` default). */
@@ -177,6 +183,12 @@ interface Entry {
   /** reused per frame */
   want: ClipWant;
   anchor: Anchor3d;
+  /** v3.4 rig -> sprite upgrade: 0 none yet, 1 sheet requested, 2 sprite body compiling, 3 done / not applicable */
+  upgrade: 0 | 1 | 2 | 3;
+  /** the upgrade's sprite body while it compiles (hidden; the rig stays shown) */
+  next: AvatarBody | null;
+  /** dying this frame (no swap mid-collapse) */
+  dying: boolean;
 }
 
 interface PubRecord {
@@ -284,6 +296,9 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
       compiling: false,
       want: { action: null, loop: null },
       anchor: { feet: { x: 0, y: 0 }, displayFeet: { x: 0, y: 0 }, headTopCss: { x: 0, y: 0 }, heightM: 0 },
+      upgrade: 0,
+      next: null,
+      dying: false,
     };
     return e;
   };
@@ -300,6 +315,9 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
     }
     e.body?.dispose();
     e.body = null;
+    e.next?.dispose();
+    e.next = null;
+    e.upgrade = 0;
     e.appliedGhost = null;
     e.placed = null;
     e.tint = null;
@@ -309,6 +327,15 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
   // ------------------------------------------------------------------ builds
   type Attempt = { kind: 'rig' | 'sprite'; spec: string; tint: string | null } | { kind: 'billboard'; id: string; tint: string | null };
   const sprites = spritesEnabled(svc.tier);
+  const gateOpen = () => {
+    try {
+      return svc.spriteGate?.() ?? true;
+    } catch {
+      return true;
+    }
+  };
+  /** An attempt that only takes a sheet already at hand (else the next attempt: the rig, upgraded later). */
+  const NOT_READY = 'sprite sheet not ready';
   const attemptsFor = (e: Entry): Attempt[] => {
     const cm = castMap(e.castId);
     const pinTint = standinTint(e.pid ?? e.key);
@@ -338,7 +365,9 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
       for (const a of attempts) {
         try {
           if (a.kind === 'sprite') {
-            const body = await createSpriteBody(engine, a.spec, { x: at.X, z: at.Z, face, heightAt: groundAt, tint: a.tint, prio: e.self ? 10 : 0, lantern: e.carriesLantern });
+            const sheet = await peekSheet(engine as object, a.spec, sheetCameraOf(engine));
+            if (!sheet) throw new Error(NOT_READY);
+            const body = await createSpriteBody(engine, a.spec, { x: at.X, z: at.Z, face, heightAt: groundAt, tint: a.tint, prio: e.self ? 10 : 0, lantern: e.carriesLantern, sheet });
             return { body, tint: a.tint };
           }
           if (a.kind !== 'billboard') {
@@ -349,6 +378,7 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
           return { body, tint: a.tint };
         } catch (err) {
           if (destroyed || e.removed || gen !== e.gen) return null;
+          if ((err as Error)?.message === NOT_READY) continue;
           console.warn(`[avatars] ${a.kind} '${a.kind !== 'billboard' ? a.spec : a.id}' for cast '${e.castId}' failed:`, (err as Error)?.message ?? err);
         }
       }
@@ -367,6 +397,8 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
         }
         e.body = r.body;
         e.tint = r.tint;
+        // a rig of a real spec while sprites are on: upgraded once its sheet is baked (layer.update -> pumpUpgrades)
+        e.upgrade = sprites && r.body.kind === 'rig' && r.body.specId && !r.body.texture.startsWith('v3-sprite:') ? 0 : 3;
         e.placed = null;
         e.appliedGhost = null;
         e.rim = '';
@@ -393,11 +425,14 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
    * layer is destroyed or the deadline passes, and treats a released material as done (precompile.ts: three's own
    * compileAsync poll threw "reading 'isReady'" from a timer for a body disposed mid-compile).
    */
-  const prewarm = (e: Entry, body: AvatarBody) => {
+  const prewarm = (e: Entry, body: AvatarBody, onDone?: (current: boolean) => void) => {
     const r = engine.renderer;
     const cam = engine.camera?.cam;
     const scene = engine.scene;
-    if (!r || !canPrecompile(r) || !r.setRenderTarget || !r.getRenderTarget || !cam || !scene) return;
+    if (!r || !canPrecompile(r) || !r.setRenderTarget || !r.getRenderTarget || !cam || !scene) {
+      onDone?.(true);
+      return;
+    }
     warm.builds++;
     warmSeq++;
     const gen = e.gen;
@@ -414,17 +449,22 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
     } finally {
       r.setRenderTarget(prev);
     }
-    if (!p) return;
-    e.compiling = true;
+    if (!p) {
+      onDone?.(e.gen === gen);
+      return;
+    }
+    // an upgrade compiles beside the shown rig (onDone swaps); a first build stays hidden while it compiles
+    if (!onDone) e.compiling = true;
     p.then((v) => {
       if (v === 'timeout') warm.timedOut++;
       else if (v === 'ready') warm.compiled++;
       warm.ms += performance.now() - t0;
-      if (e.gen === gen) {
+      if (onDone) onDone(e.gen === gen);
+      else if (e.gen === gen) {
         e.compiling = false;
         warmCheck.set(e, { n: programCount(), seq: warmSeq });
       }
-    }).catch(() => undefined);
+    }).catch(() => onDone?.(false));
   };
   const programCount = () => engine.renderer?.info?.programs?.length ?? 0;
   /**
@@ -432,6 +472,101 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
    * (debug: misses). Another pre-warm in between makes the count meaningless: `unchecked`.
    */
   const warmCheck = new Map<Entry, { n: number; seq: number }>();
+
+  // ------------------------------------------------------------------ v3.4 rig -> sprite upgrades
+  const ups = { requested: 0, swapped: 0, failed: 0, firstAt: 0, lastAt: 0 };
+  /** the one upgrade whose sprite body is being created / compiled (spreads the programs' compiles) */
+  let upBusy = false;
+  let upEntry: Entry | null = null;
+  /** entries whose sheet is ready, waiting for their body (one at a time, in landing order) */
+  const upReady: { e: Entry; gen: number; sheet: SpriteSheet }[] = [];
+  const pumpUpgrades = (me: Px | null) => {
+    if (!sprites || destroyed) return;
+    // the first builds go first (a join is as fast as with rigs): no upgrade while a body is still to be built
+    if (inFlight !== 0) return;
+    for (const e of entries.values()) if (!e.body && !e.failed && !e.removed && !e.parked) return;
+    let gate: boolean | null = null;
+    // 1. request the sheets (the store bakes them in priority order: own avatar, then the nearest, townsfolk last)
+    for (const e of entries.values()) {
+      if (e.upgrade !== 0 || !e.body || e.building || e.removed || !e.body.specId) continue;
+      gate ??= gateOpen();
+      if (!gate) return;
+      e.upgrade = 1;
+      ups.requested++;
+      const gen = e.gen;
+      const here = e.pose.location === viewerLoc;
+      const dist = me && here ? Math.hypot(e.pose.x - me.x, e.pose.y - me.y) : 1e4;
+      const prio = e.self ? 10 : e.npc ? -1 : here ? 5 - Math.min(4, dist / 400) : 0;
+      getSheet(engine as object, e.body.specId, sheetCameraOf(engine), prio).then(
+        (sheet) => {
+          if (destroyed || e.removed || gen !== e.gen) return;
+          sheet.refs++; // held until the body takes it (or the upgrade is dropped)
+          upReady.push({ e, gen, sheet });
+        },
+        (err) => {
+          if (destroyed || gen !== e.gen) return;
+          e.upgrade = 3;
+          ups.failed++;
+          console.warn(`[avatars] sprite bake for '${e.castId}' failed, keeping the rig:`, (err as Error)?.message ?? err);
+        },
+      );
+    }
+    // 2. one sprite body at a time: create, pre-compile beside the shown rig, then swap
+    if (upBusy || !upReady.length) return;
+    const job = upReady.shift()!;
+    const { e, gen, sheet } = job;
+    const unhold = () => releaseSheet(engine as object, sheet);
+    if (destroyed || e.removed || gen !== e.gen || !e.body) return unhold();
+    upBusy = true;
+    upEntry = e;
+    e.upgrade = 2;
+    const m = layoutRef ? pxToMetres(layoutRef, e.pose, e.pose.location) : null;
+    const at = m ?? { X: 0, Z: 0 };
+    createSpriteBody(engine, e.body.specId!, { x: at.X, z: at.Z, face: FACE_YAW[e.pose.facing] ?? 0, heightAt: groundAt, tint: e.tint, prio: e.self ? 10 : 0, lantern: e.carriesLantern, sheet })
+      .then((nb) => {
+        unhold();
+        if (destroyed || e.removed || gen !== e.gen || !e.body) {
+          nb.dispose();
+          upBusy = false;
+          upEntry = null;
+          return;
+        }
+        e.next = nb;
+        nb.holder.visible = false;
+        engine.scene?.add(nb.holder);
+        // swapped by a later update once compiled (between frames, never mid-collapse / mid-fade)
+        prewarm(e, nb, () => {
+          upBusy = false;
+          upEntry = null;
+        });
+      })
+      .catch((err) => {
+        unhold();
+        upBusy = false;
+        upEntry = null;
+        if (gen !== e.gen) return;
+        e.upgrade = 3;
+        ups.failed++;
+        console.warn(`[avatars] sprite body for '${e.castId}' failed, keeping the rig:`, (err as Error)?.message ?? err);
+      });
+  };
+  /** Swap a compiled upgrade in (called per entry from the body loop, before the entry's frame). */
+  const swapUpgrade = (e: Entry) => {
+    const nb = e.next;
+    if (!nb) return;
+    if (e.dying || (e.pid && fades.has(e.pid))) return;
+    e.next = null;
+    e.upgrade = 3;
+    e.body?.dispose();
+    e.body = nb;
+    e.placed = null;
+    e.appliedGhost = null;
+    e.rim = '';
+    ups.swapped++;
+    const now = Math.round(performance.now());
+    if (!ups.firstAt) ups.firstAt = now;
+    ups.lastAt = now;
+  };
 
   const cands: (BuildCandidate & { e: Entry })[] = [];
   const pumpQueue = (me: Px | null) => {
@@ -586,8 +721,9 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
         }
       }
 
-      // 4. builds
+      // 4. builds (then the rig -> sprite upgrades)
       pumpQueue(state.me);
+      pumpUpgrades(state.me);
 
       // 5. bodies
       const cam = engine.camera?.cam;
@@ -599,8 +735,11 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
         e.dead = !!p && !p.alive;
         e.ghostVote = p ? p.ghost : true;
         const here = !e.parked && e.pose.location === viewerLoc;
+        // a compiled sprite upgrade replaces the rig (not mid-collapse / mid-fade: `dying` is last frame's)
+        if (e.next && e.upgrade === 2 && upEntry !== e) swapUpgrade(e);
         const body = e.body;
         const dying = stepDeath(e.death, e.dead, here && !!body && e.shown, !!body?.emotes.die, t);
+        e.dying = dying;
         if (!body) {
           e.shown = false;
           continue;
@@ -698,6 +837,27 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
         avatarsWarm: () => ({ ...warm, ms: Math.round(warm.ms) }),
         /** v3.3 sprites: live sprite bodies, re-bakes, fallbacks, the bake store (cache hits, kits) and the sheets */
         sprites: async () => ({ enabled: sprites, ...spriteDebug, store: storeStats(engine as object), sheets: await sheetStats(engine as object) }),
+        /**
+         * v3.4 (sync): the rig -> sprite upgrades and a GPU memory estimate of the avatars. `ready` = every player /
+         * townsfolk body that can be a sprite is one; rigMiB = geometry of the rig bodies shown now; store = sheets +
+         * kits + proxies (bake.ts gpuStats).
+         */
+        spritesNow: () => {
+          let rigs = 0;
+          let spr = 0;
+          let open = 0;
+          let rigBytes = 0;
+          for (const e of entries.values()) {
+            if (!e.body) continue;
+            if (e.body.texture.startsWith('v3-sprite:')) spr++;
+            else if (e.body.kind === 'rig') {
+              rigs++;
+              rigBytes += subtreeGeometryBytes(e.body.holder);
+            }
+            if (e.upgrade !== 3) open++;
+          }
+          return { enabled: sprites, gate: sprites ? gateOpen() : false, ...ups, open, rigs, sprites: spr, ready: sprites && open === 0, rigMiB: +(rigBytes / 1048576).toFixed(2), store: gpuStats(engine as object) };
+        },
       };
     },
 

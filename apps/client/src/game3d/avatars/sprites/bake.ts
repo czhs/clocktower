@@ -55,8 +55,14 @@ export const BAKE_FORMAT = 3;
 export const BAKE_BUDGET_MS = 4;
 /** Kits (bake rigs) kept per engine. */
 export const KIT_MAX = 24;
-/** Tunables (debug / bench): per-frame budget, whether kits are kept between bakes. */
-export const bakeConfig = { budgetMs: BAKE_BUDGET_MS, keepKits: true, persist: true, keepOld: 1 };
+/**
+ * Tunables (debug / bench): per-frame budget; whether kits are kept between bakes (JS + programs); `releaseKitGpu`:
+ * a kit's geometry buffers are freed after each bake and re-uploaded one attribute per unit before the next one (v3.4:
+ * ~3.5 MB of GPU memory per spec otherwise); `keepOld`: unreferenced older sheets kept per spec (v3.4: 0, a switch back
+ * to a camera key loads its stored sheet from IndexedDB instead); `depthless`: the finished planes are copied into
+ * render targets without a depth buffer (v3.4: halves an atlas' GPU memory; the bake targets live only during a bake).
+ */
+export const bakeConfig = { budgetMs: BAKE_BUDGET_MS, keepKits: true, persist: true, keepOld: 0, releaseKitGpu: true, depthless: true };
 /** What the slice runner is doing (the longest unit's label is kept in the store stats). */
 let phase = '';
 const DT = 1 / 30;
@@ -115,6 +121,10 @@ export interface SpriteSheet {
   stats: Record<string, number | string>;
   refs: number;
   used: number;
+  /** GPU bytes of the planes (debug: memory estimate). */
+  gpuBytes: number;
+  /** a body ever showed it (v3.4: an unreferenced fresh sheet is not freed before a body picks it up) */
+  everRef?: boolean;
   dispose(): void;
 }
 
@@ -366,6 +376,8 @@ interface Kit {
   bounds: { position: Float32Array; bone: Uint16Array } | null;
   /** programs compiled for this render-target variant */
   compiled: boolean;
+  /** the rig's geometry buffers are on the GPU (bakeConfig.releaseKitGpu frees them between bakes) */
+  uploaded: boolean;
   used: number;
   stats: { buildMs: number; simMs: number; proxyMs: number; proxyTris: number };
   dispose(): void;
@@ -627,6 +639,7 @@ function* buildKit(engine: unknown, specId: string): SliceGen<Kit> {
       proxy,
       bounds: bm ? { position: bm.position, bone: bm.bone } : null,
       compiled: false,
+      uploaded: false,
       used: performance.now(),
       stats: { buildMs: +buildMs.toFixed(1), simMs: +simMs.toFixed(1), proxyMs: +proxyMs.toFixed(1), proxyTris: proxy?.tris ?? 0 },
       dispose() {
@@ -659,6 +672,131 @@ function* buildKit(engine: unknown, specId: string): SliceGen<Kit> {
       }
     }
   }
+}
+
+// ------------------------------------------------------------------------------------ kit GPU buffers (v3.4)
+
+function kitGeometries(kit: Kit): THREE.BufferGeometry[] {
+  const out = new Set<THREE.BufferGeometry>();
+  kit.h.root.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (m.isMesh && m.geometry) out.add(m.geometry);
+  });
+  return [...out];
+}
+
+function geometryBytes(g: THREE.BufferGeometry): number {
+  let n = g.index ? (g.index.array as ArrayLike<number> & { byteLength: number }).byteLength : 0;
+  const seen = new Set<unknown>();
+  for (const a of Object.values(g.attributes)) {
+    const arr = (a as THREE.BufferAttribute & { data?: { array: { byteLength: number } } }).data?.array ?? (a as THREE.BufferAttribute).array;
+    if (seen.has(arr)) continue;
+    seen.add(arr);
+    n += (arr as unknown as { byteLength: number }).byteLength;
+  }
+  return n;
+}
+
+/** Scratch target + hidden mesh for the sliced geometry upload (per renderer). */
+const uploadRigs = new WeakMap<object, { rt: THREE.WebGLRenderTarget; scene: THREE.Scene; mesh: THREE.Mesh; cam: THREE.Camera }>();
+
+/**
+ * Upload a kit's geometry one vertex attribute per unit (three uploads a mesh's attributes when it is projected, even
+ * with an invisible material: WebGLRenderer projectObject -> objects.update before the material.visible test), so the
+ * first cell of a bake no longer uploads the whole rig in one 12-16 ms unit (laptop iGPU). The index goes up with the
+ * first cell's draw (WebGL fixes a buffer's target on first bind, so it cannot be pre-uploaded as an attribute).
+ */
+function* uploadKit(renderer: THREE.WebGLRenderer, kit: Kit): SliceGen<void> {
+  phase = 'upload-kit';
+  let u = uploadRigs.get(renderer);
+  if (!u) {
+    const mesh = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ visible: false }));
+    mesh.frustumCulled = false;
+    const scene = new THREE.Scene();
+    scene.add(mesh);
+    u = { rt: new THREE.WebGLRenderTarget(1, 1, { depthBuffer: false }), scene, mesh, cam: new THREE.OrthographicCamera() };
+    uploadRigs.set(renderer, u);
+  }
+  for (const g of kitGeometries(kit)) {
+    for (const name of Object.keys(g.attributes)) {
+      const tmp = new THREE.BufferGeometry();
+      tmp.setAttribute(name, g.getAttribute(name));
+      u.mesh.geometry = tmp;
+      const prev = { rt: renderer.getRenderTarget(), auto: renderer.autoClear, sm: renderer.shadowMap.autoUpdate, smN: renderer.shadowMap.needsUpdate };
+      try {
+        renderer.autoClear = false;
+        renderer.shadowMap.autoUpdate = false;
+        renderer.shadowMap.needsUpdate = false;
+        renderer.setRenderTarget(u.rt);
+        renderer.render(u.scene, u.cam);
+      } finally {
+        renderer.setRenderTarget(prev.rt);
+        renderer.autoClear = prev.auto;
+        renderer.shadowMap.autoUpdate = prev.sm;
+        renderer.shadowMap.needsUpdate = prev.smN;
+        // detach first: disposing the scratch geometry must not free the kit's buffers (three removes a disposed
+        // geometry's attributes from its buffer cache)
+        tmp.deleteAttribute(name);
+        tmp.dispose();
+        u.mesh.geometry = new THREE.BufferGeometry();
+      }
+      yield;
+    }
+  }
+  kit.uploaded = true;
+}
+
+/** Free a kit's geometry buffers (JS arrays, materials and programs stay; uploadKit brings them back). */
+function releaseKitGpu(kit: Kit): void {
+  if (!kit.uploaded) return;
+  for (const g of kitGeometries(kit)) g.dispose();
+  kit.uploaded = false;
+}
+
+/** GPU bytes of a kit while uploaded (geometry only; programs / bone textures are small). */
+function kitBytes(kit: Kit): number {
+  if (!kit.uploaded) return 0;
+  return kitGeometries(kit).reduce((a, g) => a + geometryBytes(g), 0);
+}
+
+/** Pass-through copy of a finished plane into a target WITHOUT a depth buffer (per renderer). */
+const copyRigs = new WeakMap<object, { scene: THREE.Scene; mat: THREE.ShaderMaterial; cam: THREE.Camera }>();
+function copyPlane(renderer: THREE.WebGLRenderer, src: THREE.WebGLRenderTarget): THREE.WebGLRenderTarget {
+  let c = copyRigs.get(renderer);
+  if (!c) {
+    const mat = new THREE.ShaderMaterial({
+      uniforms: { tSrc: { value: null } },
+      vertexShader: 'varying vec2 vUv;\nvoid main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
+      fragmentShader: 'uniform sampler2D tSrc;\nvarying vec2 vUv;\nvoid main() { gl_FragColor = texture2D(tSrc, vUv); }',
+      depthTest: false,
+      depthWrite: false,
+      toneMapped: false,
+    });
+    const q = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat);
+    q.frustumCulled = false;
+    const scene = new THREE.Scene();
+    scene.add(q);
+    c = { scene, mat, cam: new THREE.OrthographicCamera() };
+    copyRigs.set(renderer, c);
+  }
+  const dst = new THREE.WebGLRenderTarget(src.width, src.height, { type: THREE.UnsignedByteType, format: THREE.RGBAFormat, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, generateMipmaps: false, depthBuffer: false });
+  dst.texture.colorSpace = THREE.NoColorSpace;
+  const prev = { rt: renderer.getRenderTarget(), auto: renderer.autoClear, sm: renderer.shadowMap.autoUpdate, smN: renderer.shadowMap.needsUpdate };
+  try {
+    renderer.autoClear = false;
+    renderer.shadowMap.autoUpdate = false;
+    renderer.shadowMap.needsUpdate = false;
+    c.mat.uniforms.tSrc!.value = src.texture;
+    renderer.setRenderTarget(dst);
+    renderer.render(c.scene, c.cam);
+  } finally {
+    c.mat.uniforms.tSrc!.value = null;
+    renderer.setRenderTarget(prev.rt);
+    renderer.autoClear = prev.auto;
+    renderer.shadowMap.autoUpdate = prev.sm;
+    renderer.shadowMap.needsUpdate = prev.smN;
+  }
+  return dst;
 }
 
 /** Render a kit's drawings for one camera key into new atlas targets (sliced: one cell per unit). */
@@ -717,8 +855,9 @@ function* renderSheet(engine: unknown, kit: Kit, cam: SheetCamera, key: string):
         if (sy > maxY) maxY = sy;
       }
       sizes.push(tightCell(minX, maxX, minY, maxY, tw, pad));
+      // v3.4: one facing per unit (a whole drawing was an 11 ms unit on the host GPU's vote re-bake)
+      yield;
     }
-    yield;
   }
   const pack = packShelves(sizes);
   const rects: number[] = [];
@@ -732,7 +871,9 @@ function* renderSheet(engine: unknown, kit: Kit, cam: SheetCamera, key: string):
   const h = kit.h;
   let renders = 0;
   let done = false;
+  let out: THREE.WebGLRenderTarget[] = rts;
   try {
+    if (!kit.uploaded) yield* uploadKit(renderer, kit);
     // the bake program: compiled in parallel (KHR_parallel_shader_compile) before the first cell, never on a frame
     phase = 'compile';
     if (!kit.compiled) {
@@ -810,13 +951,29 @@ function* renderSheet(engine: unknown, kit: Kit, cam: SheetCamera, key: string):
         yield;
       }
     }
+    // v3.4: the shown planes need no depth buffer: copy each into a depth-less target (one unit per plane)
+    if (bakeConfig.depthless) {
+      phase = 'copy';
+      const copies: THREE.WebGLRenderTarget[] = [];
+      try {
+        for (const rt of rts) {
+          copies.push(copyPlane(renderer, rt));
+          yield;
+        }
+      } catch (e) {
+        for (const c of copies) c.dispose();
+        throw e;
+      }
+      for (const rt of rts) rt.dispose();
+      out = copies;
+    }
     done = true;
   } finally {
     if (!done) for (const rt of rts) rt.dispose();
     // the kit's GPU buffers stay (a re-upload in the first cell of a re-bake was a 12-16 ms unit on the laptop iGPU)
     kit.used = performance.now();
   }
-  const [rtA, rtB] = rts;
+  const [rtA, rtB] = out;
   const sheet = sheetOf({
     key,
     specId: kit.specId,
@@ -842,7 +999,8 @@ function* renderSheet(engine: unknown, kit: Kit, cam: SheetCamera, key: string):
     proxy: kit.proxy,
     source: 'bake',
     stats: { ...kit.stats, renderMs: +renderMs.toFixed(1), wallMs: +(performance.now() - t0).toFixed(1), drawings: drawings.length, cells: nCells, bytes: grid.width * grid.height * 8, renders },
-    rts,
+    rts: out,
+    depth: out === rts,
   });
   return sheet;
 }
@@ -857,14 +1015,16 @@ export function drawingAlias(name: string): string {
   return tag === 'move' || rest.startsWith(`${tag}:`) ? rest : name;
 }
 
-type SheetInit = Omit<SpriteSheet, 'refs' | 'used' | 'dispose'> & { rts?: THREE.WebGLRenderTarget[] };
+type SheetInit = Omit<SpriteSheet, 'refs' | 'used' | 'dispose' | 'gpuBytes'> & { rts?: THREE.WebGLRenderTarget[]; depth?: boolean };
 function sheetOf(i: SheetInit): SpriteSheet {
-  const { rts, ...rest } = i;
+  const { rts, depth, ...rest } = i;
   let disposed = false;
   const sheet: SpriteSheet = {
     ...rest,
     refs: 0,
     used: performance.now(),
+    // two RGBA8 planes (+ a 32-bit depth buffer each while they are the bake targets themselves)
+    gpuBytes: i.grid.width * i.grid.height * 4 * 2 * (depth ? 2 : 1),
     dispose() {
       if (disposed) return;
       disposed = true;
@@ -973,6 +1133,8 @@ interface Store {
 
 const stores = new WeakMap<object, Store>();
 let sharedCache: SheetCache | null = null;
+/** fnv of the vendor sources: hashed once per page (not per spec). */
+let vendorSeed: number | null = null;
 
 function storeOf(engine: object): Store {
   let s = stores.get(engine);
@@ -1029,7 +1191,8 @@ async function vendorHashOf(s: Store, specId: string): Promise<{ hash: string; s
   const spec = (await loadSpecObject(specId)) as VendorCharLike['spec'];
   let p = s.vendorHash.get(specId);
   if (!p) {
-    p = Promise.resolve(fnv1a(specSource(spec), Number.parseInt(fnv1a(vendorSource()), 16)));
+    vendorSeed ??= Number.parseInt(fnv1a(vendorSource()), 16);
+    p = Promise.resolve(fnv1a(specSource(spec), vendorSeed));
     s.vendorHash.set(specId, p);
   }
   const clipsAll = spec.clips ?? {};
@@ -1063,8 +1226,8 @@ function* produce(engine: unknown, s: Store, specId: string, cam: SheetCamera, k
   const E = engine as { renderer: THREE.WebGLRenderer };
   const v = (yield vendorHashOf(s, specId)) as Awaited<ReturnType<typeof vendorHashOf>>;
   const pk = persistKey({ format: BAKE_FORMAT, vendor: v.hash, specId, texel: cam.texel, pitch: cam.pitch, yaw: cam.yaw, clips: v.clips });
-  // 1. the persistent cache (only when no kit is around: a kit re-render is as cheap and needs no upload)
-  if (!s.kits.has(specId)) {
+  // 1. the persistent cache (unless a kit with its buffers on the GPU is around: a re-render is as cheap then)
+  if (!s.kits.get(specId)?.uploaded) {
     const blob = (yield s.cache.get(pk)) as Awaited<ReturnType<SheetCache['get']>>;
     if (blob) {
       try {
@@ -1088,7 +1251,7 @@ function* produce(engine: unknown, s: Store, specId: string, cam: SheetCamera, k
     s.kits.delete(specId);
     if (kit.proxy) releaseProxy(kit.proxy);
     kit.dispose();
-  }
+  } else if (bakeConfig.releaseKitGpu) releaseKitGpu(kit);
   return sheet;
 }
 
@@ -1191,6 +1354,9 @@ export function getSheet(engine: object, specId: string, cam: SheetCamera, prio 
   return p;
 }
 
+/** An unreferenced sheet that no body showed yet is kept this long (ms) before releaseSheet may free it. */
+const FRESH_HOLD_MS = 10_000;
+
 /** A sheet is no longer shown by one body: unreferenced sheets beyond the newest `keepOld` per spec are freed (the
  *  previous camera key stays for a quick switch back: vote camera <-> follow camera). */
 export function releaseSheet(engine: object, sheet: SpriteSheet): void {
@@ -1200,8 +1366,11 @@ export function releaseSheet(engine: object, sheet: SpriteSheet): void {
   if (!s) return;
   const mine = [...s.done.values()].filter((x) => x.specId === sheet.specId).sort((a, b) => b.used - a.used);
   let keep = 0;
+  const now = performance.now();
   for (const x of mine) {
     if (x.refs > 0) continue;
+    // a finished sheet no body picked up yet (a body's swap / an upgrade is about to take it), for a while
+    if (!x.everRef && now - x.used < FRESH_HOLD_MS) continue;
     if (keep < bakeConfig.keepOld) {
       keep++;
       continue;
@@ -1249,7 +1418,75 @@ export function resetUnitStats(engine: object): void {
 export function storeStats(engine: object): Record<string, unknown> | null {
   const s = stores.get(engine);
   if (!s) return null;
-  return { ...s.stats, pending: s.runner.pending(), kits: s.kits.size, sheets: s.done.size, cache: s.cache.stats() };
+  return { ...s.stats, pending: s.runner.pending(), kits: s.kits.size, sheets: s.done.size, cache: s.cache.stats(), gpu: gpuStats(engine) };
+}
+
+/** GPU memory estimate of the sprite store (MiB): sheet planes, kits' geometry while uploaded, shadow proxies. */
+export function gpuStats(engine: object): { sheetsMiB: number; kitsMiB: number; proxiesMiB: number; totalMiB: number; kitsUploaded: number } | null {
+  const s = stores.get(engine);
+  if (!s) return null;
+  let sheets = 0;
+  const proxies = new Set<SheetProxy>();
+  for (const sh of s.done.values()) {
+    if ((sh as unknown as { _disposed?: boolean })._disposed) continue;
+    sheets += sh.gpuBytes;
+    if (sh.proxy) proxies.add(sh.proxy);
+  }
+  let kits = 0;
+  let up = 0;
+  for (const k of s.kits.values()) {
+    if (k.proxy) proxies.add(k.proxy);
+    if (k.uploaded) up++;
+    kits += kitBytes(k);
+  }
+  let px = 0;
+  for (const p of proxies) px += geometryBytes(p.geo) + ((p.bones.image.data as unknown as { byteLength?: number })?.byteLength ?? 0);
+  const mib = (b: number) => +(b / 1048576).toFixed(2);
+  return { sheetsMiB: mib(sheets), kitsMiB: mib(kits), proxiesMiB: mib(px), totalMiB: mib(sheets + kits + px), kitsUploaded: up };
+}
+
+/** Bytes of the geometry of a scene subtree (debug: the rig path's avatar memory estimate). */
+export function subtreeGeometryBytes(root: THREE.Object3D): number {
+  const geos = new Set<THREE.BufferGeometry>();
+  root.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (m.isMesh && m.geometry) geos.add(m.geometry);
+  });
+  let n = 0;
+  for (const g of geos) n += geometryBytes(g);
+  return n;
+}
+
+/**
+ * v3.4: the sheet of a spec for this camera WITHOUT baking: a finished sheet, or one the persistent cache holds (its
+ * upload as a sliced job); null when it would need a bake (a new avatar shows its rig first and the layer upgrades it
+ * to a sprite once a background bake lands).
+ */
+export async function peekSheet(engine: object, specId: string, cam: SheetCamera): Promise<SpriteSheet | null> {
+  const s = storeOf(engine);
+  const key = sheetKey(specId, cam);
+  const done = s.done.get(key);
+  if (done && !(done as unknown as { _disposed?: boolean })._disposed) return done;
+  if (s.sheets.has(key) || !bakeConfig.persist) return null; // baking already: the rig first
+  const E = engine as { renderer: THREE.WebGLRenderer };
+  const v = await vendorHashOf(s, specId);
+  const pk = persistKey({ format: BAKE_FORMAT, vendor: v.hash, specId, texel: cam.texel, pitch: cam.pitch, yaw: cam.yaw, clips: v.clips });
+  const blob = await s.cache.get(pk);
+  if (!blob || stores.get(engine) !== s) return null;
+  if (s.sheets.has(key)) return null; // raced with a bake request
+  const p = s.runner.enqueue(fromBlob(E.renderer, key, v.spec, blob), 20).then((sh) => {
+    s.stats.cacheHits++;
+    s.done.set(key, sh);
+    return sh;
+  });
+  p.catch(() => s.sheets.delete(key));
+  s.sheets.set(key, p);
+  try {
+    return await p;
+  } catch (e) {
+    console.warn('[sprites] cached sheet unusable', e);
+    return null;
+  }
 }
 
 /** Empty the persistent sheet cache (bench: a cold join). */

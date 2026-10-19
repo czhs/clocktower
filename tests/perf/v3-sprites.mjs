@@ -86,6 +86,13 @@ async function main() {
       const t0 = Date.now();
       run[`${mode}Build`] = await call('settle', {});
       log(mode, 'built in', Date.now() - t0, 'ms', JSON.stringify(run[`${mode}Build`]).slice(0, 400));
+      if (sprites) {
+        // v3.4: rigs first, then the background bakes swap each body to its sprite
+        run.spriteUpgrade = await call('settleSprites', {});
+        log('sprites ready', JSON.stringify(run.spriteUpgrade).slice(0, 700));
+      }
+      run[`${mode}Memory`] = await call('memory', {});
+      log(mode, 'memory', JSON.stringify(run[`${mode}Memory`]));
       if (sprites && arg('rejoin', '1') === '1') {
         // a repeat join: a fresh layer (no kits) with the persistent cache of the first join (after every sheet of the
         // first join was stored: the store writes in the background, one sheet at a time)
@@ -99,7 +106,8 @@ async function main() {
         log('sprite sheets stored in', run.spriteStoreMs, 'ms');
         await call('layer', { sprites, ids: IDS, cold: false, keepKits: arg('keepKits', '1') === '1', persist: arg('persist', '1') === '1' });
         run.spriteRejoin = await call('settle', {});
-        log('sprite rejoin', JSON.stringify(run.spriteRejoin).slice(0, 600));
+        run.spriteRejoinUpgrade = await call('settleSprites', {});
+        log('sprite rejoin', JSON.stringify(run.spriteRejoin).slice(0, 600), JSON.stringify(run.spriteRejoinUpgrade).slice(0, 400));
       }
       if (ONLY.includes('cost')) {
         run[`${mode}Cost`] = {
@@ -137,6 +145,7 @@ async function main() {
       if (ONLY.includes('vote')) {
         run[`${mode}VoteCam`] = await call('voteCam', { viewHeight: 12.887, pitchDeg: 23, yawDeg: 45, maxMs: sprites ? 20000 : 1000 });
         log(mode, 'vote camera', JSON.stringify(run[`${mode}VoteCam`]));
+        run[`${mode}VoteMemory`] = await call('memory', {});
         run[`${mode}VoteCost`] = await call('cost', { walking: false, frames: 60 });
         await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
         run[`${mode}VoteCostX4`] = await call('cost', { walking: false, frames: 60 });
@@ -152,6 +161,7 @@ async function main() {
         await call('mount', { tier, tod: 'night' });
         await call('layer', { sprites: mode === 'sprite', ids: IDS, cold: false, keepKits: arg('keepKits', '1') === '1' });
         await call('settle', {});
+        if (mode === 'sprite') await call('settleSprites', {});
         run[`${mode}Night`] = { walkUncapped: await call('cost', { walking: true, frames: FRAMES, uncapped: true }), idleUncapped: await call('cost', { walking: false, frames: FRAMES, uncapped: true }) };
         await call('ghosts', { dead: true });
         await call('cost', { walking: false, frames: 120 });
@@ -186,6 +196,7 @@ async function main() {
         for (const mode of ['rig', 'sprite']) {
           await call('layer', { sprites: mode === 'sprite', ids, rk: 0.22 });
           await call('settle', {});
+          if (mode === 'sprite') await call('settleSprites', {});
           if (sc.voteCam) await call('voteCam', { viewHeight: 12.887, pitchDeg: 23, yawDeg: 45, maxMs: mode === 'sprite' ? 20000 : 500 });
           if (sc.hands) await call('hands', { on: true });
           if (sc.dead || sc.dying) await call('ghosts', { dead: true });
