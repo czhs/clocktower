@@ -199,7 +199,18 @@ cached map removes too, exactly. **Pick the cached static map.** A bake only mak
 
 ## 5. Laptop iGPU (Intel Arc integrated, Chrome 143, ANGLE GL)
 
-LAPTOP_GO_HERE
+**Not measured: still to do.** The laptop became reachable during this front. A session was queued twice (about 75 min
+in total) behind other agents' sessions on the laptop's shared GPU lock, and never got the lock inside the time box.
+The queue was cleaned up (no process or file of this front is left on the laptop). Run it like this: the harness
+build served on the host, a tunnel to the laptop, headless Chrome there with `--use-angle=gl
+--enable-privileged-webgl-extensions`, and the same driver over CDP. Scenes: `night-15`, `square-day-8`, `vote-12`;
+switches `stats`, `shadow`, `pool`, `all`; capped 60 Hz. Read the `gpuMs` column (TIME_ELAPSED per rAF).
+
+What decides the open recommendations there:
+
+- item 1: the GPU-time share of the 2048² (low) / 4096² (high) shadow raster on an iGPU. The desktop GPU showed −9…−13 %
+  at high.
+- item 2: whether the night frame's GPU time drops when the 8-12-light loop leaves every lit colour-pass fragment.
 
 ## 6. Risks
 
