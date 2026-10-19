@@ -20,6 +20,7 @@ import * as towerTimerNS from '@pixel3d/demo/towertimer.js';
 import type { HostedEngine } from './engineHost';
 import { prefetchInteriors } from './interiors';
 import { mergeStatic, type MergeCandidate, type MergedTown, type ShadowView } from '../world/merge';
+import { bakeEnabled, openTreeBake, type TreeBakeStats } from './townBake';
 
 /** The parts of src/town/layout.js / town.js this wrapper reads beyond pixel3d.d.ts (lead-owned typings). */
 interface VendorHouseRec {
@@ -80,11 +81,31 @@ const DESIGN_CAST = new WeakMap<object, { cast: WeakMap<THREE.Object3D, boolean>
 const LOW_NO_CAST = /-(soft|turf-grass|moss-clump-core|clump-leaves|wares-solid|fx)$/;
 type RegistryProto = { add(id: string, piece: unknown): void };
 
+/** (v3.3 bake) The last town build's tree-cache numbers + the vendor's townBuildMs (ct.debug.v3bake=1; null when off). */
+export interface TownBakeInfo extends TreeBakeStats {
+  townBuildMs: number | null;
+  lowH: number;
+  quality: string;
+}
+let lastBake: TownBakeInfo | null = null;
+export const townBakeInfo = (): TownBakeInfo | null => (lastBake ? { ...lastBake } : null);
+const safeStorage = (): Storage | null => {
+  try {
+    return typeof localStorage === 'undefined' ? null : localStorage;
+  } catch {
+    return null;
+  }
+};
+
 export async function buildHollowmere(engine: HostedEngine, o: TownBuildOptions): Promise<BuiltTown> {
   prefetchTownChunks();
   applyCamera(engine, 'gameplay', { focus: new THREE.Vector3(PLAZA.cx, 0, PLAZA.cz) });
   const q = new URLSearchParams({ tod: o.tod ?? 'noon', quality: o.quality === 'high' ? 'high' : 'low', life: '1', demo: 'day', lifeOff: LIFE_OFF });
   if (o.lights) q.set('lights', String(o.lights));
+  // (v3.3 bake, docs/perf-v3/bake.md) createTree outputs of an earlier join with the same tier + window height replay
+  // from IndexedDB (bit-exact); misses are recorded and stored after the town is up
+  const lowH = Number(engine.camera.lowH) || 0;
+  const bake = bakeEnabled(safeStorage()) ? await openTreeBake(o.quality, lowH) : null;
   engine.__ctGrassArea = { ...GRASS_AREA };
   const cast = new WeakMap<THREE.Object3D, boolean>();
   let lowFlips = 0;
@@ -107,13 +128,21 @@ export async function buildHollowmere(engine: HostedEngine, o: TownBuildOptions)
       }
       return add.call(this, id, piece);
     };
+  bake?.install();
   try {
     const town = await buildTown(engine, q, { strict: 'all' });
     DESIGN_CAST.set(town as object, { cast, lowFlips: low ? lowFlips : 0 });
     return town;
   } finally {
     if (proto && add) proto.add = add;
+    bake?.uninstall();
     delete engine.__ctGrassArea;
+    if (bake) {
+      const info: TownBakeInfo = { ...bake.stats, townBuildMs: Number((engine.stats as Record<string, unknown> | undefined)?.townBuildMs) || null, lowH, quality: o.quality };
+      lastBake = info;
+      // off the join's critical path: encode + gzip + IndexedDB a few seconds after the build
+      setTimeout(() => void bake.persist().then(() => Object.assign(info, bake.stats)), 4000);
+    }
   }
 }
 

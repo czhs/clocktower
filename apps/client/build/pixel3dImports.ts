@@ -13,11 +13,14 @@
 //                                 game reads only `name`, demo/characters.js createCharacter): −9 KiB br off town3d
 //   town/pieces/ground.js         `viewArea(engine, 3)` -> `engine.__ctGrassArea ?? viewArea(engine, 3)` (the grass
 //                                 area; replaces the demo's stack-sniffing buildWide, which breaks once minified)
+//   world/trees.js createTree     (v3.3 bake) replay of baked createTree output via globalThis.__ctTreeBake
+//                                 (build/townBake.ts; createTree's source is pinned: a vendor change fails the build)
 // Bundle checks (generateBundle): exactly one three/build/ directory in the bundle; no emitted asset matches
 // characters/*.js; every patch target that is bundled was patched.
 // CONTRACT-REQUEST(pixel3d): static imports / options for all of these (§9.2), so these rewrites can go.
 import { readFileSync } from 'node:fs';
 import type { Plugin } from 'vite';
+import { patchTrees } from './townBake';
 
 export interface Patch {
   /** Module path relative to v3/pixel3d/src/. */
@@ -109,6 +112,12 @@ export const PATCHES: readonly Patch[] = [
     apply(code) {
       return once(code, 'const ga = viewArea(engine, 3);', 'const ga = engine.__ctGrassArea ?? viewArea(engine, 3);');
     },
+  },
+  {
+    // (v3.3 bake) createTree replays baked output when globalThis.__ctTreeBake has the call (build/townBake.ts)
+    file: 'world/trees.js',
+    what: 'createTree: baked-output replay hook (createTree source pinned in build/townBake.ts CREATE_TREE_PIN)',
+    apply: patchTrees,
   },
 ];
 

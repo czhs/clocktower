@@ -1,9 +1,10 @@
 import { createRequire } from 'node:module';
-import { existsSync, readdirSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig, type Plugin } from 'vite';
 import { pixel3dImports } from './build/pixel3dImports';
+import { vendorTreeHash } from './build/townBake';
 import { BASE_CHUNK, baseBeforeTheme, baseChunkFor, lazyIndexName, renamedCss, checkCssChunks, CSS_ORDER, markThemeLink, patchPreloadHelper, srcCss, type ChunkCss } from './build/cssOrder';
 
 // (v2.3, Trusted Types) msgpackr (via colyseus) probes `new Function('')` at load to decide whether it
@@ -126,7 +127,8 @@ export const v3Aliases = [
 // ("… is not exported by …/client.ts").
 export default defineConfig({
   plugins: [msgpackrNoEval(), pixel3dImports(), cssOrder()],
-  define: { __CT_CSS_ORDER__: JSON.stringify(CSS_ORDER) },
+  // (v3.3 bake) the tree cache's vendor key (vendor/townBake.ts): a vendor / patch / three change invalidates every record
+  define: { __CT_CSS_ORDER__: JSON.stringify(CSS_ORDER), __CT_VENDOR_HASH__: JSON.stringify(vendorTreeHash(repoRoot, JSON.parse(readFileSync(path.join(threeDir, 'package.json'), 'utf8')).version)) },
   esbuild: { jsx: 'automatic', jsxImportSource: 'preact' },
   resolve: { alias: [{ find: /^@ct\/protocol$/, replacement: '@ct/protocol/client' }, ...v3Aliases], dedupe: ['three'] },
   // (v3) pre-bundle the three addons the vendor imports, so the dev server does not reload the page mid-boot
