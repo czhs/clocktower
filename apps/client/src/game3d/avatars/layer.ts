@@ -34,10 +34,33 @@ import { createNpcFolk, DAYLIKE, npcHomesFor, type Npc, type NpcFolk } from './n
 import { fallbackView, pxToMetres } from './project';
 import { nextBuild, type BuildCandidate } from './queue';
 import { createRigBody } from './rigBody';
+import { createSpriteBody, spriteDebug } from './sprites/spriteBody';
+import { pumpBakes, releaseSheets, sheetStats, storeStats } from './sprites/bake';
 import { canPrecompile, precompile, type CompileRendererLike, type PrecompileResult } from './precompile';
 import { RIM_DEFAULT } from './ghostTint';
 import { dir8, toFacing } from '../../game/rules/input';
 import { LOW_TIER_AMBIENCE } from '../../game/fx/tier';
+
+/**
+ * v3.3: characters are baked sprites (sprites/) at the `low` tier; rigs at `high` and `cpu` (software GL: every spec's
+ * bake + sprite programs compile for seconds there, a cold join took 118 s on SwiftShader; docs/perf-v3/sprites.md §5).
+ * localStorage['ct.debug.v3sprites'] = '1' | '0' forces sprites on / off at any tier; a test build can force it for
+ * every client (VITE_V3SPRITES=1 | 0 at build time: the e2e runs of both paths).
+ */
+export function spritesDefault(tier: Tier, flag: string | null | undefined, buildFlag?: string | null): boolean {
+  if (buildFlag === '1' || buildFlag === '0') return buildFlag === '1';
+  if (flag === '1' || flag === '0') return flag === '1';
+  return tier === 'low';
+}
+export function spritesEnabled(tier: Tier): boolean {
+  let flag: string | null = null;
+  try {
+    flag = globalThis.localStorage?.getItem('ct.debug.v3sprites') ?? null;
+  } catch {
+    flag = null;
+  }
+  return spritesDefault(tier, flag, (import.meta as unknown as { env?: Record<string, string | undefined> }).env?.VITE_V3SPRITES ?? null);
+}
 
 /** Low tier: characters farther than this from the camera target skip the normal pass and cast no shadow (§4). */
 export const LOD_FAR_M = 12;
@@ -284,14 +307,18 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
   };
 
   // ------------------------------------------------------------------ builds
-  type Attempt = { kind: 'rig'; spec: string; tint: string | null } | { kind: 'billboard'; id: string; tint: string | null };
+  type Attempt = { kind: 'rig' | 'sprite'; spec: string; tint: string | null } | { kind: 'billboard'; id: string; tint: string | null };
+  const sprites = spritesEnabled(svc.tier);
   const attemptsFor = (e: Entry): Attempt[] => {
     const cm = castMap(e.castId);
     const pinTint = standinTint(e.pid ?? e.key);
     const standin: Attempt = { kind: 'rig', spec: STANDIN_SPEC, tint: pinTint };
     const out: Attempt[] = [];
+    const standinSprite: Attempt = { kind: 'sprite', spec: STANDIN_SPEC, tint: pinTint };
+    if (cm.spec && sprites) out.push({ kind: 'sprite', spec: cm.spec, tint: null });
     if (cm.spec) out.push({ kind: 'rig', spec: cm.spec, tint: null });
     if (cm.fallback === 'billboard' && hasBillboardArt(e.castId)) out.push({ kind: 'billboard', id: e.castId, tint: null });
+    if (sprites) out.push(standinSprite);
     out.push(standin);
     if (cm.fallback !== 'billboard' && hasBillboardArt(e.castId)) out.push({ kind: 'billboard', id: e.castId, tint: null });
     return out;
@@ -310,7 +337,11 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
     const run = async (): Promise<{ body: AvatarBody; tint: string | null } | null> => {
       for (const a of attempts) {
         try {
-          if (a.kind === 'rig') {
+          if (a.kind === 'sprite') {
+            const body = await createSpriteBody(engine, a.spec, { x: at.X, z: at.Z, face, heightAt: groundAt, tint: a.tint, prio: e.self ? 10 : 0, lantern: e.carriesLantern });
+            return { body, tint: a.tint };
+          }
+          if (a.kind !== 'billboard') {
             const body = await createRigBody(engine, a.spec, { x: at.X, z: at.Z, face, heightAt: groundAt, lite, tint: a.tint, lantern: e.carriesLantern });
             return { body, tint: a.tint };
           }
@@ -318,7 +349,7 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
           return { body, tint: a.tint };
         } catch (err) {
           if (destroyed || e.removed || gen !== e.gen) return null;
-          console.warn(`[avatars] ${a.kind} '${a.kind === 'rig' ? a.spec : a.id}' for cast '${e.castId}' failed:`, (err as Error)?.message ?? err);
+          console.warn(`[avatars] ${a.kind} '${a.kind !== 'billboard' ? a.spec : a.id}' for cast '${e.castId}' failed:`, (err as Error)?.message ?? err);
         }
       }
       return null;
@@ -506,6 +537,8 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
       view.frame?.();
       viewerLoc = state.me?.location ?? 'outdoors';
       ensureFolk(state);
+      // sprite bakes: a slice of work per frame (BAKE_BUDGET_MS), before this frame's render
+      if (sprites) pumpBakes(engine as object);
 
       // 1. players
       seen.clear();
@@ -629,6 +662,7 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
       entries.clear();
       warmCheck.clear();
       releaseBillboardSheets(engine as object);
+      releaseSheets(engine as object);
       warmRT?.dispose();
       warmRT = null;
       doneSelf();
@@ -662,6 +696,8 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
           })),
         /** shader pre-warm: builds pre-compiled, resolved / timed out, first frames that still compiled (misses; unchecked = another pre-warm ran in between), total ms */
         avatarsWarm: () => ({ ...warm, ms: Math.round(warm.ms) }),
+        /** v3.3 sprites: live sprite bodies, re-bakes, fallbacks, the bake store (cache hits, kits) and the sheets */
+        sprites: async () => ({ enabled: sprites, ...spriteDebug, store: storeStats(engine as object), sheets: await sheetStats(engine as object) }),
       };
     },
 
