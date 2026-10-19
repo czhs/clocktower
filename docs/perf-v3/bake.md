@@ -67,6 +67,10 @@ Each row = one browser profile, three joins of a v3 lobby (visit 0 = cold Indexe
 | off ×4 | 0 / 1 / 2 | 9 721 / 9 650 / 9 560 | 7 971 / 8 163 / 8 129 | 8 658 / 8 548 / 8 578 | **3 428, 2 445** | 257-273 MiB | — |
 | **on ×4** | 0 / 1 / 2 | 11 468\* / **6 285 / 6 209** | 8 077 / **4 562 / 4 549** | 10 319\* / **5 090 / 5 091** | **2 434, 1 054** | 273-290 MiB | 0 → 280 / 280 hits, read 99-133 ms |
 
+Low tier (`ct.fxQuality=low`, what Intel iGPUs get), CPU ×4, two joins: off 8 123 / 7 865 ms ready, build 6 553 /
+6 543, largest LTs 2 641 + 1 818; **on 8 086 / 5 078 ms, build 6 494 / 3 659**, largest LTs 1 820 + 816 (279 / 279
+hits, read 130 ms, record 21.4 MB).
+
 \* that visit-0 run overlapped a laptop session on the same server; the two earlier ×4 visit-0 runs with the flag on
 were 9 747 / 9 715 ms (equal to off): recording costs 50-62 ms at ×4, 11-13 ms at ×1.
 
