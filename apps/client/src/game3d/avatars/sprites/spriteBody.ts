@@ -1,4 +1,4 @@
-// v3.3 sprites (default at the low / cpu tiers; ct.debug.v3sprites=0|1 forces either way). An AvatarBody drawn as
+// v3.3 sprites (default at the low tier; ct.debug.v3sprites=0|1 forces either way). An AvatarBody drawn as
 // ONE camera-facing quad that samples a baked sheet (bake.ts) and is lit by the vendor look shader (material.ts),
 // plus a shadow-only proxy (proxy.ts) drawn into the sun's shadow map. The layer treats it like a rig body.
 //

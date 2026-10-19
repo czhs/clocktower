@@ -813,8 +813,7 @@ function* renderSheet(engine: unknown, kit: Kit, cam: SheetCamera, key: string):
     done = true;
   } finally {
     if (!done) for (const rt of rts) rt.dispose();
-    // release the kit's GPU buffers between bakes (re-uploaded by the next bake; the programs stay compiled)
-    kit.mesh.geometry.dispose();
+    // the kit's GPU buffers stay (a re-upload in the first cell of a re-bake was a 12-16 ms unit on the laptop iGPU)
     kit.used = performance.now();
   }
   const [rtA, rtB] = rts;

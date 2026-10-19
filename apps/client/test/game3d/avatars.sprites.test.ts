@@ -270,9 +270,10 @@ describe('v3.3 ship: bake clip set and drawing names', () => {
 });
 
 describe('v3.3 ship: tier default', () => {
-  it('sprites at low / cpu, rigs at high; the debug flag and the build flag force either way', () => {
+  it('sprites at low, rigs at high and cpu; the debug flag and the build flag force either way', () => {
     expect(spritesDefault('low', null)).toBe(true);
-    expect(spritesDefault('cpu' as never, null)).toBe(true);
+    expect(spritesDefault('cpu' as never, null)).toBe(false);
+    expect(spritesDefault('cpu' as never, '1')).toBe(true);
     expect(spritesDefault('high', null)).toBe(false);
     expect(spritesDefault('high', '1')).toBe(true);
     expect(spritesDefault('low', '0')).toBe(false);

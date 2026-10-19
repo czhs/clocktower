@@ -42,14 +42,15 @@ import { dir8, toFacing } from '../../game/rules/input';
 import { LOW_TIER_AMBIENCE } from '../../game/fx/tier';
 
 /**
- * v3.3: characters are baked sprites (sprites/) at the `low` and `cpu` tiers, rigs at `high`.
+ * v3.3: characters are baked sprites (sprites/) at the `low` tier; rigs at `high` and `cpu` (software GL: every spec's
+ * bake + sprite programs compile for seconds there, a cold join took 118 s on SwiftShader; docs/perf-v3/sprites.md §5).
  * localStorage['ct.debug.v3sprites'] = '1' | '0' forces sprites on / off at any tier; a test build can force it for
  * every client (VITE_V3SPRITES=1 | 0 at build time: the e2e runs of both paths).
  */
 export function spritesDefault(tier: Tier, flag: string | null | undefined, buildFlag?: string | null): boolean {
   if (buildFlag === '1' || buildFlag === '0') return buildFlag === '1';
   if (flag === '1' || flag === '0') return flag === '1';
-  return tier !== 'high';
+  return tier === 'low';
 }
 export function spritesEnabled(tier: Tier): boolean {
   let flag: string | null = null;

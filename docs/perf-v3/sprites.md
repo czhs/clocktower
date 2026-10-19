@@ -12,7 +12,7 @@ sprite → stand-in rig).
 Code: `apps/client/src/game3d/avatars/sprites/` — `atlas.ts` (pure math: cells, facings, timelines, encodings, tight
 cells + shelf packing, feet on steps, cache keys), `bake.ts` (kits, the sliced bake, the store, the persistent cache
 glue), `runner.ts` (frame-budget job runner), `proxy.ts` (shadow proxy clustering), `cache.ts` (IndexedDB cache),
-`cacheClient.ts` + `cacheWorker.ts` (the cache in a module Worker), `material.ts` (the sprite + proxy materials),
+`cacheClient.ts` (the store's cache), `material.ts` (the sprite + proxy materials),
 `spriteBody.ts` (the AvatarBody); `game3d/vendor/spriteLook.ts`; `avatars/layer.ts` (default, pump, attempts).
 Bench: `tests/perf/v3-sprites{-page.ts,.mjs}`. Unit tests: `apps/client/test/game3d/avatars.sprites{,.cache}.test.ts`.
 
@@ -71,12 +71,14 @@ occlude per texel).
 6. **Kits are kept** (≤ 24 per engine, GPU buffers released after each bake, programs stay compiled): a new camera key
    (vote camera, resize, a room) only re-renders cells — no rig build, no simulation, no compile. The previous key's
    sheet stays (`keepOld = 1`) so vote camera ↔ follow camera switches back instantly.
-7. **Persistent cache** (`cache.ts`, in a module Worker: `cacheWorker.ts`): a finished sheet is read back
-   asynchronously (`readRenderTargetPixelsAsync`), transferred to the worker, packed, gzipped and stored in IndexedDB
+7. **Persistent cache** (`cache.ts`): once no bake is pending, a finished sheet is read back asynchronously
+   (`readRenderTargetPixelsAsync`), packed, gzipped in 64 KB pieces with a macrotask between them and stored in IndexedDB
    under `v<BAKE_FORMAT>|<fnv(vendor sources + spec)>|<spec>|<texel>|<pitch>|<yaw>|<clip set>`; bounded at 48 MiB
-   stored (LRU), quota errors evict half and retry once, open failures / private mode / no Worker disable writes for
-   the session (bakes go on). A join whose key is cached builds **no rig at all** (1 upload unit per plane). On the
-   main thread the gzip + clones cost the vote re-bake frames p95 8 → 34 ms (host GPU), hence the worker.
+   stored (LRU), quota errors evict half and retry once, open failures / private mode disable the cache for
+   the session (bakes go on). A join whose key is cached builds **no rig at all** (1 upload unit per plane). Storing
+   right after each bake with one-shot gzip cost the vote re-bake frames p95 8 → 34 ms (host GPU); a module Worker
+   fixed that but is blocked by the site's Trusted Types policy (`trusted-types 'none'`, a console error in every e2e),
+   so the store waits for the bakes and chunks the (de)flate instead (re-bake p95 8 ms, 15 sheets stored ≈ 1 s later).
 8. **Feet on steps** (`atlas.ts stepOffset`): the ground under both feet (± the foot spread across the displayed
    facing) is sampled per frame (cached per position / facing); the figure sinks toward a lower foot by at most
    0.1 m (the rig's hip-dip limit) or rises onto the lower foot when both are above the root's ground. Interiors use
@@ -99,8 +101,10 @@ LAPTOP_NUMBERS
 | | rigs | sprites |
 |---|---|---|
 | cold join (15 bodies) wall / max frame / long tasks | 785-859 ms / 86-91 / 2 (max 90) | 2.1-2.8 s / 98-100 / 5-6 (max 97) |
-| repeat join (IndexedDB hits, no kits) | — | **845 ms**, 15 hits, max bake unit 0.5 ms (the long tasks left are program compiles) |
-| vote camera switch: frames until every sheet re-baked | (camera only) max frame 20 ms | **622 ms**, max frame 16 ms, p95 9 ms, max bake unit 0.9 ms, 0 long tasks |
+| sheets stored in IndexedDB after the cold join | — | ≈ 1.0 s (15 sheets, 7.0 MB gzipped) |
+| repeat join (IndexedDB hits, no kits) | — | **1.04 s**, 15 hits, no rig built, max bake unit 0.2 ms (the 5 long tasks left are the sprite programs' compiles, like a rig join) |
+| vote camera switch: frames until every sheet re-baked | (camera only) max frame 20 ms | **625 ms**, max frame 17 ms (the switch frame itself), p95 8 ms, 2nd-worst 8 ms, max bake unit 0.9 ms, 0 long tasks |
+| walking, JS frame / GPU-incl. frame | 3.15 / 6.38 ms, 744 k tris, 267 draws | 1.91 / 4.18 ms, 350 k tris, 266 draws |
 | vote camera cost (×1 / ×4 JS frame) | 2.99 / 12.6 ms, 920 k tris | 2.79 / 11.0 ms, 525 k tris |
 | night (light pool), walking / idle, GPU-incl. frame | 6.99 / 6.58 ms, 735 k tris | 6.39 / 4.96 ms, 341 k tris |
 | night + ghosts, walking / idle | 6.62 / 6.52 ms | 4.58 / 4.61 ms |
