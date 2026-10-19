@@ -229,3 +229,28 @@ Stills: `docs/perf-v3/sprites/stills-rig-sprite-diff.png` (per scene: rig | spri
 Laptop iGPU (ANGLE GL-EGL, Chrome 143), 15 characters walking: low tier presented fps 143 → 360, GPU-inclusive frame
 11.1 → 5.2 ms, CPU ×4 15.8 → 9.2 ms; cpu tier 334 → 1 139 fps; vote re-bake 744 ms over 46 frames, max frame 37 ms;
 pixel diffs 0.46-2.01 % (shadow caster, no clips baked). Full tables: `git show 5e41e37:docs/perf-v3/sprites.md`.
+
+## 8. v3.4 release changes (the `v34-release` agent, 2026-10-18)
+
+Merged onto v3.3 (`72aba16`); numbers on the real laptop in docs/RELEASE-v3.md "v3.4".
+
+- **Tier**: sprites only when the scene's tier is `low` (rebuilt per tier, so a promotion to `high` builds rigs); the
+  sheets (bakes AND cached ones) wait for `Lifecycle.mayPromote` to turn false (`TownGame3d` `spriteGate`, at most 20 s):
+  the GPU probe times rigs (with sprites an iGPU measured 4.5 ms, at the 4.5 ms integrated bar) and a promoted town
+  would discard the bakes.
+- **Rig first, then swap** (`layer.ts` `pumpUpgrades`): a new avatar takes a sheet only if one is at hand (`peekSheet`:
+  finished or in IndexedDB), else its rig; after every first build, the sheets are requested (own avatar first), and one
+  body at a time is created, pre-compiled beside the shown rig and swapped (not mid-collapse / mid-fade).
+- **Memory** (`bakeConfig`): `depthless` (finished planes copied into targets without a depth buffer, one unit per
+  allocation / copy, the copy program pre-compiled), `releaseKitGpu` (kit geometry freed after each bake, re-uploaded one
+  attribute per unit through an invisible mesh), `keepOld: 0` (a fresh unreferenced sheet is protected 10 s). 17 avatars
+  ≈ 33 MiB at the follow camera on the laptop (was ≈ 150 MB estimated with kits + two keys + depth).
+- **Cache key fix**: `specSource` hashed each part's `BufferGeometry.toJSON()`, whose random `uuid` changed the key on
+  every page load (the persistent cache never hit after a reload) and cost megabytes of JSON per spec; geometries are now
+  a compact digest.
+- **Vote**: re-bake hold 0.5 → 1.2 s (the vote frame re-fits ~0.7 s after entry: the interim key was baked too), kits
+  warmed in the background after a cached join (one per 1.5 s, programs compiled), the IndexedDB store waits while a
+  nomination / vote is open. Laptop vote window worst frame 67 ms (was 83-117 ms in the first v3.4 builds).
+- **Chunk**: `avatars/sprites/index.ts` is a lazy chunk (18.5 KiB br); `high` / `cpu` never download it.
+- Sprite bodies report `texture: 'v3:<spec>'` (§6.1) and `sprite: true`; `__ctCamera.spritesNow()` (upgrades, gate,
+  GPU estimate, peek stats) and `__ctCamera.sprites()` (store: units > 8 ms by phase, `spawn` = vendor rig build ms).

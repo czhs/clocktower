@@ -1,3 +1,66 @@
+# Clocktower Town v3.4
+
+Status: **see docs/progress.md "v3 handoff" and docs/test-results.md "v3.4 deploy"** (tag `v3.4` on `v3-game`). Gate:
+docs/test-results.md "v3.4 release gate". Contract and decision log: docs/v3/INTEGRATION.md §11 "v3.4". Design and the
+earlier numbers: docs/perf-v3/sprites.md (branch `v33-sprites-ship`, merged here).
+
+v3.4 draws the characters as **baked sprites at the `low` tier** — the tier every integrated-GPU laptop stays at since
+v3.3. `high` (desktop / laptop dGPUs) and `cpu` (software GL) keep the live rigs. Each character is one camera-facing
+quad that samples a G-buffer sheet baked at runtime from the character's own rig and is lit per texel by the vendor's
+own character shader (day / night ramps, light pool, ghosts, talking rim, outlines, depth-correct occlusion).
+
+## Faster
+- **Real laptop, v3.3 → v3.4** (Intel Arc iGPU, Mesa, Chrome 143 headless ANGLE GL-EGL, 1440×900 DPR 2, `auto` (= `low`,
+  promotion declined on every load in both builds), 14 bots + the Storyteller, 17-18 avatars incl. townsfolk; the same
+  harness, v3.3 = tag `v3.3` 72aba16; v3.3 measured once in a fresh browser and once with warm Chrome caches, v3.4 in
+  fresh browsers):
+
+  | | v3.3 (rigs) | v3.4 (sprites) |
+  |---|---|---|
+  | waiting room, 14 walking: fps / GPU ms p50 (p95) | 59.6-59.9 / 8.1-8.9 (8.9-9.9) | **60 / 4.7 (4.8-5.7)** |
+  | day walk on the square | 59.5-59.6 / 8.2-8.9 | **60 / 4.7** |
+  | day, 6 ghosts walking | 59.9-60 / 8.4-9.0 | **60 / 7.0-7.4** |
+  | the vote (window from the nomination: camera switch + sheet re-bake) | 59.5-59.8 / 9.1-9.5, worst frame 33-50 ms | 59.4 / 7.0, **worst frame 67 ms** (one frame, no long task; the first builds of this release measured 83-117 ms) |
+  | night, own cottage (30 fps idle cap) GPU ms | 1.8-2.2 | 1.2-1.3 |
+  | main-thread JS per frame p50 | 2.9-3.8 ms | 2.5-3.5 ms |
+  | triangles per frame, square | 0.48-0.66 M | 0.17-0.35 M |
+  | **first join** (fresh browser profile: cold HTTP / shader / IndexedDB caches) ready → every avatar drawn | 13.3 s → 15.4 s | **13.3-13.4 s → 14.6-15.3 s** (rigs first; every avatar a sprite at 23.7-24.7 s, in the background) |
+  | **repeat join** (reload) ready → every avatar drawn | 2.5-2.9 s → 3.0-3.4 s | 2.6-2.9 s → 3.2-3.5 s (sprites from the IndexedDB cache at 7.3-8.1 s) |
+  | JS heap after GC | 179-189 MiB | 182-200 MiB on repeat joins before the kit warm-up, 242-302 MiB with the bake kits (kept for re-bakes) |
+  | NVIDIA RTX 4070 laptop dGPU, `auto` | `high` (rigs), 60 fps, GPU 4.0-4.2 ms | **unchanged**: `high` (rigs, the sprite chunk is not even loaded), 60 fps, GPU 4.0-4.3 ms |
+
+  Bench (laptop iGPU, the real engine + Hollowmere + avatar layer on a scripted state, 15 characters, 1280×720, GPU-
+  inclusive frame time, uncapped): walking 13.8 → 7.5 ms, idle 13.3 → 7.5 ms, night (light pool) 15.5 → 8.5 ms, night +
+  ghosts 12.2 → 8.2 ms; triangles 744 k → 349 k; avatar update 0.45-0.65 → 0.08-0.14 ms.
+- **GPU memory of the characters: ~33 MiB for 17 avatars at the follow camera** (planes 32 MiB + shadow proxies 1 MiB;
+  rig geometry for 15 rigs at `low`: 35 MiB; the v33-sprites-ship branch kept ~150 MB). Trimmed in v3.4: the finished
+  sheets are copied into render targets **without a depth buffer** (halves each atlas), the bake rigs' **geometry buffers
+  are freed after each bake** and re-uploaded one attribute per bake unit when needed, and **only the current camera
+  key's sheet is kept** (a switch back loads the stored sheet from IndexedDB). Peak while the vote re-bakes: ~50 MiB
+  (old + new sheets) for a few seconds.
+- **The first join is not slower than with rigs**: every avatar is built as a rig first (exactly as v3.3); the sheets bake
+  in the background (4 ms of work per frame) once the tier is settled (no `low` → `high` promotion pending: `high` would
+  draw rigs, and the GPU probe must time rigs), and each character swaps to its sprite once its sheet and the sprite's
+  shader programs are ready. A repeat join swaps from the IndexedDB cache (no bake).
+- **The sprite code is a separate lazy chunk** (18.5 KiB br), downloaded only when sprites are on; the town3d chunk grows
+  290.0 → 293.3 / 300 KiB br.
+
+## Known issues (v3.4)
+- Everything in "Known issues (v3.3)" below still applies (the Intel first-visit shader compile: v3.5).
+- **Look differences** vs the rigs (docs/perf-v3/sprites.md §3; stills `tests/v3/shots/v3.4/`, 0.14 % (day), 0.14 %
+  (vote), 0.38 % (night ghosts) of the frame differ, host GPU): no secondary motion (acceleration lean, head / chest lag,
+  scarf / tail swing, planted feet while gliding; turns / starts land on other walk frames); feet on steps sink toward
+  the lower foot instead of per-foot IK; shadows from a 2-6 cm clustered proxy (edges differ by a texel); fur / feather
+  terminator hints missing; **no characters in water reflections at `low`**; after a camera change (vote camera, a
+  resize, a room) **the previous sheet shows until the re-bake lands** (≈ 1-4 s on the laptop, sliced).
+- **Background bake hitches after a first visit**: while the sheets bake (≈ 10 s after the tier decision on the laptop)
+  the vendor's synchronous rig build per character (up to 75-215 ms) and the sheet programs' compiles cost 5-10 long
+  tasks (max 160-245 ms). Repeat visits load the sheets from IndexedDB (no rig build for the sheets; the kits are then
+  built one per 1.5 s in the background so the first vote re-bake only renders cells).
+- **The vote camera's re-bake** (once per new camera key and session; stored afterwards) still costs one or two long
+  frames on the laptop (67 ms, one frame, on the laptop with the kits warm; 83-117 ms when the vote came before the kit warm-up; rigs: 33-50 ms); the cache store waits until the vote closes.
+- A spec whose own vertex shader computes more than 3 custom varyings would need a wider encoding (none today).
+
 # Clocktower Town v3.3
 
 Status: **on prod since 2026-10-18 18:26 PDT** (https://clocktower.chrisshi.com, tag `v3.3` = `72aba16` on `v3-game`). Gate and deploy: docs/test-results.md "v3.3 release gate" /

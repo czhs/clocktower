@@ -212,7 +212,41 @@ v2; v3.0 is on the dev service, see "v3 handoff" below.)
   WP3 soft-layer fade behind thatched cottages, WP4 bubble details); pixel3d-side requests are collected in
   INTEGRATION.md §9.2.
 
-### v3 handoff (2026-10-18 night, after the v3.3 release — RESTART FROM HERE)
+### v3 handoff (2026-10-18 night, after the v3.4 release — RESTART FROM HERE; work PAUSED by the user after v3.4)
+
+- **v3.4 = the commit "v3.4: release gate + docs" on `v3-game`, tag `v3.4`; GitHub `main` = that commit.
+  Deploy: dev, then prod (pre-approved beta), recorded in docs/test-results.md "v3.4 deploy".** Rollback: `scripts/deploy-hshi-u1.sh prod 72aba16` (v3.3). Release note: docs/RELEASE-v3.md "v3.4".
+  Gate: docs/test-results.md "v3.4 release gate" / "v3.4 deploy".
+- Contents: `v33-sprites-ship` merged — **characters are baked sprites at the `low` tier** (every integrated GPU since
+  v3.3), rigs at `high` / `cpu`; `ct.debug.v3sprites=1|0` (or a `VITE_V3SPRITES=1|0` build) forces either path. v3.4
+  changes on top (docs/perf-v3/sprites.md §8): sprites wait for the tier decision (`Lifecycle.mayPromote`, `TownGame3d`
+  `spriteGate`, ≤ 20 s); rig first + background bake + swap (`avatars/layer.ts pumpUpgrades`); GPU memory ≈ 33 MiB for
+  17 avatars (depth-less planes, bake-rig buffers freed, one camera key kept); the persistent sheet cache key fixed (it
+  missed on every reload); kits warmed in the background after a cached join; re-bake hold 1.2 s; cache store held during
+  votes; the sprite code is a lazy chunk. Laptop (Intel iGPU, 1440×900 DPR 2, 14 bots): GPU ms per frame 8.1-9.5 → 4.7-7.0
+  at 60 fps, first join to every avatar drawn 15.4 → 14.6-15.3 s (sprites follow in the background), repeat join 3.0-3.4
+  → 3.2-3.5 s; dGPU unchanged (`high`, rigs).
+- Known v3.4 issues (RELEASE-v3.md): vote camera re-bake worst frame 67 ms on the laptop (rigs 33-50); 5-10 long tasks
+  (≤ 245 ms) while the sheets bake after a FIRST visit (vendor rig builds + sheet program compiles); JS heap +60-110 MiB
+  while the bake kits are kept; sprite look differences (no secondary motion, no characters in water reflections at low,
+  previous sheet for ≈ 1-4 s after a camera change).
+- **Next = v3.5 from branch `v35-shaders`** (pushed at `8741a84` by another agent): parallel shader compile + cheaper
+  cut-away GLSL + home-page shader warm, aimed at the Intel first-visit shader compile (≈ 14 s to the first frame).
+  **Before releasing it: a frozen-time iGPU still** (the laptop, same moment rig/town before vs after) to prove the look
+  is unchanged; then the usual laptop before/after + gate. Then the vendor asks in INTEGRATION.md §9.2 ("v3.3 fronts":
+  tree template hook, cheaper ground piece, foliage static/animated split, cheap cpu cut-away, single-pass MRT; v3.4 adds:
+  a supported G-buffer output mode in look.js + `Character.sampleDrawings()`, a shared bake / sprite program instead of
+  one per look option set, a cheaper synchronous `createCharacter`). Parked: `v33-tiles`, `v33-light`.
+- How the v3.4 laptop numbers were taken (re-usable): scratch drivers in the release agent's scratchpad = a copy of the
+  laptop-perf HOWTO drivers with `measure.mjs` extended (time to every avatar / every sprite, `preWaitMs`, store stats),
+  `probe.js` (`avatarsAt` / `spritesAt` via `__ctCamera.avatars3d()` / `spritesNow()`), `session.sh` (one tp64 browser:
+  v3.3 cold → v3.4 → v3.3 warm, then `tests/perf/v3-sprites.mjs --cdp`), host sandboxes `v34-lp33` / `v34-lp34`, game
+  server port 3452, Vite 3451. Laptop access + rules: the gitignored CLAUDE.local.md; method: docs/perf-v3/laptop.md.
+- Carried over: the owner's Cloudflare `/assets/*` cache rule + Smart Tiered Cache; deferred C2 QA findings; runtime
+  budget keys (`v3IdleLobbyFps`, `v3WalkFps`, …); `v3-doors` keyboard walker flaked once in this gate (stuck at the door
+  under host load; passed on re-run).
+
+### v3 handoff (2026-10-18 night, after the v3.3 release — superseded by the v3.4 entry above)
 
 - **v3.3 = the commit "v3.3: release gate + docs" on `v3-game`, tag `v3.3`; GitHub `main` = that commit.
   PROD runs v3.3 (`72aba16`) since 2026-10-18 18:26 PDT** (pre-approved beta deploy: dev + 6-bot GPU smoke with 0 page errors, no prod lobby in the 30 min before, manual backup, public `/`, `/v2/`, `/v3-art-demo/` 200, journals clean; docs/test-results.md "v3.3 deploy"). Rollback: `scripts/deploy-hshi-u1.sh prod ceab1ce` (v3.2). Release note: docs/RELEASE-v3.md "v3.3".
