@@ -82,7 +82,7 @@ async function main() {
     log('mounted', JSON.stringify(run.mount));
     for (const mode of ['rig', 'sprite']) {
       const sprites = mode === 'sprite';
-      await call('layer', { sprites, ids: IDS });
+      await call('layer', { sprites, ids: IDS, cold: arg('warm', '0') !== '1', keepKits: arg('keepKits', '1') === '1' });
       const t0 = Date.now();
       run[`${mode}Build`] = await call('settle', {});
       log(mode, 'built in', Date.now() - t0, 'ms', JSON.stringify(run[`${mode}Build`]).slice(0, 400));
@@ -138,9 +138,12 @@ async function main() {
         { name: 'day-walk', tod: 'noon', walking: true },
         { name: 'day-talk', tod: 'noon', talk: true },
         { name: 'day-ghost', tod: 'noon', dead: true },
+        { name: 'dying', tod: 'noon', dying: true },
+        { name: 'vote', tod: 'noon', hands: true, voteCam: true },
         { name: 'golden', tod: 'golden' },
         { name: 'night', tod: 'night' },
-      ];
+        { name: 'night-ghost', tod: 'night', dead: true },
+      ].filter((sc) => !arg('scenes', '') || arg('scenes', '').split(',').includes(sc.name));
       const ids = IDS.slice(0, Number(arg('stillN', '6')));
       run.stills = {};
       let curTod = 'noon';
@@ -153,7 +156,9 @@ async function main() {
         for (const mode of ['rig', 'sprite']) {
           await call('layer', { sprites: mode === 'sprite', ids, rk: 0.22 });
           await call('settle', {});
-          if (sc.dead) await call('ghosts', { dead: true });
+          if (sc.voteCam) await call('voteCam', { viewHeight: 12.887, pitchDeg: 23, yawDeg: 45, maxMs: mode === 'sprite' ? 20000 : 500 });
+          if (sc.hands) await call('hands', { on: true });
+          if (sc.dead || sc.dying) await call('ghosts', { dead: true });
           if (sc.talk) await call('talk', { on: true, n: 3 });
           let pin = null;
           if (mode === 'sprite' && shots.rig) {
@@ -165,6 +170,8 @@ async function main() {
             }
           }
           shots[mode] = await call('still', { pin, walking: !!sc.walking, frames: sc.dead ? 120 : 40 });
+          if (sc.hands) await call('hands', { on: false });
+          if (sc.voteCam) await call('mount', { tier, tod: sc.tod });
           writeFileSync(path.join(OUT, `still-${tier}-${sc.name}-${mode}.png`), Buffer.from(shots[mode].url.split(',')[1], 'base64'));
         }
         const d = diff(png(shots.rig.url), png(shots.sprite.url), path.join(OUT, `still-${tier}-${sc.name}-diff.png`));

@@ -89,12 +89,16 @@ async function mount(cfg: { tier?: Tier; tod?: TodPreset; w?: number; h?: number
 }
 
 /** A fresh avatar layer in rig or sprite mode with these cast specs on a ring around the square. */
-async function layer(cfg: { sprites: boolean; ids: string[]; rk?: number }): Promise<Json> {
+async function layer(cfg: { sprites: boolean; ids: string[]; rk?: number; keepKits?: boolean; budgetMs?: number; cold?: boolean }): Promise<Json> {
   const r = m!;
   r.layer?.destroy();
+  const bake = await import('../../apps/client/src/game3d/avatars/sprites/bake');
+  if (cfg.keepKits !== undefined) bake.bakeConfig.keepKits = cfg.keepKits;
+  if (cfg.budgetMs !== undefined) bake.bakeConfig.budgetMs = cfg.budgetMs;
+  if (cfg.cold) await bake.clearSpriteCache();
   try {
     if (cfg.sprites) localStorage.setItem('ct.debug.v3sprites', '1');
-    else localStorage.removeItem('ct.debug.v3sprites');
+    else localStorage.setItem('ct.debug.v3sprites', '0');
   } catch {
     /* none */
   }
@@ -283,24 +287,18 @@ async function voteCam(cfg: { viewHeight?: number; pitchDeg?: number; yawDeg?: n
   return { rebakes: spr.rebakes - rb0, allRebakedMs: Math.round(doneAt), frames: fm.length, maxFrameMs: Math.round(Math.max(0, ...fm)), framesOver50: fm.filter((x) => x > 50).length, longTasks: { n: longTasks.length, max: Math.max(0, ...longTasks), sum: longTasks.reduce((a, b) => a + b, 0) }, texel: +r.engine.camera.texelWorld.toFixed(5) };
 }
 
-/** Read back every baked sheet (both planes) as base64, for the runner's brotli size of a cached / shipped atlas. */
+/** The bake store and its sheets (the v3.3 ship store reads back and caches sheets itself: cache.ts). */
 async function atlasDump(): Promise<Json> {
   const r = m!;
   const bake = await import('../../apps/client/src/game3d/avatars/sprites/bake');
-  const out: Json[] = [];
-  for (const id of r.ids) {
-    const sh = await bake.getSheet(r.engine as object, id, (await import('../../apps/client/src/game3d/avatars/sprites/spriteBody')).sheetCameraOf(r.engine));
-    const planes: string[] = [];
-    for (const rt of [sh.rtA, sh.rtB]) {
-      const buf = new Uint8Array(rt.width * rt.height * 4);
-      r.engine.renderer.readRenderTargetPixels(rt, 0, 0, rt.width, rt.height, buf);
-      let bin = '';
-      for (let i = 0; i < buf.length; i += 32768) bin += String.fromCharCode(...buf.subarray(i, i + 32768));
-      planes.push(btoa(bin));
-    }
-    out.push({ id, w: sh.grid.width, h: sh.grid.height, planes });
-  }
-  return { sheets: out };
+  return { store: bake.storeStats(r.engine as object), sheets: await bake.sheetStats(r.engine as object) };
+}
+
+/** Clear the persistent sprite cache (IndexedDB): the next sprite layer bakes cold. */
+async function clearCache(): Promise<Json> {
+  const bake = await import('../../apps/client/src/game3d/avatars/sprites/bake');
+  await bake.clearSpriteCache();
+  return { cleared: true };
 }
 
 function ghosts(cfg: { dead: boolean; ghostVote?: boolean }): Json {
@@ -309,6 +307,12 @@ function ghosts(cfg: { dead: boolean; ghostVote?: boolean }): Json {
     p.ghostVoteAvailable = cfg.ghostVote ?? true;
   }
   return { dead: cfg.dead };
+}
+
+function hands(cfg: { on: boolean }): Json {
+  const g = m!.state.game as unknown as { day: { nominations: unknown[] } };
+  g.day.nominations = cfg.on ? [{ status: 'voting', votes: {}, handsRaised: m!.players.map((p) => p.seat) }] : [];
+  return { hands: cfg.on };
 }
 
 function talk(cfg: { on: boolean; n?: number }): Json {
@@ -323,4 +327,4 @@ function info(): Json {
   return { heapMiB: +(heap() / 1048576).toFixed(1), memory: r.engine.renderer.info.memory, programs: r.engine.renderer.info.programs?.length };
 }
 
-(window as unknown as { __v3spr: unknown }).__v3spr = { mount, layer, settle, cost, still, fps, voteCam, atlasDump, ghosts, talk, info, ready: true };
+(window as unknown as { __v3spr: unknown }).__v3spr = { mount, layer, settle, cost, still, fps, voteCam, atlasDump, clearCache, ghosts, hands, talk, info, ready: true };
