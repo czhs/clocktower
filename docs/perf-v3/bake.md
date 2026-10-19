@@ -67,7 +67,7 @@ Each row = one browser profile, three joins of a v3 lobby (visit 0 = cold Indexe
 | off ×4 | 0 / 1 / 2 | 9 721 / 9 650 / 9 560 | 7 971 / 8 163 / 8 129 | 8 658 / 8 548 / 8 578 | **3 428, 2 445** | 257-273 MiB | — |
 | **on ×4** | 0 / 1 / 2 | 11 468\* / **6 285 / 6 209** | 8 077 / **4 562 / 4 549** | 10 319\* / **5 090 / 5 091** | **2 434, 1 054** | 273-290 MiB | 0 → 280 / 280 hits, read 99-133 ms |
 
-Low tier (`ct.fxQuality=low`, what Intel iGPUs get), CPU ×4, two joins: off 8 123 / 7 865 ms ready, build 6 553 /
+Low tier (`ct.fxQuality=low`, what integrated GPUs get), CPU ×4, two joins: off 8 123 / 7 865 ms ready, build 6 553 /
 6 543, largest LTs 2 641 + 1 818; **on 8 086 / 5 078 ms, build 6 494 / 3 659**, largest LTs 1 820 + 816 (279 / 279
 hits, read 130 ms, record 21.4 MB).
 
@@ -86,11 +86,24 @@ were 9 747 / 9 715 ms (equal to off): recording costs 50-62 ms at ×4, 11-13 ms 
   index, bounds, instance order, materials, re-sort at yaw 45°) for both tiers at lowH 300 and 360 (374 keys, drift 0);
   the renderer sees the same buffers, so day / night / dusk / vote / cut-away / canopy-fade frames cannot differ.
 
-Real laptop (Intel Arc iGPU, Chrome 143, ANGLE GL, no throttle): see §3.1.
+Real laptop (integrated GPU, no throttle): see §3.1.
 
 ### 3.1 Real laptop
 
-LAPTOP_RESULTS
+A real laptop with an integrated GPU (Chrome headless, ANGLE GL-EGL = the renderer its desktop Chrome
+uses; the tier picker puts it on the **low** tier), 1280×720, real CPU (no throttle), on AC power, the host dist server
+through SSH tunnels. One browser profile: three joins with the flag off, then three with it on (the on-run's visit 0
+records, visits 1-2 replay).
+
+| | visit | ready ms | build ms | LT sum | largest LTs | heap at ready | cache |
+|---|---|---|---|---|---|---|---|
+| off | 0 / 1 / 2 | 16 156\*\* / 3 792 / 3 603 | 2 741 / 2 288 / 2 215 | 10 643 / 2 360 / 2 321 | 850-876, 676-703 | 200-257 MiB | — |
+| **on** | 0 / 1 / 2 | 3 810 / **2 746 / 2 741** | 2 190 / **1 303 / 1 324** | 2 326 / **1 418 / 1 414** | **656-693, 287-299** | 246-283 MiB | 0 → 279 / 279 hits, read 40-42 ms, record 15 ms |
+
+\*\* the profile's very first load: cold HTTP + GPU shader cache (one 8.3 s task, the program links), not the town.
+
+Repeat join on the real laptop: **3.6-3.8 s → 2.74 s (−0.95 s, −26 %)**, town build −42 %, main-thread long tasks
+before ready −40 %. No console errors, no after-ready hitch from the store.
 
 ## 4. View-dependent pruning (measured, not implemented)
 
