@@ -800,10 +800,14 @@ function* compileCopy(renderer: THREE.WebGLRenderer, like: THREE.WebGLRenderTarg
   }
   if (p) yield p;
 }
-function copyPlane(renderer: THREE.WebGLRenderer, src: THREE.WebGLRenderTarget): THREE.WebGLRenderTarget {
-  const c = copyRigOf(renderer);
+function copyTarget(renderer: THREE.WebGLRenderer, src: THREE.WebGLRenderTarget): THREE.WebGLRenderTarget {
   const dst = new THREE.WebGLRenderTarget(src.width, src.height, { type: THREE.UnsignedByteType, format: THREE.RGBAFormat, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, generateMipmaps: false, depthBuffer: false });
   dst.texture.colorSpace = THREE.NoColorSpace;
+  (renderer as unknown as { initRenderTarget?: (t: THREE.WebGLRenderTarget) => void }).initRenderTarget?.(dst);
+  return dst;
+}
+function copyPlane(renderer: THREE.WebGLRenderer, src: THREE.WebGLRenderTarget, dst: THREE.WebGLRenderTarget): THREE.WebGLRenderTarget {
+  const c = copyRigOf(renderer);
   const prev = { rt: renderer.getRenderTarget(), auto: renderer.autoClear, sm: renderer.shadowMap.autoUpdate, smN: renderer.shadowMap.needsUpdate };
   try {
     renderer.autoClear = false;
@@ -905,6 +909,12 @@ function* renderSheet(engine: unknown, kit: Kit, cam: SheetCamera, key: string):
   sizes.forEach((z, i) => rects.push(pack.at[i]!.x, pack.at[i]!.y, z.w, z.h, z.ax, z.ay));
   const grid = { width: pack.width, height: pack.height };
   const rts = [makeAtlasRT(grid.width, grid.height), makeAtlasRT(grid.width, grid.height)];
+  // v3.4: allocate the targets (texture + depth + framebuffer) one per unit, not inside the first cell's unit
+  phase = 'alloc';
+  for (const rt of rts) {
+    (renderer as unknown as { initRenderTarget?: (t: THREE.WebGLRenderTarget) => void }).initRenderTarget?.(rt);
+    yield;
+  }
   const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, BAKE_D * 2);
   camera.quaternion.copy(cam.quat);
   const back = new THREE.Vector3(0, 0, 1).applyQuaternion(cam.quat);
@@ -987,7 +997,10 @@ function* renderSheet(engine: unknown, kit: Kit, cam: SheetCamera, key: string):
       const copies: THREE.WebGLRenderTarget[] = [];
       try {
         for (const rt of rts) {
-          copies.push(copyPlane(renderer, rt));
+          const dst = copyTarget(renderer, rt); // allocation in its own unit
+          copies.push(dst);
+          yield;
+          copyPlane(renderer, rt, dst);
           yield;
         }
       } catch (e) {

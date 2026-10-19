@@ -86,6 +86,11 @@ export function sheetCameraOf(engine: unknown): SheetCamera {
 export const spriteDebug = { bodies: 0, rebakes: 0, mismatchFrames: 0, fallbacks: 0, force: {} as Record<string, string> };
 
 const TURN_HOLD_S = 1 / 15;
+/**
+ * A new camera key must hold this long before the sheet re-bakes (v3.4: 0.5 -> 1.2 s: the vote frame re-fits once
+ * ~0.7 s after entry when the HUD keep-outs settle, and 0.5 s baked that interim key too, twice the work).
+ */
+const REBAKE_HOLD_S = 1.2;
 const UP = new THREE.Vector3(0, 1, 0);
 
 export async function createSpriteBody(engine: unknown, specId: string, o: SpriteBodyOptions): Promise<AvatarBody> {
@@ -390,12 +395,12 @@ export async function createSpriteBody(engine: unknown, specId: string, o: Sprit
         tmp.normalize().cross(UP);
         S.uSprSunAxis.value.set(tmp.x, tmp.y, tmp.z, S.uSprSunAxis.value.w);
       }
-      // a different texel size / pitch / yaw (vote camera, resize, a room): re-bake once the camera held 0.5 s
+      // a different texel size / pitch / yaw (vote camera, resize, a room): re-bake once the camera held REBAKE_HOLD_S
       const mism = Math.abs(cam.texelWorld - sheet.cam.texel) > 1e-6 || Math.abs(cam.pitch - sheet.cam.pitch) > 1e-4 || Math.abs(cam.yaw - sheet.cam.yaw) > 1e-4;
       if (mism) {
         spriteDebug.mismatchFrames++;
         if (mismatchSince < 0) mismatchSince = t;
-        if (!rebaking && t - mismatchSince > 0.5) {
+        if (!rebaking && t - mismatchSince > REBAKE_HOLD_S) {
           rebaking = true;
           spriteDebug.rebakes++;
           getSheet(engine as object, specId, sheetCameraOf(engine), (o.prio ?? 0) + 5)
