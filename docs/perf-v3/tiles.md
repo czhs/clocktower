@@ -45,7 +45,8 @@ isometric games.
   | GPU `high`, renderAt ×1 / ×4 | 4.2 / 14.5 ms | 2.7 / 9.0 ms |
   | SwiftShader `cpu`, RAF fps | 5.9 | 9.5 |
 
-- **iGPU laptop (the most important number):** see §2.5.
+- **iGPU laptop (the most important number): not measured within the time box** (the laptop was busy; the run is
+  queued, §2.5).
 - **Recommendation: do not ship (not even behind a tier) in this form.** Keep the code behind the debug switch as the
   measured prototype.
   - On GPU tiers it saves 36-40 draws but no CPU time. The per-frame bookkeeping, the composite and the cut-window
@@ -283,7 +284,23 @@ toroidal ring and the 1-tile prefetch, walking never forced a live fallback afte
 
 ### 2.5 iGPU laptop
 
-__IGPU__
+**Not measured yet.** Within the time box the laptop was held by another agent's 8-run batch (its GPU lock).
+
+The run is prepared and queued:
+
+- variants: `low-off` / `low-tiles` (the Intel tier pick) and `high-off` / `high-tiles` (renderer spoofed to force
+  `high`), at 1440×900 DPR 2;
+- phases: lobby idle, lobby walk, day walk, vote;
+- the probe records fps, draws, rAF JS ms and GPU ms (timer query);
+- the server is the production build of this branch, on port 3472.
+
+What to expect from the host data:
+
+- At most the GPU-tier picture: −36…−40 draws, no CPU gain.
+- Possibly some GPU ms: static surfaces become one texture fetch instead of toon shading, plus the composite's
+  full-screen pass (3-5 fetches + cloud FBM per pixel at 480×270).
+
+Treat that as a hypothesis until the numbers exist.
 
 ### 2.6 e2e (switch OFF = the default)
 
