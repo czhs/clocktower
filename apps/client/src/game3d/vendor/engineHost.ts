@@ -282,8 +282,23 @@ export function createEngineHost(parent: HTMLElement, opts: EngineHostOptions): 
     gpuTimer = null;
   }
   let uncapped = false;
-  const renderNow = (t: number) => {
+  // (v3.5 release, look checks) localStorage `ct.debug.freeze` = '1' at boot: while `window.__ctFreezeT` is a number,
+  // every frame renders at that time with dt 0 (water, foliage, fireflies, townsfolk, avatars stand still), so two
+  // builds / flags can render the same frame. Off (never read) without the flag.
+  let freezeOn = false;
+  try {
+    freezeOn = localStorage.getItem('ct.debug.freeze') === '1';
+  } catch {
+    freezeOn = false;
+  }
+  const frozenAt = (): number | null => {
+    if (!freezeOn) return null;
+    const v = (window as unknown as { __ctFreezeT?: unknown }).__ctFreezeT;
+    return typeof v === 'number' && Number.isFinite(v) ? v : null;
+  };
+  const renderNow = (t0: number) => {
     if (disposed) return;
+    const t = frozenAt() ?? t0;
     if (gpuTimer?.enabled) {
       gpuTimer.begin();
       try {
@@ -336,7 +351,10 @@ export function createEngineHost(parent: HTMLElement, opts: EngineHostOptions): 
           ...(isIdle && !opts.fpsLimit ? { idleFps: V3_IDLE_FPS, isIdle } : {}),
           // v3.3: the promotion probe's uncapped window (never under ct.debug.fps > 0 or the cpu tier's cap)
           uncapped: () => uncapped,
-          step(t, dtMs) {
+          step(t0, dtMs0) {
+            const fz = frozenAt();
+            const t = fz ?? t0;
+            const dtMs = fz === null ? dtMs0 : 0;
             frame(t, dtMs);
             if (disposed) return;
             renderNow(t);
