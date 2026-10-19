@@ -35,7 +35,7 @@ import { fallbackView, pxToMetres } from './project';
 import { nextBuild, type BuildCandidate } from './queue';
 import { createRigBody } from './rigBody';
 import { createSpriteBody, sheetCameraOf, spriteDebug } from './sprites/spriteBody';
-import { getSheet, gpuStats, peekSheet, pumpBakes, releaseSheet, releaseSheets, sheetStats, storeStats, subtreeGeometryBytes, type SpriteSheet } from './sprites/bake';
+import { getSheet, gpuStats, peekSheet, peekStats, pumpBakes, releaseSheet, releaseSheets, sheetStats, storeStats, subtreeGeometryBytes, type SpriteSheet } from './sprites/bake';
 import { canPrecompile, precompile, type CompileRendererLike, type PrecompileResult } from './precompile';
 import { RIM_DEFAULT } from './ghostTint';
 import { dir8, toFacing } from '../../game/rules/input';
@@ -856,7 +856,7 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
             }
             if (e.upgrade !== 3) open++;
           }
-          return { enabled: sprites, gate: sprites ? gateOpen() : false, ...ups, open, rigs, sprites: spr, ready: sprites && open === 0, rigMiB: +(rigBytes / 1048576).toFixed(2), store: gpuStats(engine as object) };
+          return { enabled: sprites, gate: sprites ? gateOpen() : false, ...ups, open, rigs, sprites: spr, ready: sprites && open === 0, rigMiB: +(rigBytes / 1048576).toFixed(2), store: gpuStats(engine as object), peek: { ...peekStats }, camKey: (() => { try { const c = sheetCameraOf(engine); return `${c.texel.toFixed(6)}|${c.pitch.toFixed(4)}|${c.yaw.toFixed(4)}`; } catch { return null; } })() };
         },
       };
     },

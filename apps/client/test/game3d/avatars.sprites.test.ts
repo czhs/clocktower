@@ -36,6 +36,8 @@ import { createSliceRunner, type SliceGen } from '../../src/game3d/avatars/sprit
 import { clusterProxy, runToEnd } from '../../src/game3d/avatars/sprites/proxy';
 import { clipSetOf, drawingAlias } from '../../src/game3d/avatars/sprites/bake';
 import { spritesDefault } from '../../src/game3d/avatars/layer';
+import { specSource } from '../../src/game3d/vendor/spriteLook';
+import * as THREE from 'three';
 
 const D = Math.PI / 180;
 
@@ -390,5 +392,17 @@ describe('v3.3 ship: shadow proxy clustering', () => {
   it('the dominant skin weight picks the bone', () => {
     const m = runToEnd(clusterProxy({ position: [0, 0, 0, 1, 0, 0, 0, 1, 0], skinIndex: [3, 5, 0, 0, 3, 5, 0, 0, 3, 5, 0, 0], skinWeight: [0.2, 0.8, 0, 0, 0.9, 0.1, 0, 0, 0.5, 0.5, 0, 0], count: 3, index: null }, 0.1));
     expect([...m!.bone]).toEqual([5, 3, 3]);
+  });
+});
+
+describe('v3.4: spec cache key source', () => {
+  it('is the same for equal specs whose part geometries carry different uuids (a page reload), differs on vertex data', () => {
+    const spec = (g: THREE.BufferGeometry) => ({ skeleton: { bones: [] }, parts: [{ bone: 'head', shape: g }], material: { a: 1 } });
+    const a = specSource(spec(new THREE.BoxGeometry(1, 2, 3)));
+    const b = specSource(spec(new THREE.BoxGeometry(1, 2, 3)));
+    expect(a).toBe(b);
+    expect(a).not.toMatch(/uuid/);
+    expect(a.length).toBeLessThan(400); // a digest, not the vertex arrays
+    expect(specSource(spec(new THREE.BoxGeometry(1, 2, 3.5)))).not.toBe(a);
   });
 });

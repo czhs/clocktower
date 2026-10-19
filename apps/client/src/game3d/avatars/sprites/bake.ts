@@ -1462,17 +1462,30 @@ export function subtreeGeometryBytes(root: THREE.Object3D): number {
  * upload as a sliced job); null when it would need a bake (a new avatar shows its rig first and the layer upgrades it
  * to a sprite once a background bake lands).
  */
+/** peekSheet outcomes (debug: a repeat join should be all hits). */
+export const peekStats = { done: 0, hit: 0, miss: 0, busy: 0, lastKey: '' };
 export async function peekSheet(engine: object, specId: string, cam: SheetCamera): Promise<SpriteSheet | null> {
   const s = storeOf(engine);
   const key = sheetKey(specId, cam);
+  peekStats.lastKey = key;
   const done = s.done.get(key);
-  if (done && !(done as unknown as { _disposed?: boolean })._disposed) return done;
-  if (s.sheets.has(key) || !bakeConfig.persist) return null; // baking already: the rig first
+  if (done && !(done as unknown as { _disposed?: boolean })._disposed) {
+    peekStats.done++;
+    return done;
+  }
+  if (s.sheets.has(key) || !bakeConfig.persist) {
+    peekStats.busy++;
+    return null; // baking already: the rig first
+  }
   const E = engine as { renderer: THREE.WebGLRenderer };
   const v = await vendorHashOf(s, specId);
   const pk = persistKey({ format: BAKE_FORMAT, vendor: v.hash, specId, texel: cam.texel, pitch: cam.pitch, yaw: cam.yaw, clips: v.clips });
   const blob = await s.cache.get(pk);
-  if (!blob || stores.get(engine) !== s) return null;
+  if (!blob || stores.get(engine) !== s) {
+    peekStats.miss++;
+    return null;
+  }
+  peekStats.hit++;
   if (s.sheets.has(key)) return null; // raced with a bake request
   const p = s.runner.enqueue(fromBlob(E.renderer, key, v.spec, blob), 20).then((sh) => {
     s.stats.cacheHits++;

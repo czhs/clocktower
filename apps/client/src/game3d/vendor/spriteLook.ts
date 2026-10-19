@@ -62,13 +62,32 @@ export function vendorSource(): string {
   return vendorSrc;
 }
 
-/** A stable string of a spec for the cache key (functions by source; cycles / non-plain values skipped). */
+/** A compact, deterministic digest of a geometry (attribute layout + a strided checksum of the data). */
+function geometryDigest(g: { attributes?: Record<string, { count?: number; itemSize?: number; array?: ArrayLike<number> }>; index?: { count?: number } | null }): string {
+  const parts: string[] = [];
+  for (const name of Object.keys(g.attributes ?? {}).sort()) {
+    const a = g.attributes![name]!;
+    const arr = a.array;
+    let h = 0;
+    if (arr) for (let i = 0; i < arr.length; i += 3) h = (h * 31 + Math.round((arr[i] ?? 0) * 4096)) | 0;
+    parts.push(`${name}:${a.count ?? 0}x${a.itemSize ?? 0}:${h}`);
+  }
+  return `[geo ${parts.join(' ')} i${g.index?.count ?? 0}]`;
+}
+
+/**
+ * A stable string of a spec for the cache key (functions by source; cycles / non-plain values skipped). v3.4: a part's
+ * BufferGeometry is a compact digest — its toJSON carries a random uuid (a new key on every page load: the persistent
+ * sheet cache never hit after a reload) and megabytes of vertex data per spec; `uuid` keys are dropped too.
+ */
 export function specSource(spec: unknown): string {
   const seen = new WeakSet<object>();
   try {
-    return JSON.stringify(spec, (_k, v: unknown) => {
+    return JSON.stringify(spec, (k, v: unknown) => {
+      if (k === 'uuid') return undefined;
       if (typeof v === 'function') return Function.prototype.toString.call(v);
       if (v && typeof v === 'object') {
+        if ((v as { isBufferGeometry?: boolean }).isBufferGeometry) return geometryDigest(v as Parameters<typeof geometryDigest>[0]);
         if (seen.has(v)) return '[cycle]';
         seen.add(v);
         if ((v as { isObject3D?: boolean }).isObject3D || (v as { isMaterial?: boolean }).isMaterial || (v as { isTexture?: boolean }).isTexture) return '[three]';
