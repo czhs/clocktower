@@ -68,6 +68,16 @@ export interface MergeOptions {
    * instance in every pass (more exact, measured ~0.4 ms / frame more JS at high).
    */
   cull?: 'view' | 'three';
+  /**
+   * (v3.3 gpu) Give each merged mesh its OWN twin of the shared kit material (same hooks, same program cache key, same
+   * shared uniforms: three reuses the compiled program). three re-resolves a material's program whenever one material
+   * is drawn by a BatchedMesh and a plain mesh in turn (`materialProperties.batching` flips: getParameters +
+   * getProgramCacheKey + a fresh uniform list each time), and the opaque sort (material, then depth) interleaves the
+   * batches with the doors / boards / lanterns that keep the shared material. A twin ends the flips. Default true.
+   */
+  ownMaterials?: boolean;
+  /** (v3.3 gpu) the three r170 BatchedMesh colorTexture workaround (fixBatchColorTexture). Default true. */
+  batchColorFix?: boolean;
 }
 
 /** The view the shadow-caster cull tests against (the vendor's installShadowCull, town.js). */
@@ -95,7 +105,12 @@ export interface MergedTown {
   /** A/B switch (debug): false = the sources render themselves again, the merged meshes are hidden. */
   setEnabled(on: boolean): void;
   readonly enabled: boolean;
-  info(): { mode: 'batch' | 'merge'; sources: number; merged: number; buckets: number; kept: number; ejected: number; synced: number; casters: number; culled: number; byMaterial: Record<string, number>; refused: Record<string, number>; ejectLog: string[] };
+  /** (v3.3 gpu) A/B switch: the merged meshes draw with their own material twins (true) or the shared kit materials. */
+  setOwnMaterials(on: boolean): void;
+  readonly ownMaterials: boolean;
+  /** (v3.3 gpu) A/B switch of the three r170 BatchedMesh `colorTexture` fix (batchColorFix); default on. */
+  setColorTextureFix(on: boolean): void;
+  info(): { mode: 'batch' | 'merge'; ownMaterials: boolean; sources: number; merged: number; buckets: number; kept: number; ejected: number; synced: number; casters: number; culled: number; byMaterial: Record<string, number>; refused: Record<string, number>; ejectLog: string[] };
   dispose(): void;
 }
 
@@ -163,6 +178,52 @@ function sigEquals(o: THREE.Object3D, s: Float64Array): boolean {
   const e = o.matrix.elements;
   for (let i = 0; i < 16; i++) if (s[i] !== e[i]) return false;
   return true;
+}
+
+/** Material fields that may change at runtime without a version bump (mirrored onto a twin every frame). */
+const LIVE_FIELDS = ['visible', 'opacity', 'transparent', 'depthWrite', 'depthTest', 'colorWrite', 'side', 'alphaTest'] as const;
+
+/**
+ * A twin of a (vendor toon) material: three's own copy (colours, flags) plus the SAME onBeforeCompile /
+ * customProgramCacheKey / userData objects, so it compiles to the same program key (three reuses the compiled program)
+ * and its shader shares every uniform object the vendor hooks attach by reference.
+ */
+export function twinMaterial(m: THREE.Material): THREE.Material {
+  const ud = m.userData;
+  m.userData = {}; // Material.copy JSON-clones userData (vendor userData may hold objects that do not survive that)
+  let c: THREE.Material;
+  try {
+    c = m.clone();
+  } finally {
+    m.userData = ud;
+  }
+  c.userData = ud;
+  c.name = m.name;
+  // fields three's copy() does not know (the vendor's `defines` on a Lambert material, the canopy patch record, ...):
+  // the same objects, so the twin keys and compiles to exactly the same program
+  const src = m as unknown as Record<string, unknown>;
+  const dst = c as unknown as Record<string, unknown>;
+  for (const k of Object.keys(src)) if (!Object.prototype.hasOwnProperty.call(dst, k)) dst[k] = src[k];
+  if (Object.prototype.hasOwnProperty.call(m, 'onBeforeCompile')) c.onBeforeCompile = m.onBeforeCompile;
+  if (Object.prototype.hasOwnProperty.call(m, 'customProgramCacheKey')) c.customProgramCacheKey = m.customProgramCacheKey;
+  c.version = m.version;
+  return c;
+}
+
+/**
+ * three r170 bug, worked around per BatchedMesh: WebGLRenderer.setProgram tests `object.colorTexture` (undefined: the
+ * field is `_colorsTexture`) against null, so `batchingColor === false && object.colorTexture !== null` is true on
+ * EVERY draw of a BatchedMesh: each batch re-resolves its program per pass (getParameters + getProgramCacheKey + a new
+ * uniform list), docs/perf-v3/gpu.md §3. A `colorTexture` getter that reads `_colorsTexture` makes the test right.
+ * Returns an undo.
+ */
+export function fixBatchColorTexture(bm: THREE.BatchedMesh): () => void {
+  const o = bm as unknown as Record<string, unknown>;
+  if (Object.prototype.hasOwnProperty.call(o, 'colorTexture') || 'colorTexture' in Object.getPrototypeOf(o)) return () => undefined; // fixed upstream
+  Object.defineProperty(o, 'colorTexture', { configurable: true, enumerable: false, get: () => o._colorsTexture ?? null });
+  return () => {
+    delete o.colorTexture;
+  };
 }
 
 /** Why a candidate cannot be merged (null = it can). */
@@ -411,6 +472,41 @@ export function mergeStatic(root: THREE.Object3D, candidates: readonly MergeCand
   const boundsOf = (m: THREE.Mesh) => ((m as THREE.BatchedMesh).isBatchedMesh ? (m as THREE.BatchedMesh).boundingBox! : m.geometry.boundingBox!);
   const casters = meshes.filter((m) => m.castShadow).map((m) => ({ m, min: boundsOf(m).min.clone(), max: boundsOf(m).max.clone() }));
 
+  // ---- material twins (v3.3 gpu): one twin per shared kit material, used by every merged mesh of that material
+  const twins = new Map<THREE.Material, { twin: THREE.Material; version: number }>();
+  const sharedOf = new Map<THREE.Mesh, THREE.Material>();
+  for (const m of meshes) {
+    const shared = m.material as THREE.Material;
+    sharedOf.set(m, shared);
+    if (!twins.has(shared)) twins.set(shared, { twin: twinMaterial(shared), version: shared.version });
+  }
+  let own = false;
+  const setOwn = (on: boolean) => {
+    own = on;
+    for (const m of meshes) m.material = on ? twins.get(sharedOf.get(m)!)!.twin : sharedOf.get(m)!;
+  };
+  setOwn(o.ownMaterials ?? true);
+  const unfix: (() => void)[] = [];
+  const setFix = (on: boolean) => {
+    for (const u of unfix.splice(0)) u();
+    if (on) for (const m of meshes) if ((m as THREE.BatchedMesh).isBatchedMesh) unfix.push(fixBatchColorTexture(m as THREE.BatchedMesh));
+  };
+  setFix(o.batchColorFix ?? true);
+  const syncTwins = () => {
+    for (const [shared, t] of twins) {
+      const tw = t.twin as unknown as Record<string, unknown>;
+      const sh = shared as unknown as Record<string, unknown>;
+      if (shared.version !== t.version) {
+        // the vendor rebuilt the material (needsUpdate): re-copy everything, keep the shared hooks
+        const fresh = twinMaterial(shared) as unknown as Record<string, unknown>;
+        for (const k of Object.keys(fresh)) if (k !== 'uuid' && k !== 'id') tw[k] = fresh[k];
+        t.twin.needsUpdate = true;
+        t.version = shared.version;
+      }
+      for (const k of LIVE_FIELDS) if (tw[k] !== sh[k]) tw[k] = sh[k];
+    }
+  };
+
   let enabled = true;
   let ejected = 0;
   let synced = 0;
@@ -449,8 +545,16 @@ export function mergeStatic(root: THREE.Object3D, candidates: readonly MergeCand
     get enabled() {
       return enabled;
     },
+    get ownMaterials() {
+      return own;
+    },
+    setOwnMaterials(on) {
+      if (on !== own) setOwn(on);
+    },
+    setColorTextureFix: setFix,
     sync() {
       if (!sources.length || group.parent !== root) return; // parked (interior shown) or nothing merged
+      if (own) syncTwins();
       state.fill(0);
       for (const s of sources) {
         if (!s.live) continue;
@@ -546,7 +650,7 @@ export function mergeStatic(root: THREE.Object3D, candidates: readonly MergeCand
       group.visible = on;
       for (const s of sources) if (s.live) s.mesh.layers.mask = on ? 0 : s.layerMask;
     },
-    info: () => ({ mode: batch ? 'batch' : 'merge', sources: sources.length, merged: meshes.length, buckets: buckets.size, kept, ejected, synced, casters: casters.length, culled, byMaterial: { ...byMaterial }, refused: { ...refused }, ejectLog: ejectLog.slice() }),
+    info: () => ({ mode: batch ? 'batch' : 'merge', ownMaterials: own, sources: sources.length, merged: meshes.length, buckets: buckets.size, kept, ejected, synced, casters: casters.length, culled, byMaterial: { ...byMaterial }, refused: { ...refused }, ejectLog: ejectLog.slice() }),
     dispose() {
       for (const m of meshes) {
         if ((m as THREE.BatchedMesh).isBatchedMesh) (m as THREE.BatchedMesh).dispose();
@@ -555,6 +659,8 @@ export function mergeStatic(root: THREE.Object3D, candidates: readonly MergeCand
       group.removeFromParent();
       for (const s of sources) s.mesh.layers.mask = s.layerMask;
       sources.length = 0;
+      for (const t of twins.values()) t.twin.dispose();
+      twins.clear();
     },
   };
 }

@@ -4,7 +4,7 @@
 // swapped, the park (detached branches) and the A/B switch.
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
-import { mergeStatic, unmergeable } from '../../src/game3d/world/merge';
+import { mergeStatic, twinMaterial, unmergeable } from '../../src/game3d/world/merge';
 
 const kitMat = (name: string) => {
   const m = new THREE.MeshLambertMaterial();
@@ -57,7 +57,13 @@ describe('mergeStatic: bake + buckets', () => {
     expect(merged.meshes).toHaveLength(1);
     const m = merged.meshes[0]!;
     expect(m.parent?.parent).toBe(root);
+    // (v3.3 gpu) the merged mesh draws with its own twin of the kit material (same hooks / program key); A/B back to shared
+    expect(m.material).not.toBe(solid);
+    expect((m.material as THREE.Material).name).toBe(solid.name);
+    expect((m.material as THREE.Material).customProgramCacheKey()).toBe(solid.customProgramCacheKey());
+    merged.setOwnMaterials(false);
     expect(m.material).toBe(solid);
+    merged.setOwnMaterials(true);
     expect(m.castShadow).toBe(true);
     scene.updateMatrixWorld(true);
     const n = a.geometry.attributes.position!.count; // a and b are the same box: same count
@@ -279,7 +285,7 @@ describe('mergeStatic: batch mode (default)', () => {
     const want = worldVert(s2, 5);
     const merged = mergeStatic(root, [s1, s2, g1, g2].map((mesh) => ({ mesh, cast: mesh.material === solid })));
     expect(merged.meshes).toHaveLength(2); // cells are ignored: per-instance culling does that job
-    const bm = merged.meshes.find((m) => m.material === solid) as THREE.BatchedMesh;
+    const bm = merged.meshes.find((m) => (m.material as THREE.Material).name === solid.name) as THREE.BatchedMesh;
     expect(bm.isBatchedMesh).toBe(true);
     expect(bm.instanceCount).toBe(2);
     expect(bm.castShadow).toBe(true);
@@ -351,5 +357,63 @@ describe('mergeStatic: batch mode (default)', () => {
     // its bounds are above the view's top edge, but its water reflection (y mirrored) reaches into the view
     expect(shownAt(north)).toBe(true);
     expect(merged.info().culled).toBe(1);
+  });
+});
+
+describe('twinMaterial (v3.3 gpu: own material per batch)', () => {
+  it('copies three state, shares the vendor hooks / userData objects, survives a cyclic userData', () => {
+    const m = kitMat('town-kit-solid');
+    const shared = { uCut: { value: 1 } };
+    const hook = (shader: { uniforms: Record<string, unknown> }) => Object.assign(shader.uniforms, shared);
+    m.onBeforeCompile = hook as unknown as THREE.Material['onBeforeCompile'];
+    m.customProgramCacheKey = () => 'toon-k1-tcut';
+    const ud: Record<string, unknown> = { toon: true };
+    ud.self = ud; // JSON.stringify would throw
+    m.userData = ud;
+    m.color.setRGB(0.2, 0.3, 0.4);
+    (m as unknown as { defines: Record<string, string> }).defines = { TOON_KIT: '' }; // not copied by three's copy()
+    const t = twinMaterial(m) as THREE.MeshLambertMaterial;
+    expect((t as unknown as { defines: unknown }).defines).toBe((m as unknown as { defines: unknown }).defines);
+    expect(t).not.toBe(m);
+    expect(t.id).not.toBe(m.id);
+    expect(t.onBeforeCompile).toBe(m.onBeforeCompile);
+    expect(t.customProgramCacheKey()).toBe('toon-k1-tcut');
+    expect(t.userData).toBe(ud);
+    expect(m.userData).toBe(ud);
+    expect(t.color.getHex()).toBe(m.color.getHex());
+    expect(t.name).toBe('town-kit-solid');
+  });
+
+  it('merged meshes of one shared material share ONE twin; live flags and a vendor rebuild are mirrored by sync()', () => {
+    const scene = new THREE.Scene();
+    const root = new THREE.Group();
+    scene.add(root);
+    const solid = kitMat('town-kit-solid');
+    const a = kitMesh(solid, 1), b = kitMesh(solid, 2), c = kitMesh(solid, 3), d = kitMesh(solid, 4);
+    a.position.set(1, 0, 1);
+    b.position.set(3, 0, 1);
+    c.position.set(5, 0, 1);
+    d.position.set(7, 0, 1);
+    root.add(a, b, c, d);
+    scene.updateMatrixWorld(true);
+    const merged = mergeStatic(root, [{ mesh: a, cast: true }, { mesh: b, cast: true }, { mesh: c, cast: false }, { mesh: d, cast: false }]);
+    expect(merged.meshes).toHaveLength(2);
+    const [m0, m1] = merged.meshes;
+    expect(m0!.material).toBe(m1!.material);
+    expect(m0!.material).not.toBe(solid);
+    expect(merged.ownMaterials).toBe(true);
+    const twin = m0!.material as THREE.MeshLambertMaterial;
+    solid.visible = false;
+    solid.opacity = 0.5;
+    merged.sync();
+    expect(twin.visible).toBe(false);
+    expect(twin.opacity).toBe(0.5);
+    solid.color.setRGB(1, 0, 0);
+    solid.needsUpdate = true;
+    const v0 = twin.version;
+    merged.sync();
+    expect(twin.color.getHex()).toBe(solid.color.getHex());
+    expect(twin.version).toBeGreaterThan(v0);
+    merged.dispose();
   });
 });

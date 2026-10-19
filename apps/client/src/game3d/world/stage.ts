@@ -205,6 +205,8 @@ export async function createStage(host: EngineHost, o: StageOptions): Promise<St
   let mergeOrder: number | undefined;
   let mergeCull: 'view' | 'three' = 'view';
   let mergeAB = false;
+  let mergeOwnMat = true;
+  let mergeColorFix = true;
   try {
     canopyOff = localStorage.getItem('ct.debug.v3canopy') === '0';
     shadowOverride = localStorage.getItem('ct.debug.v3shadowEvery');
@@ -215,6 +217,10 @@ export async function createStage(host: EngineHost, o: StageOptions): Promise<St
     mergeCell = Number(localStorage.getItem('ct.debug.v3mergeCell')) || 12;
     mergeMode = localStorage.getItem('ct.debug.v3mergeMode') === 'merge' ? 'merge' : 'batch';
     mergeAB = localStorage.getItem('ct.debug.v3mergeAB') === '1';
+    // perf(v3.3 gpu): v3batchMat=0 = the batches draw with the SHARED kit materials (the v3.1 program flips; merge.ts ownMaterials)
+    mergeOwnMat = localStorage.getItem('ct.debug.v3batchMat') !== '0';
+    // v3batchFix=0 = without the three r170 BatchedMesh colorTexture workaround (a program re-resolve per batch draw)
+    mergeColorFix = localStorage.getItem('ct.debug.v3batchFix') !== '0';
     const mo = localStorage.getItem('ct.debug.v3mergeOrder'); // A/B: the merged meshes' renderOrder
     mergeCull = localStorage.getItem('ct.debug.v3mergeCull') === 'three' ? 'three' : 'view';
     mergeOrder = mo !== null && Number.isFinite(Number(mo)) ? Number(mo) : undefined;
@@ -255,7 +261,8 @@ export async function createStage(host: EngineHost, o: StageOptions): Promise<St
   let kitMerge: TownKitMerge | null = null;
   if (!mergeOff) {
     try {
-      kitMerge = mergeTownKit(engine, town, { cell: mergeCell, mode: mergeMode, renderOrder: mergeOrder, cull: mergeCull });
+      kitMerge = mergeTownKit(engine, town, { cell: mergeCell, mode: mergeMode, renderOrder: mergeOrder, cull: mergeCull, ownMaterials: mergeOwnMat, batchColorFix: mergeColorFix });
+      if (kitMerge) host.gpuDebug?.({ merged: kitMerge.merged });
     } catch (e) {
       console.warn('[town3d] kit merge failed (unmerged town):', e);
       kitMerge = null;
