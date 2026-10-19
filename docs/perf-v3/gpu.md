@@ -24,7 +24,9 @@ between its batched and plain program. Both are fixed game-side (`world/merge.ts
 
 So with the fixes the merge is CPU-neutral (within ±1-2 % of no merge) and keeps its −20 to −22 % draws (and
 −20 % shadow draws), which is what a laptop GPU / driver pays for. **merge.ts verdict: keep the batch mode ON, with the
-fixes; do not switch to the plain-merge mode.**
+fixes, at `low` / `cpu`; do not switch to the plain-merge mode. At `high` on an integrated GPU the laptop front saw
++1-2.5 ms of GPU time with the v3.1 merge (the fixes do not change GPU work): off there (or `cull: 'three'`) until a
+laptop re-run with this branch (§7).** Item results in §8.
 
 ## 1. Method
 
@@ -195,15 +197,39 @@ learnings.md §3.2 already measured a dirty-checked replacement as within noise.
 clears: 1 shadow + (reflection) + colour + normal + 8 post + upscale per frame, each needed; nothing to merge
 game-side.
 
-## 7. Laptop (Intel Arc iGPU)
+## 7. A real laptop (integrated GPU)
 
-See §7.1 (filled from the laptop run below).
+**Not measured by this front.** The shared laptop (integrated GPU, Chrome 143, ANGLE GL-EGL) was queued behind three
+other agents' sessions for the whole remaining time box (one browser at a time, a 15-min lock wait per attempt); the
+attempt was withdrawn without running. What the laptop front (`laptop-perf`, same day, **v3.1 code, i.e. without the
+fixes here**) measured with the merge on vs off, 60 Hz capped, GPU timer queries around the frame:
+
+| v3.1 merge on / off (laptop front) | JS ms p50 | GPU ms p50 | draws |
+|---|---|---|---|
+| lobby idle, `low` | 3.4-3.5 / 3.2-3.3 | 9.6-10.2 / 9.6-9.7 | 165 / 211 |
+| day walk, `low` | 3.5-3.7 / 3.4-3.5 | 9.1 / 8.8-9.1 | 172 / 245 |
+| lobby idle, `high` | 4.3-4.5 / 3.6-3.9 | **12.8-13.1 / 10.3-10.5** | 248 / 310 |
+| vote, `high` | 4.7 / 4.5 | 14.3 / 13.4 | 338 / 458 |
+
+Reading that with this front's data:
+
+- The JS overhead of the merge on the laptop (+0.1-0.7 ms) is the program re-resolve bug of §2; the fixes remove it
+  (desktop: the merge's JS cost goes from +7-12 % to ±1 % of no merge, at both tiers and at ×4).
+- At `low` (the tier the tier picker gives integrated GPUs, select.ts row 9) the merge is GPU-neutral there.
+- At `high` the merge costs the integrated GPU ≈ +1-2.5 ms. The fixes do not change GPU work. Part of it is the
+  coarse `'view'` instance cull: an instance is drawn in every pass when its bounds, ground shadow or reflection touch
+  the view, so the batch draws +6-7 % triangles at high (desktop: 1197 k vs 1124 k at square-day-8, 1553 k vs 1471 k
+  at vote-12) and more in the 4096² shadow pass; the rest is likely the batching vertex path (matrix + id texture
+  fetches per vertex, multi-draw through ANGLE GL). `ct.debug.v3mergeCull=three` brings the triangles back to the
+  unmerged count (1155 k / 1474 k) for +0.05-0.18 ms JS (desktop: 1.402 vs 1.346 ms square, 1.739 vs 1.685 ms vote).
+- **To do on the laptop with this branch** (one 10-min slot): `low` and `high`, merge off / batch-view / batch-three,
+  with the fixes; decides the `high` default below. The harness driver for it is ready (connect-over-CDP mode).
 
 ## 8. Recommendation per item
 
 | item | verdict |
 |---|---|
-| merge.ts (v3.1 BatchedMesh) | **keep on, batch mode, with the two fixes (default)**; CPU-neutral vs no merge, −20 % draws; plain-merge mode: no |
+| merge.ts (v3.1 BatchedMesh) | **keep on, batch mode, with the two fixes (default)** at `low` / `cpu`: CPU-neutral vs no merge, −22-26 % draws, GPU-neutral on the laptop. At `high`: CPU-neutral and −20 % draws on a desktop GPU, but the laptop front saw +1-2.5 ms integrated-GPU time (v3.1 code): until the laptop re-run (§7), turn it off at `high` on integrated GPUs (or use `cull: 'three'` there). Plain-merge mode: no. |
 | 1a reflection refresh `smart` | **on by default** (0 px, −50-70 % reflection renders while the camera rests) |
 | 1b off-screen water passes | **on by default** (pixel-identical by construction, 0 px measured) |
 | 1c merged water passes / static reflection cache | vendor CONTRACT-REQUEST / follow-up |
@@ -237,6 +263,7 @@ r170; the getter steps aside when the field exists).
 | `CT_AGENT=v33-gpu scripts/remote.sh sh .v33/check.sh <tests>` (client `tsc --noEmit` + vitest) | 1st: 2 fails in `world.merge.test.ts` (material identity, expected: tests updated to the twin); `gpuLevers.test.ts` 1st: 1 fail (program-key order assumption; test fixed); then tsc 0, 21/21 |
 | `… check.sh apps/client/test/game3d` (final tree) | tsc 0, **35 files / 461 tests pass** |
 | local `node measure.mjs` (scratch driver) — A/B runs `ab` (1×, 4×; 3 groups × 5 variants × 4 scenes), `refl`, `rate`, `core` (final numbers, 3 rounds), `swcpu` (SwiftShader) | ok, 0 page errors |
+| `CT_AGENT=v33-gpu-t scripts/remote.sh sh .v33/tc.sh` (`pnpm -r run typecheck`) | exit 0 |
 | local `node flips.mjs` (program re-resolve census), `twin.mjs` (twin vs shared fields) | §2 |
 | pixel A/B (`--pixel`, 4 scenes at high) | first run: twin 98-197 k px (the missing `defines`) → fixed → **0 px** for every lever and for v3.1 vs final |
 | `E2E_PORT=3497 CT_AGENT=v33-gpu-e2e scripts/v3/e2e.sh v3-boot v3-life v3-vote` | **3 passed** (1.9 min, SwiftShader) |
