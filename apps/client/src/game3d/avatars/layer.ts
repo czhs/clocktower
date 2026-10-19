@@ -76,6 +76,8 @@ export const CAST_WAIT_MS = 2000;
 export const FADE_S = 0.12;
 /** anchorOf().headTopCss sits this far above the drawn head (m): WP4 stacks the name label on it (anchors.ts). */
 export const HEAD_PAD_M = 0.1;
+/** v3.4: pause between two background kit builds after a cached join (ms): spreads the vendor's synchronous rig builds. */
+export const KIT_WARM_GAP_MS = 1500;
 /** A landed body stays hidden at most this long while its shaders pre-compile (ms). */
 export const PREWARM_MAX_MS = 3000;
 
@@ -511,7 +513,9 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
   const warmCheck = new Map<Entry, { n: number; seq: number }>();
 
   // ------------------------------------------------------------------ v3.4 rig -> sprite upgrades
-  const ups = { requested: 0, swapped: 0, failed: 0, firstAt: 0, lastAt: 0 };
+  const ups = { requested: 0, swapped: 0, failed: 0, firstAt: 0, lastAt: 0, kitsWarmed: 0 };
+  let kitWarm = false;
+  let kitWarmAt = 0;
   /** the one upgrade whose sprite body is being created / compiled (spreads the programs' compiles) */
   let upBusy = false;
   let upEntry: Entry | null = null;
@@ -548,6 +552,26 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
           console.warn(`[avatars] sprite bake for '${e.castId}' failed, keeping the rig:`, (err as Error)?.message ?? err);
         },
       );
+    }
+    // 3. (when nothing else is open) kits for the specs whose sheets came from the cache: one at a time, a pause
+    //    between, so the first vote camera re-bake only renders cells (no rig build / compile during the vote)
+    if (!upBusy && !upReady.length && !kitWarm && performance.now() > kitWarmAt) {
+      let open = false;
+      let want: string | null = null;
+      for (const e of entries.values()) {
+        if (e.upgrade === 1 || e.upgrade === 2) open = true;
+        else if (!want && e.body?.specId && e.body.texture.startsWith('v3-sprite:') && !M.hasKit(engine as object, e.body.specId)) want = e.body.specId;
+      }
+      if (!open && want) {
+        kitWarm = true;
+        M.warmKit(engine as object, want)
+          .catch((err) => console.warn(`[avatars] sprite kit '${want}' failed`, (err as Error)?.message ?? err))
+          .finally(() => {
+            kitWarm = false;
+            kitWarmAt = performance.now() + KIT_WARM_GAP_MS;
+            ups.kitsWarmed++;
+          });
+      }
     }
     // 2. one sprite body at a time: create, pre-compile beside the shown rig, then swap
     if (upBusy || !upReady.length) return;

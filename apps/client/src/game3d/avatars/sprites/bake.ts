@@ -822,6 +822,24 @@ function copyPlane(renderer: THREE.WebGLRenderer, src: THREE.WebGLRenderTarget):
   return dst;
 }
 
+/** The kit's bake programs, compiled in parallel (KHR_parallel_shader_compile) into a target like the atlas planes. */
+function* compileKit(renderer: THREE.WebGLRenderer, kit: Kit, like: THREE.WebGLRenderTarget, cam: Pick<SheetCamera, 'quat'>): SliceGen<void> {
+  const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, BAKE_D * 2);
+  camera.quaternion.copy(cam.quat);
+  camera.position.copy(new THREE.Vector3(0, 0, 1).applyQuaternion(cam.quat)).multiplyScalar(BAKE_D);
+  camera.updateMatrixWorld(true);
+  const prevRT = renderer.getRenderTarget();
+  let p: Promise<unknown> | null = null;
+  try {
+    renderer.setRenderTarget(like);
+    if (canPrecompile(renderer)) p = precompile(renderer as unknown as Parameters<typeof precompile>[0], [kit.h.root], camera, kit.scene, { live: () => true, maxMs: 5000 });
+  } finally {
+    renderer.setRenderTarget(prevRT);
+  }
+  if (p) yield p;
+  kit.compiled = true;
+}
+
 /** Render a kit's drawings for one camera key into new atlas targets (sliced: one cell per unit). */
 function* renderSheet(engine: unknown, kit: Kit, cam: SheetCamera, key: string): SliceGen<SpriteSheet> {
   const E = engine as { renderer: THREE.WebGLRenderer; uniforms: { uPassMode: { value: number } } };
@@ -899,20 +917,7 @@ function* renderSheet(engine: unknown, kit: Kit, cam: SheetCamera, key: string):
     if (!kit.uploaded) yield* uploadKit(renderer, kit);
     // the bake program: compiled in parallel (KHR_parallel_shader_compile) before the first cell, never on a frame
     phase = 'compile';
-    if (!kit.compiled) {
-      const prevRT = renderer.getRenderTarget();
-      let p: Promise<unknown> | null = null;
-      try {
-        renderer.setRenderTarget(rts[0]!);
-        camera.position.copy(back).multiplyScalar(BAKE_D);
-        camera.updateMatrixWorld(true);
-        if (canPrecompile(renderer)) p = precompile(renderer as unknown as Parameters<typeof precompile>[0], [h.root], camera, kit.scene, { live: () => true, maxMs: 5000 });
-      } finally {
-        renderer.setRenderTarget(prevRT);
-      }
-      if (p) yield p;
-      kit.compiled = true;
-    }
+    if (!kit.compiled) yield* compileKit(renderer, kit, rts[0]!, cam);
     phase = 'cells';
     for (let di = 0; di < drawings.length; di++) {
       const d = drawings[di]!;
@@ -1530,6 +1535,37 @@ export async function peekSheet(engine: object, specId: string, cam: SheetCamera
     console.warn('[sprites] cached sheet unusable', e);
     return null;
   }
+}
+
+/** A kit exists for this spec (debug / the layer's kit warm-up). */
+export function hasKit(engine: object, specId: string): boolean {
+  return !!stores.get(engine)?.kits.has(specId);
+}
+
+/**
+ * v3.4: build a spec's kit (rig + captured drawings + proxy, programs compiled; GPU buffers not uploaded) as a
+ * low-priority sliced job, so a later camera-key change (the vote camera) only renders cells. The layer calls this
+ * after a join whose sheets all came from the cache (no kit was needed then), one spec at a time.
+ */
+export function warmKit(engine: object, specId: string): Promise<void> {
+  const s = storeOf(engine);
+  if (s.kits.has(specId)) return Promise.resolve();
+  const E = engine as { renderer: THREE.WebGLRenderer };
+  return s.runner.enqueue(
+    (function* (): SliceGen<void> {
+      const kit = yield* kitFor(engine, s, specId);
+      if (!kit.compiled) {
+        const rt = makeAtlasRT(1, 1);
+        try {
+          phase = 'warm-compile';
+          yield* compileKit(E.renderer, kit, rt, { quat: (engine as { camera: { cam: THREE.Camera } }).camera.cam.getWorldQuaternion(new THREE.Quaternion()) });
+        } finally {
+          rt.dispose();
+        }
+      }
+    })(),
+    -10,
+  );
 }
 
 /** Empty the persistent sheet cache (bench: a cold join). */
