@@ -220,7 +220,7 @@ laptop access), docs/HANDOFF.md, this entry, docs/RELEASE-v3.md (top = v3.5), do
 vendor asks, §10 how to continue, §11 decisions).
 
 **What is live**
-- **PROD = v3.5 (`the commit "v3.5: release gate + docs"`, tag `v3.5`) since 2026-10-18 (deploy record: docs/test-results.md "v3.5 deploy")**; GitHub `main` = `v3-game` = that commit (+ the deploy-record
+- **PROD = v3.5 (`a722b44`, tag `v3.5`) since 2026-10-18 21:28 PDT** (dev + 6-bot host-GPU smoke with sprites forced on, 0 page / console errors; no prod game in the 30 min before; manual backup; public `/`, `/v2/`, `/v3-art-demo/` 200; journals clean; docs/test-results.md "v3.5 deploy"); GitHub `main` = `v3-game` = that commit (+ the deploy-record
   commit). `/` = the v3 3D town (pixel3d / three.js), `/v2/` = v2 Classic, `/v3-art-demo/` = the pixel3d Hollowmere demo
   (prod keeps commit `deploy/v3-art-demo` f1bad49's demo files in every deploy). Dev service (port 3001) = the same build.
   Rollback: `scripts/deploy-hshi-u1.sh prod 7f54da0` (v3.4). Release notes v3.0-v3.5: docs/RELEASE-v3.md; gates and
