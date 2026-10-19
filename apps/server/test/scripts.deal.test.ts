@@ -235,26 +235,27 @@ describe('Travellers made by the Storyteller (set_traveller) and exile', () => {
   }, 60_000);
 });
 
-describe('the Storyteller runs a human lobby', () => {
-  it('a host who is a regular player cannot change or police the lobby; the Storyteller can', async () => {
+describe('the host runs the waiting room; the Storyteller runs the game', () => {
+  it('a host who is a regular player changes, polices and starts the lobby; the Storyteller cannot', async () => {
     const hostAcct = await makeAccount(srv, 'plain-host');
     const r = await api<{ lobby: LobbySummary }>(srv, 'POST', '/api/lobbies', { cookie: hostAcct.cookie, body: { name: 'Admin test', maxPlayers: 10, script: 'trouble-brewing' } });
     const host = await join(r.body.lobby.id, 'Host', hostAcct.cookie);
     const other = await join(r.body.lobby.id, 'Other');
     const hv = await host.view((v) => v.members.length === 2);
     expect(hv.members.find((m) => m.pid === hv.youPid)?.isHost).toBe(true);
-    expect(hv.youAdmin).toBe(false); // no Storyteller seated: nobody runs the lobby yet
-    host.send('lobby:settings', { script: 'bad-moon-rising' });
-    expect((await errorFor(host, 'lobby:settings')).code).toBe('forbidden');
-    host.send('lobby:kick', { pid: other.pid! });
-    expect((await errorFor(host, 'lobby:kick')).code).toBe('forbidden');
-    // a regular player's one option: take the open Storyteller seat
+    expect(hv.youAdmin).toBe(true);
     other.send('lobby:claimStoryteller', {});
     const ov = await other.view((v) => v.members.find((m) => m.pid === v.youPid)?.role === 'storyteller');
-    expect(ov.youAdmin).toBe(true);
-    expect((await host.view((v) => v.members.some((m) => m.role === 'storyteller'))).youAdmin).toBe(false);
-    other.send('lobby:settings', { script: 'bad-moon-rising' });
-    await host.view((v) => v.lobby.script === 'bad-moon-rising', 3000);
+    expect(ov.youAdmin).toBe(false); // in the waiting room the Storyteller has no admin powers
+    other.send('lobby:settings', { script: 'sects-and-violets' });
+    expect((await errorFor(other, 'lobby:settings')).code).toBe('forbidden');
+    other.send('lobby:kick', { pid: host.pid! });
+    expect((await errorFor(other, 'lobby:kick')).code).toBe('forbidden');
+    other.send('lobby:start', {});
+    expect((await errorFor(other, 'lobby:start')).code).toBe('forbidden');
+    host.send('lobby:settings', { script: 'bad-moon-rising' });
+    await other.view((v) => v.lobby.script === 'bad-moon-rising', 3000);
+    expect((await host.view((v) => v.members.some((m) => m.role === 'storyteller'))).youAdmin).toBe(true);
   }, 30_000);
 });
 

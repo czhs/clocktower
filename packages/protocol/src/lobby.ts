@@ -118,11 +118,14 @@ export interface LobbyRoomView {
   youPid: string;
   canStart: boolean;
   /**
-   * (additive) You run this lobby: the seated Storyteller, or the host of an automatic game (no
-   * Storyteller). Lobby settings, removals and the Storyteller seat are theirs; everyone else may
-   * only take the Storyteller seat when it is open.
+   * (additive) You may remove / mute / unban: the host (lobby creator) at any time, or the seated
+   * Storyteller once the game is running. Lobby settings and Start are the host's alone.
    */
   youAdmin?: boolean;
+  /** (additive) ONLY in the seated Storyteller's view: pids asking for the Storyteller seat, oldest first. */
+  stRequests?: string[];
+  /** (additive) You asked the seated Storyteller for their seat and they have not answered yet. */
+  youRequestedSt?: boolean;
   startBlockers: string[];
   /** (v2.2) ONLY in the seated Storyteller's own view: their pre-game settings ('prepare'). */
   stPrepare?: import('./storyteller.js').StPrepareView;
@@ -138,6 +141,8 @@ export interface LobbyRoomView {
 export const LobbyReadyMsg = z.object({ ready: z.boolean() });
 export const LobbyCosmeticsMsg = z.object({ cosmetics: Cosmetics });
 export const LobbyPidMsg = z.object({ pid: z.string().min(1).max(64) });
+/** (additive) The seated Storyteller answers a member's request for the seat. */
+export const LobbyStAnswerMsg = z.object({ pid: z.string().min(1).max(64), accept: z.boolean() });
 export const LobbySettingsMsg = z.object({
   name: LobbyName.optional(),
   description: LobbyDescription.optional(),

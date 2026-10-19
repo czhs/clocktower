@@ -24,7 +24,7 @@ const FILTER_LABEL: Record<ChatFilterMode, string> = {
   strict: 'Strict: slurs and swearing hidden',
 };
 
-/** Mute / remove / unban: the lobby admin (the Storyteller, or an automatic game's host). Reporting is for everyone. */
+/** Mute / remove / unban: the host at any time, the Storyteller once the game runs (server: youAdmin). Reporting is for everyone. */
 const canModerate = (view: LobbyRoomView) => !!view.youAdmin;
 
 /** Report dialog: reason, optional note; your latest received lines from that member are attached. */
@@ -174,42 +174,49 @@ export function ChatFilterSetting({ view, conn, isHost }: { view: LobbyRoomView;
 }
 
 /**
- * In game the waiting-room member list is gone: a small "People" button opens the same per-member
- * safety tools (report; mute + remove for the host / Storyteller) and the removed list.
+ * In game the waiting-room member list is gone: a small toolbar button opens the same per-member
+ * safety tools (report; mute + remove for the host / Storyteller) and the removed list, in a panel
+ * docked under the toolbar. It does not cover the town and folds away with the same button.
  */
 export function LobbySafety({ conn }: { conn: RoomConnection }) {
   const view = useStore(conn.lobbyView);
   const [open, setOpen] = useState(false);
   if (!view || view.lobby.phase === 'waiting') return null;
   const me = view.members.find((x) => x.pid === view.youPid);
+  const mod = canModerate(view);
   return (
     <>
-      <button class="ct-safety-toggle" onClick={() => setOpen((o) => !o)} aria-expanded={open} title="People in this lobby: report, mute">
-        People
+      <button
+        class="ct-safety-toggle"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        aria-controls="ct-safety-panel"
+        title={mod ? 'Lobby admin: remove, mute, report' : 'People in this lobby: report, mute'}
+      >
+        {mod ? 'Admin' : 'People'} <span aria-hidden="true">{open ? '▴' : '▾'}</span>
       </button>
       {open && (
-        <div class="ct-modal-backdrop" onClick={(e) => e.target === e.currentTarget && setOpen(false)}>
-          <div class="panel ct-modal" role="dialog" aria-modal="true" aria-labelledby="ct-safety-title">
-            <h2 id="ct-safety-title">People in this lobby</h2>
-            <ul class="ct-members">
-              {view.members.map((m) => (
-                <li key={m.pid} class="ct-member">
-                  <span class="ct-member-name">
-                    {m.displayName}
-                    {m.role === 'storyteller' && <span class="ct-badge ct-badge-st">Storyteller</span>}
-                    {!m.connected && <span class="ct-badge ct-badge-away">away</span>}
-                    <MutedBadge m={m} />
-                  </span>
-                  <span class="ct-member-tools">
-                    <MemberModTools m={m} view={view} me={me} conn={conn} inGame />
-                  </span>
-                </li>
-              ))}
-            </ul>
-            {canModerate(view) && <RemovedList view={view} conn={conn} />}
-            <div class="ct-actions">
-              <button onClick={() => setOpen(false)}>Close</button>
-            </div>
+        <div class="panel ct-safety-panel" id="ct-safety-panel" role="dialog" aria-modal="false" aria-labelledby="ct-safety-title">
+          <h2 id="ct-safety-title">{mod ? 'Lobby admin' : 'People in this lobby'}</h2>
+          <ul class="ct-members">
+            {view.members.map((m) => (
+              <li key={m.pid} class="ct-member">
+                <span class="ct-member-name">
+                  {m.displayName}
+                  {m.role === 'storyteller' && <span class="ct-badge ct-badge-st">Storyteller</span>}
+                  {m.isHost && <span class="ct-badge ct-badge-host">Host</span>}
+                  {!m.connected && <span class="ct-badge ct-badge-away">away</span>}
+                  <MutedBadge m={m} />
+                </span>
+                <span class="ct-member-tools">
+                  <MemberModTools m={m} view={view} me={me} conn={conn} inGame />
+                </span>
+              </li>
+            ))}
+          </ul>
+          {mod && <RemovedList view={view} conn={conn} />}
+          <div class="ct-actions">
+            <button onClick={() => setOpen(false)}>Hide</button>
           </div>
         </div>
       )}
