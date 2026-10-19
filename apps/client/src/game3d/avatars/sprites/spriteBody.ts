@@ -14,7 +14,7 @@
 // planted-foot IK during the glide, fur / feather terminator hints.
 import * as THREE from 'three';
 import { dir8 } from '../../../game/rules/input';
-import { COLOR_ONLY_LAYER, loadSpecCaps } from '../../vendor/characters';
+import { COLOR_ONLY_LAYER, loadSpecCaps, propMaterial } from '../../vendor/characters';
 import type { AvatarBody, BodyFrameCtx } from '../body';
 import { ghostModeOf, type GhostMode, type SpecCaps } from '../castMap';
 import type { ClipWant } from '../clips';
@@ -56,6 +56,8 @@ export interface SpriteBodyOptions {
   tint: string | null;
   /** Bake priority (the own avatar first). */
   prio?: number;
+  /** A lantern carrier: a spec without a lantern of its own gets the rig body's small lantern prop at the hand. */
+  lantern?: boolean;
 }
 
 interface PixelCam {
@@ -128,6 +130,14 @@ export async function createSpriteBody(engine: unknown, specId: string, o: Sprit
   const holder = new THREE.Group();
   holder.name = `avatar:sprite:${specId}`;
   holder.add(mesh, proxy);
+  // the rig body's lantern prop (rigBody.ts: a carrier whose spec has no lantern socket holds a small box lantern)
+  let prop: THREE.Mesh | null = null;
+  if (o.lantern && sheet.lanternIsHand && sheet.lanterns) {
+    prop = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.16, 0.12), propMaterial(engine, 0xffc66a, 'ct-avatar-lantern'));
+    patchTint(prop.material as THREE.Material, U);
+    prop.name = 'avatar-lantern';
+    holder.add(prop);
+  }
   spriteDebug.bodies++;
 
   // ------------------------------------------------------------------ per-pass uniforms
@@ -191,6 +201,9 @@ export async function createSpriteBody(engine: unknown, specId: string, o: Sprit
 
   const emotesOf = (sh: SpriteSheet) => ({ talk: sh.clips.talk ? 'talk' : null, vote: sh.holds.vote !== undefined ? 'vote' : null, point: null, die: sh.clips.die ? 'die' : null, ghost: sh.clips.ghost ? 'ghost' : null, signature: null });
   const clipNamesOf = (sh: SpriteSheet) => [...Object.keys(sh.clips), ...Object.keys(sh.holds)];
+  // per sheet, not per read (the layer reads them every frame)
+  let emotes = emotesOf(sheet);
+  let clipNames = clipNamesOf(sheet);
 
   const setCell = (b: number, clip: string, n: number) => {
     base = b;
@@ -218,6 +231,8 @@ export async function createSpriteBody(engine: unknown, specId: string, o: Sprit
     S.uSprSh.value = next.palette.sh;
     S.uSprSunAxis.value.w = 1 / Math.cos(next.cam.pitch);
     applyCaster();
+    emotes = emotesOf(next);
+    clipNames = clipNamesOf(next);
     releaseSheet(engine as object, old);
   };
 
@@ -254,10 +269,10 @@ export async function createSpriteBody(engine: unknown, specId: string, o: Sprit
     holder,
     ghostMode,
     get clipNames() {
-      return clipNamesOf(sheet);
+      return clipNames;
     },
     get emotes() {
-      return emotesOf(sheet);
+      return emotes;
     },
     emoteClips: [],
     get hoverM() {
@@ -359,6 +374,7 @@ export async function createSpriteBody(engine: unknown, specId: string, o: Sprit
       cam.cam.getWorldQuaternion(mesh.quaternion);
       proxy.position.copy(mesh.position);
       proxy.quaternion.setFromAxisAngle(UP, fy);
+      if (prop && body.lanternAnchor(prop.position)) prop.position.y -= 0.12;
       // far half (look.js farSide with the sun tie-break) for the displayed facing
       const sd = E.uniforms.uSunDir.value;
       S.uSprFar.value = farSideOf(fy, cam.forward, sd);
@@ -399,7 +415,7 @@ export async function createSpriteBody(engine: unknown, specId: string, o: Sprit
       return true;
     },
     compileRoots() {
-      return [mesh];
+      return prop ? [mesh, prop] : [mesh];
     },
     lookInfo() {
       return { sprite: true, sheet: sheet.key, source: sheet.source, facing, phase: +phase.toFixed(3), action, loop, hover, crown, far, stepY: +stepY.toFixed(3), proxy: !!sheet.proxy, ghostK: U.uCtGhost.value.x, rim: U.uCtRim.value.w, stats: sheet.stats };
@@ -413,6 +429,10 @@ export async function createSpriteBody(engine: unknown, specId: string, o: Sprit
       mat.dispose();
       planeDepth.dispose();
       proxyDepth.dispose();
+      if (prop) {
+        prop.geometry.dispose();
+        (prop.material as THREE.Material).dispose();
+      }
       holder.removeFromParent();
     },
   };

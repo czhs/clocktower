@@ -248,14 +248,43 @@ async function readAll(stream: ReadableStream<Uint8Array>): Promise<Uint8Array<A
   return out;
 }
 
-/** Push `u8` through a (De)CompressionStream. The write is not awaited before reading (backpressure). */
+/** A macrotask boundary (the browser renders frames in between). */
+const nextTask = (): Promise<void> =>
+  new Promise((r) => {
+    if (typeof MessageChannel === 'function') {
+      const ch = new MessageChannel();
+      ch.port1.onmessage = () => {
+        ch.port1.close();
+        r();
+      };
+      ch.port2.postMessage(0);
+    } else setTimeout(r, 0);
+  });
+
+/** Input bytes per (de)compression step: the (de)flate runs on the calling thread, a few MB at once is a long task. */
+export const STREAM_CHUNK = 64 * 1024;
+
+/**
+ * Push `u8` through a (De)CompressionStream in STREAM_CHUNK pieces with a macrotask between them, so a few MB of
+ * (de)flate never block a frame (the game keeps rendering while a sheet is stored or loaded).
+ */
 function transform(ts: CompressionStream | DecompressionStream, u8: Uint8Array): Promise<Uint8Array<ArrayBuffer>> {
   const w = ts.writable.getWriter();
-  const input = new Uint8Array(u8.byteLength);
-  input.set(u8);
-  w.write(input).catch(() => {});
-  w.close().catch(() => {});
-  return readAll(ts.readable as ReadableStream<Uint8Array>);
+  const out = readAll(ts.readable as ReadableStream<Uint8Array>);
+  void (async () => {
+    try {
+      for (let off = 0; off < u8.byteLength; off += STREAM_CHUNK) {
+        const piece = u8.slice(off, Math.min(u8.byteLength, off + STREAM_CHUNK));
+        await w.ready;
+        void w.write(piece).catch(() => {});
+        await nextTask();
+      }
+      await w.close();
+    } catch {
+      /* the reader reports the failure */
+    }
+  })();
+  return out;
 }
 
 export function createSheetCache(opts: SheetCacheOptions = {}): SheetCache {

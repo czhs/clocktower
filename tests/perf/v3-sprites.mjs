@@ -87,7 +87,16 @@ async function main() {
       run[`${mode}Build`] = await call('settle', {});
       log(mode, 'built in', Date.now() - t0, 'ms', JSON.stringify(run[`${mode}Build`]).slice(0, 400));
       if (sprites && arg('rejoin', '1') === '1') {
-        // a repeat join: a fresh layer (no kits) with the persistent cache of the first join
+        // a repeat join: a fresh layer (no kits) with the persistent cache of the first join (after every sheet of the
+        // first join was stored: the store writes in the background, one sheet at a time)
+        const tw = Date.now();
+        for (;;) {
+          const st = (await call('atlasDump', {})).store;
+          if (!st || st.stored + st.storeFails >= st.bakes || Date.now() - tw > 60000) break;
+          await new Promise((r) => setTimeout(r, 500));
+        }
+        run.spriteStoreMs = Date.now() - tw;
+        log('sprite sheets stored in', run.spriteStoreMs, 'ms');
         await call('layer', { sprites, ids: IDS, cold: false, keepKits: arg('keepKits', '1') === '1', persist: arg('persist', '1') === '1' });
         run.spriteRejoin = await call('settle', {});
         log('sprite rejoin', JSON.stringify(run.spriteRejoin).slice(0, 600));

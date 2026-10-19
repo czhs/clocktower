@@ -337,7 +337,7 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
       for (const a of attempts) {
         try {
           if (a.kind === 'sprite') {
-            const body = await createSpriteBody(engine, a.spec, { x: at.X, z: at.Z, face, heightAt: groundAt, tint: a.tint, prio: e.self ? 10 : 0 });
+            const body = await createSpriteBody(engine, a.spec, { x: at.X, z: at.Z, face, heightAt: groundAt, tint: a.tint, prio: e.self ? 10 : 0, lantern: e.carriesLantern });
             return { body, tint: a.tint };
           }
           if (a.kind !== 'billboard') {

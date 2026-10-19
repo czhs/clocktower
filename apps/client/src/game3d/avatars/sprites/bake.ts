@@ -56,7 +56,7 @@ export const BAKE_BUDGET_MS = 4;
 /** Kits (bake rigs) kept per engine. */
 export const KIT_MAX = 24;
 /** Tunables (debug / bench): per-frame budget, whether kits are kept between bakes. */
-export const bakeConfig = { budgetMs: BAKE_BUDGET_MS, keepKits: true, persist: true };
+export const bakeConfig = { budgetMs: BAKE_BUDGET_MS, keepKits: true, persist: true, keepOld: 1 };
 /** What the slice runner is doing (the longest unit's label is kept in the store stats). */
 let phase = '';
 const DT = 1 / 30;
@@ -108,6 +108,8 @@ export interface SpriteSheet {
   widthM: number;
   /** Lantern socket per drawing (root frame, facing 0), or null. */
   lanterns: (THREE.Vector3 | null)[] | null;
+  /** The lantern anchor is a hand (the spec carries no lantern of its own): a carrier gets the rig body's prop. */
+  lanternIsHand: boolean;
   proxy: SheetProxy | null;
   source: 'bake' | 'cache';
   stats: Record<string, number | string>;
@@ -358,6 +360,7 @@ interface Kit {
   look: Record<string, unknown>;
   spec: VendorCharLike['spec'];
   custom: string[];
+  lanternIsHand: boolean;
   proxy: SheetProxy | null;
   /** All vertices clustered (shared ghost parts included): the drawings' screen bounds for the tight cells. */
   bounds: { position: Float32Array; bone: Uint16Array } | null;
@@ -423,7 +426,8 @@ function* buildKit(engine: unknown, specId: string): SliceGen<Kit> {
     for (const m of mats) patchBake(m, sidesOf, custom);
     const emotes = (h as unknown as { emotes?: Record<string, string | null> }).emotes ?? {};
     const set = clipSetOf(ch.spec, emotes);
-    const sock = socketOf(h, 'lanternLight', 'lanternGlow', 'lantern', 'glass', 'handR', 'handL');
+    const ownLantern = socketOf(h, 'lanternLight', 'lanternGlow', 'lantern', 'glass');
+    const sock = ownLantern ?? socketOf(h, 'handR', 'handL');
 
     // ---------------------------------------------------------------- simulation: capture every drawing
     const tSim0 = performance.now();
@@ -619,6 +623,7 @@ function* buildKit(engine: unknown, specId: string): SliceGen<Kit> {
       look,
       spec: ch.spec,
       custom,
+      lanternIsHand: !ownLantern,
       proxy,
       bounds: bm ? { position: bm.position, bone: bm.bone } : null,
       compiled: false,
@@ -834,6 +839,7 @@ function* renderSheet(engine: unknown, kit: Kit, cam: SheetCamera, key: string):
     heightM: kit.heightM,
     widthM: Math.max(0.4, Math.min(1.6, kit.reach.r * 2 * 0.8)),
     lanterns: drawings.some((d) => d.lantern) ? drawings.map((d) => d.lantern) : null,
+    lanternIsHand: kit.lanternIsHand,
     proxy: kit.proxy,
     source: 'bake',
     stats: { ...kit.stats, renderMs: +renderMs.toFixed(1), wallMs: +(performance.now() - t0).toFixed(1), drawings: drawings.length, cells: nCells, bytes: grid.width * grid.height * 8, renders },
@@ -910,6 +916,7 @@ interface SheetMeta {
   heightM: number;
   widthM: number;
   lanterns: (number[] | null)[] | null;
+  lanternIsHand: boolean;
   proxy: { bw: number; bh: number; tris: number } | null;
   stats: Record<string, number | string>;
 }
@@ -944,6 +951,7 @@ function metaOf(s: SpriteSheet): SheetMeta {
     heightM: s.heightM,
     widthM: s.widthM,
     lanterns: s.lanterns ? s.lanterns.map((v) => (v ? v.toArray() : null)) : null,
+    lanternIsHand: s.lanternIsHand,
     proxy: s.proxy ? { bw: s.proxy.bones.image.width, bh: s.proxy.bones.image.height, tris: s.proxy.tris } : null,
     stats: s.stats,
   };
@@ -1092,6 +1100,8 @@ function persist(s: Store, renderer: THREE.WebGLRenderer, sheet: SpriteSheet, pk
   if (!bakeConfig.persist || !rts || typeof renderer.readRenderTargetPixelsAsync !== 'function') return;
   persistChain = persistChain
     .then(async () => {
+      // only while no bake is pending (a camera-key change bakes first, stores after), then one sheet at a time
+      while (stores.get(s.engineRef) === s && s.runner.pending()) await new Promise((r) => setTimeout(r, 250));
       if (stores.get(s.engineRef) !== s || (sheet as unknown as { _disposed?: boolean })._disposed) return;
       const planes = await readPlanes(renderer, sheet, rts);
       const bufs: (Uint8Array | Float32Array | Uint16Array)[] = [planes[0]!, planes[1]!, new Uint8Array(0)];
@@ -1155,6 +1165,7 @@ function* fromBlob(renderer: THREE.WebGLRenderer, key: string, spec: VendorCharL
     heightM: m.heightM,
     widthM: m.widthM,
     lanterns: m.lanterns ? m.lanterns.map((x) => (x ? v3(x) : null)) : null,
+    lanternIsHand: !!m.lanternIsHand,
     proxy,
     source: 'cache',
     stats: { ...m.stats, source: 'cache' },
@@ -1181,7 +1192,8 @@ export function getSheet(engine: object, specId: string, cam: SheetCamera, prio 
   return p;
 }
 
-/** A sheet is no longer shown by one body: unreferenced sheets beyond the newest two keys per spec are freed. */
+/** A sheet is no longer shown by one body: unreferenced sheets beyond the newest `keepOld` per spec are freed (the
+ *  previous camera key stays for a quick switch back: vote camera <-> follow camera). */
 export function releaseSheet(engine: object, sheet: SpriteSheet): void {
   sheet.refs = Math.max(0, sheet.refs - 1);
   sheet.used = performance.now();
@@ -1191,7 +1203,7 @@ export function releaseSheet(engine: object, sheet: SpriteSheet): void {
   let keep = 0;
   for (const x of mine) {
     if (x.refs > 0) continue;
-    if (keep < 2) {
+    if (keep < bakeConfig.keepOld) {
       keep++;
       continue;
     }
