@@ -14,6 +14,7 @@ import type { Tier } from '../contract';
 import { runFrameLoop, V3_IDLE_FPS, V3_MAX_FPS, type FrameLoop } from '../perf';
 import { cpuPixelScale, installCpuTier, tierFpsLimit, type CpuEngine, type CpuTier } from './cpuTier';
 import { installGpuLevers, type GpuLevers } from './gpuLevers';
+import { createGpuFrameTimer, type GpuFrameTimer, type TimerGl } from './gpuTimer';
 
 interface PixelGlobal {
   ready: boolean;
@@ -105,6 +106,10 @@ export interface EngineHost {
   levers: GpuLevers;
   /** (v3.3 gpu) with ct.debug.v3gpu=1: add members to window.__ctGpu (perf A/B hook); a no-op otherwise. */
   gpuDebug(extra: Record<string, unknown>): void;
+  /** (v3.3) GPU ms of each renderAt while enabled (promote.ts probe); null when the timer extension is missing. */
+  gpuTimer: GpuFrameTimer | null;
+  /** (v3.3) promotion probe without a GPU timer: draw every animation frame (no 60 fps / idle gate) while on. */
+  setUncapped(on: boolean): void;
   dispose(): void;
 }
 
@@ -270,8 +275,24 @@ export function createEngineHost(parent: HTMLElement, opts: EngineHostOptions): 
   const offset = { x: 0, y: 0 };
   const proj: ProjectionState = { lowW: 0, lowH: 0, scale: 1, offset, snapScreen: false, height: 0, rect, viewProj: vp.elements };
 
+  let gpuTimer: GpuFrameTimer | null = null;
+  try {
+    gpuTimer = createGpuFrameTimer(engine.renderer.getContext() as unknown as TimerGl);
+  } catch {
+    gpuTimer = null;
+  }
+  let uncapped = false;
   const renderNow = (t: number) => {
     if (disposed) return;
+    if (gpuTimer?.enabled) {
+      gpuTimer.begin();
+      try {
+        engine.renderAt(t);
+      } finally {
+        gpuTimer.end();
+      }
+      return;
+    }
     engine.renderAt(t);
   };
 
@@ -313,6 +334,8 @@ export function createEngineHost(parent: HTMLElement, opts: EngineHostOptions): 
           maxFps: opts.fpsLimit !== undefined && opts.fpsLimit < 0 ? 0 : V3_MAX_FPS,
           // v3.2: 30 fps while nothing on screen changes (never with ct.debug.fps set)
           ...(isIdle && !opts.fpsLimit ? { idleFps: V3_IDLE_FPS, isIdle } : {}),
+          // v3.3: the promotion probe's uncapped window (never under ct.debug.fps > 0 or the cpu tier's cap)
+          uncapped: () => uncapped,
           step(t, dtMs) {
             frame(t, dtMs);
             if (disposed) return;
@@ -352,6 +375,10 @@ export function createEngineHost(parent: HTMLElement, opts: EngineHostOptions): 
     gpuDebug(extra) {
       if (gpuHook) Object.assign(gpuHook, extra);
     },
+    gpuTimer,
+    setUncapped(on) {
+      uncapped = on && !(opts.fpsLimit && opts.fpsLimit > 0) && opts.tier !== 'cpu';
+    },
     info() {
       const i = engine.renderer.info;
       return { calls: i.render.calls, tris: i.render.triangles, programs: i.programs?.length ?? null, pixelScale: engine.pixelScale, lowW: engine.lowW, lowH: engine.lowH, ...(cpu ? { cpu: cpu.info() } : {}) };
@@ -367,6 +394,7 @@ export function createEngineHost(parent: HTMLElement, opts: EngineHostOptions): 
       removeWinListeners();
       cpu?.dispose();
       gpu.dispose();
+      gpuTimer?.dispose();
       if (gpuHook && (w as unknown as { __ctGpu?: unknown }).__ctGpu === gpuHook) delete (w as unknown as { __ctGpu?: unknown }).__ctGpu;
       gpuHook = null;
       disposeEngine(engine);

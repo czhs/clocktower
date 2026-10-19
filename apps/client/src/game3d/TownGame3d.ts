@@ -28,6 +28,7 @@ import { createBusyOverlay, Lifecycle, watchContextLoss, type BuildControl } fro
 import { createIdleSignal } from './idle';
 import { createOverlayLayer, type OverlayLayer } from './overlay';
 import { readPerfFlags } from './perf';
+import { decidePromotion, PromotionProbe, type PromoteDecision } from './promote';
 import { readGraphicsPref } from './select';
 import { layoutProxies, type HouseProxy } from './input/pick';
 import { createEngineHost, type EngineHost } from './vendor/engineHost';
@@ -141,6 +142,30 @@ export function createTownGame3d(parent: HTMLElement, bridge: TownBridge3d, opts
   let lastFrameAt = 0;
   /** ms of the last / slowest frame step (core + layers) and render (engine.renderAt), debug */
   const cost = { step: 0, render: 0, maxStep: 0, maxRender: 0 };
+  // v3.3: the low -> high promotion probe (promote.ts): outdoor frames at 'low', GPU timer or uncapped intervals
+  let probe: { p: PromotionProbe; host: EngineHost; resolve(ok: boolean): void } | null = null;
+  let promotion: (PromoteDecision & { at: number }) | null = null;
+  const endProbe = (ok: boolean, d?: PromoteDecision) => {
+    const pr = probe;
+    if (!pr) return;
+    probe = null;
+    pr.host.gpuTimer?.enable(false);
+    pr.host.setUncapped(false);
+    if (d) {
+      promotion = { ...d, at: Math.round(performance.now()) };
+      console.info(`[town3d] promotion ${d.promote ? 'to high' : 'declined'} (${d.reason}; gpu ${d.gpuMedian?.toFixed(1) ?? '-'} ms, cpu ${d.cpuMedian.toFixed(1)} ms, interval ${d.intervalMedian.toFixed(1)} ms${d.integrated ? ', integrated' : ''})`);
+    }
+    pr.resolve(ok);
+  };
+  const promotionCheck = (): Promise<boolean> =>
+    new Promise<boolean>((resolve) => {
+      const host = scene?.host;
+      if (!host || destroyed) return resolve(false);
+      const timer = !!host.gpuTimer;
+      probe = { p: new PromotionProbe(host.gpu(), timer), host, resolve };
+      if (timer) host.gpuTimer!.enable(true);
+      else host.setUncapped(true);
+    });
 
   // (v3.1) the vote frame's keep-out boxes = the HUD over the canvas (world/hudKeep.ts), measured on vote entry (no call
   // for a second), on a canvas resize, and once more VOTE_KEEP_SETTLE_MS after entry (the vote card mounts a render later)
@@ -171,7 +196,7 @@ export function createTownGame3d(parent: HTMLElement, bridge: TownBridge3d, opts
       /** The camera: mode (follow / vote / room), focus (m), viewHeight, yaw / pitch (deg), a running transition. */
       camera3d: () => {
         const sh = core.view.shot();
-        return { mode: core.view.cameraMode(), X: +sh.X.toFixed(3), Z: +sh.Z.toFixed(3), viewHeight: +sh.viewHeight.toFixed(3), yaw: Math.round(((sh.yaw ?? 0) * 180) / Math.PI), pitch: Math.round(((sh.pitch ?? 0) * 180) / Math.PI), transitioning: core.view.transitioning, frames: frameCount, sinceFrameMs: Math.round(performance.now() - lastFrameAt), lifecycle: lifecycle.state, waiting: lifecycle.waiting, cost: { step: +cost.step.toFixed(1), render: +cost.render.toFixed(1), maxStep: +cost.maxStep.toFixed(1), maxRender: +cost.maxRender.toFixed(1) }, idle: idle.debug() };
+        return { mode: core.view.cameraMode(), X: +sh.X.toFixed(3), Z: +sh.Z.toFixed(3), viewHeight: +sh.viewHeight.toFixed(3), yaw: Math.round(((sh.yaw ?? 0) * 180) / Math.PI), pitch: Math.round(((sh.pitch ?? 0) * 180) / Math.PI), transitioning: core.view.transitioning, frames: frameCount, sinceFrameMs: Math.round(performance.now() - lastFrameAt), lifecycle: lifecycle.state, waiting: lifecycle.waiting, cost: { step: +cost.step.toFixed(1), render: +cost.render.toFixed(1), maxStep: +cost.maxStep.toFixed(1), maxRender: +cost.maxRender.toFixed(1) }, idle: idle.debug(), promotion: promotion ?? (probe ? 'probing' : null) };
       },
     }),
   };
@@ -330,6 +355,15 @@ export function createTownGame3d(parent: HTMLElement, bridge: TownBridge3d, opts
           cost.render = performance.now() - stepEnd;
           if (cost.render > cost.maxRender) cost.maxRender = cost.render;
           core.afterRender(lastDtMs);
+          if (probe && probe.host === host) {
+            const outdoors = st.drawnLocation() === 'outdoors';
+            probe.host.gpuTimer?.enable(outdoors);
+            probe.p.frame(lastDtMs, cost.step + cost.render, outdoors, probe.host.gpuTimer?.drain() ?? []);
+            if (probe.p.done) {
+              const d = decidePromotion(probe.p.evidence());
+              endProbe(d.promote, d);
+            }
+          }
           lifecycle.frame(lastDtMs);
           if (lastState) idle.observe(lastState, host.projection());
         },
@@ -348,6 +382,7 @@ export function createTownGame3d(parent: HTMLElement, bridge: TownBridge3d, opts
   };
 
   const teardown = () => {
+    endProbe(false); // a rebuild / destroy during the probe: no promotion
     if (scene) disposeScene(scene);
   };
 
@@ -375,6 +410,7 @@ export function createTownGame3d(parent: HTMLElement, bridge: TownBridge3d, opts
     safe: () => core.safeInput(),
     flags: readPerfFlags(s),
     allowPromote,
+    promotionCheck,
     ...(busy ? { overlay: busy } : {}),
   });
   core.setLayers([debugLayer]);

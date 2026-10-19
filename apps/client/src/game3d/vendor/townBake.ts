@@ -1,14 +1,16 @@
-// v3.3 perf (v33-bake), docs/perf-v3/bake.md. The createTree output cache of the town build (behind ct.debug.v3bake=1).
+// v3.3 perf (v33-bake), docs/perf-v3/bake.md. The createTree output cache of the town build (default ON since v3.3;
+// ct.debug.v3bake=0 turns it off).
 //
 // The town build spends ~46 % of its CPU in createTree (src/world/trees.js: crown noise, crease test, Poisson leaf
 // scatter). The bundled trees.js is patched (build/townBake.ts) so createTree first asks globalThis.__ctTreeBake for
 // the call; this module answers from a cache of earlier outputs and records the misses:
 //   - store: IndexedDB 'ct-town-bake' (one record per vendor build + quality tier + build texel size: the leaf spacing
 //     follows the window's low-res height), stored as a raw Blob, written after the town is up (idle), so only a
-//     REPEAT join with the same window height replays. Entries of another vendor build are deleted on write.
+//     REPEAT join with the same window height replays. Entries of another vendor build are deleted on write, and at
+//     most MAX_RECORDS records of the current build are kept (LRU by last use: a resized window adds a record).
 //   - the key, the binary format and the replay are bit-exact: scripts/v3/bake-town.mjs --verify compares every replayed
 //     tree with the live one (geometry, leaf instances, bounds, materials, the re-sort at the vote yaw).
-//   - never throws into the build: any cache failure = live generation (stats.error says why).
+//   - never throws into the build: any cache failure (private mode, quota, a hung open) = live generation (stats.error).
 import * as THREE from 'three';
 import { BodyWriter, decodeBake, encodeHead, treeKey, type BakeHeader, type DecodedBake, type GeoRec, type Ref, type TreeRec } from './bakeFormat';
 
@@ -44,12 +46,40 @@ export interface TreeBakeStats {
   error: string | null;
 }
 
-export function bakeEnabled(storage: Pick<Storage, 'getItem'> | null): boolean {
+/** Records kept per vendor build (each ~15-22 MB: one per tier x window low-res height), least recently used dropped. */
+export const MAX_RECORDS = 2;
+/** A cache read that has not answered by then is abandoned (live build): a hung IndexedDB must never stall the join. */
+export const READ_TIMEOUT_MS = 2000;
+
+/** Default ON (v3.3); `ct.debug.v3bake=0` turns the cache off. Unreadable localStorage = on (IndexedDB decides). */
+export function bakeEnabled(storage: Pick<Storage, 'getItem'> | null, vendorHash: string | null = VENDOR_HASH): boolean {
+  if (!vendorHash) return false;
   try {
-    return !!VENDOR_HASH && storage?.getItem(BAKE_FLAG) === '1';
+    return storage?.getItem(BAKE_FLAG) !== '0';
   } catch {
-    return false;
+    return true;
   }
+}
+
+/** The last-use stamp of a record lives next to it, under `<record key>#used` (same vendor-hash prefix). */
+export const usedKey = (key: string) => `${key}#used`;
+
+/**
+ * Which stored keys to delete after writing `current`: every key of another vendor build, and the records of this build
+ * beyond the `max` most recently used (missing stamp = oldest; `current` is always kept), with their stamps.
+ */
+export function pruneKeys(keys: readonly string[], used: ReadonlyMap<string, number>, current: string, max = MAX_RECORDS): string[] {
+  const vh = current.split('|')[0]!;
+  const out: string[] = [];
+  const mine: string[] = [];
+  for (const k of keys) {
+    if (!k.startsWith(`${vh}|`)) out.push(k);
+    else if (!k.endsWith('#used')) mine.push(k);
+  }
+  const keep = new Set([current, ...mine.filter((k) => k !== current).sort((a, b) => (used.get(b) ?? 0) - (used.get(a) ?? 0)).slice(0, Math.max(0, max - 1))]);
+  for (const k of mine) if (!keep.has(k)) out.push(k);
+  for (const k of keys) if (k.startsWith(`${vh}|`) && k.endsWith('#used') && !keep.has(k.slice(0, -5))) out.push(k);
+  return out;
 }
 
 // ------------------------------------------------------------------------------------------------ replay
@@ -158,6 +188,22 @@ function openDb(): Promise<IDBDatabase> {
     r.onblocked = () => reject(new Error('indexedDB blocked'));
   });
 }
+function done(tx: IDBTransaction): Promise<void> {
+  return new Promise((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    tx.onabort = () => reject(tx.error ?? new Error('indexedDB transaction aborted'));
+    tx.onerror = () => reject(tx.error ?? new Error('indexedDB transaction failed'));
+  });
+}
+function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(`${what} timed out`)), ms);
+    p.then(
+      (v) => (clearTimeout(t), resolve(v)),
+      (e) => (clearTimeout(t), reject(e)),
+    );
+  });
+}
 function req<T>(r: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
     r.onsuccess = () => resolve(r.result);
@@ -171,7 +217,16 @@ export async function readRecord(key: string): Promise<{ dec: DecodedBake; bytes
   try {
     const v = (await req(db.transaction(STORE, 'readonly').objectStore(STORE).get(key))) as Blob | undefined;
     if (!(v instanceof Blob)) return null;
-    return { dec: decodeBake(await v.arrayBuffer()), bytes: v.size };
+    const dec = decodeBake(await v.arrayBuffer());
+    // LRU stamp (best effort, not awaited by the build)
+    try {
+      const tx = db.transaction(STORE, 'readwrite');
+      tx.objectStore(STORE).put(Date.now(), usedKey(key));
+      void done(tx).catch(() => {});
+    } catch {
+      /* a failed stamp only makes this record look older */
+    }
+    return { dec, bytes: v.size };
   } finally {
     db.close();
   }
@@ -185,10 +240,20 @@ export async function readRecord(key: string): Promise<{ dec: DecodedBake; bytes
 export async function writeRecord(key: string, data: Blob): Promise<number> {
   const db = await openDb();
   try {
-    const st = db.transaction(STORE, 'readwrite').objectStore(STORE);
-    const vh = key.split('|')[0]!;
-    for (const k of (await req(st.getAllKeys())) as string[]) if (!k.startsWith(`${vh}|`)) st.delete(k);
-    await req(st.put(data, key));
+    // prune first (own transaction: frees space before the big put, so a near-full quota can still take it)
+    const tx0 = db.transaction(STORE, 'readwrite');
+    const st0 = tx0.objectStore(STORE);
+    const keys = ((await req(st0.getAllKeys())) as IDBValidKey[]).filter((k): k is string => typeof k === 'string');
+    const used = new Map<string, number>();
+    for (const k of keys) if (k.endsWith('#used')) used.set(k.slice(0, -5), Number(await req(st0.get(k))) || 0);
+    used.set(key, Date.now());
+    for (const k of pruneKeys([...keys, key], used, key)) st0.delete(k);
+    await done(tx0);
+    const tx = db.transaction(STORE, 'readwrite');
+    const st = tx.objectStore(STORE);
+    st.put(data, key);
+    st.put(Date.now(), usedKey(key));
+    await done(tx);
     return data.size;
   } finally {
     db.close();
@@ -214,7 +279,7 @@ export async function openTreeBake(quality: string, lowH: number): Promise<TreeB
   const t0 = performance.now();
   let prev: DecodedBake | null = null;
   try {
-    const r = await readRecord(key);
+    const r = await withTimeout(readRecord(key), READ_TIMEOUT_MS, 'read');
     if (r) {
       if (r.dec.header.vendorHash !== VENDOR_HASH) throw new Error(`stale record ${r.dec.header.vendorHash}`);
       prev = r.dec;
@@ -253,6 +318,7 @@ export async function openTreeBake(quality: string, lowH: number): Promise<TreeB
     persist: async () => {
       if (!rec.count || !VENDOR_HASH) return;
       try {
+        // quota / private mode: the write fails here, silently (the next join builds live and tries again)
         stats.bytes = await writeRecord(key, encodeRecord(VENDOR_HASH, rec, prev));
         stats.stored = true;
       } catch (e) {

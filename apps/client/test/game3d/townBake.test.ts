@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { patchVendor } from '../../build/pixel3dImports';
 import { CREATE_TREE_PIN, createTreeSource, patchTrees, sha16, vendorTreeHash } from '../../build/townBake';
+import { bakeEnabled, MAX_RECORDS, pruneKeys } from '../../src/game3d/vendor/townBake';
 import { BodyWriter, decodeBake, encodeBake, treeKey, type BakeHeader } from '../../src/game3d/vendor/bakeFormat';
 
 const ROOT = fileURLToPath(new URL('../../../../', import.meta.url));
@@ -86,4 +87,31 @@ describe('bake replay is bit-exact (vendor headless in Node)', () => {
     expect(summary.verified).toBe(summary.keys);
     expect(summary.keys).toBeGreaterThan(50);
   }, 180_000);
+});
+
+describe('v3.3: tree cache default on + LRU cap', () => {
+  const st = (v: string | null) => ({ getItem: () => v });
+  it('is on by default, off with ct.debug.v3bake=0, off without a vendor hash (unit tests / harness)', () => {
+    expect(bakeEnabled(st(null), 'vh')).toBe(true);
+    expect(bakeEnabled(st('1'), 'vh')).toBe(true);
+    expect(bakeEnabled(st('0'), 'vh')).toBe(false);
+    expect(bakeEnabled(null, 'vh')).toBe(true);
+    expect(bakeEnabled({ getItem: () => { throw new Error('denied'); } }, 'vh')).toBe(true);
+    expect(bakeEnabled(st(null), null)).toBe(false);
+  });
+  it(`keeps at most ${MAX_RECORDS} records of the current build (LRU), deletes every other build's keys`, () => {
+    const keys = ['old|low|300', 'old|low|300#used', 'vh|low|300', 'vh|low|300#used', 'vh|high|300', 'vh|high|300#used', 'vh|low|450', 'vh|low|450#used', 'vh|high|450'];
+    const used = new Map([
+      ['vh|low|300', 100],
+      ['vh|high|300', 300],
+      ['vh|low|450', 200],
+      ['vh|high|450', 400],
+    ]);
+    // writing vh|high|450 (now newest): keep it + the most recently used other (vh|high|300)
+    expect(pruneKeys(keys, used, 'vh|high|450').sort()).toEqual(['old|low|300', 'old|low|300#used', 'vh|low|300', 'vh|low|300#used', 'vh|low|450', 'vh|low|450#used'].sort());
+    // a record without a stamp counts as the oldest
+    expect(pruneKeys(['vh|a|1', 'vh|b|2', 'vh|b|2#used'], new Map([['vh|b|2', 5]]), 'vh|c|3')).toEqual(['vh|a|1']);
+    // the record being written is always kept
+    expect(pruneKeys(['vh|a|1'], new Map(), 'vh|a|1', 1)).toEqual([]);
+  });
 });

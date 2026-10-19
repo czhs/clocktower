@@ -22,8 +22,9 @@
 //   perf         PerfSampler over rAF deltas after each first show: 'rebuild-low' -> rebuild at 'low', 'rebuild-cpu' ->
 //                rebuild at 'cpu' (v3 perf cpu), 'fallback' ->
 //                requestFallback('perf'); an 'ok' sample at 'low' may promote to 'high' once (auto only, never
-//                after a demotion); all three wait for a safe moment (SafeMoment: not during a vote / open
-//                nomination; the next phase change or 60 s quiet)
+//                after a demotion; since v3.3 only when promotionCheck() measured GPU headroom: promote.ts);
+//                all three wait for a safe moment (SafeMoment: not during a vote / open nomination; the next phase
+//                change or 60 s quiet)
 //   tier change  requestTier(t) (fx quality setting) = a rebuild at the next safe moment; back to the current tier
 //                drops a pending setting rebuild (a pending perf demotion / promotion is kept)
 //
@@ -82,6 +83,11 @@ export interface LifecycleDeps {
   flags: PerfFlags;
   /** The Graphics pref is 'auto' and nothing forced the low start (fx quality low): low -> high may be tried. */
   allowPromote?: boolean;
+  /**
+   * v3.3: asked once, when an 'ok' sample at 'low' would promote: resolves true only when 'high' is affordable (the
+   * TownGame3d probe: GPU timer / uncapped frame interval, promote.ts). Absent = promote on the sample alone (pre-v3.3).
+   */
+  promotionCheck?(): Promise<boolean>;
   overlay?: BusyOverlay;
   now?(): number;
   visible?(): boolean;
@@ -241,7 +247,22 @@ export class Lifecycle {
     } else if (v === 'fallback') this.schedule({ kind: 'fallback' });
     else if (v === 'ok' && this.cur === 'low' && this.d.allowPromote && !this.demoted && !this.promoted) {
       this.promoted = true;
-      this.schedule({ kind: 'rebuild', tier: 'high', why: 'promote' });
+      const check = this.d.promotionCheck;
+      if (!check) return this.schedule({ kind: 'rebuild', tier: 'high', why: 'promote' });
+      const g = this.gen;
+      let p: Promise<boolean>;
+      try {
+        p = check();
+      } catch {
+        return;
+      }
+      void p.then(
+        (ok) => {
+          // still the same build, at low, running, nothing else pending / no demotion meanwhile
+          if (ok && g === this.gen && this.st === 'running' && this.cur === 'low' && !this.demoted && !this.pending) this.schedule({ kind: 'rebuild', tier: 'high', why: 'promote' });
+        },
+        () => undefined,
+      );
     }
   }
 

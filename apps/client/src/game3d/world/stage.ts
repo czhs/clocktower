@@ -199,7 +199,7 @@ export async function createStage(host: EngineHost, o: StageOptions): Promise<St
   // (`ct.debug.v3canopy=0` = off, an A/B switch for perf runs; read once per build)
   let canopyOff = false;
   let shadowOverride: string | null = null;
-  let mergeOff = false;
+  let mergeOff = true;
   let mergeCell = 12;
   let mergeMode: 'batch' | 'merge' = 'batch';
   let mergeOrder: number | undefined;
@@ -210,10 +210,12 @@ export async function createStage(host: EngineHost, o: StageOptions): Promise<St
   try {
     canopyOff = localStorage.getItem('ct.debug.v3canopy') === '0';
     shadowOverride = localStorage.getItem('ct.debug.v3shadowEvery');
-    // perf(v3.1 stage) A/B switches of the static kit merge: v3merge=0 = off, v3mergeMode=merge (plain merged geometry
+    // perf(v3.1 stage) A/B switches of the static kit merge. v3.3: DEFAULT OFF on every tier (docs/perf-v3/laptop.md §4:
+    // a GPU loss on integrated GPUs, nothing gained on desktops even with the v3.3 batch fixes); v3merge=1 = on,
+    // v3mergeMode=merge (plain merged geometry
     // per cell instead of the default BatchedMesh per material), v3mergeCell = that cell edge (m),
     // v3mergeAB=1 = window.__ctMergeAB (toggle + render the same frame twice, for pixel diffs)
-    mergeOff = localStorage.getItem('ct.debug.v3merge') === '0';
+    mergeOff = localStorage.getItem('ct.debug.v3merge') !== '1';
     mergeCell = Number(localStorage.getItem('ct.debug.v3mergeCell')) || 12;
     mergeMode = localStorage.getItem('ct.debug.v3mergeMode') === 'merge' ? 'merge' : 'batch';
     mergeAB = localStorage.getItem('ct.debug.v3mergeAB') === '1';
@@ -578,7 +580,7 @@ export async function createStage(host: EngineHost, o: StageOptions): Promise<St
         vote: voteLast ? { yaw: Math.round((voteLast.yaw * 180) / Math.PI), pitch: Math.round((voteLast.pitch * 180) / Math.PI), viewHeight: +voteLast.viewHeight.toFixed(3), target: [+voteLast.target.x.toFixed(3), +voteLast.target.z.toFixed(3)], key: voteKey } : { preset: voteCameraPreset() },
         warm,
         time: time.info(),
-        // (v3.3 bake) tree-cache numbers of this build (null unless ct.debug.v3bake=1) + the vendor town build ms
+        // (v3.3 bake) tree-cache numbers of this build (null when ct.debug.v3bake=0) + the vendor town build ms
         bake: townBakeInfo(),
         townBuildMs: Number((engine.stats as Record<string, unknown> | undefined)?.townBuildMs) || null,
       }),

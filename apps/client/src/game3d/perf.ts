@@ -339,6 +339,8 @@ export interface FrameLoopOptions {
    */
   idleFps?: number;
   isIdle?(): boolean;
+  /** v3.3 promotion probe (promote.ts path 2): while true every animation frame is drawn (no cap, no idle gate). */
+  uncapped?(): boolean;
   /** One frame: `t` = seconds since start (+2 warm-up frames), monotonic; `dtMs` = time since the last frame. */
   step(t: number, dtMs: number): void;
   /** The first throw from `step` stops the loop for good and lands here (TownGame3d: crash -> Classic). */
@@ -372,8 +374,10 @@ export function runFrameLoop(o: FrameLoopOptions, deps: FrameLoopDeps): FrameLoo
     id = deps.raf(loop);
     const now = deps.now();
     const at = typeof ts === 'number' && ts > 0 ? ts : now;
-    if (!gate(at)) return;
-    if (idleGate && o.isIdle!() && !idleGate(at)) return;
+    if (!o.uncapped?.()) {
+      if (!gate(at)) return;
+      if (idleGate && o.isIdle!() && !idleGate(at)) return;
+    }
     const dtMs = now - prev;
     prev = now;
     // a hidden tab resumes where it stopped (never a jump of more than 0.25 s)

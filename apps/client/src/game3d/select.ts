@@ -12,7 +12,8 @@
 //     llvmpipe / "Software" -> v3 at the 'cpu' tier (v3 perf cpu, 2026-10-18; was Classic). Rows 7-8 still apply.
 //   7 'auto' + auto-fallback memo < 7 days  -> Classic ("too slow on this device")
 //   8 'auto' + phone (coarse, short side ≤ 500) -> Classic; an explicit 'v3' runs at 'low' ('cpu' on software GL)
-//   9 starting tier: 'low' for fx low, tablets, integrated / mobile GPUs; else 'high'
+//   9 starting tier: 'low' for fx low, tablets, integrated / mobile GPUs (incl. AMD APUs since v3.3); else 'high'.
+//     'auto' may later promote low -> high only with measured GPU headroom (promote.ts, v3.3)
 import type { WorldId } from '@ct/protocol';
 import { FX_QUALITY_KEY } from '../game/fx/quality';
 import { bootGuardState, type BootGuardState } from './bootGuard';
@@ -27,6 +28,16 @@ export const AUTO_FALLBACK_DAYS = 7;
 export const PHONE_SHORT_SIDE = 500;
 export const SOFTWARE_GL = /SwiftShader|llvmpipe|Software/i;
 export const INTEGRATED_GL = /Intel|UHD|Iris|Mali|Adreno|PowerVR|Apple GPU/i;
+/** v3.3: AMD APUs ("AMD Radeon Graphics" / "Radeon(TM) Graphics" without a model number; "Radeon RX 6600" is discrete). */
+export const AMD_APU_GL = /\bRadeon(?:\(TM\)|\u2122)?\s+Graphics\b/i;
+
+/**
+ * Integrated / shared-memory GPUs (row 9 starts them at 'low'; promote.ts never promotes them without measured GPU
+ * headroom): Intel (UHD, Iris, Arc integrated, HD Graphics), AMD APUs, and Mali / Adreno / PowerVR / Apple GPU.
+ */
+export function isIntegratedGpu(gpu: string | null | undefined): boolean {
+  return !!gpu && (INTEGRATED_GL.test(gpu) || AMD_APU_GL.test(gpu));
+}
 
 type Storage0 = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
@@ -87,7 +98,7 @@ export function isSoftwareGl(gpu: string | null | undefined): boolean {
 
 /** Row 9: the starting tier. */
 export function startingTier(e: Pick<SelectEnv, 'fxLow' | 'coarsePointer'>, gpu: string | null): Tier {
-  if (e.fxLow || e.coarsePointer || (gpu !== null && INTEGRATED_GL.test(gpu))) return 'low';
+  if (e.fxLow || e.coarsePointer || isIntegratedGpu(gpu)) return 'low';
   return 'high';
 }
 

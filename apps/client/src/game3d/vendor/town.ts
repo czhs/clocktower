@@ -81,7 +81,7 @@ const DESIGN_CAST = new WeakMap<object, { cast: WeakMap<THREE.Object3D, boolean>
 const LOW_NO_CAST = /-(soft|turf-grass|moss-clump-core|clump-leaves|wares-solid|fx)$/;
 type RegistryProto = { add(id: string, piece: unknown): void };
 
-/** (v3.3 bake) The last town build's tree-cache numbers + the vendor's townBuildMs (ct.debug.v3bake=1; null when off). */
+/** (v3.3 bake) The last town build's tree-cache numbers + the vendor's townBuildMs (default on; null when ct.debug.v3bake=0). */
 export interface TownBakeInfo extends TreeBakeStats {
   townBuildMs: number | null;
   lowH: number;

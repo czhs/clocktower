@@ -148,6 +148,43 @@ describe('lifecycle', () => {
     expect(s.log).toEqual(['build low', 'teardown', 'build high', 'teardown', 'build low']);
   });
 
+  it('v3.3: with a promotionCheck the promotion waits for it and happens only when it says yes (asked once)', async () => {
+    let asked = 0;
+    let answer: (ok: boolean) => void = () => undefined;
+    const s = setup({ startTier: 'low', allowPromote: true, promotionCheck: () => (asked++, new Promise<boolean>((r) => (answer = r))) });
+    await s.lc.start();
+    frames(s, PERF_WINDOW, 16);
+    await flush();
+    expect(asked).toBe(1);
+    expect(s.log).toEqual(['build low']); // no rebuild before the probe answers
+    answer(true);
+    await flush();
+    expect(s.log).toEqual(['build low', 'teardown', 'build high']);
+
+    const n = setup({ startTier: 'low', allowPromote: true, promotionCheck: () => (asked++, Promise.resolve(false)) });
+    asked = 0;
+    await n.lc.start();
+    frames(n, PERF_WINDOW, 16);
+    await flush();
+    frames(n, PERF_WINDOW * 2, 16);
+    await flush();
+    expect(asked).toBe(1); // never asked again
+    expect(n.log).toEqual(['build low']); // the GPU had no headroom: stays at low
+  });
+
+  it('v3.3: a late "yes" after a rebuild / at another tier is ignored', async () => {
+    let answer: (ok: boolean) => void = () => undefined;
+    const s = setup({ startTier: 'low', allowPromote: true, promotionCheck: () => new Promise<boolean>((r) => (answer = r)) });
+    await s.lc.start();
+    frames(s, PERF_WINDOW, 16);
+    await flush();
+    s.lc.contextLost(); // rebuild at low: a new generation
+    await flush();
+    answer(true);
+    await flush();
+    expect(s.log).toEqual(['build low', 'teardown', 'build low']);
+  });
+
   it('context loss: the first rebuilds at once (even during a vote), the second within 10 min -> Classic', async () => {
     const s = setup();
     await s.lc.start();

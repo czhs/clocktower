@@ -76,6 +76,7 @@ async function main() {
         try {
           if (cell) localStorage.setItem('ct.debug.v3mergeCell', cell);
           localStorage.setItem('ct.debug.v3mergeAB', '1');
+          localStorage.setItem('ct.debug.v3merge', '1'); // v3.3: the merge is default off
           localStorage.setItem('ct.fxQuality', new URLSearchParams(location.search).get('tier') ?? 'low');
         } catch {
           /* ignore */
