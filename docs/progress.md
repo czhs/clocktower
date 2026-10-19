@@ -212,7 +212,83 @@ v2; v3.0 is on the dev service, see "v3 handoff" below.)
   WP3 soft-layer fade behind thatched cottages, WP4 bubble details); pixel3d-side requests are collected in
   INTEGRATION.md §9.2.
 
-### v3 handoff (2026-10-18 night, after the v3.4 release — RESTART FROM HERE; work PAUSED by the user after v3.4)
+### v3 handoff (2026-10-18 night, after the v3.5 release — PROJECT PAUSED BY THE USER; RESUME FROM HERE ALONE)
+
+The user paused the project after v3.5. This entry is written so a fresh session can resume from it without any
+other context. Read, in order: CLAUDE.md (rules, ownership, where things run), the gitignored CLAUDE.local.md (host /
+laptop access), docs/HANDOFF.md, this entry, docs/RELEASE-v3.md (top = v3.5), docs/v3/INTEGRATION.md (§8 status, §9.2
+vendor asks, §10 how to continue, §11 decisions).
+
+**What is live**
+- **PROD = v3.5 (`the commit "v3.5: release gate + docs"`, tag `v3.5`) since 2026-10-18 (deploy record: docs/test-results.md "v3.5 deploy")**; GitHub `main` = `v3-game` = that commit (+ the deploy-record
+  commit). `/` = the v3 3D town (pixel3d / three.js), `/v2/` = v2 Classic, `/v3-art-demo/` = the pixel3d Hollowmere demo
+  (prod keeps commit `deploy/v3-art-demo` f1bad49's demo files in every deploy). Dev service (port 3001) = the same build.
+  Rollback: `scripts/deploy-hshi-u1.sh prod 7f54da0` (v3.4). Release notes v3.0-v3.5: docs/RELEASE-v3.md; gates and
+  deploys: docs/test-results.md.
+- v3.5 contents: `v35-shaders` merged (parallel shader issue `ct.debug.v3par`, cut-away GLSL rewrite
+  `ct.debug.v3cutloop` (default ON: look proven), shader-source record + prewarm `ct.debug.v3shcache` (town programs only: avatar
+  rig programs are skipped since this release), early issue `ct.debug.v3parEarly`; look-check hook `ct.debug.freeze` +
+  `window.__ctFreezeT`). Look check: frozen-time look check on the real laptop iGPU (Intel Arc, Mesa, ANGLE GL-EGL): **0 differing pixels** rewrite on vs off on the square (`low`), the own-player cut-away at a cottage (`low` and `high`) and the vote (`low`), except 36 px of the fox avatar's feet that differ between two loads with the SAME flag too (pose noise, not the shader). Laptop cold first visit: v3.4 12.83 s to the first frame with an 8.48 s freeze → v3.5 9.14 s, longest task 0.72 s (one sample each, Intel iGPU, `low`).
+
+**Where everything is**
+- Code: branch `v3-game` (= `main`). The v3 game lives in `apps/client/src/game3d/**` (TownGame3d.ts = the mount; world/,
+  avatars/ (+ avatars/sprites/ = v3.4 baked sprites at `low`), overlay/, input/, net/, vendor/ = the only code that
+  touches the read-only `v3/pixel3d/**` vendor tree), build-time vendor patches in `apps/client/build/pixel3dImports.ts`.
+- Parked branches on GitHub (not merged, each with its own doc): `v33-tiles` (docs/perf-v3/tiles.md on the branch),
+  `v33-light` (docs/perf-v3/light.md on the branch); `v3-perf-classic` is out of scope (Classic perf). `v35-shaders`,
+  `v33-sprites-ship`, `v33-gpu`, `v33-bake` are merged. `v3-dev` = the pixel3d session's vendor publishes (last merged:
+  `bd4c9ff` in `5fb072f`; `origin/v3-dev` already has newer demo commits `620ec38`, `f978c46` — unreviewed).
+- Perf write-ups: docs/perf-v3/*.md (laptop.md = the real-laptop method + numbers, shaders.md = v3.5, sprites.md = v3.4,
+  gpu.md / bake.md = v3.3, cpu.md = the cpu tier).
+
+**How to run / measure**
+- Everything runs on the host through `scripts/remote.sh` (CLAUDE.md): `CT_AGENT=<name> scripts/remote.sh sh -c 'flock
+  -s $HOME/clocktower/v3-heavy.lock pnpm build'`; e2e add `flock $HOME/clocktower/browser.lock`, `E2E_V3=1 CT_GL=gpu
+  CT_E2E_NO_BUILD=1 E2E_PORT=3450` (v3-lead ports 3450-3453), one spec at a time (`pnpm test:e2e --project=v3
+  tests/e2e/v3-<x>.spec.ts`). Release gate recipe = docs/test-results.md "v3.5 release gate". Deploy:
+  `scripts/deploy-hshi-u1.sh dev|prod <sha>` (prod: check the journal for a running game, run the backup unit first).
+- The real laptop (Intel Arc iGPU + RTX 4070 dGPU; access rules in CLAUDE.local.md: files only under ~/ct-perf, on AC,
+  `gpu.lock`): method in docs/perf-v3/laptop.md §1 and §9 (the driver scripts once lived in a /tmp how-to that may be
+  gone; §9 says how to rebuild them).
+
+**Open known issues**
+- Vote camera sprite re-bake: worst frame 67 ms at `low` on the laptop (rigs 33-50 ms).
+- cpu tier (software GL) ≈ 8 fps against the 20 fps goal (needs the vendor's cheap cut-away, §9.2).
+- After a FIRST visit, the background sprite bake costs 5-10 long tasks ≤ 245 ms (vendor rig builds + sheet programs).
+- First visit on an Intel iGPU still pays ≈ 5-8 s of serial driver compile (no freeze since v3.5); see the follow-up below.
+- QA deferrals (C2): market-stall black disc at bedtime; own avatar spawns behind the banister in house-0 (Stargazer's
+  Tower); house-5 porch gable stays half-faded after leaving; weak block marker without the pennant; the ST panel's
+  "Open nominations" + clocks state after an execution.
+- Owner actions still open: the Cloudflare `/assets/*` cache rule + Smart Tiered Cache.
+- town3d chunk at 295.8 / 300 KiB br: the next feature needs a lazy chunk or a budget decision.
+
+**v4 list (from the user, 2026-10-18)**
+1. **Follow camera like the art demo** instead of the snapping camera (today: recentring jumps, and the vote camera's
+   4-step stop-motion transitions in `game3d/input/camera.ts` `steppedPose`): continuous eased follow, the pixel look
+   kept by snapping only the final render offset to the texel grid; smooth vote in / out, door / room transitions and ST
+   teleports; reduced motion keeps a snap. Verify side by side with https://clocktower.chrisshi.com/v3-art-demo/.
+2. **Waiting-room panel without scrolling** (`ui/lobby/WaitingRoom.tsx` + `lobby.css`): today it scrolls vertically and
+   the Discussion / Nominations / Bedtime / Night timer grid overflows horizontally. Must fit at 1280×720 and 1440×900
+   with no scroll: compact header with the lobby code + Copy link inline, How-to-play as a small link, a compact
+   non-overflowing timer grid, a shorter mode description, collapsible sections if needed.
+3. **Port all the newest art-demo improvements**: first the emote palette (the demo replaced 8 pin colours with 7
+   pixel-art emoji emotes that pop above the head + ONE pin slot with an automatic per-player colour), then the D=2 HD
+   UI density (finer fonts, clearer pin icons, notebook text), the action bar with a clickable button for every keybind
+   action + the lightbulb tip, notebook / pointer size options, ghost-state toggle, ambient events, wax-seal vote marks +
+   Butler pacing (verify what the game already has). Method: `git fetch origin`, diff `origin/v3-dev` against the last
+   merged vendor (`bd4c9ff`, merged in `5fb072f`), review the vendor diff as text (INTEGRATION.md §10), merge
+   (`git merge -X theirs v3-dev`), re-run `scripts/v3/import-assets.sh` / `export-hollowmere.mjs --check`, wire each
+   feature; record the unpublished ones as CONTRACT-REQUESTs (§9.2).
+4. **Character-change lag**: picking a new character freezes briefly (new rig build + that character's shader compiles,
+   plus the v3.4 sprite re-bake at `low`). Keep the old character until the new one's programs are compiled in parallel
+   and its rig is built, then swap with the poof; pre-warm characters while the picker is open; measure the hitch on the
+   laptop iGPU before / after.
+- Also: the vendor asks in INTEGRATION.md §9.2 (tree template hook, cheaper ground piece, foliage static / animated
+  split, cheap cut-away for the cpu tier, single-pass colour + normal (MRT), merged toon variants, adopting the cut-away
+  rewrite), and **ship a per-build shader-source file** (`v3-shaders/<tier>.json` captured after `pnpm build`) so
+  first-time visitors through the home page also get the ≈ 2.5 s join (shaders.md §6.1).
+
+### v3 handoff (2026-10-18 night, after the v3.4 release — superseded by the v3.5 entry above)
 
 - **v3.4 = the commit "v3.4: release gate + docs" on `v3-game`, tag `v3.4`; GitHub `main` = that commit.
   PROD runs v3.4 (`7f54da0`) since 2026-10-18 20:30 PDT** (pre-approved beta deploy: dev + 6-bot host-GPU smoke with sprites forced on, 0 page / console errors; no prod game in the 30 min before; manual backup; public `/`, `/v2/`, `/v3-art-demo/` 200; journals clean; docs/test-results.md "v3.4 deploy"). Rollback: `scripts/deploy-hshi-u1.sh prod 72aba16` (v3.3). Release note: docs/RELEASE-v3.md "v3.4".

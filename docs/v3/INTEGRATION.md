@@ -1203,6 +1203,7 @@ the order is WP0 (extraction) → WP0s (layer splits) → WP5b (layout injection
 | v3.2 | v32-release (acting as lead + qa-deploy) | v3.2 | **Released 2026-10-18: tag `v3.2` on `v3-game`** (gate in docs/test-results.md "v3.2 release gate"; deploy status in docs/progress.md "v3 handoff"). Merged `v32-early` (`3e46778`: idle 30 fps `game3d/idle.ts` + `perf.ts` idle gate, Phaser-free v3 join + home prefetch `ui/common/townPrefetch.ts`, build-time brotli `apps/client/build/precompress.mjs` + `apps/server/src/precompressed.ts`); release fix: `ui/common/prefetchAllowed.ts` split so main.tsx imports townPrefetch lazily (entry JS 45.7 → 44.2/45 KiB br); budget keys `v3JoinPhaserChunk`, `town3dShippedBrKiB`. Release note: docs/RELEASE-v3.md "v3.2". | v3.3 prototypes (`v33-tiles` / `v33-bake` / `v33-sprites` / `v33-light` / `v33-gpu`) |
 | v3.3 | v33-release (acting as lead + qa-deploy) | v3.3 | **Released 2026-10-18: tag `v3.3` on `v3-game`** (gate in docs/test-results.md "v3.3 release gate"; deploy status in docs/progress.md "v3 handoff"). Merged `v33-gpu` (`world/merge.ts` three r170 `BatchedMesh` `colorTexture` workaround + per-batch material twins, `vendor/gpuLevers.ts` smart river reflection + off-screen water passes skipped) and `v33-bake` (`build/townBake.ts` pinned createTree replay patch, `vendor/{bakeFormat,townBake}.ts` IndexedDB tree cache, `scripts/v3/bake-town.mjs --verify`); release changes: static merge default OFF (`ct.debug.v3merge=1` = on), GPU-headroom tier promotion (`game3d/promote.ts`, `vendor/gpuTimer.ts`, `Lifecycle.promotionCheck`, frame-loop `uncapped`; AMD APUs start at `low`: `select.ts isIntegratedGpu`), tree cache default ON with an LRU cap of 2 records per vendor build + 2 s read timeout. Not merged: `v33-sprites(-ship)` (v3.4), `v33-tiles`, `v33-light` (parked). Release note: docs/RELEASE-v3.md "v3.3". | v3.4: sprites at low from `v33-sprites-ship`; vendor asks §9.2 (v3.3) |
 | v3.4 | v34-release (acting as lead + qa-deploy) | v3.4 | **Released 2026-10-18: tag `v3.4` on `v3-game`** (gate in docs/test-results.md "v3.4 release gate"; deploy status in docs/progress.md "v3 handoff"). Merged `v33-sprites-ship` (`135a111`: `avatars/sprites/**`, `vendor/spriteLook.ts`, `layer.ts` sprite attempts / pump, bench `tests/perf/v3-sprites*`); release changes: sprites follow the scene tier and wait for `Lifecycle.mayPromote` (`TownGame3d` `spriteGate`), rig-first + background bake + swap (`layer.ts` `pumpUpgrades`, `bake.ts peekSheet`), memory trims (`bakeConfig.depthless/releaseKitGpu/keepOld 0`), the spec cache key without geometry uuids, kit warm-up after cached joins, re-bake hold 1.2 s, store held during votes, lazy sprite chunk (`avatars/sprites/index.ts`), `AvatarBody.sprite`. Release note: docs/RELEASE-v3.md "v3.4"; design: docs/perf-v3/sprites.md §8. | v3.5: `v35-shaders` (parallel shader compile, cheaper cut-away GLSL, home-page shader warm); vendor asks §9.2 |
+| v3.5 | v35-release (acting as lead + qa-deploy) | v3.5 | **Released 2026-10-18: tag `v3.5` on `v3-game`** (gate in docs/test-results.md "v3.5 release gate"; deploy in "v3.5 deploy"; pause handoff in docs/progress.md "v3 handoff"). Merged `v35-shaders` (`8741a84`: `world/shaderWarm.ts` parallel issue, `build/pixel3dImports.ts patchCutLoops`, `game3d/shaderCache.ts` record + prewarm, `ui/common/townPrefetch.ts` home-page prewarm, `ct3d:*` user-timing marks); release changes: the record skips avatar rig programs (`isAvatarProgram`), `vendor/engineHost.ts` look-check freeze (`ct.debug.freeze` + `window.__ctFreezeT`); cut-away rewrite pixel-proven on the laptop iGPU (default ON). Release note: docs/RELEASE-v3.md "v3.5"; design: docs/perf-v3/shaders.md. | PAUSED by the user. v4 list in docs/progress.md: follow camera, waiting room without scroll, art-demo ports (emotes first), character-change lag; vendor asks §9.2; per-build shader-source file |
 
 ### Phase 0: WP0 Foundation (`v3-lead`), checkpoint **C0**
 
@@ -1797,6 +1798,14 @@ additive clocktower hook, vendor `docs/TOWN.md` §13). Game-side wiring per item
     loop as exported GLSL (tiles.md asks 1-2).
   - `characters/look.js`: a supported G-buffer output mode and a public pose-sampling API (`Character.sampleDrawings()`)
     for baked character sprites (sprites.md §4; v3.4 ships the sprites with game-side patches until then).
+- (2026-10-18, v3.5 shaders; docs/perf-v3/shaders.md §6)
+  - `town/cutaway.js`: adopt the game's GLSL rewrite (uniform-bounded cut loops, one `townCut` call in the rim and in
+    `townDiscard`; `build/pixel3dImports.ts patchCutLoops`, −30-40 % Mesa compile time per cut toon program), so the
+    build-time rewrite (which fails the build on any vendor change of those snippets) can go.
+  - **Merged toon variants** (`materials/toon.js` + piece materials): ≈ 20 distinct toon program sources at 230-530 ms
+    each on the Intel iGPU even after the rewrite; `veg` / `fspring` / tone-attribute / tree-core patches as uniform
+    branches instead of program text would merge several programs. Also a per-piece "issue my programs now" hook with
+    the final light count, so the game can compile while the town builds.
 
 ### 9.3 Risks
 
@@ -2200,6 +2209,17 @@ additive clocktower hook, vendor `docs/TOWN.md` §13). Game-side wiring per item
   geometry freed between bakes (laptop: ≈ 33 MiB for 17 avatars at the follow camera, peak ≈ 50 MiB during a vote
   re-bake); bake kits' JS (~5-6 MiB each) is kept so a camera-key change never rebuilds a rig. The persistent sheet cache
   key no longer hashes part-geometry uuids (it missed on every reload before).
+
+- 2026-10-18 (v3.5 release, `v35-release` acting as lead): **shader compile off the main thread** (`v35-shaders`
+  merged): parallel issue + `KHR_parallel_shader_compile` poll (`ct.debug.v3par`, `v3parEarly`), the cut-away GLSL
+  rewrite at build time (`ct.debug.v3cutloop`; default ON after a frozen-time laptop-iGPU pixel check: 0 px), the
+  town's GLSL recorded per tier + build and prewarmed in a hidden context (`ct.debug.v3shcache`; town programs only:
+  avatar rig programs with the vendor look's `LOOK_MAX_BONES` are never recorded). Sprite programs keep the v3.4
+  guarded parallel precompile (`avatars/precompile.ts`). Debug: `ct.debug.freeze=1` + `window.__ctFreezeT`
+  (`vendor/engineHost.ts`) renders every frame at a fixed time with dt 0 for look checks. Sign-off: lead
+  `TownGame3d.ts`, `build/pixel3dImports.ts`, `vendor/engineHost.ts`, `shaderCache.ts`; WP3 `world/{stage,shaderWarm}.ts`;
+  WP6 `ui/common/townPrefetch.ts`.
+- 2026-10-18: **the user paused the project after v3.5** (handoff: docs/progress.md, top "v3 handoff").
 
 ## 12. Review log (round 1)
 

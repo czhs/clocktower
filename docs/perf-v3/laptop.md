@@ -166,3 +166,33 @@ settle. The waiting-room idle windows are 30 fps idle-capped in both builds (v3.
 stored, then replayed; IndexedDB never held more than 2 records; no bake errors. NVIDIA dGPU `auto`: `high` from the
 first frame in both builds (no probe), vote 60 fps, GPU 4.35 / 4.38 ms p50. The v3.3 "first load" ran in the same
 browser session after v3.2 (partly warm caches) and is not a cold first visit; the cold Intel first visit stays ≈ 14 s.
+
+## 9. How to re-run on the laptop (summary; the original /tmp driver how-to may be gone)
+
+Access rules (host alias, device, what is allowed) are in the gitignored CLAUDE.local.md; never write the laptop's
+names into tracked files. The method used for v3.1-v3.5:
+- **Device:** the Intel Arc iGPU (Meteor Lake, Mesa) + RTX 4070 laptop, Chrome 143 `--headless=new`, no node, no sudo,
+  files only under `~/ct-perf` on the laptop.
+- **Launch:** `~/ct-perf/chrome.sh <devtools port> intel glegl` = ANGLE GL-EGL on the iGPU with the Mesa EGL vendor (the
+  backend the owner's desktop Chrome uses); `nvidia glegl` = the dGPU; `gl` / `default` fall back to SwiftShader (do not
+  use). `chrome.sh` refuses to start on battery (`/sys/class/power_supply/*/online` must be 1) and holds
+  `flock ~/ct-perf/gpu.lock` for the browser's lifetime (`CT_LOCK_WAIT`, default 900 s); never kill another port's Chrome.
+- **Server:** the tree to measure is built in a host sandbox (`git archive <ref> | tar -x` into a scratch dir, copy
+  `ops.local.env` / CLAUDE.local.md in, `CT_AGENT=<name> scripts/remote.sh sh -c 'flock -s $HOME/clocktower/v3-heavy.lock
+  pnpm build'`); a small host driver (`.prof/game.ts`: `startServer({mode:'dist'})` from tests/support/server.ts + an ST
+  bot + N player bots from tests/support/bot.ts, stdin commands such as `READY+start`, `vote`, `night`, `tp square|home|
+  seat|building <id>|point x y`, `tpall seat`) runs in that sandbox on a port of the agent's range.
+- **Tunnels:** devtools: orchestrator `ssh -L <port>` to the laptop; game: laptop `-R <port>` → orchestrator `-L <port>` →
+  host 127.0.0.1:<port>.
+- **Driving:** playwright-core `connectOverCDP` from the orchestrator, an init-script probe (long tasks, rAF gaps, draw
+  wrappers, `EXT_disjoint_timer_query_webgl2` GPU ms, `__ctCamera.v3()` readouts), `Emulation.setDeviceMetricsOverride`
+  1440×900 @ DPR 2; localStorage flags + reload per variant; spoof the WebGL renderer string to force `high` / `cpu`.
+  Cold samples = one fresh `--user-data-dir` each (or `Browser.crashGpuProcess` for a lost shader cache: shaders.md §1).
+- **Look checks (v3.5):** `ct.debug.freeze=1` + `window.__ctFreezeT` set by an init script from boot (freezing after a
+  settle leaves townsfolk wherever they wandered), the player teleported before the reload, the DOM / overlay canvas
+  hidden (hand sprites run on wall-clock time; the page's CSP blocks injected `<style>`: use an adopted stylesheet), CDP
+  `Page.captureScreenshot` of the WebGL canvas; compare against a same-flag pair for the noise floor; the vote camera's
+  yaw is chosen per load, compare only pairs whose cameras match.
+- **Teardown:** close your Chrome (your port only) and delete its profile, close the tunnels, stop the host driver;
+  verify with `pgrep` / `ss` on all three machines.
+

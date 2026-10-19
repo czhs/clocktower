@@ -232,6 +232,13 @@ records too).
   fell back. A deterministic still (frozen time) on the laptop GPU is the check to add before a release. The same goes
   for the one-call `townDiscard` (not pixel-checked).
 
+- **v3.5 release, frozen-time pixel check (done):** on the laptop iGPU with `ct.debug.freeze` (docs/test-results.md "v3.5
+  release gate"): 0 differing pixels rewrite on vs off on the square, the own-player cut-away at a cottage (`low`,
+  `high`) and the vote; the only differing texels (36 px, an avatar's feet) differ between same-flag loads too. Default
+  stays ON.
+- **v3.5 release:** the record skips avatar rig programs (`isAvatarProgram`: the `LOOK_MAX_BONES` define), so the
+  prewarm never compiles last visit's random cast.
+
 ## 5. Before / after summary
 
 See the table at the top. The cold first visit loses ≈ 4 s: the cut rewrite takes the serial compile from 8.2-8.3 s to

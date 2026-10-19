@@ -1,3 +1,48 @@
+# Clocktower Town v3.5
+
+Status: **released 2026-10-18; dev + prod deploy recorded in docs/test-results.md "v3.5 deploy"** (https://clocktower.chrisshi.com, tag `v3.5` on `v3-game`). Gate and deploy: docs/test-results.md
+"v3.5 release gate" / "v3.5 deploy". Contract and decision log: docs/v3/INTEGRATION.md §11 "v3.5". Design, program
+inventory and the branch's laptop numbers: docs/perf-v3/shaders.md (branch `v35-shaders`, merged here). **Last release
+before the project pause** (resume from docs/progress.md, top "v3 handoff").
+
+v3.5 removes the multi-second freeze of a first visit on integrated-GPU laptops (Intel / Mesa): the town's ≈ 40 shader
+programs no longer compile in one blocking main-thread task.
+
+## Faster
+- **Parallel shader issue** (`world/shaderWarm.ts`, `ct.debug.v3par=0` = off; `ct.debug.v3parEarly=0` = issue in the
+  warm-up instead of right after the stage build): every program of the first view is issued at once and polled with
+  `KHR_parallel_shader_compile`; the loading sheet keeps animating. No-op without the extension. The v3.4 sprite
+  programs (bake kit, copy quad, sprite bodies) already compile through the same guarded parallel precompile
+  (`avatars/precompile.ts`).
+- **Cheaper cut-away GLSL** (`build/pixel3dImports.ts patchCutLoops`, `ct.debug.v3cutloop=0` = the vendor GLSL):
+  uniform-bounded cut loops and one `townCut` call in the section rim and in `townDiscard`; Mesa compiles each cut toon
+  program 30-40 % faster. **Look proven unchanged** (default ON): frozen-time look check on the real laptop iGPU (Intel Arc, Mesa, ANGLE GL-EGL): **0 differing pixels** rewrite on vs off on the square (`low`), the own-player cut-away at a cottage (`low` and `high`) and the vote (`low`), except 36 px of the fox avatar's feet that differ between two loads with the SAME flag too (pose noise, not the shader).
+- **Shader-source record + prewarm** (`game3d/shaderCache.ts`, `ct.debug.v3shcache=0` = off): the town's GLSL is
+  recorded per tier and build (IndexedDB `ct-shaders`) and compiled early in a hidden context on the next visit (home
+  page idle, or the start of a join), so a lost browser shader cache costs ≈ 2.5 s instead of ≈ 11 s through the home
+  page. v3.5 release change: **avatar rig programs (the vendor look's `LOOK_MAX_BONES`, the random cast) are not
+  recorded** — the record holds the town's programs only, so a join never waits for last visit's cast to compile.
+- Laptop (Intel Arc iGPU, Mesa, Chrome 143 headless ANGLE GL-EGL, `low`, 1440×900 DPR 2):
+
+  | load | v3.4 / v3.3 | v3.5 |
+  |---|---|---|
+  | **first visit, empty profile** (cold HTTP + shader cache; release re-check, one sample each, 1 ST + 2 bots) | v3.4: **12.83 s** to the first frame / longest task **8.48 s** | **9.14 s / 0.72 s** |
+  | first visit, branch numbers (v3.3 base, shaders.md) | 13.1 s / longest task 8.45 s | 9.1-9.3 s / 0.72 s |
+  | browser shader cache lost, home page open ≥ 8 s first (branch) | 10.7-11.2 s / 8.4 s | **2.5-2.75 s** / 0.6 s |
+  | browser shader cache lost, direct link (branch) | 10.7-11.2 s / 8.4 s | 6.7-6.8 s / 0.6 s |
+  | reload, everything warm (branch) | 2.2-2.4 s | 2.1-2.4 s |
+
+- Debug hook for look checks: `ct.debug.freeze=1` + `window.__ctFreezeT = <s>` renders every frame at a fixed time
+  with dt 0 (`vendor/engineHost.ts`).
+
+## Known issues (v3.5)
+- Everything in "Known issues (v3.4)" below still applies (vote re-bake worst frame 67 ms at `low`, ≤ 245 ms bake long
+  tasks after a first visit, sprite look differences), and the cpu tier is still ≈ 8 fps against the 20 fps goal.
+- The **first** visit on a device still pays the serial driver compile (≈ 5-8 s of GPU-thread time on the Intel iGPU,
+  no freeze): the record only helps the second visit. Next lever: ship a per-build shader-source file so first-time
+  visitors through the home page get the ≈ 2.5 s join (shaders.md §6.1).
+- The town3d chunk is at 295.8 / 300 KiB br (budget nearly full).
+
 # Clocktower Town v3.4
 
 Status: **on prod since 2026-10-18 20:30 PDT** (https://clocktower.chrisshi.com, tag `v3.4` = `7f54da0` on `v3-game`). Gate:

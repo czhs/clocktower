@@ -2,6 +2,24 @@
 
 All commands run on **the host** via `scripts/remote.sh` unless stated otherwise.
 
+## 2026-10-18 — v3.5 release gate (`v35-release`, branch `v3-game`, the host, sandboxes `v35-release` / `v35-spr`)
+
+Tree = v3.4 (`e470247`) + merge of `origin/v35-shaders` (`8741a84`, clean textual merge: the v3.4 sprite path and the
+shader work touch different code; sprite programs already use the guarded parallel precompile) + `c5d53f3` (shader-source
+record skips avatar rig programs, `isAvatarProgram`) + `b4d9a4d` (`ct.debug.freeze` / `window.__ctFreezeT` look-check hook).
+
+| Command (`CT_AGENT=v35-release scripts/remote.sh …`, builds / tests under `flock -s ~/clocktower/v3-heavy.lock`, e2e also `flock ~/clocktower/browser.lock`, nice 19) | Result |
+|---|---|
+| while writing: `pnpm --filter @ct/client run typecheck` | exit 0 |
+| **gate** `pnpm -r run typecheck`; `npx tsc -p tests/tsconfig.json --noEmit`; `pnpm build`; `node scripts/perf/bundle-report.mjs --json /tmp/ct-bundle-v35.json`; `node scripts/perf/budgets.mjs --bundle /tmp/ct-bundle-v35.json` (then again with `--dist apps/client/dist --out tests/perf/results/2026-10-18-v3.5.json`) (on `b4d9a4d`) | exit 0; **all measured ok**: entry JS 44.2/45, entry CSS 12.3/15, LobbyRoute 66.9/72, TownGame 281.3/300, **town3d 295.8/300** (v3.4: 293.4), `v3JoinPhaserChunk` 0/0, atlases 578.5/700 KiB |
+| **gate** `pnpm test` (full, after the build) | **exit 0: 186 files pass, 1 skipped; 2174 tests pass, 5 skipped** (134 s; new: `cutLoops`, `shaderCache` incl. the avatar-skip case, `world.shaderWarm`) |
+| **gate** v3 e2e, one spec at a time (`E2E_V3=1 E2E_PORT=3450 CT_GL=gpu CT_E2E_NO_BUILD=1 … timeout 1500 pnpm test:e2e --project=v3 tests/e2e/<spec>`; host GPU = `high` → rigs) | **all pass**: `v3-paths` 4/4 (29.5 s), `v3-boot` 1/1 (12.7 s), `v3-vote` 1/1 (29.8 s), `v3-doors` 1/1 (22.8 s), `v3-social` 1/1 (10.3 s), `v3-mixed` 1/1 (13.0 s), `v3-life` 1/1 (1.1 m), `v3-fallback` 4/4 (39.8 s), `v3-pageerrors` 1/1 (2.0 m) |
+| **gate** Classic: `--project=chromium tests/e2e/doors.spec.ts`, `tests/e2e/chat-bubbles.spec.ts` | **2/2 pass** (30.6 s, 25.2 s) |
+| **gate** sprites forced on: sandbox `v35-spr` built with `VITE_V3SPRITES=1 pnpm build`, `E2E_PORT=3451`: `v3-boot`, `v3-vote` | **2/2 pass** (12.5 s, 29.5 s) |
+| **look check** of the cut-away rewrite (sub-agent `v35-look`; scratch tree `git archive b4d9a4d`, sandboxes `v35-look` / `v35-base` (tag v3.4), game driver `.prof/game.ts` on 3452 / 3453 + `tp point` / `vclock pause` / `raw` commands; tp64 on AC, `chrome.sh 9452 intel glegl` = `ANGLE (Intel, Mesa Intel(R) Arc(tm) Graphics (MTL), OpenGL ES 3.2)`, 1440×900 DPR 2; `ct.debug.freeze=1` + `__ctFreezeT=60000` from boot, player teleported before each reload, overlay canvas / DOM hidden, CDP canvas screenshot 2880×1800; `ct.debug.v3cutloop=0` vs `1`) | **diff ~0**: square `low` 0 px (two pairs; noise pairs 0); own-player cut-away at house-9 `low` 0 px (pair b) / 36 px (pair a: the fox's feet, the same 36 px between two loads with the SAME flag = pose noise, max delta 97), `high` (spoofed) 0 px (noise pair 108 px, the feet); vote (8 hands, vote clock paused) 0 px in three pairs. **`v3cutloop` ships default ON.** Captures (gitignored scratch): `look35/res/*.png` + diffs |
+| cold first visit, laptop iGPU, `low`, fresh profile, 1 ST + 2 bots, one sample each (`cold.mjs` = `measure.mjs` copy) | **v3.4 (`7f54da0`): first frame 12.83 s, longest task 8.48 s** (long tasks 10.6 s in 8); **v3.5 (`b4d9a4d`): 9.14 s, 0.72 s** (2.4 s in 10); both `low`, 48 programs |
+| failures on the way (look check) | first cut-away point inside house-9's collision (teleport ignored) → moved; a CSP-blocked injected style → adopted stylesheet; townsfolk drift / wall-clock hand sprites → freeze from boot + overlay hidden; one `pkill` matched its own shell (nothing left behind). Cleanup verified: no tunnels, host processes or tp64 Chrome left (only `~/ct-perf/chrome-9452.log`) |
+
 ## 2026-10-18 — v3.4 release gate (`v34-release`, branch `v3-game`, the host, sandboxes `v34-release` / `v34-spr`)
 
 Tree = v3.3 (`72aba16`) + merge of `origin/v33-sprites-ship` (`135a111`, clean textual merge) + the v3.4 commits
