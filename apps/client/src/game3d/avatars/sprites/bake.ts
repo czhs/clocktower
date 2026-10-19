@@ -1157,6 +1157,8 @@ interface Store {
   cache: SheetCache;
   vendorHash: Map<string, Promise<string>>;
   lastPump: number;
+  /** v3.4: the persistent store waits while this says true (the layer: a vote is open) */
+  hold?: () => boolean;
   watchdog: ReturnType<typeof setInterval> | null;
   stats: { bakes: number; cacheHits: number; cacheMisses: number; stored: number; storeFails: number; maxUnitMs: number; maxUnit: string; maxPumpMs: number; kitsBuilt: number; units: number; over4: number; slow: Record<string, number> };
 }
@@ -1297,7 +1299,8 @@ function persist(s: Store, renderer: THREE.WebGLRenderer, sheet: SpriteSheet, pk
   persistChain = persistChain
     .then(async () => {
       // only while no bake is pending (a camera-key change bakes first, stores after), then one sheet at a time
-      while (stores.get(s.engineRef) === s && s.runner.pending()) await new Promise((r) => setTimeout(r, 250));
+      // v3.4: and not while the layer says hold (an open vote: the readback can stall an iGPU frame)
+      while (stores.get(s.engineRef) === s && (s.runner.pending() || s.hold?.())) await new Promise((r) => setTimeout(r, 250));
       if (stores.get(s.engineRef) !== s || (sheet as unknown as { _disposed?: boolean })._disposed) return;
       const planes = await readPlanes(renderer, sheet, rts);
       const bufs: (Uint8Array | Float32Array | Uint16Array)[] = [planes[0]!, planes[1]!, new Uint8Array(0)];
@@ -1535,6 +1538,11 @@ export async function peekSheet(engine: object, specId: string, cam: SheetCamera
     console.warn('[sprites] cached sheet unusable', e);
     return null;
   }
+}
+
+/** v3.4: hold the IndexedDB stores (readback + gzip) while `fn` returns true (the layer: during a vote). */
+export function setPersistHold(engine: object, fn: () => boolean): void {
+  storeOf(engine).hold = fn;
 }
 
 /** A kit exists for this spec (debug / the layer's kit warm-up). */

@@ -352,11 +352,16 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
   // ------------------------------------------------------------------ builds
   type Attempt = { kind: 'rig' | 'sprite'; spec: string; tint: string | null } | { kind: 'billboard'; id: string; tint: string | null };
   const sprites = spritesEnabled(svc.tier);
+  /** a nomination / vote is open (the sprite cache store waits: its GPU readback can stall an iGPU frame) */
+  let voteOpen = false;
   /** the sprite chunk (loaded only when sprites are on; nothing sprite-related runs before it is here) */
   let S: SpriteMod | null = null;
   const spriteMod: Promise<SpriteMod | null> | null = sprites
     ? import('./sprites/index').then(
-        (m) => (S = m),
+        (m) => {
+          if (!destroyed) m.setPersistHold(engine as object, () => voteOpen);
+          return (S = m);
+        },
         (err) => {
           console.warn('[avatars] sprite module unavailable, keeping rigs', err);
           return null;
@@ -760,6 +765,7 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
         r.n = n;
       }
       raisedHands(state.game, raised);
+      voteOpen = !!state.game?.day?.nominations?.some((nm) => nm.status === 'voting' || nm.status === 'pending');
       const night = lanternHour(state.hour);
       const day = DAYLIKE.has(state.phase);
 
