@@ -34,8 +34,9 @@ import { createNpcFolk, DAYLIKE, npcHomesFor, type Npc, type NpcFolk } from './n
 import { fallbackView, pxToMetres } from './project';
 import { nextBuild, type BuildCandidate } from './queue';
 import { createRigBody } from './rigBody';
-import { createSpriteBody, sheetCameraOf, spriteDebug } from './sprites/spriteBody';
-import { getSheet, gpuStats, peekSheet, peekStats, pumpBakes, releaseSheet, releaseSheets, sheetStats, storeStats, subtreeGeometryBytes, type SpriteSheet } from './sprites/bake';
+import type { SpriteSheet } from './sprites/bake';
+
+type SpriteMod = typeof import('./sprites/index');
 import { canPrecompile, precompile, type CompileRendererLike, type PrecompileResult } from './precompile';
 import { RIM_DEFAULT } from './ghostTint';
 import { dir8, toFacing } from '../../game/rules/input';
@@ -201,6 +202,27 @@ interface PubRecord {
 
 const FACE_YAW: Record<Facing, number> = { down: 0, right: Math.PI / 2, up: Math.PI, left: -Math.PI / 2 };
 
+/** Bytes of the geometry under a body (debug: the rig path's avatar GPU memory estimate). */
+function geometryBytesOf(root: THREE.Object3D): number {
+  const geos = new Set<THREE.BufferGeometry>();
+  root.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (m.isMesh && m.geometry) geos.add(m.geometry);
+  });
+  let n = 0;
+  for (const g of geos) {
+    if (g.index) n += (g.index.array as unknown as { byteLength: number }).byteLength;
+    const seen = new Set<unknown>();
+    for (const a of Object.values(g.attributes)) {
+      const arr = (a as THREE.BufferAttribute & { data?: { array: unknown } }).data?.array ?? (a as THREE.BufferAttribute).array;
+      if (seen.has(arr)) continue;
+      seen.add(arr);
+      n += (arr as unknown as { byteLength: number }).byteLength;
+    }
+  }
+  return n;
+}
+
 interface RendererLike {
   /** three's compile() + properties (precompile.ts); never three's compileAsync, whose poll throws on a disposed material */
   compile?: CompileRendererLike['compile'];
@@ -328,6 +350,17 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
   // ------------------------------------------------------------------ builds
   type Attempt = { kind: 'rig' | 'sprite'; spec: string; tint: string | null } | { kind: 'billboard'; id: string; tint: string | null };
   const sprites = spritesEnabled(svc.tier);
+  /** the sprite chunk (loaded only when sprites are on; nothing sprite-related runs before it is here) */
+  let S: SpriteMod | null = null;
+  const spriteMod: Promise<SpriteMod | null> | null = sprites
+    ? import('./sprites/index').then(
+        (m) => (S = m),
+        (err) => {
+          console.warn('[avatars] sprite module unavailable, keeping rigs', err);
+          return null;
+        },
+      )
+    : null;
   const gateOpen = () => {
     try {
       return svc.spriteGate?.() ?? true;
@@ -368,10 +401,10 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
           if (a.kind === 'sprite') {
             // not before the gate: the promotion probe must time the rigs ('high' would draw rigs; sprites at low cost
             // ~half the GPU time and would let an integrated GPU pass the 4.5 ms bar)
-            if (!gateOpen()) throw new Error(NOT_READY);
-            const sheet = await peekSheet(engine as object, a.spec, sheetCameraOf(engine));
+            if (!gateOpen() || !S) throw new Error(NOT_READY);
+            const sheet = await S.peekSheet(engine as object, a.spec, S.sheetCameraOf(engine));
             if (!sheet) throw new Error(NOT_READY);
-            const body = await createSpriteBody(engine, a.spec, { x: at.X, z: at.Z, face, heightAt: groundAt, tint: a.tint, prio: e.self ? 10 : 0, lantern: e.carriesLantern, sheet });
+            const body = await S.createSpriteBody(engine, a.spec, { x: at.X, z: at.Z, face, heightAt: groundAt, tint: a.tint, prio: e.self ? 10 : 0, lantern: e.carriesLantern, sheet });
             return { body, tint: a.tint };
           }
           if (a.kind !== 'billboard') {
@@ -485,7 +518,8 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
   /** entries whose sheet is ready, waiting for their body (one at a time, in landing order) */
   const upReady: { e: Entry; gen: number; sheet: SpriteSheet }[] = [];
   const pumpUpgrades = (me: Px | null) => {
-    if (!sprites || destroyed) return;
+    if (!sprites || destroyed || !S) return;
+    const M = S;
     // the first builds go first (a join is as fast as with rigs): no upgrade while a body is still to be built
     if (inFlight !== 0) return;
     for (const e of entries.values()) if (!e.body && !e.failed && !e.removed && !e.parked) return;
@@ -501,7 +535,7 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
       const here = e.pose.location === viewerLoc;
       const dist = me && here ? Math.hypot(e.pose.x - me.x, e.pose.y - me.y) : 1e4;
       const prio = e.self ? 10 : e.npc ? -1 : here ? 5 - Math.min(4, dist / 400) : 0;
-      getSheet(engine as object, e.body.specId, sheetCameraOf(engine), prio).then(
+      M.getSheet(engine as object, e.body.specId, M.sheetCameraOf(engine), prio).then(
         (sheet) => {
           if (destroyed || e.removed || gen !== e.gen) return;
           sheet.refs++; // held until the body takes it (or the upgrade is dropped)
@@ -519,14 +553,14 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
     if (upBusy || !upReady.length) return;
     const job = upReady.shift()!;
     const { e, gen, sheet } = job;
-    const unhold = () => releaseSheet(engine as object, sheet);
+    const unhold = () => M.releaseSheet(engine as object, sheet);
     if (destroyed || e.removed || gen !== e.gen || !e.body) return unhold();
     upBusy = true;
     upEntry = e;
     e.upgrade = 2;
     const m = layoutRef ? pxToMetres(layoutRef, e.pose, e.pose.location) : null;
     const at = m ?? { X: 0, Z: 0 };
-    createSpriteBody(engine, e.body.specId!, { x: at.X, z: at.Z, face: FACE_YAW[e.pose.facing] ?? 0, heightAt: groundAt, tint: e.tint, prio: e.self ? 10 : 0, lantern: e.carriesLantern, sheet })
+    M.createSpriteBody(engine, e.body.specId!, { x: at.X, z: at.Z, face: FACE_YAW[e.pose.facing] ?? 0, heightAt: groundAt, tint: e.tint, prio: e.self ? 10 : 0, lantern: e.carriesLantern, sheet })
       .then((nb) => {
         unhold();
         if (destroyed || e.removed || gen !== e.gen || !e.body) {
@@ -677,7 +711,7 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
       viewerLoc = state.me?.location ?? 'outdoors';
       ensureFolk(state);
       // sprite bakes: a slice of work per frame (BAKE_BUDGET_MS), before this frame's render
-      if (sprites) pumpBakes(engine as object);
+      if (S) S.pumpBakes(engine as object);
 
       // 1. players
       seen.clear();
@@ -805,7 +839,7 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
       entries.clear();
       warmCheck.clear();
       releaseBillboardSheets(engine as object);
-      releaseSheets(engine as object);
+      void spriteMod?.then((m) => m?.releaseSheets(engine as object));
       warmRT?.dispose();
       warmRT = null;
       doneSelf();
@@ -840,7 +874,7 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
         /** shader pre-warm: builds pre-compiled, resolved / timed out, first frames that still compiled (misses; unchecked = another pre-warm ran in between), total ms */
         avatarsWarm: () => ({ ...warm, ms: Math.round(warm.ms) }),
         /** v3.3 sprites: live sprite bodies, re-bakes, fallbacks, the bake store (cache hits, kits) and the sheets */
-        sprites: async () => ({ enabled: sprites, ...spriteDebug, store: storeStats(engine as object), sheets: await sheetStats(engine as object) }),
+        sprites: async () => (S ? { enabled: sprites, ...S.spriteDebug, store: S.storeStats(engine as object), sheets: await S.sheetStats(engine as object) } : { enabled: sprites, loaded: false }),
         /**
          * v3.4 (sync): the rig -> sprite upgrades and a GPU memory estimate of the avatars. `ready` = every player /
          * townsfolk body that can be a sprite is one; rigMiB = geometry of the rig bodies shown now; store = sheets +
@@ -856,11 +890,11 @@ export function createAvatarLayer(svc: AvatarServices): AvatarLayer {
             if (e.body.texture.startsWith('v3-sprite:')) spr++;
             else if (e.body.kind === 'rig') {
               rigs++;
-              rigBytes += subtreeGeometryBytes(e.body.holder);
+              rigBytes += geometryBytesOf(e.body.holder);
             }
             if (e.upgrade !== 3) open++;
           }
-          return { enabled: sprites, gate: sprites ? gateOpen() : false, ...ups, open, rigs, sprites: spr, ready: sprites && open === 0, rigMiB: +(rigBytes / 1048576).toFixed(2), store: gpuStats(engine as object), peek: { ...peekStats }, camKey: (() => { try { const c = sheetCameraOf(engine); return `${c.texel.toFixed(6)}|${c.pitch.toFixed(4)}|${c.yaw.toFixed(4)}`; } catch { return null; } })() };
+          return { enabled: sprites, gate: sprites ? gateOpen() : false, ...ups, open, rigs, sprites: spr, ready: sprites && open === 0, rigMiB: +(rigBytes / 1048576).toFixed(2), store: S ? S.gpuStats(engine as object) : null, peek: S ? { ...S.peekStats } : null, camKey: (() => { try { if (!S) return null; const c = S.sheetCameraOf(engine); return `${c.texel.toFixed(6)}|${c.pitch.toFixed(4)}|${c.yaw.toFixed(4)}`; } catch { return null; } })() };
         },
       };
     },
