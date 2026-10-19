@@ -15,6 +15,8 @@
 //                                 area; replaces the demo's stack-sniffing buildWide, which breaks once minified)
 //   world/trees.js createTree     (v3.3 bake) replay of baked createTree output via globalThis.__ctTreeBake
 //                                 (build/townBake.ts; createTree's source is pinned: a vendor change fails the build)
+//   town/cutaway.js GLSL          (v3.5 shaders) cut loops bounded by the uniform counts, one townCut call in the rim
+//                                 and in townDiscard: −30 % driver compile time on Mesa, same arithmetic (patchCutLoops)
 // Bundle checks (generateBundle): exactly one three/build/ directory in the bundle; no emitted asset matches
 // characters/*.js; every patch target that is bundled was patched.
 // CONTRACT-REQUEST(pixel3d): static imports / options for all of these (§9.2), so these rewrites can go.
@@ -114,12 +116,60 @@ export const PATCHES: readonly Patch[] = [
     },
   },
   {
+    // (v3.5 shaders) the cut-away GLSL's loops have constant bounds (MAX_LIFTS / MAX_BOXES, with an early break on the
+    // uniform count) and the section rim calls townCut() four times: Mesa unrolls every such loop and inlines every
+    // call, so each cut toon program is ≈ 2-3× the compile time of the same program without the cut (docs/perf-v3/
+    // shaders.md). The rewrite bounds the loops by the uniform count and walks the rim's four taps in one loop with a
+    // count the compiler cannot fold: the same arithmetic, in the same order (look unchanged), far less code.
+    // A/B: localStorage `ct.debug.v3cutloop` = '0' keeps the vendor GLSL. patchCutLoops throws on a vendor change.
+    file: 'town/cutaway.js',
+    what: 'cut-away GLSL: uniform-bounded loops + one rim loop (Mesa compile time)',
+    apply: patchCutLoops,
+  },
+  {
     // (v3.3 bake) createTree replays baked output when globalThis.__ctTreeBake has the call (build/townBake.ts)
     file: 'world/trees.js',
     what: 'createTree: baked-output replay hook (createTree source pinned in build/townBake.ts CREATE_TREE_PIN)',
     apply: patchTrees,
   },
 ];
+
+/** Loop headers of town/cutaway.js (count per header) the cut-loop patch rewrites. */
+export const CUT_LOOPS = [
+  { find: 'for (int i = 0; i < ${MAX_LIFTS}; i++) {\n    if (float(i) >= uCutLiftN) break;', n: 4, bound: 'int(uCutLiftN)', max: 'MAX_LIFTS' },
+  { find: 'for (int i = 0; i < ${MAX_BOXES}; i++) {\n    if (float(i) >= uCutBoxN) break;', n: 2, bound: 'int(uCutBoxN)', max: 'MAX_BOXES' },
+] as const;
+export const CUT_RIM = 'return (townCut(P + r) || townCut(P - r) || townCut(P + u) || townCut(P - u)) ? 1.0 : 0.0;';
+/**
+ * The rim's four taps (+r, -r, +u, -u, first hit wins: the || chain's order) in one loop. `4 + int(min(uCutOn, 0.0))`
+ * is 4 (uCutOn is 0 or 1, and the function returned already when it is < 0.5) but not a compile-time constant, so the
+ * loop stays a loop and townCut is inlined once here instead of four times. ±1.0 scaling is exact.
+ */
+export const CUT_RIM_LOOP =
+  'for (int k = 0; k < 4 + int(min(uCutOn, 0.0)); k++) { vec3 o = (k < 2 ? r : u) * ((k == 0 || k == 2) ? 1.0 : -1.0); if (townCut(P + o)) return 1.0; }\\n  return 0.0;';
+
+/** townDiscard: the small-part and the whole-fragment cut test are the same townCut at a different point. */
+export const CUT_DISCARD =
+  '  if (townSmallPart()) return (vTownPart.y > 0.1 && townCut(vTownPart.xyz)) || townLiftAt(P) || townPartLift();\n  return townCut(P) || townPartLift();';
+/** One townCut call (at the centroid for a small part, else at the fragment); the same result (all tests are pure). */
+export const CUT_DISCARD_ONE =
+  '  bool sp = townSmallPart();\\n  if ((!sp || vTownPart.y > 0.1) && townCut(sp ? vTownPart.xyz : P)) return true;\\n  return (sp && townLiftAt(P)) || townPartLift();';
+
+/** town/cutaway.js: the cut-loop rewrite (null when a known snippet is missing or appears a different number of times). */
+export function patchCutLoops(code: string): string | null {
+  let out = code;
+  for (const l of CUT_LOOPS) {
+    if (out.split(l.find).length - 1 !== l.n) return null;
+    out = out.split(l.find).join(l.find.replace(`\${${l.max}}`, `\${__ctCutLoops ? '${l.bound}' : ${l.max}}`));
+  }
+  const rim0 = once(out, CUT_RIM, `\${__ctCutLoops ? '${CUT_RIM_LOOP}' : '${CUT_RIM}'}`);
+  const rim = rim0 && once(rim0, CUT_DISCARD, `\${__ctCutLoops ? '${CUT_DISCARD_ONE}' : '${CUT_DISCARD.replace(/\n/g, '\\n')}'}`);
+  if (!rim || !code.includes('const MAX_BOXES = 3;') || !code.includes('const MAX_LIFTS = 4;') || !code.includes('const RIM_GLSL = /* glsl */`')) return null;
+  return afterImports(
+    rim,
+    "const __ctCutLoops = (() => { try { return globalThis.localStorage?.getItem('ct.debug.v3cutloop') !== '0'; } catch { return true; } })(); // (clocktower town: build/pixel3dImports.ts)",
+  );
+}
 
 const VENDOR_SRC = /[\\/]v3[\\/]pixel3d[\\/]src[\\/](.+)$/;
 
