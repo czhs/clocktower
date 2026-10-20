@@ -27,6 +27,8 @@
   position: absolute; top: 0; left: 18px; right: 18px; display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none;
 }
 .ct-rb-ribbons::-webkit-scrollbar { display: none; }
+/* The v3 kit (v3/assets/ui/panels.css) underlines every [role='tablist']; in town that line cut across the ribbons. */
+.ct-rb .ct-rb-ribbons[role='tablist'] { border: none; border-image: none; }
 .ct-rb-ribbon {
   --rib: #5b4a72; flex: 0 0 auto; position: relative; min-height: 0; padding: 6px 12px 12px; border: none; border-radius: 0 0 3px 3px;
   background: var(--rib); color: #f3ead2; font-family: var(--font-display); font-size: 0.95rem; line-height: 1;
