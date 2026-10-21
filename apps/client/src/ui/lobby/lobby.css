@@ -307,6 +307,8 @@ button.ct-ready-on { border-color: #3d6b3a; color: #bfe0b9; }
 .ct-modal .ct-actions > button { width: auto; }
 .ct-removed { margin: 6px 0; }
 .ct-chat-filter { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+/* The lobby's script name in the waiting-room header opens the rulebook on it. */
+button.ct-link.ct-waiting-script { padding: 0; font-size: inherit; color: inherit; text-decoration-style: dotted; }
 
 /* (v3 WP8) The v3 app's loading scene (ui/common/v3loading.tsx; only at `/`, the v2 app keeps .ct-game-loading /
    LoadingScreen). Colours = the kit's night tokens (v3/assets/ui/kit.json meta.tokens.night: shadow #0C0B16,
@@ -382,3 +384,16 @@ button.ct-ready-on { border-color: #3d6b3a; color: #bfe0b9; }
 @keyframes ct-v3walk { to { transform: translateX(calc(var(--s) * -160px)); } }
 @keyframes ct-v3flicker { to { background-position-x: calc((var(--fx) + 24) * var(--s) * -1px); } }
 @keyframes ct-v3pulse { 50% { opacity: 0.45; } }
+/* The seated Storyteller's pending requests for the seat (WaitingRoom StRequests). */
+.ct-st-requests { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; flex-basis: 100%; }
+.ct-st-requests > li { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.ct-st-requests > li > span { flex: 1 1 auto; }
+.ct-st-requests button { width: auto; }
+/* In game: the People / Admin panel (moderation.tsx LobbySafety), docked under the toolbar, no backdrop. */
+.ct-safety-panel {
+  position: fixed; z-index: 31; top: calc(50px + var(--safe-top)); right: calc(12px + var(--safe-right));
+  width: min(380px, calc(100vw - 24px)); max-height: min(60vh, calc(100vh - 70px)); overflow-y: auto;
+  display: flex; flex-direction: column; gap: 10px; background: var(--panel-solid); font-size: 14px;
+}
+.ct-safety-panel h2 { margin: 0; color: var(--accent); font-weight: normal; font-size: 1.1rem; }
+.ct-safety-panel .ct-actions > button { width: auto; }

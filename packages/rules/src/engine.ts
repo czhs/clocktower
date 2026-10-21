@@ -1,5 +1,17 @@
-import { CHARACTER_INFO, DEFAULT_BEDTIME_SECONDS, DEFAULT_ST_SETTINGS, MAX_PLAYERS, MIN_PLAYERS, type CharacterId, type ForcePhase, type StCommand } from '@ct/protocol';
+import {
+  CHARACTER_INFO,
+  DEFAULT_BEDTIME_SECONDS,
+  DEFAULT_ST_SETTINGS,
+  MAX_PLAYERS,
+  MIN_PLAYERS,
+  isSeatedType,
+  type CharacterId,
+  type ForcePhase,
+  type ScriptId,
+  type StCommand,
+} from '@ct/protocol';
 import { checkVictory, endPoisonerPoison, finish, killPlayer, publish } from './deaths.js';
+import { addTraveller, callExile, cancelExile, EXILE_REMINDER, setExileHand, startExileVote, tallyExile } from './exile.js';
 import {
   cancelNomination,
   closeVote,
@@ -27,9 +39,11 @@ import { commandLabel } from './labels.js';
 import {
   applyAssignment,
   completeAssignment,
+  DEFAULT_SCRIPT,
   randomAssignment,
   validateAssignment,
   type Assignment,
+  type DrunkPlacement,
 } from './setup.js';
 import { dealBag, presetAssignment } from './presets.js';
 import {
@@ -69,6 +83,8 @@ const HISTORY_LIMIT = 30;
 export interface CreateGameOptions {
   players: { pid: string; seat: number; name: string }[];
   rng: Rng;
+  /** Script to draw characters from (default: Trouble Brewing). */
+  script?: ScriptId;
   now?: number;
   bedtimeSeconds?: number;
   /** Time the clock hand spends on each seat while voting. */
@@ -77,7 +93,7 @@ export interface CreateGameOptions {
 
 export function createGame(opts: CreateGameOptions): GameState {
   const n = opts.players.length;
-  if (n < MIN_PLAYERS || n > MAX_PLAYERS) throw new RuleError('invalid', `Trouble Brewing needs 5-15 players (got ${n})`);
+  if (n < MIN_PLAYERS || n > MAX_PLAYERS) throw new RuleError('invalid', `A game needs 5-15 players (got ${n})`);
   const seats = new Set(opts.players.map((p) => p.seat));
   if (seats.size !== n) throw new RuleError('invalid', 'Duplicate seats');
   for (const p of opts.players)
@@ -121,6 +137,7 @@ export function createGame(opts: CreateGameOptions): GameState {
     }));
   return {
     version: 1,
+    script: opts.script ?? DEFAULT_SCRIPT,
     players,
     phase: 'setup',
     dayNumber: 0,
@@ -142,6 +159,10 @@ export function createGame(opts: CreateGameOptions): GameState {
     stepSeq: 0,
     day: null,
     lastExecutedDiedSeat: null,
+    lastDay: null,
+    exile: null,
+    exileSeq: 0,
+    travellerSeats: {},
     visitingSeat: null,
     travelSpeedMult: 1,
     announcements: [],
@@ -245,7 +266,26 @@ function startNight(s: GameState, op: Op, first: boolean, reason: 'bedtime' | 'n
   s.nightNumber += 1;
   s.phaseEndsAt = null;
   clearStage(s);
+  // Keep a summary of the day for the night's information characters before dropping it.
+  if (s.day) {
+    const nominatorSeats = s.day.nominations.filter((n) => n.status !== 'cancelled').map((n) => n.nominatorSeat);
+    const voterSeats = [
+      ...new Set(
+        s.day.nominations.flatMap((n) =>
+          Object.entries(n.votes)
+            .filter(([, yes]) => yes === true)
+            .map(([seat]) => Number(seat)),
+        ),
+      ),
+    ];
+    s.lastDay = { nominatorSeats: [...new Set(nominatorSeats)], voterSeats, executionOccurred: s.day.executionOccurred };
+  }
   s.day = null;
+  // An exile vote belongs to its day: one still open at nightfall is withdrawn.
+  if (s.exile && (s.exile.status === 'pending' || s.exile.status === 'voting')) {
+    s.exile.status = 'cancelled';
+    alert(s, op, `The exile vote on seat ${s.exile.travellerSeat + 1} was still open at nightfall and was withdrawn.`);
+  }
   for (const p of s.players) {
     if (p.poisonedBy === 'poisoner') p.poisonedBy = null;
     p.protectedTonight = false;
@@ -265,6 +305,7 @@ function startDay(s: GameState, op: Op): void {
   clearStage(s);
   s.visitingSeat = null;
   s.day = newDay();
+  s.exile = null; // yesterday's exile vote (if any) is not today's
   s.lastExecutedDiedSeat = null;
   clearStepPrompts(s);
   for (const p of s.players) {
@@ -511,11 +552,18 @@ function assign(s: GameState, op: Op, cmd: Extract<StCommand, { type: 'assign_ch
     if (bySeat.has(a.seat)) throw new RuleError('invalid', `Seat ${a.seat + 1} assigned twice`);
     bySeat.set(a.seat, a.character);
   }
+  // Seats already made Travellers keep their Traveller unless this assignment names them.
+  for (const [seat, t] of Object.entries(travellerSeats(s))) if (!bySeat.has(Number(seat))) bySeat.set(Number(seat), t.character);
+  // The assignment decides who is a Traveller (a Traveller character in a seat makes it one).
+  const travellers: GameState['travellerSeats'] = {};
+  for (const [seat, c] of bySeat)
+    if (CHARACTER_INFO[c].type === 'traveller') travellers[seat] = { character: c, alignment: s.travellerSeats[seat]?.alignment ?? CHARACTER_INFO[c].alignment };
   const draft: Assignment = {
     bySeat,
     drunkBelieves: cmd.drunkBelievesSeatCharacter ?? null,
     redHerringSeat: cmd.redHerringSeat ?? null,
     demonBluffs: [...cmd.demonBluffs],
+    script: s.script,
   };
   const full = completeAssignment(draft, s.rng);
   const seats = s.players.map((p) => p.seat);
@@ -523,6 +571,7 @@ function assign(s: GameState, op: Op, cmd: Extract<StCommand, { type: 'assign_ch
   if (v.errors.length) throw new RuleError('invalid', v.errors.join('; '));
   if (v.warnings.length && !cmd.allowNonstandard) throw new RuleError('invalid', `${v.warnings.join('; ')} (set allowNonstandard to accept)`);
   for (const w of v.warnings) alert(s, op, w);
+  s.travellerSeats = travellers;
   applyAssignment(s, full);
   s.deal = { method: 'manual' };
   log(s, op, 'Characters assigned manually');
@@ -533,9 +582,77 @@ function dealRng(s: GameState, seed: number | undefined): Rng {
   return seed === undefined ? s.rng : mulberry32(seed);
 }
 
+// ------------------------------------------------------------------------------ travellers
+
+/** The Traveller seats (a game restored from before Travellers existed has none). */
+function travellerSeats(s: GameState): GameState['travellerSeats'] {
+  return (s.travellerSeats ??= {});
+}
+
+/** Seats every deal fills: everyone except the Storyteller's Travellers. */
+function dealSeats(s: GameState): number[] {
+  const seats = s.players.map((p) => p.seat).filter((seat) => !travellerSeats(s)[seat]);
+  if (seats.length < 5) throw new RuleError('invalid', `Besides Travellers, a game needs at least 5 players (got ${seats.length})`);
+  return seats;
+}
+
+/** A deal of the other seats, plus each Traveller seat's own character. */
+function withTravellers(s: GameState, a: Assignment): Assignment {
+  const bySeat = new Map(a.bySeat);
+  for (const [seat, t] of Object.entries(travellerSeats(s))) bySeat.set(Number(seat), t.character);
+  return { ...a, bySeat };
+}
+
+/** Make a player a Traveller (or, in setup, undo it). Travellers are the Storyteller's call. */
+function setTraveller(s: GameState, op: Op, cmd: Extract<StCommand, { type: 'set_traveller' }>): void {
+  if (s.phase === 'finished') throw new RuleError('phase', 'The game is over');
+  const p = mustPlayer(s, cmd.seat);
+  travellerSeats(s);
+  if (cmd.character === null) {
+    if (s.phase !== 'setup') throw new RuleError('forbidden', 'A Traveller leaves the game by exile');
+    if (!s.travellerSeats[cmd.seat]) return;
+    delete s.travellerSeats[cmd.seat];
+    log(s, op, `${who(p)} is no longer a Traveller`);
+    if (s.assigned) clearDeal(s, op, `${who(p)} is no longer a Traveller`);
+    return;
+  }
+  const c = cmd.character;
+  if (CHARACTER_INFO[c].type !== 'traveller') throw new RuleError('invalid', `${CHARACTER_INFO[c].name} is not a Traveller`);
+  for (const [seat, t] of Object.entries(s.travellerSeats))
+    if (Number(seat) !== cmd.seat && t.character === c) throw new RuleError('invalid', `Seat ${Number(seat) + 1} is already the ${CHARACTER_INFO[c].name}`);
+  const alignment = cmd.alignment ?? CHARACTER_INFO[c].alignment;
+  const was = s.travellerSeats[cmd.seat];
+  s.travellerSeats[cmd.seat] = { character: c, alignment };
+  if (s.phase === 'setup') {
+    log(s, op, `${who(p)} will be the ${CHARACTER_INFO[c].name} (${alignment}), outside the setup`);
+    if (!s.assigned) return;
+    if (was) addTraveller(s, op, cmd.seat, c, alignment); // only the Traveller changed: no re-deal
+    else clearDeal(s, op, `${who(p)} became a Traveller`);
+    return;
+  }
+  if (!was && !p.alive) throw new RuleError('invalid', 'A dead player cannot become a Traveller');
+  addTraveller(s, op, cmd.seat, c, alignment);
+}
+
+/** The deal no longer matches the Travellers: drop it so the Storyteller deals again. */
+function clearDeal(s: GameState, op: Op, why: string): void {
+  s.assigned = false;
+  delete s.deal;
+  alert(s, op, `${why}: deal the characters again.`);
+}
+
+/**
+ * Who the Drunk is in a deal: the Storyteller's pick, or (automatic games only, where nobody can
+ * choose) chance. A Storyteller's deal that holds a Drunk but names no seat is refused.
+ */
+function drunkSeatFor(s: GameState, seat: number | undefined): number | 'random' | 'ask' {
+  if (seat !== undefined) return seat;
+  return s.adjudicator ? 'random' : 'ask';
+}
+
 function dealPreset(s: GameState, op: Op, cmd: Extract<StCommand, { type: 'deal_preset' }>): void {
-  const { def, assignment } = presetAssignment(s.players.map((p) => p.seat), cmd.storyline, dealRng(s, cmd.seed));
-  applyAssignment(s, assignment);
+  const { def, assignment } = presetAssignment(dealSeats(s), cmd.storyline, dealRng(s, cmd.seed), { drunkSeat: drunkSeatFor(s, cmd.drunkSeat) });
+  applyAssignment(s, withTravellers(s, assignment));
   s.deal = { method: 'storyline', storyline: def.id };
   log(s, op, `Storyline "${def.title}" dealt at random`);
 }
@@ -546,13 +663,15 @@ function dealOwnBag(s: GameState, op: Op, cmd: Extract<StCommand, { type: 'deal_
     if (CHARACTER_INFO[cmd.drunkBelieves].type !== 'townsfolk' || cmd.characters.includes(cmd.drunkBelieves))
       throw new RuleError('invalid', 'The Drunk must believe in a Townsfolk that is not in the bag');
   }
-  const { assignment, validation } = dealBag(s.players.map((p) => p.seat), cmd.characters, dealRng(s, cmd.seed), {
+  const { assignment, validation } = dealBag(dealSeats(s), cmd.characters, dealRng(s, cmd.seed), {
     ...(cmd.drunkBelieves ? { drunkBelieves: cmd.drunkBelieves } : {}),
     ...(cmd.demonBluffs ? { demonBluffs: cmd.demonBluffs } : {}),
+    script: s.script,
+    drunkSeat: drunkSeatFor(s, cmd.drunkSeat),
   });
   if (validation.warnings.length && !cmd.allowNonstandard) throw new RuleError('invalid', `${validation.warnings.join('; ')} (set allowNonstandard to accept)`);
   for (const w of validation.warnings) alert(s, op, w);
-  applyAssignment(s, assignment);
+  applyAssignment(s, withTravellers(s, assignment));
   s.deal = { method: 'bag' };
   log(s, op, `Your bag of ${cmd.characters.length} characters dealt at random`);
 }
@@ -582,13 +701,55 @@ function stCommand(s: GameState, op: Op, cmd: StCommand): void {
   switch (cmd.type) {
     case 'random_setup': {
       requirePhase(s, 'setup');
-      applyAssignment(s, randomAssignment(s.players.map((p) => p.seat), s.rng));
+      if (s.script === 'custom') throw new RuleError('invalid', 'A custom script has no fixed character list: assign the characters by hand');
+      // The Drunk is the Storyteller's pick (or left out); only an automatic game draws it at random.
+      if (cmd.drunkBelieves !== undefined && cmd.drunkSeat === undefined) throw new RuleError('invalid', 'Choose which player is the Drunk');
+      const drunk: DrunkPlacement =
+        cmd.drunkSeat !== undefined
+          ? { seat: cmd.drunkSeat, ...(cmd.drunkBelieves ? { believes: cmd.drunkBelieves } : {}) }
+          : s.adjudicator
+            ? 'random'
+            : 'none';
+      const exclude = cmd.exclude ?? [];
+      applyAssignment(s, withTravellers(s, randomAssignment(dealSeats(s), s.rng, s.script, { exclude, drunk })));
       s.deal = { method: 'random' };
-      log(s, op, 'Random characters assigned');
+      log(s, op, `Random characters assigned${exclude.length ? ` (removed from the draw: ${exclude.map(charName).join(', ')})` : ''}`);
       return;
     }
+    case 'set_demon_bluffs': {
+      if (!s.assigned) throw new RuleError('invalid', 'Assign characters first');
+      if (s.players.some((p) => typeOf(p.character) === 'demon' && p.evilTeam)) alert(s, op, 'The Demon already learned their bluffs: tell them the new ones yourself.');
+      if (new Set(cmd.bluffs).size !== cmd.bluffs.length) throw new RuleError('invalid', 'Duplicate demon bluffs');
+      for (const b of cmd.bluffs) {
+        if (CHARACTER_INFO[b].alignment !== 'good' || !isSeatedType(CHARACTER_INFO[b].type)) throw new RuleError('invalid', `${charName(b)} is not a good character`);
+        if (s.players.some((p) => p.character === b)) throw new RuleError('invalid', `${charName(b)} is in play`);
+      }
+      s.demonBluffs = [...cmd.bluffs];
+      log(s, op, `Demon bluffs set: ${cmd.bluffs.map(charName).join(', ') || 'none'}`);
+      return;
+    }
+    case 'set_traveller':
+      setTraveller(s, op, cmd);
+      return;
+    case 'exile_call':
+      callExile(s, op, cmd.seat, null);
+      if (cmd.startVote) startExileVote(s, op);
+      return;
+    case 'exile_start':
+      startExileVote(s, op);
+      return;
+    case 'exile_hand':
+      setExileHand(s, op, cmd.seat, cmd.vote);
+      return;
+    case 'exile_tally':
+      tallyExile(s, op);
+      return;
+    case 'exile_cancel':
+      cancelExile(s, op);
+      return;
     case 'deal_preset':
       requirePhase(s, 'setup');
+      if (s.script !== 'trouble-brewing') throw new RuleError('invalid', 'Storylines are Trouble Brewing setups: deal at random or by hand on this script');
       dealPreset(s, op, cmd);
       return;
     case 'deal_bag':
@@ -730,10 +891,11 @@ function stCommand(s: GameState, op: Op, cmd: StCommand): void {
     case 'resolve_step': {
       notSetupOrFinished(s);
       const st = findStep(s, cmd.stepId);
-      const input: { seats?: number[]; starpassSeat?: number; redirectSeat?: number } = {};
+      const input: { seats?: number[]; starpassSeat?: number; redirectSeat?: number; character?: CharacterId } = {};
       if (cmd.seats) input.seats = cmd.seats;
       if (cmd.starpassSeat !== undefined) input.starpassSeat = cmd.starpassSeat;
       if (cmd.redirectSeat !== undefined) input.redirectSeat = cmd.redirectSeat;
+      if (cmd.character !== undefined) input.character = cmd.character;
       resolveStep(s, op, st, input);
       for (const p of s.players) p.prompts = p.prompts.filter((q) => q.stepId !== st.id);
       return;
@@ -948,7 +1110,8 @@ export type PlayerAction =
   | { type: 'nominate'; nomineeSeat: number }
   | { type: 'vote'; nominationId: string; vote: boolean }
   | { type: 'promptResponse'; promptId: string; seats?: number[]; character?: CharacterId; yes?: boolean }
-  | { type: 'slayerShot'; targetSeat: number };
+  | { type: 'slayerShot'; targetSeat: number }
+  | { type: 'exileHand'; vote: boolean };
 
 function promptResponse(s: GameState, op: Op, p: PlayerState, a: Extract<PlayerAction, { type: 'promptResponse' }>): void {
   if (s.phase === 'finished' || s.phase === 'setup') throw new RuleError('phase', 'No prompts now');
@@ -1021,6 +1184,12 @@ function playerAction(s: GameState, op: Op, seat: number, a: PlayerAction): void
       return;
     case 'slayerShot':
       slayerShot(s, op, seat, a.targetSeat);
+      break;
+    case 'exileHand':
+      // Everyone may vote on an exile, alive or dead (a dead player keeps their ghost vote).
+      if (!s.exile || s.exile.status !== 'voting') throw new RuleError('phase', 'No exile vote is open');
+      if (p.reminders.includes(EXILE_REMINDER)) throw new RuleError('forbidden', 'You were exiled');
+      setExileHand(s, op, seat, a.vote);
       break;
   }
   if (wasPending) throw new RuleError('phase', 'Please wait for the Storyteller.');

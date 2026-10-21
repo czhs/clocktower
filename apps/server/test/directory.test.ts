@@ -229,7 +229,8 @@ describe('lobby directory HTTP + SSE (real Colyseus rooms)', () => {
       { name: 'Okay', maxPlayers: 16 },
       { name: 'ab', maxPlayers: 8 },
       { name: 'x'.repeat(41), maxPlayers: 8 },
-      { name: 'Okay', maxPlayers: 8, script: 'sects-and-violets' },
+      // Sects & Violets is a real script now; only unknown ids are rejected.
+      { name: 'Okay', maxPlayers: 8, script: 'no-such-script' },
     ]) {
       const r = await api(srv, 'POST', '/api/lobbies', { cookie, body });
       expect(r.status, JSON.stringify(body)).toBe(400);

@@ -12,12 +12,14 @@
 import type { ComponentChildren } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { currentLayout } from '../../net/layout'; // (v3) the lobby's layout
-import { CHARACTER_INFO, type BuildingDef, type GrimoireEntry, type NightStepView, type StorytellerGameView } from '@ct/protocol';
+import { CHARACTER_INFO, type BuildingDef, type GrimoireEntry, type InfoSpecInput, type NightStepView, type StorytellerGameView } from '@ct/protocol';
 import { CastPortrait } from '../common/castPortrait';
-import { charName, Countdown, nameOf } from '../hud/shared';
+import { charName, CharacterSelect, Countdown, nameOf } from '../hud/shared';
+import { swapCharacter, swapNumber, swapSeat, type InfoAttachments, type InfoDraft } from './infoEdit';
 import { BedtimeTimer, ClockButton, ConfirmButton, deathEffects, EVERYONE, noExecutionEffects, only, type Send } from './stage';
 import { StClockControl } from '../clock/StClock'; // (v2.1, clock-client) the town clock on the tower
 import { DealChooser, dealSummary } from './deal'; // (v2.2) dealing modes
+import { ExileControls, TravellerSetup } from './travellers'; // Travellers + exile
 
 /** Character (cast) id for a seat's portrait, or null (silhouette). */
 export type CastOf = (seat: number) => string | null;
@@ -485,6 +487,8 @@ function SetupScript({ view, send, castOf, openTools }: { view: StorytellerGameV
   return (
     <section class="cts-sec-block" aria-label="Setup">
       <h3 class="cts-script-h">{view.charactersAssigned ? 'The cast is dealt' : 'Deal the characters'}</h3>
+      {/* Travellers first: every deal skips their seats */}
+      <TravellerSetup view={view} send={send} />
       {/* (v2.2) Random · Storyline · Pick characters · By hand (deal.tsx) */}
       <DealChooser view={view} send={send} openHand={() => openTools('setup')} />
       {view.charactersAssigned && (
@@ -664,12 +668,19 @@ function VisitRow(props: {
   const [infoText, setInfoText] = useState(step.suggestedInfo?.text ?? '');
   // Which suggestion the text box started from: the truth, or (drunk / poisoned) the false one.
   const [useFalse, setUseFalse] = useState(false);
+  // The players / characters / number the info points at: the engine's suggestion, the Storyteller's to change.
+  const [attach, setAttach] = useState<InfoAttachments>(() => attachmentsOf(step.suggestedInfo));
   const sug = step.suggestedInfo?.text ?? '';
   useEffect(() => {
     setInfoText(sug);
     setUseFalse(false);
+    setAttach(attachmentsOf(step.suggestedInfo));
   }, [sug]);
   const base = useFalse && step.falseInfo ? step.falseInfo : step.suggestedInfo;
+  const editInfo = (next: InfoDraft) => {
+    setInfoText(next.text);
+    setAttach(attachmentsOf(next));
+  };
   const [target, setTarget] = useState<number | ''>('');
   // Choices the player could make themselves (the server refuses e.g. a Monk protecting themself).
   const targetOptions = view.players.filter(
@@ -748,7 +759,7 @@ function VisitRow(props: {
                 e.preventDefault();
                 const text = infoText.trim();
                 if (!text) return;
-                send({ type: 'send_info', seat, info: { ...(base ?? step.suggestedInfo!), text: text.slice(0, 500), stepId: step.id } });
+                send({ type: 'send_info', seat, info: { ...(base ?? step.suggestedInfo!), ...attach, text: text.slice(0, 500), stepId: step.id } });
                 props.onTold();
               }}
             >
@@ -761,14 +772,15 @@ function VisitRow(props: {
               </button>
               {step.falseInfo && (
                 <span class="cts-falsepick" role="group" aria-label="Which info to tell">
-                  <button type="button" class={useFalse ? '' : 'on'} aria-pressed={!useFalse} onClick={() => { setUseFalse(false); setInfoText(step.suggestedInfo?.text ?? ''); }} title="The engine's truthful info">
+                  <button type="button" class={useFalse ? '' : 'on'} aria-pressed={!useFalse} onClick={() => { setUseFalse(false); setInfoText(step.suggestedInfo?.text ?? ''); setAttach(attachmentsOf(step.suggestedInfo)); }} title="The engine's truthful info">
                     true info
                   </button>
-                  <button type="button" class={useFalse ? 'on' : ''} aria-pressed={useFalse} onClick={() => { setUseFalse(true); setInfoText(step.falseInfo!.text); }} title="A plausible false answer (they are drunk or poisoned)">
+                  <button type="button" class={useFalse ? 'on' : ''} aria-pressed={useFalse} onClick={() => { setUseFalse(true); setInfoText(step.falseInfo!.text); setAttach(attachmentsOf(step.falseInfo)); }} title="A plausible false answer (they are drunk or poisoned)">
                     false info
                   </button>
                 </span>
               )}
+              <InfoPicker view={view} draft={{ text: infoText, ...attach }} onChange={editInfo} />
             </form>
           )}
           {told && <div class="cts-ok cts-script-note">✓ told</div>}
@@ -894,6 +906,7 @@ function DayScript({ view, send, castOf, openTools }: { view: StorytellerGameVie
         </button>
       </div>
       <StClockControl view={view} send={send} stages={['discussion', 'nominations']} />
+      <ExileControls view={view} send={send} />
 
       {voting && (
         <div class="cts-votenow" role="status">
@@ -1046,5 +1059,47 @@ function SeatGrid({ view, castOf, openTools }: { view: StorytellerGameView; cast
           );
         })}
     </ul>
+  );
+}
+
+// ------------------------------------------------------------------------------- info picker
+
+function attachmentsOf(info: InfoSpecInput | undefined): InfoAttachments {
+  if (!info) return {};
+  return {
+    ...(info.seats ? { seats: [...info.seats] } : {}),
+    ...(info.characters ? { characters: [...info.characters] } : {}),
+    ...(info.number !== undefined ? { number: info.number } : {}),
+  };
+}
+
+/**
+ * (st-control) The Storyteller picks what the player is shown: every player, character and number
+ * the suggestion points at can be changed, and the sentence follows.
+ */
+function InfoPicker({ view, draft, onChange }: { view: StorytellerGameView; draft: InfoDraft; onChange: (d: InfoDraft) => void }) {
+  const seats = draft.seats ?? [];
+  const characters = draft.characters ?? [];
+  if (!seats.length && !characters.length && draft.number === undefined) return null;
+  const nameOf = (seat: number) => name(view, seat);
+  return (
+    <div class="cts-infopick" role="group" aria-label="What they are shown">
+      <span class="muted">Show</span>
+      {seats.map((seat, i) => (
+        <select key={`s${i}`} value={String(seat)} title="Which player they are shown" onChange={(e) => onChange(swapSeat(draft, i, Number((e.currentTarget as HTMLSelectElement).value), nameOf))}>
+          {view.players.map((p) => (
+            <option key={p.seat} value={p.seat}>
+              {p.seat + 1}. {p.name}
+            </option>
+          ))}
+        </select>
+      ))}
+      {characters.map((c, i) => (
+        <CharacterSelect key={`c${i}`} value={c} onChange={(x) => x && onChange(swapCharacter(draft, i, x))} />
+      ))}
+      {draft.number !== undefined && (
+        <input class="cts-infopick-n" type="number" min={0} max={99} value={draft.number} title="The number they are told" onInput={(e) => { const n = Number((e.currentTarget as HTMLInputElement).value); if (Number.isInteger(n) && n >= 0 && n <= 99) onChange(swapNumber(draft, n)); }} />
+      )}
+    </div>
   );
 }

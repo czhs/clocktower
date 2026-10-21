@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { MAX_PLAYERS, MIN_PLAYERS } from './constants.js';
 import { Cosmetics } from './cosmetics.js';
+import { SCRIPT_IDS, type ScriptId } from './characters/types.js';
 import { LobbyDescription, LobbyName } from './text.js';
 import { STORYLINE_IDS } from './storylines.js';
 import { CHAT_FILTER_MODES } from './moderationShared.js';
@@ -17,8 +18,8 @@ import { WORLDS } from './world.js';
 // reusable across lobbies. Reconnection uses Colyseus reconnection tokens, falling back to a
 // fresh ticket — the server maps the account back to its previous seat.
 
-export const SCRIPTS = ['trouble-brewing'] as const;
-export type ScriptId = (typeof SCRIPTS)[number];
+// Script ids live in ./characters/types.js (shared with the character catalogue).
+export const SCRIPTS = SCRIPT_IDS;
 
 /** Coarse phase shown in the lobby finder. */
 export type DirectoryPhase = 'waiting' | 'starting' | 'day' | 'night' | 'finished';
@@ -116,6 +117,15 @@ export interface LobbyRoomView {
   members: MemberView[];
   youPid: string;
   canStart: boolean;
+  /**
+   * (additive) You may remove / mute / unban: the host (lobby creator) at any time, or the seated
+   * Storyteller once the game is running. Lobby settings and Start are the host's alone.
+   */
+  youAdmin?: boolean;
+  /** (additive) ONLY in the seated Storyteller's view: pids asking for the Storyteller seat, oldest first. */
+  stRequests?: string[];
+  /** (additive) You asked the seated Storyteller for their seat and they have not answered yet. */
+  youRequestedSt?: boolean;
   startBlockers: string[];
   /** (v2.2) ONLY in the seated Storyteller's own view: their pre-game settings ('prepare'). */
   stPrepare?: import('./storyteller.js').StPrepareView;
@@ -131,12 +141,16 @@ export interface LobbyRoomView {
 export const LobbyReadyMsg = z.object({ ready: z.boolean() });
 export const LobbyCosmeticsMsg = z.object({ cosmetics: Cosmetics });
 export const LobbyPidMsg = z.object({ pid: z.string().min(1).max(64) });
+/** (additive) The seated Storyteller answers a member's request for the seat. */
+export const LobbyStAnswerMsg = z.object({ pid: z.string().min(1).max(64), accept: z.boolean() });
 export const LobbySettingsMsg = z.object({
   name: LobbyName.optional(),
   description: LobbyDescription.optional(),
   maxPlayers: z.number().int().min(MIN_PLAYERS).max(MAX_PLAYERS).optional(),
   /** (v2.1) host only, waiting phase only. */
   storytellerMode: z.enum(['human', 'auto']).optional(),
+  /** (multi-script, additive) host only, waiting phase only. Leaving Trouble Brewing clears a storyline. */
+  script: z.enum(SCRIPTS).optional(),
   autoTimings: z
     .object({ discussionMin: z.number().min(1).max(30), nominationsMin: z.number().min(1).max(20), bedtimeSec: z.number().int().min(15).max(180), nightSec: z.number().int().min(20).max(300) })
     .partial()

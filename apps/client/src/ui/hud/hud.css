@@ -229,3 +229,6 @@ p.cth-ability { padding: 0; }
 @media (max-height: 520px) and (min-width: 721px) {
   .cth-toasts { top: 74px; }
 }
+/* (travellers) public Traveller marker + exile vote */
+.cth-traveller { background: #8a7a3a33; border-color: #8a7a3a; }
+.cth-exile { border-color: #8a7a3a; }

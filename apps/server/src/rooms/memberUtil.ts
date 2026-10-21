@@ -17,6 +17,8 @@ export interface StartCheckInput {
   maxPlayers: number;
   storyteller: { connected: boolean } | null;
   players: { connected: boolean; ready: boolean }[];
+  /** (multi-script) an automatic game on a custom script: nothing to deal at random. */
+  autoCustomScript?: boolean;
 }
 
 /**
@@ -35,6 +37,7 @@ export function startBlockers(s: StartCheckInput): string[] {
   if (away) out.push(`${away} player${away === 1 ? ' is' : 's are'} disconnected`);
   const notReady = s.players.filter((p) => p.connected && !p.ready).length;
   if (notReady) out.push(`${notReady} player${notReady === 1 ? ' is' : 's are'} not ready`);
+  if (s.autoCustomScript) out.push('Automatic games need an official script (a custom script is dealt by hand)');
   return out;
 }
 

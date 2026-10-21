@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { DayClockCommand } from './clock.js';
 import {
+  CHARACTER_COUNT,
   CharacterIdSchema,
   PROMPT_KINDS,
   type Alignment,
@@ -167,6 +168,10 @@ export interface StorytellerGameView {
   settings?: StSettings;
   /** (additive, v2.2) How the current characters were dealt (null = not dealt yet). Storyteller-only. */
   deal?: DealInfo | null;
+  /** (additive, travellers) Seats the Storyteller made Travellers (dealt outside the distribution). */
+  travellers?: { seat: number; character: CharacterId; alignment: Alignment }[];
+  /** (additive, travellers) The running / most recent exile vote today. */
+  exile?: import('./game.js').ExileView | null;
 }
 
 /** (additive, v2.2) How characters were dealt: random_setup / deal_preset / deal_bag / assign_characters. */
@@ -216,7 +221,7 @@ export const PromptSpec = z.object({
   maxTargets: z.number().int().min(0).max(15).optional(),
   allowSelf: z.boolean().optional(),
   allowDead: z.boolean().optional(),
-  characterOptions: z.array(CharacterIdSchema).max(22).optional(),
+  characterOptions: z.array(CharacterIdSchema).max(CHARACTER_COUNT).optional(),
   stepId: z.string().max(64).optional(),
 });
 export type PromptSpecInput = z.input<typeof PromptSpec>;
@@ -224,7 +229,7 @@ export type PromptSpecInput = z.input<typeof PromptSpec>;
 export const InfoSpec = z.object({
   text: stText(1, 500),
   seats: z.array(Seat).max(15).optional(),
-  characters: z.array(CharacterIdSchema).max(22).optional(),
+  characters: z.array(CharacterIdSchema).max(CHARACTER_COUNT).optional(),
   number: z.number().int().min(0).max(99).optional(),
   yes: z.boolean().optional(),
   stepId: z.string().max(64).optional(),
@@ -280,9 +285,22 @@ export const StPreparePatch = z
 export type StPreparePatch = z.infer<typeof StPreparePatch>;
 
 export const StCommand = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('random_setup') }),
-  /** (additive, v2.2) Deal a preset storyline: the server builds a legal bag for this player count and shuffles it onto the seats. */
-  z.object({ type: z.literal('deal_preset'), storyline: z.enum(STORYLINE_IDS), seed: z.number().int().min(0).max(0xffffffff).optional() }),
+  /**
+   * Random characters for every seat. The Drunk is never drawn at random: the Storyteller places it
+   * (`drunkSeat`, optionally `drunkBelieves`) or leaves it out. (additive) `exclude` = characters
+   * the Storyteller removed from the draw.
+   */
+  z.object({
+    type: z.literal('random_setup'),
+    exclude: z.array(CharacterIdSchema).max(CHARACTER_COUNT).optional(),
+    drunkSeat: Seat.optional(),
+    drunkBelieves: CharacterIdSchema.optional(),
+  }),
+  /**
+   * (additive, v2.2) Deal a preset storyline: the server builds a legal bag for this player count and shuffles it onto the seats.
+   * (additive) `drunkSeat`: who the Drunk is if the storyline deals one (required then).
+   */
+  z.object({ type: z.literal('deal_preset'), storyline: z.enum(STORYLINE_IDS), seed: z.number().int().min(0).max(0xffffffff).optional(), drunkSeat: Seat.optional() }),
   /**
    * (additive, v2.2) Deal the Storyteller's own bag of characters: the server SHUFFLES it onto the seats.
    * Size must equal the player count; standard distribution unless allowNonstandard.
@@ -291,6 +309,8 @@ export const StCommand = z.discriminatedUnion('type', [
     type: z.literal('deal_bag'),
     characters: z.array(CharacterIdSchema).min(5).max(15),
     drunkBelieves: CharacterIdSchema.optional(),
+    /** (additive) Who the Drunk is, when the bag holds one (required then: never left to chance). */
+    drunkSeat: Seat.optional(),
     demonBluffs: z.array(CharacterIdSchema).max(3).optional(),
     allowNonstandard: z.boolean().optional(),
     seed: z.number().int().min(0).max(0xffffffff).optional(),
@@ -349,6 +369,12 @@ export const StCommand = z.discriminatedUnion('type', [
     starpassSeat: Seat.optional(),
     /** (additive) Mayor bounce: the player who dies instead of the Mayor. */
     redirectSeat: Seat.optional(),
+    /**
+     * (additive, multi-script) A character the resolution needs: the Courtier's and Gambler's
+     * guesses, the character the Pit-Hag creates, the character the Cerenovus makes someone mad
+     * about, the ability the Philosopher takes.
+     */
+    character: CharacterIdSchema.optional(),
   }),
   z.object({ type: z.literal('skip_step'), stepId: z.string().max(64) }),
   z.object({ type: z.literal('visit_home'), seat: Seat }),
@@ -356,6 +382,18 @@ export const StCommand = z.discriminatedUnion('type', [
   z.object({ type: z.literal('announce'), text: stText(1, 300) }),
   z.object({ type: z.literal('set_travel_speed'), mult: z.number().min(1).max(4) }),
   z.object({ type: z.literal('declare_winner'), winner: z.enum(['good', 'evil']), reason: stLine(0, 200) }),
+  /**
+   * (additive, travellers) Make a player a Traveller (character + secret alignment), or undo it
+   * (character null, setup only). In setup the seat is left out of every deal and the distribution;
+   * later it turns the player into the Traveller at once.
+   */
+  z.object({ type: z.literal('set_traveller'), seat: Seat, character: CharacterIdSchema.nullable(), alignment: z.enum(['good', 'evil']).optional() }),
+  /** (additive, travellers) Exile: call it on a Traveller (optionally opening the vote at once), open the vote, set a hand, tally, withdraw. */
+  z.object({ type: z.literal('exile_call'), seat: Seat, startVote: z.boolean().optional() }),
+  z.object({ type: z.literal('exile_start') }),
+  z.object({ type: z.literal('exile_hand'), seat: Seat, vote: z.boolean() }),
+  z.object({ type: z.literal('exile_tally') }),
+  z.object({ type: z.literal('exile_cancel') }),
   z.object({ type: z.literal('undo_last') }),
   /** (additive) Accept the pending game-ending result (the game finishes and is recorded). */
   z.object({ type: z.literal('confirm_result') }),
@@ -367,6 +405,8 @@ export const StCommand = z.discriminatedUnion('type', [
   z.object({ type: z.literal('set_red_herring'), seat: Seat.nullable() }),
   /** (additive) Change the Townsfolk the Drunk believes they are (the player is told). */
   z.object({ type: z.literal('set_drunk_belief'), seat: Seat, character: CharacterIdSchema }),
+  /** (additive) Replace the Demon's bluffs (good characters not in play), before the Demon learns them. */
+  z.object({ type: z.literal('set_demon_bluffs'), bluffs: z.array(CharacterIdSchema).max(3) }),
 
   // ---- (additive, gameplay 2026-10-15) "props": the Storyteller can override anything. The rules
   // engine only advises (alerts); none of these is gated on engine readiness.

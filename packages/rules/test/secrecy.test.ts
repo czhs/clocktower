@@ -13,6 +13,7 @@ const TOP_KEYS = [
   'bedtimeOvertime',
   'day',
   'dayNumber',
+  'exile', // (travellers) the public exile vote
   'gathering',
   'info',
   'kind',

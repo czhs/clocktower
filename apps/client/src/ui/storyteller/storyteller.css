@@ -321,7 +321,7 @@
 .cts-here { color: var(--accent); }
 .cts-visit-act { display: flex; flex-direction: column; gap: 4px; margin: 6px 0 2px 21px; }
 .cts-visit-act .cts-big.cts-wide { margin: 2px 0; }
-.cts-tell { display: flex; align-items: flex-end; gap: 6px; }
+.cts-tell { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 6px; }
 .cts-tell-l { display: flex; flex: 1; flex-direction: column; gap: 2px; min-width: 0; font-size: 11px; color: var(--muted); }
 .cts .cts-tell input { font-size: 13px; padding: 5px 6px; }
 .cts .cts-tell button { min-height: 32px; font-size: 13px; }
@@ -446,3 +446,23 @@
 @media (max-height: 520px) {
   .cts.cts-prep, .cts.cts-practice { top: 44px; max-height: calc(100dvh - 52px); width: min(420px, 52vw); }
 }
+
+/* Travellers + exile (travellers.tsx) */
+.cts-travellers { margin: 6px 0; }
+.cts-travellers summary { cursor: pointer; font-weight: 600; }
+.cts-traveller-add { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 4px; }
+.cts-traveller-add select, .cts-travellers li select { max-width: 11em; }
+.cts-exile { border-color: #8a7a3a; }
+.cts-exile-hands { list-style: none; display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; padding: 0; }
+.cts-exile-hands button { padding: 2px 8px; font-size: 12px; }
+.cts-exile-hands button.on { border-color: var(--accent); color: var(--accent); }
+/* Random deal: who the Drunk is, and what may be drawn (the Storyteller's calls). */
+.cts-drunk { margin: 2px 0 4px; }
+.cts-exclude { margin: 2px 0 6px; font-size: 12px; }
+.cts-exclude > summary { cursor: pointer; color: var(--muted); }
+.cts .cts-bagchip.cts-removed { text-decoration: line-through; opacity: 0.55; }
+.cts-bluffs select { max-width: 9.5em; }
+/* Night info: the Storyteller picks the players / characters / number the player is shown. */
+.cts-infopick { display: flex; flex: 1 0 100%; flex-wrap: wrap; gap: 4px; align-items: center; font-size: 12px; }
+.cts-infopick select { max-width: 11em; }
+.cts-infopick-n { width: 4em; }

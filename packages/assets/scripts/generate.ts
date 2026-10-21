@@ -3,7 +3,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ACCESSORIES, GHOST_STYLES, HAIR_COLORS, HAIR_STYLES, OUTFIT_PALETTES, OUTFITS, SKIN_TONES } from '@ct/protocol';
+import { ACCESSORIES, CHARACTER_COUNT, GHOST_STYLES, HAIR_COLORS, HAIR_STYLES, OUTFIT_PALETTES, OUTFITS, SKIN_TONES } from '@ct/protocol';
 import { PROP_DEFS, townLayout, townMap, TS } from '../src/layout.js';
 import { drawBuildings } from './buildings.js';
 import { ANCHOR, DIRS, drawCharacters, FH, FRAMES, FW } from './characters.js';
@@ -15,6 +15,7 @@ import { drawProps } from './props.js';
 import { buildCast } from './cast/index.js';
 import { buildPortraits, type CastManifestForPortraits } from './cast/portraits.js';
 import { buildCastHd, hdPortraitStrip } from './cast/hd.js';
+import { drawRoleIcons } from './roles/index.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const OUT = join(here, '..', 'generated');
@@ -196,6 +197,11 @@ try {
 // 5. Lights + favicon
 await writeAtlas('lights', drawLights());
 write('favicon.png', drawFavicon().toPNG());
+
+// 5b. Role icons (one 32x32 plaque per character; read by the client's RoleIcon)
+mkdirSync(join(OUT, 'roles'), { recursive: true });
+for (const { id, img } of drawRoleIcons()) writeFileSync(join(OUT, 'roles', `${id}.png`), img.toPNG());
+log(`wrote roles/*.png (${CHARACTER_COUNT} role icons)`);
 
 // 6. Tiled map
 const W = townMap.width;

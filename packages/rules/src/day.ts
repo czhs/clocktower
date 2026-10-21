@@ -1,4 +1,6 @@
 import { killPlayer, proposeResult } from './deaths.js';
+import { ROLES } from './roles.js';
+import { canBeNominated } from './exile.js';
 import { RuleError, type DayState, type GameState, type NominationState } from './types.js';
 import {
   aliveCount,
@@ -54,6 +56,8 @@ export function nominate(s: GameState, op: Op, nominatorSeat: number, nomineeSea
   if (!nominator.publicAlive) throw new RuleError('forbidden', 'Dead players cannot nominate');
   if (nominator.nominatedToday) throw new RuleError('forbidden', 'You have already nominated today');
   if (nominee.wasNominatedToday) throw new RuleError('forbidden', 'That player has already been nominated today');
+  // Travellers are exiled, never executed, so they cannot be nominated (see exile.ts).
+  if (!canBeNominated(nominee)) throw new RuleError('forbidden', 'Travellers are exiled, not executed');
   nominator.nominatedToday = true;
   nominator.nominationsMade += 1;
   nominee.wasNominatedToday = true;
@@ -70,28 +74,19 @@ export function nominate(s: GameState, op: Op, nominatorSeat: number, nomineeSea
   announce(s, op, 'nomination', `${nominator.name} nominates ${nominee.name}.`);
   log(s, op, `${who(nominator)} nominated ${who(nominee)}`);
 
-  // Virgin: the first nomination spends the ability; a Townsfolk nominator is executed at once.
-  // A dead Virgin has no ability.
-  if (nominee.character === 'virgin' && nominee.alive && !nominee.abilityUsed) {
-    nominee.abilityUsed = true;
-    if (impaired(nominee)) {
-      log(s, op, `Virgin ${who(nominee)} is drunk/poisoned: ability spent without effect`);
-    } else if (typeOf(nominator.character) === 'townsfolk') {
-      n.status = 'cancelled';
-      executeNow(s, op, nominator.seat, 'virgin');
-    } else if (nominator.character === 'spy' && !impaired(nominator) && s.adjudicator?.spyRegistersAsTownsfolk?.(nominator, nominee)) {
-      // (auto-st) automatic games: the Spy registered as a Townsfolk.
-      log(s, op, `Spy ${who(nominator)} registers as a Townsfolk for the Virgin`);
-      n.status = 'cancelled';
-      executeNow(s, op, nominator.seat, 'virgin');
-    } else if (nominator.character === 'spy' && !impaired(nominator)) {
-      alert(
-        s,
-        op,
-        `Spy ${who(nominator)} nominated the Virgin: the Spy may register as a Townsfolk. Use "execute" on seat ${nominator.seat + 1} if you want the Virgin to trigger.`,
-      );
-    }
+  // Nomination-triggered abilities (Virgin and any script's equivalent). The hook may cancel the
+  // nomination, in which case no vote is held.
+  if (ROLES[nominee.character]?.onNominated?.(s, op, nominee, nominator) === 'cancelled') {
+    n.status = 'cancelled';
   }
+}
+
+/**
+ * Execute `seat` immediately, outside the voting flow (the Virgin's nominator and any script's
+ * equivalent "executed on the spot" effect). Exported for role hooks.
+ */
+export function executeOnTheSpot(s: GameState, op: Op, seat: number): void {
+  executeNow(s, op, seat, 'virgin');
 }
 
 export function startVote(s: GameState, op: Op, nominationId: string): void {
@@ -252,6 +247,7 @@ export function executeOnBlock(s: GameState, op: Op, seat: number): void {
 function executeNow(s: GameState, op: Op, seat: number, cause: 'execution' | 'virgin'): void {
   const d = s.day!;
   const p = mustPlayer(s, seat);
+  if (!canBeNominated(p)) throw new RuleError('forbidden', 'Travellers are exiled, not executed');
   d.executionOccurred = true;
   d.executedSeat = seat;
   d.block = null;
@@ -264,15 +260,9 @@ function executeNow(s: GameState, op: Op, seat: number, cause: 'execution' | 'vi
     announce(s, op, 'execution', `${p.name} is executed, but was already dead.`);
     return;
   }
-  if (p.character === 'saint') {
-    if (!impaired(p)) {
-      killPlayer(s, op, p, cause, { raw: true });
-      s.lastExecutedDiedSeat = seat;
-      proposeResult(s, op, 'evil', 'The Saint was executed.');
-      return;
-    }
-    alert(s, op, `Saint ${who(p)} was executed while drunk/poisoned: good does not lose.`);
-  }
+  // Execution-triggered abilities (Saint and any script's equivalent). 'handled' means the hook
+  // performed the death itself.
+  if (ROLES[p.character]?.onExecuted?.(s, op, p, cause) === 'handled') return;
   killPlayer(s, op, p, cause);
   s.lastExecutedDiedSeat = seat;
 }
@@ -299,40 +289,23 @@ export function slayerShot(s: GameState, op: Op, shooterSeat: number, targetSeat
   if (!target.publicAlive) throw new RuleError('invalid', 'That player is already dead');
   shooter.slayerShotTaken = true;
   announce(s, op, 'storyteller', `${shooter.name} claims to be the Slayer and shoots at ${target.name}…`);
-  let killed = false;
-  if (shooter.character === 'slayer' && !shooter.abilityUsed) {
-    shooter.abilityUsed = true;
-    if (!impaired(shooter)) {
-      if (typeOf(target.character) === 'demon') {
-        killed = killPlayer(s, op, target, 'slayer');
-      } else if (target.character === 'recluse' && !impaired(target) && s.adjudicator?.recluseRegistersAsDemon?.(target, shooter)) {
-        // (auto-st) automatic games: the Recluse registered as the Demon.
-        log(s, op, `Recluse ${who(target)} registers as the Demon for the Slayer`);
-        killed = killPlayer(s, op, target, 'slayer');
-      } else if (target.character === 'recluse' && !impaired(target)) {
-        alert(
-          s,
-          op,
-          `Slayer shot the Recluse ${who(target)}: the Recluse may register as the Demon. Use "kill" (announce) if you rule that they die.`,
-        );
-      }
-    } else log(s, op, `Slayer ${who(shooter)} is drunk/poisoned: shot wasted`);
-  }
-  if (!killed) announce(s, op, 'storyteller', 'Nothing happens.');
+  // Only a real holder of a public day ability can do anything; everyone else is bluffing.
+  const ability = ROLES[shooter.character]?.dayAbility;
+  const outcome = ability ? ability.resolve(s, op, shooter, target) : 'Nothing happens.';
+  announce(s, op, 'storyteller', outcome);
 }
 
-/** End-of-day Mayor check. Returns true if the game ended. */
+/**
+ * End-of-day abilities that can win the game (Mayor and any script's equivalent).
+ * Returns true if the game ended.
+ */
 export function mayorCheck(s: GameState, op: Op): boolean {
   if (!s.day || s.day.executionOccurred || s.day.mayorOverridden) return false;
-  if (aliveCount(s) !== 3) return false;
-  const mayor = s.players.find((p) => p.alive && p.character === 'mayor');
-  if (!mayor) return false;
-  if (impaired(mayor)) {
-    alert(s, op, `Mayor ${who(mayor)} is drunk/poisoned: no Mayor win with three alive.`);
-    return false;
+  for (const p of [...s.players].sort((a, b) => a.seat - b.seat)) {
+    if (!p.alive) continue;
+    if (ROLES[p.character]?.onEndOfDay?.(s, op, p)) return true;
   }
-  proposeResult(s, op, 'good', MAYOR_WIN_REASON);
-  return true;
+  return false;
 }
 
 export const MAYOR_WIN_REASON = 'Three players remain, nobody was executed, and the Mayor lives.';
@@ -434,6 +407,7 @@ export function createNomination(s: GameState, op: Op, nominatorSeat: number, no
   const d = day(s);
   const nominator = mustPlayer(s, nominatorSeat);
   const nominee = mustPlayer(s, nomineeSeat);
+  if (!canBeNominated(nominee)) throw new RuleError('forbidden', 'Travellers are exiled, not executed');
   if (start) {
     const stopped = abortRunningVote(s);
     if (stopped) alert(s, op, `The running vote on seat ${stopped.nomineeSeat + 1} was stopped (it is pending again).`);

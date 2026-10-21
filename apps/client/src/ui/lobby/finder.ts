@@ -1,3 +1,4 @@
+import { SCRIPT_INFO } from '@ct/protocol';
 import type { CreateLobbyRequest, DirectoryEvent, LobbySummary, ScriptId, StorytellerMode, WorldId } from '@ct/protocol';
 import { appPath, appWorld, pathInWorld } from '../common/appWorld';
 
@@ -106,7 +107,12 @@ export const PHASE_LABEL: Record<LobbySummary['phase'], string> = {
   finished: 'Finished',
 };
 
-export const SCRIPT_LABEL: Record<ScriptId, string> = { 'trouble-brewing': 'Trouble Brewing' };
+export const SCRIPT_LABEL: Record<ScriptId, string> = {
+  'trouble-brewing': SCRIPT_INFO['trouble-brewing'].name,
+  'bad-moon-rising': SCRIPT_INFO['bad-moon-rising'].name,
+  'sects-and-violets': SCRIPT_INFO['sects-and-violets'].name,
+  custom: SCRIPT_INFO.custom.name,
+};
 
 /** The share link of a lobby: inside its world's app (`/lobby/x` = v3, `/v2/lobby/x` = v2; default = this page's). */
 export function shareUrl(lobbyId: string, world: WorldId = appWorld()): string {

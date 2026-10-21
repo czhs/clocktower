@@ -5,6 +5,7 @@ import type {
   AnnouncementView,
   DayView,
   EvilTeamView,
+  ExileView,
   GameResult,
   GrimoireEntry,
   InfoView,
@@ -18,11 +19,13 @@ import type {
 import { stepView } from './night.js';
 import { setupCounts } from './setup.js';
 import type { GameState, NominationState, PlayerState, PromptState } from './types.js';
+import { EXILE_REMINDER, isTravellerPlayer } from './exile.js';
 import { isDrunk, isNightPhase, isPoisoned, typeOf } from './util.js';
 import { minVotes } from './day.js';
 
-function publicPlayer(p: PlayerState): PublicPlayerView {
-  return {
+/** Public facts about a player. A Traveller's character is public once roles are revealed (never their alignment). */
+const publicPlayer = (s: GameState) => (p: PlayerState): PublicPlayerView => {
+  const v: PublicPlayerView = {
     pid: p.pid,
     seat: p.seat,
     name: p.name,
@@ -32,6 +35,18 @@ function publicPlayer(p: PlayerState): PublicPlayerView {
     wasNominatedToday: p.wasNominatedToday,
     connected: p.connected,
   };
+  if (s.rolesRevealed && isTravellerPlayer(p)) {
+    v.traveller = p.character;
+    if (p.reminders.includes(EXILE_REMINDER)) v.exiled = true;
+  }
+  return v;
+};
+
+/** Today's exile vote (public). */
+function exileView(s: GameState): ExileView | null {
+  const ex = s.exile;
+  if (!ex || s.phase !== 'day') return null;
+  return { id: ex.id, travellerSeat: ex.travellerSeat, status: ex.status, hands: [...ex.hands], votes: { ...ex.votes }, voteCount: ex.voteCount, threshold: ex.threshold, exiled: ex.exiled };
 }
 
 function nominationView(s: GameState, n: NominationState): NominationView {
@@ -143,7 +158,7 @@ export function projectForPlayer(s: GameState, seat: number): PlayerGameView {
     phase: s.phase,
     dayNumber: s.dayNumber,
     phaseEndsAt: s.phaseEndsAt,
-    players: s.players.map(publicPlayer),
+    players: s.players.map(publicPlayer(s)),
     you: {
       pid: me.pid,
       seat: me.seat,
@@ -170,6 +185,7 @@ export function projectForPlayer(s: GameState, seat: number): PlayerGameView {
     spyGrimoire: spyView(me.spyGrimoire),
     gathering: s.gathering,
     bedtimeOvertime: s.phase === 'bedtime' && s.bedtimeOvertime,
+    exile: exileView(s),
   };
   return view;
 }
@@ -201,14 +217,16 @@ function grimoireEntry(s: GameState, p: PlayerState): GrimoireEntry {
 /** Full Storyteller view (Grimoire, night queue, alerts). Only for the seated Storyteller. */
 export function projectForStoryteller(s: GameState): StorytellerGameView {
   // Standard distribution for this player count; Baron-adjusted once a Baron is assigned.
-  const counts = setupCounts(s.players.length, s.assigned && s.players.some((p) => p.startingCharacter === 'baron'));
+  // Travellers sit outside the distribution.
+  const travellerSeats = Object.keys(s.travellerSeats ?? {}).length;
+  const counts = setupCounts(Math.max(5, s.players.length - travellerSeats), s.assigned && s.players.some((p) => p.startingCharacter === 'baron'));
   const ready = isNightPhase(s) || s.phase === 'setup';
   return {
     kind: 'storyteller',
     phase: s.phase,
     dayNumber: s.dayNumber,
     phaseEndsAt: s.phaseEndsAt,
-    players: s.players.map(publicPlayer),
+    players: s.players.map(publicPlayer(s)),
     grimoire: s.assigned ? s.players.map((p) => grimoireEntry(s, p)) : [],
     demonBluffs: [...s.demonBluffs],
     nightQueue: ready || s.phase === 'day' ? s.nightQueue.map((st) => stepView(s, st)) : [],
@@ -235,5 +253,7 @@ export function projectForStoryteller(s: GameState): StorytellerGameView {
     stage: null,
     settings: { ...s.settings },
     deal: s.assigned && s.deal ? { ...s.deal } : null, // (v2.2)
+    travellers: Object.entries(s.travellerSeats ?? {}).map(([seat, t]) => ({ seat: Number(seat), character: t.character, alignment: t.alignment })),
+    exile: exileView(s),
   };
 }

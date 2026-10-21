@@ -4,9 +4,11 @@ import {
   LOBBY_NAME_MAX,
   MAX_PLAYERS,
   MIN_PLAYERS,
+  SCRIPTS,
   type AccountView,
   type LobbyRoomView,
   type MemberView,
+  type ScriptId,
   type StorytellerMode,
   type WorldId,
   WORD_LOBBY_ID_RE,
@@ -14,6 +16,7 @@ import {
 import { useStore } from '../../net/store';
 import type { RoomConnection } from '../../net/room';
 import { helpSeen, openHelp } from '../common/HowToPlay';
+import { openRulebook } from '../rulebook';
 import { CastPortrait } from '../common/castPortrait';
 import { CharacterPicker, characterOf, takenBy } from './CharacterPicker';
 import { copyText, SCRIPT_LABEL, shareUrl, worldOfLobby } from './finder';
@@ -69,6 +72,8 @@ export function WaitingRoom({ conn, onLeave }: { conn: RoomConnection; account: 
       </div>
     );
   const me = view.members.find((m) => m.pid === view.youPid);
+  // The host (lobby creator) runs the waiting room: settings, removals, Start. The Storyteller runs
+  // the game once it starts.
   const isHost = !!me?.isHost;
   const isSt = me?.role === 'storyteller';
   const st = view.members.find((m) => m.role === 'storyteller') ?? null;
@@ -77,8 +82,7 @@ export function WaitingRoom({ conn, onLeave }: { conn: RoomConnection; account: 
   const notReady = players.filter((m) => !m.ready);
   const auto = isAuto(view);
   const host = view.members.find((m) => m.isHost) ?? null;
-  // automatic games have no Storyteller: the host starts
-  const canStartHere = isSt || (auto && isHost);
+  const canStartHere = isHost;
 
   return (
     <div class={`ct-waiting panel${collapsed ? ' ct-waiting-collapsed' : ''}`} role="dialog" aria-label="Waiting room" aria-modal="false">
@@ -99,7 +103,14 @@ export function WaitingRoom({ conn, onLeave }: { conn: RoomConnection; account: 
           <div class="muted ct-small ct-waiting-meta">
             <WorldBadge world={worldOfLobby(view)} />{' '}
             {players.length}/{view.lobby.maxPlayers} players · {readyCount} ready
-            {!collapsed && <> · {SCRIPT_LABEL[view.lobby.script]}</>}
+            {!collapsed && (
+              <>
+                {' · '}
+                <button class="ct-link ct-waiting-script" onClick={openRulebook} title="Open the rulebook on this script">
+                  {SCRIPT_LABEL[view.lobby.script]}
+                </button>
+              </>
+            )}
             {auto && <> · Automatic</>}
             {status === 'reconnecting' && <span class="ct-error"> · {navigator.onLine === false ? 'offline, waiting for network…' : 'reconnecting…'}</span>}
           </div>
@@ -122,6 +133,17 @@ export function WaitingRoom({ conn, onLeave }: { conn: RoomConnection; account: 
             Be the Storyteller
           </button>
         )}
+        {st && !isSt && !auto &&
+          (view.youRequestedSt ? (
+            <button onClick={() => conn.send('lobby:cancelStoryteller', {})} title={`Waiting for ${st.displayName} to answer`}>
+              Cancel Storyteller request
+            </button>
+          ) : (
+            <button onClick={() => conn.send('lobby:claimStoryteller', {})} title={`Ask ${st.displayName} to hand you the Storyteller seat`}>
+              Ask to be Storyteller
+            </button>
+          ))}
+        {isSt && <StRequests view={view} conn={conn} />}
         {players.length < MIN_PLAYERS && <InviteButton lobbyId={view.lobby.id} lobbyName={view.lobby.name} world={worldOfLobby(view)} />}
         {notReady.length > 0 && players.length >= MIN_PLAYERS && (isSt || isHost || me?.ready) ? (
           <p class="ct-waiting-status muted ct-small" aria-live="polite">
@@ -139,7 +161,7 @@ export function WaitingRoom({ conn, onLeave }: { conn: RoomConnection; account: 
               ? 'Everyone is ready — start when you like.'
               : auto
                 ? `Everyone is ready. Waiting for ${host?.displayName ?? 'the host'} to start.`
-                : 'Everyone is ready. Waiting for the Storyteller to start.'}
+                : `Everyone is ready. Waiting for ${host?.displayName ?? 'the host'} to start.`}
           </p>
         )}
       </div>
@@ -163,7 +185,7 @@ export function WaitingRoom({ conn, onLeave }: { conn: RoomConnection; account: 
           <GameMode view={view} conn={conn} isHost={isHost} st={st} auto={auto} />
           {!auto &&
             (st ? (
-              <MemberRow m={st} view={view} me={me} />
+              <MemberRow m={st} view={view} me={me} conn={conn} />
             ) : (
               <div class="ct-member ct-member-empty">
                 <span class="muted">Seat open — someone must take it to start.</span>
@@ -200,6 +222,9 @@ export function WaitingRoom({ conn, onLeave }: { conn: RoomConnection; account: 
             {me && <LobbyCharacter conn={conn} view={view} me={me} open={pickOpen} setOpen={setPickOpen} error={pickError} setError={setPickError} />}
             <button class="ct-link" onClick={openHelp}>
               How to play
+            </button>
+            <button class="ct-link" onClick={openRulebook}>
+              Rulebook
             </button>
           </div>
           <p class="muted ct-small ct-waiting-tip">Walk around while you wait — WASD / arrow keys{narrow() ? ' or the joystick' : ''}.</p>
@@ -304,6 +329,7 @@ function ShareLink({ lobbyId, world }: { lobbyId: string; world: WorldId }) {
 
 function MemberRow({ m, view, me, conn }: { m: MemberView; view: LobbyRoomView; me: MemberView | undefined; conn?: RoomConnection }) {
   const you = m.pid === view.youPid;
+  // The host or the Storyteller moves the Storyteller seat; the host removes players.
   const canTransferSt = !!me && (me.isHost || me.role === 'storyteller') && m.role === 'player' && !isAuto(view);
   const hostTools = !!me?.isHost && !you;
   const face = m.role === 'storyteller' ? 'storyteller' : characterOf(m.cosmetics)?.id;
@@ -410,6 +436,7 @@ function HostSettings({ view, conn }: { view: LobbyRoomView; conn: RoomConnectio
   const [name, setName] = useState(view.lobby.name);
   const [description, setDescription] = useState(view.lobby.description);
   const [maxPlayers, setMaxPlayers] = useState(view.lobby.maxPlayers);
+  const [script, setScript] = useState<ScriptId>(view.lobby.script);
   const seated = view.members.filter((m) => m.role === 'player').length;
   if (!open)
     return (
@@ -422,7 +449,7 @@ function HostSettings({ view, conn }: { view: LobbyRoomView; conn: RoomConnectio
       class="ct-host-settings"
       onSubmit={(e) => {
         e.preventDefault();
-        conn.send('lobby:settings', { name: name.trim(), description: description.trim(), maxPlayers });
+        conn.send('lobby:settings', { name: name.trim(), description: description.trim(), maxPlayers, ...(script !== view.lobby.script ? { script } : {}) });
         setOpen(false);
       }}
     >
@@ -433,6 +460,17 @@ function HostSettings({ view, conn }: { view: LobbyRoomView; conn: RoomConnectio
       <label class="ct-field">
         <span>Description</span>
         <textarea rows={2} value={description} maxLength={LOBBY_DESCRIPTION_MAX} onInput={(e) => setDescription((e.currentTarget as HTMLTextAreaElement).value)} />
+      </label>
+      <label class="ct-field">
+        <span>Script</span>
+        <select value={script} onChange={(e) => setScript((e.currentTarget as HTMLSelectElement).value as ScriptId)}>
+          {SCRIPTS.map((s) => (
+            <option key={s} value={s}>
+              {SCRIPT_LABEL[s]}
+            </option>
+          ))}
+        </select>
+        {script !== 'trouble-brewing' && <small class="muted">Storylines are Trouble Brewing only; a custom script is dealt by hand.</small>}
       </label>
       <label class="ct-field">
         <span>Player seats</span>
@@ -573,5 +611,26 @@ function InviteButton({ lobbyId, lobbyName, world }: { lobbyId: string; lobbyNam
         </p>
       )}
     </>
+  );
+}
+
+/** The seated Storyteller: who is asking for the seat. Hand it over, or keep it. */
+function StRequests({ view, conn }: { view: LobbyRoomView; conn: RoomConnection }) {
+  const askers = (view.stRequests ?? []).map((pid) => view.members.find((m) => m.pid === pid)).filter((m): m is MemberView => !!m);
+  if (!askers.length) return null;
+  return (
+    <ul class="ct-st-requests" aria-live="polite">
+      {askers.map((m) => (
+        <li key={m.pid}>
+          <span>
+            <b>{m.displayName}</b> asks to be the Storyteller
+          </span>
+          <button class="primary" onClick={() => conn.send('lobby:answerStoryteller', { pid: m.pid, accept: true })}>
+            Hand over
+          </button>
+          <button onClick={() => conn.send('lobby:answerStoryteller', { pid: m.pid, accept: false })}>Keep</button>
+        </li>
+      ))}
+    </ul>
   );
 }

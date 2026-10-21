@@ -282,15 +282,28 @@ describe('GameRoom lifecycle (real Colyseus, fake gameplay modules)', () => {
     await expect(TestClient.joinWithTicket(srv, { ...tA, ticket: tA.ticket.slice(0, -2) + 'xx' }, 'forged')).rejects.toThrow(/signature|malformed/);
   });
 
-  it('players cannot seize the Storyteller seat; host/ST can transfer it while waiting', async () => {
+  it('players cannot seize the Storyteller seat: they ask, and the Storyteller hands it over or keeps it; the host runs the lobby', async () => {
     const L = await seatLobby(2);
     const p = L.players[0]!;
     const stPid = L.st.pid!;
-    p.send('lobby:claimStoryteller', {});
     p.send('lobby:transferStoryteller', { pid: p.pid! });
-    await waitFor(() => p.of('error').length >= 2, 3000, 'errors');
-    expect(p.of('error').every((e) => e.code === 'forbidden')).toBe(true);
-    expect((await L.st.view()).members.find((m) => m.role === 'storyteller')!.pid).toBe(stPid);
+    await p.waitMsg('error', (e) => e.for === 'lobby:transferStoryteller' && e.code === 'forbidden');
+    // Claiming a taken seat asks the seated Storyteller; only they see the request.
+    p.send('lobby:claimStoryteller', {});
+    await L.st.view((x) => x.stRequests?.includes(p.pid!) === true);
+    expect((await p.view((x) => !!x.youRequestedSt)).stRequests).toBeUndefined();
+    expect((await L.players[1]!.view()).stRequests).toBeUndefined();
+    p.send('lobby:answerStoryteller', { pid: p.pid!, accept: true }); // not theirs to answer
+    await p.waitMsg('error', (e) => e.for === 'lobby:answerStoryteller' && e.code === 'forbidden');
+    L.st.send('lobby:answerStoryteller', { pid: p.pid!, accept: false });
+    await p.waitMsg('error', (e) => e.for === 'lobby:claimStoryteller' && /keeping the Storyteller seat/.test(e.message));
+    await p.view((x) => !x.youRequestedSt);
+    expect((await L.st.view((x) => !x.stRequests)).members.find((m) => m.role === 'storyteller')!.pid).toBe(stPid);
+    // A request can be withdrawn.
+    p.send('lobby:claimStoryteller', {});
+    await L.st.view((x) => x.stRequests?.includes(p.pid!) === true);
+    p.send('lobby:cancelStoryteller', {});
+    await L.st.view((x) => !x.stRequests);
     const t = await getTicket(srv, L.accounts[1]!.cookie, L.lobby.id, 'storyteller');
     expect(t.status).toBe(200); // members always get tickets; the room keeps them a player
     const outsider = await makeAccount(srv, 'Outsider');
@@ -303,14 +316,27 @@ describe('GameRoom lifecycle (real Colyseus, fake gameplay modules)', () => {
     const v = await L.st.view((x) => x.members.find((m) => m.pid === p.pid)!.role === 'storyteller');
     expect(v.members.find((m) => m.pid === stPid)!.role).toBe('player');
     expect(v.members.filter((m) => m.role === 'player')).toHaveLength(2);
-    // Host power is separate from the ST seat: host can still kick; the new ST cannot.
+    // The host runs the waiting room: the old Storyteller (still the host) keeps the settings and
+    // removals; the new Storyteller has neither (nor Start: scripts.deal.test.ts).
     p.send('lobby:kick', { pid: L.players[1]!.pid! });
     await p.waitMsg('error', (e) => e.for === 'lobby:kick' && e.code === 'forbidden');
-    // releaseStoryteller makes the seat open; then a player may claim it.
-    p.send('lobby:releaseStoryteller', {});
-    await L.st.view((x) => x.lobby.storytellerSeatOpen);
+    p.send('lobby:settings', { name: 'Seized' });
+    await p.waitMsg('error', (e) => e.for === 'lobby:settings' && e.code === 'forbidden');
+    expect((await p.view()).youAdmin).toBe(false);
+    expect((await L.st.view()).youAdmin).toBe(true);
+    L.st.send('lobby:settings', { name: 'Still mine' });
+    await p.view((x) => x.lobby.name === 'Still mine');
+    // Accepting a request swaps the seats.
     L.players[1]!.send('lobby:claimStoryteller', {});
+    await p.view((x) => x.stRequests?.includes(L.players[1]!.pid!) === true);
+    p.send('lobby:answerStoryteller', { pid: L.players[1]!.pid!, accept: true });
     await L.st.view((x) => x.members.find((m) => m.pid === L.players[1]!.pid)!.role === 'storyteller');
+    expect((await p.view((x) => x.members.find((m) => m.pid === p.pid)!.role === 'player')).stRequests).toBeUndefined();
+    // releaseStoryteller makes the seat open; then a player may claim it.
+    L.players[1]!.send('lobby:releaseStoryteller', {});
+    await L.st.view((x) => x.lobby.storytellerSeatOpen);
+    p.send('lobby:claimStoryteller', {});
+    await L.st.view((x) => x.members.find((m) => m.pid === p.pid)!.role === 'storyteller');
   });
 
   it('waiting-room disconnect: seat held for the grace period, then released', async () => {

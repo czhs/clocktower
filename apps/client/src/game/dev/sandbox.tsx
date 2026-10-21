@@ -71,6 +71,7 @@ const host: RoomHost = {
   log: console as unknown as RoomHost['log'],
   layout: () => townLayout, // (v3) the sandbox is a v2 lobby
   now: () => Date.now(),
+  script: () => 'trouble-brewing',
   members: () => members,
   member: (pid) => members.find((m) => m.pid === pid),
   storytellerPid: () => members.find((m) => m.role === 'storyteller')?.pid ?? null,

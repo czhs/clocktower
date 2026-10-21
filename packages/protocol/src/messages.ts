@@ -4,6 +4,7 @@ import {
   NominateMsg,
   PromptResponseMsg,
   SlayerShotMsg,
+  ExileHandMsg,
   VoteMsg,
   type AnnouncementView,
   type PlayerGameView,
@@ -12,6 +13,7 @@ import {
   EmptyMsg,
   LobbyCosmeticsMsg,
   LobbyPidMsg,
+  LobbyStAnswerMsg,
   LobbyReadyMsg,
   LobbySettingsMsg,
   type LobbyRoomView,
@@ -36,13 +38,15 @@ export const C2S = {
   // lobby (waiting room)
   'lobby:ready': LobbyReadyMsg,
   'lobby:cosmetics': LobbyCosmeticsMsg,
-  'lobby:claimStoryteller': EmptyMsg,
+  'lobby:claimStoryteller': EmptyMsg, // open seat: take it; taken: ask the seated Storyteller
+  'lobby:cancelStoryteller': EmptyMsg, // (additive) withdraw your request for the seat
+  'lobby:answerStoryteller': LobbyStAnswerMsg, // (additive) seated Storyteller only, waiting phase: hand over or keep
   'lobby:releaseStoryteller': EmptyMsg,
   'lobby:transferStoryteller': LobbyPidMsg, // host or current ST; target must be a member
   'lobby:transferHost': LobbyPidMsg,
   'lobby:kick': LobbyPidMsg, // (v2.3 OPS-6) host any time / seated Storyteller in game; bans account + network from this lobby
   'lobby:settings': LobbySettingsMsg, // host only, waiting phase only
-  'lobby:start': EmptyMsg, // storyteller only (automatic games: the host)
+  'lobby:start': EmptyMsg, // the host; a human game also needs its Storyteller seated
   'lobby:leave': EmptyMsg,
   'lobby:abort': EmptyMsg, // (v2.1, auto-st) automatic games: the host ends the running game (abandoned record) -> waiting room
   // (v2.3 OPS-6) moderation: host/ST mute + unban; any member reports (see moderation.ts)
@@ -70,6 +74,7 @@ export const C2S = {
   'game:vote': VoteMsg,
   'game:promptResponse': PromptResponseMsg,
   'game:slayerShot': SlayerShotMsg,
+  'game:exileHand': ExileHandMsg, // (additive, travellers) any seated player, alive or dead
   // storyteller
   'st:command': StCommand,
   // story (v2, records): 'story:get' / 'story:release' Storyteller only; 'story:pamphlets' anyone

@@ -833,6 +833,7 @@ const PLAYER_VIEW_KEYS = [
   'clock', // (v2.1, auto-st) public town clock
   'day',
   'dayNumber',
+  'exile', // (travellers) the public exile vote
   'gathering',
   'info',
   'kind',

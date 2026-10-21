@@ -1,6 +1,6 @@
 // (v2.2) Preset storylines + bag dealing: every storyline is a legal standard setup for every count
 // it supports, deterministic per seed, and the deal commands keep players' views clean.
-import { CHARACTER_INFO, STORYLINES, STORYLINE_IDS, buildStorylineBag, formatCounts, storylinePlayerCounts, storylineProblem, tbCounts, type CharacterId } from '@ct/protocol';
+import { CHARACTER_INFO, charactersOfScript, STORYLINES, STORYLINE_IDS, buildStorylineBag, formatCounts, storylinePlayerCounts, storylineProblem, tbCounts, type CharacterId } from '@ct/protocol';
 import { describe, expect, it } from 'vitest';
 import { countTypes, dealBag, mulberry32, presetAssignment, projectForPlayer, projectForStoryteller, setupCounts, storylineBag, validateAssignment } from '../src/index.js';
 import { newGame, st, stErr } from './helpers.js';
@@ -169,8 +169,11 @@ describe('deal_preset / deal_bag commands', () => {
     const bag: CharacterId[] = ['imp', 'baron', 'drunk', 'saint', 'empath', 'chef', 'monk'];
     const s = newGame(7, 4);
     expect(stErr(s, { type: 'deal_bag', characters: bag.slice(0, 6) })).toMatch(/6 characters for 7/);
-    st(s, { type: 'deal_bag', characters: bag, drunkBelieves: 'fortune_teller', demonBluffs: ['mayor'] });
+    // A Drunk in the bag needs the Storyteller's seat: the RNG never decides who the Drunk is.
+    expect(stErr(s, { type: 'deal_bag', characters: bag, drunkBelieves: 'fortune_teller' })).toMatch(/choose which player is the Drunk/);
+    st(s, { type: 'deal_bag', characters: bag, drunkBelieves: 'fortune_teller', demonBluffs: ['mayor'], drunkSeat: 5 });
     expect(s.players.map((p) => p.character).sort()).toEqual([...bag].sort());
+    expect(s.players[5]!.character).toBe('drunk');
     expect(s.players.find((p) => p.character === 'drunk')!.believedCharacter).toBe('fortune_teller');
     expect(s.demonBluffs[0]).toBe('mayor');
     expect(s.demonBluffs).toHaveLength(3);
@@ -183,6 +186,31 @@ describe('deal_preset / deal_bag commands', () => {
     const s3 = newGame(7);
     expect(stErr(s3, { type: 'deal_bag', characters: bag, drunkBelieves: 'empath' })).toMatch(/not in the bag/);
     expect(stErr(s3, { type: 'deal_bag', characters: ['imp', 'baron', 'recluse', 'saint', 'empath', 'chef', 'monk'], drunkBelieves: 'mayor' })).toMatch(/no Drunk/);
+  });
+
+  it('deal_bag on another script draws bluffs and beliefs from that script and needs no allowNonstandard', () => {
+    const bmr = charactersOfScript('bad-moon-rising');
+    const bag: CharacterId[] = ['zombuul', 'godfather', 'lunatic', 'grandmother', 'sailor', 'chambermaid', 'exorcist'];
+    for (const seed of SEEDS.slice(0, 10)) {
+      const s = newGame(7, seed, 'bad-moon-rising');
+      st(s, { type: 'deal_bag', characters: bag, seed });
+      const lunatic = s.players.find((p) => p.character === 'lunatic')!;
+      expect(CHARACTER_INFO[lunatic.believedCharacter].type).toBe('demon');
+      expect(bmr).toContain(lunatic.believedCharacter);
+      expect(s.demonBluffs).toHaveLength(3);
+      for (const b of s.demonBluffs) expect(bmr, b).toContain(b);
+    }
+  });
+
+  it('a custom script fills in a Drunk belief and bluffs instead of failing', () => {
+    const chars: CharacterId[] = ['imp', 'baron', 'drunk', 'saint', 'chef', 'empath', 'grandmother'];
+    const s = newGame(7, 1, 'custom');
+    st(s, { type: 'assign_characters', assignments: chars.map((character, seat) => ({ seat, character })), demonBluffs: [] });
+    const drunk = s.players.find((p) => p.character === 'drunk')!;
+    expect(CHARACTER_INFO[drunk.believedCharacter].type).toBe('townsfolk');
+    expect(chars).not.toContain(drunk.believedCharacter);
+    expect(s.demonBluffs).toHaveLength(3);
+    for (const b of s.demonBluffs) expect(CHARACTER_INFO[b].alignment).toBe('good');
   });
 
   it('assign_characters records a manual deal; prepare is refused by the engine', () => {

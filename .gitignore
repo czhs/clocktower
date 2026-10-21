@@ -41,3 +41,6 @@ CLAUDE.local.md
 .claude/settings.local.json
 .envrc
 .npmrc.local
+
+# pnpm content store: never commit (it once pulled 13k package files into history)
+.pnpm-store/

@@ -18,6 +18,7 @@ import type {
   PlayerGameView,
   S2CMessages,
   S2CType,
+  ScriptId,
   StageTarget,
   StageView,
   StSelfTarget,
@@ -71,6 +72,8 @@ export interface RoomHost {
    */
   layout(): TownLayout;
   now(): number;
+  /** The script this lobby runs (LobbySettings.script); selects the character pool. */
+  script(): ScriptId;
   members(): readonly RoomMember[];
   member(pid: string): RoomMember | undefined;
   storytellerPid(): string | null;
@@ -118,8 +121,8 @@ export interface GameModule {
   start(seats: { pid: string; seat: number; name: string }[], storytellerPid: string): void;
   handlePlayer(
     pid: string,
-    type: 'game:nominate' | 'game:vote' | 'game:promptResponse' | 'game:slayerShot',
-    payload: C2SParsed<'game:nominate'> | C2SParsed<'game:vote'> | C2SParsed<'game:promptResponse'> | C2SParsed<'game:slayerShot'>,
+    type: 'game:nominate' | 'game:vote' | 'game:promptResponse' | 'game:slayerShot' | 'game:exileHand',
+    payload: C2SParsed<'game:nominate'> | C2SParsed<'game:vote'> | C2SParsed<'game:promptResponse'> | C2SParsed<'game:slayerShot'> | C2SParsed<'game:exileHand'>,
   ): void;
   handleStoryteller(pid: string, cmd: C2SParsed<'st:command'>): void;
   /** Per-client projection. null before the game starts. */
