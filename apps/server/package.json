@@ -10,8 +10,8 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@colyseus/core": "~0.16.26",
-    "@colyseus/ws-transport": "~0.16.5",
+    "@colyseus/core": "~0.18.20",
+    "@colyseus/ws-transport": "~0.18.4",
     "@ct/assets": "workspace:*",
     "@ct/db": "workspace:*",
     "@ct/protocol": "workspace:*",
@@ -21,7 +21,7 @@
     "drizzle-orm": "^0.45.0",
     "express": "^5.1.0",
     "livekit-server-sdk": "^2.19.0",
-    "obscenity": "0.4.5",
+    "obscenity": "0.4.6",
     "zod": "^4.6.0"
   },
   "devDependencies": {
