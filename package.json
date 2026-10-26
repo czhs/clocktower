@@ -20,11 +20,11 @@
   },
   "devDependencies": {
     "@colyseus/msgpackr": "1.11.3",
-    "@playwright/test": "1.63.0",
+    "@playwright/test": "1.64.1",
     "@types/node": "^24.0.0",
     "colyseus.js": "~0.16.22",
     "tsx": "^4.23.0",
     "typescript": "5.9.3",
-    "vitest": "^5.0.4"
+    "vitest": "^5.0.5"
   }
 }
