@@ -21,7 +21,7 @@
   "devDependencies": {
     "@colyseus/msgpackr": "1.11.3",
     "@playwright/test": "1.63.0",
-    "@types/node": "^24.0.0",
+    "@types/node": "^26.6.5",
     "colyseus.js": "~0.16.22",
     "tsx": "^4.23.0",
     "typescript": "5.9.3",
