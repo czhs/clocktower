@@ -12,5 +12,5 @@
     "typecheck": "tsc -p tsconfig.json",
     "live-check": "tsx scripts/livekit-live-check.ts"
   },
-  "dependencies": { "@ct/protocol": "workspace:*", "livekit-server-sdk": "^2.19.0" }
+  "dependencies": { "@ct/protocol": "workspace:*", "livekit-server-sdk": "^2.19.2" }
 }
