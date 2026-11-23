@@ -10,18 +10,18 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@colyseus/core": "~0.16.26",
-    "@colyseus/ws-transport": "~0.16.5",
+    "@colyseus/core": "~0.18.28",
+    "@colyseus/ws-transport": "~0.18.5",
     "@ct/assets": "workspace:*",
     "@ct/db": "workspace:*",
     "@ct/protocol": "workspace:*",
     "@ct/rules": "workspace:*",
     "@ct/voice": "workspace:*",
-    "better-sqlite3": "^13.0.0",
+    "better-sqlite3": "^13.2.0",
     "drizzle-orm": "^0.45.0",
     "express": "^5.1.0",
-    "livekit-server-sdk": "^2.19.0",
-    "obscenity": "0.4.5",
+    "livekit-server-sdk": "^2.20.0",
+    "obscenity": "0.4.6",
     "zod": "^4.6.0"
   },
   "devDependencies": {
